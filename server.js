@@ -3095,7 +3095,7 @@ app.get("/api/db-status", async (req, res) => {
       connected: false,
       error: error.message,
       code: error.code,
-      hint: error.code === "ECONNREFUSED" ? "Connection refused. Check if the database host and port are correct and if remote access is allowed." : error.code === "ER_ACCESS_DENIED_ERROR" ? "Access denied. Check your username and password." : error.code === "ENOTFOUND" ? "Database host not found. Check the hostname." : "Check your database credentials."
+      hint: error.code === "ECONNREFUSED" ? "Connection refused. Check if the database host and port are correct and if remote access is allowed." : error.code === "ETIMEDOUT" ? "Connection timed out. Check DB_HOST/DB_PORT, MySQL remote access, and firewall allowlist." : error.code === "ER_ACCESS_DENIED_ERROR" ? "Access denied. Check your username and password." : error.code === "ENOTFOUND" ? "Database host not found. Check the hostname." : "Check your database credentials."
     });
   }
 });

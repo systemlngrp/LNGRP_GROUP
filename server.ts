@@ -3609,6 +3609,7 @@ app.get("/api/db-status", async (req, res) => {
       error: (error as Error).message,
       code: (error as any).code,
       hint: (error as any).code === 'ECONNREFUSED' ? "Connection refused. Check if the database host and port are correct and if remote access is allowed." : 
+            (error as any).code === 'ETIMEDOUT' ? "Connection timed out. Check DB_HOST/DB_PORT, MySQL remote access, and firewall allowlist." :
             (error as any).code === 'ER_ACCESS_DENIED_ERROR' ? "Access denied. Check your username and password." :
             (error as any).code === 'ENOTFOUND' ? "Database host not found. Check the hostname." :
             "Check your database credentials."
