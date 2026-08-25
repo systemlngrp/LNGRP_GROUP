@@ -3227,8 +3227,8 @@ async function loadAuthUserById(userId: string): Promise<AuthUser | null> {
 }
 
 async function ensureDevSeedUser(db: mysql.Pool) {
-  const userId = "system@lngrp.in";
-  const password = "abcd";
+  const userId = "system.lngrp.in";
+  const password = "12345";
 
   const [rows] = await db.query("SELECT id FROM `users` WHERE userId = ? OR email = ? LIMIT 1", [userId, userId]);
   const existing = (rows as any[])[0];
@@ -3243,9 +3243,9 @@ async function ensureDevSeedUser(db: mysql.Pool) {
     mobile: "",
     email: userId,
     password,
-    role: "Admin",
+    role: "Employee",
     status: "Active",
-    menuAccess: JSON.stringify(["*"]),
+    menuAccess: JSON.stringify(["/"]),
     updatedBy: "System",
     updateTimestamp: now,
   };
@@ -3255,7 +3255,7 @@ async function ensureDevSeedUser(db: mysql.Pool) {
   const placeholders = keys.map(() => "?").join(",");
   const columnNames = keys.map((k) => `\`${k}\``).join(",");
   await db.query(`INSERT INTO \`users\` (${columnNames}) VALUES (${placeholders})`, values);
-  console.log("[DB] Seeded dev admin user:", userId);
+  console.log("[DB] Seeded dummy user:", userId);
 }
 
 async function getRequestUser(req: express.Request): Promise<AuthUser | null> {
