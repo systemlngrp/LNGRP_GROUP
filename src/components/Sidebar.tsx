@@ -394,6 +394,7 @@ export const NAVIGATION: NavGroup[] = [
       { name: "RAPC Range Master", href: "/masters/rapc-ranges", icon: Database },
       { name: "Users", href: "/masters/users", icon: Users },
       { name: "Services", href: "/masters/services", icon: Database },
+      { name: "Firm Master", href: "/masters/firms", icon: Database },
       { name: "Settings", href: "/masters/settings", icon: Database },
     ],
   },

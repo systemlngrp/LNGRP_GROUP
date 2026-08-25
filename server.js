@@ -2837,6 +2837,8 @@ function entityPermissionKey(entity) {
       return "/masters/expenses";
     case "companies":
       return "/masters/companies";
+    case "firms":
+      return "/masters/firms";
     case "trucks":
       return "/masters/trucks";
     case "machines":
@@ -4440,6 +4442,17 @@ async function initDb(retries = 5) {
       await ensureSheetMasterSchemaColumns(db, database, "php_item_master", PHP_ITEM_MASTER_SCHEMA_COLUMNS);
       await ensureSheetMasterSchemaColumns(db, database, "plate_item_master", PLATE_ITEM_MASTER_SCHEMA_COLUMNS);
       await db.query(`
+        CREATE TABLE IF NOT EXISTS \`firms\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`firmName\` VARCHAR(255) NOT NULL,
+          \`logo\` LONGTEXT,
+          \`tallyPortNo\` VARCHAR(20),
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+
+      await db.query(`
         CREATE TABLE IF NOT EXISTS \`settings\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`reelAsPerCalculation\` TEXT,
@@ -5300,6 +5313,11 @@ async function initDb(retries = 5) {
         { table: "loading_slips", column: "cancelReason", type: "TEXT" },
         { table: "loading_slips", column: "cancelledAt", type: "VARCHAR(255)" },
         { table: "loading_slips", column: "cancelledBy", type: "VARCHAR(255)" },
+        { table: "firms", column: "firmName", type: "VARCHAR(255) NOT NULL" },
+        { table: "firms", column: "logo", type: "LONGTEXT" },
+        { table: "firms", column: "tallyPortNo", type: "VARCHAR(20)" },
+        { table: "firms", column: "updatedBy", type: "VARCHAR(255)" },
+        { table: "firms", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "settings", column: "reelAsPerCalculation", type: "TEXT" },
         { table: "settings", column: "flapAsPerCalculation", type: "TEXT" },
         { table: "settings", column: "cuttingSizeAsPerCalculation", type: "TEXT" },
@@ -6949,7 +6967,7 @@ app.get("/api/truck-status-logs", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "gate_passes", "services", "npd", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "gate_passes", "services", "npd", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
   return res.json({

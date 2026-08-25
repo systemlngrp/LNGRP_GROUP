@@ -119,6 +119,7 @@ import { PlansProduction } from "./pages/PlansProduction";
 import { PlansLoading } from "./pages/PlansLoading";
 import { PlansJobCard } from "./pages/PlansJobCard";
 import { SettingsPage } from "./pages/Settings";
+import { FirmMaster } from "./pages/FirmMaster";
 import { OtherConsumablesInventoryReport } from "./pages/OtherConsumablesInventoryReport";
 import { ErpWiseReelStockReport } from "./pages/ErpWiseReelStockReport";
 import { FGStockReport } from "./pages/FGStockReport";
@@ -227,6 +228,7 @@ export default function App() {
           <Route path="masters/users" element={<Users />} />
           <Route path="masters/services" element={<Services />} />
           <Route path="masters/settings" element={<SettingsPage />} />
+          <Route path="masters/firms" element={<FirmMaster />} />
 
           {/* Indent */}
           <Route path="indent/form" element={<IndentForm />} />

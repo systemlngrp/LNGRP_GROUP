@@ -1141,6 +1141,14 @@ export interface Service {
   updateTimestamp?: string;
 }
 
+export interface Firm {
+  id: string;
+  firmName: string;
+  logo?: string;
+  tallyPortNo?: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
 export interface Setting {
   id: string;
   reelAsPerCalculation?: string;
