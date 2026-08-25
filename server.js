@@ -683,7 +683,7 @@ app.post("/api/auth/login", async (req, res) => {
     });
   } catch (error) {
     console.error("[AUTH] login failed:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Login failed" });
   }
 });
 app.get("/api/auth/me", requireAuth, async (req, res) => {
@@ -5567,9 +5567,7 @@ async function initDb(retries = 5) {
         console.warn("[DB] Could not migrate Item Master links to NPD:", err.message);
       }
       try {
-        if (process.env.NODE_ENV !== "production") {
-          await ensureDevSeedUser(db);
-        }
+        await ensureDevSeedUser(db);
       } catch (err) {
         console.warn("[DB] Could not ensure dev seed user:", err.message);
       }

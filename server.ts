@@ -761,7 +761,7 @@ app.post("/api/auth/login", async (req, res) => {
     });
   } catch (error) {
     console.error("[AUTH] login failed:", error);
-    res.status(500).json({ error: (error as Error).message });
+    res.status(500).json({ error: "Login failed" });
   }
 });
 
@@ -6177,9 +6177,7 @@ await db.query(`
       }
 
       try {
-        if (process.env.NODE_ENV !== "production") {
-          await ensureDevSeedUser(db);
-        }
+        await ensureDevSeedUser(db);
       } catch (err) {
         console.warn("[DB] Could not ensure dev seed user:", (err as Error).message);
       }
