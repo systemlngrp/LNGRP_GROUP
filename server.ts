@@ -3229,10 +3229,17 @@ async function loadAuthUserById(userId: string): Promise<AuthUser | null> {
 async function ensureDevSeedUser(db: mysql.Pool) {
   const userId = "system.lngrp.in";
   const password = "12345";
+  const menuAccess = JSON.stringify(["*"]);
 
   const [rows] = await db.query("SELECT id FROM `users` WHERE userId = ? OR email = ? LIMIT 1", [userId, userId]);
   const existing = (rows as any[])[0];
-  if (existing?.id) return;
+  if (existing?.id) {
+    await db.query(
+      "UPDATE `users` SET `role` = 'Admin', `status` = 'Active', `menuAccess` = ?, `password` = ? WHERE `id` = ?",
+      [menuAccess, password, existing.id]
+    );
+    return;
+  }
 
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
@@ -3243,9 +3250,9 @@ async function ensureDevSeedUser(db: mysql.Pool) {
     mobile: "",
     email: userId,
     password,
-    role: "Employee",
+    role: "Admin",
     status: "Active",
-    menuAccess: JSON.stringify(["/"]),
+    menuAccess,
     updatedBy: "System",
     updateTimestamp: now,
   };
@@ -3255,7 +3262,7 @@ async function ensureDevSeedUser(db: mysql.Pool) {
   const placeholders = keys.map(() => "?").join(",");
   const columnNames = keys.map((k) => `\`${k}\``).join(",");
   await db.query(`INSERT INTO \`users\` (${columnNames}) VALUES (${placeholders})`, values);
-  console.log("[DB] Seeded dummy user:", userId);
+  console.log("[DB] Seeded dummy admin user:", userId);
 }
 
 async function getRequestUser(req: express.Request): Promise<AuthUser | null> {

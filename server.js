@@ -2776,9 +2776,16 @@ async function loadAuthUserById(userId) {
 async function ensureDevSeedUser(db) {
   const userId = "system.lngrp.in";
   const password = "12345";
+  const menuAccess = JSON.stringify(["*"]);
   const [rows] = await db.query("SELECT id FROM `users` WHERE userId = ? OR email = ? LIMIT 1", [userId, userId]);
   const existing = rows[0];
-  if (existing?.id) return;
+  if (existing?.id) {
+    await db.query(
+      "UPDATE `users` SET `role` = 'Admin', `status` = 'Active', `menuAccess` = ?, `password` = ? WHERE `id` = ?",
+      [menuAccess, password, existing.id]
+    );
+    return;
+  }
   const id = crypto.randomUUID();
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const seed = {
@@ -2788,9 +2795,9 @@ async function ensureDevSeedUser(db) {
     mobile: "",
     email: userId,
     password,
-    role: "Employee",
+    role: "Admin",
     status: "Active",
-    menuAccess: JSON.stringify(["/"]),
+    menuAccess,
     updatedBy: "System",
     updateTimestamp: now
   };
@@ -2799,7 +2806,7 @@ async function ensureDevSeedUser(db) {
   const placeholders = keys.map(() => "?").join(",");
   const columnNames = keys.map((k) => `\`${k}\``).join(",");
   await db.query(`INSERT INTO \`users\` (${columnNames}) VALUES (${placeholders})`, values);
-  console.log("[DB] Seeded dummy user:", userId);
+  console.log("[DB] Seeded dummy admin user:", userId);
 }
 async function getRequestUser(req) {
   const id = String(req.authUserId || "");
