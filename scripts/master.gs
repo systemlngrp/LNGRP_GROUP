@@ -74,6 +74,11 @@ function performFullSync_(config, skipAlreadySynced) {
       mapped[header] = row[index] ?? '';
     });
 
+    const canonicalIdValue = getSyncIdValue_(mapped, config);
+    if (canonicalIdValue) {
+      mapped[idHeader] = canonicalIdValue;
+    }
+
     if (!hasMeaningfulSyncData_(mapped, config)) {
       continue;
     }

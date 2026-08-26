@@ -4038,6 +4038,133 @@ async function initDb(retries = 5) {
 	        )
       `);
       await db.query(`
+        CREATE TABLE IF NOT EXISTS \`production_processing\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`productionId\` VARCHAR(36) NOT NULL,
+          \`jobNo\` VARCHAR(100),
+          \`machineId\` VARCHAR(36) NOT NULL,
+          \`machineName\` VARCHAR(255),
+          \`shift\` VARCHAR(10) DEFAULT 'Day',
+          \`qty\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`operatorId\` VARCHAR(36) NOT NULL,
+          \`operatorName\` VARCHAR(255),
+          \`date\` VARCHAR(50) NOT NULL,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`consumptions\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`transactionNo\` VARCHAR(100) NOT NULL,
+          \`date\` VARCHAR(50) NOT NULL,
+          \`itemId\` VARCHAR(36) NOT NULL,
+          \`npdId\` VARCHAR(36),
+          \`qty\` DECIMAL(15,2) NOT NULL,
+          \`uom\` VARCHAR(50) NOT NULL,
+          \`remarks\` TEXT,
+          \`status\` VARCHAR(50) NOT NULL DEFAULT 'Pending PH',
+          \`phTimestamp\` VARCHAR(255),
+          \`phEmailId\` VARCHAR(255),
+          \`tallyTimestamp\` VARCHAR(255),
+          \`productionId\` VARCHAR(36),
+          \`jobCardNo\` VARCHAR(255),
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`sample_requests\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`timestamp\` VARCHAR(255) NOT NULL,
+          \`date\` VARCHAR(50) NOT NULL,
+          \`itemId\` VARCHAR(36) NOT NULL,
+          \`npdId\` VARCHAR(36),
+          \`itemName\` VARCHAR(255) NOT NULL,
+          \`erp\` VARCHAR(100),
+          \`plannedQuantity\` DECIMAL(15,2) NOT NULL,
+          \`jobCardNo\` VARCHAR(255),
+          \`cancelTimestamp\` VARCHAR(255),
+          \`cancelBy\` VARCHAR(255),
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`trucks\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`truckNo\` VARCHAR(50) NOT NULL,
+          \`driverName\` VARCHAR(255),
+          \`mobileNo\` VARCHAR(20),
+          \`truckType\` VARCHAR(20) NOT NULL DEFAULT 'External',
+          \`driverLoginId\` VARCHAR(100),
+          \`driverPassword\` VARCHAR(255),
+          \`liveStatus\` VARCHAR(50),
+          \`statusUpdatedAt\` VARCHAR(255),
+          \`statusUpdatedBy\` VARCHAR(255),
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`dispatch_plans\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`planNo\` VARCHAR(100),
+          \`scheduleId\` VARCHAR(36) NOT NULL,
+          \`orderId\` VARCHAR(36) NOT NULL,
+          \`productionId\` VARCHAR(36),
+          \`truckId\` VARCHAR(36) NOT NULL,
+          \`plannedQty\` DECIMAL(15,2) NOT NULL,
+          \`loadedQty\` DECIMAL(15,2) DEFAULT 0,
+          \`canceledQty\` DECIMAL(15,2) DEFAULT 0,
+          \`status\` VARCHAR(50) NOT NULL DEFAULT 'Planned',
+          \`date\` VARCHAR(50) NOT NULL,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`loading_slips\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`dispatchPlanId\` VARCHAR(36),
+          \`slipNo\` VARCHAR(100) NOT NULL,
+          \`date\` VARCHAR(50) NOT NULL,
+          \`companyId\` VARCHAR(36),
+          \`companyName\` VARCHAR(255),
+          \`loadingSource\` VARCHAR(30) DEFAULT 'DISPATCH_PLAN',
+          \`truckId\` VARCHAR(36),
+          \`truckNo\` VARCHAR(255),
+          \`fgLoadingId\` VARCHAR(36),
+          \`invoiceId\` VARCHAR(36),
+          \`invoiceNo\` VARCHAR(100),
+          \`items\` LONGTEXT,
+          \`lines\` JSON NOT NULL,
+          \`packingDetails\` JSON,
+          \`phpDetails\` JSON,
+          \`plateDetails\` JSON,
+          \`extraItemsQty\` DECIMAL(15,2) DEFAULT 0,
+          \`status\` VARCHAR(20) DEFAULT 'Active',
+          \`cancelReason\` TEXT,
+          \`cancelledAt\` VARCHAR(255),
+          \`cancelledBy\` VARCHAR(255),
+          \`totalQty\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`totalAmount\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`remarks\` TEXT,
+          \`tallyTimestamp\` VARCHAR(255),
+          \`tallyPostingStatus\` VARCHAR(50),
+          \`tallyPostingError\` TEXT,
+          \`tallyPostingAttemptCount\` INT DEFAULT 0,
+          \`tallyLastAttemptAt\` VARCHAR(255),
+          \`tallyVoucherNo\` VARCHAR(100),
+          \`tallyVoucherDate\` VARCHAR(50),
+          \`tallyVoucherType\` VARCHAR(100),
+          \`tallyPostedBy\` VARCHAR(255),
+          \`tallyPostingRemark\` TEXT,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
         CREATE TABLE IF NOT EXISTS \`php_job_master\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`transactionNo\` VARCHAR(100) NOT NULL,
