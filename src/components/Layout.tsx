@@ -81,7 +81,7 @@ export function Layout() {
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="bg-white shadow-sm relative z-10 border-b border-black">
           <div className="w-full px-3 py-3 sm:px-4 lg:px-5">
-             <div className="flex justify-between items-center h-8">
+             <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
                <div className="flex items-center gap-4">
                  <button 
                     className="md:hidden p-2 -ml-2 text-black"
@@ -97,9 +97,9 @@ export function Layout() {
                     {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                  </button>
                </div>
-               <div className="flex items-center space-x-4">
+               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
                   {user && user.role !== "TruckDriver" && (
-                    <div className="hidden md:flex items-center gap-2 rounded border border-black bg-white px-2 py-1">
+                    <div className="flex min-w-0 items-center gap-2 rounded border border-black bg-white px-2 py-1">
                       <Building2 size={16} className="text-indigo-700" />
                       <select
                         value={activeFirm?.id || ""}
@@ -107,7 +107,7 @@ export function Layout() {
                           const firm = firms.find((row) => row.id === event.target.value);
                           setActiveFirm(firm ? { id: firm.id, firmName: firm.firmName, logo: firm.logo || null, tallyPortNo: firm.tallyPortNo || null } : null);
                         }}
-                        className="max-w-[220px] bg-white text-[11px] font-black uppercase text-black outline-none"
+                        className="max-w-[150px] bg-white text-[11px] font-black uppercase text-black outline-none sm:max-w-[220px]"
                         title="Active firm"
                       >
                         {activeFirm ? <option value={activeFirm.id}>{activeFirm.firmName}</option> : <option value="">Select Firm</option>}
