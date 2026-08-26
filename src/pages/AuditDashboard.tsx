@@ -264,6 +264,10 @@ function isDebitNotePostedToTally(entry: MaterialIn) {
   return String(entry.debitTallySync || "").trim() !== "";
 }
 
+function isMaterialInPostedToTally(entry: MaterialIn) {
+  return String(entry.tallyTimestamp || "").trim() !== "" || String(entry.status || "").trim().toLowerCase() === "completed";
+}
+
 function isInvoicePostedToTally(invoice: Invoice) {
   return String(invoice.tallyTimestamp || "").trim() !== "";
 }
@@ -333,7 +337,7 @@ export function AuditDashboard() {
     const manufacturingIssueIdSet = new Set(materialIssues.filter(isManufacturingProductionEntry).map((entry) => entry.id));
     const manufacturingReturnIdSet = new Set(materialReturns.filter(isManufacturingProductionEntry).map((entry) => entry.id));
     const tallyPostedMaterialIn = materialIn.filter(
-      (entry) => String(entry.tallyTimestamp || "").trim() && String(entry.transactionNo || "").trim() !== "1"
+      (entry) => isMaterialInPostedToTally(entry) && String(entry.transactionNo || "").trim() !== "1"
     );
     const tallyPostedDebitNotes = materialIn.filter(isDebitNotePostedToTally);
     const tallyPostedInvoices = invoices.filter(isInvoicePostedToTally);
