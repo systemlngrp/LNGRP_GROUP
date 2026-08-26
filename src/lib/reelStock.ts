@@ -91,8 +91,18 @@ export function buildReelStockRows({
     .map((material, index) => {
       const openingQty = round2(Number(material.openingQty || 0));
       const openingRate = round2(Number(material.openingRate || 0));
+      const relatedIssueLines = filteredIssueLines.filter(
+        (line) => line.packingSlipId === material.id || line.packingSlipId === `opening-${material.id}`
+      );
+      const relatedReturnLines = filteredReturnLines.filter(
+        (line) => line.packingSlipId === material.id || line.packingSlipId === `opening-${material.id}`
+      );
+      const issuedWeight = round2(relatedIssueLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
+      const returnedWeight = round2(relatedReturnLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
+      const netIssuedWeight = round2(issuedWeight - returnedWeight);
+      const availableWeight = round2(Math.max(0, openingQty + returnedWeight - issuedWeight));
       return {
-        slipId: `opening-${material.id}`,
+        slipId: material.id,
         materialId: material.id,
         mrrDate: "2026-06-06",
         mrrNo: "1",
@@ -103,14 +113,14 @@ export function buildReelStockRows({
         gsm: Number(material.gsm || 0),
         size: Number(material.size || 0),
         bf: Number(material.bf || 0),
-        issuedWeight: 0,
-        returnedWeight: 0,
-        netIssuedWeight: 0,
-        availableWeight: openingQty,
+        issuedWeight,
+        returnedWeight,
+        netIssuedWeight,
+        availableWeight,
         mrrQty: 0,
         openingQty,
-        rate: openingRate,
-        valuation: round2(openingQty * openingRate),
+        rate: availableWeight > 0 ? openingRate : 0,
+        valuation: availableWeight > 0 ? round2(availableWeight * openingRate) : 0,
         ageDays: 0,
         isOpening: true,
       };

@@ -414,7 +414,7 @@ export function MaterialIssueForm() {
 
   const getLineAvailableReels = (lineId: string, materialId: string) => {
     const selectedElsewhere = getSelectedReelsAcrossOtherLines(lineId);
-    return getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines).filter(
+    return getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials).filter(
       (slip) => !selectedElsewhere.has(slip.id)
     );
   };
@@ -434,7 +434,7 @@ export function MaterialIssueForm() {
         alert("This reel is already selected in another line.");
         return prev;
       }
-      const totalWeight = getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines)
+      const totalWeight = getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials)
         .filter((slip) => nextIds.includes(slip.id))
         .reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
       setLines((old) => old.map((line) => (line.id === lineId ? { ...line, qty: totalWeight } : line)));
@@ -463,7 +463,8 @@ export function MaterialIssueForm() {
       originalSlip.materialId,
       packingSlips,
       materialIssueReelLines,
-      materialReturnReelLines
+      materialReturnReelLines,
+      materials
     ).find((slip) => slip.id === originalSlip.id);
     if (!availableSlip || Number(availableSlip.weightKg || 0) <= 0) {
       throw new Error(`Reel ${originalSlip.ourReelNo} is not available for issue.`);
@@ -476,7 +477,8 @@ export function MaterialIssueForm() {
       originalSlip.materialId,
       packingSlips,
       materialIssueReelLines,
-      materialReturnReelLines
+      materialReturnReelLines,
+      materials
     );
     const totalWeight = availableForMaterial
       .filter((slip) => nextSelectedForLine.includes(slip.id))
@@ -631,7 +633,7 @@ export function MaterialIssueForm() {
 
         if (line.isReel) {
           const reelIds = selectedReels[line.id] || [];
-          const reelAmount = getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines)
+          const reelAmount = getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials)
             .filter((slip) => reelIds.includes(slip.id))
             .reduce((sum, slip) => {
               const receipt = materialIn.find((entry) => entry.id === slip.materialInId);
@@ -661,7 +663,7 @@ export function MaterialIssueForm() {
 
         if (line.isReel) {
           const reelIds = selectedReels[line.id] || [];
-          getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines)
+          getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials)
             .filter((slip) => reelIds.includes(slip.id))
             .forEach((slip) => {
               nextReelLines.push({

@@ -91,6 +91,35 @@ function buildJobReturnableWeights(
   return weights;
 }
 
+export function buildOpeningReelPackingSlips(
+  materials: Pick<Material, "id" | "type" | "openingQty">[],
+  packingSlips: MaterialInPackingSlip[]
+) {
+  const persistedIds = new Set(packingSlips.map((slip) => slip.id));
+  const lastExistingReelNo = packingSlips.reduce((max, slip) => {
+    const reelNo = Number(String(slip.ourReelNo || "").trim());
+    return Number.isFinite(reelNo) && reelNo > max ? reelNo : max;
+  }, 0);
+
+  return materials
+    .filter(
+      (material) =>
+        String(material.type || "").trim().toLowerCase() === "reel" &&
+        Number(material.openingQty || 0) > 0 &&
+        !persistedIds.has(material.id)
+    )
+    .map<MaterialInPackingSlip>((material, index) => ({
+      // Opening stock has no MRR packing slip. Use the material UUID as a stable,
+      // VARCHAR(36)-safe reel identity so issue/return rows can track its balance.
+      id: material.id,
+      materialInId: "",
+      materialLineId: material.id,
+      materialId: material.id,
+      supplierReelNo: "OPENING",
+      ourReelNo: String(lastExistingReelNo + index + 1),
+      weightKg: round2(Number(material.openingQty || 0)),
+    }));
+}
 export function getNonReelAvailableQty(
   materialId: string,
   materialIn: MaterialIn[],
@@ -119,10 +148,12 @@ export function getAvailableReelPackingSlips(
   materialId: string,
   packingSlips: MaterialInPackingSlip[],
   issueReelLines: MaterialIssueReelLine[],
-  returnReelLines: MaterialReturnReelLine[]
+  returnReelLines: MaterialReturnReelLine[],
+  materials: Pick<Material, "id" | "type" | "openingQty">[] = []
 ) {
   const netIssuedBySlip = buildSlipNetIssuedWeights(issueReelLines, returnReelLines);
-  return packingSlips.flatMap((slip) => {
+  const allSlips = [...packingSlips, ...buildOpeningReelPackingSlips(materials, packingSlips)];
+  return allSlips.flatMap((slip) => {
     if (slip.materialId !== materialId) return [];
     const baseWeight = Number(slip.weightKg || 0);
     if (baseWeight <= 0) return [];
