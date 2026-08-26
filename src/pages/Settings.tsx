@@ -309,6 +309,11 @@ type InvoiceSeriesRow = {
   active: "Yes" | "No";
 };
 
+function normalizeInvoiceSeriesPrefix(value: unknown) {
+  const prefix = String(value || "").trim().toUpperCase();
+  return prefix === "LNPI" ? "LNGRP" : prefix;
+}
+
 function parseInvoiceNumberSeries(raw?: string): InvoiceSeriesRow[] {
   if (!raw) return [];
   try {
@@ -317,7 +322,7 @@ function parseInvoiceNumberSeries(raw?: string): InvoiceSeriesRow[] {
     return parsed
       .map((row) => ({
         fy: String(row?.fy || "").trim(),
-        prefix: String(row?.prefix || "").trim(),
+        prefix: normalizeInvoiceSeriesPrefix(row?.prefix),
         startingNumber: Number(row?.startingNumber || 1),
         paddingLength: Number(row?.paddingLength || 5),
         separator: String(row?.separator || "/") || "/",
@@ -1183,7 +1188,7 @@ export function SettingsPage() {
             <div>
               <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Invoice Number Series</h3>
               <p className="text-sm text-black leading-6">
-                Configure FY-wise invoice numbering format like <span className="font-bold">LNPI/26-27/00289</span>.
+                Configure FY-wise invoice numbering format like <span className="font-bold">LNGRP/26-27/00289</span>.
               </p>
             </div>
 
@@ -1227,7 +1232,7 @@ export function SettingsPage() {
                             value={row.prefix}
                             onChange={(e) => setInvoiceSeriesDraft((prev) => prev.map((r, i) => (i === idx ? { ...r, prefix: e.target.value.toUpperCase() } : r)))}
                             disabled={loading || saving}
-                            placeholder="LNPI"
+                            placeholder="LNGRP"
                             className="w-full border border-black rounded px-2 py-1 text-sm font-semibold text-black outline-none bg-white"
                           />
                         </td>
@@ -1315,7 +1320,7 @@ export function SettingsPage() {
                   const cleaned = invoiceSeriesDraft
                     .map((row) => ({
                       fy: String(row.fy || "").trim(),
-                      prefix: String(row.prefix || "").trim().toUpperCase(),
+                      prefix: normalizeInvoiceSeriesPrefix(row.prefix),
                       startingNumber: Math.max(1, Number(row.startingNumber || 1)),
                       paddingLength: Math.max(1, Number(row.paddingLength || 5)),
                       separator: String(row.separator || "/") || "/",

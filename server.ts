@@ -3434,6 +3434,11 @@ type InvoiceNumberSeriesConfig = {
   active: string;
 };
 
+function normalizeInvoiceSeriesPrefix(value: unknown) {
+  const prefix = String(value || "").trim().toUpperCase();
+  return prefix === "LNPI" ? "LNGRP" : prefix;
+}
+
 function getShortFinancialYear(dateStr?: string) {
   const date = dateStr ? new Date(dateStr) : new Date();
   if (Number.isNaN(date.getTime())) return "";
@@ -3453,7 +3458,7 @@ function parseInvoiceNumberSeries(raw: unknown): InvoiceNumberSeriesConfig[] {
     return parsed
       .map((row) => ({
         fy: String((row as any)?.fy || "").trim(),
-        prefix: String((row as any)?.prefix || "").trim(),
+        prefix: normalizeInvoiceSeriesPrefix((row as any)?.prefix),
         startingNumber: Math.max(1, Number((row as any)?.startingNumber || 1)),
         paddingLength: Math.max(1, Number((row as any)?.paddingLength || 5)),
         separator: String((row as any)?.separator || "/") || "/",
@@ -3622,13 +3627,16 @@ async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId
   const prefix = series.prefix.trim();
   const startingNumber = Math.max(1, Number(series.startingNumber || 1));
   const paddingLength = Math.max(1, Number(series.paddingLength || 5));
-  const likePattern = `${escapeLikePattern(prefix)}${escapeLikePattern(separator)}${escapeLikePattern(fy)}${escapeLikePattern(separator)}%`;
+  const sequencePrefixes = prefix === "LNGRP" ? ["LNGRP", "LNPI"] : [prefix];
+  const likePatterns = sequencePrefixes.map(
+    (sequencePrefix) =>
+      `${escapeLikePattern(sequencePrefix)}${escapeLikePattern(separator)}${escapeLikePattern(fy)}${escapeLikePattern(separator)}%`
+  );
 
   const scopedFirmId = String(firmId || "").trim();
-  const invoiceWhere = scopedFirmId
-    ? "invoiceNo LIKE ? ESCAPE '\\\\' AND `firmId` = ?"
-    : "invoiceNo LIKE ? ESCAPE '\\\\'";
-  const invoiceParams = scopedFirmId ? [likePattern, scopedFirmId] : [likePattern];
+  const seriesWhere = sequencePrefixes.map(() => "invoiceNo LIKE ? ESCAPE '\\\\'").join(" OR ");
+  const invoiceWhere = scopedFirmId ? `(${seriesWhere}) AND \`firmId\` = ?` : `(${seriesWhere})`;
+  const invoiceParams = scopedFirmId ? [...likePatterns, scopedFirmId] : likePatterns;
   const [invoiceRows] = await db.query(
     `SELECT invoiceNo FROM \`invoices\` WHERE ${invoiceWhere}`,
     invoiceParams
@@ -3636,8 +3644,10 @@ async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId
   let lastNumber = startingNumber - 1;
   for (const row of invoiceRows as any[]) {
     const invoiceNo = String(row?.invoiceNo || "").trim();
-    const expectedPrefix = `${prefix}${separator}${fy}${separator}`;
-    if (!invoiceNo.startsWith(expectedPrefix)) continue;
+    const expectedPrefix = sequencePrefixes
+      .map((sequencePrefix) => `${sequencePrefix}${separator}${fy}${separator}`)
+      .find((candidate) => invoiceNo.startsWith(candidate));
+    if (!expectedPrefix) continue;
     const suffix = invoiceNo.slice(expectedPrefix.length).trim();
     const parsedNumber = Number.parseInt(suffix, 10);
     if (Number.isFinite(parsedNumber) && parsedNumber > lastNumber) {
