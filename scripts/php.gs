@@ -1,10 +1,16 @@
 const PHP_ITEM_MASTER_SYNC_CONFIG = {
-  apiUrl: 'https://darkred-lobster-409686.hostingersite.com/api/npd-sync',
-  apiUrls: [
-    'https://darkred-lobster-409686.hostingersite.com/api/npd-sync',
-    'https://system.lngrp.in/api/npd-sync',
+  targets: [
+    {
+      name: 'Hostinger',
+      baseUrl: 'https://darkred-lobster-409686.hostingersite.com',
+      secret: '1234567890',
+    },
+    {
+      name: 'LNGRP System',
+      baseUrl: 'https://system.lngrp.in',
+      secret: '1234567890',
+    },
   ],
-  secret: '1234567890',
   tabName: 'PHP ITEM MASTER',
   spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
   idHeader: 'phpid',

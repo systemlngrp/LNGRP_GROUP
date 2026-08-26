@@ -1,15 +1,16 @@
 const NPD_SYNC_CONFIG = {
-  apiUrl: 'https://darkred-lobster-409686.hostingersite.com/api/npd-sync',
-  apiUrls: [
-    'https://darkred-lobster-409686.hostingersite.com/api/npd-sync',
-    'https://system.lngrp.in/api/npd-sync',
+  targets: [
+    {
+      name: 'Hostinger',
+      baseUrl: 'https://darkred-lobster-409686.hostingersite.com',
+      secret: '1234567890',
+    },
+    {
+      name: 'LNGRP System',
+      baseUrl: 'https://system.lngrp.in',
+      secret: '1234567890',
+    },
   ],
-  rateApiUrl: 'https://darkred-lobster-409686.hostingersite.com/api/npd-sync/rates',
-  rateApiUrls: [
-    'https://darkred-lobster-409686.hostingersite.com/api/npd-sync/rates',
-    'https://system.lngrp.in/api/npd-sync/rates',
-  ],
-  secret: '1234567890',
   tabName: 'NPD',
   spreadsheetId: SpreadsheetApp.getActiveSpreadsheet().getId(),
   npdIdHeader: 'NPD ID',
@@ -63,21 +64,21 @@ function syncNpdRatesFromHostinger() {
 
   const rateMap = new Map();
   const rateSyncErrors = [];
-  const rateApiUrls = NPD_SYNC_CONFIG.rateApiUrls || [NPD_SYNC_CONFIG.rateApiUrl];
+  const rateTargets = getRateSyncTargets_(NPD_SYNC_CONFIG);
   let successfulRateFetches = 0;
 
-  rateApiUrls.forEach((rateApiUrl) => {
+  rateTargets.forEach((target) => {
     try {
-      const response = UrlFetchApp.fetch(rateApiUrl, {
+      const response = UrlFetchApp.fetch(target.rateApiUrl, {
         method: 'get',
         muteHttpExceptions: true,
         headers: {
-          'x-npd-sync-secret': NPD_SYNC_CONFIG.secret,
+          'x-npd-sync-secret': target.secret,
         },
       });
 
       if (response.getResponseCode() >= 400) {
-        rateSyncErrors.push(`${rateApiUrl}: ${response.getContentText()}`);
+        rateSyncErrors.push(`${target.name} ${target.rateApiUrl}: ${response.getContentText()}`);
         return;
       }
 
@@ -95,12 +96,12 @@ function syncNpdRatesFromHostinger() {
             orderDate: String(row.orderDate || row.order_date || '').trim(),
             approvedAt: String(row.approvedAt || row.approved_at || '').trim(),
             status: String(row.status || 'approved').trim() || 'approved',
-            sourceUrl: rateApiUrl,
+            sourceName: target.name,
           });
         }
       });
     } catch (error) {
-      rateSyncErrors.push(`${rateApiUrl}: ${error && error.message ? error.message : error}`);
+      rateSyncErrors.push(`${target.name} ${target.rateApiUrl}: ${error && error.message ? error.message : error}`);
     }
   });
 
@@ -152,7 +153,7 @@ function syncNpdRatesFromHostinger() {
       processedErps.add(erp);
       const syncStatus = String(currentValue) === String(nextValue) ? 'unchanged' : 'updated';
       historyRows.push(
-        buildHistoryRow_(erp, latest.orderNo, latest.approvedAt || latest.orderDate, nextValue, syncStatus, `Source: ${latest.sourceUrl || ''}`)
+        buildHistoryRow_(erp, latest.orderNo, latest.approvedAt || latest.orderDate, nextValue, syncStatus, `Source: ${latest.sourceName || ''}`)
       );
     }
   });
@@ -168,6 +169,22 @@ function syncNpdRatesFromHostinger() {
   return { ok: true, updatedRows: changedRows, fetchedRates: rateMap.size, partialFailure: rateSyncErrors.length > 0 };
 }
 
+function getRateSyncTargets_(config) {
+  if (config && Array.isArray(config.targets) && config.targets.length) {
+    return config.targets.map((target) => ({
+      name: String(target.name || target.baseUrl || '').trim(),
+      rateApiUrl: `${String(target.baseUrl || '').replace(/\/$/, '')}/api/npd-sync/rates`,
+      secret: String(target.secret || '').trim(),
+    }));
+  }
+
+  const rateApiUrls = config.rateApiUrls || [config.rateApiUrl];
+  return rateApiUrls.map((rateApiUrl) => ({
+    name: rateApiUrl,
+    rateApiUrl: rateApiUrl,
+    secret: config.secret,
+  }));
+}
 function flushQueuedNpdSync() {
   return performFlush_(NPD_SYNC_CONFIG, NPD_SYNC_CONFIG.npdIdHeader);
 }

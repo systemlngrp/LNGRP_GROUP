@@ -134,7 +134,7 @@ function performFullSync_(config, skipAlreadySynced) {
     firstRowIndex: allRowIndicesToUpdate[0] || null,
     lastRowIndex: allRowIndicesToUpdate[allRowIndicesToUpdate.length - 1] || null,
     duplicateRowsDeleted: duplicateRowIndices.length,
-    apiUrl: config.apiUrl,
+    targets: getSyncTargets_(config).map((target) => target.name),
     spreadsheetId: config.spreadsheetId,
   });
   return processBatchSync_(config, spreadsheet, sheet, allRowsToSync, allRowIndicesToUpdate, hostingerSyncIndex);
@@ -161,7 +161,7 @@ function processBatchSync_(config, spreadsheet, sheet, allRowsToSync, allRowIndi
       batchSize: rowsToSync.length,
       rowIndexes: rowIndicesToUpdate,
       itemIds: rowsToSync.map((row) => getSyncIdValue_(row, config)).filter((value) => value !== ''),
-      apiUrls: config.apiUrls || [config.apiUrl],
+      targets: getSyncTargets_(config).map((target) => target.name),
     });
 
     try {
@@ -210,7 +210,7 @@ function processBatchSync_(config, spreadsheet, sheet, allRowsToSync, allRowIndi
       logItemMasterSyncError_(config, 'Exception during full-sync batch', error, {
         rowIndexes: rowIndicesToUpdate,
         itemIds: rowsToSync.map((row) => getSyncIdValue_(row, config)).filter((value) => value !== ''),
-        apiUrls: config.apiUrls || [config.apiUrl],
+        targets: getSyncTargets_(config).map((target) => target.name),
       });
       throw error;
     }
@@ -249,37 +249,37 @@ function processBatchSync_(config, spreadsheet, sheet, allRowsToSync, allRowIndi
 }
 
 function postSyncPayloadToTargets_(config, payload, contextLabel) {
-  const apiUrls = config.apiUrls || [config.apiUrl];
-  const results = apiUrls.map((apiUrl) => {
+  const targets = getSyncTargets_(config);
+  const results = targets.map((target) => {
     try {
-      const response = UrlFetchApp.fetch(apiUrl, {
+      const response = UrlFetchApp.fetch(target.apiUrl, {
         method: 'post',
         contentType: 'application/json',
         muteHttpExceptions: true,
         headers: {
-          'x-npd-sync-secret': config.secret,
+          'x-npd-sync-secret': target.secret,
         },
         payload: JSON.stringify(payload),
       });
       const responseText = response.getContentText();
       const responseCode = response.getResponseCode();
       if (responseCode >= 400) {
-        return { ok: false, apiUrl: apiUrl, responseCode: responseCode, error: responseText };
+        return { ok: false, target: target.name, apiUrl: target.apiUrl, responseCode: responseCode, error: responseText };
       }
-      return { ok: true, apiUrl: apiUrl, responseCode: responseCode, parsed: parseSyncResponse_(responseText, config.tabName) };
+      return { ok: true, target: target.name, apiUrl: target.apiUrl, responseCode: responseCode, parsed: parseSyncResponse_(responseText, config.tabName) };
     } catch (error) {
-      return { ok: false, apiUrl: apiUrl, responseCode: 0, error: error && error.message ? error.message : String(error) };
+      return { ok: false, target: target.name, apiUrl: target.apiUrl, responseCode: 0, error: error && error.message ? error.message : String(error) };
     }
   });
 
   const successes = results.filter((result) => result.ok);
   if (!successes.length) {
-    throw new Error(`${contextLabel} failed for all targets: ${results.map((result) => `${result.apiUrl}: ${result.error}`).join(' | ')}`);
+    throw new Error(`${contextLabel} failed for all targets: ${results.map((result) => `${result.target} ${result.apiUrl}: ${result.error}`).join(' | ')}`);
   }
 
   const failures = results.filter((result) => !result.ok);
   if (failures.length) {
-    Logger.log('%s partial failure: %s', contextLabel, failures.map((result) => `${result.apiUrl}: ${result.error}`).join(' | '));
+    Logger.log('%s partial failure: %s', contextLabel, failures.map((result) => `${result.target} ${result.apiUrl}: ${result.error}`).join(' | '));
   }
 
   return {
@@ -287,6 +287,23 @@ function postSyncPayloadToTargets_(config, payload, contextLabel) {
     results: results,
     failures: failures,
   };
+}
+
+function getSyncTargets_(config) {
+  if (config && Array.isArray(config.targets) && config.targets.length) {
+    return config.targets.map((target) => ({
+      name: String(target.name || target.baseUrl || '').trim(),
+      apiUrl: `${String(target.baseUrl || '').replace(/\/$/, '')}/api/npd-sync`,
+      secret: String(target.secret || '').trim(),
+    }));
+  }
+
+  const apiUrls = config.apiUrls || [config.apiUrl];
+  return apiUrls.map((apiUrl) => ({
+    name: apiUrl,
+    apiUrl: apiUrl,
+    secret: config.secret,
+  }));
 }
 
 function shouldSkipSyncedRows_(config) {
@@ -379,7 +396,7 @@ function performFlush_(config, idHeader) {
   logItemMasterSync_(config, 'Flushing queued rows', {
     pendingCount: pendingRows.length,
     itemIds: pendingRows.map((row) => getSyncIdValue_(row, config)).filter((value) => value !== ''),
-    apiUrls: config.apiUrls || [config.apiUrl],
+    targets: getSyncTargets_(config).map((target) => target.name),
   });
   const syncTimestamp = formatDate_(new Date());
 
@@ -426,7 +443,7 @@ function performFlush_(config, idHeader) {
   } catch (error) {
     logItemMasterSyncError_(config, 'Exception during queued flush', error, {
       itemIds: pendingRows.map((row) => getSyncIdValue_(row, config)).filter((value) => value !== ''),
-      apiUrls: config.apiUrls || [config.apiUrl],
+      targets: getSyncTargets_(config).map((target) => target.name),
     });
     throw error;
   }
