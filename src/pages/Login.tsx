@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "../auth/AuthContext";
+import { ActiveFirm, useAuth } from "../auth/AuthContext";
+import { Firm } from "../types";
 import { Eye, EyeOff } from "lucide-react";
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { user, activeFirm, login, setActiveFirm } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -16,6 +17,46 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [firmLoading, setFirmLoading] = useState(false);
+  const [firms, setFirms] = useState<Firm[]>([]);
+  const [selectedFirmId, setSelectedFirmId] = useState("");
+
+  const shouldChooseFirm = Boolean(user && user.role !== "TruckDriver" && !activeFirm);
+
+  const getNextPath = (role?: string) =>
+    next === "/" && role === "Operator" ? "/production/pending-machine-processing" : next;
+
+  const loadFirms = async () => {
+    setFirmLoading(true);
+    setError(null);
+    try {
+      const token = window.localStorage.getItem("authToken") || "";
+      const response = await fetch("/api/firms", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data?.error || "Failed to load firms.");
+      }
+      const rows = (await response.json()) as Firm[];
+      const activeRows = rows.filter((firm) => firm.id && firm.firmName);
+      setFirms(activeRows);
+      setSelectedFirmId((current) => current || activeRows[0]?.id || "");
+      if (activeRows.length === 0) setError("No firms are configured. Please add a firm before continuing.");
+    } catch (err) {
+      setError((err as Error).message || "Failed to load firms.");
+    } finally {
+      setFirmLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (shouldChooseFirm) void loadFirms();
+  }, [shouldChooseFirm]);
+
+  useEffect(() => {
+    if (user && activeFirm) navigate(getNextPath(user.role), { replace: true });
+  }, [user, activeFirm]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,14 +64,71 @@ export function LoginPage() {
     setSubmitting(true);
     try {
       const loggedInUser = await login(identifier.trim(), password);
-      const nextPath = next === "/" && loggedInUser.role === "Operator" ? "/production/pending-machine-processing" : next;
-      navigate(nextPath, { replace: true });
+      if (loggedInUser.role === "TruckDriver") {
+        navigate(getNextPath(loggedInUser.role), { replace: true });
+      }
     } catch (err) {
       setError((err as Error).message || "Login failed");
     } finally {
       setSubmitting(false);
     }
   };
+
+  const onFirmSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const firm = firms.find((row) => row.id === selectedFirmId);
+    if (!firm) {
+      setError("Please select a firm.");
+      return;
+    }
+    const active: ActiveFirm = {
+      id: firm.id,
+      firmName: firm.firmName,
+      logo: firm.logo || null,
+      tallyPortNo: firm.tallyPortNo || null,
+    };
+    setActiveFirm(active);
+    navigate(getNextPath(user?.role), { replace: true });
+  };
+
+  if (shouldChooseFirm) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white border-2 border-black rounded shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] p-6">
+          <h1 className="text-xl font-black text-black uppercase tracking-tight">Select Firm</h1>
+          <p className="text-sm text-slate-600 mt-1">Choose the firm for this session.</p>
+
+          <form onSubmit={onFirmSubmit} className="mt-6 space-y-4">
+            <div>
+              <label className="block text-xs font-black uppercase text-slate-600 mb-1">Firm</label>
+              <select
+                value={selectedFirmId}
+                onChange={(e) => setSelectedFirmId(e.target.value)}
+                className="w-full border-2 border-black rounded p-2 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                required
+                disabled={firmLoading || firms.length === 0}
+              >
+                <option value="">Select firm</option>
+                {firms.map((firm) => (
+                  <option key={firm.id} value={firm.id}>{firm.firmName}</option>
+                ))}
+              </select>
+            </div>
+
+            {error && <div className="text-sm font-bold text-red-700">{error}</div>}
+
+            <button
+              type="submit"
+              disabled={firmLoading || firms.length === 0 || !selectedFirmId}
+              className="w-full bg-indigo-600 text-white px-4 py-2 rounded font-black hover:bg-indigo-700 transition disabled:opacity-60"
+            >
+              {firmLoading ? "Loading firms..." : "Continue"}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">

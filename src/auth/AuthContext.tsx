@@ -11,16 +11,47 @@ export type AuthUser = {
   truckId?: string | null;
 };
 
+export type ActiveFirm = {
+  id: string;
+  firmName: string;
+  logo?: string | null;
+  tallyPortNo?: string | null;
+};
+
 type AuthContextValue = {
   user: AuthUser | null;
+  activeFirm: ActiveFirm | null;
+  activeFirmId: string;
   loading: boolean;
   login: (identifier: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
+  setActiveFirm: (firm: ActiveFirm | null) => void;
   hasAccess: (href: string) => boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const TRUCK_DRIVER_ALLOWED_PATHS = ["/truck/status-update"];
+const ACTIVE_FIRM_STORAGE_KEY = "activeFirm";
+
+function normalizeActiveFirm(raw: unknown): ActiveFirm | null {
+  if (!raw) return null;
+  const value = typeof raw === "string" ? (() => {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  })() : raw;
+  const id = String((value as any)?.id || "").trim();
+  const firmName = String((value as any)?.firmName || "").trim();
+  if (!id || !firmName) return null;
+  return {
+    id,
+    firmName,
+    logo: (value as any)?.logo ? String((value as any).logo) : null,
+    tallyPortNo: (value as any)?.tallyPortNo ? String((value as any).tallyPortNo) : null,
+  };
+}
 
 function normalizeMenuAccess(raw: unknown): string[] {
   if (!raw) return [];
@@ -83,8 +114,8 @@ function isAllowed(user: AuthUser | null, href: string) {
   return list.some((entry) => {
     if (!entry) return false;
     if (entry === href) return true;
-    if (entry !== "/" && href.startsWith(`${entry}/`)) return true; // user granted section access
-    if (href !== "/" && entry.startsWith(`${href}/`)) return true; // user granted a specific page
+    if (entry !== "/" && href.startsWith(`${entry}/`)) return true;
+    if (href !== "/" && entry.startsWith(`${href}/`)) return true;
     if (entry.endsWith("/*") && href.startsWith(entry.slice(0, -1))) return true;
     return false;
   });
@@ -92,19 +123,37 @@ function isAllowed(user: AuthUser | null, href: string) {
 
 async function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const token = window.localStorage.getItem("authToken") || "";
+  const firm = normalizeActiveFirm(window.localStorage.getItem(ACTIVE_FIRM_STORAGE_KEY));
   const headers = new Headers(init.headers || {});
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (firm?.id) headers.set("X-Firm-Id", firm.id);
   return fetch(input, { ...init, headers });
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [activeFirm, setActiveFirmState] = useState<ActiveFirm | null>(() =>
+    normalizeActiveFirm(window.localStorage.getItem(ACTIVE_FIRM_STORAGE_KEY))
+  );
   const [loading, setLoading] = useState(true);
+
+  const setActiveFirm = useCallback((firm: ActiveFirm | null) => {
+    const normalizedFirm = normalizeActiveFirm(firm);
+    setActiveFirmState(normalizedFirm);
+    if (normalizedFirm) {
+      window.localStorage.setItem(ACTIVE_FIRM_STORAGE_KEY, JSON.stringify(normalizedFirm));
+    } else {
+      window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
+    }
+    window.dispatchEvent(new CustomEvent("active-firm-changed", { detail: normalizedFirm }));
+  }, []);
 
   const refreshMe = useCallback(async (showLoading = true) => {
     const token = window.localStorage.getItem("authToken") || "";
     if (!token) {
       setUser(null);
+      setActiveFirmState(null);
+      window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
       if (showLoading) setLoading(false);
       return;
     }
@@ -114,7 +163,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           window.localStorage.removeItem("authToken");
+          window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
           setUser(null);
+          setActiveFirmState(null);
         }
         return;
       }
@@ -163,6 +214,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     const data = await res.json();
     window.localStorage.setItem("authToken", String(data.token || ""));
+    window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
+    setActiveFirmState(null);
     const nextUser = {
       ...(data.user as AuthUser),
       role: normalizeRole(data.user?.role),
@@ -179,15 +232,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     } finally {
       window.localStorage.removeItem("authToken");
+      window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
       setUser(null);
+      setActiveFirmState(null);
     }
   }, []);
 
   const hasAccess = useCallback((href: string) => isAllowed(user, href), [user]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, loading, login, logout, hasAccess }),
-    [user, loading, login, logout, hasAccess]
+    () => ({ user, activeFirm, activeFirmId: activeFirm?.id || "", loading, login, logout, setActiveFirm, hasAccess }),
+    [user, activeFirm, loading, login, logout, setActiveFirm, hasAccess]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

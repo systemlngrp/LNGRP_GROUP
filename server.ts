@@ -68,6 +68,66 @@ const NPD_SYNC_LOG_PREFIX = "[NPD_SYNC]";
 const TALLY_SYNC_SECRET = String(process.env.TALLY_SYNC_SECRET || "!Office1@").trim();
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || "").trim();
 const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
+const FIRM_SCOPED_TABLES = new Set([
+  "indents",
+  "indent_lines",
+  "purchase_orders",
+  "purchase_order_lines",
+  "gate_entries",
+  "gate_entry_photos",
+  "material_in_packing_slips",
+  "material_issues",
+  "material_issue_lines",
+  "material_issue_reel_lines",
+  "material_returns",
+  "material_return_lines",
+  "material_return_reel_lines",
+  "expense_masters",
+  "orders",
+  "orders_schedule",
+  "material_in",
+  "productions",
+  "production_processing",
+  "consumptions",
+  "sample_requests",
+  "boardline_qc_checks",
+  "printing_qc_checks",
+  "dispatch_plans",
+  "loading_slips",
+  "material_visit",
+  "invoices",
+  "invoice_line_items",
+  "gate_passes",
+  "fixed_monthly_expenses",
+  "fixed_daily_expenses",
+  "audit_dashboard_snapshots",
+  "physical_stock_sessions",
+  "reel_stock_taker_logs",
+  "truck_status_logs",
+]);
+
+function isFirmScopedTable(tableName: string) {
+  return FIRM_SCOPED_TABLES.has(tableName);
+}
+
+function getRequestFirmId(req: express.Request) {
+  return String(req.header("x-firm-id") || req.query.firmId || "").trim();
+}
+
+function buildFirmScopeCondition(alias: string, firmId: string) {
+  const prefix = alias ? `${alias}.` : "";
+  return `(${prefix}\`firmId\` = ? OR ${prefix}\`firmId\` IS NULL OR TRIM(${prefix}\`firmId\`) = '')`;
+}
+
+async function assertRequestFirm(db: mysql.Pool, firmId: string) {
+  if (!firmId) return;
+  const [rows] = await db.query("SELECT id FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+  if (!(rows as any[])[0]?.id) {
+    const error = new Error("Selected firm was not found.");
+    (error as any).statusCode = 400;
+    throw error;
+  }
+}
 
 function resolveGeminiModel() {
   const configuredModel = String(process.env.GEMINI_MODEL || "").trim();
@@ -3543,7 +3603,7 @@ async function backfillMissingConsumptionTransactionNos(db: mysql.Pool) {
   return (rows as any[]).length;
 }
 
-async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string) {
+async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId?: string) {
   const fy = getShortFinancialYear(dateStr);
   if (!fy) throw new Error("Invoice date is invalid for invoice series generation.");
 
@@ -3564,11 +3624,15 @@ async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string) {
   const paddingLength = Math.max(1, Number(series.paddingLength || 5));
   const likePattern = `${escapeLikePattern(prefix)}${escapeLikePattern(separator)}${escapeLikePattern(fy)}${escapeLikePattern(separator)}%`;
 
+  const scopedFirmId = String(firmId || "").trim();
+  const invoiceWhere = scopedFirmId
+    ? "invoiceNo LIKE ? ESCAPE '\\\\' AND `firmId` = ?"
+    : "invoiceNo LIKE ? ESCAPE '\\\\'";
+  const invoiceParams = scopedFirmId ? [likePattern, scopedFirmId] : [likePattern];
   const [invoiceRows] = await db.query(
-    "SELECT invoiceNo FROM `invoices` WHERE invoiceNo LIKE ? ESCAPE '\\\\'",
-    [likePattern]
+    `SELECT invoiceNo FROM \`invoices\` WHERE ${invoiceWhere}`,
+    invoiceParams
   );
-
   let lastNumber = startingNumber - 1;
   for (const row of invoiceRows as any[]) {
     const invoiceNo = String(row?.invoiceNo || "").trim();
@@ -6004,6 +6068,15 @@ await db.query(`
         }
       }
 
+      for (const tableName of FIRM_SCOPED_TABLES) {
+        try {
+          await ensureColumnExists(db, database, tableName, "firmId", "VARCHAR(36)");
+          await ensureIndex(db, database, tableName, "firmId", `idx_${tableName}_firmId`);
+        } catch (err) {
+          console.warn(`[DB] Could not ensure firm scope on ${tableName}:`, (err as Error).message);
+        }
+      }
+
       try {
         const [result] = await db.query(`
           UPDATE \`productions\` p
@@ -6441,6 +6514,10 @@ const createHandlers = (tableName: string) => {
       if (!db) return res.status(500).json({ error: "DB connection not available" });
       try {
         console.log(`[DB] Fetching all from ${tableName}`);
+        const requestFirmId = getRequestFirmId(req);
+        if (isFirmScopedTable(tableName)) await assertRequestFirm(db, requestFirmId);
+        const firmWhere = isFirmScopedTable(tableName) && requestFirmId ? buildFirmScopeCondition("", requestFirmId) : "";
+        const firmParams = firmWhere ? [requestFirmId] : [];
         let rows;
 
         if (tableName === "users") {
@@ -6464,6 +6541,10 @@ const createHandlers = (tableName: string) => {
         if (tableName === "items") {
           rows = await fetchActiveNpdItems(db);
         } else if (tableName === "invoice_line_items") {
+          const invoiceLineFirmWhere = requestFirmId
+            ? `WHERE (${buildFirmScopeCondition("ili", requestFirmId)} OR ${buildFirmScopeCondition("inv", requestFirmId)})`
+            : "";
+          const invoiceLineFirmParams = requestFirmId ? [requestFirmId, requestFirmId] : [];
           [rows] = await db.query(`
             SELECT
               ili.*,
@@ -6476,6 +6557,8 @@ const createHandlers = (tableName: string) => {
                 'UNKNOWN'
               ) AS resolvedItemName
             FROM \`invoice_line_items\` ili
+            LEFT JOIN \`invoices\` inv
+              ON inv.id = ili.invoiceId
             LEFT JOIN \`items\` i
               ON i.id = ili.itemId
             LEFT JOIN \`npd\` n
@@ -6486,7 +6569,8 @@ const createHandlers = (tableName: string) => {
               ON plm.id = ili.itemId
             LEFT JOIN \`materials\` m
               ON m.id = ili.itemId
-          `);
+            ${invoiceLineFirmWhere}
+          `, invoiceLineFirmParams);
         } else if (tableName === "npd") {
           const page = Math.max(1, Number(req.query.page || 1));
           const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
@@ -6510,14 +6594,18 @@ const createHandlers = (tableName: string) => {
             status,
           });
         } else if (tableName === "production_processing") {
+          const processingFirmWhere = requestFirmId ? `WHERE ${buildFirmScopeCondition("pp", requestFirmId)}` : "";
           [rows] = await db.query(`
             SELECT pp.*, n.itemName, n.erp, n.boxType
             FROM \`production_processing\` pp
             LEFT JOIN \`productions\` p ON pp.productionId = p.id
             LEFT JOIN \`npd\` n ON p.itemId = n.id
-          `);
+            ${processingFirmWhere}
+          `, firmParams);
         } else {
-          [rows] = await db.query(`SELECT * FROM \`${tableName}\``);
+          [rows] = firmWhere
+            ? await db.query(`SELECT * FROM \`${tableName}\` WHERE ${firmWhere}`, firmParams)
+            : await db.query(`SELECT * FROM \`${tableName}\``);
         }
         
         // Post-process rows to parse JSON columns
@@ -6544,18 +6632,24 @@ const createHandlers = (tableName: string) => {
         res.json(processedRows);
       } catch (error) {
         console.error(`[DB] Error fetching from ${tableName}:`, error);
-        res.status(500).json({ error: (error as Error).message });
+        res.status(Number((error as any)?.statusCode || 500)).json({ error: (error as Error).message });
       }
     },
     upsert: async (req: express.Request, res: express.Response) => {
       const db = await getPool();
       if (!db) return res.status(500).json({ error: "DB connection not available" });
       const requestUser = await getRequestUser(req);
+      const requestFirmId = getRequestFirmId(req);
       const data = applyAuditFields(
         normalizeNpdLinkedPayload(tableName, normalizeWorkflowStatus(tableName, req.body)),
         requestUser
       );
       try {
+        if (isFirmScopedTable(tableName)) await assertRequestFirm(db, requestFirmId);
+        if (isFirmScopedTable(tableName) && requestFirmId && !String(data.firmId || "").trim()) {
+          data.firmId = requestFirmId;
+        }
+
         if (tableName === "items") {
           delete data.receipt;
           delete data.production;
@@ -6904,7 +6998,7 @@ const createHandlers = (tableName: string) => {
         if (tableName === 'invoices') {
           try {
             if (!data.invoiceNo) {
-              data.invoiceNo = await generateDynamicInvoiceNo(db, data.date || new Date().toISOString().slice(0, 10));
+              data.invoiceNo = await generateDynamicInvoiceNo(db, data.date || new Date().toISOString().slice(0, 10), data.firmId || requestFirmId);
             }
           } catch (err) {
             const message = (err as Error).message || "Could not auto-generate invoiceNo.";
@@ -7298,7 +7392,7 @@ const createHandlers = (tableName: string) => {
         res.json({ success: true });
       } catch (error) {
         console.error(`[DB] Error upserting to ${tableName}:`, error);
-        res.status(500).json({ error: (error as Error).message });
+        res.status(Number((error as any)?.statusCode || 500)).json({ error: (error as Error).message });
       }
     },
     delete: async (req: express.Request, res: express.Response) => {
@@ -7318,7 +7412,7 @@ const createHandlers = (tableName: string) => {
         res.json({ success: true });
       } catch (error) {
         console.error(`[DB] Error deleting from ${tableName}:`, error);
-        res.status(500).json({ error: (error as Error).message });
+        res.status(Number((error as any)?.statusCode || 500)).json({ error: (error as Error).message });
       }
     }
   };
@@ -7363,10 +7457,11 @@ function tallySyncSecretGuard(req: express.Request, res: express.Response, next:
 
 async function fetchTallyPendingInvoices(db: mysql.Pool) {
   const [rows] = await db.query(`
-    SELECT *
-    FROM \`invoices\`
-    WHERE \`tallyTimestamp\` IS NULL
-       OR TRIM(\`tallyTimestamp\`) = ''
+    SELECT inv.*, f.firmName, f.logo AS firmLogo, f.tallyPortNo AS firmTallyPortNo
+    FROM \`invoices\` inv
+    LEFT JOIN \`firms\` f ON f.id = inv.firmId
+    WHERE inv.\`tallyTimestamp\` IS NULL
+       OR TRIM(inv.\`tallyTimestamp\`) = ''
   `);
 
   return (rows as any[]).map((row) => normalizeFetchedRow("invoices", row));
@@ -7386,6 +7481,22 @@ async function fetchTallyInvoiceContext(db: mysql.Pool, invoiceId: string) {
   if (!invoiceRow) return null;
 
   const normalizedInvoiceRow = normalizeFetchedRow("invoices", invoiceRow);
+
+  const [firmRows] = await db.query(
+    `
+      SELECT id, firmName, logo, tallyPortNo
+      FROM \`firms\`
+      WHERE \`id\` = ?
+      LIMIT 1
+    `,
+    [String(invoiceRow.firmId || "")]
+  );
+  const firmRow = (firmRows as any[])[0] || {};
+  if (firmRow.id) {
+    normalizedInvoiceRow.firmName = String(firmRow.firmName || "").trim();
+    normalizedInvoiceRow.firmLogo = firmRow.logo || null;
+    normalizedInvoiceRow.firmTallyPortNo = firmRow.tallyPortNo || null;
+  }
 
   const [companyRows] = await db.query(
     `
@@ -7575,6 +7686,7 @@ async function fetchTallyInvoiceContext(db: mysql.Pool, invoiceId: string) {
 
   return {
     invoiceRow: normalizedInvoiceRow,
+    firmRow,
     companyRow,
     itemLines,
     dispatchDetails: {

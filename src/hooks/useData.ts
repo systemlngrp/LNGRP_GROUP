@@ -34,8 +34,10 @@ function safeSetLocalStorage(key: string, value: string) {
       console.warn(`[useData] LocalStorage quota exceeded while writing "${key}". Clearing caches to make room...`);
       try {
         const token = window.localStorage.getItem("authToken");
+        const activeFirm = window.localStorage.getItem("activeFirm");
         window.localStorage.clear();
         if (token) window.localStorage.setItem("authToken", token);
+        if (activeFirm) window.localStorage.setItem("activeFirm", activeFirm);
         // Try again after clearing
         window.localStorage.setItem(key, value);
         console.info(`[useData] Cache cleared and "${key}" successfully saved.`);
@@ -48,6 +50,25 @@ function safeSetLocalStorage(key: string, value: string) {
     }
     return false;
   }
+}
+
+function getActiveFirmId() {
+  try {
+    const raw = window.localStorage.getItem("activeFirm");
+    if (!raw) return "";
+    return String(JSON.parse(raw)?.id || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function getAuthHeaders() {
+  const token = window.localStorage.getItem("authToken") || "";
+  const firmId = getActiveFirmId();
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (firmId) headers["X-Firm-Id"] = firmId;
+  return headers;
 }
 
 export function useData<T extends { id: string }>(entity: string, initialValue: T[], options?: UseDataOptions) {
@@ -83,10 +104,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     isFetchingRef.current = true;
     try {
       if (!background) setLoading(true);
-      const token = window.localStorage.getItem("authToken") || "";
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      const response = await fetch(endpoint, { headers });
+      const response = await fetch(endpoint, { headers: getAuthHeaders() });
       if (response.status === 403) {
         // Sidebar counts request data from modules that a selective user may not access.
         // Treat that expected denial as an empty dataset rather than a recurring app error.
@@ -148,8 +166,17 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       fetchData({ background: true, force: true });
     };
     
+    const handleFirmChange = () => {
+      forbiddenUntilRef.current = 0;
+      fetchData({ background: true, force: true });
+    };
+
     window.addEventListener(syncEvent, handleSync);
-    return () => window.removeEventListener(syncEvent, handleSync);
+    window.addEventListener("active-firm-changed", handleFirmChange);
+    return () => {
+      window.removeEventListener(syncEvent, handleSync);
+      window.removeEventListener("active-firm-changed", handleFirmChange);
+    };
   }, [fetchData, syncEvent]);
 
   useAutoRefreshEffect(() => {
@@ -183,8 +210,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     // Send to server
     let hasError = false;
     let lastErrorMessage = "";
-    const token = window.localStorage.getItem("authToken") || "";
-    const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    const authHeaders = getAuthHeaders();
 
     try {
       for (const item of [...added, ...modified]) {
@@ -230,8 +256,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const addItem = async (item: T) => {
     try {
       setDataState(prev => [...prev, item]);
-      const token = window.localStorage.getItem("authToken") || "";
-      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const authHeaders = getAuthHeaders();
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
@@ -251,8 +276,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const removeItem = async (id: string) => {
     try {
       setDataState(prev => prev.filter(i => i.id !== id));
-      const token = window.localStorage.getItem("authToken") || "";
-      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const authHeaders = getAuthHeaders();
       const response = await fetch(`${endpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
       if (!response.ok) {
         throw new Error("Failed to delete item");
@@ -267,8 +291,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const saveItem = async (item: T) => {
     try {
       setDataState(prev => prev.map(i => i.id === item.id ? item : i));
-      const token = window.localStorage.getItem("authToken") || "";
-      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const authHeaders = getAuthHeaders();
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
