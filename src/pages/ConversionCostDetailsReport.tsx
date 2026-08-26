@@ -30,8 +30,8 @@ type MisInputs = {
   salesReturnBasic: number;
   fgWipOpening: number;
   fgWipClosing: number;
-  lnpiOpening: number;
-  lnpiClosing: number;
+  lngrpOpening: number;
+  lngrpClosing: number;
   hoSalary: number;
   managementSalary: number;
   allEmi: number;
@@ -59,8 +59,8 @@ const defaultInputs: MisInputs = {
   salesReturnBasic: 0,
   fgWipOpening: 0,
   fgWipClosing: 0,
-  lnpiOpening: 0,
-  lnpiClosing: 0,
+  lngrpOpening: 0,
+  lngrpClosing: 0,
   hoSalary: 0,
   managementSalary: 0,
   allEmi: 0,
@@ -313,8 +313,8 @@ export function ConversionCostDetailsReport() {
         inputs.salesReturnBasic -
         inputs.fgWipOpening +
         inputs.fgWipClosing -
-        inputs.lnpiOpening +
-        inputs.lnpiClosing
+        inputs.lngrpOpening +
+        inputs.lngrpClosing
     );
     const paperCost = actualPaperUsedCost;
     const paperCostPerKg = totalActualPaperUsed > 0 ? round2(paperCost / totalActualPaperUsed) : 0;
@@ -359,8 +359,8 @@ export function ConversionCostDetailsReport() {
     inputs.fgWipClosing,
     inputs.fgWipOpening,
     inputs.hoSalary,
-    inputs.lnpiClosing,
-    inputs.lnpiOpening,
+    inputs.lngrpClosing,
+    inputs.lngrpOpening,
     inputs.managementSalary,
     inputs.miscExpense,
     inputs.paperRate,
@@ -504,14 +504,14 @@ export function ConversionCostDetailsReport() {
               <tr className="bg-cyan-100 font-black">
                 <td className="border border-gray-900 p-2">FG - WIP Opening Valuation</td>
                 <td className="border border-gray-900 p-1 text-right">{renderInputCell("fgWipOpening")}</td>
-                <td className="border border-gray-900 p-2 text-center">LNPI SALE -Purchase</td>
-                <td className="border border-gray-900 p-1 text-right">{renderInputCell("lnpiOpening")}</td>
+                <td className="border border-gray-900 p-2 text-center">LNGRP SALE -Purchase</td>
+                <td className="border border-gray-900 p-1 text-right">{renderInputCell("lngrpOpening")}</td>
               </tr>
               <tr className="bg-cyan-100 font-black">
                 <td className="border border-gray-900 p-2">FG - WIP Closing Valuation</td>
                 <td className="border border-gray-900 p-1 text-right">{renderInputCell("fgWipClosing")}</td>
                 <td className="border border-gray-900 p-2" />
-                <td className="border border-gray-900 p-1 text-right">{renderInputCell("lnpiClosing")}</td>
+                <td className="border border-gray-900 p-1 text-right">{renderInputCell("lngrpClosing")}</td>
               </tr>
               <tr className="bg-cyan-200 font-black">
                 <td className="border border-gray-900 p-2">SP/Kg</td>

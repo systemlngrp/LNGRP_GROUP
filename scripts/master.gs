@@ -801,15 +801,15 @@ function installRateSyncTrigger() {
 
 function onOpen() {
   const menu = SpreadsheetApp.getUi()
-    .createMenu('LNPI Sync')
-    .addItem('Sync NPD to LNPI', 'syncNpdSheetToHostinger')
-    .addItem('Sync Companies to LNPI', 'syncCompaniesSheetToHostinger');
+    .createMenu('LNGRP Sync')
+    .addItem('Sync NPD to LNGRP', 'syncNpdSheetToHostinger')
+    .addItem('Sync Companies to LNGRP', 'syncCompaniesSheetToHostinger');
 
   if (typeof syncPhpItemMasterSheetToHostinger === 'function') {
-    menu.addItem('Sync PHP Item Master to LNPI', 'syncPhpItemMasterSheetToHostinger');
+    menu.addItem('Sync PHP Item Master to LNGRP', 'syncPhpItemMasterSheetToHostinger');
   }
   if (typeof syncPlateItemMasterSheetToHostinger === 'function') {
-    menu.addItem('Sync Plate Item Master to LNPI', 'syncPlateItemMasterSheetToHostinger');
+    menu.addItem('Sync Plate Item Master to LNGRP', 'syncPlateItemMasterSheetToHostinger');
   }
 
   menu

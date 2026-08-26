@@ -755,7 +755,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
       <div className={cn("flex h-16 shrink-0 items-center justify-between bg-slate-900 border-b border-black sticky top-0 z-20", isCollapsed ? "px-3" : "px-4")}>
         <div className="flex items-center">
             <Truck className={cn("h-6 w-6 text-white shrink-0", isCollapsed ? "" : "mr-2")} />
-            {!isCollapsed && <h1 className="text-xs font-black text-white tracking-tight leading-tight uppercase whitespace-nowrap">LNPI Ops<br/>Portal</h1>}
+            {!isCollapsed && <h1 className="text-xs font-black text-white tracking-tight leading-tight uppercase whitespace-nowrap">LNGRP Ops<br/>Portal</h1>}
         </div>
         <button className="md:hidden p-2 text-white" onClick={onClose}>
             <X size={20} />

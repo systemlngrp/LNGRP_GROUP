@@ -2650,7 +2650,7 @@ async function ensureIndianStatesSeed(db) {
     try {
       const response = await fetch(url, {
         headers: {
-          "User-Agent": "LNPI-ERP/1.0"
+          "User-Agent": "LNGRP-ERP/1.0"
         }
       });
       if (!response.ok) continue;

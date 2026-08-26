@@ -325,7 +325,7 @@ export function Dashboard() {
     <div className="min-h-screen bg-[linear-gradient(180deg,#fffdf5_0%,#eef6ff_45%,#f6f0ff_100%)] text-black font-sans p-4 md:p-8 space-y-8">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 border-b-4 border-black pb-6">
         <div>
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black uppercase italic">LNPI ERP</h1>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black uppercase italic">LNGRP ERP</h1>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <DateInput label="From" value={dateRange.from} onChange={(value) => setDateRange((prev) => ({ ...prev, from: value }))} />
@@ -522,7 +522,7 @@ function DashboardHero({
     <div className="overflow-hidden border-2 border-black bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
       <div className="grid grid-cols-1 md:grid-cols-10">
         <HeroMetricCell label="Today's Production" value={todaysProduction} tone="bg-[#f7cf79]" className="md:col-span-3" />
-        <HeroTitleCell title="LNPI Production Management" className="md:col-span-4" />
+        <HeroTitleCell title="LNGRP Production Management" className="md:col-span-4" />
         <HeroMetricCell label="Yesterday's Production" value={yesterdaysProduction} tone="bg-[#a8c8d6]" className="md:col-span-3" />
         <HeroMetricCell label="Total Production" value={totalProduction} tone="bg-[#d4a8c2]" className="md:col-span-3 md:border-t-2" />
         <HeroMetricCell label="Today's Plan Value" value={todaysPlanValue} tone="bg-[#4f2fa4] text-white" className="md:col-span-4 md:border-t-2" />
