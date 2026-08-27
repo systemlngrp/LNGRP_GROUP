@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { Company, Material, MaterialIn, MaterialInPackingSlip, Service, Supplier, Setting } from "../types";
+import { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Service, Supplier, Setting } from "../types";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { Search, ChevronRight, ChevronDown, ArrowLeft, Download, QrCode, ArrowUp, ArrowDown, ThumbsUp, ThumbsDown, MessageSquareText, X } from "lucide-react";
@@ -10,22 +10,29 @@ import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { useNavigate } from "react-router-dom";
 
-type Stage = "All MRR" | "Pending PH" | "Pending Accounts" | "Pending MD";
+type Stage = "All Approval" | "Pending PH" | "Pending Accounts" | "Pending MD";
 type SortField = "timestamp" | "gateEntryNo" | "transactionNo";
 type SortDirection = "asc" | "desc";
 
 export function MrrApprovals() {
   const navigate = useNavigate();
-  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
+  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
+    firmScope: "all",
+    storageKey: "material-in-all-firms",
+  });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
   const [services] = useData<Service>("services", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], {
+    firmScope: "all",
+    storageKey: "material-in-packing-slips-all-firms",
+  });
   const [settings] = useData<Setting>("settings", []);
   
-  const [activeStage, setActiveStage] = useState<Stage>("All MRR");
+  const [activeStage, setActiveStage] = useState<Stage>("All Approval");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [remarks, setRemarks] = useState<Record<string, string>>({});
@@ -66,8 +73,14 @@ export function MrrApprovals() {
     return id;
   };
 
+  const getFirmName = (mrr: MaterialIn) => {
+    const storedFirmName = String(mrr.firmName || "").trim();
+    if (storedFirmName) return storedFirmName;
+    return firms.find((firm) => firm.id === mrr.firmId)?.firmName?.trim() || "Unassigned";
+  };
+
   const stages: { label: string; value: Stage }[] = [
-    { label: "All MRR", value: "All MRR" },
+    { label: "All Approval", value: "All Approval" },
     { label: "Plant Head", value: "Pending PH" },
     { label: "Accounts", value: "Pending Accounts" },
     { label: "MD Approval", value: "Pending MD" },
@@ -78,7 +91,7 @@ export function MrrApprovals() {
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     stages.forEach(s => {
-      c[s.value] = s.value === "All MRR"
+      c[s.value] = s.value === "All Approval"
         ? materialIn.filter(m => approvalStatuses.includes(m.status as Stage)).length
         : materialIn.filter(m => m.status === s.value).length;
     });
@@ -87,10 +100,11 @@ export function MrrApprovals() {
 
   const filteredList = useMemo(() => {
     return materialIn
-      .filter(m => activeStage === "All MRR" ? approvalStatuses.includes(m.status as Stage) : m.status === activeStage)
+      .filter(m => activeStage === "All Approval" ? approvalStatuses.includes(m.status as Stage) : m.status === activeStage)
       .filter(m => {
         const supplierName = getSupplierName(m.supplierId);
-        const searchStr = `${m.transactionNo} ${m.gateEntryNo || ""} ${supplierName} ${m.invoiceNo} ${m.mrrType || ""}`.toLowerCase();
+        const firmName = getFirmName(m);
+        const searchStr = `${m.transactionNo} ${m.gateEntryNo || ""} ${firmName} ${supplierName} ${m.invoiceNo} ${m.mrrType || ""}`.toLowerCase();
         return searchStr.includes(searchTerm.toLowerCase());
       })
       .sort((a, b) => {
@@ -106,7 +120,7 @@ export function MrrApprovals() {
 
         return sortDirection === "asc" ? comparison : -comparison;
       });
-  }, [materialIn, activeStage, searchTerm, suppliers, companies, sortField, sortDirection]);
+  }, [materialIn, activeStage, searchTerm, suppliers, companies, firms, sortField, sortDirection]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -349,6 +363,7 @@ export function MrrApprovals() {
                       className="accent-white h-4 w-4"
                     />
                   </th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Firm Name</th>
                   <th className="px-4 py-3 text-left">
                     <button
                       type="button"
@@ -385,7 +400,7 @@ export function MrrApprovals() {
               <tbody className="divide-y divide-black bg-white">
                 {filteredList.length === 0 ? (
                   <tr>
-                    <td colSpan={15} className="px-4 py-20 text-center font-bold text-slate-400 uppercase tracking-widest text-sm">
+                    <td colSpan={16} className="px-4 py-20 text-center font-bold text-slate-400 uppercase tracking-widest text-sm">
                       No records found in this stage
                     </td>
                   </tr>
@@ -420,6 +435,7 @@ export function MrrApprovals() {
                               className="accent-indigo-600 h-4 w-4"
                             />
                           </td>
+                          <td className="px-4 py-4 w-[170px] max-w-[170px] whitespace-normal break-words leading-snug font-bold">{getFirmName(m)}</td>
                           <td className="px-4 py-4">{m.gateEntryNo || "-"}</td>
                           <td className="px-4 py-4">{m.transactionNo}</td>
                           <td className="px-4 py-4 w-[170px] max-w-[170px] whitespace-normal break-words leading-snug">{getSupplierName(m.supplierId)}</td>
@@ -549,7 +565,7 @@ export function MrrApprovals() {
                         </tr>
                         {isExpanded && (
                           <tr className="bg-slate-50 text-[11px] text-black uppercase">
-                            <td colSpan={15} className="px-6 py-4">
+                            <td colSpan={16} className="px-6 py-4">
                               <div className="space-y-2">
                                 {linesToDisplay.map((l, i) => (
                                   <div key={i} className="rounded border border-black/10 bg-white px-3 py-2">

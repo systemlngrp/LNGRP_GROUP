@@ -6,6 +6,7 @@ type UseDataOptions = {
   endpointOverride?: string;
   storageKey?: string;
   syncEventKey?: string;
+  firmScope?: 'active' | 'all';
 };
 
 function safeGetLocalStorage(key: string) {
@@ -62,9 +63,9 @@ function getActiveFirmId() {
   }
 }
 
-function getAuthHeaders() {
+function getAuthHeaders(includeActiveFirm = true) {
   const token = window.localStorage.getItem("authToken") || "";
-  const firmId = getActiveFirmId();
+  const firmId = includeActiveFirm ? getActiveFirmId() : '';
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (firmId) headers["X-Firm-Id"] = firmId;
@@ -86,6 +87,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const storageKey = `udc_${options?.storageKey || resolvedEntity}`;
   const syncEvent = options?.syncEventKey || `sync-data-${resolvedEntity}`;
   const shouldCacheToLocalStorage = options?.cacheToLocalStorage !== false;
+  const includeActiveFirm = options?.firmScope !== 'all';
 
   // Keep ref in sync
   useEffect(() => {
@@ -104,7 +106,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     isFetchingRef.current = true;
     try {
       if (!background) setLoading(true);
-      const response = await fetch(endpoint, { headers: getAuthHeaders() });
+      const response = await fetch(endpoint, { headers: getAuthHeaders(includeActiveFirm) });
       if (response.status === 403) {
         // Sidebar counts request data from modules that a selective user may not access.
         // Treat that expected denial as an empty dataset rather than a recurring app error.
@@ -156,7 +158,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       if (!background) setLoading(false);
       isFetchingRef.current = false;
     }
-  }, [endpoint, entity, shouldCacheToLocalStorage, storageKey]);
+  }, [endpoint, entity, includeActiveFirm, shouldCacheToLocalStorage, storageKey]);
 
   useEffect(() => {
     fetchData({ force: true });
@@ -210,7 +212,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     // Send to server
     let hasError = false;
     let lastErrorMessage = "";
-    const authHeaders = getAuthHeaders();
+    const authHeaders = getAuthHeaders(includeActiveFirm);
 
     try {
       for (const item of [...added, ...modified]) {
@@ -250,13 +252,13 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       window.dispatchEvent(new CustomEvent(syncEvent));
       throw err;
     }
-  }, [endpoint, entity, fetchData, shouldCacheToLocalStorage, storageKey, syncEvent]);
+  }, [endpoint, entity, fetchData, includeActiveFirm, shouldCacheToLocalStorage, storageKey, syncEvent]);
 
   // Providing a more robust interface
   const addItem = async (item: T) => {
     try {
       setDataState(prev => [...prev, item]);
-      const authHeaders = getAuthHeaders();
+      const authHeaders = getAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
@@ -276,7 +278,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const removeItem = async (id: string) => {
     try {
       setDataState(prev => prev.filter(i => i.id !== id));
-      const authHeaders = getAuthHeaders();
+      const authHeaders = getAuthHeaders(includeActiveFirm);
       const response = await fetch(`${endpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
       if (!response.ok) {
         throw new Error("Failed to delete item");
@@ -291,7 +293,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const saveItem = async (item: T) => {
     try {
       setDataState(prev => prev.map(i => i.id === item.id ? item : i));
-      const authHeaders = getAuthHeaders();
+      const authHeaders = getAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
