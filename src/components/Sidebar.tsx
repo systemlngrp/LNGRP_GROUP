@@ -418,6 +418,10 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [menuSearchTerm, setMenuSearchTerm] = useState("");
   const [materialIn] = useData<MaterialIn>("material-in", []);
+  const [approvalMaterialIn] = useData<MaterialIn>("material-in", [], {
+    firmScope: "all",
+    storageKey: "material-in-all-firms",
+  });
   const [productions] = useData<Production>("productions", []);
   const [phpJobMaster] = useData<Production>("php_job_master", []);
   const [plateJobMaster] = useData<Production>("plate_job_master", []);
@@ -478,7 +482,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     void refreshPendingJobClosureCount();
   });
 
-  const counts = useMemo(
+  const firmScopedCounts = useMemo(
     () =>
       buildPendingTaskCounts({
         materialIn,
@@ -554,6 +558,19 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
       findItemAcrossSources,
       itemsBySource,
     ]
+  );
+
+  const counts = useMemo(
+    () => ({
+      ...firmScopedCounts,
+      "/material-receipt/approvals": approvalMaterialIn.filter((m) =>
+        ["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status)
+      ).length,
+      "/material-receipt/pending-ph-approval": approvalMaterialIn.filter((m) => m.status === "Pending PH").length,
+      "/material-receipt/pending-accounts-approval": approvalMaterialIn.filter((m) => m.status === "Pending Accounts").length,
+      "/material-receipt/pending-md-approval": approvalMaterialIn.filter((m) => m.status === "Pending MD").length,
+    }),
+    [approvalMaterialIn, firmScopedCounts]
   );
 
   const navigation = useMemo<NavGroup[]>(() => {

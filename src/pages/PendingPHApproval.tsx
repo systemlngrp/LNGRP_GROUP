@@ -1,5 +1,5 @@
 import { useData } from "../hooks/useData";
-import { Material, MaterialIn, Item, Supplier } from "../types";
+import { Firm, Material, MaterialIn, Item, Supplier } from "../types";
 import { useState, useEffect } from "react";
 import { Spinner } from "../components/Spinner";
 
@@ -22,10 +22,14 @@ export function PendingPHApproval() {
     });
   }, [searchTerm]);
 
-  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
+  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
+    firmScope: "all",
+    storageKey: "material-in-all-firms",
+  });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
+  const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
 
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -117,6 +121,11 @@ export function PendingPHApproval() {
   };
 
   const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || id;
+  const getFirmName = (mrr: MaterialIn) => {
+    const storedFirmName = String(mrr.firmName || "").trim();
+    if (storedFirmName) return storedFirmName;
+    return firms.find((firm) => firm.id === mrr.firmId)?.firmName?.trim() || "Unassigned";
+  };
 
   return (
     <div className="space-y-6">
@@ -164,6 +173,10 @@ export function PendingPHApproval() {
                         <div className="text-xs font-black text-slate-500 uppercase">Trx No</div>
                         <div className="text-sm font-bold">{m.transactionNo}</div>
                     </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-black text-slate-500 uppercase">Firm Name</div>
+                    <div className="text-sm font-bold">{getFirmName(m)}</div>
                   </div>
                   <div>
                     <div className="text-xs font-black text-slate-500 uppercase">Date</div>
@@ -216,6 +229,7 @@ export function PendingPHApproval() {
                   onChange={() => toggleSelectAll(materialIn.filter(m => isPendingPH(m.status)).map(m => m.id))}
                 />
               </th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Firm Name</th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Transaction No</th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Date</th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Supplier</th>
@@ -227,7 +241,7 @@ export function PendingPHApproval() {
           <tbody className="divide-y divide-black bg-white">
             {materialIn.filter((m) => isPendingPH(m.status)).length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-6 py-8 text-center text-black font-medium text-bold">No pending approvals.</td>
+                <td colSpan={8} className="px-6 py-8 text-center text-black font-medium text-bold">No pending approvals.</td>
               </tr>
             ) : materialIn
               .filter((m) => isPendingPH(m.status))
@@ -246,6 +260,7 @@ export function PendingPHApproval() {
                       onChange={() => toggleSelect(m.id)}
                     />
                   </td>
+                  <td className="px-6 py-4 text-sm font-bold text-black border border-black">{getFirmName(m)}</td>
                   <td className="px-6 py-4 text-sm font-medium text-black border border-black">{m.transactionNo}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black whitespace-nowrap">{formatDate(m.date)}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black">{getSupplierName(m.supplierId)}</td>
