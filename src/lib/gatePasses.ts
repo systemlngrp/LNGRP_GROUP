@@ -108,8 +108,6 @@ export function buildGatePassFromInvoice({
     gatePassType: "Non-Returnable",
     invoiceId: invoice.id,
     invoiceNo: invoice.invoiceNo,
-    firmId: invoice.firmId,
-    firmName: invoice.firmName,
     companyId: invoice.companyId,
     companyName: company?.name || "",
     recipientId: invoice.companyId,

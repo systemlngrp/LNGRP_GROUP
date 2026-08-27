@@ -4,7 +4,7 @@ import { Spinner } from "../components/Spinner";
 import { useAuth } from "./AuthContext";
 
 export function RequireAuth({ children }: { children: React.ReactNode }) {
-  const { user, activeFirm, loading } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -20,10 +20,6 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     return <Navigate to={`/login?next=${next}`} replace />;
   }
 
-  if (user.role !== "TruckDriver" && !activeFirm) {
-    const next = encodeURIComponent(location.pathname + location.search + location.hash);
-    return <Navigate to={`/login?next=${next}&firm=1`} replace />;
-  }
 
   return <>{children}</>;
 }

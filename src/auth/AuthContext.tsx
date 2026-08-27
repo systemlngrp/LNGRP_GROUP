@@ -123,19 +123,19 @@ function isAllowed(user: AuthUser | null, href: string) {
 
 async function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const token = window.localStorage.getItem("authToken") || "";
-  const firm = normalizeActiveFirm(window.localStorage.getItem(ACTIVE_FIRM_STORAGE_KEY));
   const headers = new Headers(init.headers || {});
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (firm?.id) headers.set("X-Firm-Id", firm.id);
   return fetch(input, { ...init, headers });
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [activeFirm, setActiveFirmState] = useState<ActiveFirm | null>(() =>
-    normalizeActiveFirm(window.localStorage.getItem(ACTIVE_FIRM_STORAGE_KEY))
-  );
+  const [activeFirm, setActiveFirmState] = useState<ActiveFirm | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
+  }, []);
 
   const setActiveFirm = useCallback((firm: ActiveFirm | null) => {
     const normalizedFirm = normalizeActiveFirm(firm);

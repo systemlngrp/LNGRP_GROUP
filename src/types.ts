@@ -201,8 +201,6 @@ export interface MaterialIssue {
 
 export interface MaterialIssueLine {
   id: string;
-  firmId?: string;
-  firmName?: string;
   materialIssueId: string;
   materialId: string;
   qty: number;
@@ -217,8 +215,6 @@ export interface MaterialIssueLine {
 
 export interface MaterialIssueReelLine {
   id: string;
-  firmId?: string;
-  firmName?: string;
   materialIssueId: string;
   materialIssueLineId: string;
   materialId: string;
@@ -247,8 +243,6 @@ export interface MaterialReturn {
 
 export interface MaterialReturnLine {
   id: string;
-  firmId?: string;
-  firmName?: string;
   materialReturnId: string;
   materialId: string;
   qty: number;
@@ -263,8 +257,6 @@ export interface MaterialReturnLine {
 
 export interface MaterialReturnReelLine {
   id: string;
-  firmId?: string;
-  firmName?: string;
   materialReturnId: string;
   materialReturnLineId: string;
   materialId: string;
@@ -338,8 +330,6 @@ export interface Indent {
 
 export interface IndentLine {
   id: string;
-  firmId?: string;
-  firmName?: string;
   indentId: string;
   erpCode?: string | number;
   materialId: string;
@@ -355,8 +345,6 @@ export interface IndentLine {
 
 export interface PurchaseOrder {
   id: string;
-  firmId?: string;
-  firmName?: string;
   poNo: string;
   indentId: string;
   supplierId: string;
@@ -383,8 +371,6 @@ export interface PurchaseOrder {
 
 export interface PurchaseOrderLine {
   id: string;
-  firmId?: string;
-  firmName?: string;
   purchaseOrderId: string;
   indentLineId: string;
   materialId: string;
@@ -433,8 +419,6 @@ export interface GateEntry {
 
 export interface GateEntryPhoto {
   id: string;
-  firmId?: string;
-  firmName?: string;
   gateEntryId: string;
   photo: string;
   slotNo: number;
@@ -683,8 +667,6 @@ export interface User {
 
 export interface Production {
   id: string;
-  firmId?: string;
-  firmName?: string;
   transactionNo: string;
   date: string;
   scheduleId?: string;
@@ -816,8 +798,6 @@ export interface Consumption {
 
 export interface SampleRequest {
   id: string;
-  firmId?: string;
-  firmName?: string;
   timestamp: string;
   date: string;
   itemId: string;
@@ -834,8 +814,6 @@ export interface SampleRequest {
 
 export interface BoardLineQcCheck {
   id: string;
-  firmId?: string;
-  firmName?: string;
   timestamp: string;
   bqcNo?: string;
   jobNo: string | number;
@@ -889,8 +867,6 @@ export interface BoardLineQcCheck {
 
 export interface PrintingQcCheck {
   id: string;
-  firmId?: string;
-  firmName?: string;
   timestamp: string;
   pqcNo?: string;
   jobNo: string | number;
@@ -981,8 +957,6 @@ export interface TruckStatusLog {
 
 export interface DispatchPlan {
   id: string;
-  firmId?: string;
-  firmName?: string;
   planNo?: string;
   scheduleId: string;
   orderId: string;
@@ -1049,8 +1023,6 @@ export interface LinkedLoadingDetail {
 
 export interface LoadingSlip {
   id: string;
-  firmId?: string;
-  firmName?: string;
   slipNo: string;
   date: string;
   truckId: string;
@@ -1103,8 +1075,6 @@ export interface MaterialVisit {
 
 export interface Invoice {
   id: string;
-  firmId?: string;
-  firmName?: string;
   invoiceNo: string;
   date: string;
   companyId: string;
@@ -1134,8 +1104,6 @@ export interface Invoice {
 
 export interface InvoiceLineItem {
   id: string;
-  firmId?: string;
-  firmName?: string;
   invoiceId: string;
   loadingSlipId: string;
   itemId: string;

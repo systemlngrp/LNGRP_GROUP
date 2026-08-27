@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useData } from "../hooks/useData";
 import { Plus, Edit, Trash2, Upload, Download } from "lucide-react";
-import { Order, Company, OrderItemSource } from "../types";
+import { Order, Company, Firm, OrderItemSource } from "../types";
 import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/utils";
 import { Select } from "../components/Select";
@@ -33,6 +33,7 @@ export function OrderForm() {
   const navigate = useNavigate();
   const [orders, setOrders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", []);
   const [users] = useData<User>("users", []);
   const { itemsBySource, fgItems, resolveOrderItem } = useOrderItemCatalog();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -43,6 +44,7 @@ export function OrderForm() {
 
   const [orderDate, setOrderDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [isUniversal, setIsUniversal] = useState(false);
+  const [firmId, setFirmId] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [poType, setPoType] = useState<"Verbal" | "Ref No.">("Verbal");
   const [poNumber, setPoNumber] = useState("");
@@ -135,6 +137,16 @@ export function OrderForm() {
 
   const isCompanyActive = (company: Company) => company.active !== "No";
 
+  const firmOptions = useMemo(() => {
+    return firms
+      .filter((firm) => firm.id && firm.firmName)
+      .slice()
+      .sort((a, b) => (a.firmName || "").localeCompare(b.firmName || ""))
+      .map((firm) => ({ value: firm.id, label: firm.firmName }));
+  }, [firms]);
+
+  const getFirmName = (id: string) => firms.find((firm) => firm.id === id)?.firmName || "";
+
   const companyOptions = useMemo(() => {
     return companies
       .filter((company) => isCompanyActive(company) || (editingId && company.id === companyId))
@@ -189,6 +201,7 @@ export function OrderForm() {
   const downloadTemplate = () => {
     const templateData = [
       {
+        "Firm Name": firms[0]?.firmName || "",
         "Order Date": new Date().toISOString().slice(0, 10),
         "PO Type": "Verbal",
         "PO Number": "",
@@ -238,6 +251,12 @@ export function OrderForm() {
           });
         });
 
+        const firmMap = new Map<string, Firm>();
+        firms.forEach((firm) => {
+          const firmNameKey = normalizeText(firm.firmName);
+          if (firmNameKey && !firmMap.has(firmNameKey)) firmMap.set(firmNameKey, firm);
+        });
+
         const userMap = new Map<string, User>();
         users.forEach((user) => {
           const nameKey = normalizeText(user.name);
@@ -271,6 +290,7 @@ export function OrderForm() {
 
         const newOrders: Order[] = data.map((row: any, index) => {
           const rowNumber = index + 2;
+          const firmNameValue = String(row["Firm Name"] || row["Firm"] || "").trim();
           const orderDateValue = normalizeOrderDate(row["Order Date"]);
           const poTypeValue = String(row["PO Type"] || "").trim();
           const poNumberValue = String(row["PO Number"] || "").trim();
@@ -281,6 +301,10 @@ export function OrderForm() {
           const remarksValue = String(row["Remarks"] || "").trim();
 
           const rowIssues: string[] = [];
+
+          if (!firmNameValue) rowIssues.push("Firm Name is required");
+          const matchedFirm = firmMap.get(normalizeText(firmNameValue));
+          if (firmNameValue && !matchedFirm) rowIssues.push(`Firm not found: ${firmNameValue}`);
 
           if (!orderDateValue) rowIssues.push("Order Date is required");
 
@@ -346,6 +370,8 @@ export function OrderForm() {
 
           return {
             id: crypto.randomUUID(),
+            firmId: matchedFirm?.id || "",
+            firmName: matchedFirm?.firmName || firmNameValue,
             orderNo: resolvedOrderNo,
             orderDate: orderDateValue,
             companyId,
@@ -419,6 +445,7 @@ export function OrderForm() {
     const normalizedOrder = normalizeOrderRecord(order);
     setIsUniversal(false);
     setEditingId(order.id);
+    setFirmId(order.firmId || "");
     setOrderDate(order.orderDate || "");
     setCompanyId(order.companyId || "");
     setPoType(order.poType || "Verbal");
@@ -440,6 +467,7 @@ export function OrderForm() {
   const resetForm = () => {
     setIsUniversal(false);
     setEditingId(null);
+    setFirmId("");
     setOrderDate(new Date().toISOString().slice(0, 10));
     setCompanyId("");
     setPoType("Verbal");
@@ -471,6 +499,10 @@ export function OrderForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!firmId) {
+      alert("Firm is mandatory.");
+      return;
+    }
     if (!companyId || !itemId || !qty) return;
     if (!orderBy) {
       alert("Order By is mandatory.");
@@ -494,6 +526,8 @@ export function OrderForm() {
       const payload: Order = {
         id: editingId || crypto.randomUUID(),
         ...(editingId ? { orderNo: orders.find((order) => order.id === editingId)?.orderNo } : {}),
+        firmId,
+        firmName: getFirmName(firmId),
         orderDate,
         companyId,
         poNumber: poType === "Verbal" ? getNextVerbalPoNumber(orderDate, editingId) : poNumber,
@@ -629,6 +663,19 @@ export function OrderForm() {
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-lg border border-slate-200 space-y-6 max-w-4xl mx-auto">
           <div className="space-y-4">
             <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">Firm <span className="text-red-500">*</span></label>
+              <div className="w-full">
+                <Select
+                  value={firmId}
+                  onChange={setFirmId}
+                  options={firmOptions}
+                  placeholder="Select Firm..."
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Order Date</label>
               <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full border border-slate-300 rounded-md p-3 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
@@ -753,6 +800,7 @@ export function OrderForm() {
         <table className="min-w-full divide-y divide-black border-collapse border border-black text-sm">
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
+              <th className="px-4 py-2 text-left font-bold text-black uppercase border border-black">Firm</th>
               <th className="px-4 py-2 text-left font-bold text-black uppercase border border-black">Order No.</th>
               <th className="px-4 py-2 text-left font-bold text-black uppercase border border-black">Order Date</th>
               <th className="px-4 py-2 text-left font-bold text-black uppercase border border-black">Company</th>
@@ -770,6 +818,7 @@ export function OrderForm() {
               const resolvedItem = resolveOrderItem(order);
               return (
                 <tr key={order.id} className="divide-x divide-black hover:bg-slate-50">
+                  <td className="px-4 py-2 border border-black">{order.firmName || getFirmName(order.firmId || "") || "Unassigned"}</td>
                   <td className="px-4 py-2 border border-black">{order.orderNo}</td>
                   <td className="px-4 py-2 border border-black">{formatDate(order.orderDate)}</td>
                   <td className="px-4 py-2 border border-black">{companies.find((company) => company.id === order.companyId)?.name}</td>

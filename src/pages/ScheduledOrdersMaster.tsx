@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { 
   OrderSchedule, 
@@ -7,6 +7,7 @@ import {
   DispatchPlan, 
   LoadingSlip, 
   Company,
+  Firm,
 } from "../types";
 import { formatDate } from "../lib/serial";
 import { Search, Calendar, Building2, Package, X, ArrowUpDown } from "lucide-react";
@@ -38,6 +39,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   const [schedules, setSchedules, schedulesLoading] = useData<OrderSchedule>("orders_schedule", []);
   const [orders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", []);
   const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();
   const [productions] = useData<Production>("productions", []);
   const [plans, , plansLoading] = useData<DispatchPlan>("dispatch_plans", []);
@@ -53,6 +55,18 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   const [cancelInputs, setCancelInputs] = useState<Record<string, string>>({});
   const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({});
   const [savingCancelId, setSavingCancelId] = useState<string | null>(null);
+
+  const firmMap = useMemo(
+    () => new Map(firms.map((firm) => [firm.id, firm.firmName || ""])), 
+    [firms]
+  );
+
+  const getFirmName = useCallback((schedule: OrderSchedule, order?: Order) => {
+    const directName = String(schedule.firmName || order?.firmName || "").trim();
+    if (directName) return directName;
+    const directFirmId = String(schedule.firmId || order?.firmId || "").trim();
+    return firmMap.get(directFirmId) || "Unassigned";
+  }, [firmMap]);
 
   const companyOptions = useMemo<SelectOption[]>(
     () =>
@@ -121,6 +135,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         ...s,
         scheduleNo: s.scheduleNo || "-",
         orderNo: order?.orderNo || "-",
+        firmName: getFirmName(s, order),
         companyId: company?.id || "",
         companyName: company?.name || "-",
         itemId: item?.id || "",
@@ -136,7 +151,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         pendingOrderQty: Math.max((Number(s.qty) || 0) - (Number(s.canceledQty) || 0) - invoiced, 0)
       };
     });
-  }, [schedules, orders, companies, resolveOrderItem, productions, plans, loadingSlips]);
+  }, [schedules, orders, companies, getFirmName, resolveOrderItem, productions, plans, loadingSlips]);
 
   useEffect(() => {
     if (!pendingOnly || schedulesLoading || plansLoading || loadingSlipsLoading) return;
@@ -280,7 +295,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
             type="text"
-            placeholder="Search order, ERP, company, item..."
+            placeholder="Search order, firm, ERP, company, item..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"
@@ -378,6 +393,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
                   <span className="block">Order</span>
                   <span className="block">No</span>
                 </th>
+                <th className="px-2 py-2 border border-black text-left leading-tight">Firm</th>
                 <th className="px-2 py-2 border border-black text-left leading-tight">Company</th>
                 <th className="px-2 py-2 border border-black text-left leading-tight">
                   <span className="block">Item</span>
@@ -432,6 +448,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
                   <td className="px-3 py-2 border border-black whitespace-nowrap font-medium">{formatDate(s.scheduledDate)}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap font-bold text-indigo-700">{s.scheduleNo}</td>
                   <td className="px-3 py-2 border border-black font-bold text-black">{s.orderNo}</td>
+                  <td className="px-3 py-2 border border-black min-w-[130px] max-w-[200px] whitespace-normal break-words leading-snug font-semibold" title={s.firmName}>{s.firmName}</td>
                   <td className="px-3 py-2 border border-black min-w-[170px] max-w-[240px] whitespace-normal break-words leading-snug" title={s.companyName}>{s.companyName}</td>
                   <td className="px-3 py-2 border border-black min-w-[150px]">{s.itemName}</td>
                   <td className="px-3 py-2 border border-black">{s.itemErp}</td>
@@ -478,7 +495,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
               ))}
               {detailedSchedules.length === 0 && (
                 <tr>
-                  <td colSpan={pendingOnly ? 17 : 16} className="px-6 py-12 text-center text-slate-500 font-bold italic uppercase tracking-widest bg-slate-50/50">
+                  <td colSpan={pendingOnly ? 18 : 17} className="px-6 py-12 text-center text-slate-500 font-bold italic uppercase tracking-widest bg-slate-50/50">
                     No schedules found matching your criteria
                   </td>
                 </tr>
@@ -487,7 +504,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
             {detailedSchedules.length > 0 && (
               <tfoot className="bg-slate-100 font-bold border-t border-black">
                 <tr className="divide-x divide-black">
-                  <td colSpan={6} className="px-3 py-2 text-right uppercase">Filtered Totals</td>
+                  <td colSpan={8} className="px-3 py-2 text-right uppercase">Filtered Totals</td>
                   <td className="px-3 py-2 text-right bg-indigo-50">
                     {detailedSchedules.reduce((sum, s) => sum + (Number(s.qty) || 0), 0).toLocaleString()}
                   </td>

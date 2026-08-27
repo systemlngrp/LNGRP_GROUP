@@ -35,10 +35,8 @@ function safeSetLocalStorage(key: string, value: string) {
       console.warn(`[useData] LocalStorage quota exceeded while writing "${key}". Clearing caches to make room...`);
       try {
         const token = window.localStorage.getItem("authToken");
-        const activeFirm = window.localStorage.getItem("activeFirm");
         window.localStorage.clear();
         if (token) window.localStorage.setItem("authToken", token);
-        if (activeFirm) window.localStorage.setItem("activeFirm", activeFirm);
         // Try again after clearing
         window.localStorage.setItem(key, value);
         console.info(`[useData] Cache cleared and "${key}" successfully saved.`);
@@ -53,22 +51,10 @@ function safeSetLocalStorage(key: string, value: string) {
   }
 }
 
-function getActiveFirmId() {
-  try {
-    const raw = window.localStorage.getItem("activeFirm");
-    if (!raw) return "";
-    return String(JSON.parse(raw)?.id || "").trim();
-  } catch {
-    return "";
-  }
-}
-
-function getAuthHeaders(includeActiveFirm = true) {
+function getAuthHeaders(_includeActiveFirm = true) {
   const token = window.localStorage.getItem("authToken") || "";
-  const firmId = includeActiveFirm ? getActiveFirmId() : '';
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (firmId) headers["X-Firm-Id"] = firmId;
   return headers;
 }
 
@@ -87,7 +73,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const storageKey = `udc_${options?.storageKey || resolvedEntity}`;
   const syncEvent = options?.syncEventKey || `sync-data-${resolvedEntity}`;
   const shouldCacheToLocalStorage = options?.cacheToLocalStorage !== false;
-  const includeActiveFirm = options?.firmScope !== 'all';
+  const includeActiveFirm = false;
 
   // Keep ref in sync
   useEffect(() => {
@@ -106,7 +92,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     isFetchingRef.current = true;
     try {
       if (!background) setLoading(true);
-      const response = await fetch(endpoint, { headers: getAuthHeaders(includeActiveFirm) });
+      const response = await fetch(endpoint, { headers: getAuthHeaders(options?.firmScope !== 'all') });
       if (response.status === 403) {
         // Sidebar counts request data from modules that a selective user may not access.
         // Treat that expected denial as an empty dataset rather than a recurring app error.

@@ -1,18 +1,15 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
-import { Building2, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useAppAutoRefresh, useAutoRefreshStatus, useAutoRefreshPause, useIsAutoRefreshPaused } from "../hooks/useAutoRefresh";
-import { useData } from "../hooks/useData";
-import { Firm } from "../types";
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
-  const { user, activeFirm, setActiveFirm, hasAccess, logout } = useAuth();
-  const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
+  const { user, hasAccess, logout } = useAuth();
   const isFormRoute =
     /\/form(\/|$)/.test(location.pathname) ||
     /\/create(\/|$)/.test(location.pathname);
@@ -98,27 +95,6 @@ export function Layout() {
                  </button>
                </div>
                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
-                  {user && user.role !== "TruckDriver" && (
-                    <div className="flex min-w-0 items-center gap-2 rounded border border-black bg-white px-2 py-1">
-                      <Building2 size={16} className="text-indigo-700" />
-                      <select
-                        value={activeFirm?.id || ""}
-                        onChange={(event) => {
-                          const firm = firms.find((row) => row.id === event.target.value);
-                          setActiveFirm(firm ? { id: firm.id, firmName: firm.firmName, logo: firm.logo || null, tallyPortNo: firm.tallyPortNo || null } : null);
-                        }}
-                        className="max-w-[150px] bg-white text-[11px] font-black uppercase text-black outline-none sm:max-w-[220px]"
-                        title="Active firm"
-                      >
-                        {activeFirm ? <option value={activeFirm.id}>{activeFirm.firmName}</option> : <option value="">Select Firm</option>}
-                        {firms
-                          .filter((firm) => firm.id !== activeFirm?.id)
-                          .map((firm) => (
-                            <option key={firm.id} value={firm.id}>{firm.firmName}</option>
-                          ))}
-                      </select>
-                    </div>
-                  )}
                   {user && (
                     <div className="hidden lg:flex flex-col items-end leading-tight rounded border border-slate-300 bg-slate-50 px-3 py-1">
                       <div className="text-[10px] font-black uppercase text-slate-500">

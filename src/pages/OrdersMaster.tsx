@@ -7,12 +7,13 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/utils";
-import { Company, DispatchPlan, LoadingSlip, Order, OrderSchedule, User, Supplier } from "../types";
+import { Company, DispatchPlan, Firm, LoadingSlip, Order, OrderSchedule, User, Supplier } from "../types";
 
 type SortDirection = "asc" | "desc";
 
 type OrderMasterRow = {
   order: Order;
+  firmName: string;
   companyName: string;
   itemName: string;
   itemErp: string;
@@ -50,6 +51,7 @@ export function OrdersMaster() {
   const navigate = useNavigate();
   const [orders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [users] = useData<User>("users", []);
   const [schedules] = useData<OrderSchedule>("orders_schedule", []);
@@ -81,6 +83,10 @@ export function OrdersMaster() {
   const itemMap = useMemo(
     () => new Map(orders.map((order) => [order.id, resolveOrderItem(order)])),
     [orders, resolveOrderItem]
+  );
+  const firmMap = useMemo(
+    () => new Map(firms.map((firm) => [firm.id, firm.firmName || ""])), 
+    [firms]
   );
   const userMap = useMemo(
     () => new Map(users.map((user) => [user.id, user.name || ""])),
@@ -137,6 +143,7 @@ export function OrdersMaster() {
 
       return {
         order,
+        firmName: String(order.firmName || firmMap.get(order.firmId || "") || "Unassigned"),
         companyName: companyMap.get(order.companyId) || "",
         itemName,
         itemErp,
@@ -148,7 +155,7 @@ export function OrdersMaster() {
         orderAmount,
       };
     });
-  }, [canceledQtyByOrderId, companyMap, invoicedQtyByOrderId, itemMap, orders, userMap]);
+  }, [canceledQtyByOrderId, companyMap, firmMap, invoicedQtyByOrderId, itemMap, orders, userMap]);
 
   const filteredRows = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -166,6 +173,7 @@ export function OrdersMaster() {
 
         return [
           row.order.orderNo,
+          row.firmName,
           row.companyName,
           row.itemName,
           row.itemErp,
@@ -320,7 +328,7 @@ export function OrdersMaster() {
               <input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search order, ERP, company, item, PO..."
+                placeholder="Search order, firm, ERP, company, item, PO..."
                 className="w-full rounded border border-black py-2 pl-10 pr-3 font-normal"
               />
             </div>
@@ -469,6 +477,7 @@ export function OrdersMaster() {
                 </button>
               </th>
               <th className="border border-black px-3 py-2">Order Date</th>
+              <th className="border border-black px-3 py-2">Firm Name</th>
               <th className="border border-black px-3 py-2">Company</th>
               <th className="border border-black px-3 py-2">ERP</th>
               <th className="border border-black px-3 py-2">Item</th>
@@ -485,7 +494,7 @@ export function OrdersMaster() {
           <tbody>
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="border border-black px-3 py-8 text-center text-slate-500">
+                <td colSpan={14} className="border border-black px-3 py-8 text-center text-slate-500">
                   No orders found for the current filters.
                 </td>
               </tr>
@@ -494,6 +503,7 @@ export function OrdersMaster() {
                 <tr key={row.order.id} className="align-top">
                   <td className="border border-black px-3 py-2 font-semibold">{row.order.orderNo}</td>
                   <td className="border border-black px-3 py-2 whitespace-nowrap">{formatDate(row.order.orderDate)}</td>
+                  <td className="border border-black px-3 py-2 whitespace-normal break-words font-semibold">{row.firmName}</td>
                   <td className="border border-black px-3 py-2 whitespace-normal break-words">{row.companyName}</td>
                   <td className="border border-black px-3 py-2">{row.order.erpCode}</td>
                   <td className="border border-black px-3 py-2 whitespace-normal break-words">{row.itemName}</td>

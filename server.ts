@@ -68,35 +68,37 @@ const NPD_SYNC_LOG_PREFIX = "[NPD_SYNC]";
 const TALLY_SYNC_SECRET = String(process.env.TALLY_SYNC_SECRET || "!Office1@").trim();
 const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || "").trim();
 const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
+const REMOVED_FIRM_SCOPE_TABLES = [
+  "boardline_qc_checks",
+  "dispatch_plans",
+  "gate_entry_photos",
+  "indent_lines",
+  "invoices",
+  "invoice_line_items",
+  "loading_slips",
+  "material_return_reel_lines",
+  "material_return_lines",
+  "material_issue_reel_lines",
+  "material_issue_lines",
+  "printing_qc_checks",
+  "productions",
+  "purchase_order_lines",
+  "purchase_orders",
+  "sample_requests",
+];
 const FIRM_SCOPED_TABLES = new Set([
   "indents",
-  "indent_lines",
-  "purchase_orders",
-  "purchase_order_lines",
   "gate_entries",
-  "gate_entry_photos",
   "material_in_packing_slips",
   "material_issues",
-  "material_issue_lines",
-  "material_issue_reel_lines",
   "material_returns",
-  "material_return_lines",
-  "material_return_reel_lines",
   "expense_masters",
   "orders",
   "orders_schedule",
   "material_in",
-  "productions",
   "production_processing",
   "consumptions",
-  "sample_requests",
-  "boardline_qc_checks",
-  "printing_qc_checks",
-  "dispatch_plans",
-  "loading_slips",
   "material_visit",
-  "invoices",
-  "invoice_line_items",
   "gate_passes",
   "fixed_monthly_expenses",
   "fixed_daily_expenses",
@@ -105,7 +107,6 @@ const FIRM_SCOPED_TABLES = new Set([
   "reel_stock_taker_logs",
   "truck_status_logs",
 ]);
-
 function isFirmScopedTable(tableName: string) {
   return FIRM_SCOPED_TABLES.has(tableName);
 }
@@ -1625,6 +1626,34 @@ async function ensureIndex(db: mysql.Pool, database: string, table: string, colu
     console.log(`[DB] Added index ${indexName} on ${table}(${column})`);
   } catch (err) {
     console.warn(`[DB] Could not ensure index ${indexName} on ${table}(${column}):`, (err as Error).message);
+  }
+}
+
+
+async function dropRemovedFirmScopeColumns(db: mysql.Pool, database: string) {
+  for (const tableName of REMOVED_FIRM_SCOPE_TABLES) {
+    const indexName = `idx_${tableName}_firmId`;
+    try {
+      const [indexes] = await db.query(
+        "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND INDEX_NAME = ?",
+        [database, tableName, indexName]
+      );
+      if ((indexes as any[]).length > 0) {
+        await db.query(`ALTER TABLE \`${tableName}\` DROP INDEX \`${indexName}\``);
+        console.log(`[DB] Dropped firm scope index ${indexName} on ${tableName}`);
+      }
+
+      const [columns] = await db.query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = 'firmId'",
+        [database, tableName]
+      );
+      if ((columns as any[]).length > 0) {
+        await db.query(`ALTER TABLE \`${tableName}\` DROP COLUMN \`firmId\``);
+        console.log(`[DB] Dropped firmId column from ${tableName}`);
+      }
+    } catch (err) {
+      console.warn(`[DB] Could not drop removed firm scope from ${tableName}:`, (err as Error).message);
+    }
   }
 }
 
@@ -6214,12 +6243,22 @@ await db.query(`
         }
       }
 
+      await dropRemovedFirmScopeColumns(db, database);
+
       for (const tableName of FIRM_SCOPED_TABLES) {
         try {
           await ensureColumnExists(db, database, tableName, "firmId", "VARCHAR(36)");
           await ensureIndex(db, database, tableName, "firmId", `idx_${tableName}_firmId`);
         } catch (err) {
           console.warn(`[DB] Could not ensure firm scope on ${tableName}:`, (err as Error).message);
+        }
+      }
+
+      for (const tableName of ["orders", "orders_schedule"]) {
+        try {
+          await ensureColumnExists(db, database, tableName, "firmName", "VARCHAR(255)");
+        } catch (err) {
+          console.warn(`[DB] Could not ensure firmName on ${tableName}:`, (err as Error).message);
         }
       }
 
@@ -6687,10 +6726,6 @@ const createHandlers = (tableName: string) => {
         if (tableName === "items") {
           rows = await fetchActiveNpdItems(db);
         } else if (tableName === "invoice_line_items") {
-          const invoiceLineFirmWhere = requestFirmId
-            ? `WHERE (${buildFirmScopeCondition("ili", requestFirmId)} OR ${buildFirmScopeCondition("inv", requestFirmId)})`
-            : "";
-          const invoiceLineFirmParams = requestFirmId ? [requestFirmId, requestFirmId] : [];
           [rows] = await db.query(`
             SELECT
               ili.*,
@@ -6715,8 +6750,7 @@ const createHandlers = (tableName: string) => {
               ON plm.id = ili.itemId
             LEFT JOIN \`materials\` m
               ON m.id = ili.itemId
-            ${invoiceLineFirmWhere}
-          `, invoiceLineFirmParams);
+          `);
         } else if (tableName === "npd") {
           const page = Math.max(1, Number(req.query.page || 1));
           const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
@@ -6791,6 +6825,10 @@ const createHandlers = (tableName: string) => {
         requestUser
       );
       try {
+        if (REMOVED_FIRM_SCOPE_TABLES.includes(tableName)) {
+          delete data.firmId;
+          delete data.firmName;
+        }
         if (isFirmScopedTable(tableName)) await assertRequestFirm(db, requestFirmId);
         if (isFirmScopedTable(tableName) && requestFirmId && !String(data.firmId || "").trim()) {
           data.firmId = requestFirmId;
@@ -7144,7 +7182,7 @@ const createHandlers = (tableName: string) => {
         if (tableName === 'invoices') {
           try {
             if (!data.invoiceNo) {
-              data.invoiceNo = await generateDynamicInvoiceNo(db, data.date || new Date().toISOString().slice(0, 10), data.firmId || requestFirmId);
+              data.invoiceNo = await generateDynamicInvoiceNo(db, data.date || new Date().toISOString().slice(0, 10));
             }
           } catch (err) {
             const message = (err as Error).message || "Could not auto-generate invoiceNo.";
@@ -7603,9 +7641,8 @@ function tallySyncSecretGuard(req: express.Request, res: express.Response, next:
 
 async function fetchTallyPendingInvoices(db: mysql.Pool) {
   const [rows] = await db.query(`
-    SELECT inv.*, f.firmName, f.logo AS firmLogo, f.tallyPortNo AS firmTallyPortNo
+    SELECT inv.*
     FROM \`invoices\` inv
-    LEFT JOIN \`firms\` f ON f.id = inv.firmId
     WHERE inv.\`tallyTimestamp\` IS NULL
        OR TRIM(inv.\`tallyTimestamp\`) = ''
   `);
@@ -7627,22 +7664,6 @@ async function fetchTallyInvoiceContext(db: mysql.Pool, invoiceId: string) {
   if (!invoiceRow) return null;
 
   const normalizedInvoiceRow = normalizeFetchedRow("invoices", invoiceRow);
-
-  const [firmRows] = await db.query(
-    `
-      SELECT id, firmName, logo, tallyPortNo
-      FROM \`firms\`
-      WHERE \`id\` = ?
-      LIMIT 1
-    `,
-    [String(invoiceRow.firmId || "")]
-  );
-  const firmRow = (firmRows as any[])[0] || {};
-  if (firmRow.id) {
-    normalizedInvoiceRow.firmName = String(firmRow.firmName || "").trim();
-    normalizedInvoiceRow.firmLogo = firmRow.logo || null;
-    normalizedInvoiceRow.firmTallyPortNo = firmRow.tallyPortNo || null;
-  }
 
   const [companyRows] = await db.query(
     `
@@ -7832,7 +7853,7 @@ async function fetchTallyInvoiceContext(db: mysql.Pool, invoiceId: string) {
 
   return {
     invoiceRow: normalizedInvoiceRow,
-    firmRow,
+    firmRow: {},
     companyRow,
     itemLines,
     dispatchDetails: {

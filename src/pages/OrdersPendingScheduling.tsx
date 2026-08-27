@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
-import { Order, OrderSchedule } from "../types";
+import { Firm, Order, OrderSchedule } from "../types";
 import { Trash2, ChevronUp, ChevronDown } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 
@@ -14,7 +14,15 @@ export function OrdersPendingScheduling() {
   const [orders, setOrders] = useData<Order>("orders", []);
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
   const [companies] = useData("companies", []);
+  const [firms] = useData<Firm>("firms", []);
   const { resolveOrderItem } = useOrderItemCatalog();
+
+  const getFirmName = (order?: Order | null, schedule?: OrderSchedule | null) => {
+    const directName = String(schedule?.firmName || order?.firmName || "").trim();
+    if (directName) return directName;
+    const directFirmId = String(schedule?.firmId || order?.firmId || "").trim();
+    return firms.find((firm) => firm.id === directFirmId)?.firmName || "Unassigned";
+  };
 
   const rowsFor = (orderId: string) => schedules.filter(s => s.orderId === orderId);
 
@@ -35,16 +43,18 @@ export function OrdersPendingScheduling() {
       .filter((order) => order.status === "Pending Scheduling")
       .map((order) => {
         const item = resolveOrderItem(order);
+        const firmName = getFirmName(order);
         const companyName = (companies as any[]).find((company) => company.id === order.companyId)?.name || "";
         const scheduledQty = totalScheduled(order.id);
         const pendingQty = Number(order.qty || 0) - scheduledQty;
-        return { order, item, companyName, scheduledQty, pendingQty };
+        return { order, item, firmName, companyName, scheduledQty, pendingQty };
       })
       .filter(({ pendingQty }) => pendingQty > 0)
-      .filter(({ order, item, companyName, pendingQty, scheduledQty }) => {
+      .filter(({ order, item, firmName, companyName, pendingQty, scheduledQty }) => {
         if (!normalizedSearch) return true;
         const haystack = [
           order.orderNo,
+          firmName,
           companyName,
           item?.name,
           item?.erp,
@@ -63,7 +73,7 @@ export function OrdersPendingScheduling() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return sortOrder === "asc" ? cmp : -cmp;
       });
-  }, [companies, orders, resolveOrderItem, schedules, searchTerm, sortOrder]);
+  }, [companies, firms, orders, resolveOrderItem, schedules, searchTerm, sortOrder]);
 
   const toggleSort = () => {
     setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -93,9 +103,12 @@ export function OrdersPendingScheduling() {
   
 
   const handleAddRow = (orderId: string) => {
+    const order = orders.find((entry) => entry.id === orderId);
     const newRow: any = {
       id: crypto.randomUUID(),
       orderId,
+      firmId: order?.firmId || "",
+      firmName: getFirmName(order),
       scheduledDate: today,
       _isNew: true,
       qty: '',
@@ -172,6 +185,8 @@ export function OrdersPendingScheduling() {
           const { _isNew, ...rest } = r as any;
           return {
             ...rest,
+            firmId: order.firmId || rest.firmId || "",
+            firmName: getFirmName(order, rest),
             qty: Number(rest.qty),
             producedQty: Number(rest.producedQty || 0),
             canceledQty: Number(rest.canceledQty || 0),
@@ -228,6 +243,7 @@ export function OrdersPendingScheduling() {
                     {sortOrder === "asc" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </div>
                 </th>
+                <th className="px-3 py-2 border border-black">Firm</th>
                 <th className="px-3 py-2 border border-black">Company</th>
                 <th className="px-3 py-2 border border-black">Item</th>
                 <th className="px-3 py-2 border border-black">Order Quantity</th>
@@ -238,11 +254,12 @@ export function OrdersPendingScheduling() {
               </tr>
             </thead>
             <tbody>
-              {pending.map(({ order: o, item, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
+              {pending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
                 return (
                   <tr key={o.id} className="hover:bg-slate-50">
                     <td className="px-3 py-2 border border-black">{idx + 1}</td>
                     <td className="px-3 py-2 border border-black">{o.orderNo}</td>
+                    <td className="px-3 py-2 border border-black font-semibold">{firmName}</td>
                     <td className="px-3 py-2 border border-black">{companyName || "-"}</td>
                     <td className="px-3 py-2 border border-black">{item?.name || "-"}</td>
                     <td className="px-3 py-2 border border-black">{formatQty(o.qty)}</td>
@@ -267,7 +284,7 @@ export function OrdersPendingScheduling() {
                 </div>
               </div>
 
-              <div className="text-sm mb-3"><strong>Company:</strong> {(companies as any[]).find(c=>c.id===orders.find(o=>o.id===modalOrderId)?.companyId)?.name} â€¢ <strong>Item:</strong> {resolveOrderItem(orders.find(o => o.id === modalOrderId))?.name || "-"}</div>
+              <div className="text-sm mb-3"><strong>Firm:</strong> {getFirmName(orders.find(o=>o.id===modalOrderId))} | <strong>Company:</strong> {(companies as any[]).find(c=>c.id===orders.find(o=>o.id===modalOrderId)?.companyId)?.name} | <strong>Item:</strong> {resolveOrderItem(orders.find(o => o.id === modalOrderId))?.name || "-"}</div>
 
               <div className="grid grid-cols-3 gap-4 mb-3">
                 <div className="bg-slate-50 p-2 border border-black rounded">

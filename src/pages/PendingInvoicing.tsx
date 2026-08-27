@@ -93,7 +93,7 @@ function toPersistableLoadingSlip(slip: LoadingSlip & { totalQty?: number; items
 
 export function PendingInvoicing() {
   const navigate = useNavigate();
-  const { user, activeFirm, activeFirmId } = useAuth();
+  const { user, activeFirmId } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [loadingSlips, , , loadingSlipApi] = useData<LoadingSlip>("loading_slips", []);
   const [companies] = useData<Company>("companies", []);
@@ -798,8 +798,6 @@ export function PendingInvoicing() {
         invoiceNo: existingInvoice?.invoiceNo || "",
         date: existingInvoice?.date || new Date().toISOString().slice(0, 10),
         companyId: company.id,
-        firmId: activeFirmId || undefined,
-        firmName: activeFirm?.firmName || undefined,
         destination: destination.trim() || undefined,
         transporter: shouldShowTransporter ? (transporter.trim() || undefined) : undefined,
         gstRate: 0,
@@ -865,8 +863,6 @@ export function PendingInvoicing() {
             lineItems.push({
               id: crypto.randomUUID(),
               invoiceId,
-              firmId: activeFirmId || undefined,
-              firmName: activeFirm?.firmName || undefined,
               loadingSlipId: part.loadingSlipId,
               itemId: itemRow.itemId,
               itemSource: itemRow.itemSource,
@@ -888,8 +884,6 @@ export function PendingInvoicing() {
         return {
           ...toPersistableLoadingSlip(originalSlip),
           invoiceId,
-          firmId: originalSlip.firmId || activeFirmId || undefined,
-          firmName: originalSlip.firmName || activeFirm?.firmName || undefined,
           updatedBy: "System User",
           updateTimestamp: timestamp,
         };
