@@ -14,6 +14,7 @@ import { useAuth } from "../auth/AuthContext";
 import { parseRealizationTargets } from "../lib/realizationTargets";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel, OrderCatalogItem } from "../lib/orderItems";
+import { GripVertical, X } from "lucide-react";
 
 const REEL_FORMULA_OPTIONS = [
   {
@@ -424,6 +425,8 @@ export function SettingsPage() {
   }, [machines]);
 
   const [mandatoryDraft, setMandatoryDraft] = useState<Record<string, string[]>>({});
+  const [draggedMachine, setDraggedMachine] = useState<{ typeName: string; machineName: string } | null>(null);
+  const [dragOverMachine, setDragOverMachine] = useState<{ typeName: string; machineName: string } | null>(null);
 
   useEffect(() => {
     const parsed = parseMandatoryMachinesByType(currentSetting);
@@ -1511,41 +1514,61 @@ export function SettingsPage() {
                       </button>
                     </div>
 
-                    <div className="mt-3 max-h-56 space-y-2 overflow-auto rounded border border-black bg-slate-50 p-3">
+                    <div className="mt-3 max-h-56 space-y-2 overflow-y-auto overflow-x-hidden rounded border border-black bg-slate-50 p-3">
                       {selectedMachines.length === 0 ? (
                         <div className="text-xs font-semibold text-slate-500">No machines selected.</div>
                       ) : selectedMachines.map((machineName, index) => (
-                        <div key={machineName} className="flex items-center gap-2 rounded border border-slate-300 bg-white p-2 text-sm">
+                        <div
+                          key={machineName}
+                          onDragEnter={(event) => {
+                            event.preventDefault();
+                            if (!draggedMachine || draggedMachine.typeName !== typeName || draggedMachine.machineName === machineName) return;
+                            setDragOverMachine({ typeName, machineName });
+                            setMandatoryDraft((prev) => {
+                              const next = [...(prev[typeName] || [])];
+                              const fromIndex = next.indexOf(draggedMachine.machineName);
+                              const toIndex = next.indexOf(machineName);
+                              if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return prev;
+                              const [movedMachine] = next.splice(fromIndex, 1);
+                              next.splice(toIndex, 0, movedMachine);
+                              return { ...prev, [typeName]: next };
+                            });
+                          }}
+                          onDragOver={(event) => {
+                            if (draggedMachine?.typeName === typeName) event.preventDefault();
+                          }}
+                          className={`flex min-w-0 items-center gap-2 rounded border bg-white p-2 text-sm transition ${
+                            draggedMachine?.typeName === typeName && draggedMachine.machineName === machineName
+                              ? "border-indigo-500 opacity-50"
+                              : dragOverMachine?.typeName === typeName && dragOverMachine.machineName === machineName
+                                ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-300"
+                                : "border-slate-300"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            draggable={!saving && !loading}
+                            disabled={saving || loading}
+                            onDragStart={(event) => {
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", machineName);
+                              setDraggedMachine({ typeName, machineName });
+                              setDragOverMachine({ typeName, machineName });
+                            }}
+                            onDragEnd={() => {
+                              setDraggedMachine(null);
+                              setDragOverMachine(null);
+                            }}
+                            className="inline-flex h-7 w-7 shrink-0 cursor-grab items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-black active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label={`Drag to reorder ${machineName}`}
+                            title="Drag to reorder"
+                          >
+                            <GripVertical size={18} />
+                          </button>
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-black text-white">
                             {index + 1}
                           </span>
-                          <span className="min-w-[100px] flex-1 break-words font-semibold leading-5 text-slate-800">{machineName}</span>
-                          <button
-                            type="button"
-                            disabled={index === 0 || saving || loading}
-                            onClick={() => setMandatoryDraft((prev) => {
-                              const next = [...(prev[typeName] || [])];
-                              [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                              return { ...prev, [typeName]: next };
-                            })}
-                            className="rounded border border-black px-1.5 py-1 text-[10px] font-black disabled:opacity-30"
-                            title="Move up"
-                          >
-                            Up
-                          </button>
-                          <button
-                            type="button"
-                            disabled={index === selectedMachines.length - 1 || saving || loading}
-                            onClick={() => setMandatoryDraft((prev) => {
-                              const next = [...(prev[typeName] || [])];
-                              [next[index], next[index + 1]] = [next[index + 1], next[index]];
-                              return { ...prev, [typeName]: next };
-                            })}
-                            className="rounded border border-black px-1.5 py-1 text-[10px] font-black disabled:opacity-30"
-                            title="Move down"
-                          >
-                            Down
-                          </button>
+                          <span className="min-w-0 flex-1 break-words font-semibold leading-5 text-slate-800">{machineName}</span>
                           <button
                             type="button"
                             disabled={saving || loading}
@@ -1553,10 +1576,11 @@ export function SettingsPage() {
                               ...prev,
                               [typeName]: (prev[typeName] || []).filter((value) => value !== machineName),
                             }))}
-                            className="rounded border border-red-700 px-1.5 py-1 text-[10px] font-black text-red-700 disabled:opacity-30"
-                            title="Remove"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded border border-red-600 bg-white text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30"
+                            title={`Remove ${machineName}`}
+                            aria-label={`Remove ${machineName}`}
                           >
-                            Remove
+                            <X size={15} strokeWidth={3} />
                           </button>
                         </div>
                       ))}
