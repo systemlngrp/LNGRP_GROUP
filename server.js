@@ -6281,6 +6281,18 @@ const createHandlers = (tableName) => {
             data.color = null;
           }
         }
+        if (tableName === "settings") {
+          const numberingFields = ["reelErpStartNumber", "ourReelNoStartNumber", "otherMaterialErpStartNumber"];
+          for (const field of numberingFields) {
+            if (data[field] === void 0 || data[field] === null) continue;
+            const rawValue = String(data[field]).trim();
+            const numericValue = Number(rawValue);
+            if (!/^\d+$/.test(rawValue) || !Number.isSafeInteger(numericValue) || numericValue < 1 || numericValue > 2147483647) {
+              return res.status(400).json({ error: `${field} must be a whole number from 1 to 2,147,483,647.` });
+            }
+            data[field] = numericValue;
+          }
+        }
         if (tableName === "users") {
           const normalizedUserId = String(data.userId || "").trim();
           if (!normalizedUserId) {

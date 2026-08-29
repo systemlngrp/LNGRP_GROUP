@@ -77,6 +77,13 @@ const GSM_FORMULA_OPTIONS = [
 ];
 
 const GLOBAL_ITEM_RENAME_ALLOWED_EMAIL = "pankaj@bizskilledu.com";
+const MATERIAL_NUMBERING_MAX = 2_147_483_647;
+const MATERIAL_NUMBERING_FIELDS = [
+  ["reelErpStartNumber", "Reel ERP Start Number"],
+  ["ourReelNoStartNumber", "Our Reel No. Start Number"],
+  ["otherMaterialErpStartNumber", "Other Material ERP Start Number"],
+] as const;
+type MaterialNumberingKey = (typeof MATERIAL_NUMBERING_FIELDS)[number][0];
 const GLOBAL_ITEM_RENAME_SYNC_EVENTS = [
   "sync-data-npd",
   "sync-data-php_item_master",
@@ -378,10 +385,28 @@ export function SettingsPage() {
   const [transferPreview, setTransferPreview] = useState<GlobalItemTransferPreview | null>(null);
   const [transferSaving, setTransferSaving] = useState(false);
   const [transferStatus, setTransferStatus] = useState("");
+  const [materialNumberingDraft, setMaterialNumberingDraft] = useState<Record<MaterialNumberingKey, string>>({
+    reelErpStartNumber: "1",
+    ourReelNoStartNumber: "1",
+    otherMaterialErpStartNumber: "1",
+  });
+  const [materialNumberingErrors, setMaterialNumberingErrors] = useState<Partial<Record<MaterialNumberingKey, string>>>({});
 
   const currentSetting = settings[0];
   const isPankajUser = String(user?.email || "").trim().toLowerCase() === GLOBAL_ITEM_RENAME_ALLOWED_EMAIL;
   const allowInvoiceTallyEdit = currentSetting?.allowInvoiceTallyEdit === "Yes";
+
+  useEffect(() => {
+    setMaterialNumberingDraft({
+      reelErpStartNumber: String(currentSetting?.reelErpStartNumber || 1),
+      ourReelNoStartNumber: String(currentSetting?.ourReelNoStartNumber || 1),
+      otherMaterialErpStartNumber: String(currentSetting?.otherMaterialErpStartNumber || 1),
+    });
+  }, [
+    currentSetting?.reelErpStartNumber,
+    currentSetting?.ourReelNoStartNumber,
+    currentSetting?.otherMaterialErpStartNumber,
+  ]);
 
   const allowedInvoiceEditUsers = useMemo(() => {
     if (!currentSetting?.allowInvoiceTallyEditUsers) return [] as string[];
@@ -750,6 +775,22 @@ export function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveMaterialNumbering = async (key: MaterialNumberingKey) => {
+    const rawValue = materialNumberingDraft[key].trim();
+    const value = Number(rawValue);
+    if (!/^\d+$/.test(rawValue) || !Number.isSafeInteger(value) || value < 1 || value > MATERIAL_NUMBERING_MAX) {
+      setMaterialNumberingErrors((current) => ({
+        ...current,
+        [key]: `Enter a whole number from 1 to ${MATERIAL_NUMBERING_MAX.toLocaleString("en-IN")}.`,
+      }));
+      return;
+    }
+
+    setMaterialNumberingErrors((current) => ({ ...current, [key]: undefined }));
+    if (Number(currentSetting?.[key] || 1) === value) return;
+    await handleChange({ [key]: value });
   };
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1742,28 +1783,36 @@ export function SettingsPage() {
           <h3 className="mb-1 text-sm font-black uppercase text-black">Material Numbering</h3>
           <p className="mb-4 text-sm text-slate-700">Start values are minimums. Existing higher numbers always continue with the next number.</p>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            {([
-              ["reelErpStartNumber", "Reel ERP Start Number"],
-              ["ourReelNoStartNumber", "Our Reel No. Start Number"],
-              ["otherMaterialErpStartNumber", "Other Material ERP Start Number"],
-            ] as const).map(([key, label]) => (
+            {MATERIAL_NUMBERING_FIELDS.map(([key, label]) => (
               <label key={key} className="space-y-2">
                 <span className="block text-xs font-black uppercase tracking-wide text-black">{label}</span>
                 <input
                   type="number"
                   min="1"
+                  max={MATERIAL_NUMBERING_MAX}
                   step="1"
-                  value={Number(currentSetting?.[key] || 1)}
+                  value={materialNumberingDraft[key]}
                   onChange={(event) => {
-                    const value = Math.floor(Number(event.target.value));
-                    if (Number.isFinite(value) && value > 0) void handleChange({ [key]: value });
+                    const value = event.target.value;
+                    setMaterialNumberingDraft((current) => ({ ...current, [key]: value }));
+                    setMaterialNumberingErrors((current) => ({ ...current, [key]: undefined }));
                   }}
-                  disabled={loading || saving}
+                  onBlur={() => void saveMaterialNumbering(key)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  disabled={loading}
+                  aria-invalid={Boolean(materialNumberingErrors[key])}
                   className="w-full rounded border-2 border-black bg-white p-2 text-black focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
                 />
+                {materialNumberingErrors[key] && <span className="block text-xs font-bold text-red-600">{materialNumberingErrors[key]}</span>}
               </label>
             ))}
           </div>
+          <p className="mt-4 text-xs text-slate-700">Example: if Reel ERP Start Number is 77001290, the next available Reel ERP will start at 77001290 unless a higher ERP already exists.</p>
         </div>
 
         <div className="flex flex-col space-y-2">
