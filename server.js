@@ -623,6 +623,7 @@ function hasPermission(user, required) {
   if (user.role === "TruckDriver") return required === "/truck/status-update";
   const list = user.menuAccess || [];
   if (list.includes("*")) return true;
+  if (required === "/material-movement/reel-transfer" && list.includes("/material-movement/issue")) return true;
   if (required === "/production-processing" && ["/production/pending-machine-processing", "/production/pending-printing", "/production-processing/master"].some((path2) => list.includes(path2))) {
     return true;
   }
@@ -2955,6 +2956,8 @@ function entityPermissionKey(entity) {
     case "material_returns":
     case "material_return_lines":
     case "material_return_reel_lines":
+    case "reel_transfers":
+    case "reel_transfer_lines":
     case "consumptions":
       return "/material-movement";
     case "orders":
@@ -4073,6 +4076,40 @@ async function initDb(retries = 5) {
 	        )
       `);
       await db.query(`
+        CREATE TABLE IF NOT EXISTS \`reel_transfers\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`transferNo\` VARCHAR(100) NOT NULL UNIQUE,
+          \`date\` VARCHAR(50) NOT NULL,
+          \`sourceProductionId\` VARCHAR(36) NOT NULL,
+          \`sourceJobNo\` VARCHAR(100) NOT NULL,
+          \`targetProductionId\` VARCHAR(36) NOT NULL,
+          \`targetJobNo\` VARCHAR(100) NOT NULL,
+          \`materialReturnId\` VARCHAR(36) NOT NULL,
+          \`materialIssueId\` VARCHAR(36) NOT NULL,
+          \`remarks\` TEXT,
+          \`totalWeightKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`totalAmount\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`reel_transfer_lines\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`reelTransferId\` VARCHAR(36) NOT NULL,
+          \`materialId\` VARCHAR(36) NOT NULL,
+          \`packingSlipId\` VARCHAR(36) NOT NULL,
+          \`ourReelNo\` VARCHAR(100) NOT NULL,
+          \`weightKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`rate\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`amount\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`materialReturnReelLineId\` VARCHAR(36) NOT NULL,
+          \`materialIssueReelLineId\` VARCHAR(36) NOT NULL,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+      await db.query(`
         CREATE TABLE IF NOT EXISTS \`production_processing\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`productionId\` VARCHAR(36) NOT NULL,
@@ -4677,6 +4714,7 @@ async function initDb(retries = 5) {
         CREATE TABLE IF NOT EXISTS \`settings\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`reelAsPerCalculation\` TEXT,
+          \`reelTransferWindowHours\` DECIMAL(10,2) DEFAULT 12,
           \`flapAsPerCalculation\` TEXT,
           \`cuttingSizeAsPerCalculation\` TEXT,
           \`gsmAsPerCalculation\` TEXT,
@@ -5541,6 +5579,7 @@ async function initDb(retries = 5) {
         { table: "firms", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "firms", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "settings", column: "reelAsPerCalculation", type: "TEXT" },
+        { table: "settings", column: "reelTransferWindowHours", type: "DECIMAL(10,2) DEFAULT 12" },
         { table: "settings", column: "flapAsPerCalculation", type: "TEXT" },
         { table: "settings", column: "cuttingSizeAsPerCalculation", type: "TEXT" },
         { table: "settings", column: "gsmAsPerCalculation", type: "TEXT" },
@@ -7273,7 +7312,7 @@ app.get("/api/truck-status-logs", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "gate_passes", "services", "npd", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "gate_passes", "services", "npd", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
   return res.json({
@@ -8746,6 +8785,152 @@ app.post("/api/settings/item-transfer/apply", async (req, res) => {
     return res.status(500).json({ error: error.message });
   } finally {
     connection.release();
+  }
+});
+app.post("/api/reel-transfers/execute", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!hasPermission(user, "/material-movement/reel-transfer")) return res.status(403).json({ error: "Forbidden" });
+  const sourceProductionId = String(req.body?.sourceProductionId || "").trim();
+  const targetProductionId = String(req.body?.targetProductionId || "").trim();
+  const packingSlipIds = Array.from(new Set((Array.isArray(req.body?.packingSlipIds) ? req.body.packingSlipIds : []).map((value) => String(value || "").trim()).filter(Boolean)));
+  const transferDate = String(req.body?.date || (/* @__PURE__ */ new Date()).toISOString().slice(0, 10)).trim();
+  const remarks = String(req.body?.remarks || "").trim();
+  if (!sourceProductionId || !targetProductionId || sourceProductionId === targetProductionId || !packingSlipIds.length) {
+    return res.status(400).json({ error: "Select a source job, a different target job, and at least one reel." });
+  }
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [productionRows] = await conn.query(
+      "SELECT * FROM `productions` WHERE id IN (?, ?) FOR UPDATE",
+      [sourceProductionId, targetProductionId]
+    );
+    const productions = productionRows;
+    const source = productions.find((row) => String(row.id) === sourceProductionId);
+    const target = productions.find((row) => String(row.id) === targetProductionId);
+    if (!source || !target) throw new Error("Source or target job was not found.");
+    if (String(source.status || "") === "Cancelled" || source.cancelTimestamp) throw new Error("The source job is cancelled.");
+    if (String(target.status || "") === "Cancelled" || target.cancelTimestamp) throw new Error("The target job is cancelled.");
+    const sourceJobNo = String(source.transactionNo || "").trim();
+    const targetJobNo = String(target.transactionNo || "").trim();
+    const [processingRows] = await conn.query(
+      "SELECT productionId, machineName, qty, completionStatus, `date`, updateTimestamp FROM `production_processing` WHERE productionId IN (?, ?)",
+      [sourceProductionId, targetProductionId]
+    );
+    const processing = processingRows;
+    const corrugationRows = (productionId) => processing.filter(
+      (row) => String(row.productionId) === productionId && String(row.machineName || "").trim().toLowerCase().replace(/\s+/g, " ") === "corrugation liner"
+    );
+    const sourceCorrugation = corrugationRows(sourceProductionId);
+    const sourceFull = sourceCorrugation.filter((row) => String(row.completionStatus || "").trim() === "Full").map((row) => ({ ...row, time: new Date(row.updateTimestamp || row.date || 0).getTime() })).filter((row) => Number.isFinite(row.time) && row.time > 0).sort((a, b) => a.time - b.time)[0];
+    if (!sourceFull) throw new Error("Corrugation Liner must be marked Full for the source job.");
+    if (!corrugationRows(targetProductionId).some((row) => String(row.completionStatus || "").trim() === "Full")) {
+      throw new Error("Complete Corrugation Liner as Full for the target job before issuing reels.");
+    }
+    const [settingRows] = await conn.query("SELECT reelTransferWindowHours FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
+    const windowHours = Number(settingRows[0]?.reelTransferWindowHours || 12);
+    if (!Number.isFinite(windowHours) || windowHours <= 0 || Date.now() > sourceFull.time + windowHours * 60 * 60 * 1e3) {
+      throw new Error(`The ${windowHours || 12}-hour reel transfer window has expired.`);
+    }
+    const [targetIssueRows] = await conn.query(
+      "SELECT COUNT(*) AS count FROM `material_issue_reel_lines` WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?))",
+      [targetProductionId, targetJobNo]
+    );
+    if (Number(targetIssueRows[0]?.count || 0) > 0) throw new Error("The target job already has a reel issue.");
+    const [issueRows] = await conn.query(
+      `SELECT ril.*, COALESCE(mil.rate, mil.lastPurchaseRate, mil.openingRate, 0) AS rate,
+              COALESCE(mil.openingRate, 0) AS openingRate, COALESCE(mil.lastPurchaseRate, 0) AS lastPurchaseRate
+       FROM material_issue_reel_lines ril
+       LEFT JOIN material_issue_lines mil ON mil.id = ril.materialIssueLineId
+       WHERE ril.productionId = ? OR LOWER(TRIM(ril.jobNo)) = LOWER(TRIM(?)) FOR UPDATE`,
+      [sourceProductionId, sourceJobNo]
+    );
+    const [returnRows] = await conn.query(
+      "SELECT * FROM `material_return_reel_lines` WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?)) FOR UPDATE",
+      [sourceProductionId, sourceJobNo]
+    );
+    const issues = issueRows;
+    const returns = returnRows;
+    const balanceBySlip = /* @__PURE__ */ new Map();
+    issues.forEach((row) => balanceBySlip.set(String(row.packingSlipId), (balanceBySlip.get(String(row.packingSlipId)) || 0) + Number(row.weightKg || 0)));
+    returns.forEach((row) => balanceBySlip.set(String(row.packingSlipId), (balanceBySlip.get(String(row.packingSlipId)) || 0) - Number(row.weightKg || 0)));
+    const outstanding = Array.from(balanceBySlip.values()).filter((value) => value > 4e-3);
+    const totalIssuedKg = issues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+    const totalReturnedKg = returns.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+    const planQty = Number(source.qty || source.plannedQty || 0);
+    const requiredKg = Number(source.totalJobWeight || 0);
+    if (planQty <= 0 || requiredKg <= 0) throw new Error("Source job plan quantity and total job weight are required for transfer calculation.");
+    const corrugationQty = sourceCorrugation.filter((row) => new Date(row.updateTimestamp || row.date || 0).getTime() <= sourceFull.time).reduce((sum, row) => sum + Number(row.qty || 0), 0);
+    const consumedKg = corrugationQty * requiredKg / planQty;
+    const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);
+    const averageNotionalKg = outstanding.length ? notionalLeftKg / outstanding.length : 0;
+    if (averageNotionalKg <= 4e-3) throw new Error("No positive notional reel balance is available for transfer.");
+    const selected = packingSlipIds.map((packingSlipId) => {
+      const balance = Number(balanceBySlip.get(packingSlipId) || 0);
+      const issue = [...issues].reverse().find((row) => String(row.packingSlipId) === packingSlipId);
+      const weightKg = Number(Math.min(balance, averageNotionalKg).toFixed(2));
+      if (!issue || balance <= 4e-3 || weightKg <= 0) throw new Error("A selected reel no longer has an available source balance.");
+      return { issue, weightKg, rate: Number(issue.rate || 0), amount: Number((weightKg * Number(issue.rate || 0)).toFixed(2)) };
+    });
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    const transferId = crypto.randomUUID();
+    const returnId = crypto.randomUUID();
+    const issueId = crypto.randomUUID();
+    const transferNo = await generateSimpleTransactionNumber(conn, "reel_transfers", "transferNo", "RT", transferDate);
+    const returnNo = await generateSimpleTransactionNumber(conn, "material_returns", "returnNo", "MR", transferDate);
+    const issueNo = await generateSimpleTransactionNumber(conn, "material_issues", "issueNo", "MIS", transferDate);
+    const totalWeightKg = Number(selected.reduce((sum, row) => sum + row.weightKg, 0).toFixed(2));
+    const totalAmount = Number(selected.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+    const actor = String(user.name || user.email || "System User");
+    const note = [`Reel transfer ${transferNo}`, remarks].filter(Boolean).join(" - ");
+    await conn.query("INSERT INTO material_returns (id, returnNo, date, returnType, productionId, jobNo, remarks, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'Job', ?, ?, ?, ?, ?)", [returnId, returnNo, transferDate, sourceProductionId, sourceJobNo, note, actor, timestamp]);
+    await conn.query("INSERT INTO material_issues (id, issueNo, date, issueType, productionId, jobNo, remarks, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'Job', ?, ?, ?, ?, ?)", [issueId, issueNo, transferDate, targetProductionId, targetJobNo, note, actor, timestamp]);
+    await conn.query("INSERT INTO reel_transfers (id, transferNo, date, sourceProductionId, sourceJobNo, targetProductionId, targetJobNo, materialReturnId, materialIssueId, remarks, totalWeightKg, totalAmount, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [transferId, transferNo, transferDate, sourceProductionId, sourceJobNo, targetProductionId, targetJobNo, returnId, issueId, remarks || null, totalWeightKg, totalAmount, actor, timestamp]);
+    const byMaterial = /* @__PURE__ */ new Map();
+    selected.forEach((row) => byMaterial.set(String(row.issue.materialId), [...byMaterial.get(String(row.issue.materialId)) || [], row]));
+    for (const [materialId, rows] of byMaterial) {
+      const qty = Number(rows.reduce((sum, row) => sum + row.weightKg, 0).toFixed(2));
+      const amount = Number(rows.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+      const rate = qty > 0 ? Number((amount / qty).toFixed(2)) : 0;
+      const returnLineId = crypto.randomUUID();
+      const issueLineId = crypto.randomUUID();
+      await conn.query("INSERT INTO material_return_lines (id, materialReturnId, materialId, qty, uom, rate, amount, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, 'KG', ?, ?, ?, ?)", [returnLineId, returnId, materialId, qty, rate, amount, actor, timestamp]);
+      await conn.query("INSERT INTO material_issue_lines (id, materialIssueId, materialId, qty, uom, rate, amount, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, 'KG', ?, ?, ?, ?)", [issueLineId, issueId, materialId, qty, rate, amount, actor, timestamp]);
+      for (const row of rows) {
+        const returnReelLineId = crypto.randomUUID();
+        const issueReelLineId = crypto.randomUUID();
+        const transferLineId = crypto.randomUUID();
+        await conn.query("INSERT INTO material_return_reel_lines (id, materialReturnId, materialReturnLineId, materialId, packingSlipId, ourReelNo, weightKg, productionId, jobNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [returnReelLineId, returnId, returnLineId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, sourceProductionId, sourceJobNo, actor, timestamp]);
+        await conn.query("INSERT INTO material_issue_reel_lines (id, materialIssueId, materialIssueLineId, materialId, packingSlipId, ourReelNo, weightKg, productionId, jobNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [issueReelLineId, issueId, issueLineId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, targetProductionId, targetJobNo, actor, timestamp]);
+        await conn.query("INSERT INTO reel_transfer_lines (id, reelTransferId, materialId, packingSlipId, ourReelNo, weightKg, rate, amount, materialReturnReelLineId, materialIssueReelLineId, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [transferLineId, transferId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, row.rate, row.amount, returnReelLineId, issueReelLineId, actor, timestamp]);
+      }
+    }
+    for (const production of [source, target]) {
+      const productionId = String(production.id);
+      const jobNo = String(production.transactionNo || "");
+      const [usageRows] = await conn.query(
+        `SELECT
+          COALESCE((SELECT SUM(weightKg) FROM material_issue_reel_lines WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?))), 0) -
+          COALESCE((SELECT SUM(weightKg) FROM material_return_reel_lines WHERE productionId = ? OR LOWER(TRIM(jobNo)) = LOWER(TRIM(?))), 0) AS usage`,
+        [productionId, jobNo, productionId, jobNo]
+      );
+      const usage = Math.max(0, Number(usageRows[0]?.usage || 0));
+      let status = String(production.status || "Pending Consumption");
+      if (!production.cancelTimestamp && status !== "Completed") status = usage > 0 ? Number(production.prodFromFFG || 0) > 0 ? "Pending Tally" : "Pending FFG" : "Pending Consumption";
+      await conn.query("UPDATE productions SET actualPaperUsed = ?, status = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [usage, status, actor, timestamp, productionId]);
+    }
+    await conn.commit();
+    return res.json({ ok: true, transferId, transferNo, returnId, returnNo, issueId, issueNo, totalWeightKg, totalAmount });
+  } catch (error) {
+    await conn.rollback();
+    console.error("[REEL_TRANSFER] failed:", error);
+    const message = error instanceof Error ? error.message : "Failed to transfer reels.";
+    return res.status(400).json({ error: message });
+  } finally {
+    conn.release();
   }
 });
 entities.forEach((entity) => {

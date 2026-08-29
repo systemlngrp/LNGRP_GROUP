@@ -269,6 +269,38 @@ export interface MaterialReturnReelLine {
   updateTimestamp?: string;
 }
 
+export interface ReelTransfer {
+  id: string;
+  transferNo: string;
+  date: string;
+  sourceProductionId: string;
+  sourceJobNo: string;
+  targetProductionId: string;
+  targetJobNo: string;
+  materialReturnId: string;
+  materialIssueId: string;
+  remarks?: string;
+  totalWeightKg: number;
+  totalAmount: number;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
+export interface ReelTransferLine {
+  id: string;
+  reelTransferId: string;
+  materialId: string;
+  packingSlipId: string;
+  ourReelNo: string;
+  weightKg: number;
+  rate: number;
+  amount: number;
+  materialReturnReelLineId: string;
+  materialIssueReelLineId: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface PhysicalStockSession {
   id: string;
   firmId?: string;
@@ -1185,6 +1217,7 @@ export interface Firm {
 export interface Setting {
   id: string;
   reelAsPerCalculation?: string;
+  reelTransferWindowHours?: number;
   flapAsPerCalculation?: string;
   cuttingSizeAsPerCalculation?: string;
   gsmAsPerCalculation?: string;

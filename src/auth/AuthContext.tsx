@@ -103,6 +103,7 @@ function isAllowed(user: AuthUser | null, href: string) {
   if (user.role === "TruckDriver") return href === "/" || TRUCK_DRIVER_ALLOWED_PATHS.includes(href);
   const list = getEffectiveMenuAccess(user);
   if (list.includes("*")) return true;
+  if (href === "/material-movement/reel-transfer" && list.includes("/material-movement/issue")) return true;
   if (
     href === "/production-processing/form" &&
     ["/production/pending-machine-processing", "/production/pending-printing", "/production-processing/master"].some((path) => list.includes(path))

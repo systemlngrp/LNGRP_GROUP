@@ -720,6 +720,7 @@ export function SettingsPage() {
       const nextRow: Setting = {
         id: currentSetting?.id || crypto.randomUUID(),
         reelAsPerCalculation: currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value,
+        reelTransferWindowHours: Number(currentSetting?.reelTransferWindowHours || 12),
         flapAsPerCalculation: currentSetting?.flapAsPerCalculation || FLAP_FORMULA_OPTIONS[0].value,
         cuttingSizeAsPerCalculation: currentSetting?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_OPTIONS[0].value,
         gsmAsPerCalculation: currentSetting?.gsmAsPerCalculation || GSM_FORMULA_OPTIONS[0].value,
@@ -1732,6 +1733,28 @@ export function SettingsPage() {
           <p className="text-sm text-black leading-6">
             Choose which formula the Production Form should use to calculate <span className="font-bold">Reel As per Calculation</span>.
           </p>
+        </div>
+
+        <div className="flex flex-col space-y-2">
+          <label htmlFor="reelTransferWindowHours" className="text-xs font-black uppercase tracking-wide text-black">
+            Reel Transfer Window (Hours)
+          </label>
+          <input
+            id="reelTransferWindowHours"
+            type="number"
+            min="0.01"
+            step="0.25"
+            value={Number(currentSetting?.reelTransferWindowHours || 12)}
+            onChange={(e) => {
+              const value = Number(e.target.value);
+              if (Number.isFinite(value) && value > 0) void handleChange({ reelTransferWindowHours: value });
+            }}
+            disabled={loading || saving}
+            className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white"
+          />
+          <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
+            Reels remain eligible for job-to-job transfer for this many hours after Corrugation Liner is marked Full.
+          </div>
         </div>
 
         <div className="flex flex-col space-y-2">
