@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Machine, UnitMaster, User } from "../types";
@@ -6,18 +6,6 @@ import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { normalizeMachineName } from "../lib/productionMachineNames";
-
-const DEFAULT_MACHINES = [
-  "Corrugation Paper",
-  "Corrugation Liner",
-  "Printing",
-  "Pasting",
-  "Rotary",
-  "Stitching",
-  "Diecuting",
-  "Punching",
-  "Gluing"
-];
 
 export function Machines() {
   const [machines, setMachines, machinesLoading] = useData<Machine>("machines", []);
@@ -32,6 +20,8 @@ export function Machines() {
   const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [statusType, setStatusType] = useState<"success" | "error">("error");
 
   const operatorUsers = useMemo(
     () =>
@@ -53,68 +43,45 @@ export function Machines() {
     [units]
   );
 
-  // Seed defaults once data has finished loading, and only for missing names.
-  useEffect(() => {
-    if (machinesLoading) return;
+  const resetForm = () => {
+    setName("");
+    setMaxOutputPerHour("");
+    setUom("");
+    setSelectedOperatorIds([]);
+    setEditingId(null);
+    setIsFormOpen(false);
+  };
 
-    const existing = new Set(
-      machines.map((machine) => normalizeMachineName(machine.name).trim().toLowerCase()).filter(Boolean)
-    );
-
-    const missing = DEFAULT_MACHINES.filter(
-      (machineName) => !existing.has(normalizeMachineName(machineName).trim().toLowerCase())
-    );
-
-    if (missing.length === 0) return;
-
-    const timestamp = new Date().toISOString();
-    setMachines((prev) => [
-      ...prev,
-      ...missing.map((machineName) => ({
-        id: crypto.randomUUID(),
-        name: normalizeMachineName(machineName),
-        maxOutputPerHour: 0,
-        uom: "",
-        updatedBy: "System",
-        updateTimestamp: timestamp,
-      })),
-    ]);
-  }, [machines, machinesLoading, setMachines]);
-
-  // Normalize existing machine names to keep reports consistent.
-  // Runs after load and only writes when there are actual changes.
-  useEffect(() => {
-    if (machinesLoading || machines.length === 0) return;
-    const normalizedMachines = machines.map((machine) => {
-      const normalizedName = normalizeMachineName(machine.name);
-      return normalizedName === machine.name ? machine : { ...machine, name: normalizedName };
-    });
-    const hasChanges = normalizedMachines.some((machine, index) => machine.name !== machines[index].name);
-    if (hasChanges) {
-      setMachines(normalizedMachines);
-    }
-  }, [machines, machinesLoading, setMachines]);
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    setStatusMessage("");
+    setStatusType("error");
+    if (!name.trim()) {
+      setStatusMessage("Machine Name is required.");
+      return;
+    }
+    const capacity = maxOutputPerHour === "" ? 0 : Number(maxOutputPerHour);
+    if (!Number.isFinite(capacity) || capacity < 0) {
+      setStatusMessage("Maximum Per Hour must be zero or greater.");
+      return;
+    }
 
     const normalizedName = normalizeMachineName(name);
 
     if (machines.some(m => normalizeMachineName(m.name).toLowerCase() === normalizedName.toLowerCase() && m.id !== editingId)) {
-      alert("Machine already exists.");
+      setStatusMessage("Machine already exists.");
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
       const audit = { updatedBy: "System User", updateTimestamp: new Date().toISOString() };
       const assignedOperatorNames = selectedOperatorIds
         .map((operatorId) => operatorNameById.get(operatorId) || "")
         .filter(Boolean);
       const machineData = { 
         name: normalizedName, 
-        maxOutputPerHour: maxOutputPerHour === "" ? 0 : Number(maxOutputPerHour),
+        maxOutputPerHour: capacity,
         uom: uom.trim().toUpperCase(),
         assignedOperatorIds: selectedOperatorIds,
         assignedOperatorNames,
@@ -122,37 +89,53 @@ export function Machines() {
       };
 
       if (editingId) {
-        setMachines((prev) => prev.map((m) => (m.id === editingId ? { ...m, ...machineData } : m)));
+        await setMachines((prev) => prev.map((m) => (m.id === editingId ? { ...m, ...machineData } : m)));
       } else {
-        setMachines((prev) => [...prev, { id: crypto.randomUUID(), ...machineData }]);
+        await setMachines((prev) => [...prev, { id: crypto.randomUUID(), ...machineData }]);
       }
-      setName("");
-      setMaxOutputPerHour("");
-      setUom("");
-      setSelectedOperatorIds([]);
-      setEditingId(null);
-      setIsFormOpen(false);
+      setStatusType("success");
+      setStatusMessage(editingId ? "Machine updated successfully." : "Machine created successfully.");
+      resetForm();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save machine.";
+      setStatusMessage(message);
+    } finally {
       setIsSubmitting(false);
-    }, 500);
+    }
   };
 
 
-  const updateMachineUom = (machineId: string, nextUom: string) => {
+  const updateMachineUom = async (machineId: string, nextUom: string) => {
     const audit = { updatedBy: "System User", updateTimestamp: new Date().toISOString() };
-    setMachines((prev) =>
-      prev.map((machine) =>
-        machine.id === machineId ? { ...machine, uom: nextUom.trim().toUpperCase(), ...audit } : machine
-      )
-    );
+    try {
+      await setMachines((prev) =>
+        prev.map((machine) =>
+          machine.id === machineId ? { ...machine, uom: nextUom.trim().toUpperCase(), ...audit } : machine
+        )
+      );
+      setStatusType("success");
+      setStatusMessage("Machine UOM updated successfully.");
+    } catch (error) {
+      setStatusType("error");
+      setStatusMessage(error instanceof Error ? error.message : "Failed to update machine UOM.");
+    }
   };
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (deletingId !== id) {
       setDeletingId(id);
       setTimeout(() => setDeletingId(null), 3000);
       return;
     }
-    setMachines((prev) => prev.filter((m) => m.id !== id));
-    setDeletingId(null);
+    try {
+      await setMachines((prev) => prev.filter((m) => m.id !== id));
+      setStatusType("success");
+      setStatusMessage("Machine deleted successfully.");
+    } catch (error) {
+      setStatusType("error");
+      setStatusMessage(error instanceof Error ? error.message : "Failed to delete machine.");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const filtered = machines.filter(m => [normalizeMachineName(m.name), m.uom || ""].join(" ").toLowerCase().includes(searchTerm.toLowerCase()));
@@ -176,6 +159,15 @@ export function Machines() {
         )}
       </div>
 
+      {statusMessage && (
+        <div
+          className={`rounded border-2 px-4 py-3 text-sm font-bold ${statusType === "success" ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-red-600 bg-red-50 text-red-700"}`}
+          role={statusType === "error" ? "alert" : "status"}
+        >
+          {statusMessage}
+        </div>
+      )}
+
       {isFormOpen && (
         <div className="bg-white p-6 rounded shadow-sm border border-black max-w-2xl">
           <h3 className="text-lg font-bold text-black mb-6 uppercase">{editingId ? "Edit Machine" : "Create Machine"}</h3>
@@ -196,6 +188,8 @@ export function Machines() {
                 <label className="font-bold text-black text-sm">Maximum Per Hour</label>
                 <input 
                   type="number" 
+                  min="0"
+                  step="any"
                   value={maxOutputPerHour} 
                   onChange={(e) => setMaxOutputPerHour(e.target.value === "" ? "" : Number(e.target.value))} 
                   className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600" 
@@ -249,7 +243,7 @@ export function Machines() {
               <button type="submit" disabled={isSubmitting} className="bg-emerald-600 text-white px-8 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all">
                 {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
               </button>
-              <button type="button" onClick={() => { setIsFormOpen(false); setName(""); setMaxOutputPerHour(""); setUom(""); setSelectedOperatorIds([]); setEditingId(null); }} className="bg-white text-black border-2 border-black px-8 py-2 rounded font-bold hover:bg-slate-50 transition shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none">
+              <button type="button" onClick={resetForm} className="bg-white text-black border-2 border-black px-8 py-2 rounded font-bold hover:bg-slate-50 transition shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none">
                 Cancel
               </button>
             </div>

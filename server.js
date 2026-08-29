@@ -3023,6 +3023,32 @@ async function ensureUniqueMaterialErpIndex(db, database) {
     console.warn(`[DB] Could not ensure unique material ERP index:`, err.message);
   }
 }
+async function ensureUniqueMachineNameIndex(db, database) {
+  const indexName = "uq_machines_name";
+  const [indexes] = await db.query(
+    "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'machines' AND INDEX_NAME = ?",
+    [database, indexName]
+  );
+  if (indexes.length > 0) return;
+  const [rows] = await db.query("SELECT id, name FROM `machines`");
+  const normalizedNames = /* @__PURE__ */ new Map();
+  for (const row of rows) {
+    const normalizedName = normalizeMachineName(String(row.name || "")).trim().toLowerCase();
+    if (!normalizedName) continue;
+    normalizedNames.set(normalizedName, [...normalizedNames.get(normalizedName) || [], String(row.id)]);
+  }
+  const duplicates = Array.from(normalizedNames.entries()).filter(([, ids]) => ids.length > 1).slice(0, 10);
+  if (duplicates.length > 0) {
+    console.error("[DB] Cannot add unique machine-name index; duplicate normalized names exist:", duplicates);
+    return;
+  }
+  try {
+    await db.query(`CREATE UNIQUE INDEX \`${indexName}\` ON \`machines\` (\`name\`)`);
+    console.log(`[DB] Added unique index ${indexName} on machines(name)`);
+  } catch (err) {
+    console.warn("[DB] Could not ensure unique machine-name index:", err.message);
+  }
+}
 function getShortFinancialYear(dateStr) {
   const date = dateStr ? new Date(dateStr) : /* @__PURE__ */ new Date();
   if (Number.isNaN(date.getTime())) return "";
@@ -5710,6 +5736,7 @@ async function initDb(retries = 5) {
       }
       await dropRemovedFirmScopeColumns(db, database);
       await ensureUniqueMaterialErpIndex(db, database);
+      await ensureUniqueMachineNameIndex(db, database);
       for (const tableName of FIRM_SCOPED_TABLES) {
         try {
           await ensureColumnExists(db, database, tableName, "firmId", "VARCHAR(36)");
@@ -6292,6 +6319,25 @@ const createHandlers = (tableName) => {
             }
             data[field] = numericValue;
           }
+        }
+        if (tableName === "machines") {
+          const normalizedName = normalizeMachineName(String(data.name || "")).trim();
+          if (!normalizedName) {
+            return res.status(400).json({ error: "Machine Name is required." });
+          }
+          const capacity = data.maxOutputPerHour == null || data.maxOutputPerHour === "" ? 0 : Number(data.maxOutputPerHour);
+          if (!Number.isFinite(capacity) || capacity < 0) {
+            return res.status(400).json({ error: "Maximum Per Hour must be zero or greater." });
+          }
+          const [machineRows] = await db.query("SELECT id, name FROM `machines` WHERE id <> ?", [String(data.id || "")]);
+          const duplicateMachine = machineRows.find(
+            (machine) => normalizeMachineName(String(machine.name || "")).trim().toLowerCase() === normalizedName.toLowerCase()
+          );
+          if (duplicateMachine?.id) {
+            return res.status(409).json({ error: `Machine ${normalizedName} already exists.` });
+          }
+          data.name = normalizedName;
+          data.maxOutputPerHour = capacity;
         }
         if (tableName === "users") {
           const normalizedUserId = String(data.userId || "").trim();
