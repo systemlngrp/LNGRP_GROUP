@@ -406,9 +406,14 @@ export function SettingsPage() {
   const typeNames = useMemo(() => {
     const fromItems = npdItems.map((item) => String(item.typeName || "").trim()).filter(Boolean);
     const fromSetting = Object.keys(parseMandatoryMachinesByType(currentSetting));
-    return Array.from(new Set([...DEFAULT_ITEM_TYPES, ...fromItems, ...fromSetting]))
-      .map((t) => t.trim())
-      .filter(Boolean)
+    const uniqueByCase = new Map<string, string>();
+    [...DEFAULT_ITEM_TYPES, ...fromItems, ...fromSetting].forEach((value) => {
+      const typeName = String(value || "").trim();
+      if (typeName && !uniqueByCase.has(typeName.toUpperCase())) {
+        uniqueByCase.set(typeName.toUpperCase(), typeName);
+      }
+    });
+    return Array.from(uniqueByCase.values())
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [currentSetting, npdItems]);
 
@@ -421,8 +426,18 @@ export function SettingsPage() {
   const [mandatoryDraft, setMandatoryDraft] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
-    setMandatoryDraft(parseMandatoryMachinesByType(currentSetting));
-  }, [currentSetting?.mandatoryMachinesByType]);
+    const parsed = parseMandatoryMachinesByType(currentSetting);
+    const normalized: Record<string, string[]> = {};
+    Object.entries(parsed).forEach(([storedTypeName, storedMachines]) => {
+      const canonicalTypeName = typeNames.find(
+        (typeName) => typeName.toUpperCase() === storedTypeName.toUpperCase()
+      ) || storedTypeName;
+      normalized[canonicalTypeName] = Array.from(
+        new Set([...(normalized[canonicalTypeName] || []), ...storedMachines])
+      );
+    });
+    setMandatoryDraft(normalized);
+  }, [currentSetting?.mandatoryMachinesByType, typeNames]);
 
   useEffect(() => {
     if (!currentSetting?.designations) {
@@ -1025,7 +1040,7 @@ export function SettingsPage() {
         </>
       )}
 
-      <div className="bg-white p-6 rounded shadow-sm border border-black max-w-3xl space-y-5">
+      <div className="w-full bg-white p-6 rounded shadow-sm border border-black space-y-5">
           <div className="space-y-4 border-b border-dashed border-black pb-5">
             <div>
               <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Realization Setup (Date Range)</h3>
@@ -1468,7 +1483,7 @@ export function SettingsPage() {
               No Machines found. Add machines first in Masters â†’ Machines.
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {typeNames.map((typeName) => {
                 const selectedMachines = mandatoryDraft[typeName] || [];
                 const selected = new Set(selectedMachines);
@@ -1504,7 +1519,7 @@ export function SettingsPage() {
                           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-xs font-black text-white">
                             {index + 1}
                           </span>
-                          <span className="min-w-0 flex-1 truncate font-semibold text-slate-800">{machineName}</span>
+                          <span className="min-w-[100px] flex-1 break-words font-semibold leading-5 text-slate-800">{machineName}</span>
                           <button
                             type="button"
                             disabled={index === 0 || saving || loading}
@@ -1513,10 +1528,10 @@ export function SettingsPage() {
                               [next[index - 1], next[index]] = [next[index], next[index - 1]];
                               return { ...prev, [typeName]: next };
                             })}
-                            className="rounded border border-black px-2 py-1 text-xs font-black disabled:opacity-30"
+                            className="rounded border border-black px-1.5 py-1 text-[10px] font-black disabled:opacity-30"
                             title="Move up"
                           >
-                            ↑
+                            Up
                           </button>
                           <button
                             type="button"
@@ -1526,10 +1541,10 @@ export function SettingsPage() {
                               [next[index], next[index + 1]] = [next[index + 1], next[index]];
                               return { ...prev, [typeName]: next };
                             })}
-                            className="rounded border border-black px-2 py-1 text-xs font-black disabled:opacity-30"
+                            className="rounded border border-black px-1.5 py-1 text-[10px] font-black disabled:opacity-30"
                             title="Move down"
                           >
-                            ↓
+                            Down
                           </button>
                           <button
                             type="button"
@@ -1538,10 +1553,10 @@ export function SettingsPage() {
                               ...prev,
                               [typeName]: (prev[typeName] || []).filter((value) => value !== machineName),
                             }))}
-                            className="rounded border border-red-700 px-2 py-1 text-xs font-black text-red-700 disabled:opacity-30"
+                            className="rounded border border-red-700 px-1.5 py-1 text-[10px] font-black text-red-700 disabled:opacity-30"
                             title="Remove"
                           >
-                            ×
+                            Remove
                           </button>
                         </div>
                       ))}
