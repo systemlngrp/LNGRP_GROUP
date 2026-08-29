@@ -72,6 +72,8 @@ export function ProductionStageQueue({
   issuePrereqMachineName,
   issueActionPath = "/material-movement/reel-issue-return",
   issueActionLabel = "Issue Material",
+  secondaryIssueActionPath,
+  secondaryIssueActionLabel,
   showIssueSheetAction = true,
 }: {
   title: string;
@@ -85,6 +87,8 @@ export function ProductionStageQueue({
   issuePrereqMachineName?: string;
   issueActionPath?: string;
   issueActionLabel?: string;
+  secondaryIssueActionPath?: string;
+  secondaryIssueActionLabel?: string;
   showIssueSheetAction?: boolean;
 }) {
   const navigate = useNavigate();
@@ -596,6 +600,16 @@ export function ProductionStageQueue({
                                 >
                                   {issueActionLabel}
                                 </button>
+                                {secondaryIssueActionPath && secondaryIssueActionLabel ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    title={`${normalizeMachineName(issuePrereqMachineName || "Corrugation Liner")} entry pending`}
+                                    className="bg-slate-200 text-slate-500 px-3 py-1 rounded font-bold text-[11px] uppercase border border-black cursor-not-allowed"
+                                  >
+                                    {secondaryIssueActionLabel}
+                                  </button>
+                                ) : null}
                                 {showIssueSheetAction ? (
                                   <button
                                     type="button"
@@ -612,26 +626,64 @@ export function ProductionStageQueue({
                           return (
                             <div className="flex items-center gap-2 whitespace-nowrap">
                               {!requiresLiner || linerDone ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const date = String(production.date || "").slice(0, 10);
-                                    const params = new URLSearchParams({
-                                      productionId: production.id,
-                                      date,
-                                      lockDate: "1",
-                                      lockJob: "1",
-                                    });
-                                    navigate(`${issueActionPath}?${params.toString()}`);
-                                  }}
-                                  className="bg-indigo-600 text-white px-3 py-1 rounded font-bold text-[11px] uppercase border border-black"
-                                >
-                                  {issueActionLabel}
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const date = String(production.date || "").slice(0, 10);
+                                      const params = new URLSearchParams({
+                                        productionId: production.id,
+                                        date,
+                                        lockDate: "1",
+                                        lockJob: "1",
+                                      });
+                                      navigate(`${issueActionPath}?${params.toString()}`);
+                                    }}
+                                    className="bg-indigo-600 text-white px-3 py-1 rounded font-bold text-[11px] uppercase border border-black"
+                                  >
+                                    {issueActionLabel}
+                                  </button>
+                                  {secondaryIssueActionPath && secondaryIssueActionLabel ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const date = String(production.date || "").slice(0, 10);
+                                        const params = new URLSearchParams({
+                                          productionId: production.id,
+                                          date,
+                                          lockDate: "1",
+                                          lockJob: "1",
+                                        });
+                                        navigate(`${secondaryIssueActionPath}?${params.toString()}`);
+                                      }}
+                                      className="bg-emerald-600 text-white px-3 py-1 rounded font-bold text-[11px] uppercase border border-black"
+                                    >
+                                      {secondaryIssueActionLabel}
+                                    </button>
+                                  ) : null}
+                                </>
                               ) : (
-                                <span className="inline-flex items-center rounded border border-amber-700 bg-amber-50 px-2 py-1 text-[11px] font-black uppercase text-amber-800">
-                                  Add Corrugation Liner entry
-                                </span>
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="bg-slate-200 text-slate-500 px-3 py-1 rounded font-bold text-[11px] uppercase border border-black cursor-not-allowed"
+                                  >
+                                    {issueActionLabel}
+                                  </button>
+                                  {secondaryIssueActionPath && secondaryIssueActionLabel ? (
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className="bg-slate-200 text-slate-500 px-3 py-1 rounded font-bold text-[11px] uppercase border border-black cursor-not-allowed"
+                                    >
+                                      {secondaryIssueActionLabel}
+                                    </button>
+                                  ) : null}
+                                  <span className="inline-flex items-center rounded border border-amber-700 bg-amber-50 px-2 py-1 text-[11px] font-black uppercase text-amber-800">
+                                    Add Corrugation Liner entry
+                                  </span>
+                                </>
                               )}
                               {showIssueSheetAction ? <button
                                 type="button"
@@ -697,8 +749,10 @@ export function ProductionPendingReelIssueScan() {
       enableIssueAction
       hideStatusColumn
       issuePrereqMachineName="Corrugation Liner"
-      issueActionPath="/material-movement/reel-issue-return-scan/form"
-      issueActionLabel="Issue Reel"
+      issueActionPath="/material-movement/reel-issue-return"
+      issueActionLabel="Manual Issue"
+      secondaryIssueActionPath="/material-movement/reel-issue-return-scan/form"
+      secondaryIssueActionLabel="QR Issue"
       showIssueSheetAction={false}
     />
   );
