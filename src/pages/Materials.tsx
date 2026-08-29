@@ -2,13 +2,14 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Layers, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster } from "../types";
+import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting } from "../types";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { fetchNpdItems } from "../lib/npdItems";
+import { getNextPlainNumber } from "../lib/materialNumbering";
 
 type MaterialType = Material["type"];
 type ActiveValue = NonNullable<Material["active"]>;
@@ -62,30 +63,18 @@ function getReelDisplayName(erpCode: string | number, size: number, gsm: number,
   return `${erpCode} - Size: ${size} CM X GSM: ${gsm} X BF: ${bf}   Color - ${color}`;
 }
 
-function getNextNumericErpCode(materials: Material[]) {
-  const numericValues = materials
-    .filter((material) => material.type === "Reel")
-    .map((material) => Number(material.erpCode))
-    .filter((value) => Number.isFinite(value) && value > 0);
-
-  if (numericValues.length === 0) return "1";
-  return String(Math.max(...numericValues) + 1);
+function getNextNumericErpCode(materials: Material[], startNumber: unknown = 1) {
+  return String(getNextPlainNumber(materials.filter((material) => material.type === "Reel").map((material) => material.erpCode), startNumber));
 }
 
-function getNextOtherErpCode(materials: Material[]) {
-  const numericValues = materials
-    .filter((material) => material.type === "Other")
-    .map((material) => Number(material.erpCode))
-    .filter((value) => Number.isFinite(value) && value > 0);
-
-  if (numericValues.length === 0) return "1";
-  return String(Math.max(...numericValues) + 1);
+function getNextOtherErpCode(materials: Material[], startNumber: unknown = 1) {
+  return String(getNextPlainNumber(materials.filter((material) => material.type === "Other").map((material) => material.erpCode), startNumber));
 }
 
-function createInitialFormState(materials: Material[], reelGroupId = "") {
+function createInitialFormState(materials: Material[], reelGroupId = "", reelStartNumber: unknown = 1) {
   return {
     type: "Reel" as MaterialType,
-    erpCode: getNextNumericErpCode(materials),
+    erpCode: getNextNumericErpCode(materials, reelStartNumber),
     name: "",
     uom: "KGS",
     materialGroupId: reelGroupId,
@@ -104,6 +93,7 @@ function createInitialFormState(materials: Material[], reelGroupId = "") {
 export function Materials() {
   const navigate = useNavigate();
   const [materials, setMaterials, isMaterialsLoading] = useData<Material>("materials", []);
+  const [settings] = useData<Setting>("settings", []);
   const [materialGroups, setMaterialGroups] = useData<MaterialGroup>("material-groups", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
   const [units, setUnits] = useData<UnitMaster>("units", []);
@@ -422,6 +412,8 @@ export function Materials() {
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: paginatedMaterials } = useClientPagination(filteredMaterials, 25);
 
   const [formData, setFormData] = useState(() => createInitialFormState(materials, reelGroup?.id || ""));
+  const reelErpStartNumber = settings[0]?.reelErpStartNumber || 1;
+  const otherMaterialErpStartNumber = settings[0]?.otherMaterialErpStartNumber || 1;
 
   const unitOptions = useMemo(
     () =>
@@ -487,7 +479,7 @@ export function Materials() {
   }, [colorFilter, gsmFilter, searchTerm, setPage, sizeFilter, sortDirection, sortKey, typeFilter]);
 
   function resetForm(nextMaterials = materials, nextReelGroupId = reelGroup?.id || "") {
-    setFormData(createInitialFormState(nextMaterials, nextReelGroupId));
+    setFormData(createInitialFormState(nextMaterials, nextReelGroupId, reelErpStartNumber));
     setEditingId(null);
     setIsFormOpen(false);
     setShowGroupModal(false);
@@ -504,7 +496,7 @@ export function Materials() {
         uom: "KGS",
         materialGroupId: reelGroup?.id || current.materialGroupId,
         color: current.color || "",
-        erpCode: editingId ? current.erpCode : getNextNumericErpCode(materials),
+        erpCode: editingId ? current.erpCode : getNextNumericErpCode(materials, reelErpStartNumber),
       };
     }
     return {
@@ -512,7 +504,7 @@ export function Materials() {
       type: "Other" as MaterialType,
       uom: "CM",
       color: "",
-      erpCode: editingId ? current.erpCode : getNextOtherErpCode(materials),
+      erpCode: editingId ? current.erpCode : getNextOtherErpCode(materials, otherMaterialErpStartNumber),
     };
   }
 
@@ -567,7 +559,7 @@ export function Materials() {
 
   function handleOpenNew() {
     setEditingId(null);
-    setFormData(createInitialFormState(materials, reelGroup?.id || ""));
+    setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
     setIsFormOpen(true);
   }
 
@@ -698,10 +690,10 @@ export function Materials() {
     const erpCode = normalizedType === "Reel"
       ? editingId
         ? String(existing?.erpCode ?? formData.erpCode ?? "").trim()
-        : getNextNumericErpCode(materials)
+        : getNextNumericErpCode(materials, reelErpStartNumber)
       : editingId
         ? String(formData.erpCode || "").trim() || String(existing?.erpCode || "").trim()
-        : String(formData.erpCode || "").trim() || getNextOtherErpCode(materials);
+        : String(formData.erpCode || "").trim() || getNextOtherErpCode(materials, otherMaterialErpStartNumber);
     const duplicateErp = materials.find(
       (material) =>
         material.id !== editingId &&
@@ -836,7 +828,7 @@ export function Materials() {
           if (isBulkMaterialRowEmpty(row)) return;
           const type = normalizeBulkMaterialType(row["Type"]);
           if (!type) throw new Error(`Row ${index + 2}: Type must be Reel or Other.`);
-          const erpCode = String(row["ERP Code"] || "").trim() || (type === "Reel" ? getNextNumericErpCode(nextMaterials) : getNextOtherErpCode(nextMaterials));
+          const erpCode = String(row["ERP Code"] || "").trim() || (type === "Reel" ? getNextNumericErpCode(nextMaterials, reelErpStartNumber) : getNextOtherErpCode(nextMaterials, otherMaterialErpStartNumber));
           const itemName = String(row["Item Name"] || "").trim();
           const groupName = String(row["Item Group"] || "").trim();
           const unit = type === "Reel" ? "KGS" : String(row["Unit"] || "CM").trim() || "CM";

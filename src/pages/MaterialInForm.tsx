@@ -33,6 +33,7 @@ import { getGatePassLinesWithReturns } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
 import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/materialInPoMandatory";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
+import { formatOurReelNo as formatReelNo, getNextNumber } from "../lib/materialNumbering";
 
 type PackingSlipDraft = {
   id: string;
@@ -142,10 +143,6 @@ type ReelUploadRow = {
 
 const AI_REEL_COLORS = ["Natural", "LG", "Duplex"] as const;
 
-function formatReelNo(value: number) {
-  return String(value).padStart(5, "0");
-}
-
 function roundCurrencyValue(value: number) {
   return Number(Number(value || 0).toFixed(4));
 }
@@ -171,6 +168,7 @@ export function MaterialInForm() {
   const [purchaseOrderLines, setPurchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [settings] = useData<Setting>("settings", []);
+  const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [invoiceNo, setInvoiceNo] = useState("");
@@ -1081,19 +1079,11 @@ export function MaterialInForm() {
 
   const getAllDraftSlips = () => Object.values(packingSlipDrafts).flat();
 
-  const getMaxOurReelNoNumber = () => {
-    const persistedNumbers = packingSlips
-      .map((row) => row.ourReelNo)
-      .map((value) => Number(String(value).replace(/\D/g, "")))
-      .filter((value) => Number.isFinite(value));
-    const draftNumbers = getAllDraftSlips()
-      .map((row) => Number(String(row.ourReelNo).replace(/\D/g, "")))
-      .filter((value) => Number.isFinite(value));
-    return Math.max(0, ...persistedNumbers, ...draftNumbers);
-  };
-
   const getNextOurReelNo = () => {
-    return formatReelNo(getMaxOurReelNoNumber() + 1);
+    return formatReelNo(getNextNumber([
+      ...packingSlips.map((row) => row.ourReelNo),
+      ...getAllDraftSlips().map((row) => row.ourReelNo),
+    ], ourReelNoStartNumber));
   };
 
   const syncReelLineTotals = (lineId: string, nextDrafts: PackingSlipDraft[]) => {
@@ -1434,7 +1424,7 @@ export function MaterialInForm() {
       .flat()
       .map((row) => Number(String(row.ourReelNo).replace(/\D/g, "")))
       .filter((value) => Number.isFinite(value));
-    let nextReelNumber = Math.max(0, ...persistedNumbers, ...existingDraftNumbers);
+    let nextReelNumber = getNextNumber([...persistedNumbers, ...existingDraftNumbers], ourReelNoStartNumber) - 1;
 
     const nextLines = [...lines];
 
@@ -1591,7 +1581,7 @@ export function MaterialInForm() {
           .map((row) => Number(String(row.ourReelNo).replace(/\D/g, "")))
           .filter((value) => Number.isFinite(value));
         
-        let currentMax = Math.max(0, ...nextReelNo, ...draftNumbers);
+        let currentMax = getNextNumber([...nextReelNo, ...draftNumbers], ourReelNoStartNumber) - 1;
 
         const poOptions = getApprovedPoOptionsForMaterial(line.itemId);
 
@@ -2063,7 +2053,10 @@ export function MaterialInForm() {
     setExchangeRate(nextExchangeRate as number | "");
 
     const nextPackingDrafts: Record<string, PackingSlipDraft[]> = {};
-    let nextOurReelNo = getMaxOurReelNoNumber();
+    let nextOurReelNo = getNextNumber([
+      ...packingSlips.map((row) => row.ourReelNo),
+      ...getAllDraftSlips().map((row) => row.ourReelNo),
+    ], ourReelNoStartNumber) - 1;
     const nextLines = aiLineMatches.map((match) => {
       const material = match.material as Material;
       const extractedReels = Array.isArray(match.line.reels)

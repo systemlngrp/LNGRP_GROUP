@@ -23,6 +23,7 @@ import type {
   MaterialReturnReelLine,
   Production,
   ProductionProcessing,
+  Setting,
 } from "../types";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -108,6 +109,8 @@ export function ReelIssueReturnScan() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [materials] = useData<Material>("materials", []);
+  const [settings] = useData<Setting>("settings", []);
+  const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [productions, setProductions] = useData<Production>("productions", []);
@@ -247,7 +250,9 @@ export function ReelIssueReturnScan() {
       originalSlip.materialId,
       packingSlips,
       materialIssueReelLines,
-      materialReturnReelLines
+      materialReturnReelLines,
+      materials,
+      ourReelNoStartNumber
     ).find((slip) => slip.id === originalSlip.id);
 
     if (!availableSlip || Number(availableSlip.weightKg || 0) <= 0) {

@@ -6,6 +6,7 @@ import type {
   MaterialReturnReelLine,
   Supplier,
 } from "../types";
+import { formatOurReelNo, getNextNumber } from "./materialNumbering";
 
 export type ReelStockCalculationRow = {
   slipId: string;
@@ -41,6 +42,7 @@ type BuildReelStockRowsArgs = {
   includeMaterialIn?: (entry: MaterialIn) => boolean;
   includeIssueLine?: (line: MaterialIssueReelLine) => boolean;
   includeReturnLine?: (line: MaterialReturnReelLine) => boolean;
+  ourReelNoStartNumber?: number;
 };
 
 function round2(value: number) {
@@ -75,16 +77,14 @@ export function buildReelStockRows({
   includeMaterialIn = () => true,
   includeIssueLine = () => true,
   includeReturnLine = () => true,
+  ourReelNoStartNumber = 1,
 }: BuildReelStockRowsArgs): ReelStockCalculationRow[] {
   const materialMap = new Map(materials.map((material) => [material.id, material]));
   const materialInMap = new Map(materialIn.filter(includeMaterialIn).map((entry) => [entry.id, entry]));
   const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
   const filteredIssueLines = issueReelLines.filter(includeIssueLine);
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
-  const lastExistingReelNo = packingSlips.reduce((max, slip) => {
-    const reelNo = Number(String(slip.ourReelNo || "").trim());
-    return Number.isFinite(reelNo) && reelNo > max ? reelNo : max;
-  }, 0);
+  const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
 
   const openingRows: ReelStockCalculationRow[] = materials
     .filter((material) => material.type === "Reel" && Number(material.openingQty || 0) > 0)
@@ -106,7 +106,7 @@ export function buildReelStockRows({
         materialId: material.id,
         mrrDate: "2026-06-06",
         mrrNo: "1",
-        ourReelNo: String(lastExistingReelNo + index + 1),
+        ourReelNo: formatOurReelNo(firstOpeningReelNo + index),
         erp: String(material.erpCode || ""),
         itemName: String(material.name || ""),
         supplierName: "-",

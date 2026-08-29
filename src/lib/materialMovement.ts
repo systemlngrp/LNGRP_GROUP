@@ -8,6 +8,7 @@ import {
   MaterialReturnReelLine,
   Production,
 } from "../types";
+import { formatOurReelNo, getNextNumber } from "./materialNumbering";
 
 export function round2(value: number) {
   return Number((Number(value) || 0).toFixed(2));
@@ -94,13 +95,11 @@ function buildJobReturnableWeights(
 
 export function buildOpeningReelPackingSlips(
   materials: Pick<Material, "id" | "type" | "openingQty">[],
-  packingSlips: MaterialInPackingSlip[]
+  packingSlips: MaterialInPackingSlip[],
+  ourReelNoStartNumber: unknown = 1
 ) {
   const persistedIds = new Set(packingSlips.map((slip) => slip.id));
-  const lastExistingReelNo = packingSlips.reduce((max, slip) => {
-    const reelNo = Number(String(slip.ourReelNo || "").trim());
-    return Number.isFinite(reelNo) && reelNo > max ? reelNo : max;
-  }, 0);
+  const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
 
   return materials
     .filter(
@@ -117,7 +116,7 @@ export function buildOpeningReelPackingSlips(
       materialLineId: material.id,
       materialId: material.id,
       supplierReelNo: "OPENING",
-      ourReelNo: String(lastExistingReelNo + index + 1),
+      ourReelNo: formatOurReelNo(firstOpeningReelNo + index),
       weightKg: round2(Number(material.openingQty || 0)),
     }));
 }
@@ -150,10 +149,11 @@ export function getAvailableReelPackingSlips(
   packingSlips: MaterialInPackingSlip[],
   issueReelLines: MaterialIssueReelLine[],
   returnReelLines: MaterialReturnReelLine[],
-  materials: Pick<Material, "id" | "type" | "openingQty">[] = []
+  materials: Pick<Material, "id" | "type" | "openingQty">[] = [],
+  ourReelNoStartNumber: unknown = 1
 ) {
   const netIssuedBySlip = buildSlipNetIssuedWeights(issueReelLines, returnReelLines);
-  const allSlips = [...packingSlips, ...buildOpeningReelPackingSlips(materials, packingSlips)];
+  const allSlips = [...packingSlips, ...buildOpeningReelPackingSlips(materials, packingSlips, ourReelNoStartNumber)];
   return allSlips.flatMap((slip) => {
     if (slip.materialId !== materialId) return [];
     const baseWeight = Number(slip.weightKg || 0);

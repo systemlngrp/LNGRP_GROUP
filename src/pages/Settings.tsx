@@ -721,6 +721,9 @@ export function SettingsPage() {
         id: currentSetting?.id || crypto.randomUUID(),
         reelAsPerCalculation: currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value,
         reelTransferWindowHours: Number(currentSetting?.reelTransferWindowHours || 12),
+        reelErpStartNumber: Number(currentSetting?.reelErpStartNumber || 1),
+        ourReelNoStartNumber: Number(currentSetting?.ourReelNoStartNumber || 1),
+        otherMaterialErpStartNumber: Number(currentSetting?.otherMaterialErpStartNumber || 1),
         flapAsPerCalculation: currentSetting?.flapAsPerCalculation || FLAP_FORMULA_OPTIONS[0].value,
         cuttingSizeAsPerCalculation: currentSetting?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_OPTIONS[0].value,
         gsmAsPerCalculation: currentSetting?.gsmAsPerCalculation || GSM_FORMULA_OPTIONS[0].value,
@@ -1733,6 +1736,34 @@ export function SettingsPage() {
           <p className="text-sm text-black leading-6">
             Choose which formula the Production Form should use to calculate <span className="font-bold">Reel As per Calculation</span>.
           </p>
+        </div>
+
+        <div className="rounded border-2 border-black bg-slate-50 p-4 md:p-5">
+          <h3 className="mb-1 text-sm font-black uppercase text-black">Material Numbering</h3>
+          <p className="mb-4 text-sm text-slate-700">Start values are minimums. Existing higher numbers always continue with the next number.</p>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {([
+              ["reelErpStartNumber", "Reel ERP Start Number"],
+              ["ourReelNoStartNumber", "Our Reel No. Start Number"],
+              ["otherMaterialErpStartNumber", "Other Material ERP Start Number"],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="space-y-2">
+                <span className="block text-xs font-black uppercase tracking-wide text-black">{label}</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={Number(currentSetting?.[key] || 1)}
+                  onChange={(event) => {
+                    const value = Math.floor(Number(event.target.value));
+                    if (Number.isFinite(value) && value > 0) void handleChange({ [key]: value });
+                  }}
+                  disabled={loading || saving}
+                  className="w-full rounded border-2 border-black bg-white p-2 text-black focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+                />
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-col space-y-2">

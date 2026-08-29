@@ -15,6 +15,7 @@ import {
   MaterialReturnReelLine,
   Production,
   ProductionProcessing,
+  Setting,
 } from "../types";
 import { generateTransactionNo } from "../lib/serial";
 import { Select } from "../components/Select";
@@ -76,6 +77,8 @@ export function ReelIssueReturnForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [materials] = useData<Material>("materials", []);
+  const [settings] = useData<Setting>("settings", []);
+  const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [materialGroups] = useData<MaterialGroup>("material-groups", []);
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [materialIn] = useData<MaterialIn>("material-in", []);
@@ -131,7 +134,7 @@ export function ReelIssueReturnForm() {
       .flat()
       .forEach((slipId) => {
         const slip = packingSlips.find((row) => row.id === slipId) ||
-          getAvailableReelPackingSlips(slipId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials)
+          getAvailableReelPackingSlips(slipId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
             .find((row) => row.id === slipId);
         if (!slip) return;
         const weight = Number(slip.weightKg || 0);
@@ -280,7 +283,7 @@ export function ReelIssueReturnForm() {
         .filter(([lineId]) => lineId !== currentLineId)
         .flatMap(([, ids]) => ids)
     );
-    return getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials).filter(
+    return getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber).filter(
       (slip) => !selectedElsewhere.has(slip.id)
     );
   };
@@ -400,7 +403,7 @@ export function ReelIssueReturnForm() {
 
   const computeIssueLineWeight = (line: ReelLineDraft) => {
     const ids = selectedIssueReels[line.id] || [];
-    return getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials)
+    return getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
       .filter((slip) => ids.includes(slip.id))
       .reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
   };
@@ -468,7 +471,7 @@ export function ReelIssueReturnForm() {
             const issueLineId = crypto.randomUUID();
             const totalWeight = computeIssueLineWeight(line);
             const reelIds = selectedIssueReels[line.id] || [];
-            const totalValue = getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials)
+            const totalValue = getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
               .filter((slip) => reelIds.includes(slip.id))
               .reduce((sum, slip) => sum + Number(slip.weightKg || 0) * getReelInvoiceRate(slip.id), 0);
             const savedAmount = Number(totalValue.toFixed(2));
@@ -487,7 +490,7 @@ export function ReelIssueReturnForm() {
               updatedBy: "System User",
               updateTimestamp: timestamp,
             });
-            getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials)
+            getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
               .filter((slip) => reelIds.includes(slip.id))
               .forEach((slip) => {
                 createdReelLines.push({

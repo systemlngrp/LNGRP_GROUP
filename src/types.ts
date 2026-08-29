@@ -1218,6 +1218,9 @@ export interface Setting {
   id: string;
   reelAsPerCalculation?: string;
   reelTransferWindowHours?: number;
+  reelErpStartNumber?: number;
+  ourReelNoStartNumber?: number;
+  otherMaterialErpStartNumber?: number;
   flapAsPerCalculation?: string;
   cuttingSizeAsPerCalculation?: string;
   gsmAsPerCalculation?: string;
