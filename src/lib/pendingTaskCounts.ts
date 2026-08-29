@@ -31,7 +31,7 @@ import { parseMandatoryMachinesByType } from "./mandatoryMachines";
 import { buildProductionCorrugatedSheetUsageMap, buildProductionMaterialUsageMap, getProductionActualPaperUsed, hasProductionCorrugatedSheetUsage } from "./productionMaterialUsage";
 import { getRequiredMachinesForProduction } from "./productionType";
 import { normalizeMachineName } from "./productionMachineNames";
-import { isMachineStepFull } from "./productionProcessingProgress";
+import { getCurrentProcessingMachine, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
 import { isProductionPendingConsumption, isProductionPendingFFG, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
@@ -323,13 +323,10 @@ function getPendingMachineProcessingCount(
             .filter(Boolean)
         )
       );
+      const currentMachineName = getCurrentProcessingMachine(processing, production.id, requiredMachines);
       const pendingForProduction = requiredMachines.filter((machineName) => {
         const normalizedRequiredMachine = normalizeMachineName(machineName);
-        if (
-          normalizedRequiredMachine === "Printing" &&
-          requiredMachines.includes("Corrugation Liner") &&
-          !isMachineStepFull(processing, production.id, "Corrugation Liner")
-        ) return false;
+        if (normalizedRequiredMachine !== currentMachineName) return false;
         if (normalizedMachineNameFilter && normalizedRequiredMachine !== normalizedMachineNameFilter) return false;
         const machine = machines.find((m) => normalizeMachineName(m.name) === normalizedRequiredMachine);
         if (!machine || !visibleMachineIds.has(machine.id)) return false;

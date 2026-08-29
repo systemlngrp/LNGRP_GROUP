@@ -26,3 +26,16 @@ export function isMachineStepFull(
       isProcessingStepFull(entry)
   );
 }
+
+export function getCurrentProcessingMachine(
+  processing: ProductionProcessing[],
+  productionId: string,
+  requiredMachines: string[]
+) {
+  const orderedMachines = Array.from(
+    new Set(requiredMachines.map((machineName) => normalizeMachineName(machineName)).filter(Boolean))
+  );
+  return orderedMachines.find(
+    (machineName) => !isMachineStepFull(processing, productionId, machineName)
+  ) || "";
+}

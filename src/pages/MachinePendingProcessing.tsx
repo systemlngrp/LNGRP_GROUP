@@ -10,7 +10,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction } from "../lib/productionType";
 import { normalizeMachineName } from "../lib/productionMachineNames";
-import { isMachineStepFull } from "../lib/productionProcessingProgress";
+import { getCurrentProcessingMachine, isMachineStepFull } from "../lib/productionProcessingProgress";
 
 interface PendingMachineJob {
   production: Production;
@@ -114,14 +114,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             .filter(Boolean)
         )
       );
+      const currentMachineName = getCurrentProcessingMachine(processing, p.id, requiredMachines);
       
       requiredMachines.forEach(machineName => {
         const normalizedRequiredMachine = normalizeMachineName(machineName);
-        if (
-          normalizedRequiredMachine === "Printing" &&
-          requiredMachines.includes("Corrugation Liner") &&
-          !isMachineStepFull(processing, p.id, "Corrugation Liner")
-        ) return;
+        if (normalizedRequiredMachine !== currentMachineName) return;
         if (fixedNormalizedMachineName && normalizedRequiredMachine !== fixedNormalizedMachineName) return;
         const machine = machines.find(m => normalizeMachineName(m.name) === normalizedRequiredMachine);
         if (!machine) return;

@@ -6312,7 +6312,12 @@ const createHandlers = (tableName) => {
           if (!usesPartFull) {
             delete data.completionStatus;
           }
-          if (data.machineName === "Printing") {
+          const [existingProcessingRows] = await db.query(
+            "SELECT `id` FROM `production_processing` WHERE `id` = ? LIMIT 1",
+            [String(data.id || "")]
+          );
+          const isNewProcessingEntry = !existingProcessingRows[0]?.id;
+          if (isNewProcessingEntry) {
             const [productionRows] = await db.query(
               `SELECT p.itemSource, n.boxType FROM \`productions\` p LEFT JOIN \`npd\` n ON n.id = p.itemId WHERE p.id = ? LIMIT 1`,
               [data.productionId]
@@ -6323,18 +6328,32 @@ const createHandlers = (tableName) => {
             const source = String(productionRow?.itemSource || "FG").trim().toUpperCase();
             const typeName = String(productionRow?.boxType || "").trim();
             const mappingKey = Object.keys(mandatoryMapping).find((key) => key.toUpperCase() === typeName.toUpperCase());
-            const requiredMachines = source === "PHP" || source === "PLATE" ? ["Corrugation Liner", "Printing"] : mappingKey ? mandatoryMapping[mappingKey] : [];
-            if (requiredMachines.includes("Corrugation Liner") && requiredMachines.includes("Printing")) {
-              const [linerRows] = await db.query(
-                `SELECT completionStatus FROM \`production_processing\` WHERE productionId = ? AND machineName IN ('Corrugation Liner', 'Corrugation Linear')`,
+            let requiredMachines = mappingKey ? mandatoryMapping[mappingKey] : [];
+            if (source === "PHP" || source === "PLATE") {
+              const [allMachineRows] = await db.query("SELECT `name` FROM `machines`");
+              requiredMachines = allMachineRows.map((row) => normalizeMachineName(String(row.name || "")));
+            }
+            requiredMachines = Array.from(new Set(requiredMachines.map((name) => normalizeMachineName(name)).filter(Boolean)));
+            if (requiredMachines.includes(data.machineName)) {
+              const [stepRows] = await db.query(
+                `SELECT machineName, completionStatus FROM \`production_processing\` WHERE productionId = ?`,
                 [data.productionId]
               );
-              const linerIsFull = linerRows.some((row) => {
+              const completedMachines = /* @__PURE__ */ new Set();
+              stepRows.forEach((row) => {
+                const machineName = normalizeMachineName(String(row.machineName || ""));
+                const usesStepStatus = machineName === "Corrugation Liner" || machineName === "Printing";
                 const status = String(row.completionStatus || "").trim();
-                return !status || status === "Full";
+                if (!usesStepStatus || !status || status === "Full") completedMachines.add(machineName);
               });
-              if (!linerIsFull) {
-                return res.status(409).json({ error: "Complete Corrugation Liner as Full before reporting Printing." });
+              const currentMachine = requiredMachines.find((machineName) => !completedMachines.has(machineName)) || "";
+              if (currentMachine && data.machineName !== currentMachine) {
+                return res.status(409).json({
+                  error: `Complete ${currentMachine} before reporting ${data.machineName}.`
+                });
+              }
+              if (!currentMachine) {
+                return res.status(409).json({ error: "All configured machine steps are already complete for this job." });
               }
             }
           }
