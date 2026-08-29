@@ -3471,6 +3471,36 @@ function normalizeInvoiceSeriesPrefix(value: unknown) {
   return prefix === "LNPI" ? "LNGRP" : prefix;
 }
 
+async function ensureUniqueMaterialErpIndex(db: mysql.Pool, database: string) {
+  const indexName = "uq_materials_erpCode";
+  const [indexes] = await db.query(
+    "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'materials' AND INDEX_NAME = ?",
+    [database, indexName]
+  );
+  if ((indexes as any[]).length > 0) return;
+
+  const [duplicates] = await db.query(`
+    SELECT CAST(TRIM(erpCode) AS UNSIGNED) AS normalizedErp, COUNT(*) AS duplicateCount
+    FROM materials
+    WHERE TRIM(COALESCE(erpCode, '')) REGEXP '^[0-9]+$'
+      AND CAST(TRIM(erpCode) AS UNSIGNED) > 0
+    GROUP BY CAST(TRIM(erpCode) AS UNSIGNED)
+    HAVING COUNT(*) > 1
+    LIMIT 10
+  `);
+  if ((duplicates as any[]).length > 0) {
+    console.error("[DB] Cannot add unique material ERP index; duplicate normalized ERP numbers exist:", duplicates);
+    return;
+  }
+
+  try {
+    await db.query(`CREATE UNIQUE INDEX \`${indexName}\` ON \`materials\` (\`erpCode\`)`);
+    console.log(`[DB] Added unique index ${indexName} on materials(erpCode)`);
+  } catch (err) {
+    console.warn(`[DB] Could not ensure unique material ERP index:`, (err as Error).message);
+  }
+}
+
 function getShortFinancialYear(dateStr?: string) {
   const date = dateStr ? new Date(dateStr) : new Date();
   if (Number.isNaN(date.getTime())) return "";
@@ -6294,6 +6324,8 @@ await db.query(`
 
       await dropRemovedFirmScopeColumns(db, database);
 
+      await ensureUniqueMaterialErpIndex(db, database);
+
       for (const tableName of FIRM_SCOPED_TABLES) {
         try {
           await ensureColumnExists(db, database, tableName, "firmId", "VARCHAR(36)");
@@ -6903,6 +6935,29 @@ const createHandlers = (tableName: string) => {
 
         if (tableName === "materials") {
           const normalizedType = String(data.type || "").trim();
+          const rawErpCode = String(data.erpCode ?? "").trim();
+          if (!/^\d+$/.test(rawErpCode)) {
+            return res.status(400).json({ error: "ERP Code is required and must be a positive whole number." });
+          }
+          const numericErpCode = Number(rawErpCode);
+          if (!Number.isSafeInteger(numericErpCode) || numericErpCode <= 0) {
+            return res.status(400).json({ error: "ERP Code is required and must be a positive whole number." });
+          }
+          data.erpCode = String(numericErpCode);
+          const [duplicateMaterialRows] = await db.query(
+            `SELECT id, name FROM \`materials\`
+             WHERE TRIM(COALESCE(erpCode, '')) REGEXP '^[0-9]+$'
+               AND CAST(TRIM(erpCode) AS UNSIGNED) = ?
+               AND id <> ?
+             LIMIT 1`,
+            [numericErpCode, String(data.id || "")]
+          );
+          const duplicateMaterial = (duplicateMaterialRows as any[])[0];
+          if (duplicateMaterial?.id) {
+            return res.status(409).json({
+              error: `ERP Code ${data.erpCode} already exists for ${String(duplicateMaterial.name || "another material")}.`,
+            });
+          }
           if (normalizedType === "Reel") {
             const normalizedColor = String(data.color || "").trim();
             if (!normalizedColor) {

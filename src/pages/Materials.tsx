@@ -43,6 +43,13 @@ function normalizeText(value: string | number | undefined | null) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normalizeMaterialErp(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (!/^\d+$/.test(text)) return "";
+  const numeric = Number(text);
+  return Number.isSafeInteger(numeric) && numeric > 0 ? String(numeric) : "";
+}
+
 function parseNumericInput(value: string) {
   if (!value.trim()) return "";
   const numeric = Number(value);
@@ -64,11 +71,11 @@ function getReelDisplayName(erpCode: string | number, size: number, gsm: number,
 }
 
 function getNextNumericErpCode(materials: Material[], startNumber: unknown = 1) {
-  return String(getNextPlainNumber(materials.filter((material) => material.type === "Reel").map((material) => material.erpCode), startNumber));
+  return String(getNextPlainNumber(materials.map((material) => material.erpCode), startNumber));
 }
 
 function getNextOtherErpCode(materials: Material[], startNumber: unknown = 1) {
-  return String(getNextPlainNumber(materials.filter((material) => material.type === "Other").map((material) => material.erpCode), startNumber));
+  return String(getNextPlainNumber(materials.map((material) => material.erpCode), startNumber));
 }
 
 function createInitialFormState(materials: Material[], reelGroupId = "", reelStartNumber: unknown = 1) {
@@ -687,21 +694,18 @@ export function Materials() {
       return;
     }
     const existing = editingId ? materials.find(m => m.id === editingId) : null;
-    const erpCode = normalizedType === "Reel"
-      ? editingId
-        ? String(existing?.erpCode ?? formData.erpCode ?? "").trim()
-        : getNextNumericErpCode(materials, reelErpStartNumber)
-      : editingId
-        ? String(formData.erpCode || "").trim() || String(existing?.erpCode || "").trim()
-        : String(formData.erpCode || "").trim() || getNextOtherErpCode(materials, otherMaterialErpStartNumber);
+    const erpCode = normalizeMaterialErp(formData.erpCode);
+    if (!erpCode) {
+      alert("ERP Code is required and must be a positive whole number.");
+      return;
+    }
     const duplicateErp = materials.find(
       (material) =>
         material.id !== editingId &&
-        material.type === normalizedType &&
-        normalizeText(material.erpCode) === normalizeText(erpCode)
+        normalizeMaterialErp(material.erpCode) === erpCode
     );
     if (duplicateErp) {
-      alert(`ERP Code ${erpCode} already exists for another ${normalizedType} item.`);
+      alert(`ERP Code ${erpCode} already exists for ${duplicateErp.name || "another material"}.`);
       return;
     }
     setIsSubmitting(true);
@@ -737,6 +741,7 @@ export function Materials() {
       resetForm(nextMaterials, reelGroupId);
     } catch (error) {
       console.error("Failed to save material:", error);
+      alert(error instanceof Error ? error.message : "Failed to save material.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1115,22 +1120,28 @@ export function Materials() {
                 </select>
               </div>
 
-              {formData.type === "Reel" ? (
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">
+                  ERP Code <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  required
+                  value={formData.erpCode}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, erpCode: e.target.value }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                />
+              </div>
+
+              {formData.type === "Reel" && (
                 <div className="space-y-2">
                   <label className="text-blue-700 font-bold">Unit</label>
                   <input
                     value="KGS"
                     readOnly
                     className="w-full rounded border-2 border-black bg-slate-100 px-4 py-3 text-black focus:outline-none"
-                  />
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <label className="text-blue-700 font-bold">ERP Code</label>
-                  <input
-                    value={formData.erpCode}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, erpCode: e.target.value }))}
-                    className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                   />
                 </div>
               )}
