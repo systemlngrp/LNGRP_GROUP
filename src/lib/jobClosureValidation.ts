@@ -2,6 +2,7 @@ import type { Machine, Production, ProductionProcessing } from "../types";
 import type { MandatoryMachinesByType } from "./mandatoryMachines";
 import { getProductionEffectiveType, getRequiredMachinesForProduction } from "./productionType";
 import { normalizeMachineName } from "./productionMachineNames";
+import { isProcessingStepFull, usesPartFullProgress } from "./productionProcessingProgress";
 
 export type JobClosureStatus = {
   canClose: boolean;
@@ -85,6 +86,12 @@ export function buildJobClosureStatusMap({
       if (incompleteFields.length > 0 || !stepRecords.every(isProcessingEntryComplete)) {
         missing.push(machineName);
         reasons.push(`Incomplete processing entry: ${machineName} (${incompleteFields.join(", ")})`);
+        return;
+      }
+
+      if (usesPartFullProgress(machineName) && !stepRecords.some(isProcessingStepFull)) {
+        missing.push(machineName);
+        reasons.push(`Processing step is only Part: ${machineName}`);
         return;
       }
 

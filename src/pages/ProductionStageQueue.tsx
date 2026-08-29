@@ -35,6 +35,7 @@ import {
 import { isProductionPendingConsumption, isProductionPendingFFG } from "../lib/productionStageFilters";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
+import { isMachineStepFull, usesPartFullProgress } from "../lib/productionProcessingProgress";
 
 type QueueMode = "consumption" | "ffg";
 
@@ -303,6 +304,9 @@ export function ProductionStageQueue({
       )
     )
       .filter((machineName) => {
+        if (usesPartFullProgress(machineName)) {
+          return !isMachineStepFull(processing, productionId, machineName);
+        }
         const reportedQty = processing
           .filter(
             (entry) =>
@@ -571,11 +575,7 @@ export function ProductionStageQueue({
                         {(() => {
                           const normalizedRequired = requiredMachines.map((m) => normalizeMachineName(m));
                           const requiresLiner = normalizedRequired.includes("Corrugation Liner");
-                          const linerDone = processing.some(
-                            (entry) =>
-                              entry.productionId === production.id &&
-                              normalizeMachineName(entry.machineName) === "Corrugation Liner"
-                          );
+                          const linerDone = isMachineStepFull(processing, production.id, "Corrugation Liner");
 
                           const prereqMissing = !!issuePrereqMachineName && !(prereqQty > 0);
 

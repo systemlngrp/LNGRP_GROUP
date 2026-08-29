@@ -31,6 +31,7 @@ import { parseMandatoryMachinesByType } from "./mandatoryMachines";
 import { buildProductionCorrugatedSheetUsageMap, buildProductionMaterialUsageMap, getProductionActualPaperUsed, hasProductionCorrugatedSheetUsage } from "./productionMaterialUsage";
 import { getRequiredMachinesForProduction } from "./productionType";
 import { normalizeMachineName } from "./productionMachineNames";
+import { isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
 import { isProductionPendingConsumption, isProductionPendingFFG, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
@@ -324,14 +325,19 @@ function getPendingMachineProcessingCount(
       );
       const pendingForProduction = requiredMachines.filter((machineName) => {
         const normalizedRequiredMachine = normalizeMachineName(machineName);
+        if (
+          normalizedRequiredMachine === "Printing" &&
+          requiredMachines.includes("Corrugation Liner") &&
+          !isMachineStepFull(processing, production.id, "Corrugation Liner")
+        ) return false;
         if (normalizedMachineNameFilter && normalizedRequiredMachine !== normalizedMachineNameFilter) return false;
         const machine = machines.find((m) => normalizeMachineName(m.name) === normalizedRequiredMachine);
         if (!machine || !visibleMachineIds.has(machine.id)) return false;
         const reportedForThisMachine = processing
-          .filter((row) => row.productionId === production.id && row.machineId === machine.id)
+          .filter((row) => row.productionId === production.id && normalizeMachineName(row.machineName) === normalizedRequiredMachine)
           .reduce((sum, row) => sum + Number(row.qty || 0), 0);
         const pending = Math.max(0, Number(production.qty || 0) - reportedForThisMachine);
-        return reportedForThisMachine <= 0 && pending > 0;
+        return !isMachineStepFull(processing, production.id, normalizedRequiredMachine) && (pending > 0 || reportedForThisMachine > 0);
       }).length;
       return count + pendingForProduction;
     }, 0);

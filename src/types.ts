@@ -508,6 +508,7 @@ export interface ProductionProcessing {
   operatorId: string;
   operatorName: string;
   date: string;
+  completionStatus?: "Part" | "Full";
   updatedBy?: string;
   updateTimestamp?: string;
   itemName?: string;

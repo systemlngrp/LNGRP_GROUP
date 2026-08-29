@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction } from "../lib/productionType";
 import { normalizeMachineName } from "../lib/productionMachineNames";
+import { isMachineStepFull } from "../lib/productionProcessingProgress";
 
 interface PendingMachineJob {
   production: Production;
@@ -80,6 +81,14 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
   const machineGroups = useMemo(() => {
     const groups: Map<string, MachineGroup> = new Map();
+    const machineSequence = new Map<string, number>();
+    Object.values(mandatoryMachinesMapping).forEach((machineNames) => {
+      machineNames.forEach((machineName, index) => {
+        const normalized = normalizeMachineName(machineName);
+        const current = machineSequence.get(normalized);
+        if (current == null || index < current) machineSequence.set(normalized, index);
+      });
+    });
 
     // Initialize groups for relevant machines
     machines.forEach(m => {
@@ -108,18 +117,24 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       
       requiredMachines.forEach(machineName => {
         const normalizedRequiredMachine = normalizeMachineName(machineName);
+        if (
+          normalizedRequiredMachine === "Printing" &&
+          requiredMachines.includes("Corrugation Liner") &&
+          !isMachineStepFull(processing, p.id, "Corrugation Liner")
+        ) return;
         if (fixedNormalizedMachineName && normalizedRequiredMachine !== fixedNormalizedMachineName) return;
         const machine = machines.find(m => normalizeMachineName(m.name) === normalizedRequiredMachine);
         if (!machine) return;
         if (filterMachineId && machine.id !== filterMachineId) return;
 
-        const reportedForThisMachine = processing
-          .filter(pr => pr.productionId === p.id && pr.machineId === machine.id)
+        const machineProcessing = processing
+          .filter(pr => pr.productionId === p.id && normalizeMachineName(pr.machineName) === normalizedRequiredMachine);
+        const reportedForThisMachine = machineProcessing
           .reduce((sum, pr) => sum + Number(pr.qty || 0), 0);
-        
+        const stepIsFull = isMachineStepFull(processing, p.id, normalizedRequiredMachine);
         const pending = Math.max(0, Number(p.qty || 0) - reportedForThisMachine);
 
-        if (reportedForThisMachine <= 0 && pending > 0) {
+        if (!stepIsFull && (pending > 0 || reportedForThisMachine > 0)) {
           const group = groups.get(machine.id);
           if (group) {
             group.jobs.push({
@@ -152,7 +167,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         }).sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }))
       }))
       .filter(g => g.jobs.length > 0)
-      .sort((a, b) => a.machineName.localeCompare(b.machineName));
+      .sort((a, b) => {
+        const aSequence = machineSequence.get(normalizeMachineName(a.machineName)) ?? Number.MAX_SAFE_INTEGER;
+        const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
+        return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
+      });
   }, [productions, findItemAcrossSources, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName]);
 
   const companyOptions = useMemo(() => {
@@ -296,7 +315,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                                     lockJob: "1",
                                     jobNo: String(job.production.jobCardNo || job.production.transactionNo || ""),
                                     machineName: group.machineName,
-                                    qty: String(job.pendingQty),
+                                    ...(job.pendingQty > 0 ? { qty: String(job.pendingQty) } : {}),
                                     shift,
                                     erp: job.erpCode,
                                     itemName: job.itemName,

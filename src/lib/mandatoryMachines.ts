@@ -20,7 +20,6 @@ export function parseMandatoryMachinesByType(setting?: Setting | null): Mandator
       const key = typeName.trim();
       if (!key) continue;
       normalized[key] = Array.from(new Set(machines));
-      normalized[key.toUpperCase()] = normalized[key];
     }
     return normalized;
   } catch {
@@ -31,5 +30,8 @@ export function parseMandatoryMachinesByType(setting?: Setting | null): Mandator
 export function getRequiredMachinesForType(mapping: MandatoryMachinesByType, typeName?: string | null) {
   const key = String(typeName || "").trim();
   if (!key) return [];
-  return mapping[key] || mapping[key.toUpperCase()] || [];
+  const exact = mapping[key];
+  if (exact) return exact;
+  const matchingKey = Object.keys(mapping).find((candidate) => candidate.toUpperCase() === key.toUpperCase());
+  return matchingKey ? mapping[matchingKey] : [];
 }

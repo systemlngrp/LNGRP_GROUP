@@ -6,6 +6,7 @@ import { TableControls } from "../components/TableControls";
 import { useNavigate } from "react-router-dom";
 import { formatDate } from "../lib/serial";
 import { normalizeMachineName } from "../lib/productionMachineNames";
+import { usesPartFullProgress } from "../lib/productionProcessingProgress";
 import { useAuth } from "../auth/AuthContext";
 
 type EditDraft = {
@@ -99,6 +100,9 @@ export function ProductionProcessingMaster() {
               jobNo: selectedProduction.jobCardNo || selectedProduction.transactionNo,
               machineId: selectedMachine.id,
               machineName: normalizedMachineName,
+              ...(usesPartFullProgress(normalizedMachineName)
+                ? { completionStatus: item.completionStatus || "Full" as const }
+                : {}),
               shift: editDraft.shift as "Day" | "Night",
               qty: qtyNumber,
               erp: selectedProduction.erpCode || item.erp,

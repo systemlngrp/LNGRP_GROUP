@@ -8,6 +8,7 @@ import { normalizeMachineName } from "../lib/productionMachineNames";
 import { MandatoryLabel, MandatoryLegend } from "../components/Mandatory";
 import { isMandatoryField } from "../lib/mandatoryFields";
 import { useAuth } from "../auth/AuthContext";
+import { usesPartFullProgress } from "../lib/productionProcessingProgress";
 
 type ShiftValue = "" | "Day" | "Night";
 
@@ -41,6 +42,8 @@ function LockedReportForm() {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [shift, setShift] = useState<ShiftValue>((initialShift as ShiftValue) || "");
   const [qty, setQty] = useState(initialQty);
+  const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
+  const requiresCompletionStatus = usesPartFullProgress(machineName);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,6 +78,7 @@ function LockedReportForm() {
       operatorId: auditUser.id,
       operatorName: auditUser.name,
       date,
+      ...(requiresCompletionStatus ? { completionStatus } : {}),
       updatedBy: auditUser.name,
       updateTimestamp: new Date().toISOString(),
       itemName: itemName || undefined,
@@ -162,6 +166,22 @@ function LockedReportForm() {
               </select>
             </div>
 
+            {requiresCompletionStatus ? (
+              <div className="flex flex-col space-y-1">
+                <MandatoryLabel label="Completion" required className="font-bold text-black text-sm" />
+                <select
+                  value={completionStatus}
+                  onChange={(e) => setCompletionStatus(e.target.value as "Part" | "Full")}
+                  required
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 font-medium"
+                >
+                  <option value="Part">Part</option>
+                  <option value="Full">Full</option>
+                </select>
+                <div className="text-[11px] font-bold text-slate-600">Select Full to complete this machine step.</div>
+              </div>
+            ) : null}
+
             <div className="flex flex-col space-y-1">
               <MandatoryLabel label="Quantity" required className="font-bold text-black text-sm" />
               <input
@@ -219,6 +239,7 @@ function FullReportForm() {
   const [machineId, setMachineId] = useState(initialMachineId);
   const [shift, setShift] = useState<ShiftValue>((initialShift as ShiftValue) || "");
   const [qty, setQty] = useState<string>(initialQty);
+  const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
 
   const jobOptions = useMemo(() => {
     return productions
@@ -244,6 +265,7 @@ function FullReportForm() {
     () => machines.find((machine) => machine.id === machineId),
     [machineId, machines]
   );
+  const requiresCompletionStatus = usesPartFullProgress(selectedMachine?.name);
 
   const qtyContext = useMemo(() => {
     if (!selectedProduction || !selectedMachine) {
@@ -315,6 +337,7 @@ function FullReportForm() {
         operatorId: auditUser.id,
         operatorName: auditUser.name,
         date,
+        ...(requiresCompletionStatus ? { completionStatus } : {}),
         updatedBy: auditUser.name,
         updateTimestamp: new Date().toISOString()
       };
@@ -393,6 +416,22 @@ function FullReportForm() {
                 <option value="Night">Night</option>
               </select>
             </div>
+
+            {requiresCompletionStatus ? (
+              <div className="flex flex-col space-y-1">
+                <MandatoryLabel label="Completion" required className="font-bold text-black text-sm" />
+                <select
+                  value={completionStatus}
+                  onChange={(e) => setCompletionStatus(e.target.value as "Part" | "Full")}
+                  required
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 font-medium"
+                >
+                  <option value="Part">Part</option>
+                  <option value="Full">Full</option>
+                </select>
+                <div className="text-[11px] font-bold text-slate-600">Select Full to complete this machine step.</div>
+              </div>
+            ) : null}
 
             <div className="flex flex-col space-y-1">
               <MandatoryLabel label="Quantity" required className="font-bold text-black text-sm" />

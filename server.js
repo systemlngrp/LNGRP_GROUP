@@ -4084,6 +4084,7 @@ async function initDb(retries = 5) {
           \`operatorId\` VARCHAR(36) NOT NULL,
           \`operatorName\` VARCHAR(255),
           \`date\` VARCHAR(50) NOT NULL,
+          \`completionStatus\` VARCHAR(10),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -5247,6 +5248,7 @@ async function initDb(retries = 5) {
         { table: "production_processing", column: "operatorId", type: "VARCHAR(36) NOT NULL" },
         { table: "production_processing", column: "operatorName", type: "VARCHAR(255)" },
         { table: "production_processing", column: "date", type: "VARCHAR(50) NOT NULL" },
+        { table: "production_processing", column: "completionStatus", type: "VARCHAR(10)" },
         { table: "production_processing", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "production_processing", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "material_in", column: "updatedBy", type: "VARCHAR(255)" },
@@ -6299,7 +6301,43 @@ const createHandlers = (tableName) => {
           if (missing.length) {
             return res.status(400).json({ error: `Mandatory fields missing/invalid: ${missing.join(", ")}` });
           }
-          data.machineName = normalizeMachineName(String(data.machineName || ""));
+          const [machineRows] = await db.query("SELECT `name` FROM `machines` WHERE `id` = ? LIMIT 1", [data.machineId]);
+          const storedMachineName = String(machineRows[0]?.name || "").trim();
+          data.machineName = normalizeMachineName(storedMachineName || String(data.machineName || ""));
+          const completionStatus = String(data.completionStatus || "").trim();
+          const usesPartFull = data.machineName === "Corrugation Liner" || data.machineName === "Printing";
+          if (usesPartFull && completionStatus !== "Part" && completionStatus !== "Full") {
+            return res.status(400).json({ error: "Completion status must be Part or Full for Corrugation Liner and Printing." });
+          }
+          if (!usesPartFull) {
+            delete data.completionStatus;
+          }
+          if (data.machineName === "Printing") {
+            const [productionRows] = await db.query(
+              `SELECT p.itemSource, n.boxType FROM \`productions\` p LEFT JOIN \`npd\` n ON n.id = p.itemId WHERE p.id = ? LIMIT 1`,
+              [data.productionId]
+            );
+            const productionRow = productionRows[0];
+            const [settingRows] = await db.query("SELECT `mandatoryMachinesByType` FROM `settings` ORDER BY `updateTimestamp` DESC LIMIT 1");
+            const mandatoryMapping = parseMandatoryMachinesByType(settingRows[0]);
+            const source = String(productionRow?.itemSource || "FG").trim().toUpperCase();
+            const typeName = String(productionRow?.boxType || "").trim();
+            const mappingKey = Object.keys(mandatoryMapping).find((key) => key.toUpperCase() === typeName.toUpperCase());
+            const requiredMachines = source === "PHP" || source === "PLATE" ? ["Corrugation Liner", "Printing"] : mappingKey ? mandatoryMapping[mappingKey] : [];
+            if (requiredMachines.includes("Corrugation Liner") && requiredMachines.includes("Printing")) {
+              const [linerRows] = await db.query(
+                `SELECT completionStatus FROM \`production_processing\` WHERE productionId = ? AND machineName IN ('Corrugation Liner', 'Corrugation Linear')`,
+                [data.productionId]
+              );
+              const linerIsFull = linerRows.some((row) => {
+                const status = String(row.completionStatus || "").trim();
+                return !status || status === "Full";
+              });
+              if (!linerIsFull) {
+                return res.status(409).json({ error: "Complete Corrugation Liner as Full before reporting Printing." });
+              }
+            }
+          }
         }
         if (tableName === "reel_stock_taker_logs") {
           const reelNo = String(data.reelNo || "").trim();
@@ -7930,7 +7968,7 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
     const [companiesRows] = companyIds.length ? await db.query(`SELECT id, name FROM \`companies\` WHERE id IN (${companyIds.map(() => "?").join(",")})`, companyIds) : [[]];
     const companiesById = new Map(companiesRows.map((row) => [String(row.id), row]));
     const [processingRows] = productionIds.length ? await db.query(
-      `SELECT productionId, machineId, machineName, shift, qty, operatorId, date FROM \`production_processing\` WHERE productionId IN (${productionIds.map(() => "?").join(",")})`,
+      `SELECT productionId, machineId, machineName, shift, qty, operatorId, date, completionStatus FROM \`production_processing\` WHERE productionId IN (${productionIds.map(() => "?").join(",")})`,
       productionIds
     ) : [[]];
     const processingByProductionId = /* @__PURE__ */ new Map();
@@ -7999,6 +8037,7 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
           if (!String(r.operatorId || "").trim()) return false;
           if (!String(r.shift || "").trim()) return false;
           if (!String(r.date || "").trim()) return false;
+          if ((normalizedStep === "Corrugation Liner" || normalizedStep === "Printing") && String(r.completionStatus || "").trim() && String(r.completionStatus || "").trim() !== "Full") return false;
           return true;
         });
         if (!completedRecord) {
@@ -8014,6 +8053,9 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
               if (!String(value || "").trim()) fields.add(label);
             });
           });
+          if ((normalizedStep === "Corrugation Liner" || normalizedStep === "Printing") && !stepRecords.some((r) => !String(r.completionStatus || "").trim() || String(r.completionStatus || "").trim() === "Full")) {
+            fields.add("Full completion");
+          }
           missingFields.push({ stepKey, machineName: normalizedStep, machineId, fields: Array.from(fields) });
         }
         if (!isCorrugationLiner(normalizedStep) && planQty > 0) {

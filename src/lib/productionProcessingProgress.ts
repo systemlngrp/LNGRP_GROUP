@@ -1,0 +1,28 @@
+import type { ProductionProcessing } from "../types";
+import { normalizeMachineName } from "./productionMachineNames";
+
+export const PART_FULL_MACHINE_NAMES = new Set(["Corrugation Liner", "Printing"]);
+
+export function usesPartFullProgress(machineName?: string | null) {
+  return PART_FULL_MACHINE_NAMES.has(normalizeMachineName(machineName));
+}
+
+export function isProcessingStepFull(entry: ProductionProcessing) {
+  if (!usesPartFullProgress(entry.machineName)) return true;
+  // Records created before completionStatus existed followed the old one-report-completes behavior.
+  return !entry.completionStatus || entry.completionStatus === "Full";
+}
+
+export function isMachineStepFull(
+  processing: ProductionProcessing[],
+  productionId: string,
+  machineName: string
+) {
+  const normalizedName = normalizeMachineName(machineName);
+  return processing.some(
+    (entry) =>
+      entry.productionId === productionId &&
+      normalizeMachineName(entry.machineName) === normalizedName &&
+      isProcessingStepFull(entry)
+  );
+}
