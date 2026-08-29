@@ -138,6 +138,7 @@ const materialIssueItems: NavItem[] = [
 
 const materialReturnItems: NavItem[] = [
   { name: "Material Return Form", href: "/material-movement/return", icon: TrendingDown },
+  { name: "Reel Return Form", href: "/material-movement/reel-return", icon: TrendingDown },
   { name: "Material Return Master", href: "/material-movement/return-master", icon: Database },
 ];
 

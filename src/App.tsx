@@ -31,6 +31,7 @@ import { PendingAccountsApproval } from "./pages/PendingAccountsApproval";
 import { PendingMDApproval } from "./pages/PendingMDApproval";
 import { MaterialIssueForm } from "./pages/MaterialIssueForm";
 import { MaterialReturnForm } from "./pages/MaterialReturnForm";
+import { ReelReturnForm } from "./pages/ReelReturnForm";
 import { MaterialIssueMaster } from "./pages/MaterialIssueMaster";
 import { MaterialReturnMaster } from "./pages/MaterialReturnMaster";
 import { PendingNonJobMaterialIssue } from "./pages/PendingNonJobMaterialIssue";
@@ -276,6 +277,7 @@ export default function App() {
           <Route path="material-movement/pending-consumption-tally" element={<PendingConsumptionTallyPosting />} />
           <Route path="material-movement/non-job-issue-master" element={<NonJobIssueMaster />} />
           <Route path="material-movement/return" element={<MaterialReturnForm />} />
+          <Route path="material-movement/reel-return" element={<ReelReturnForm />} />
           <Route path="material-movement/return-master" element={<MaterialReturnMaster />} />
 
           {/* Orders */}

@@ -185,3 +185,21 @@ export function getReturnableReelLinesForJob(
     return [{ ...line, weightKg: returnableWeight }];
   });
 }
+
+export function getAllReturnableReelLines(
+  issueReelLines: MaterialIssueReelLine[],
+  returnReelLines: MaterialReturnReelLine[]
+) {
+  const returnableWeights = buildJobReturnableWeights(issueReelLines, returnReelLines);
+  const latestIssueLineByJobAndSlip = new Map<string, MaterialIssueReelLine>();
+
+  issueReelLines.forEach((line) => {
+    if (!line.productionId || !line.packingSlipId) return;
+    latestIssueLineByJobAndSlip.set(`${line.productionId}::${line.packingSlipId}`, line);
+  });
+
+  return Array.from(latestIssueLineByJobAndSlip.entries()).flatMap(([key, line]) => {
+    const returnableWeight = round2(returnableWeights.get(key) || 0);
+    return returnableWeight > 0 ? [{ ...line, weightKg: returnableWeight }] : [];
+  });
+}
