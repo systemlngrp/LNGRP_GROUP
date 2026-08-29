@@ -6305,12 +6305,8 @@ const createHandlers = (tableName) => {
           const storedMachineName = String(machineRows[0]?.name || "").trim();
           data.machineName = normalizeMachineName(storedMachineName || String(data.machineName || ""));
           const completionStatus = String(data.completionStatus || "").trim();
-          const usesPartFull = data.machineName === "Corrugation Liner" || data.machineName === "Printing";
-          if (usesPartFull && completionStatus !== "Part" && completionStatus !== "Full") {
-            return res.status(400).json({ error: "Completion status must be Part or Full for Corrugation Liner and Printing." });
-          }
-          if (!usesPartFull) {
-            delete data.completionStatus;
+          if (completionStatus !== "Part" && completionStatus !== "Full") {
+            return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
           }
           const [existingProcessingRows] = await db.query(
             "SELECT `id` FROM `production_processing` WHERE `id` = ? LIMIT 1",
@@ -6342,9 +6338,8 @@ const createHandlers = (tableName) => {
               const completedMachines = /* @__PURE__ */ new Set();
               stepRows.forEach((row) => {
                 const machineName = normalizeMachineName(String(row.machineName || ""));
-                const usesStepStatus = machineName === "Corrugation Liner" || machineName === "Printing";
                 const status = String(row.completionStatus || "").trim();
-                if (!usesStepStatus || !status || status === "Full") completedMachines.add(machineName);
+                if (!status || status === "Full") completedMachines.add(machineName);
               });
               const currentMachine = requiredMachines.find((machineName) => !completedMachines.has(machineName)) || "";
               if (currentMachine && data.machineName !== currentMachine) {
@@ -8056,7 +8051,7 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
           if (!String(r.operatorId || "").trim()) return false;
           if (!String(r.shift || "").trim()) return false;
           if (!String(r.date || "").trim()) return false;
-          if ((normalizedStep === "Corrugation Liner" || normalizedStep === "Printing") && String(r.completionStatus || "").trim() && String(r.completionStatus || "").trim() !== "Full") return false;
+          if (String(r.completionStatus || "").trim() && String(r.completionStatus || "").trim() !== "Full") return false;
           return true;
         });
         if (!completedRecord) {
@@ -8072,7 +8067,7 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
               if (!String(value || "").trim()) fields.add(label);
             });
           });
-          if ((normalizedStep === "Corrugation Liner" || normalizedStep === "Printing") && !stepRecords.some((r) => !String(r.completionStatus || "").trim() || String(r.completionStatus || "").trim() === "Full")) {
+          if (!stepRecords.some((r) => !String(r.completionStatus || "").trim() || String(r.completionStatus || "").trim() === "Full")) {
             fields.add("Full completion");
           }
           missingFields.push({ stepKey, machineName: normalizedStep, machineId, fields: Array.from(fields) });

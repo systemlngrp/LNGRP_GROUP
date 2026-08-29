@@ -205,6 +205,7 @@ export function ProductionProcessingMaster() {
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Box Type</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Machine</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Shift</th>
+                <th className="px-6 py-3 text-center text-xs font-bold text-black uppercase tracking-wider border border-black">Part / Full</th>
                 <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black">Quantity</th>
                 <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black">Actions</th>
               </tr>
@@ -212,7 +213,7 @@ export function ProductionProcessingMaster() {
             <tbody className="bg-white divide-y divide-black">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
+                  <td colSpan={10} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
                 </tr>
               ) : (
                 filtered.map((item) => {
@@ -281,6 +282,22 @@ export function ProductionProcessingMaster() {
                         ) : (
                           item.shift || "Day"
                         )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold border border-black">
+                        {(() => {
+                          const completionStatus = item.completionStatus || "Full";
+                          return (
+                            <span
+                              className={`inline-flex min-w-[52px] items-center justify-center rounded-full border px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${
+                                completionStatus === "Part"
+                                  ? "border-amber-300 bg-amber-100 text-amber-800"
+                                  : "border-emerald-300 bg-emerald-100 text-emerald-800"
+                              }`}
+                            >
+                              {completionStatus}
+                            </span>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-right text-emerald-700 border border-black">
                         {isEditing ? (
