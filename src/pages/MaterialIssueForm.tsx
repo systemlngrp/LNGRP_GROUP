@@ -13,6 +13,7 @@ import {
   MaterialReturn,
   MaterialReturnReelLine,
   Production,
+  ProductionProcessing,
 } from "../types";
 import { generateTransactionNo } from "../lib/serial";
 import { Select } from "../components/Select";
@@ -27,6 +28,7 @@ import {
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 
 type IssueMaterialOption = Material & { isFgPurchaseItem?: boolean; isNpdConsumableItem?: boolean; npdSourceId?: string; rate?: number };
 
@@ -160,6 +162,7 @@ export function MaterialIssueForm() {
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [productions, setProductions] = useData<Production>("productions", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
@@ -339,6 +342,7 @@ export function MaterialIssueForm() {
   ];
 
   const selectedProduction = productions.find((production) => production.id === productionId);
+  const linerComplete = isCorrugationLinerComplete(processing, productionId);
   const showNonJobValuation = isWithoutJobIssue(issueType);
   const issueLinesTotalAmount = lines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
 
@@ -360,6 +364,10 @@ export function MaterialIssueForm() {
 
     if (isReel && issueType !== "Job") {
       alert("Reels can only be issued against a job.");
+      return;
+    }
+    if (isReel && !linerComplete) {
+      alert("Complete Corrugation Liner as Full before issuing reels.");
       return;
     }
     if (issueType === "Job" && !productionId) {
@@ -420,6 +428,10 @@ export function MaterialIssueForm() {
   };
 
   const updateSelectedReels = (lineId: string, materialId: string, packingSlipId: string, checked: boolean) => {
+    if (checked && !linerComplete) {
+      alert("Complete Corrugation Liner as Full before issuing reels.");
+      return;
+    }
     setSelectedReels((prev) => {
       const current = new Set(prev[lineId] || []);
       if (checked) current.add(packingSlipId);
@@ -445,6 +457,7 @@ export function MaterialIssueForm() {
 
   const addReelFromQr = async (rawQrValue: string) => {
     if (issueType !== "Job" || !productionId) throw new Error("Select Against Job and Job No. before scanning.");
+    if (!linerComplete) throw new Error("Complete Corrugation Liner as Full before issuing reels.");
 
     const parsed = parseQrPayload(rawQrValue);
     const reelNo = String(parsed.reelNo || "").trim();
@@ -503,6 +516,11 @@ export function MaterialIssueForm() {
     if (issueType !== "Job" || !productionId) {
       setScannerMessageType("error");
       setScannerMessage("Select Against Job and Job No. before scanning.");
+      return;
+    }
+    if (!linerComplete) {
+      setScannerMessageType("error");
+      setScannerMessage("Complete Corrugation Liner as Full before issuing reels.");
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -571,6 +589,11 @@ export function MaterialIssueForm() {
     if (issueType === "Job" && !productionId) return;
     if (isWithoutJobIssue(issueType) && !remarks.trim()) {
       alert("Remarks are mandatory for Without Job material issue.");
+      return;
+    }
+    const hasReelIssue = issueType === "Job" && lines.some((line) => line.isReel && (selectedReels[line.id] || []).length > 0);
+    if (hasReelIssue && !linerComplete) {
+      alert("Complete Corrugation Liner as Full before issuing reels.");
       return;
     }
 
@@ -826,12 +849,17 @@ export function MaterialIssueForm() {
               <button
                 type="button"
                 onClick={() => void handleOpenScanner()}
-                disabled={isProcessingScan || isSubmitting}
+                disabled={isProcessingScan || isSubmitting || !linerComplete}
                 className="inline-flex h-[42px] w-full items-center justify-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-4 text-sm font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
               >
                 <Camera size={16} />
                 Scan Reel QR
               </button>
+            </div>
+          ) : null}
+          {issueType === "Job" && productionId && !linerComplete ? (
+            <div className="md:col-span-2 rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+              Complete Corrugation Liner as Full before issuing reels.
             </div>
           ) : null}
           {scannerMessage ? (

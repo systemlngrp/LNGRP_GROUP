@@ -24,6 +24,18 @@ export function isMachineStepFull(
   );
 }
 
+export function isCorrugationLinerComplete(
+  processing: ProductionProcessing[],
+  productionId: string
+) {
+  return Boolean(productionId) && processing.some(
+    (entry) =>
+      entry.productionId === productionId &&
+      normalizeMachineName(entry.machineName) === "Corrugation Liner" &&
+      entry.completionStatus === "Full"
+  );
+}
+
 export function getCurrentProcessingMachine(
   processing: ProductionProcessing[],
   productionId: string,
