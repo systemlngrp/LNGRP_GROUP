@@ -70,6 +70,9 @@ export function ProductionStageQueue({
   hideStatusColumn = false,
   hideProdFfgColumn = false,
   issuePrereqMachineName,
+  issueActionPath = "/material-movement/reel-issue-return",
+  issueActionLabel = "Issue Material",
+  showIssueSheetAction = true,
 }: {
   title: string;
   emptyMessage: string;
@@ -80,6 +83,9 @@ export function ProductionStageQueue({
   hideStatusColumn?: boolean;
   hideProdFfgColumn?: boolean;
   issuePrereqMachineName?: string;
+  issueActionPath?: string;
+  issueActionLabel?: string;
+  showIssueSheetAction?: boolean;
 }) {
   const navigate = useNavigate();
   const [productions, setProductions] = useData<Production>("productions", []);
@@ -588,15 +594,17 @@ export function ProductionStageQueue({
                                   title={`${normalizeMachineName(issuePrereqMachineName || "Corrugation Liner")} entry pending`}
                                   className="bg-slate-200 text-slate-500 px-3 py-1 rounded font-bold text-[11px] uppercase border border-black cursor-not-allowed"
                                 >
-                                  Issue Material
+                                  {issueActionLabel}
                                 </button>
-                                <button
-                                  type="button"
-                                  disabled
-                                  className="bg-slate-200 text-slate-500 px-3 py-1 rounded font-bold text-[11px] uppercase border border-black cursor-not-allowed"
-                                >
-                                  Issue Sheet
-                                </button>
+                                {showIssueSheetAction ? (
+                                  <button
+                                    type="button"
+                                    disabled
+                                    className="bg-slate-200 text-slate-500 px-3 py-1 rounded font-bold text-[11px] uppercase border border-black cursor-not-allowed"
+                                  >
+                                    Issue Sheet
+                                  </button>
+                                ) : null}
                               </div>
                             );
                           }
@@ -614,18 +622,18 @@ export function ProductionStageQueue({
                                       lockDate: "1",
                                       lockJob: "1",
                                     });
-                                    navigate(`/material-movement/reel-issue-return?${params.toString()}`);
+                                    navigate(`${issueActionPath}?${params.toString()}`);
                                   }}
                                   className="bg-indigo-600 text-white px-3 py-1 rounded font-bold text-[11px] uppercase border border-black"
                                 >
-                                  Issue Material
+                                  {issueActionLabel}
                                 </button>
                               ) : (
                                 <span className="inline-flex items-center rounded border border-amber-700 bg-amber-50 px-2 py-1 text-[11px] font-black uppercase text-amber-800">
                                   Add Corrugation Liner entry
                                 </span>
                               )}
-                              <button
+                              {showIssueSheetAction ? <button
                                 type="button"
                                 onClick={() => {
                                   const date = String(production.date || "").slice(0, 10);
@@ -642,7 +650,7 @@ export function ProductionStageQueue({
                                 className="bg-amber-500 text-black px-3 py-1 rounded font-bold text-[11px] uppercase border border-black"
                               >
                                 Issue Sheet
-                              </button>
+                              </button> : null}
                             </div>
                           );
                         })()}
@@ -676,6 +684,22 @@ export function ProductionPendingConsumption() {
       enableIssueAction
       hideStatusColumn
       issuePrereqMachineName="Corrugation Liner"
+    />
+  );
+}
+
+export function ProductionPendingReelIssueScan() {
+  return (
+    <ProductionStageQueue
+      title="Pending Reel Issue"
+      emptyMessage="No jobs pending reel issue."
+      predicate={isProductionPendingConsumption}
+      enableIssueAction
+      hideStatusColumn
+      issuePrereqMachineName="Corrugation Liner"
+      issueActionPath="/material-movement/reel-issue-return-scan/form"
+      issueActionLabel="Issue Reel"
+      showIssueSheetAction={false}
     />
   );
 }

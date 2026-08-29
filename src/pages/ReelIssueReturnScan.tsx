@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Save, X } from "lucide-react";
+import { ArrowLeft, Camera, Save, X } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
@@ -22,6 +22,7 @@ import type {
   MaterialReturnReelLine,
   Production,
 } from "../types";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 type ParsedQrPayload = {
   reelNo: string;
@@ -102,6 +103,8 @@ function parseQrPayload(rawValue: string): ParsedQrPayload {
 }
 
 export function ReelIssueReturnScan() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [materials] = useData<Material>("materials", []);
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [materialIn] = useData<MaterialIn>("material-in", []);
@@ -113,8 +116,11 @@ export function ReelIssueReturnScan() {
   const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
 
-  const [date] = useState(() => new Date().toISOString().split("T")[0]);
-  const [productionId, setProductionId] = useState("");
+  const requestedDate = String(searchParams.get("date") || "").slice(0, 10);
+  const [date] = useState(() => requestedDate || new Date().toISOString().split("T")[0]);
+  const requestedProductionId = String(searchParams.get("productionId") || "").trim();
+  const lockJob = searchParams.get("lockJob") === "1";
+  const [productionId, setProductionId] = useState(requestedProductionId);
   const [scannerError, setScannerError] = useState("");
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [isProcessingScan, setIsProcessingScan] = useState(false);
@@ -436,14 +442,23 @@ export function ReelIssueReturnScan() {
   return (
     <div className="space-y-5">
       <div className="border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Reel Issue QR Scan</h2>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/material-movement/reel-issue-return-scan")}
+            className="inline-flex items-center gap-1 rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase text-black hover:bg-slate-100"
+          >
+            <ArrowLeft size={15} /> Jobs
+          </button>
+          <h2 className="text-xl font-bold uppercase tracking-tight text-black">Reel Issue QR Scan</h2>
+        </div>
       </div>
 
       <div className="rounded border-2 border-black bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
           <div>
             <label className="mb-1 block text-[11px] font-black uppercase text-black">Job No.</label>
-            <Select options={jobOptions} value={productionId} onChange={setProductionId} placeholder="Select Job..." />
+            <Select options={jobOptions} value={productionId} onChange={setProductionId} placeholder="Select Job..." disabled={lockJob} />
           </div>
           {productionId ? (
             <button

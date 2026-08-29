@@ -72,7 +72,7 @@ import { PlateProductionMaster } from "./pages/PlateProductionMaster";
 import { PlateProductionScheduling } from "./pages/PlateProductionScheduling";
 import { PlateProductionSequencing } from "./pages/PlateProductionSequencing";
 import { PlateProductionExecution } from "./pages/PlateProductionExecution";
-import { ProductionPendingConsumption, ProductionPendingFFG } from "./pages/ProductionStageQueue";
+import { ProductionPendingConsumption, ProductionPendingFFG, ProductionPendingReelIssueScan } from "./pages/ProductionStageQueue";
 import { ProductionPlan } from "./pages/ProductionPlan";
 import { PendingNpd } from "./pages/PendingNpd";
 import { OperationDashboard } from "./pages/OperationDashboard";
@@ -266,7 +266,8 @@ export default function App() {
 
           {/* Material Movement */}
           <Route path="material-movement/reel-issue-return" element={<ReelIssueReturnForm />} />
-          <Route path="material-movement/reel-issue-return-scan" element={<ReelIssueReturnScan />} />
+          <Route path="material-movement/reel-issue-return-scan" element={<ProductionPendingReelIssueScan />} />
+          <Route path="material-movement/reel-issue-return-scan/form" element={<ReelIssueReturnScan />} />
           <Route path="material-movement/daily-consumption" element={<DailyConsumptionIssueForm />} />
           <Route path="material-movement/daily-consumption-master" element={<DailyConsumptionMaster />} />
           <Route path="material-movement/issue" element={<MaterialIssueForm />} />
