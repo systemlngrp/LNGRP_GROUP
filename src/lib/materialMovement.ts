@@ -6,6 +6,7 @@ import {
   MaterialIssueReelLine,
   MaterialReturnLine,
   MaterialReturnReelLine,
+  Production,
 } from "../types";
 
 export function round2(value: number) {
@@ -188,14 +189,41 @@ export function getReturnableReelLinesForJob(
 
 export function getAllReturnableReelLines(
   issueReelLines: MaterialIssueReelLine[],
-  returnReelLines: MaterialReturnReelLine[]
+  returnReelLines: MaterialReturnReelLine[],
+  productions: Pick<Production, "id" | "transactionNo">[] = []
 ) {
-  const returnableWeights = buildJobReturnableWeights(issueReelLines, returnReelLines);
+  const productionIds = new Set(productions.map((production) => String(production.id || "").trim()).filter(Boolean));
+  const productionIdByJobNo = new Map(
+    productions
+      .map((production) => [String(production.transactionNo || "").trim().toLowerCase(), production.id] as const)
+      .filter(([jobNo]) => Boolean(jobNo))
+  );
+  const resolveProductionId = (line: Pick<MaterialIssueReelLine, "productionId" | "jobNo">) => {
+    const directId = String(line.productionId || "").trim();
+    if (directId && (productionIds.size === 0 || productionIds.has(directId))) return directId;
+    return productionIdByJobNo.get(String(line.jobNo || "").trim().toLowerCase()) || directId;
+  };
+
+  const returnableWeights = new Map<string, number>();
+  issueReelLines.forEach((line) => {
+    const productionId = resolveProductionId(line);
+    if (!productionId || !line.packingSlipId) return;
+    const key = `${productionId}::${line.packingSlipId}`;
+    returnableWeights.set(key, (returnableWeights.get(key) || 0) + Number(line.weightKg || 0));
+  });
+  returnReelLines.forEach((line) => {
+    const productionId = resolveProductionId(line);
+    if (!productionId || !line.packingSlipId) return;
+    const key = `${productionId}::${line.packingSlipId}`;
+    returnableWeights.set(key, (returnableWeights.get(key) || 0) - Number(line.weightKg || 0));
+  });
+
   const latestIssueLineByJobAndSlip = new Map<string, MaterialIssueReelLine>();
 
   issueReelLines.forEach((line) => {
-    if (!line.productionId || !line.packingSlipId) return;
-    latestIssueLineByJobAndSlip.set(`${line.productionId}::${line.packingSlipId}`, line);
+    const productionId = resolveProductionId(line);
+    if (!productionId || !line.packingSlipId) return;
+    latestIssueLineByJobAndSlip.set(`${productionId}::${line.packingSlipId}`, { ...line, productionId });
   });
 
   return Array.from(latestIssueLineByJobAndSlip.entries()).flatMap(([key, line]) => {

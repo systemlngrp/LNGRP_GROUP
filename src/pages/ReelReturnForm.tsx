@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowDownToLine, PackageCheck, Scale } from "lucide-react";
+import { PackageCheck } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
@@ -51,8 +51,8 @@ export function ReelReturnForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const returnableReels = useMemo(
-    () => getAllReturnableReelLines(issueReelLines, returnReelLines),
-    [issueReelLines, returnReelLines]
+    () => getAllReturnableReelLines(issueReelLines, returnReelLines, productions),
+    [issueReelLines, productions, returnReelLines]
   );
   const materialMap = useMemo(() => new Map(materials.map((row) => [row.id, row])), [materials]);
   const slipMap = useMemo(() => new Map(packingSlips.map((row) => [row.id, row])), [packingSlips]);
@@ -123,7 +123,7 @@ export function ReelReturnForm() {
     event.preventDefault();
     if (isSubmitting || !date || !productionId || !selectedReel) return;
 
-    const latestReel = getAllReturnableReelLines(issueReelLines, returnReelLines).find(
+    const latestReel = getAllReturnableReelLines(issueReelLines, returnReelLines, productions).find(
       (row) => row.productionId === productionId && row.packingSlipId === selectedReel.packingSlipId
     );
     const qty = round2(Number(returnWeight));
@@ -238,67 +238,85 @@ export function ReelReturnForm() {
   if (materialsLoading || productionsLoading || issueReelsLoading || returnReelsLoading) return <Spinner />;
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_60px_-28px_rgba(15,23,42,0.28)]">
-        <div className="bg-[linear-gradient(135deg,#0f172a,#047857)] px-6 py-6 text-white">
-          <div className="flex items-center gap-3">
-            <div className="rounded-2xl bg-white/10 p-3 ring-1 ring-white/20"><ArrowDownToLine size={22} /></div>
-            <div>
-              <h2 className="text-xl font-black tracking-tight">Reel Return Form</h2>
-              <p className="text-sm font-medium text-white/75">Return one previously issued reel against its job.</p>
-            </div>
-          </div>
+    <div className="rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
+      <h2 className="mb-4 border-b border-black pb-2 text-lg font-bold uppercase tracking-tight text-black md:mb-6 md:text-xl">Reel Return Form</h2>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="Date" required>
+            <input id="reel-return-date" type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="w-full rounded border-2 border-black p-2" />
+          </Field>
+          <Field label="Return No (Auto)">
+            <input type="text" value="Generated on Submit" disabled className="w-full rounded border-2 border-black bg-slate-50 p-2 opacity-70" />
+          </Field>
+          <Field label="Job No." required>
+            <Select id="reel-return-job" required options={jobOptions} value={productionId} onChange={handleJobChange} placeholder="Select Job..." />
+            {jobOptions.length === 0 ? <p className="mt-1 text-xs font-bold text-slate-500">No jobs have an issued reel pending return.</p> : null}
+          </Field>
+          <Field label="Remarks">
+            <input id="reel-return-remarks" value={remarks} onChange={(event) => setRemarks(event.target.value)} className="w-full rounded border-2 border-black p-2" />
+          </Field>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6 p-5 md:p-6">
-          <div className="grid gap-5 md:grid-cols-2">
-            <div>
-              <label htmlFor="reel-return-date" className="mb-2 block text-sm font-black uppercase tracking-wide text-slate-700">Return Date</label>
-              <input id="reel-return-date" type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="h-[46px] w-full rounded border-2 border-black px-3 font-semibold" />
+        <div className="space-y-4 border-t border-black pt-4">
+          <h3 className="text-lg font-bold uppercase">Issued Reel</h3>
+          <div className="rounded border border-black bg-slate-50 p-4">
+            <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+              <Field label="Reel No." required>
+                <Select id="reel-return-reel" required disabled={!productionId} options={reelOptions} value={reelKey} onChange={handleReelChange} placeholder={productionId ? "Select Issued Reel..." : "Select Job First..."} wrapLabels />
+              </Field>
+              <Field label="Return Weight KG" required>
+                <input id="reel-return-weight" type="number" required min="0.01" max={selectedReel?.weightKg} step="0.01" disabled={!selectedReel} value={returnWeight} onChange={(event) => setReturnWeight(event.target.value)} placeholder="0.00" className="w-full rounded border-2 border-black p-2 text-right font-bold disabled:bg-slate-100" />
+              </Field>
             </div>
-            <div>
-              <label htmlFor="reel-return-job" className="mb-2 block text-sm font-black uppercase tracking-wide text-slate-700">Job</label>
-              <Select id="reel-return-job" required options={jobOptions} value={productionId} onChange={handleJobChange} placeholder="Select a job with issued reels..." />
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="reel-return-reel" className="mb-2 block text-sm font-black uppercase tracking-wide text-slate-700">Issued Reel</label>
-            <Select id="reel-return-reel" required disabled={!productionId} options={reelOptions} value={reelKey} onChange={handleReelChange} placeholder={productionId ? "Select an issued reel..." : "Select job first"} wrapLabels />
-            {productionId && reelOptions.length === 0 ? <p className="mt-2 text-sm font-semibold text-amber-700">No issued reels remain available for this job.</p> : null}
+            {productionId && reelOptions.length === 0 ? <p className="mt-3 text-sm font-bold text-amber-700">No issued reels remain available for this job.</p> : null}
           </div>
 
           {selectedReel ? (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div><div className="text-xs font-black uppercase text-slate-500">Our Reel No.</div><div className="mt-1 font-black text-slate-900">{selectedReel.ourReelNo}</div></div>
-                <div><div className="text-xs font-black uppercase text-slate-500">Material / ERP</div><div className="mt-1 font-bold text-slate-900">{selectedMaterial?.name || "-"}<div className="text-xs text-slate-500">{selectedMaterial?.erpCode || "No ERP"}</div></div></div>
-                <div><div className="text-xs font-black uppercase text-slate-500">Returnable Balance</div><div className="mt-1 font-black text-amber-700">{selectedReel.weightKg.toFixed(2)} KG</div></div>
-                <div><div className="text-xs font-black uppercase text-slate-500">Invoice Rate</div><div className="mt-1 font-black text-indigo-700">{invoiceRate.toFixed(2)}</div></div>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full border-collapse border border-black">
+                <thead className="bg-slate-100">
+                  <tr className="divide-x divide-black border-b border-black">
+                    {["Our Reel No.", "Material / ERP", "Remaining Issued Weight", "Return Weight", "Rate", "Amount"].map((heading) => (
+                      <th key={heading} className="px-3 py-2 text-left text-xs font-bold uppercase">{heading}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="divide-x divide-black">
+                    <td className="px-3 py-3 text-sm font-black">{selectedReel.ourReelNo}</td>
+                    <td className="px-3 py-3 text-sm font-bold">
+                      {selectedMaterial?.name || "-"}
+                      <div className="text-xs font-medium text-slate-500">ERP: {selectedMaterial?.erpCode || "-"}</div>
+                    </td>
+                    <td className="px-3 py-3 text-right text-sm font-black text-amber-700">{selectedReel.weightKg.toFixed(2)} KG</td>
+                    <td className="px-3 py-3 text-right text-sm font-black">{validWeight ? `${enteredWeight.toFixed(2)} KG` : "-"}</td>
+                    <td className="px-3 py-3 text-right text-sm font-bold">{invoiceRate.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right text-sm font-black text-indigo-700">{amount.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-          ) : null}
+          ) : (
+            <div className="border border-dashed border-black bg-slate-50 p-4 text-center text-sm font-bold text-slate-600">Select a job and its issued reel to enter the return.</div>
+          )}
+        </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
-            <div>
-              <label htmlFor="reel-return-weight" className="mb-2 flex items-center gap-2 text-sm font-black uppercase tracking-wide text-slate-700"><Scale size={17} /> Return Weight KG</label>
-              <input id="reel-return-weight" type="number" required min="0.01" max={selectedReel?.weightKg} step="0.01" disabled={!selectedReel} value={returnWeight} onChange={(event) => setReturnWeight(event.target.value)} placeholder="Enter actual returned weight" className="h-[46px] w-full rounded border-2 border-black px-3 text-right font-bold disabled:bg-slate-100" />
-              {selectedReel ? <p className="mt-1 text-xs font-semibold text-slate-500">Maximum {selectedReel.weightKg.toFixed(2)} KG</p> : null}
-            </div>
-            <div>
-              <label htmlFor="reel-return-remarks" className="mb-2 block text-sm font-black uppercase tracking-wide text-slate-700">Remarks</label>
-              <input id="reel-return-remarks" value={remarks} onChange={(event) => setRemarks(event.target.value)} placeholder="Optional remarks" className="h-[46px] w-full rounded border-2 border-black px-3 font-semibold" />
-            </div>
-          </div>
+        <div className="flex justify-end">
+          <button type="submit" disabled={isSubmitting || !productionId || !selectedReel || !validWeight} className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-700 disabled:opacity-50">
+            <PackageCheck size={18} /> {isSubmitting ? "Saving..." : "Save Return"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
-          <div className="flex flex-col gap-4 rounded-2xl bg-slate-900 p-5 text-white sm:flex-row sm:items-center sm:justify-between">
-            <div><div className="text-xs font-black uppercase tracking-widest text-slate-400">Return Value</div><div className="text-2xl font-black">{amount.toFixed(2)}</div></div>
-            <button type="submit" disabled={isSubmitting || !productionId || !selectedReel || !validWeight} className="inline-flex min-w-[220px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3.5 text-sm font-black uppercase tracking-wider text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50">
-              <PackageCheck size={19} /> {isSubmitting ? "Saving..." : "Save Reel Return"}
-            </button>
-          </div>
-        </form>
-      </div>
+function Field({ label, children, required = false }: { label: string; children: React.ReactNode; required?: boolean }) {
+  return (
+    <div className="space-y-1">
+      <label className="font-bold text-black">{label} {required ? <span className="text-red-500">*</span> : null}</label>
+      {children}
     </div>
   );
 }
