@@ -34,7 +34,6 @@ type ReelDraft = {
   packingSlipId: string;
   ourReelNo: string;
   issueWeight: number;
-  returnQty: string;
   jobNo: string;
   materialName: string;
   materialCode: string;
@@ -110,9 +109,9 @@ export function ReelIssueReturnScan() {
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturns, setMaterialReturns] = useData<MaterialReturn>("material-returns", []);
-  const [materialReturnLines, setMaterialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [materialReturnReelLines, setMaterialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  const [materialReturns] = useData<MaterialReturn>("material-returns", []);
+  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
+  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
 
   const [date] = useState(() => new Date().toISOString().split("T")[0]);
   const [productionId, setProductionId] = useState("");
@@ -252,7 +251,6 @@ export function ReelIssueReturnScan() {
       packingSlipId: originalSlip.id,
       ourReelNo: originalSlip.ourReelNo,
       issueWeight,
-      returnQty: "0",
       jobNo: selectedProduction.transactionNo || "",
       materialName: material?.name || "-",
       materialCode: String(material?.erpCode || ""),
@@ -324,19 +322,6 @@ export function ReelIssueReturnScan() {
       closeScanner();
       setScannerError("Unable to open camera. Please allow camera permission and try again.");
     }
-  };
-
-  const updateReturnQty = (draftId: string, value: string) => {
-    const cleaned = String(value || "").replace(/[^0-9.]/g, "");
-    setReelDrafts((prev) =>
-      prev.map((draft) => {
-        if (draft.id !== draftId) return draft;
-        const maxQty = Number(draft.issueWeight || 0);
-        const numeric = Number(cleaned || 0);
-        const nextValue = cleaned === "" ? "" : String(Math.min(Math.max(Number.isFinite(numeric) ? numeric : 0, 0), maxQty));
-        return { ...draft, returnQty: nextValue };
-      })
-    );
   };
 
   const removeDraft = (draftId: string) => {
@@ -419,122 +404,39 @@ export function ReelIssueReturnScan() {
         });
       });
 
-      const positiveReturnDrafts = reelDrafts.filter((draft) => Number(draft.returnQty || 0) > 0);
-      const createdReturnLines: MaterialReturnLine[] = [];
-      const createdReturnReelLines: MaterialReturnReelLine[] = [];
-      let returnEntry: MaterialReturn | null = null;
-
-      if (positiveReturnDrafts.length > 0) {
-        const returnId = crypto.randomUUID();
-        const returnNo = generateTransactionNo(
-          "MR",
-          materialReturns.map((row) => ({ transactionNo: row.returnNo, date: row.date })),
-          date
-        );
-        returnEntry = {
-          id: returnId,
-          returnNo,
-          date,
-          returnType: "Job",
-          productionId,
-          jobNo: selectedProduction.transactionNo || "",
-          updatedBy: "System User",
-          updateTimestamp: timestamp,
-        };
-
-        const returnDraftsByMaterial = new Map<string, ReelDraft[]>();
-        positiveReturnDrafts.forEach((draft) => {
-          returnDraftsByMaterial.set(draft.materialId, [...(returnDraftsByMaterial.get(draft.materialId) || []), draft]);
-        });
-
-        returnDraftsByMaterial.forEach((drafts, materialId) => {
-          const returnLineId = crypto.randomUUID();
-          const material = materialById.get(materialId);
-          const validDrafts = drafts.flatMap((draft) => {
-            const qty = round2(Math.min(Math.max(Number(draft.returnQty || 0), 0), Number(draft.issueWeight || 0)));
-            return qty > 0 ? [{ draft, qty }] : [];
-          });
-          if (validDrafts.length === 0) return;
-
-          const totalWeight = round2(validDrafts.reduce((sum, row) => sum + row.qty, 0));
-          const totalValue = validDrafts.reduce((sum, row) => sum + row.qty * getReelInvoiceRate(row.draft.packingSlipId), 0);
-          const savedAmount = round2(totalValue);
-          const savedRate = totalWeight > 0 ? round2(savedAmount / totalWeight) : 0;
-
-          createdReturnLines.push({
-            id: returnLineId,
-            materialReturnId: returnId,
-            materialId,
-            qty: totalWeight,
-            uom: "KG",
-            lastPurchaseRate: savedRate,
-            openingRate: Number(Number(material?.openingRate || 0).toFixed(2)),
-            rate: savedRate,
-            amount: savedAmount,
-            updatedBy: "System User",
-            updateTimestamp: timestamp,
-          });
-
-          validDrafts.forEach(({ draft, qty }) => {
-            createdReturnReelLines.push({
-              id: crypto.randomUUID(),
-              materialReturnId: returnId,
-              materialReturnLineId: returnLineId,
-              materialId,
-              packingSlipId: draft.packingSlipId,
-              ourReelNo: draft.ourReelNo,
-              weightKg: qty,
-              productionId,
-              jobNo: selectedProduction.transactionNo || "",
-              updatedBy: "System User",
-              updateTimestamp: timestamp,
-            });
-          });
-        });
-      }
-
       const nextIssues = [issue, ...materialIssues];
       const nextIssueLines = [...materialIssueLines, ...createdIssueLines];
       const nextIssueReelLines = [...materialIssueReelLines, ...createdIssueReelLines];
-      const nextReturns = returnEntry ? [returnEntry, ...materialReturns] : materialReturns;
-      const nextReturnLines = returnEntry ? [...materialReturnLines, ...createdReturnLines] : materialReturnLines;
-      const nextReturnReelLines = returnEntry ? [...materialReturnReelLines, ...createdReturnReelLines] : materialReturnReelLines;
 
       await setMaterialIssues(nextIssues);
       await setMaterialIssueLines(nextIssueLines);
       await setMaterialIssueReelLines(nextIssueReelLines);
-      if (returnEntry) {
-        await setMaterialReturns(nextReturns);
-        await setMaterialReturnLines(nextReturnLines);
-        if (createdReturnReelLines.length > 0) await setMaterialReturnReelLines(nextReturnReelLines);
-      }
       await syncWorkflow({
         issues: nextIssues,
         issueLines: nextIssueLines,
-        returns: nextReturns,
-        returnLines: nextReturnLines,
+        returns: materialReturns,
+        returnLines: materialReturnLines,
         issueReelLines: nextIssueReelLines,
-        returnReelLines: nextReturnReelLines,
+        returnReelLines: materialReturnReelLines,
         timestamp,
       });
 
       setReelDrafts([]);
-      alert(returnEntry ? `Saved ${issueNo} and ${returnEntry.returnNo}.` : `Saved ${issueNo}.`);
+      alert(`Saved ${issueNo}.`);
     } catch (error) {
-      console.error("Failed to submit reel issue/return scan:", error);
-      alert("Failed to submit reel issue/return scan.");
+      console.error("Failed to submit reel issue scan:", error);
+      alert("Failed to submit reel issue scan.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const totalIssueDraftWeight = reelDrafts.reduce((sum, draft) => sum + Number(draft.issueWeight || 0), 0);
-  const totalReturnDraftWeight = reelDrafts.reduce((sum, draft) => sum + Number(draft.returnQty || 0), 0);
 
   return (
     <div className="space-y-5">
       <div className="border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Reel Issue/Return QR Scan</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Reel Issue QR Scan</h2>
       </div>
 
       <div className="rounded border-2 border-black bg-white p-4 shadow-sm">
@@ -590,18 +492,6 @@ export function ReelIssueReturnScan() {
                   <MobileField label="Material" value={draft.materialName} />
                   <MobileField label="ERP/Code" value={draft.materialCode || "-"} />
                   <MobileField label="Issue Weight" value={`${formatQty(draft.issueWeight)} KG`} accent />
-                  <div className="rounded border border-slate-300 bg-slate-50 p-2">
-                    <label className="mb-1 block text-[10px] font-black uppercase text-slate-500">Return Qty KG</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={draft.issueWeight}
-                      step="0.01"
-                      value={draft.returnQty}
-                      onChange={(event) => updateReturnQty(draft.id, event.target.value)}
-                      className="h-10 w-full rounded border border-black px-2 text-right text-base font-black focus:border-indigo-600 focus:outline-none"
-                    />
-                  </div>
                 </div>
               </div>
             ))
@@ -612,7 +502,7 @@ export function ReelIssueReturnScan() {
           <table className="min-w-full table-fixed border-collapse text-sm">
             <thead className="bg-slate-900 text-white">
               <tr>
-                {["Reel No", "Job No", "Material", "ERP/Code", "Issue Weight", "Return Qty KG", "Action"].map((heading) => (
+                {["Reel No", "Job No", "Material", "ERP/Code", "Issue Weight", "Action"].map((heading) => (
                   <th key={heading} className="border border-black px-3 py-2 text-left text-[11px] font-black uppercase">
                     {heading}
                   </th>
@@ -622,7 +512,7 @@ export function ReelIssueReturnScan() {
             <tbody>
               {reelDrafts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="border border-black px-3 py-8 text-center font-semibold text-slate-500">
+                  <td colSpan={6} className="border border-black px-3 py-8 text-center font-semibold text-slate-500">
                     No scanned reels in draft yet.
                   </td>
                 </tr>
@@ -634,17 +524,6 @@ export function ReelIssueReturnScan() {
                     <td className="break-words border border-black px-3 py-2 font-semibold">{draft.materialName}</td>
                     <td className="break-words border border-black px-3 py-2 font-semibold">{draft.materialCode || "-"}</td>
                     <td className="border border-black px-3 py-2 font-black text-emerald-700">{formatQty(draft.issueWeight)}</td>
-                    <td className="border border-black px-3 py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        max={draft.issueWeight}
-                        step="0.01"
-                        value={draft.returnQty}
-                        onChange={(event) => updateReturnQty(draft.id, event.target.value)}
-                        className="w-full max-w-28 rounded border border-black px-2 py-1.5 text-right font-bold focus:border-indigo-600 focus:outline-none"
-                      />
-                    </td>
                     <td className="border border-black px-3 py-2">
                       <button
                         type="button"
@@ -662,7 +541,7 @@ export function ReelIssueReturnScan() {
         </div>
 
         <div className="mt-4 rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-black text-slate-800">
-          Issue Total: {formatQty(totalIssueDraftWeight)} KG | Return Total: {formatQty(totalReturnDraftWeight)} KG
+          Issue Total: {formatQty(totalIssueDraftWeight)} KG
         </div>
 
         <button
