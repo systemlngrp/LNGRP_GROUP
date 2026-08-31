@@ -79,7 +79,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
     const slip = slipMap.get(packingSlipId);
     const receipt = slip ? materialIn.find((row) => row.id === slip.materialInId) : undefined;
     const receiptLine = receipt?.lines.find((row) => row.id === slip?.materialLineId);
-    return round2(Number(receiptLine?.invoiceRate || receiptLine?.poRate || receiptLine?.rate || materialMap.get(slip?.materialId || "")?.openingRate || 0));
+    return round2(Number(slip?.openingRate || receiptLine?.invoiceRate || receiptLine?.poRate || receiptLine?.rate || materialMap.get(slip?.materialId || "")?.openingRate || 0));
   };
   const selectedRows = reelsForJob.filter((row) => draft[reelKey(row)] !== undefined);
   const draftStatus = selectedRows.map((row) => {

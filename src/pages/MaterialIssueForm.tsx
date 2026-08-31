@@ -644,7 +644,7 @@ export function MaterialIssueForm() {
               const receipt = materialIn.find((entry) => entry.id === slip.materialInId);
               const receiptLine = receipt?.lines.find((entry) => entry.id === slip.materialLineId);
               const material = getMaterial(line.materialId);
-              const rate = Number(receiptLine?.invoiceRate || receiptLine?.poRate || receiptLine?.rate || material?.openingRate || 0);
+              const rate = Number(slip.openingRate || receiptLine?.invoiceRate || receiptLine?.poRate || receiptLine?.rate || material?.openingRate || 0);
               return sum + Number(slip.weightKg || 0) * rate;
             }, 0);
           savedAmount = round2(reelAmount);

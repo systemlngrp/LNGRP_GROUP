@@ -7,6 +7,7 @@ import type {
   Supplier,
 } from "../types";
 import { formatOurReelNo, getNextNumber } from "./materialNumbering";
+import { isOpeningReelPackingSlip } from "./materialMovement";
 
 export type ReelStockCalculationRow = {
   slipId: string;
@@ -86,8 +87,14 @@ export function buildReelStockRows({
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
   const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
 
+  const explicitOpeningMaterialIds = new Set(
+    packingSlips
+      .filter(isOpeningReelPackingSlip)
+      .map((slip) => slip.materialId)
+  );
+
   const openingRows: ReelStockCalculationRow[] = materials
-    .filter((material) => material.type === "Reel" && Number(material.openingQty || 0) > 0)
+    .filter((material) => material.type === "Reel" && Number(material.openingQty || 0) > 0 && !explicitOpeningMaterialIds.has(material.id))
     .map((material, index) => {
       const openingQty = round2(Number(material.openingQty || 0));
       const openingRate = round2(Number(material.openingRate || 0));
@@ -127,7 +134,7 @@ export function buildReelStockRows({
     });
 
   const mrrRows = packingSlips
-    .filter((slip) => materialInMap.has(slip.materialInId))
+    .filter((slip) => materialInMap.has(slip.materialInId) || isOpeningReelPackingSlip(slip))
     .map((slip) => {
       const material = materialMap.get(slip.materialId);
       const receipt = materialInMap.get(slip.materialInId);
@@ -142,19 +149,19 @@ export function buildReelStockRows({
       const reelQty = round2(Number(slip.weightKg || 0));
       const netIssuedWeight = round2(issuedWeight - returnedWeight);
       const availableWeight = round2(Math.max(0, reelQty + returnedWeight - issuedWeight));
-      const rate = availableWeight > 0 ? round2(getLineRate(receiptLine, material)) : 0;
-      const mrrNo = receipt?.transactionNo || "";
-      const isOpening = isOpeningMrrNo(mrrNo);
+      const mrrNo = isOpeningReelPackingSlip(slip) ? "1" : receipt?.transactionNo || "";
+      const isOpening = isOpeningReelPackingSlip(slip) || isOpeningMrrNo(mrrNo);
+      const rate = availableWeight > 0 ? round2(isOpeningReelPackingSlip(slip) ? Number(slip.openingRate || material?.openingRate || 0) : getLineRate(receiptLine, material)) : 0;
 
       return {
         slipId: slip.id,
         materialId: slip.materialId,
-        mrrDate: receipt?.date || "",
+        mrrDate: isOpening ? "" : receipt?.date || "",
         mrrNo,
         ourReelNo: slip.ourReelNo || "",
         erp: String(material?.erpCode || ""),
         itemName: String(material?.name || ""),
-        supplierName: supplier?.name || "",
+        supplierName: isOpening ? "-" : supplier?.name || "",
         gsm: Number(material?.gsm || 0),
         size: Number(material?.size || 0),
         bf: Number(material?.bf || 0),

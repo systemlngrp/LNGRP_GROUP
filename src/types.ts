@@ -165,6 +165,7 @@ export interface MaterialInPackingSlip {
   supplierReelNo?: string;
   ourReelNo: string;
   weightKg: number;
+  openingRate?: number;
   supplierPoNo?: string;
   ourPoId?: string;
   ourPoNo?: string;

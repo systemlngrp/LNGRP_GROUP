@@ -2514,7 +2514,7 @@ async function buildMaterialValuationMaps(db: mysql.Pool) {
   }
 
   const [packingSlipRows] = await db.query(`
-    SELECT ps.id, ps.materialId, ps.materialInId, ps.materialLineId, m.openingRate, mi.lines
+    SELECT ps.id, ps.materialId, ps.materialInId, ps.materialLineId, ps.openingRate AS packingSlipOpeningRate, m.openingRate, mi.lines
     FROM \`material_in_packing_slips\` ps
     LEFT JOIN \`material_in\` mi ON mi.id = ps.materialInId
     LEFT JOIN \`materials\` m ON m.id = ps.materialId
@@ -2523,7 +2523,7 @@ async function buildMaterialValuationMaps(db: mysql.Pool) {
   for (const slip of packingSlipRows as any[]) {
     const receiptLine = parseJsonArray(slip.lines).find((line) => String(line?.id || "") === String(slip.materialLineId || ""));
     const receiptRate = receiptLine ? roundCurrency(getMaterialInJsonLineRate(receiptLine)) : 0;
-    const openingRate = roundCurrency(Number(slip.openingRate || 0));
+    const openingRate = roundCurrency(Number(slip.packingSlipOpeningRate || slip.openingRate || 0));
     const rate = receiptRate > 0 ? receiptRate : openingRate;
     if (rate > 0) receiptRateByPackingSlip.set(String(slip.id || ""), rate);
   }
@@ -4073,6 +4073,7 @@ async function initDb(retries = 5) {
           \`supplierReelNo\` VARCHAR(255),
           \`ourReelNo\` VARCHAR(100) NOT NULL,
           \`weightKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`openingRate\` DECIMAL(15,2) DEFAULT 0,
           \`supplierPoNo\` VARCHAR(255),
           \`ourPoId\` VARCHAR(36),
           \`ourPoNo\` VARCHAR(100),
@@ -5674,6 +5675,7 @@ await db.query(`
         { table: "material_in_packing_slips", column: "supplierReelNo", type: "VARCHAR(255)" },
         { table: "material_in_packing_slips", column: "ourReelNo", type: "VARCHAR(100) NOT NULL" },
         { table: "material_in_packing_slips", column: "weightKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "material_in_packing_slips", column: "openingRate", type: "DECIMAL(15,2) DEFAULT 0" },
         { table: "material_in_packing_slips", column: "supplierPoNo", type: "VARCHAR(255)" },
         { table: "material_in_packing_slips", column: "ourPoId", type: "VARCHAR(36)" },
         { table: "material_in_packing_slips", column: "ourPoNo", type: "VARCHAR(100)" },

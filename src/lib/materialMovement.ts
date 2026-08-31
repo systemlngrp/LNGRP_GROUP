@@ -15,6 +15,7 @@ export function round2(value: number) {
 }
 
 export const REEL_BALANCE_TOLERANCE_KG = 0.004;
+export const OPENING_REEL_MATERIAL_IN_ID = "OPENING";
 
 function normalizeReference(value: unknown) {
   return String(value || "").trim().toLowerCase();
@@ -23,6 +24,10 @@ function normalizeReference(value: unknown) {
 function reelBalanceKey(productionId: string, line: Pick<MaterialIssueReelLine, "packingSlipId" | "ourReelNo">) {
   const reelIdentity = String(line.packingSlipId || line.ourReelNo || "").trim();
   return productionId && reelIdentity ? `${productionId}::${reelIdentity}` : "";
+}
+
+export function isOpeningReelPackingSlip(slip: Pick<MaterialInPackingSlip, "materialInId">) {
+  return String(slip.materialInId || "").trim() === OPENING_REEL_MATERIAL_IN_ID;
 }
 
 function buildProductionResolver(productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []) {
@@ -126,6 +131,11 @@ export function buildOpeningReelPackingSlips(
   ourReelNoStartNumber: unknown = 1
 ) {
   const persistedIds = new Set(packingSlips.map((slip) => slip.id));
+  const explicitOpeningMaterialIds = new Set(
+    packingSlips
+      .filter(isOpeningReelPackingSlip)
+      .map((slip) => slip.materialId)
+  );
   const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
 
   return materials
@@ -133,7 +143,8 @@ export function buildOpeningReelPackingSlips(
       (material) =>
         String(material.type || "").trim().toLowerCase() === "reel" &&
         Number(material.openingQty || 0) > 0 &&
-        !persistedIds.has(material.id)
+        !persistedIds.has(material.id) &&
+        !explicitOpeningMaterialIds.has(material.id)
     )
     .map<MaterialInPackingSlip>((material, index) => ({
       // Opening stock has no MRR packing slip. Use the material UUID as a stable,
