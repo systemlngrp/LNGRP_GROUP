@@ -686,6 +686,10 @@ function hasPermission(user: AuthUser, required: string) {
   if (list.includes("*")) return true;
   if (required === "/material-movement/reel-transfer" && list.includes("/material-movement/issue")) return true;
   if (
+    required === "/material-movement" &&
+    ["/material-movement/return", "/material-movement/reel-return", "/production/pending-material-return"].some((path) => list.includes(path))
+  ) return true;
+  if (
     required === "/production-processing" &&
     ["/production/pending-machine-processing", "/production/pending-printing", "/production-processing/master"].some((path) => list.includes(path))
   ) {

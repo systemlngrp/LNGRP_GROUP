@@ -158,6 +158,7 @@ const fgProductionItems: NavItem[] = [
   { name: "Pending NPD", href: "/production/pending-npd", icon: Activity, countKey: "/production/pending-npd" },
   { name: "Upcoming Scheduled Orders", href: "/production/upcoming", icon: Activity, countKey: "/orders/upcoming" },
   { name: "Pending Material Issue", href: "/production/pending-consumption", icon: FileText, countKey: "/production/pending-consumption" },
+  { name: "Pending Material Return", href: "/production/pending-material-return", icon: TrendingDown, countKey: "/production/pending-material-return" },
   { name: "Pending FG", href: "/production/pending-ffg", icon: FileText, countKey: "/production/pending-ffg" },
   { name: "Pending Printing", href: "/production/pending-printing", icon: FileText, countKey: "/production/pending-printing" },
   { name: "Pending Tally Entry", href: "/production/pending-tally", icon: FileText, countKey: "/production/pending-tally" },

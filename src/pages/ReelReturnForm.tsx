@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { PackageCheck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Camera, PackageCheck, X } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
@@ -31,7 +32,32 @@ function round2(value: number) {
   return Number(Number(value || 0).toFixed(2));
 }
 
-export function ReelReturnForm() {
+function normalizeText(value?: string | null) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function parseQrReelNo(rawValue: string) {
+  const text = String(rawValue || "").trim();
+  if (!text) return "";
+  if (text.startsWith("{") || text.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const keys = ["reelNo", "reel", "ourReelNo", "reel_no", "reelno"];
+      const value = keys.map((key) => parsed?.[key]).find((entry) => typeof entry === "string" && String(entry).trim());
+      if (value) return String(value).trim();
+    } catch {
+      // Fall through to loose QR text parsing.
+    }
+  }
+  const labeled = text.match(/(?:reel\s*no|our\s*reel\s*no|reel_no|reelno)\s*[:=]\s*([^|,;\n]+)/i);
+  if (labeled?.[1]) return labeled[1].trim();
+  const delimited = text.match(/^\s*([^|,;\n]+)\s*[|,;]/);
+  return (delimited?.[1] || text).trim();
+}
+
+export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [materials, , materialsLoading] = useData<Material>("materials", []);
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
@@ -43,12 +69,23 @@ export function ReelReturnForm() {
   const [materialReturnLines, setMaterialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [returnReelLines, setReturnReelLines, returnReelsLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
 
+  const requestedProductionId = String(searchParams.get("productionId") || "").trim();
+  const lockJob = searchParams.get("lockJob") === "1";
+  const returnTo = String(searchParams.get("returnTo") || "").trim();
   const [date, setDate] = useState(today());
-  const [productionId, setProductionId] = useState("");
+  const [productionId, setProductionId] = useState(requestedProductionId);
   const [reelKey, setReelKey] = useState("");
   const [returnWeight, setReturnWeight] = useState("");
   const [remarks, setRemarks] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState("");
+  const [isProcessingScan, setIsProcessingScan] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanTimerRef = useRef<number | null>(null);
+  const lastScannedCodeRef = useRef("");
+  const lastScannedAtRef = useRef(0);
 
   const returnableReels = useMemo(
     () => getAllReturnableReelLines(issueReelLines, returnReelLines, productions),
@@ -107,6 +144,103 @@ export function ReelReturnForm() {
 
   const invoiceRate = selectedReel ? getInvoiceRate(selectedReel.packingSlipId) : 0;
   const amount = validWeight ? round2(enteredWeight * invoiceRate) : 0;
+
+  const stopScanner = () => {
+    if (scanTimerRef.current !== null) {
+      window.clearInterval(scanTimerRef.current);
+      scanTimerRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  const closeScanner = () => {
+    stopScanner();
+    setIsScannerOpen(false);
+    lastScannedCodeRef.current = "";
+    lastScannedAtRef.current = 0;
+  };
+
+  useEffect(() => stopScanner, []);
+
+  const selectScannedReel = (rawValue: string) => {
+    if (!productionId) throw new Error("Select a job before scanning.");
+    const reelNo = parseQrReelNo(rawValue);
+    if (!reelNo) throw new Error("Reel number is required in QR.");
+    const matchingForJob = reelsForJob.find((row) => normalizeText(row.ourReelNo) === normalizeText(reelNo));
+    if (!matchingForJob) {
+      const matchingElsewhere = returnableReels.find((row) => normalizeText(row.ourReelNo) === normalizeText(reelNo));
+      if (matchingElsewhere) throw new Error(`Reel ${reelNo} is not issued against the selected job.`);
+      throw new Error(`Reel ${reelNo} has no issued balance available for return.`);
+    }
+    setReelKey(`${matchingForJob.productionId}::${matchingForJob.packingSlipId}`);
+    setReturnWeight("");
+    setScannerError("");
+  };
+
+  const openScanner = async () => {
+    if (!productionId) {
+      setScannerError("Select a job before scanning.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setScannerError("Camera access is not supported on this browser/device.");
+      return;
+    }
+    const BarcodeDetectorCtor = (window as Window & {
+      BarcodeDetector?: new (options?: { formats?: string[] }) => {
+        detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>>;
+      };
+    }).BarcodeDetector;
+    if (!BarcodeDetectorCtor) {
+      setScannerError("QR scanner is not supported on this browser.");
+      return;
+    }
+
+    stopScanner();
+    setScannerError("");
+    setIsScannerOpen(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      streamRef.current = stream;
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+      scanTimerRef.current = window.setInterval(async () => {
+        if (!videoRef.current || isProcessingScan) return;
+        try {
+          const codes = await detector.detect(videoRef.current);
+          const scanned = codes?.[0]?.rawValue;
+          if (!scanned) return;
+          const now = Date.now();
+          if (scanned === lastScannedCodeRef.current && now - lastScannedAtRef.current < 1500) return;
+          lastScannedCodeRef.current = scanned;
+          lastScannedAtRef.current = now;
+          setIsProcessingScan(true);
+          try {
+            selectScannedReel(scanned);
+            closeScanner();
+          } catch (error) {
+            closeScanner();
+            setScannerError(error instanceof Error ? error.message : "Unable to process scanned reel.");
+          } finally {
+            setIsProcessingScan(false);
+          }
+        } catch {
+          // Ignore individual frame decode failures and continue scanning.
+        }
+      }, 350);
+    } catch (error) {
+      console.error(error);
+      closeScanner();
+      setScannerError("Unable to open camera. Please allow camera permission and try again.");
+    }
+  };
 
   const handleJobChange = (value: string) => {
     setProductionId(value);
@@ -227,6 +361,7 @@ export function ReelReturnForm() {
       setReturnWeight("");
       setRemarks("");
       alert(`Reel ${latestReel.ourReelNo} return saved successfully.`);
+      if (returnTo) navigate(returnTo);
     } catch (error) {
       console.error("Failed to save reel return:", error);
       alert(error instanceof Error ? error.message : "Failed to save reel return.");
@@ -239,7 +374,14 @@ export function ReelReturnForm() {
 
   return (
     <div className="rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
-      <h2 className="mb-4 border-b border-black pb-2 text-lg font-bold uppercase tracking-tight text-black md:mb-6 md:text-xl">Reel Return Form</h2>
+      <div className="mb-4 flex items-center gap-3 border-b border-black pb-2 md:mb-6">
+        {returnTo ? (
+          <button type="button" onClick={() => navigate(returnTo)} className="inline-flex items-center gap-1 rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-slate-100">
+            <ArrowLeft size={15} /> Pending Returns
+          </button>
+        ) : null}
+        <h2 className="text-lg font-bold uppercase tracking-tight text-black md:text-xl">{mode === "qr" ? "QR Reel Return" : "Manual Reel Return"}</h2>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -250,7 +392,7 @@ export function ReelReturnForm() {
             <input type="text" value="Generated on Submit" disabled className="w-full rounded border-2 border-black bg-slate-50 p-2 opacity-70" />
           </Field>
           <Field label="Job No." required>
-            <Select id="reel-return-job" required options={jobOptions} value={productionId} onChange={handleJobChange} placeholder="Select Job..." />
+            <Select id="reel-return-job" required disabled={lockJob} options={jobOptions} value={productionId} onChange={handleJobChange} placeholder="Select Job..." />
             {jobOptions.length === 0 ? <p className="mt-1 text-xs font-bold text-slate-500">No jobs have an issued reel pending return.</p> : null}
           </Field>
           <Field label="Remarks">
@@ -263,7 +405,17 @@ export function ReelReturnForm() {
           <div className="rounded border border-black bg-slate-50 p-4">
             <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
               <Field label="Reel No." required>
-                <Select id="reel-return-reel" required disabled={!productionId} options={reelOptions} value={reelKey} onChange={handleReelChange} placeholder={productionId ? "Select Issued Reel..." : "Select Job First..."} wrapLabels />
+                {mode === "qr" ? (
+                  <div className="flex gap-2">
+                    <input value={selectedReel?.ourReelNo || ""} readOnly placeholder="Scan reel QR..." className="min-w-0 flex-1 rounded border-2 border-black bg-slate-50 p-2 font-bold" />
+                    <button type="button" onClick={() => void openScanner()} disabled={!productionId || isProcessingScan || isSubmitting} className="inline-flex items-center gap-2 rounded border-2 border-black bg-emerald-600 px-4 py-2 font-bold text-white disabled:opacity-50">
+                      <Camera size={17} /> Scan QR
+                    </button>
+                  </div>
+                ) : (
+                  <Select id="reel-return-reel" required disabled={!productionId} options={reelOptions} value={reelKey} onChange={handleReelChange} placeholder={productionId ? "Select Issued Reel..." : "Select Job First..."} wrapLabels />
+                )}
+                {scannerError ? <p className="mt-2 text-sm font-bold text-red-700">{scannerError}</p> : null}
               </Field>
               <Field label="Return Weight KG" required>
                 <input id="reel-return-weight" type="number" required min="0.01" max={selectedReel?.weightKg} step="0.01" disabled={!selectedReel} value={returnWeight} onChange={(event) => setReturnWeight(event.target.value)} placeholder="0.00" className="w-full rounded border-2 border-black p-2 text-right font-bold disabled:bg-slate-100" />
@@ -308,6 +460,19 @@ export function ReelReturnForm() {
           </button>
         </div>
       </form>
+
+      {isScannerOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded border-2 border-black bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-black uppercase">Scan Return Reel QR</div>
+              <button type="button" onClick={closeScanner} className="rounded border border-black p-1.5" aria-label="Close scanner"><X size={18} /></button>
+            </div>
+            <video ref={videoRef} playsInline muted className="aspect-video w-full rounded bg-black object-cover" />
+            <p className="mt-3 text-center text-xs font-bold text-slate-600">Point the camera at the issued reel QR label.</p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -32,6 +32,7 @@ import { PendingMDApproval } from "./pages/PendingMDApproval";
 import { MaterialIssueForm } from "./pages/MaterialIssueForm";
 import { MaterialReturnForm } from "./pages/MaterialReturnForm";
 import { ReelReturnForm } from "./pages/ReelReturnForm";
+import { PendingMaterialReturn } from "./pages/PendingMaterialReturn";
 import { ReelTransferForm } from "./pages/ReelTransferForm";
 import { MaterialIssueMaster } from "./pages/MaterialIssueMaster";
 import { MaterialReturnMaster } from "./pages/MaterialReturnMaster";
@@ -279,6 +280,7 @@ export default function App() {
           <Route path="material-movement/non-job-issue-master" element={<NonJobIssueMaster />} />
           <Route path="material-movement/return" element={<MaterialReturnForm />} />
           <Route path="material-movement/reel-return" element={<ReelReturnForm />} />
+          <Route path="material-movement/reel-return/qr" element={<ReelReturnForm mode="qr" />} />
           <Route path="material-movement/reel-transfer" element={<ReelTransferForm />} />
           <Route path="material-movement/return-master" element={<MaterialReturnMaster />} />
 
@@ -302,6 +304,7 @@ export default function App() {
           <Route path="production/pending-npd" element={<PendingNpd />} />
           <Route path="production/upcoming" element={<UpcomingScheduledOrders />} />
           <Route path="production/pending-consumption" element={<ProductionPendingConsumption />} />
+          <Route path="production/pending-material-return" element={<PendingMaterialReturn />} />
           <Route path="production/pending-ffg" element={<ProductionPendingFFG />} />
           <Route path="production/pending-tally" element={<ProductionPendingTally />} />
           <Route path="production/pending-job-closure" element={<PendingJobClosure />} />

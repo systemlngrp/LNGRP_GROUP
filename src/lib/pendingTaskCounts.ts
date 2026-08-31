@@ -35,6 +35,7 @@ import { getCurrentProcessingMachine, isMachineStepFull } from "./productionProc
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
 import { isProductionPendingConsumption, isProductionPendingFFG, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
+import { getAllReturnableReelLines } from "./materialMovement";
 
 type OrderCatalogItem = {
   id: string;
@@ -80,6 +81,7 @@ export const PENDING_TASK_DEFINITIONS = [
   { section: "Jobs", name: "Pending Production Plan", countKey: "/production/pending" },
   { section: "Jobs", name: "Pending NPD", countKey: "/production/pending-npd" },
   { section: "Jobs", name: "Pending Material Issue", countKey: "/production/pending-consumption" },
+  { section: "Jobs", name: "Pending Material Return", countKey: "/production/pending-material-return" },
   { section: "Jobs", name: "Pending FG", countKey: "/production/pending-ffg" },
   { section: "Jobs", name: "Pending Printing", countKey: "/production/pending-printing" },
   { section: "Jobs", name: "Pending Production Tally Entry", countKey: "/production/pending-tally" },
@@ -421,6 +423,11 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/production/pending-consumption": args.productions.filter((p) =>
       isProductionPendingConsumption(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
+    "/production/pending-material-return": new Set(
+      getAllReturnableReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions)
+        .filter((line) => args.productions.some((production) => production.id === line.productionId && production.status !== "Cancelled"))
+        .map((line) => line.productionId)
+    ).size,
     "/production/pending-ffg": args.productions.filter((p) =>
       isProductionPendingFFG(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
