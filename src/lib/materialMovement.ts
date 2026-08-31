@@ -16,6 +16,35 @@ export function round2(value: number) {
 
 export const REEL_BALANCE_TOLERANCE_KG = 0.004;
 
+function normalizeReference(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function reelBalanceKey(productionId: string, line: Pick<MaterialIssueReelLine, "packingSlipId" | "ourReelNo">) {
+  const reelIdentity = String(line.packingSlipId || line.ourReelNo || "").trim();
+  return productionId && reelIdentity ? `${productionId}::${reelIdentity}` : "";
+}
+
+function buildProductionResolver(productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []) {
+  const productionIds = new Set(productions.map((production) => String(production.id || "").trim()).filter(Boolean));
+  const productionIdByJobNo = new Map<string, string>();
+
+  productions.forEach((production) => {
+    const id = String(production.id || "").trim();
+    if (!id) return;
+    [production.transactionNo, production.jobCardNo].forEach((jobNo) => {
+      const normalizedJobNo = normalizeReference(jobNo);
+      if (normalizedJobNo) productionIdByJobNo.set(normalizedJobNo, id);
+    });
+  });
+
+  return (line: Pick<MaterialIssueReelLine, "productionId" | "jobNo">) => {
+    const directId = String(line.productionId || "").trim();
+    if (directId && (productionIds.size === 0 || productionIds.has(directId))) return directId;
+    return productionIdByJobNo.get(normalizeReference(line.jobNo)) || directId;
+  };
+}
+
 export function calculateMaterialIssueAmount(qty: number, rate: number) {
   return round2(round2(qty) * round2(rate));
 }
@@ -85,11 +114,13 @@ function buildJobReturnableWeights(
 ) {
   const weights = new Map<string, number>();
   issueReelLines.forEach((line) => {
-    const key = `${line.packingSlipId}::${line.productionId}`;
+    const key = reelBalanceKey(String(line.productionId || "").trim(), line);
+    if (!key) return;
     weights.set(key, (weights.get(key) || 0) + Number(line.weightKg || 0));
   });
   returnReelLines.forEach((line) => {
-    const key = `${line.packingSlipId}::${line.productionId}`;
+    const key = reelBalanceKey(String(line.productionId || "").trim(), line);
+    if (!key) return;
     weights.set(key, (weights.get(key) || 0) - Number(line.weightKg || 0));
   });
   return weights;
@@ -182,7 +213,7 @@ export function getReturnableReelLinesForJob(
   });
 
   return Array.from(latestIssueLineBySlip.values()).flatMap((line) => {
-    const key = `${line.packingSlipId}::${line.productionId}`;
+    const key = reelBalanceKey(String(line.productionId || "").trim(), line);
     const returnableWeight = Number((returnableWeights.get(key) || 0).toFixed(2));
     if (returnableWeight <= REEL_BALANCE_TOLERANCE_KG) return [];
     return [{ ...line, weightKg: returnableWeight }];
@@ -192,31 +223,21 @@ export function getReturnableReelLinesForJob(
 export function getAllReturnableReelLines(
   issueReelLines: MaterialIssueReelLine[],
   returnReelLines: MaterialReturnReelLine[],
-  productions: Pick<Production, "id" | "transactionNo">[] = []
+  productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []
 ) {
-  const productionIds = new Set(productions.map((production) => String(production.id || "").trim()).filter(Boolean));
-  const productionIdByJobNo = new Map(
-    productions
-      .map((production) => [String(production.transactionNo || "").trim().toLowerCase(), production.id] as const)
-      .filter(([jobNo]) => Boolean(jobNo))
-  );
-  const resolveProductionId = (line: Pick<MaterialIssueReelLine, "productionId" | "jobNo">) => {
-    const directId = String(line.productionId || "").trim();
-    if (directId && (productionIds.size === 0 || productionIds.has(directId))) return directId;
-    return productionIdByJobNo.get(String(line.jobNo || "").trim().toLowerCase()) || directId;
-  };
+  const resolveProductionId = buildProductionResolver(productions);
 
   const returnableWeights = new Map<string, number>();
   issueReelLines.forEach((line) => {
     const productionId = resolveProductionId(line);
-    if (!productionId || !line.packingSlipId) return;
-    const key = `${productionId}::${line.packingSlipId}`;
+    const key = reelBalanceKey(productionId, line);
+    if (!key) return;
     returnableWeights.set(key, (returnableWeights.get(key) || 0) + Number(line.weightKg || 0));
   });
   returnReelLines.forEach((line) => {
     const productionId = resolveProductionId(line);
-    if (!productionId || !line.packingSlipId) return;
-    const key = `${productionId}::${line.packingSlipId}`;
+    const key = reelBalanceKey(productionId, line);
+    if (!key) return;
     returnableWeights.set(key, (returnableWeights.get(key) || 0) - Number(line.weightKg || 0));
   });
 
@@ -224,8 +245,9 @@ export function getAllReturnableReelLines(
 
   issueReelLines.forEach((line) => {
     const productionId = resolveProductionId(line);
-    if (!productionId || !line.packingSlipId) return;
-    latestIssueLineByJobAndSlip.set(`${productionId}::${line.packingSlipId}`, { ...line, productionId });
+    const key = reelBalanceKey(productionId, line);
+    if (!key) return;
+    latestIssueLineByJobAndSlip.set(key, { ...line, productionId });
   });
 
   return Array.from(latestIssueLineByJobAndSlip.entries()).flatMap(([key, line]) => {

@@ -15,7 +15,7 @@ type ReturnDraft = Record<string, string>;
 const today = () => new Date().toISOString().slice(0, 10);
 const round2 = (value: number) => Number(Number(value || 0).toFixed(2));
 const normalizeText = (value?: string | null) => String(value || "").trim().toLowerCase();
-const reelKey = (row: Pick<ReturnableReel, "productionId" | "packingSlipId">) => `${row.productionId}::${row.packingSlipId}`;
+const reelKey = (row: Pick<ReturnableReel, "productionId" | "packingSlipId" | "ourReelNo">) => `${row.productionId}::${String(row.packingSlipId || row.ourReelNo || "").trim()}`;
 
 function parseQrReelNo(rawValue: string) {
   const text = String(rawValue || "").trim();
@@ -150,7 +150,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
     try {
       const latest = getAllReturnableReelLines(issueReelLines, returnReelLines, productions);
       const validated = draftStatus.map((entry) => {
-        const current = latest.find((row) => row.productionId === productionId && row.packingSlipId === entry.row.packingSlipId);
+        const current = latest.find((row) => row.productionId === productionId && reelKey(row) === reelKey(entry.row));
         if (!current) throw new Error(`Reel ${entry.row.ourReelNo} no longer has an issued balance available.`);
         const qty = round2(entry.qty);
         if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Enter a return weight for reel ${entry.row.ourReelNo}.`);
@@ -187,9 +187,11 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
       const usageMap = buildProductionMaterialUsageMap(materialIssues, materialIssueLines, nextReturns, nextReturnLines, issueReelLines, nextReturnReelLines);
       const corrugatedUsageMap = buildProductionCorrugatedSheetUsageMap(materials, materialIssues, materialIssueLines, nextReturns, nextReturnLines);
       await setProductions((current) => current.map((row) => row.id === productionId ? syncProductionWorkflowFromUsage(row, usageMap.get(productionId) || 0, timestamp, Number(corrugatedUsageMap.get(productionId) || 0) > 0) : row));
+      const remainingForJob = getAllReturnableReelLines(issueReelLines, nextReturnReelLines, productions)
+        .filter((row) => row.productionId === productionId);
       setDraft({}); setRemarks("");
       alert(`${validated.length} reel return${validated.length === 1 ? "" : "s"} saved successfully.`);
-      if (returnTo) navigate(returnTo);
+      if (returnTo || remainingForJob.length === 0) navigate(returnTo || "/production/pending-material-return");
     } catch (error) { console.error("Failed to save reel returns:", error); alert(error instanceof Error ? error.message : "Failed to save reel returns."); }
     finally { setIsSubmitting(false); }
   };
