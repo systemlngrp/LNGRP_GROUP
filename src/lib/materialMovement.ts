@@ -108,22 +108,16 @@ function buildSlipNetIssuedWeights(
   return weights;
 }
 
-function buildJobReturnableWeights(
-  issueReelLines: MaterialIssueReelLine[],
-  returnReelLines: MaterialReturnReelLine[]
+function buildReturnedReelKeys(
+  returnReelLines: MaterialReturnReelLine[],
+  resolveProductionId: (line: Pick<MaterialIssueReelLine, "productionId" | "jobNo">) => string
 ) {
-  const weights = new Map<string, number>();
-  issueReelLines.forEach((line) => {
-    const key = reelBalanceKey(String(line.productionId || "").trim(), line);
-    if (!key) return;
-    weights.set(key, (weights.get(key) || 0) + Number(line.weightKg || 0));
-  });
+  const keys = new Set<string>();
   returnReelLines.forEach((line) => {
-    const key = reelBalanceKey(String(line.productionId || "").trim(), line);
-    if (!key) return;
-    weights.set(key, (weights.get(key) || 0) - Number(line.weightKg || 0));
+    const key = reelBalanceKey(resolveProductionId(line), line);
+    if (key) keys.add(key);
   });
-  return weights;
+  return keys;
 }
 
 export function buildOpeningReelPackingSlips(
@@ -203,20 +197,21 @@ export function getReturnableReelLinesForJob(
   issueReelLines: MaterialIssueReelLine[],
   returnReelLines: MaterialReturnReelLine[]
 ) {
-  const returnableWeights = buildJobReturnableWeights(issueReelLines, returnReelLines);
+  const returnedReelKeys = buildReturnedReelKeys(returnReelLines, (line) => String(line.productionId || "").trim());
   const latestIssueLineBySlip = new Map<string, MaterialIssueReelLine>();
 
   issueReelLines.forEach((line) => {
     if (line.materialId !== materialId) return;
     if (line.productionId !== productionId) return;
-    latestIssueLineBySlip.set(line.packingSlipId, line);
+    const key = reelBalanceKey(productionId, line);
+    if (!key || returnedReelKeys.has(key)) return;
+    latestIssueLineBySlip.set(key, line);
   });
 
   return Array.from(latestIssueLineBySlip.values()).flatMap((line) => {
-    const key = reelBalanceKey(String(line.productionId || "").trim(), line);
-    const returnableWeight = Number((returnableWeights.get(key) || 0).toFixed(2));
-    if (returnableWeight <= REEL_BALANCE_TOLERANCE_KG) return [];
-    return [{ ...line, weightKg: returnableWeight }];
+    const issuedWeight = round2(Number(line.weightKg || 0));
+    if (issuedWeight <= REEL_BALANCE_TOLERANCE_KG) return [];
+    return [{ ...line, weightKg: issuedWeight }];
   });
 }
 
@@ -226,32 +221,19 @@ export function getAllReturnableReelLines(
   productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []
 ) {
   const resolveProductionId = buildProductionResolver(productions);
-
-  const returnableWeights = new Map<string, number>();
-  issueReelLines.forEach((line) => {
-    const productionId = resolveProductionId(line);
-    const key = reelBalanceKey(productionId, line);
-    if (!key) return;
-    returnableWeights.set(key, (returnableWeights.get(key) || 0) + Number(line.weightKg || 0));
-  });
-  returnReelLines.forEach((line) => {
-    const productionId = resolveProductionId(line);
-    const key = reelBalanceKey(productionId, line);
-    if (!key) return;
-    returnableWeights.set(key, (returnableWeights.get(key) || 0) - Number(line.weightKg || 0));
-  });
+  const returnedReelKeys = buildReturnedReelKeys(returnReelLines, resolveProductionId);
 
   const latestIssueLineByJobAndSlip = new Map<string, MaterialIssueReelLine>();
 
   issueReelLines.forEach((line) => {
     const productionId = resolveProductionId(line);
     const key = reelBalanceKey(productionId, line);
-    if (!key) return;
+    if (!key || returnedReelKeys.has(key)) return;
     latestIssueLineByJobAndSlip.set(key, { ...line, productionId });
   });
 
-  return Array.from(latestIssueLineByJobAndSlip.entries()).flatMap(([key, line]) => {
-    const returnableWeight = round2(returnableWeights.get(key) || 0);
-    return returnableWeight > REEL_BALANCE_TOLERANCE_KG ? [{ ...line, weightKg: returnableWeight }] : [];
+  return Array.from(latestIssueLineByJobAndSlip.values()).flatMap((line) => {
+    const issuedWeight = round2(Number(line.weightKg || 0));
+    return issuedWeight > REEL_BALANCE_TOLERANCE_KG ? [{ ...line, weightKg: issuedWeight }] : [];
   });
 }
