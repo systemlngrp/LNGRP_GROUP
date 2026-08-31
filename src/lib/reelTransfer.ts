@@ -30,18 +30,7 @@ function positiveFinite(value: unknown) {
 }
 
 export function getReelTransferRequiredJobWeight(production: Production) {
-  const totalJobWeight = positiveFinite(production.totalJobWeight);
-  if (totalJobWeight) return totalJobWeight;
-
-  const totalPaperWeight = positiveFinite(production.totalPaperWeight);
-  if (totalPaperWeight) return totalPaperWeight;
-
-  const componentWeight = positiveFinite(production.topPaperWeightKg) + positiveFinite(production.linerWeightKg);
-  if (componentWeight > 0) return componentWeight;
-
-  const sheetWeight = positiveFinite(production.sheetWeight);
-  const plannedQty = positiveFinite(production.qty) || positiveFinite(production.plannedQty);
-  return sheetWeight > 0 && plannedQty > 0 ? sheetWeight * plannedQty : 0;
+  return positiveFinite(production.totalPaperWeight);
 }
 
 function getValidTime(primary: unknown, fallback: unknown) {

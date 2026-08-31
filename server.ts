@@ -10171,10 +10171,7 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
       return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
     };
     const planQty = positiveFinite(source.qty) || positiveFinite(source.plannedQty);
-    const requiredKg = positiveFinite(source.totalJobWeight) ||
-      positiveFinite(source.totalPaperWeight) ||
-      (positiveFinite(source.topPaperWeightKg) + positiveFinite(source.linerWeightKg)) ||
-      (positiveFinite(source.sheetWeight) * planQty);
+    const requiredKg = positiveFinite(source.totalPaperWeight);
     if (planQty <= 0) throw new Error("Source job plan quantity is required for transfer calculation.");
     if (requiredKg <= 0) throw new Error("Source job weight calculation is unavailable.");
     const corrugationQty = sourceCorrugation
