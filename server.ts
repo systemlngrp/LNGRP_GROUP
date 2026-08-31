@@ -7206,10 +7206,15 @@ const createHandlers = (tableName: string) => {
             return res.status(400).json({ error: `Mandatory fields missing/invalid: ${missing.join(", ")}` });
           }
 
+          const completionStatus = String(data.completionStatus || "").trim();
+          if (completionStatus !== "Part" && completionStatus !== "Full") {
+            return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
+          }
+
           const [machineRows] = await db.query("SELECT `name` FROM `machines` WHERE `id` = ? LIMIT 1", [data.machineId]);
           const storedMachineName = String((machineRows as any[])[0]?.name || "").trim();
           data.machineName = normalizeMachineName(storedMachineName || String(data.machineName || ""));
-          if (data.machineName === "Corrugation Liner") {
+          if (data.machineName === "Corrugation Liner" && completionStatus === "Full") {
             const wastageInputFields = ["warpageBoxes", "delaminationBoxes", "misalignmentBoxes", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "noHisabBoxes"];
             for (const field of wastageInputFields) {
               const rawValue = data[field];
@@ -7274,7 +7279,7 @@ const createHandlers = (tableName: string) => {
               .forEach((field) => { data[field] = 0; });
           }
           const printingWastageFields = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
-          if (data.machineName === "Printing") {
+          if (data.machineName === "Printing" && completionStatus === "Full") {
             for (const field of printingWastageFields) {
               const rawValue = data[field];
               const numericValue = rawValue === "" || rawValue == null ? 0 : Number(rawValue);
@@ -7285,10 +7290,6 @@ const createHandlers = (tableName: string) => {
             }
           } else {
             printingWastageFields.forEach((field) => { data[field] = 0; });
-          }
-          const completionStatus = String(data.completionStatus || "").trim();
-          if (completionStatus !== "Part" && completionStatus !== "Full") {
-            return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
           }
 
           const [existingProcessingRows] = await db.query(

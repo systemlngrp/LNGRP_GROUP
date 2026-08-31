@@ -196,6 +196,7 @@ export function ProductionMaster() {
     const map = new Map<string, Record<string, number>>();
     processing.forEach((entry) => {
       if (normalizeMachineName(entry.machineName) !== "Corrugation Liner") return;
+      if ((entry.completionStatus || "Full") !== "Full") return;
       const totals = map.get(entry.productionId) || {
         warpageBoxes: 0, warpageKg: 0, delaminationBoxes: 0, delaminationKg: 0,
         misalignmentBoxes: 0, misalignmentKg: 0, twoPlyPaperKg: 0, deckelWastageKg: 0,
@@ -211,6 +212,7 @@ export function ProductionMaster() {
     const map = new Map<string, Record<string, number>>();
     processing.forEach((entry) => {
       if (normalizeMachineName(entry.machineName) !== "Printing") return;
+      if ((entry.completionStatus || "Full") !== "Full") return;
       const totals = map.get(entry.productionId) || {
         slotting: 0, delaminationPrinting: 0, misalignmentPrinting: 0,
         drySheets: 0, warp: 0, misprinting: 0, jobSetting: 0,

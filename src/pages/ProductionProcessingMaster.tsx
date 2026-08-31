@@ -33,6 +33,9 @@ const blankDraft: EditDraft = {
   printingWastage: { ...EMPTY_PRINTING_WASTAGE_DRAFT },
 };
 
+const ZERO_CORRUGATION_WASTAGE_VALUES = buildCorrugationWastageValues(EMPTY_CORRUGATION_WASTAGE_DRAFT, null);
+const ZERO_PRINTING_WASTAGE_VALUES = buildPrintingWastageValues(EMPTY_PRINTING_WASTAGE_DRAFT);
+
 export function ProductionProcessingMaster() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -101,9 +104,12 @@ export function ProductionProcessingMaster() {
     const timestamp = new Date().toISOString();
 
     setProcessing((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        const savedCompletionStatus = item.completionStatus || "Full";
+        const savesWastage = savedCompletionStatus === "Full";
+
+        return {
               ...item,
               date: editDraft.date,
               productionId: selectedProduction.id,
@@ -115,18 +121,19 @@ export function ProductionProcessingMaster() {
                 : {}),
               shift: editDraft.shift as "Day" | "Night",
               qty: qtyNumber,
-              ...(normalizedMachineName === "Corrugation Liner"
+              ...ZERO_CORRUGATION_WASTAGE_VALUES,
+              ...ZERO_PRINTING_WASTAGE_VALUES,
+              ...(normalizedMachineName === "Corrugation Liner" && savesWastage
                 ? buildCorrugationWastageValues(editDraft.wastage, selectedProduction)
                 : {}),
-              ...(normalizedMachineName === "Printing"
+              ...(normalizedMachineName === "Printing" && savesWastage
                 ? buildPrintingWastageValues(editDraft.printingWastage)
                 : {}),
               erp: selectedProduction.erpCode || item.erp,
               updatedBy: auditUserName,
               updateTimestamp: timestamp,
-            }
-          : item
-      )
+            };
+      })
     );
     cancelEdit();
   };
@@ -234,6 +241,10 @@ export function ProductionProcessingMaster() {
               ) : (
                 filtered.map((item) => {
                   const isEditing = editingId === item.id;
+                  const editMachineName = normalizeMachineName(machineOptions.find((option) => option.value === editDraft.machineId)?.label);
+                  const editCompletionStatus = item.completionStatus || "Full";
+                  const showEditCorrugationWastage = editMachineName === "Corrugation Liner" && editCompletionStatus === "Full";
+                  const showEditPrintingWastage = editMachineName === "Printing" && editCompletionStatus === "Full";
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors divide-x divide-black">
@@ -332,7 +343,7 @@ export function ProductionProcessingMaster() {
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium border border-black">
                         {isEditing ? (
                           <div className="space-y-3">
-                            {normalizeMachineName(machineOptions.find((option) => option.value === editDraft.machineId)?.label) === "Corrugation Liner" ? (
+                            {showEditCorrugationWastage ? (
                               <CorrugationWastageFields
                                 compact
                                 draft={editDraft.wastage}
@@ -340,7 +351,7 @@ export function ProductionProcessingMaster() {
                                 onChange={(key, value) => setEditDraft((current) => ({ ...current, wastage: { ...current.wastage, [key]: value } }))}
                               />
                             ) : null}
-                            {normalizeMachineName(machineOptions.find((option) => option.value === editDraft.machineId)?.label) === "Printing" ? (
+                            {showEditPrintingWastage ? (
                               <PrintingWastageFields
                                 compact
                                 draft={editDraft.printingWastage}

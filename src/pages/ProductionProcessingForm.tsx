@@ -58,9 +58,19 @@ function LockedReportForm() {
   const requiresCompletionStatus = usesPartFullProgress(machineName);
   const isCorrugationLiner = normalizeMachineName(machineName) === "Corrugation Liner";
   const isPrinting = normalizeMachineName(machineName) === "Printing";
+  const isFullReport = completionStatus === "Full";
+  const showCorrugationWastage = isCorrugationLiner && isFullReport;
+  const showPrintingWastage = isPrinting && isFullReport;
   const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
   const materialIssueBlocked = isCorrugationLiner &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
+
+  useEffect(() => {
+    if (completionStatus !== "Full") {
+      setWastageDraft({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
+      setPrintingWastageDraft({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
+    }
+  }, [completionStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,8 +115,8 @@ function LockedReportForm() {
       updateTimestamp: new Date().toISOString(),
       itemName: itemName || undefined,
       erp: erp || undefined,
-      ...(isCorrugationLiner ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
-      ...(isPrinting ? buildPrintingWastageValues(printingWastageDraft) : {}),
+      ...(showCorrugationWastage ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
+      ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
     };
 
     setIsSubmitting(true);
@@ -223,7 +233,7 @@ function LockedReportForm() {
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600"
               />
             </div>
-            {isCorrugationLiner ? (
+            {showCorrugationWastage ? (
               <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
                 <CorrugationWastageFields
@@ -233,7 +243,7 @@ function LockedReportForm() {
                 />
               </div>
             ) : null}
-            {isPrinting ? (
+            {showPrintingWastage ? (
               <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Printing Wastage</h4>
                 <PrintingWastageFields
@@ -319,6 +329,9 @@ function FullReportForm() {
   const requiresCompletionStatus = usesPartFullProgress(selectedMachine?.name);
   const isCorrugationLiner = normalizeMachineName(selectedMachine?.name) === "Corrugation Liner";
   const isPrinting = normalizeMachineName(selectedMachine?.name) === "Printing";
+  const isFullReport = completionStatus === "Full";
+  const showCorrugationWastage = isCorrugationLiner && isFullReport;
+  const showPrintingWastage = isPrinting && isFullReport;
   const materialIssueBlocked = isCorrugationLiner &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
 
@@ -352,6 +365,13 @@ function FullReportForm() {
     if (qtyContext.pendingQty <= 0) return;
     setQty(String(qtyContext.pendingQty));
   }, [initialQty, qty, qtyContext]);
+
+  useEffect(() => {
+    if (completionStatus !== "Full") {
+      setWastageDraft({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
+      setPrintingWastageDraft({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
+    }
+  }, [completionStatus]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -400,8 +420,8 @@ function FullReportForm() {
         ...(requiresCompletionStatus ? { completionStatus } : {}),
         updatedBy: auditUser.name,
         updateTimestamp: new Date().toISOString(),
-        ...(isCorrugationLiner ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
-        ...(isPrinting ? buildPrintingWastageValues(printingWastageDraft) : {}),
+        ...(showCorrugationWastage ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
+        ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
       };
 
       await setProcessing((prev) => [...prev, newEntry]);
@@ -521,7 +541,7 @@ function FullReportForm() {
                 </div>
               ) : null}
             </div>
-            {isCorrugationLiner ? (
+            {showCorrugationWastage ? (
               <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
                 <CorrugationWastageFields
@@ -531,7 +551,7 @@ function FullReportForm() {
                 />
               </div>
             ) : null}
-            {isPrinting ? (
+            {showPrintingWastage ? (
               <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Printing Wastage</h4>
                 <PrintingWastageFields
