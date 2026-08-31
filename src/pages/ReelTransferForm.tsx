@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Material, MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
-import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrugationFullTime } from "../lib/reelTransfer";
+import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
+import { normalizeMachineName } from "../lib/productionMachineNames";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -34,7 +35,15 @@ export function ReelTransferForm() {
   const sourceOptions = productions.filter((p) => p.status !== "Cancelled" && !p.cancelTimestamp && contexts.get(p.id)?.eligible).map((p) => ({ value: p.id, label: String(p.transactionNo) }));
   const sourceContext = contexts.get(sourceId);
   const normalizeJobNo = (value: unknown) => String(value || "").trim().toLowerCase();
-  const targetOptions = productions.filter((p) => p.id !== sourceId && p.status !== "Cancelled" && !p.cancelTimestamp && !issueReels.some((row) => row.productionId === p.id || normalizeJobNo(row.jobNo) === normalizeJobNo(p.transactionNo)) && getCorrugationFullTime(processing, p.id) > 0).map((p) => ({ value: p.id, label: String(p.transactionNo) }));
+  const targetOptions = productions.filter((p) =>
+    p.id !== sourceId &&
+    p.status !== "Cancelled" &&
+    p.status !== "Completed" &&
+    !p.cancelTimestamp &&
+    !p.tallyTimestamp &&
+    !issueReels.some((row) => row.productionId === p.id || normalizeJobNo(row.jobNo) === normalizeJobNo(p.transactionNo)) &&
+    !processing.some((row) => row.productionId === p.id && normalizeMachineName(row.machineName) === "Corrugation Liner")
+  ).map((p) => ({ value: p.id, label: String(p.transactionNo) }));
   const materialMap = new Map(materials.map((row) => [row.id, row]));
   const selectedRows = (sourceContext?.reels || []).filter((row) => selectedSlips.includes(row.packingSlipId));
   const totalWeight = selectedRows.reduce((sum, row) => sum + row.transferWeightKg, 0);
@@ -80,7 +89,10 @@ export function ReelTransferForm() {
         <Field label="Transfer Date"><input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
         <Field label="Transfer No."><input value="Auto" readOnly className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>
         <Field label="Source Job No."><Select disabled={lockSource} options={sourceOptions} value={sourceId} onChange={handleSource} placeholder="Select eligible source job..." /></Field>
-        <Field label="Target Job No."><Select disabled={!sourceId} options={targetOptions} value={targetId} onChange={setTargetId} placeholder="Select job with no reel issue..." /></Field>
+        <Field label="Target Job No.">
+          <Select disabled={!sourceId} options={targetOptions} value={targetId} onChange={setTargetId} placeholder="Select job with no reel issue..." noOptionsMessage="No target: reel issue must be empty and Corrugation must not be started." />
+          {sourceId && targetOptions.length === 0 ? <div className="mt-1 text-[11px] font-bold text-amber-700">No target job is available. The target must have no reel issue and Corrugation Liner must not be started.</div> : null}
+        </Field>
         <Field label="Remarks"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
         <Field label={`Transfer Window (${windowHours} Hours)`}><input readOnly value={sourceContext?.expiresAt ? new Date(sourceContext.expiresAt).toLocaleString() : "Select source job"} className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>
       </div>

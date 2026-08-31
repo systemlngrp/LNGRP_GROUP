@@ -10102,7 +10102,9 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const target = productions.find((row) => String(row.id) === targetProductionId);
     if (!source || !target) throw new Error("Source or target job was not found.");
     if (String(source.status || "") === "Cancelled" || source.cancelTimestamp) throw new Error("The source job is cancelled.");
-    if (String(target.status || "") === "Cancelled" || target.cancelTimestamp) throw new Error("The target job is cancelled.");
+    if (["Cancelled", "Completed"].includes(String(target.status || "")) || target.cancelTimestamp || target.tallyTimestamp) {
+      throw new Error("The target job is cancelled or unavailable.");
+    }
 
     const sourceJobNo = String(source.transactionNo || "").trim();
     const targetJobNo = String(target.transactionNo || "").trim();
@@ -10128,8 +10130,8 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
       .filter((row) => Number.isFinite(row.time) && row.time > 0)
       .sort((a, b) => a.time - b.time)[0];
     if (!sourceFull) throw new Error("Corrugation Liner must be marked Full for the source job.");
-    if (!corrugationRows(targetProductionId).some((row) => String(row.completionStatus || "").trim().toLowerCase() === "full")) {
-      throw new Error("Complete Corrugation Liner as Full for the target job before issuing reels.");
+    if (corrugationRows(targetProductionId).length > 0) {
+      throw new Error("Corrugation Liner has already started for the target job.");
     }
 
     const [settingRows] = await conn.query("SELECT reelTransferWindowHours FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");

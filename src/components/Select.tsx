@@ -20,9 +20,10 @@ interface SelectProps {
   disabled?: boolean;
   compact?: boolean;
   wrapLabels?: boolean;
+  noOptionsMessage?: string;
 }
 
-export function Select({ options, value, onChange, onAdd, placeholder = "Select...", id, required, disabled, compact = false, wrapLabels = false }: SelectProps) {
+export function Select({ options, value, onChange, onAdd, placeholder = "Select...", id, required, disabled, compact = false, wrapLabels = false, noOptionsMessage = "No items found" }: SelectProps) {
   const selectedOption = options.find(opt => opt.value === value) || null;
 
   const handleChange = (newValue: SingleValue<OptionType>, actionMeta: ActionMeta<OptionType>) => {
@@ -50,7 +51,7 @@ export function Select({ options, value, onChange, onAdd, placeholder = "Select.
           }}
           getOptionLabel={(option: OptionType) => option.label}
           getOptionValue={(option: OptionType) => option.value}
-          noOptionsMessage={() => "No items found"}
+          noOptionsMessage={() => noOptionsMessage}
           isClearable
           isSearchable
           isDisabled={disabled}
