@@ -9,6 +9,10 @@ import { MandatoryLabel, MandatoryLegend } from "../components/Mandatory";
 import { isMandatoryField } from "../lib/mandatoryFields";
 import { useAuth } from "../auth/AuthContext";
 import { usesPartFullProgress } from "../lib/productionProcessingProgress";
+import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
+import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
+
+const CORRUGATION_MATERIAL_MESSAGE = "Issue material or sheet against this job before reporting Corrugation Liner.";
 
 type ShiftValue = "" | "Day" | "Night";
 
@@ -44,9 +48,17 @@ function LockedReportForm() {
   const [qty, setQty] = useState(initialQty);
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
   const requiresCompletionStatus = usesPartFullProgress(machineName);
+  const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
+  const materialIssueBlocked = normalizeMachineName(machineName) === "Corrugation Liner" &&
+    (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (materialIssueBlocked) {
+      alert(materialUsageLoading ? "Checking issued material. Please wait." : CORRUGATION_MATERIAL_MESSAGE);
+      return;
+    }
 
     const missing: string[] = [];
     if (isMandatoryField("production_processing_form", "date") && !date) missing.push("Date");
@@ -121,6 +133,11 @@ function LockedReportForm() {
       <div className="bg-white p-6 rounded shadow-sm border border-black">
         <form onSubmit={handleSubmit} className="space-y-6">
           <MandatoryLegend />
+          {materialIssueBlocked ? (
+            <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+              {materialUsageLoading ? "Checking issued material..." : CORRUGATION_MATERIAL_MESSAGE}
+            </div>
+          ) : null}
           <div className="space-y-4">
             <h4 className="font-black text-xs uppercase text-indigo-600 border-b border-indigo-100 pb-1">Reporting Details</h4>
 
@@ -199,8 +216,8 @@ function LockedReportForm() {
           <div className="flex space-x-3 pt-4 border-t border-black">
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="bg-emerald-600 text-white px-8 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all min-w-[120px]"
+              disabled={isSubmitting || materialIssueBlocked}
+              className="bg-emerald-600 text-white px-8 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all min-w-[120px] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
             >
               {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit Report"}
             </button>
@@ -232,6 +249,7 @@ function FullReportForm() {
   const [productions] = useData<Production>("productions", []);
   const [machines] = useData<Machine>("machines", []);
   const [processing, setProcessing] = useData<ProductionProcessing>("production_processing", []);
+  const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -266,6 +284,8 @@ function FullReportForm() {
     [machineId, machines]
   );
   const requiresCompletionStatus = usesPartFullProgress(selectedMachine?.name);
+  const materialIssueBlocked = normalizeMachineName(selectedMachine?.name) === "Corrugation Liner" &&
+    (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
 
   const qtyContext = useMemo(() => {
     if (!selectedProduction || !selectedMachine) {
@@ -298,8 +318,13 @@ function FullReportForm() {
     setQty(String(qtyContext.pendingQty));
   }, [initialQty, qty, qtyContext]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (materialIssueBlocked) {
+      alert(materialUsageLoading ? "Checking issued material. Please wait." : CORRUGATION_MATERIAL_MESSAGE);
+      return;
+    }
 
     const missing: string[] = [];
     if (isMandatoryField("production_processing_form", "date") && !date) missing.push("Date");
@@ -325,7 +350,7 @@ function FullReportForm() {
     const auditUser = getAuditUser(user);
 
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
       const newEntry: ProductionProcessing = {
         id: crypto.randomUUID(),
         productionId,
@@ -342,10 +367,14 @@ function FullReportForm() {
         updateTimestamp: new Date().toISOString()
       };
 
-      setProcessing((prev) => [...prev, newEntry]);
-      setIsSubmitting(false);
+      await setProcessing((prev) => [...prev, newEntry]);
       navigate(getProcessingBackUrl(initialMachineId));
-    }, 500);
+    } catch (error) {
+      console.error("Failed to submit processing report:", error);
+      alert((error as Error).message || "Failed to submit report. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -357,6 +386,11 @@ function FullReportForm() {
       <div className="bg-white p-6 rounded shadow-sm border border-black">
         <form onSubmit={handleSubmit} className="space-y-6">
           <MandatoryLegend />
+          {materialIssueBlocked ? (
+            <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
+              {materialUsageLoading ? "Checking issued material..." : CORRUGATION_MATERIAL_MESSAGE}
+            </div>
+          ) : null}
           <div className="space-y-4">
             <h4 className="font-black text-xs uppercase text-indigo-600 border-b border-indigo-100 pb-1">Reporting Details</h4>
             
@@ -455,8 +489,8 @@ function FullReportForm() {
           <div className="flex space-x-3 pt-4 border-t border-black">
             <button 
               type="submit" 
-              disabled={isSubmitting} 
-              className="bg-emerald-600 text-white px-8 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all min-w-[120px]"
+              disabled={isSubmitting || materialIssueBlocked}
+              className="bg-emerald-600 text-white px-8 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all min-w-[120px] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
             >
               {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit Report"}
             </button>

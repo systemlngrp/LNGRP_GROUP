@@ -139,6 +139,14 @@ export function hasProductionCorrugatedSheetUsage(
   return Number(usageMap?.get(production.id) || 0) > 0;
 }
 
+export function hasProductionMaterialUsage(
+  production: Pick<Production, "id"> | string,
+  usageMap?: Map<string, number>
+) {
+  const productionId = typeof production === "string" ? production : production.id;
+  return Number(usageMap?.get(productionId) || 0) > 0;
+}
+
 export function getProductionActualPaperUsed(
   production: Production,
   usageMap?: Map<string, number>

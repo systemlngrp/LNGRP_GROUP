@@ -11,6 +11,8 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction } from "../lib/productionType";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { getCurrentProcessingMachine, isMachineStepFull } from "../lib/productionProcessingProgress";
+import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
+import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 
 interface PendingMachineJob {
   production: Production;
@@ -44,6 +46,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const [schedules] = useData<OrderSchedule>("orders_schedule", []);
   const [orders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);
+  const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -288,7 +291,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-black text-[11px] font-bold">
-                        {group.jobs.map((job, idx) => (
+                        {group.jobs.map((job, idx) => {
+                          const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Corrugation Liner";
+                          const materialIssueBlocked = requiresMaterialIssue &&
+                            (materialUsageLoading || !hasProductionMaterialUsage(job.production, materialUsageMap));
+                          return (
                           <tr key={`${job.production.id}-${idx}`} className="divide-x divide-black hover:bg-slate-50">
                             <td className="px-3 py-2 whitespace-nowrap">{job.production.transactionNo}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{formatDate(job.production.date)}</td>
@@ -301,6 +308,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                             <td className="px-3 py-2 text-right text-indigo-700 bg-indigo-50/30 font-black">{job.pendingQty.toLocaleString()}</td>
                             <td className="px-3 py-2 text-center">
                               <button
+                                disabled={materialIssueBlocked}
+                                title={materialIssueBlocked ? "Issue material or sheet first." : "Report production"}
                                 onClick={() => {
                                   const now = new Date();
                                   const hour = now.getHours();
@@ -320,14 +329,18 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                                   });
                                   navigate(`/production-processing/form?${params.toString()}`);
                                 }}
-                                className="inline-flex items-center gap-1 bg-indigo-600 text-white px-3 py-1 rounded text-[10px] font-black uppercase hover:bg-indigo-700 transition shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none"
+                                className="inline-flex items-center gap-1 bg-indigo-600 text-white px-3 py-1 rounded text-[10px] font-black uppercase hover:bg-indigo-700 transition shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
                               >
                                 <ClipboardList size={12} />
                                 Report
                               </button>
+                              {materialIssueBlocked ? (
+                                <div className="mt-1 text-[9px] font-black text-amber-700">Issue material or sheet first.</div>
+                              ) : null}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

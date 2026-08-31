@@ -7173,6 +7173,41 @@ const createHandlers = (tableName: string) => {
           const [machineRows] = await db.query("SELECT `name` FROM `machines` WHERE `id` = ? LIMIT 1", [data.machineId]);
           const storedMachineName = String((machineRows as any[])[0]?.name || "").trim();
           data.machineName = normalizeMachineName(storedMachineName || String(data.machineName || ""));
+          if (data.machineName === "Corrugation Liner") {
+            const [usageRows] = await db.query(
+              `SELECT COALESCE(SUM(usagePart.qty), 0) AS netQty
+               FROM (
+                 SELECT COALESCE(SUM(mil.qty), 0) AS qty
+                 FROM material_issues mi
+                 JOIN material_issue_lines mil ON mil.materialIssueId = mi.id
+                 WHERE mi.issueType = 'Job' AND mi.productionId = ?
+                 UNION ALL
+                 SELECT -COALESCE(SUM(mrl.qty), 0) AS qty
+                 FROM material_returns mr
+                 JOIN material_return_lines mrl ON mrl.materialReturnId = mr.id
+                 WHERE mr.returnType = 'Job' AND mr.productionId = ?
+                 UNION ALL
+                 SELECT COALESCE(SUM(mirl.weightKg), 0) AS qty
+                 FROM material_issue_reel_lines mirl
+                 LEFT JOIN material_issues mi ON mi.id = mirl.materialIssueId
+                 LEFT JOIN material_issue_lines mil ON mil.id = mirl.materialIssueLineId
+                 WHERE COALESCE(mirl.productionId, mi.productionId) = ? AND mil.id IS NULL
+                 UNION ALL
+                 SELECT -COALESCE(SUM(mrrl.weightKg), 0) AS qty
+                 FROM material_return_reel_lines mrrl
+                 LEFT JOIN material_returns mr ON mr.id = mrrl.materialReturnId
+                 LEFT JOIN material_return_lines mrl ON mrl.id = mrrl.materialReturnLineId
+                 WHERE COALESCE(mrrl.productionId, mr.productionId) = ? AND mrl.id IS NULL
+               ) usagePart`,
+              [data.productionId, data.productionId, data.productionId, data.productionId]
+            );
+            const netMaterialUsage = Math.max(0, Number((usageRows as any[])[0]?.netQty || 0));
+            if (netMaterialUsage <= 0) {
+              return res.status(409).json({
+                error: "Issue material or sheet against this job before reporting Corrugation Liner.",
+              });
+            }
+          }
           const completionStatus = String(data.completionStatus || "").trim();
           if (completionStatus !== "Part" && completionStatus !== "Full") {
             return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
