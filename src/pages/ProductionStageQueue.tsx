@@ -736,6 +736,10 @@ export function ProductionPendingConsumption() {
       enableIssueAction
       hideStatusColumn
       issuePrereqMachineName="Corrugation Liner"
+      issueActionPath="/material-movement/reel-issue-return-scan/form"
+      issueActionLabel="QR Issue"
+      secondaryIssueActionPath="/material-movement/reel-issue-return"
+      secondaryIssueActionLabel="Manual Issue"
     />
   );
 }
