@@ -96,7 +96,28 @@ export function ReelTransferForm() {
         <Field label="Remarks"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
         <Field label={`Transfer Window (${windowHours} Hours)`}><input readOnly value={sourceContext?.expiresAt ? new Date(sourceContext.expiresAt).toLocaleString() : "Select source job"} className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>
       </div>
-      {sourceContext && <div className="grid grid-cols-2 gap-2 border border-black bg-slate-50 p-3 text-xs md:grid-cols-4"><Metric label="Corrugation Qty" value={sourceContext.corrugationQty} /><Metric label="Consumed KG" value={sourceContext.consumedKg} /><Metric label="Notional Left KG" value={sourceContext.notionalLeftKg} /><Metric label="Average / Reel KG" value={sourceContext.averageNotionalKg} /></div>}
+      {sourceContext ? (
+        <section className="space-y-3 border border-black bg-slate-50 p-3">
+          <div className="text-xs font-black uppercase tracking-wide text-slate-700">Reel Required Calculation</div>
+          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3 xl:grid-cols-5">
+            <Metric label="Plan Qty" value={sourceContext.planQty} />
+            <Metric label="Required Reel KG (Total Paper Wt)" value={sourceContext.requiredKg} />
+            <Metric label="Total Issued KG" value={sourceContext.totalIssuedKg} />
+            <Metric label="Total Returned KG" value={sourceContext.totalReturnedKg} />
+            <Metric label="Corrugation Qty" value={sourceContext.corrugationQty} />
+            <Metric label="Consumed KG" value={sourceContext.consumedKg} />
+            <Metric label="Outstanding Reel Count" value={sourceContext.outstandingReelCount} decimals={0} />
+            <Metric label="Notional Left KG" value={sourceContext.notionalLeftKg} />
+            <Metric label="Average / Reel KG" value={sourceContext.averageNotionalKg} />
+          </div>
+          <div className="grid gap-1 border-t border-slate-300 pt-3 text-[11px] font-bold text-slate-700 lg:grid-cols-2">
+            <div>Consumed KG = Corrugation Qty ÷ Plan Qty × Required Reel KG</div>
+            <div>Notional Left KG = Max(0, Issued KG − Returned KG − Consumed KG)</div>
+            <div>Average / Reel KG = Notional Left KG ÷ Outstanding Reel Count</div>
+            <div>Transfer KG per reel = Min(Actual Balance, Average / Reel KG)</div>
+          </div>
+        </section>
+      ) : null}
       <div className="overflow-x-auto rounded border border-black"><table className="w-full border-collapse text-sm"><thead className="bg-slate-100"><tr>{["Select", "Reel No.", "Material / ERP", "Actual Balance", "Transfer KG", "Rate", "Amount"].map((h) => <th key={h} className="border border-black p-2 text-left uppercase">{h}</th>)}</tr></thead><tbody>
         {!sourceContext?.reels.length ? <tr><td colSpan={7} className="p-5 text-center text-slate-500">Select an eligible source job.</td></tr> : sourceContext.reels.map((row) => <tr key={row.packingSlipId}><td className="border border-black p-2"><input type="checkbox" checked={selectedSlips.includes(row.packingSlipId)} onChange={() => toggleReel(row.packingSlipId)} /></td><td className="border border-black p-2 font-bold">{row.ourReelNo}</td><td className="border border-black p-2">{materialMap.get(row.materialId)?.name || row.materialId}<br/><span className="text-xs text-slate-500">{materialMap.get(row.materialId)?.erpCode || ""}</span></td><td className="border border-black p-2 text-right">{row.weightKg.toFixed(2)}</td><td className="border border-black p-2 text-right font-bold">{row.transferWeightKg.toFixed(2)}</td><td className="border border-black p-2 text-right">{row.rate.toFixed(2)}</td><td className="border border-black p-2 text-right">{row.amount.toFixed(2)}</td></tr>)}
       </tbody></table></div>
@@ -106,4 +127,4 @@ export function ReelTransferForm() {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="space-y-1"><span className="block text-xs font-black uppercase">{label}</span>{children}</label>; }
-function Metric({ label, value }: { label: string; value: number }) { return <div><div className="font-black uppercase text-slate-500">{label}</div><div className="text-base font-bold">{Number(value || 0).toFixed(2)}</div></div>; }
+function Metric({ label, value, decimals = 2 }: { label: string; value: number; decimals?: number }) { return <div className="rounded border border-slate-300 bg-white p-2"><div className="font-black uppercase text-slate-500">{label}</div><div className="mt-1 text-base font-bold">{Number(value || 0).toFixed(decimals)}</div></div>; }
