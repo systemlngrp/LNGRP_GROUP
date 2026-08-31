@@ -4773,6 +4773,13 @@ async function initDb(retries = 5) {
           \`sheerCutterBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`sheerCutterKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`noHisabBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`slotting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`delaminationPrinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misalignmentPrinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`drySheets\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`warp\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misprinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`jobSetting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -5982,6 +5989,13 @@ await db.query(`
         { table: "production_processing", column: "sheerCutterBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
         { table: "production_processing", column: "sheerCutterKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
         { table: "production_processing", column: "noHisabBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "slotting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "delaminationPrinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misalignmentPrinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "drySheets", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "warp", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misprinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "jobSetting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
         { table: "production_processing", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "production_processing", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "material_in", column: "updatedBy", type: "VARCHAR(255)" },
@@ -7258,6 +7272,19 @@ const createHandlers = (tableName: string) => {
           } else {
             ["warpageBoxes", "warpageKg", "delaminationBoxes", "delaminationKg", "misalignmentBoxes", "misalignmentKg", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "sheerCutterKg", "noHisabBoxes"]
               .forEach((field) => { data[field] = 0; });
+          }
+          const printingWastageFields = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
+          if (data.machineName === "Printing") {
+            for (const field of printingWastageFields) {
+              const rawValue = data[field];
+              const numericValue = rawValue === "" || rawValue == null ? 0 : Number(rawValue);
+              if (!Number.isFinite(numericValue) || numericValue < 0) {
+                return res.status(400).json({ error: `${field} must be a non-negative number.` });
+              }
+              data[field] = numericValue;
+            }
+          } else {
+            printingWastageFields.forEach((field) => { data[field] = 0; });
           }
           const completionStatus = String(data.completionStatus || "").trim();
           if (completionStatus !== "Part" && completionStatus !== "Full") {

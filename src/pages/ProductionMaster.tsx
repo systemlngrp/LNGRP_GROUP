@@ -207,6 +207,20 @@ export function ProductionMaster() {
     return map;
   }, [processing]);
 
+  const printingWastageTotalsMap = useMemo(() => {
+    const map = new Map<string, Record<string, number>>();
+    processing.forEach((entry) => {
+      if (normalizeMachineName(entry.machineName) !== "Printing") return;
+      const totals = map.get(entry.productionId) || {
+        slotting: 0, delaminationPrinting: 0, misalignmentPrinting: 0,
+        drySheets: 0, warp: 0, misprinting: 0, jobSetting: 0,
+      };
+      Object.keys(totals).forEach((key) => { totals[key] += Number(entry[key as keyof ProductionProcessing] || 0); });
+      map.set(entry.productionId, totals);
+    });
+    return map;
+  }, [processing]);
+
   const processingMachinesMap = useMemo(() => {
     const map = new Map<string, Set<string>>();
     processing.forEach((row) => {
@@ -699,6 +713,9 @@ export function ProductionMaster() {
                   "Sheer Cutter (Boxes)", "Sheer Cutter (Kgs)", "No Hisab",
                 ].map((label) => <th key={label} className="px-4 py-3 text-right text-xs font-bold text-rose-900 uppercase border border-black whitespace-nowrap bg-rose-50">{label}</th>)}
                 <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Print</th>
+                {["Slotting", "Delamination Printing", "Misalignment Printing", "Dry Sheets", "Warp", "Misprinting", "Job Setting"].map((label) => (
+                  <th key={label} className="px-4 py-3 text-right text-xs font-bold text-violet-900 uppercase border border-black whitespace-nowrap bg-violet-50">{label}</th>
+                ))}
                 <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Paste</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Stitch</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Punch</th>
@@ -754,7 +771,7 @@ export function ProductionMaster() {
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={67} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
+                  <td colSpan={74} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
                 </tr>
               ) : (
                 paginatedList.map((p, idx) => {
@@ -774,6 +791,10 @@ export function ProductionMaster() {
                     warpageBoxes: 0, warpageKg: 0, delaminationBoxes: 0, delaminationKg: 0,
                     misalignmentBoxes: 0, misalignmentKg: 0, twoPlyPaperKg: 0, deckelWastageKg: 0,
                     sheerCutterBoxes: 0, sheerCutterKg: 0, noHisabBoxes: 0,
+                  };
+                  const printingWastageTotals = printingWastageTotalsMap.get(p.id) || {
+                    slotting: 0, delaminationPrinting: 0, misalignmentPrinting: 0,
+                    drySheets: 0, warp: 0, misprinting: 0, jobSetting: 0,
                   };
                   const closureStatus = jobClosureStatusMap.get(p.id);
                   const mandatoryCloseDataComplete = closureStatus?.canClose === true;
@@ -857,6 +878,14 @@ export function ProductionMaster() {
                         <td key={wastageIndex} className="px-4 py-4 text-right text-xs font-bold text-rose-800 border border-black whitespace-nowrap bg-rose-50/40">{formatDecimal(value)}</td>
                       ))}
                       <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap bg-indigo-50/30">{formatDecimal(procTotals.printing)}</td>
+                      {[
+                        printingWastageTotals.slotting, printingWastageTotals.delaminationPrinting,
+                        printingWastageTotals.misalignmentPrinting, printingWastageTotals.drySheets,
+                        printingWastageTotals.warp, printingWastageTotals.misprinting,
+                        printingWastageTotals.jobSetting,
+                      ].map((value, printingWastageIndex) => (
+                        <td key={printingWastageIndex} className="px-4 py-4 text-right text-xs font-bold text-violet-800 border border-black whitespace-nowrap bg-violet-50/40">{formatDecimal(value)}</td>
+                      ))}
                       <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap bg-indigo-50/30">{formatDecimal(procTotals.pasting)}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap bg-indigo-50/30">{formatDecimal(procTotals.stitching)}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap bg-indigo-50/30">{formatDecimal(procTotals.punching)}</td>
