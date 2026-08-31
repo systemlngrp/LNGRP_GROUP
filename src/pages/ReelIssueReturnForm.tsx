@@ -371,8 +371,8 @@ export function ReelIssueReturnForm() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_60px_-28px_rgba(15,23,42,0.28)]">
+    <div className="min-w-0 space-y-6 overflow-hidden">
+      <div className="min-w-0 overflow-hidden rounded-[28px] border border-slate-200/90 bg-white shadow-[0_24px_60px_-28px_rgba(15,23,42,0.28)]">
         <div className="bg-[linear-gradient(135deg,rgba(30,41,59,1),rgba(79,70,229,0.96))] px-5 py-5 text-white md:px-6">
           <div className="flex items-center gap-3">
             <div className="rounded-2xl bg-white/10 p-2.5 ring-1 ring-white/15">
@@ -385,7 +385,7 @@ export function ReelIssueReturnForm() {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6 p-5 md:p-6">
+        <form onSubmit={handleSubmit} className="min-w-0 space-y-6 p-3 sm:p-5 md:p-6">
           <div className="rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.92),rgba(255,255,255,1))] p-4 shadow-sm md:p-5">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <Field label="Date" required>
@@ -420,12 +420,12 @@ export function ReelIssueReturnForm() {
           </div>
 
           <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-lg font-black tracking-tight text-slate-950">Issue Reels</h3>
                 <p className="text-sm font-medium text-slate-500">Choose a material and issue from the currently available reels.</p>
               </div>
-              <button type="button" onClick={addIssueLine} disabled={!linerComplete} className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">
+              <button type="button" onClick={addIssueLine} disabled={!linerComplete} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
                 <Plus size={16} /> Add
               </button>
             </div>
@@ -441,7 +441,7 @@ export function ReelIssueReturnForm() {
               const totalWeight = line.materialId ? computeIssueLineWeight(line) : 0;
               return (
                 <div key={line.id} className="mt-4 rounded-[22px] border border-slate-200 bg-[linear-gradient(180deg,rgba(248,250,252,0.86),rgba(255,255,255,1))] p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="w-full max-w-xl space-y-1">
                       <label className="text-sm font-bold text-slate-700">Material</label>
                       <Select
@@ -456,15 +456,15 @@ export function ReelIssueReturnForm() {
                       />
                     </div>
                     {line.materialId && (
-                      <div className="w-32 space-y-1">
+                        <div className="w-full space-y-1 sm:w-32">
                         <label className="text-sm font-black uppercase tracking-wide text-indigo-700">Invoice Rate</label>
                         <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-3 text-center font-black text-indigo-700 shadow-sm">
                           {formatCurrencyDisplay(selectedIds[0] ? getReelInvoiceRate(selectedIds[0]) : 0)}
                         </div>
                       </div>
                     )}
-                    <button type="button" onClick={() => removeIssueLine(line.id)} className="mt-6 inline-flex h-10 w-10 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 transition hover:bg-rose-100 hover:text-rose-700" title="Remove line">
-                      <Trash2 size={18} />
+                    <button type="button" onClick={() => removeIssueLine(line.id)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 text-rose-600 transition hover:bg-rose-100 hover:text-rose-700 sm:mt-6 sm:w-10 sm:px-0" title="Remove line">
+                      <Trash2 size={18} /><span className="text-xs font-bold uppercase sm:hidden">Remove Material</span>
                     </button>
                   </div>
 
@@ -473,7 +473,16 @@ export function ReelIssueReturnForm() {
                       <div className="mt-3 inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-700">
                         Selected Weight: <span className="ml-1 font-black">{totalWeight.toFixed(2)} KG</span>
                       </div>
-                      <div className="mt-4 overflow-hidden rounded-[20px] border border-slate-200">
+                      <div className="mt-4 space-y-3 md:hidden">
+                        {availableReels.length === 0 ? <div className="rounded border border-dashed border-slate-300 bg-white p-5 text-center text-sm font-medium text-slate-500">No available reels for this material.</div> : availableReels.map((slip) => {
+                          const selected = selectedIds.includes(slip.id);
+                          return <label key={slip.id} className={`block rounded border-2 bg-white p-3 shadow-sm ${selected ? "border-indigo-700" : "border-black"}`}>
+                            <div className="flex items-start justify-between gap-3 border-b border-black pb-2"><div className="min-w-0"><div className="text-[10px] font-black uppercase text-slate-500">Our Reel No.</div><div className="break-all text-xl font-black">{slip.ourReelNo}</div></div><input type="checkbox" disabled={!linerComplete} checked={selected} onChange={(e) => updateSelectedIssueReels(line.id, line.materialId, slip.id, e.target.checked)} className="h-6 w-6 shrink-0 rounded border-slate-300 text-indigo-600" /></div>
+                            <div className="mt-3 grid grid-cols-2 gap-2"><div className="min-w-0 rounded border border-slate-300 p-2"><div className="text-[10px] font-black uppercase text-slate-500">Supplier Reel</div><div className="break-words text-sm font-black">{slip.supplierReelNo || "-"}</div></div><div className="rounded border border-indigo-200 bg-indigo-50 p-2"><div className="text-[10px] font-black uppercase text-indigo-700">Invoice Rate</div><div className="text-sm font-black">{formatCurrencyDisplay(getReelInvoiceRate(slip.id))}</div></div><div className="col-span-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-right"><div className="text-[10px] font-black uppercase text-emerald-700">Available Weight</div><div className="text-lg font-black text-emerald-900">{Number(slip.weightKg || 0).toFixed(2)} KG</div></div></div>
+                          </label>;
+                        })}
+                      </div>
+                      <div className="mt-4 hidden overflow-hidden rounded-[20px] border border-slate-200 md:block">
                         <div className="overflow-x-auto">
 
       <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />

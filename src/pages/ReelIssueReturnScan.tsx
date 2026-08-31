@@ -458,21 +458,21 @@ export function ReelIssueReturnScan() {
   const totalIssueDraftWeight = reelDrafts.reduce((sum, draft) => sum + Number(draft.issueWeight || 0), 0);
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5 overflow-hidden">
       <div className="border-b border-black pb-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
           <button
             type="button"
             onClick={() => navigate("/material-movement/reel-issue-return-scan")}
-            className="inline-flex items-center gap-1 rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase text-black hover:bg-slate-100"
+            className="inline-flex w-full items-center justify-center gap-1 rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase text-black hover:bg-slate-100 sm:w-auto"
           >
             <ArrowLeft size={15} /> Jobs
           </button>
-          <h2 className="text-xl font-bold uppercase tracking-tight text-black">Reel Issue QR Scan</h2>
+          <h2 className="break-words text-xl font-bold uppercase tracking-tight text-black">Reel Issue QR Scan</h2>
         </div>
       </div>
 
-      <div className="rounded border-2 border-black bg-white p-4 shadow-sm">
+      <div className="min-w-0 rounded border-2 border-black bg-white p-3 shadow-sm sm:p-4">
         <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
           <div>
             <label className="mb-1 block text-[11px] font-black uppercase text-black">Job No.</label>
@@ -498,7 +498,7 @@ export function ReelIssueReturnScan() {
       ) : null}
       {scannerError ? <div className="rounded border border-rose-300 bg-rose-50 p-3 text-sm font-bold text-rose-800">{scannerError}</div> : null}
 
-      <div className="rounded border-2 border-black bg-white p-4 shadow-sm">
+      <div className="min-w-0 rounded border-2 border-black bg-white p-3 shadow-sm sm:p-4">
         <div>
           <h3 className="text-lg font-black uppercase text-black">Scanned Reels</h3>
         </div>
