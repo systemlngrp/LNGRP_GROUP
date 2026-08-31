@@ -5,10 +5,45 @@ export const DEFAULT_REEL_TRANSFER_WINDOW_HOURS = 12;
 
 const normalize = (value: unknown) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 
+export type ReelTransferEligibilityStatus =
+  | "eligible"
+  | "corrugation_incomplete"
+  | "window_expired"
+  | "no_reel_balance"
+  | "plan_quantity_missing"
+  | "job_weight_missing"
+  | "no_unused_weight";
+
+const STATUS_REASONS: Record<ReelTransferEligibilityStatus, string> = {
+  eligible: "Eligible",
+  corrugation_incomplete: "Corrugation Liner is not Full",
+  window_expired: "Transfer window expired",
+  no_reel_balance: "No remaining issued reel balance",
+  plan_quantity_missing: "Plan quantity missing",
+  job_weight_missing: "Job-weight calculation missing",
+  no_unused_weight: "No unused reel weight remains after Corrugation",
+};
+
+function getValidTime(primary: unknown, fallback: unknown) {
+  const primaryTime = new Date(String(primary || "")).getTime();
+  if (Number.isFinite(primaryTime) && primaryTime > 0) return primaryTime;
+  const fallbackTime = new Date(String(fallback || "")).getTime();
+  return Number.isFinite(fallbackTime) && fallbackTime > 0 ? fallbackTime : 0;
+}
+
+export function hasReelIssueHistory(
+  production: Pick<Production, "id" | "transactionNo">,
+  issueReels: MaterialIssueReelLine[]
+) {
+  return issueReels.some((row) =>
+    row.productionId === production.id || normalize(row.jobNo) === normalize(production.transactionNo)
+  );
+}
+
 export function getCorrugationFullTime(processing: ProductionProcessing[], productionId: string) {
   const times = processing
-    .filter((row) => row.productionId === productionId && normalize(row.machineName) === "corrugation liner" && row.completionStatus === "Full")
-    .map((row) => new Date(row.updateTimestamp || row.date || 0).getTime())
+    .filter((row) => row.productionId === productionId && normalize(row.machineName) === "corrugation liner" && normalize(row.completionStatus) === "full")
+    .map((row) => getValidTime(row.updateTimestamp, row.date))
     .filter((value) => Number.isFinite(value) && value > 0)
     .sort((a, b) => a - b);
   return times[0] || 0;
@@ -34,18 +69,29 @@ export function buildReelTransferContext(
     .filter((row) => row.productionId === production.id || normalize(row.jobNo) === normalize(production.transactionNo))
     .reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
   const corrugationQty = processing
-    .filter((row) => row.productionId === production.id && normalize(row.machineName) === "corrugation liner" && new Date(row.updateTimestamp || row.date || 0).getTime() <= fullTime)
+    .filter((row) => row.productionId === production.id && normalize(row.machineName) === "corrugation liner" && getValidTime(row.updateTimestamp, row.date) <= fullTime)
     .reduce((sum, row) => sum + Number(row.qty || 0), 0);
   const planQty = Number(production.qty || production.plannedQty || 0);
-  const requiredKg = Number(production.totalJobWeight || 0);
+  const requiredKg = Number(production.totalJobWeight || 0) ||
+    (Number(production.topPaperWeightKg || 0) + Number(production.linerWeightKg || 0));
   const consumedKg = planQty > 0 ? corrugationQty * requiredKg / planQty : 0;
   const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);
   const averageNotionalKg = reels.length ? notionalLeftKg / reels.length : 0;
   const lineById = new Map(issueLines.map((line) => [line.id, line]));
+  let status: ReelTransferEligibilityStatus = "eligible";
+  if (!fullTime) status = "corrugation_incomplete";
+  else if (now > expiresAt) status = "window_expired";
+  else if (!reels.length) status = "no_reel_balance";
+  else if (planQty <= 0) status = "plan_quantity_missing";
+  else if (requiredKg <= 0) status = "job_weight_missing";
+  else if (averageNotionalKg <= 0.004) status = "no_unused_weight";
   return {
     fullTime,
     expiresAt,
-    eligible: Boolean(fullTime && now <= expiresAt && reels.length && planQty > 0 && requiredKg > 0 && notionalLeftKg > 0),
+    eligible: status === "eligible",
+    status,
+    reason: STATUS_REASONS[status],
+    requiredKg: round2(requiredKg),
     corrugationQty: round2(corrugationQty),
     consumedKg: round2(consumedKg),
     notionalLeftKg: round2(notionalLeftKg),
@@ -55,6 +101,6 @@ export function buildReelTransferContext(
       const rate = Number(line?.rate || line?.lastPurchaseRate || line?.openingRate || 0);
       const transferWeightKg = round2(Math.min(reel.weightKg, averageNotionalKg));
       return { ...reel, rate, transferWeightKg, amount: round2(transferWeightKg * rate) };
-    }).filter((reel) => reel.transferWeightKg > 0),
+    }),
   };
 }

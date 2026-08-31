@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRightLeft } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
+import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, hasReelIssueHistory } from "../lib/reelTransfer";
 import type { MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
 
 export function PendingJobTransfer() {
@@ -34,8 +34,8 @@ export function PendingJobTransfer() {
         transferableWeight: context.reels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0),
       };
     })
-    .filter((row) => row.context.eligible)
-    .sort((a, b) => a.context.expiresAt - b.context.expiresAt),
+    .filter((row) => row.context.fullTime > 0 && hasReelIssueHistory(row.production, issueReels))
+    .sort((a, b) => Number(b.context.eligible) - Number(a.context.eligible) || b.context.fullTime - a.context.fullTime),
   [findItemAcrossSources, issueLines, issueReels, processing, productions, returnReels, windowHours]);
 
   const openTransfer = (productionId: string) => {
@@ -55,9 +55,9 @@ export function PendingJobTransfer() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Metric label="Eligible Source Jobs" value={String(rows.length)} />
-        <Metric label="Eligible Reels" value={String(rows.reduce((sum, row) => sum + row.context.reels.length, 0))} />
-        <Metric label="Transferable Weight" value={`${rows.reduce((sum, row) => sum + row.transferableWeight, 0).toFixed(2)} KG`} />
+        <Metric label="Eligible Source Jobs" value={String(rows.filter((row) => row.context.eligible).length)} />
+        <Metric label="Eligible Reels" value={String(rows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.context.reels.length, 0))} />
+        <Metric label="Transferable Weight" value={`${rows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.transferableWeight, 0).toFixed(2)} KG`} />
       </div>
 
       <div className="overflow-x-auto rounded border border-black bg-white shadow-sm">
@@ -81,9 +81,13 @@ export function PendingJobTransfer() {
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{context.reels.length}</td>
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{transferableWeight.toFixed(2)}</td>
                 <td className="border border-black px-3 py-3 text-sm">{new Date(context.expiresAt).toLocaleString()}</td>
-                <td className="border border-black px-3 py-3"><span className="rounded border border-emerald-700 bg-emerald-50 px-2 py-1 text-xs font-bold uppercase text-emerald-800">Eligible</span></td>
                 <td className="border border-black px-3 py-3">
-                  <button type="button" onClick={() => openTransfer(production.id)} className="inline-flex items-center gap-2 whitespace-nowrap rounded border border-black bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase text-white hover:bg-indigo-700">
+                  <span className={`inline-block rounded border px-2 py-1 text-xs font-bold uppercase ${context.eligible ? "border-emerald-700 bg-emerald-50 text-emerald-800" : "border-amber-700 bg-amber-50 text-amber-800"}`}>
+                    {context.reason}
+                  </span>
+                </td>
+                <td className="border border-black px-3 py-3">
+                  <button type="button" disabled={!context.eligible} title={context.eligible ? "Transfer reel balance" : context.reason} onClick={() => openTransfer(production.id)} className="inline-flex items-center gap-2 whitespace-nowrap rounded border border-black bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400">
                     <ArrowRightLeft size={15} /> Transfer
                   </button>
                 </td>

@@ -8977,9 +8977,15 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
       (row) => String(row.productionId) === productionId && String(row.machineName || "").trim().toLowerCase().replace(/\s+/g, " ") === "corrugation liner"
     );
     const sourceCorrugation = corrugationRows(sourceProductionId);
-    const sourceFull = sourceCorrugation.filter((row) => String(row.completionStatus || "").trim() === "Full").map((row) => ({ ...row, time: new Date(row.updateTimestamp || row.date || 0).getTime() })).filter((row) => Number.isFinite(row.time) && row.time > 0).sort((a, b) => a.time - b.time)[0];
+    const processingTime = (row) => {
+      const updatedTime = new Date(String(row.updateTimestamp || "")).getTime();
+      if (Number.isFinite(updatedTime) && updatedTime > 0) return updatedTime;
+      const dateTime = new Date(String(row.date || "")).getTime();
+      return Number.isFinite(dateTime) && dateTime > 0 ? dateTime : 0;
+    };
+    const sourceFull = sourceCorrugation.filter((row) => String(row.completionStatus || "").trim().toLowerCase() === "full").map((row) => ({ ...row, time: processingTime(row) })).filter((row) => Number.isFinite(row.time) && row.time > 0).sort((a, b) => a.time - b.time)[0];
     if (!sourceFull) throw new Error("Corrugation Liner must be marked Full for the source job.");
-    if (!corrugationRows(targetProductionId).some((row) => String(row.completionStatus || "").trim() === "Full")) {
+    if (!corrugationRows(targetProductionId).some((row) => String(row.completionStatus || "").trim().toLowerCase() === "full")) {
       throw new Error("Complete Corrugation Liner as Full for the target job before issuing reels.");
     }
     const [settingRows] = await conn.query("SELECT reelTransferWindowHours FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
@@ -9013,9 +9019,10 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const totalIssuedKg = issues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
     const totalReturnedKg = returns.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
     const planQty = Number(source.qty || source.plannedQty || 0);
-    const requiredKg = Number(source.totalJobWeight || 0);
-    if (planQty <= 0 || requiredKg <= 0) throw new Error("Source job plan quantity and total job weight are required for transfer calculation.");
-    const corrugationQty = sourceCorrugation.filter((row) => new Date(row.updateTimestamp || row.date || 0).getTime() <= sourceFull.time).reduce((sum, row) => sum + Number(row.qty || 0), 0);
+    const requiredKg = Number(source.totalJobWeight || 0) || Number(source.topPaperWeightKg || 0) + Number(source.linerWeightKg || 0);
+    if (planQty <= 0) throw new Error("Source job plan quantity is required for transfer calculation.");
+    if (requiredKg <= 0) throw new Error("Source job weight calculation is required for transfer calculation.");
+    const corrugationQty = sourceCorrugation.filter((row) => processingTime(row) <= sourceFull.time).reduce((sum, row) => sum + Number(row.qty || 0), 0);
     const consumedKg = corrugationQty * requiredKg / planQty;
     const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);
     const averageNotionalKg = outstanding.length ? notionalLeftKg / outstanding.length : 0;
