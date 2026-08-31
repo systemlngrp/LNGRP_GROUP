@@ -9018,10 +9018,14 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const outstanding = Array.from(balanceBySlip.values()).filter((value) => value > 4e-3);
     const totalIssuedKg = issues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
     const totalReturnedKg = returns.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
-    const planQty = Number(source.qty || source.plannedQty || 0);
-    const requiredKg = Number(source.totalJobWeight || 0) || Number(source.topPaperWeightKg || 0) + Number(source.linerWeightKg || 0);
+    const positiveFinite = (value) => {
+      const numericValue = Number(value || 0);
+      return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
+    };
+    const planQty = positiveFinite(source.qty) || positiveFinite(source.plannedQty);
+    const requiredKg = positiveFinite(source.totalJobWeight) || positiveFinite(source.totalPaperWeight) || positiveFinite(source.topPaperWeightKg) + positiveFinite(source.linerWeightKg) || positiveFinite(source.sheetWeight) * planQty;
     if (planQty <= 0) throw new Error("Source job plan quantity is required for transfer calculation.");
-    if (requiredKg <= 0) throw new Error("Source job weight calculation is required for transfer calculation.");
+    if (requiredKg <= 0) throw new Error("Source job weight calculation is unavailable.");
     const corrugationQty = sourceCorrugation.filter((row) => processingTime(row) <= sourceFull.time).reduce((sum, row) => sum + Number(row.qty || 0), 0);
     const consumedKg = corrugationQty * requiredKg / planQty;
     const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);

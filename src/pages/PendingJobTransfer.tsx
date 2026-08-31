@@ -34,7 +34,7 @@ export function PendingJobTransfer() {
         transferableWeight: context.reels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0),
       };
     })
-    .filter((row) => row.context.fullTime > 0 && hasReelIssueHistory(row.production, issueReels))
+    .filter((row) => row.context.fullTime > 0 && row.context.status !== "window_expired" && hasReelIssueHistory(row.production, issueReels))
     .sort((a, b) => Number(b.context.eligible) - Number(a.context.eligible) || b.context.fullTime - a.context.fullTime),
   [findItemAcrossSources, issueLines, issueReels, processing, productions, returnReels, windowHours]);
 

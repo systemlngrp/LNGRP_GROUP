@@ -20,9 +20,29 @@ const STATUS_REASONS: Record<ReelTransferEligibilityStatus, string> = {
   window_expired: "Transfer window expired",
   no_reel_balance: "No remaining issued reel balance",
   plan_quantity_missing: "Plan quantity missing",
-  job_weight_missing: "Job-weight calculation missing",
+  job_weight_missing: "Weight calculation unavailable",
   no_unused_weight: "No unused reel weight remains after Corrugation",
 };
+
+function positiveFinite(value: unknown) {
+  const numericValue = Number(value || 0);
+  return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
+}
+
+export function getReelTransferRequiredJobWeight(production: Production) {
+  const totalJobWeight = positiveFinite(production.totalJobWeight);
+  if (totalJobWeight) return totalJobWeight;
+
+  const totalPaperWeight = positiveFinite(production.totalPaperWeight);
+  if (totalPaperWeight) return totalPaperWeight;
+
+  const componentWeight = positiveFinite(production.topPaperWeightKg) + positiveFinite(production.linerWeightKg);
+  if (componentWeight > 0) return componentWeight;
+
+  const sheetWeight = positiveFinite(production.sheetWeight);
+  const plannedQty = positiveFinite(production.qty) || positiveFinite(production.plannedQty);
+  return sheetWeight > 0 && plannedQty > 0 ? sheetWeight * plannedQty : 0;
+}
 
 function getValidTime(primary: unknown, fallback: unknown) {
   const primaryTime = new Date(String(primary || "")).getTime();
@@ -71,9 +91,8 @@ export function buildReelTransferContext(
   const corrugationQty = processing
     .filter((row) => row.productionId === production.id && normalize(row.machineName) === "corrugation liner" && getValidTime(row.updateTimestamp, row.date) <= fullTime)
     .reduce((sum, row) => sum + Number(row.qty || 0), 0);
-  const planQty = Number(production.qty || production.plannedQty || 0);
-  const requiredKg = Number(production.totalJobWeight || 0) ||
-    (Number(production.topPaperWeightKg || 0) + Number(production.linerWeightKg || 0));
+  const planQty = positiveFinite(production.qty) || positiveFinite(production.plannedQty);
+  const requiredKg = getReelTransferRequiredJobWeight(production);
   const consumedKg = planQty > 0 ? corrugationQty * requiredKg / planQty : 0;
   const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);
   const averageNotionalKg = reels.length ? notionalLeftKg / reels.length : 0;
