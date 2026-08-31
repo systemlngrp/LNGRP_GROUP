@@ -2181,7 +2181,7 @@ async function buildMaterialValuationMaps(db) {
     }
   }
   const [packingSlipRows] = await db.query(`
-    SELECT ps.id, ps.materialId, ps.materialInId, ps.materialLineId, m.openingRate, mi.lines
+    SELECT ps.id, ps.materialId, ps.materialInId, ps.materialLineId, ps.openingRate AS packingSlipOpeningRate, m.openingRate, mi.lines
     FROM \`material_in_packing_slips\` ps
     LEFT JOIN \`material_in\` mi ON mi.id = ps.materialInId
     LEFT JOIN \`materials\` m ON m.id = ps.materialId
@@ -2190,7 +2190,7 @@ async function buildMaterialValuationMaps(db) {
   for (const slip of packingSlipRows) {
     const receiptLine = parseJsonArray(slip.lines).find((line) => String(line?.id || "") === String(slip.materialLineId || ""));
     const receiptRate = receiptLine ? roundCurrency(getMaterialInJsonLineRate(receiptLine)) : 0;
-    const openingRate = roundCurrency(Number(slip.openingRate || 0));
+    const openingRate = roundCurrency(Number(slip.packingSlipOpeningRate || slip.openingRate || 0));
     const rate = receiptRate > 0 ? receiptRate : openingRate;
     if (rate > 0) receiptRateByPackingSlip.set(String(slip.id || ""), rate);
   }
@@ -3518,6 +3518,7 @@ async function initDb(retries = 5) {
           \`supplierReelNo\` VARCHAR(255),
           \`ourReelNo\` VARCHAR(100) NOT NULL,
           \`weightKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`openingRate\` DECIMAL(15,2) DEFAULT 0,
           \`supplierPoNo\` VARCHAR(255),
           \`ourPoId\` VARCHAR(36),
           \`ourPoNo\` VARCHAR(100),
@@ -4177,6 +4178,24 @@ async function initDb(retries = 5) {
           \`operatorName\` VARCHAR(255),
           \`date\` VARCHAR(50) NOT NULL,
           \`completionStatus\` VARCHAR(10),
+          \`warpageBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`warpageKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`delaminationBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`delaminationKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misalignmentBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misalignmentKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`twoPlyPaperKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`deckelWastageKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`sheerCutterBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`sheerCutterKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`noHisabBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`slotting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`delaminationPrinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misalignmentPrinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`drySheets\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`warp\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misprinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`jobSetting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -5040,6 +5059,7 @@ async function initDb(retries = 5) {
         { table: "material_in_packing_slips", column: "supplierReelNo", type: "VARCHAR(255)" },
         { table: "material_in_packing_slips", column: "ourReelNo", type: "VARCHAR(100) NOT NULL" },
         { table: "material_in_packing_slips", column: "weightKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "material_in_packing_slips", column: "openingRate", type: "DECIMAL(15,2) DEFAULT 0" },
         { table: "material_in_packing_slips", column: "supplierPoNo", type: "VARCHAR(255)" },
         { table: "material_in_packing_slips", column: "ourPoId", type: "VARCHAR(36)" },
         { table: "material_in_packing_slips", column: "ourPoNo", type: "VARCHAR(100)" },
@@ -5345,6 +5365,24 @@ async function initDb(retries = 5) {
         { table: "production_processing", column: "operatorName", type: "VARCHAR(255)" },
         { table: "production_processing", column: "date", type: "VARCHAR(50) NOT NULL" },
         { table: "production_processing", column: "completionStatus", type: "VARCHAR(10)" },
+        { table: "production_processing", column: "warpageBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "warpageKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "delaminationBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "delaminationKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misalignmentBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misalignmentKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "twoPlyPaperKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "deckelWastageKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "sheerCutterBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "sheerCutterKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "noHisabBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "slotting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "delaminationPrinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misalignmentPrinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "drySheets", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "warp", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misprinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "jobSetting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
         { table: "production_processing", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "production_processing", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "material_in", column: "updatedBy", type: "VARCHAR(255)" },
@@ -6457,10 +6495,39 @@ const createHandlers = (tableName) => {
           if (missing.length) {
             return res.status(400).json({ error: `Mandatory fields missing/invalid: ${missing.join(", ")}` });
           }
+          const completionStatus = String(data.completionStatus || "").trim();
+          if (completionStatus !== "Part" && completionStatus !== "Full") {
+            return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
+          }
           const [machineRows] = await db.query("SELECT `name` FROM `machines` WHERE `id` = ? LIMIT 1", [data.machineId]);
           const storedMachineName = String(machineRows[0]?.name || "").trim();
           data.machineName = normalizeMachineName(storedMachineName || String(data.machineName || ""));
-          if (data.machineName === "Corrugation Liner") {
+          if (data.machineName === "Corrugation Liner" && completionStatus === "Full") {
+            const wastageInputFields = ["warpageBoxes", "delaminationBoxes", "misalignmentBoxes", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "noHisabBoxes"];
+            for (const field of wastageInputFields) {
+              const rawValue = data[field];
+              const numericValue = rawValue === "" || rawValue == null ? 0 : Number(rawValue);
+              if (!Number.isFinite(numericValue) || numericValue < 0) {
+                return res.status(400).json({ error: `${field} must be a non-negative number.` });
+              }
+              data[field] = numericValue;
+            }
+            const [wastageProductionRows] = await db.query(
+              "SELECT `totalPaperWeight`, `qty`, `plannedQty` FROM `productions` WHERE `id` = ? LIMIT 1",
+              [data.productionId]
+            );
+            const wastageProduction = wastageProductionRows[0] || {};
+            const totalPaperWeight = Number(wastageProduction.totalPaperWeight || 0);
+            const plannedQty = Number(wastageProduction.qty || wastageProduction.plannedQty || 0);
+            const hasPairedBoxWastage = ["warpageBoxes", "delaminationBoxes", "misalignmentBoxes", "sheerCutterBoxes"].some((field) => Number(data[field] || 0) > 0);
+            if (hasPairedBoxWastage && (!(totalPaperWeight > 0) || !(plannedQty > 0))) {
+              return res.status(400).json({ error: "Total Paper Wt and Planned Qty are required to calculate Corrugation Liner wastage KG." });
+            }
+            const kgPerBox = totalPaperWeight > 0 && plannedQty > 0 ? totalPaperWeight / plannedQty : 0;
+            data.warpageKg = Number((data.warpageBoxes * kgPerBox).toFixed(2));
+            data.delaminationKg = Number((data.delaminationBoxes * kgPerBox).toFixed(2));
+            data.misalignmentKg = Number((data.misalignmentBoxes * kgPerBox).toFixed(2));
+            data.sheerCutterKg = Number((data.sheerCutterBoxes * kgPerBox).toFixed(2));
             const [usageRows] = await db.query(
               `SELECT COALESCE(SUM(usagePart.qty), 0) AS netQty
                FROM (
@@ -6494,10 +6561,25 @@ const createHandlers = (tableName) => {
                 error: "Issue material or sheet against this job before reporting Corrugation Liner."
               });
             }
+          } else {
+            ["warpageBoxes", "warpageKg", "delaminationBoxes", "delaminationKg", "misalignmentBoxes", "misalignmentKg", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "sheerCutterKg", "noHisabBoxes"].forEach((field) => {
+              data[field] = 0;
+            });
           }
-          const completionStatus = String(data.completionStatus || "").trim();
-          if (completionStatus !== "Part" && completionStatus !== "Full") {
-            return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
+          const printingWastageFields = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
+          if (data.machineName === "Printing" && completionStatus === "Full") {
+            for (const field of printingWastageFields) {
+              const rawValue = data[field];
+              const numericValue = rawValue === "" || rawValue == null ? 0 : Number(rawValue);
+              if (!Number.isFinite(numericValue) || numericValue < 0) {
+                return res.status(400).json({ error: `${field} must be a non-negative number.` });
+              }
+              data[field] = numericValue;
+            }
+          } else {
+            printingWastageFields.forEach((field) => {
+              data[field] = 0;
+            });
           }
           const [existingProcessingRows] = await db.query(
             "SELECT `id` FROM `production_processing` WHERE `id` = ? LIMIT 1",
@@ -9025,7 +9107,7 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
       return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
     };
     const planQty = positiveFinite(source.qty) || positiveFinite(source.plannedQty);
-    const requiredKg = positiveFinite(source.totalJobWeight) || positiveFinite(source.totalPaperWeight) || positiveFinite(source.topPaperWeightKg) + positiveFinite(source.linerWeightKg) || positiveFinite(source.sheetWeight) * planQty;
+    const requiredKg = positiveFinite(source.totalPaperWeight);
     if (planQty <= 0) throw new Error("Source job plan quantity is required for transfer calculation.");
     if (requiredKg <= 0) throw new Error("Source job weight calculation is unavailable.");
     const corrugationQty = sourceCorrugation.filter((row) => processingTime(row) <= sourceFull.time).reduce((sum, row) => sum + Number(row.qty || 0), 0);

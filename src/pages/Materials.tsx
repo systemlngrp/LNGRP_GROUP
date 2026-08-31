@@ -22,9 +22,18 @@ type OpeningReelDraft = {
   id: string;
   existingSlipId?: string;
   materialLineId?: string;
+  isLegacyOpening?: boolean;
   ourReelNo: string;
   weightKg: string;
   openingRate: string;
+};
+type ConnectedReelRow = {
+  id: string;
+  ourReelNo: string;
+  weightKg: number;
+  openingRate?: number;
+  source: string;
+  isOpening: boolean;
 };
 
 const TYPE_OPTIONS = [
@@ -434,6 +443,7 @@ export function Materials() {
   const [formData, setFormData] = useState(() => createInitialFormState(materials, reelGroup?.id || ""));
   const [openingReels, setOpeningReels] = useState<OpeningReelDraft[]>([]);
   const reelErpStartNumber = settings[0]?.reelErpStartNumber || 1;
+  const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const otherMaterialErpStartNumber = settings[0]?.otherMaterialErpStartNumber || 1;
 
   const unitOptions = useMemo(
@@ -471,16 +481,27 @@ export function Materials() {
     return { openingQty, openingRate, openingValue };
   }, [openingReels]);
 
-  const createOpeningReelDraft = (): OpeningReelDraft => ({
+  const getNextOpeningReelNo = (draftRows: OpeningReelDraft[] = openingReels) =>
+    String(getNextPlainNumber(
+      [
+        ...packingSlips.map((slip) => slip.ourReelNo),
+        ...draftRows
+          .filter((row) => !row.existingSlipId)
+          .map((row) => row.ourReelNo),
+      ],
+      ourReelNoStartNumber
+    ));
+
+  const createOpeningReelDraft = (draftRows: OpeningReelDraft[] = openingReels): OpeningReelDraft => ({
     id: crypto.randomUUID(),
-    ourReelNo: "",
+    ourReelNo: getNextOpeningReelNo(draftRows),
     weightKg: "",
     openingRate: "",
   });
 
-  const getOpeningReelsForMaterial = (materialId: string): OpeningReelDraft[] =>
-    packingSlips
-      .filter((slip) => slip.materialId === materialId && isOpeningReelPackingSlip(slip))
+  const getOpeningReelsForMaterial = (material: Material): OpeningReelDraft[] => {
+    const explicitRows = packingSlips
+      .filter((slip) => slip.materialId === material.id && isOpeningReelPackingSlip(slip))
       .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }))
       .map((slip) => ({
         id: slip.id,
@@ -490,6 +511,45 @@ export function Materials() {
         weightKg: formatOptionalNumber(slip.weightKg),
         openingRate: formatOptionalNumber(slip.openingRate),
       }));
+    if (explicitRows.length > 0) return explicitRows;
+    if (material.type !== "Reel" || Number(material.openingQty || 0) <= 0) return [];
+    return [{
+      id: crypto.randomUUID(),
+      isLegacyOpening: true,
+      ourReelNo: getNextOpeningReelNo([]),
+      weightKg: formatOptionalNumber(material.openingQty),
+      openingRate: formatOptionalNumber(material.openingRate),
+    }];
+  };
+
+  const connectedReelsForCurrentMaterial = useMemo<ConnectedReelRow[]>(() => {
+    if (formData.type !== "Reel") return [];
+    const currentErpCode = normalizeMaterialErp(formData.erpCode);
+    const matchingMaterialIds = new Set(
+      materials
+        .filter((material) =>
+          material.type === "Reel" &&
+          (
+            (editingId && material.id === editingId) ||
+            (!!currentErpCode && normalizeMaterialErp(material.erpCode) === currentErpCode)
+          )
+        )
+        .map((material) => material.id)
+    );
+    if (matchingMaterialIds.size === 0) return [];
+    const receiptNoById = new Map(materialIn.map((entry) => [entry.id, entry.transactionNo]));
+    return packingSlips
+      .filter((slip) => matchingMaterialIds.has(slip.materialId))
+      .map((slip) => ({
+        id: slip.id,
+        ourReelNo: String(slip.ourReelNo || ""),
+        weightKg: Number(slip.weightKg || 0),
+        openingRate: slip.openingRate,
+        source: isOpeningReelPackingSlip(slip) ? "Opening" : receiptNoById.get(slip.materialInId) || "MRR / Receipt",
+        isOpening: isOpeningReelPackingSlip(slip),
+      }))
+      .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }));
+  }, [editingId, formData.erpCode, formData.type, materialIn, materials, packingSlips]);
 
   useEffect(() => {
     if (hasNormalizedExistingReelNamesRef.current) return;
@@ -625,7 +685,7 @@ export function Materials() {
 
   function handleEdit(material: Material) {
     setEditingId(material.id);
-    setOpeningReels(getOpeningReelsForMaterial(material.id));
+    setOpeningReels(getOpeningReelsForMaterial(material));
     setFormData({
       type: material.type,
       erpCode: String(material.erpCode ?? ""),
@@ -1465,7 +1525,7 @@ export function Materials() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setOpeningReels((current) => [...current, createOpeningReelDraft()])}
+                    onClick={() => setOpeningReels((current) => [...current, createOpeningReelDraft(current)])}
                     className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-indigo-600 px-3 py-2 text-xs font-bold uppercase text-white"
                   >
                     <Plus size={14} /> Add Reel
@@ -1536,6 +1596,41 @@ export function Materials() {
                     </table>
                   </div>
                 )}
+                {connectedReelsForCurrentMaterial.length > 0 ? (
+                  <div className="mt-4 rounded border border-slate-400 bg-white p-3">
+                    <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <h4 className="text-xs font-black uppercase text-slate-700">Existing Reels for this ERP</h4>
+                        <p className="text-[11px] font-bold text-slate-500">Receipt reels are shown for reference only. Edit opening reels above.</p>
+                      </div>
+                      <span className="text-[11px] font-black uppercase text-indigo-700">{connectedReelsForCurrentMaterial.length} Reel(s)</span>
+                    </div>
+                    <div className="max-h-44 overflow-auto">
+                      <table className="min-w-full border-collapse text-xs">
+                        <thead className="sticky top-0 bg-slate-100">
+                          <tr>
+                            {["Our Reel No.", "KG", "Rate", "Source"].map((heading) => (
+                              <th key={heading} className="border border-slate-400 px-2 py-1.5 text-left font-black uppercase">{heading}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {connectedReelsForCurrentMaterial.map((row) => (
+                            <tr key={row.id}>
+                              <td className="border border-slate-300 px-2 py-1.5 font-black">{row.ourReelNo}</td>
+                              <td className="border border-slate-300 px-2 py-1.5 text-right font-bold">{round2(row.weightKg).toFixed(2)}</td>
+                              <td className="border border-slate-300 px-2 py-1.5 text-right font-bold">{formatOptionalNumber(row.openingRate) || "-"}</td>
+                              <td className="border border-slate-300 px-2 py-1.5 font-bold">
+                                {row.source}
+                                {row.isOpening ? <span className="ml-2 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-black uppercase text-indigo-700">Editable above</span> : null}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
