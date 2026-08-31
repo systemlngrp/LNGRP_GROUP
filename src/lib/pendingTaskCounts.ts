@@ -36,6 +36,7 @@ import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
 import { isProductionPendingConsumption, isProductionPendingFFG, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
 import { getAllReturnableReelLines } from "./materialMovement";
+import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "./reelTransfer";
 
 type OrderCatalogItem = {
   id: string;
@@ -82,6 +83,7 @@ export const PENDING_TASK_DEFINITIONS = [
   { section: "Jobs", name: "Pending NPD", countKey: "/production/pending-npd" },
   { section: "Jobs", name: "Pending Material Issue", countKey: "/production/pending-consumption" },
   { section: "Jobs", name: "Pending Material Return", countKey: "/production/pending-material-return" },
+  { section: "Jobs", name: "Job Transfer", countKey: "/production/pending-job-transfer" },
   { section: "Jobs", name: "Pending FG", countKey: "/production/pending-ffg" },
   { section: "Jobs", name: "Pending Printing", countKey: "/production/pending-printing" },
   { section: "Jobs", name: "Pending Production Tally Entry", countKey: "/production/pending-tally" },
@@ -428,6 +430,19 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
         .filter((line) => args.productions.some((production) => production.id === line.productionId && production.status !== "Cancelled"))
         .map((line) => line.productionId)
     ).size,
+    "/production/pending-job-transfer": args.productions.filter((production) => {
+      if (production.status === "Cancelled" || production.cancelTimestamp) return false;
+      const windowHours = Number(args.settings?.[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
+      return buildReelTransferContext(
+        production,
+        args.processing || [],
+        args.materialIssueReelLines,
+        args.materialReturnReelLines,
+        args.materialIssueLines,
+        args.productions,
+        windowHours
+      ).eligible;
+    }).length,
     "/production/pending-ffg": args.productions.filter((p) =>
       isProductionPendingFFG(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,

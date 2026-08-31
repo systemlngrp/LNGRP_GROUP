@@ -5,10 +5,13 @@ import { Material, MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelL
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrugationFullTime } from "../lib/reelTransfer";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function ReelTransferForm() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [productions, , productionsLoading] = useData<Production>("productions", []);
   const [processing, , processingLoading] = useData<ProductionProcessing>("production_processing", []);
   const [issueReels, , issuesLoading] = useData<MaterialIssueReelLine>("material_issue_reel_lines", []);
@@ -16,8 +19,11 @@ export function ReelTransferForm() {
   const [issueLines] = useData<MaterialIssueLine>("material_issue_lines", []);
   const [materials] = useData<Material>("materials", []);
   const [settings] = useData<Setting>("settings", []);
+  const requestedSourceId = String(searchParams.get("sourceProductionId") || "").trim();
+  const lockSource = searchParams.get("lockSource") === "1";
+  const returnTo = String(searchParams.get("returnTo") || "").trim();
   const [date, setDate] = useState(today());
-  const [sourceId, setSourceId] = useState("");
+  const [sourceId, setSourceId] = useState(requestedSourceId);
   const [targetId, setTargetId] = useState("");
   const [selectedSlips, setSelectedSlips] = useState<string[]>([]);
   const [remarks, setRemarks] = useState("");
@@ -48,18 +54,22 @@ export function ReelTransferForm() {
       ["material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "productions"].forEach((key) => window.dispatchEvent(new CustomEvent(`sync-data-${key}`)));
       alert(`Reel transfer ${result.transferNo} saved successfully.`);
       setSelectedSlips([]); setTargetId(""); setRemarks("");
+      if (returnTo) navigate(returnTo);
     } catch (error) { alert(error instanceof Error ? error.message : "Failed to transfer reels."); }
     finally { setSaving(false); }
   };
 
   if (productionsLoading || processingLoading || issuesLoading || returnsLoading) return <Spinner />;
   return <div className="rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
-    <h2 className="mb-5 border-b border-black pb-2 text-xl font-bold uppercase tracking-tight">Reel Transfer Form</h2>
+    <div className="mb-5 flex items-center justify-between gap-3 border-b border-black pb-2">
+      <h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer - Reel Balance</h2>
+      {returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-slate-100">Back to Job Transfer</button> : null}
+    </div>
     <form onSubmit={submit} className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Field label="Transfer Date"><input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
         <Field label="Transfer No."><input value="Auto" readOnly className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>
-        <Field label="Source Job No."><Select options={sourceOptions} value={sourceId} onChange={handleSource} placeholder="Select eligible source job..." /></Field>
+        <Field label="Source Job No."><Select disabled={lockSource} options={sourceOptions} value={sourceId} onChange={handleSource} placeholder="Select eligible source job..." /></Field>
         <Field label="Target Job No."><Select disabled={!sourceId} options={targetOptions} value={targetId} onChange={setTargetId} placeholder="Select job with no reel issue..." /></Field>
         <Field label="Remarks"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
         <Field label={`Transfer Window (${windowHours} Hours)`}><input readOnly value={sourceContext?.expiresAt ? new Date(sourceContext.expiresAt).toLocaleString() : "Select source job"} className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>

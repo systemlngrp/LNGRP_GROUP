@@ -33,6 +33,7 @@ import { MaterialIssueForm } from "./pages/MaterialIssueForm";
 import { MaterialReturnForm } from "./pages/MaterialReturnForm";
 import { ReelReturnForm } from "./pages/ReelReturnForm";
 import { PendingMaterialReturn } from "./pages/PendingMaterialReturn";
+import { PendingJobTransfer } from "./pages/PendingJobTransfer";
 import { ReelTransferForm } from "./pages/ReelTransferForm";
 import { MaterialIssueMaster } from "./pages/MaterialIssueMaster";
 import { MaterialReturnMaster } from "./pages/MaterialReturnMaster";
@@ -305,6 +306,7 @@ export default function App() {
           <Route path="production/upcoming" element={<UpcomingScheduledOrders />} />
           <Route path="production/pending-consumption" element={<ProductionPendingConsumption />} />
           <Route path="production/pending-material-return" element={<PendingMaterialReturn />} />
+          <Route path="production/pending-job-transfer" element={<PendingJobTransfer />} />
           <Route path="production/pending-ffg" element={<ProductionPendingFFG />} />
           <Route path="production/pending-tally" element={<ProductionPendingTally />} />
           <Route path="production/pending-job-closure" element={<PendingJobClosure />} />

@@ -109,6 +109,14 @@ function isAllowed(user: AuthUser | null, href: string) {
     ["/production/pending-consumption", "/material-movement/return", "/material-movement/reel-return"].some((path) => list.includes(path))
   ) return true;
   if (
+    href === "/production/pending-job-transfer" &&
+    ["/material-movement/reel-transfer", "/material-movement/issue"].some((path) => list.includes(path))
+  ) return true;
+  if (
+    href === "/material-movement/reel-transfer" &&
+    list.includes("/production/pending-job-transfer")
+  ) return true;
+  if (
     ["/material-movement/reel-return", "/material-movement/reel-return/qr"].includes(href) &&
     ["/material-movement/return", "/production/pending-material-return"].some((path) => list.includes(path))
   ) return true;

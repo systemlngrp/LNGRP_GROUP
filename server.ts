@@ -685,6 +685,7 @@ function hasPermission(user: AuthUser, required: string) {
   const list = user.menuAccess || [];
   if (list.includes("*")) return true;
   if (required === "/material-movement/reel-transfer" && list.includes("/material-movement/issue")) return true;
+  if (required === "/material-movement/reel-transfer" && list.includes("/production/pending-job-transfer")) return true;
   if (
     required === "/material-movement" &&
     ["/material-movement/return", "/material-movement/reel-return", "/production/pending-material-return"].some((path) => list.includes(path))
