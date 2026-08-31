@@ -4,13 +4,15 @@ import { Camera, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getAllReturnableReelLines } from "../lib/materialMovement";
-import type { MaterialIssueReelLine, MaterialReturnReelLine, Production } from "../types";
+import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
+import type { MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
 
 export function PendingMaterialReturn() {
   const navigate = useNavigate();
   const [productions] = useData<Production>("productions", []);
   const [issueReels] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
   const [returnReels] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", []);
   const { findItemAcrossSources } = useOrderItemCatalog();
 
   const rows = useMemo(() => {
@@ -24,7 +26,7 @@ export function PendingMaterialReturn() {
     });
 
     return productions
-      .filter((production) => production.status !== "Cancelled" && byProduction.has(production.id))
+      .filter((production) => production.status !== "Cancelled" && byProduction.has(production.id) && isCorrugationLinerComplete(processing, production.id))
       .map((production) => {
         const totals = byProduction.get(production.id)!;
         const item = findItemAcrossSources(
@@ -41,7 +43,7 @@ export function PendingMaterialReturn() {
         };
       })
       .sort((a, b) => String(b.production.date || "").localeCompare(String(a.production.date || "")));
-  }, [findItemAcrossSources, issueReels, productions, returnReels]);
+  }, [findItemAcrossSources, issueReels, processing, productions, returnReels]);
 
   const openReturn = (production: Production, mode: "manual" | "qr") => {
     const params = new URLSearchParams({

@@ -584,7 +584,7 @@ export function ProductionStageQueue({
                                             <td className="px-4 py-4 text-xs text-black border border-black">
                         {(() => {
                           const normalizedRequired = requiredMachines.map((m) => normalizeMachineName(m));
-                          const requiresLiner = normalizedRequired.includes("Corrugation Liner");
+                          const requiresLiner = false;
                           const linerDone = isCorrugationLinerComplete(processing, production.id);
 
                           const prereqMissing = !!issuePrereqMachineName && !(prereqQty > 0);
@@ -735,7 +735,6 @@ export function ProductionPendingConsumption() {
       predicate={isProductionPendingConsumption}
       enableIssueAction
       hideStatusColumn
-      issuePrereqMachineName="Corrugation Liner"
       issueActionPath="/material-movement/reel-issue-return-scan/form"
       issueActionLabel="QR Issue"
       secondaryIssueActionPath="/material-movement/reel-issue-return"
@@ -752,7 +751,6 @@ export function ProductionPendingReelIssueScan() {
       predicate={isProductionPendingConsumption}
       enableIssueAction
       hideStatusColumn
-      issuePrereqMachineName="Corrugation Liner"
       issueActionPath="/material-movement/reel-issue-return"
       issueActionLabel="Manual Issue"
       secondaryIssueActionPath="/material-movement/reel-issue-return-scan/form"

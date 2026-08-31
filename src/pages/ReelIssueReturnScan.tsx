@@ -5,7 +5,6 @@ import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { generateTransactionNo } from "../lib/serial";
 import { getAvailableReelPackingSlips } from "../lib/materialMovement";
-import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 import {
   buildProductionCorrugatedSheetUsageMap,
   buildProductionMaterialUsageMap,
@@ -22,7 +21,6 @@ import type {
   MaterialReturnLine,
   MaterialReturnReelLine,
   Production,
-  ProductionProcessing,
   Setting,
 } from "../types";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -114,7 +112,6 @@ export function ReelIssueReturnScan() {
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [productions, setProductions] = useData<Production>("productions", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
@@ -140,7 +137,6 @@ export function ReelIssueReturnScan() {
   const lastScannedAtRef = useRef(0);
 
   const selectedProduction = productions.find((production) => production.id === productionId) || null;
-  const linerComplete = isCorrugationLinerComplete(processing, productionId);
 
   const jobOptions = useMemo(
     () =>
@@ -233,7 +229,6 @@ export function ReelIssueReturnScan() {
 
   const addDraftFromQr = async (rawQrValue: string) => {
     if (!date || !productionId || !selectedProduction) throw new Error("Select date and job before scanning.");
-    if (!linerComplete) throw new Error("Complete Corrugation Liner as Full before issuing reels.");
 
     const parsed = parseQrPayload(rawQrValue);
     const reelNo = String(parsed.reelNo || "").trim();
@@ -280,10 +275,6 @@ export function ReelIssueReturnScan() {
   const handleOpenScanner = async () => {
     if (!productionId) {
       setScannerError("Select job before scanning.");
-      return;
-    }
-    if (!linerComplete) {
-      setScannerError("Complete Corrugation Liner as Full before issuing reels.");
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -351,10 +342,6 @@ export function ReelIssueReturnScan() {
   const handleSubmit = async () => {
     if (!date || !productionId || !selectedProduction) {
       alert("Select date and job before submit.");
-      return;
-    }
-    if (!linerComplete) {
-      alert("Complete Corrugation Liner as Full before issuing reels.");
       return;
     }
     if (reelDrafts.length === 0) {
@@ -482,7 +469,7 @@ export function ReelIssueReturnScan() {
             <button
               type="button"
               onClick={() => void handleOpenScanner()}
-              disabled={isProcessingScan || isSubmitting || !linerComplete}
+              disabled={isProcessingScan || isSubmitting}
               className="inline-flex h-[42px] w-full items-center justify-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-4 text-sm font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
             >
               <Camera size={16} />
@@ -491,11 +478,6 @@ export function ReelIssueReturnScan() {
           ) : null}
         </div>
       </div>
-      {productionId && !linerComplete ? (
-        <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
-          Complete Corrugation Liner as Full before issuing reels.
-        </div>
-      ) : null}
       {scannerError ? <div className="rounded border border-rose-300 bg-rose-50 p-3 text-sm font-bold text-rose-800">{scannerError}</div> : null}
 
       <div className="min-w-0 rounded border-2 border-black bg-white p-3 shadow-sm sm:p-4">
@@ -585,7 +567,7 @@ export function ReelIssueReturnScan() {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={isSubmitting || reelDrafts.length === 0 || !linerComplete}
+          disabled={isSubmitting || reelDrafts.length === 0}
           className="mt-3 inline-flex h-[44px] w-full items-center justify-center gap-2 rounded border border-indigo-700 bg-indigo-50 px-4 text-sm font-bold text-indigo-800 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isSubmitting ? <Spinner size={18} /> : <Save size={16} />}

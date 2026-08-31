@@ -14,7 +14,6 @@ import {
   MaterialReturnLine,
   MaterialReturnReelLine,
   Production,
-  ProductionProcessing,
   Setting,
 } from "../types";
 import { generateTransactionNo } from "../lib/serial";
@@ -28,7 +27,6 @@ import {
   buildProductionMaterialUsageMap,
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
-import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 
 type ReelLineDraft = {
   id: string;
@@ -76,7 +74,6 @@ export function ReelIssueReturnForm() {
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [productions, setProductions] = useData<Production>("productions", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
 
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
@@ -100,7 +97,6 @@ export function ReelIssueReturnForm() {
   const [selectedIssueReels, setSelectedIssueReels] = useState<Record<string, string[]>>({});
 
   const selectedProduction = productions.find((production) => production.id === productionId) || null;
-  const linerComplete = isCorrugationLinerComplete(processing, productionId);
 
   const getReelInvoiceRate = (slipId: string): number => {
     const slip = packingSlips.find((row) => row.id === slipId);
@@ -199,10 +195,6 @@ export function ReelIssueReturnForm() {
   };
 
   const updateSelectedIssueReels = (lineId: string, materialId: string, packingSlipId: string, checked: boolean) => {
-    if (checked && !linerComplete) {
-      alert("Complete Corrugation Liner as Full before issuing reels.");
-      return;
-    }
     setSelectedIssueReels((prev) => {
       const current = new Set(prev[lineId] || []);
       if (checked) current.add(packingSlipId);
@@ -237,10 +229,6 @@ export function ReelIssueReturnForm() {
     if (!date || !productionId) return;
     if (!hasAnyIssue) {
       alert("Select at least one reel to issue.");
-      return;
-    }
-    if (hasAnyIssue && !linerComplete) {
-      alert("Complete Corrugation Liner as Full before issuing reels.");
       return;
     }
 
@@ -425,15 +413,10 @@ export function ReelIssueReturnForm() {
                 <h3 className="text-lg font-black tracking-tight text-slate-950">Issue Reels</h3>
                 <p className="text-sm font-medium text-slate-500">Choose a material and issue from the currently available reels.</p>
               </div>
-              <button type="button" onClick={addIssueLine} disabled={!linerComplete} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
+              <button type="button" onClick={addIssueLine} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
                 <Plus size={16} /> Add
               </button>
             </div>
-            {productionId && !linerComplete ? (
-              <div className="mt-4 rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
-                Complete Corrugation Liner as Full before issuing reels.
-              </div>
-            ) : null}
 
             {issueLines.map((line) => {
               const availableReels = line.materialId ? getIssueAvailableReels(line.materialId, line.id) : [];
@@ -446,7 +429,6 @@ export function ReelIssueReturnForm() {
                       <label className="text-sm font-bold text-slate-700">Material</label>
                       <Select
                         options={reelMaterialOptions}
-                        disabled={!linerComplete}
                         value={line.materialId}
                         onChange={(value) => {
                           setIssueLines((prev) => prev.map((row) => (row.id === line.id ? { ...row, materialId: value } : row)));
@@ -477,7 +459,7 @@ export function ReelIssueReturnForm() {
                         {availableReels.length === 0 ? <div className="rounded border border-dashed border-slate-300 bg-white p-5 text-center text-sm font-medium text-slate-500">No available reels for this material.</div> : availableReels.map((slip) => {
                           const selected = selectedIds.includes(slip.id);
                           return <label key={slip.id} className={`block rounded border-2 bg-white p-3 shadow-sm ${selected ? "border-indigo-700" : "border-black"}`}>
-                            <div className="flex items-start justify-between gap-3 border-b border-black pb-2"><div className="min-w-0"><div className="text-[10px] font-black uppercase text-slate-500">Our Reel No.</div><div className="break-all text-xl font-black">{slip.ourReelNo}</div></div><input type="checkbox" disabled={!linerComplete} checked={selected} onChange={(e) => updateSelectedIssueReels(line.id, line.materialId, slip.id, e.target.checked)} className="h-6 w-6 shrink-0 rounded border-slate-300 text-indigo-600" /></div>
+                            <div className="flex items-start justify-between gap-3 border-b border-black pb-2"><div className="min-w-0"><div className="text-[10px] font-black uppercase text-slate-500">Our Reel No.</div><div className="break-all text-xl font-black">{slip.ourReelNo}</div></div><input type="checkbox" checked={selected} onChange={(e) => updateSelectedIssueReels(line.id, line.materialId, slip.id, e.target.checked)} className="h-6 w-6 shrink-0 rounded border-slate-300 text-indigo-600" /></div>
                             <div className="mt-3 grid grid-cols-2 gap-2"><div className="min-w-0 rounded border border-slate-300 p-2"><div className="text-[10px] font-black uppercase text-slate-500">Supplier Reel</div><div className="break-words text-sm font-black">{slip.supplierReelNo || "-"}</div></div><div className="rounded border border-indigo-200 bg-indigo-50 p-2"><div className="text-[10px] font-black uppercase text-indigo-700">Invoice Rate</div><div className="text-sm font-black">{formatCurrencyDisplay(getReelInvoiceRate(slip.id))}</div></div><div className="col-span-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-right"><div className="text-[10px] font-black uppercase text-emerald-700">Available Weight</div><div className="text-lg font-black text-emerald-900">{Number(slip.weightKg || 0).toFixed(2)} KG</div></div></div>
                           </label>;
                         })}
@@ -512,7 +494,6 @@ export function ReelIssueReturnForm() {
                                     <td className="border-t border-slate-200 px-4 py-3 text-center align-top">
                                       <input
                                         type="checkbox"
-                                        disabled={!linerComplete}
                                         checked={selectedIds.includes(slip.id)}
                                         onChange={(e) => updateSelectedIssueReels(line.id, line.materialId, slip.id, e.target.checked)}
                                         className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -561,7 +542,7 @@ export function ReelIssueReturnForm() {
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={isSubmitting || !productionId || !hasAnyIssue || !linerComplete}
+              disabled={isSubmitting || !productionId || !hasAnyIssue}
               className="inline-flex min-w-[220px] items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(99,102,241,1),rgba(168,85,247,0.95))] px-6 py-3.5 text-sm font-black uppercase tracking-[0.18em] text-white shadow-[0_18px_35px_-18px_rgba(79,70,229,0.85)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save Reel Issue"}

@@ -5,9 +5,10 @@ import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { getAllReturnableReelLines } from "../lib/materialMovement";
+import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 import { buildProductionCorrugatedSheetUsageMap, buildProductionMaterialUsageMap, syncProductionWorkflowFromUsage } from "../lib/productionMaterialUsage";
 import { generateTransactionNo } from "../lib/serial";
-import type { Material, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Production } from "../types";
+import type { Material, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
 
 type ReturnableReel = ReturnType<typeof getAllReturnableReelLines>[number];
 type ReturnDraft = Record<string, string>;
@@ -40,6 +41,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [productions, setProductions, productionsLoading] = useData<Production>("productions", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [issueReelLines, , issueReelsLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
@@ -62,15 +64,16 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   const scanTimerRef = useRef<number | null>(null);
   const lastScannedCodeRef = useRef("");
   const lastScannedAtRef = useRef(0);
+  const linerComplete = isCorrugationLinerComplete(processing, productionId);
 
   const returnableReels = useMemo(() => getAllReturnableReelLines(issueReelLines, returnReelLines, productions), [issueReelLines, productions, returnReelLines]);
   const materialMap = useMemo(() => new Map(materials.map((row) => [row.id, row])), [materials]);
   const slipMap = useMemo(() => new Map(packingSlips.map((row) => [row.id, row])), [packingSlips]);
   const jobOptions = useMemo(() => {
     const eligibleIds = new Set(returnableReels.map((row) => row.productionId));
-    return productions.filter((row) => eligibleIds.has(row.id) && row.status !== "Cancelled").sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((row) => ({ value: row.id, label: `${row.transactionNo}${row.date ? ` | ${row.date.slice(0, 10)}` : ""}` }));
-  }, [productions, returnableReels]);
-  const reelsForJob = useMemo(() => returnableReels.filter((row) => row.productionId === productionId).sort((a, b) => String(a.ourReelNo).localeCompare(String(b.ourReelNo), undefined, { numeric: true })), [productionId, returnableReels]);
+    return productions.filter((row) => eligibleIds.has(row.id) && row.status !== "Cancelled" && isCorrugationLinerComplete(processing, row.id)).sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((row) => ({ value: row.id, label: `${row.transactionNo}${row.date ? ` | ${row.date.slice(0, 10)}` : ""}` }));
+  }, [processing, productions, returnableReels]);
+  const reelsForJob = useMemo(() => linerComplete ? returnableReels.filter((row) => row.productionId === productionId).sort((a, b) => String(a.ourReelNo).localeCompare(String(b.ourReelNo), undefined, { numeric: true })) : [], [linerComplete, productionId, returnableReels]);
 
   const getInvoiceRate = (packingSlipId: string) => {
     const slip = slipMap.get(packingSlipId);
@@ -99,6 +102,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
 
   const addScannedReel = (rawValue: string) => {
     if (!productionId) throw new Error("Select a job before scanning.");
+    if (!linerComplete) throw new Error("Complete Corrugation Liner as Full before returning reels.");
     const reelNo = parseQrReelNo(rawValue);
     if (!reelNo) throw new Error("Reel number is required in QR.");
     const matching = reelsForJob.find((row) => normalizeText(row.ourReelNo) === normalizeText(reelNo));
@@ -114,6 +118,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   };
   const openScanner = async () => {
     if (!productionId) return setScannerError("Select a job before scanning.");
+    if (!linerComplete) return setScannerError("Complete Corrugation Liner as Full before returning reels.");
     if (!navigator.mediaDevices?.getUserMedia) return setScannerError("Camera access is not supported on this browser/device.");
     const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
     if (!BarcodeDetectorCtor) return setScannerError("QR scanner is not supported on this browser.");
@@ -140,7 +145,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (isSubmitting || !date || !productionId || !allDraftsValid) return;
+    if (isSubmitting || !date || !productionId || !linerComplete || !allDraftsValid) return;
     setIsSubmitting(true);
     try {
       const latest = getAllReturnableReelLines(issueReelLines, returnReelLines, productions);
@@ -190,7 +195,8 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
     <div className="mb-4 flex flex-col items-start gap-3 border-b border-black pb-3 sm:flex-row sm:items-center md:mb-6">{returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="inline-flex w-full items-center justify-center gap-1 rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase hover:bg-slate-100 sm:w-auto"><ArrowLeft size={15} /> Pending Returns</button> : null}<h2 className="break-words text-lg font-bold uppercase tracking-tight md:text-xl">{mode === "qr" ? "QR Reel Return" : "Manual Reel Return"}</h2></div>
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Field label="Date" required><input type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="w-full rounded border-2 border-black p-2" /></Field><Field label="Return No (Auto)"><input value="Generated on Submit" disabled className="w-full rounded border-2 border-black bg-slate-50 p-2 opacity-70" /></Field><Field label="Job No." required><Select required disabled={lockJob} options={jobOptions} value={productionId} onChange={handleJobChange} placeholder="Select Job..." /></Field><Field label="Remarks"><input value={remarks} onChange={(event) => setRemarks(event.target.value)} className="w-full rounded border-2 border-black p-2" /></Field></div>
-      {mode === "qr" ? <div className="flex flex-col items-stretch gap-3 border-t border-black pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h3 className="font-bold uppercase">Scan Issued Reels</h3><p className="break-words text-sm text-slate-600">Scan each reel once, then enter its actual return weight below.</p></div><button type="button" onClick={() => void openScanner()} disabled={!productionId || isProcessingScan || isSubmitting} className="inline-flex w-full items-center justify-center gap-2 rounded border-2 border-black bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50 sm:w-auto"><Camera size={17} /> Scan QR</button>{scannerError ? <p className="w-full break-words text-sm font-bold text-red-700">{scannerError}</p> : null}</div> : <div className="border-t border-black pt-4"><h3 className="font-bold uppercase">Select Issued Reels</h3></div>}
+      {productionId && !linerComplete ? <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">Complete Corrugation Liner as Full before returning reels.</div> : null}
+      {mode === "qr" ? <div className="flex flex-col items-stretch gap-3 border-t border-black pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h3 className="font-bold uppercase">Scan Issued Reels</h3><p className="break-words text-sm text-slate-600">Scan each reel once, then enter its actual return weight below.</p></div><button type="button" onClick={() => void openScanner()} disabled={!productionId || !linerComplete || isProcessingScan || isSubmitting} className="inline-flex w-full items-center justify-center gap-2 rounded border-2 border-black bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50 sm:w-auto"><Camera size={17} /> Scan QR</button>{scannerError ? <p className="w-full break-words text-sm font-bold text-red-700">{scannerError}</p> : null}</div> : <div className="border-t border-black pt-4"><h3 className="font-bold uppercase">Select Issued Reels</h3></div>}
       <div className="space-y-3 md:hidden">
         {displayedRows.length === 0 ? <div className="rounded border border-dashed border-slate-400 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500">{productionId ? (mode === "qr" ? "Scan a reel QR to add it." : "No issued reels remain available for this job.") : "Select a job first."}</div> : displayedRows.map((row) => {
           const key = reelKey(row); const selected = draft[key] !== undefined; const value = draft[key] || ""; const qty = Number(value); const valid = value.trim() !== "" && Number.isFinite(qty) && qty > 0 && qty <= row.weightKg; const rate = getInvoiceRate(row.packingSlipId); const material = materialMap.get(row.materialId);
@@ -203,7 +209,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
       <div className="hidden overflow-x-auto rounded border border-black md:block"><table className="min-w-full border-collapse text-sm"><thead className="bg-slate-100"><tr>{[mode === "manual" ? "Select" : "Remove", "Our Reel No.", "Material / ERP", "Remaining Issued Weight", "Return Weight KG", "Rate", "Amount"].map((heading) => <th key={heading} className="border border-black px-3 py-2 text-left text-xs font-bold uppercase">{heading}</th>)}</tr></thead><tbody>
         {displayedRows.length === 0 ? <tr><td colSpan={7} className="p-6 text-center font-medium text-slate-500">{productionId ? (mode === "qr" ? "Scan a reel QR to add it." : "No issued reels remain available for this job.") : "Select a job first."}</td></tr> : displayedRows.map((row) => { const key = reelKey(row); const selected = draft[key] !== undefined; const value = draft[key] || ""; const qty = Number(value); const valid = value.trim() !== "" && Number.isFinite(qty) && qty > 0 && qty <= row.weightKg; const rate = getInvoiceRate(row.packingSlipId); const material = materialMap.get(row.materialId); return <tr key={key}><td className="border border-black px-3 py-2 text-center">{mode === "manual" ? <input type="checkbox" checked={selected} onChange={(event) => toggleReel(row, event.target.checked)} /> : <button type="button" onClick={() => toggleReel(row, false)} className="rounded border border-red-700 px-2 py-1 text-xs font-bold text-red-700">Remove</button>}</td><td className="border border-black px-3 py-2 font-black">{row.ourReelNo}</td><td className="border border-black px-3 py-2 font-bold">{material?.name || "-"}<div className="text-xs font-medium text-slate-500">ERP: {material?.erpCode || "-"}</div></td><td className="border border-black px-3 py-2 text-right font-black text-amber-700">{row.weightKg.toFixed(2)} KG</td><td className="border border-black px-3 py-2"><input type="number" min="0.01" max={row.weightKg} step="0.01" disabled={!selected} value={value} onChange={(event) => updateWeight(row, event.target.value)} placeholder="0.00" className="w-32 rounded border-2 border-black p-2 text-right font-bold disabled:bg-slate-100" /></td><td className="border border-black px-3 py-2 text-right font-bold">{rate.toFixed(2)}</td><td className="border border-black px-3 py-2 text-right font-black text-indigo-700">{valid ? round2(qty * rate).toFixed(2) : "0.00"}</td></tr>; })}
       </tbody></table></div>
-      <div className="flex flex-col gap-4 border-2 border-black bg-slate-950 p-4 text-white md:flex-row md:items-center md:justify-between"><div className="grid w-full grid-cols-1 gap-3 min-[380px]:grid-cols-3 md:w-auto md:gap-6"><Total label="Selected Reels" value={String(selectedRows.length)} /><Total label="Return Weight" value={`${totalWeight.toFixed(2)} KG`} /><Total label="Return Value" value={totalAmount.toFixed(2)} /></div><button type="submit" disabled={isSubmitting || !productionId || !allDraftsValid} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-700 disabled:opacity-50 md:w-auto md:min-w-[180px]"><PackageCheck size={18} /> {isSubmitting ? "Saving..." : "Save Returns"}</button></div>
+      <div className="flex flex-col gap-4 border-2 border-black bg-slate-950 p-4 text-white md:flex-row md:items-center md:justify-between"><div className="grid w-full grid-cols-1 gap-3 min-[380px]:grid-cols-3 md:w-auto md:gap-6"><Total label="Selected Reels" value={String(selectedRows.length)} /><Total label="Return Weight" value={`${totalWeight.toFixed(2)} KG`} /><Total label="Return Value" value={totalAmount.toFixed(2)} /></div><button type="submit" disabled={isSubmitting || !productionId || !linerComplete || !allDraftsValid} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-700 disabled:opacity-50 md:w-auto md:min-w-[180px]"><PackageCheck size={18} /> {isSubmitting ? "Saving..." : "Save Returns"}</button></div>
     </form>
     {isScannerOpen ? <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"><div className="w-full max-w-lg rounded border-2 border-black bg-white p-4 shadow-2xl"><div className="mb-3 flex items-center justify-between"><div className="text-sm font-black uppercase">Scan Return Reel QR</div><button type="button" onClick={closeScanner} className="rounded border border-black p-1.5"><X size={18} /></button></div><video ref={videoRef} playsInline muted className="aspect-video w-full rounded bg-black object-cover" /><p className="mt-3 text-center text-xs font-bold text-slate-600">Point the camera at an issued reel QR label.</p></div></div> : null}
   </div>;
