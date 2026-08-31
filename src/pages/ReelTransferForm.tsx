@@ -51,7 +51,17 @@ export function ReelTransferForm() {
       const response = await fetch("/api/reel-transfers/execute", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ date, sourceProductionId: sourceId, targetProductionId: targetId, packingSlipIds: selectedSlips, remarks }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Failed to transfer reels.");
-      ["material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "productions"].forEach((key) => window.dispatchEvent(new CustomEvent(`sync-data-${key}`)));
+      [
+        "material_issues", "material-issues",
+        "material_issue_lines", "material-issue-lines",
+        "material_issue_reel_lines", "material-issue-reel-lines",
+        "material_returns", "material-returns",
+        "material_return_lines", "material-return-lines",
+        "material_return_reel_lines", "material-return-reel-lines",
+        "reel_transfers", "reel-transfers",
+        "reel_transfer_lines", "reel-transfer-lines",
+        "productions",
+      ].forEach((key) => window.dispatchEvent(new CustomEvent(`sync-data-${key}`)));
       alert(`Reel transfer ${result.transferNo} saved successfully.`);
       setSelectedSlips([]); setTargetId(""); setRemarks("");
       if (returnTo) navigate(returnTo);

@@ -179,6 +179,11 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
       const nextReturnLines = [...materialReturnLines, ...createdLines];
       const nextReturnReelLines = [...returnReelLines, ...createdReelLines];
       await setMaterialReturns(nextReturns); await setMaterialReturnLines(nextReturnLines); await setReturnReelLines(nextReturnReelLines);
+      [
+        "material-returns", "material_returns",
+        "material-return-lines", "material_return_lines",
+        "material-return-reel-lines", "material_return_reel_lines",
+      ].forEach((key) => window.dispatchEvent(new CustomEvent(`sync-data-${key}`)));
       const usageMap = buildProductionMaterialUsageMap(materialIssues, materialIssueLines, nextReturns, nextReturnLines, issueReelLines, nextReturnReelLines);
       const corrugatedUsageMap = buildProductionCorrugatedSheetUsageMap(materials, materialIssues, materialIssueLines, nextReturns, nextReturnLines);
       await setProductions((current) => current.map((row) => row.id === productionId ? syncProductionWorkflowFromUsage(row, usageMap.get(productionId) || 0, timestamp, Number(corrugatedUsageMap.get(productionId) || 0) > 0) : row));

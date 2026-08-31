@@ -14,6 +14,8 @@ export function round2(value: number) {
   return Number((Number(value) || 0).toFixed(2));
 }
 
+export const REEL_BALANCE_TOLERANCE_KG = 0.004;
+
 export function calculateMaterialIssueAmount(qty: number, rate: number) {
   return round2(round2(qty) * round2(rate));
 }
@@ -182,7 +184,7 @@ export function getReturnableReelLinesForJob(
   return Array.from(latestIssueLineBySlip.values()).flatMap((line) => {
     const key = `${line.packingSlipId}::${line.productionId}`;
     const returnableWeight = Number((returnableWeights.get(key) || 0).toFixed(2));
-    if (returnableWeight <= 0) return [];
+    if (returnableWeight <= REEL_BALANCE_TOLERANCE_KG) return [];
     return [{ ...line, weightKg: returnableWeight }];
   });
 }
@@ -228,6 +230,6 @@ export function getAllReturnableReelLines(
 
   return Array.from(latestIssueLineByJobAndSlip.entries()).flatMap(([key, line]) => {
     const returnableWeight = round2(returnableWeights.get(key) || 0);
-    return returnableWeight > 0 ? [{ ...line, weightKg: returnableWeight }] : [];
+    return returnableWeight > REEL_BALANCE_TOLERANCE_KG ? [{ ...line, weightKg: returnableWeight }] : [];
   });
 }
