@@ -546,6 +546,24 @@ export interface ProductionProcessing {
   itemName?: string;
   erp?: string | number;
   boxType?: string;
+  warpageBoxes?: number;
+  warpageKg?: number;
+  delaminationBoxes?: number;
+  delaminationKg?: number;
+  misalignmentBoxes?: number;
+  misalignmentKg?: number;
+  twoPlyPaperKg?: number;
+  deckelWastageKg?: number;
+  sheerCutterBoxes?: number;
+  sheerCutterKg?: number;
+  noHisabBoxes?: number;
+  slotting?: number;
+  delaminationPrinting?: number;
+  misalignmentPrinting?: number;
+  drySheets?: number;
+  warp?: number;
+  misprinting?: number;
+  jobSetting?: number;
 }
 
 export interface Company {

@@ -11,6 +11,10 @@ import { useAuth } from "../auth/AuthContext";
 import { usesPartFullProgress } from "../lib/productionProcessingProgress";
 import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
+import { CorrugationWastageFields } from "../components/CorrugationWastageFields";
+import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, type CorrugationWastageDraft } from "../lib/corrugationWastage";
+import { PrintingWastageFields } from "../components/PrintingWastageFields";
+import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, type PrintingWastageDraft } from "../lib/printingWastage";
 
 const CORRUGATION_MATERIAL_MESSAGE = "Issue material or sheet against this job before reporting Corrugation Liner.";
 
@@ -47,9 +51,15 @@ function LockedReportForm() {
   const [shift, setShift] = useState<ShiftValue>((initialShift as ShiftValue) || "");
   const [qty, setQty] = useState(initialQty);
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
+  const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
+  const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
+  const [productions] = useData<Production>("productions", []);
+  const selectedProduction = productions.find((production) => production.id === productionId);
   const requiresCompletionStatus = usesPartFullProgress(machineName);
+  const isCorrugationLiner = normalizeMachineName(machineName) === "Corrugation Liner";
+  const isPrinting = normalizeMachineName(machineName) === "Printing";
   const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
-  const materialIssueBlocked = normalizeMachineName(machineName) === "Corrugation Liner" &&
+  const materialIssueBlocked = isCorrugationLiner &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,6 +105,8 @@ function LockedReportForm() {
       updateTimestamp: new Date().toISOString(),
       itemName: itemName || undefined,
       erp: erp || undefined,
+      ...(isCorrugationLiner ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
+      ...(isPrinting ? buildPrintingWastageValues(printingWastageDraft) : {}),
     };
 
     setIsSubmitting(true);
@@ -211,6 +223,25 @@ function LockedReportForm() {
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600"
               />
             </div>
+            {isCorrugationLiner ? (
+              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+                <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
+                <CorrugationWastageFields
+                  draft={wastageDraft}
+                  production={selectedProduction}
+                  onChange={(key, value) => setWastageDraft((current) => ({ ...current, [key]: value }))}
+                />
+              </div>
+            ) : null}
+            {isPrinting ? (
+              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+                <h4 className="text-xs font-black uppercase text-indigo-700">Printing Wastage</h4>
+                <PrintingWastageFields
+                  draft={printingWastageDraft}
+                  onChange={(key, value) => setPrintingWastageDraft((current) => ({ ...current, [key]: value }))}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="flex space-x-3 pt-4 border-t border-black">
@@ -258,6 +289,8 @@ function FullReportForm() {
   const [shift, setShift] = useState<ShiftValue>((initialShift as ShiftValue) || "");
   const [qty, setQty] = useState<string>(initialQty);
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
+  const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
+  const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
 
   const jobOptions = useMemo(() => {
     return productions
@@ -284,7 +317,9 @@ function FullReportForm() {
     [machineId, machines]
   );
   const requiresCompletionStatus = usesPartFullProgress(selectedMachine?.name);
-  const materialIssueBlocked = normalizeMachineName(selectedMachine?.name) === "Corrugation Liner" &&
+  const isCorrugationLiner = normalizeMachineName(selectedMachine?.name) === "Corrugation Liner";
+  const isPrinting = normalizeMachineName(selectedMachine?.name) === "Printing";
+  const materialIssueBlocked = isCorrugationLiner &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
 
   const qtyContext = useMemo(() => {
@@ -364,7 +399,9 @@ function FullReportForm() {
         date,
         ...(requiresCompletionStatus ? { completionStatus } : {}),
         updatedBy: auditUser.name,
-        updateTimestamp: new Date().toISOString()
+        updateTimestamp: new Date().toISOString(),
+        ...(isCorrugationLiner ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
+        ...(isPrinting ? buildPrintingWastageValues(printingWastageDraft) : {}),
       };
 
       await setProcessing((prev) => [...prev, newEntry]);
@@ -484,6 +521,25 @@ function FullReportForm() {
                 </div>
               ) : null}
             </div>
+            {isCorrugationLiner ? (
+              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+                <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
+                <CorrugationWastageFields
+                  draft={wastageDraft}
+                  production={selectedProduction}
+                  onChange={(key, value) => setWastageDraft((current) => ({ ...current, [key]: value }))}
+                />
+              </div>
+            ) : null}
+            {isPrinting ? (
+              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+                <h4 className="text-xs font-black uppercase text-indigo-700">Printing Wastage</h4>
+                <PrintingWastageFields
+                  draft={printingWastageDraft}
+                  onChange={(key, value) => setPrintingWastageDraft((current) => ({ ...current, [key]: value }))}
+                />
+              </div>
+            ) : null}
           </div>
 
           <div className="flex space-x-3 pt-4 border-t border-black">

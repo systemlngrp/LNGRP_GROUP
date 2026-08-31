@@ -4762,6 +4762,17 @@ async function initDb(retries = 5) {
           \`operatorName\` VARCHAR(255),
           \`date\` VARCHAR(50) NOT NULL,
           \`completionStatus\` VARCHAR(10),
+          \`warpageBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`warpageKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`delaminationBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`delaminationKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misalignmentBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`misalignmentKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`twoPlyPaperKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`deckelWastageKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`sheerCutterBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`sheerCutterKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`noHisabBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -5960,6 +5971,17 @@ await db.query(`
         { table: "production_processing", column: "operatorName", type: "VARCHAR(255)" },
         { table: "production_processing", column: "date", type: "VARCHAR(50) NOT NULL" },
         { table: "production_processing", column: "completionStatus", type: "VARCHAR(10)" },
+        { table: "production_processing", column: "warpageBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "warpageKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "delaminationBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "delaminationKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misalignmentBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "misalignmentKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "twoPlyPaperKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "deckelWastageKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "sheerCutterBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "sheerCutterKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+        { table: "production_processing", column: "noHisabBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
         { table: "production_processing", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "production_processing", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "material_in", column: "updatedBy", type: "VARCHAR(255)" },
@@ -7174,6 +7196,32 @@ const createHandlers = (tableName: string) => {
           const storedMachineName = String((machineRows as any[])[0]?.name || "").trim();
           data.machineName = normalizeMachineName(storedMachineName || String(data.machineName || ""));
           if (data.machineName === "Corrugation Liner") {
+            const wastageInputFields = ["warpageBoxes", "delaminationBoxes", "misalignmentBoxes", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "noHisabBoxes"];
+            for (const field of wastageInputFields) {
+              const rawValue = data[field];
+              const numericValue = rawValue === "" || rawValue == null ? 0 : Number(rawValue);
+              if (!Number.isFinite(numericValue) || numericValue < 0) {
+                return res.status(400).json({ error: `${field} must be a non-negative number.` });
+              }
+              data[field] = numericValue;
+            }
+            const [wastageProductionRows] = await db.query(
+              "SELECT `totalPaperWeight`, `qty`, `plannedQty` FROM `productions` WHERE `id` = ? LIMIT 1",
+              [data.productionId]
+            );
+            const wastageProduction = (wastageProductionRows as any[])[0] || {};
+            const totalPaperWeight = Number(wastageProduction.totalPaperWeight || 0);
+            const plannedQty = Number(wastageProduction.qty || wastageProduction.plannedQty || 0);
+            const hasPairedBoxWastage = ["warpageBoxes", "delaminationBoxes", "misalignmentBoxes", "sheerCutterBoxes"]
+              .some((field) => Number(data[field] || 0) > 0);
+            if (hasPairedBoxWastage && (!(totalPaperWeight > 0) || !(plannedQty > 0))) {
+              return res.status(400).json({ error: "Total Paper Wt and Planned Qty are required to calculate Corrugation Liner wastage KG." });
+            }
+            const kgPerBox = totalPaperWeight > 0 && plannedQty > 0 ? totalPaperWeight / plannedQty : 0;
+            data.warpageKg = Number((data.warpageBoxes * kgPerBox).toFixed(2));
+            data.delaminationKg = Number((data.delaminationBoxes * kgPerBox).toFixed(2));
+            data.misalignmentKg = Number((data.misalignmentBoxes * kgPerBox).toFixed(2));
+            data.sheerCutterKg = Number((data.sheerCutterBoxes * kgPerBox).toFixed(2));
             const [usageRows] = await db.query(
               `SELECT COALESCE(SUM(usagePart.qty), 0) AS netQty
                FROM (
@@ -7207,6 +7255,9 @@ const createHandlers = (tableName: string) => {
                 error: "Issue material or sheet against this job before reporting Corrugation Liner.",
               });
             }
+          } else {
+            ["warpageBoxes", "warpageKg", "delaminationBoxes", "delaminationKg", "misalignmentBoxes", "misalignmentKg", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "sheerCutterKg", "noHisabBoxes"]
+              .forEach((field) => { data[field] = 0; });
           }
           const completionStatus = String(data.completionStatus || "").trim();
           if (completionStatus !== "Part" && completionStatus !== "Full") {

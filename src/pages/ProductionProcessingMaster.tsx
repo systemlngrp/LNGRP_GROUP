@@ -8,6 +8,10 @@ import { formatDate } from "../lib/serial";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { usesPartFullProgress } from "../lib/productionProcessingProgress";
 import { useAuth } from "../auth/AuthContext";
+import { CorrugationWastageFields } from "../components/CorrugationWastageFields";
+import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, wastageDraftFromEntry, type CorrugationWastageDraft } from "../lib/corrugationWastage";
+import { PrintingWastageFields } from "../components/PrintingWastageFields";
+import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, printingWastageDraftFromEntry, type PrintingWastageDraft } from "../lib/printingWastage";
 
 type EditDraft = {
   date: string;
@@ -15,6 +19,8 @@ type EditDraft = {
   machineId: string;
   shift: "" | "Day" | "Night";
   qty: string;
+  wastage: CorrugationWastageDraft;
+  printingWastage: PrintingWastageDraft;
 };
 
 const blankDraft: EditDraft = {
@@ -23,6 +29,8 @@ const blankDraft: EditDraft = {
   machineId: "",
   shift: "",
   qty: "",
+  wastage: { ...EMPTY_CORRUGATION_WASTAGE_DRAFT },
+  printingWastage: { ...EMPTY_PRINTING_WASTAGE_DRAFT },
 };
 
 export function ProductionProcessingMaster() {
@@ -63,6 +71,8 @@ export function ProductionProcessingMaster() {
       machineId: item.machineId || "",
       shift: (item.shift as "Day" | "Night") || "Day",
       qty: String(item.qty || ""),
+      wastage: wastageDraftFromEntry(item),
+      printingWastage: printingWastageDraftFromEntry(item),
     });
   };
 
@@ -105,6 +115,12 @@ export function ProductionProcessingMaster() {
                 : {}),
               shift: editDraft.shift as "Day" | "Night",
               qty: qtyNumber,
+              ...(normalizedMachineName === "Corrugation Liner"
+                ? buildCorrugationWastageValues(editDraft.wastage, selectedProduction)
+                : {}),
+              ...(normalizedMachineName === "Printing"
+                ? buildPrintingWastageValues(editDraft.printingWastage)
+                : {}),
               erp: selectedProduction.erpCode || item.erp,
               updatedBy: auditUserName,
               updateTimestamp: timestamp,
@@ -315,21 +331,38 @@ export function ProductionProcessingMaster() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium border border-black">
                         {isEditing ? (
-                          <div className="inline-flex items-center justify-end gap-3">
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEdit(item.id)}
-                              className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:text-emerald-900"
-                            >
-                              <Save size={16} /> Save
-                            </button>
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              className="inline-flex items-center gap-1 font-bold text-slate-600 hover:text-black"
-                            >
-                              <X size={16} /> Cancel
-                            </button>
+                          <div className="space-y-3">
+                            {normalizeMachineName(machineOptions.find((option) => option.value === editDraft.machineId)?.label) === "Corrugation Liner" ? (
+                              <CorrugationWastageFields
+                                compact
+                                draft={editDraft.wastage}
+                                production={productions.find((production) => production.id === editDraft.productionId)}
+                                onChange={(key, value) => setEditDraft((current) => ({ ...current, wastage: { ...current.wastage, [key]: value } }))}
+                              />
+                            ) : null}
+                            {normalizeMachineName(machineOptions.find((option) => option.value === editDraft.machineId)?.label) === "Printing" ? (
+                              <PrintingWastageFields
+                                compact
+                                draft={editDraft.printingWastage}
+                                onChange={(key, value) => setEditDraft((current) => ({ ...current, printingWastage: { ...current.printingWastage, [key]: value } }))}
+                              />
+                            ) : null}
+                            <div className="inline-flex items-center justify-end gap-3">
+                              <button
+                                type="button"
+                                onClick={() => handleSaveEdit(item.id)}
+                                className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:text-emerald-900"
+                              >
+                                <Save size={16} /> Save
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                className="inline-flex items-center gap-1 font-bold text-slate-600 hover:text-black"
+                              >
+                                <X size={16} /> Cancel
+                              </button>
+                            </div>
                           </div>
                         ) : (
                           <div className="inline-flex items-center justify-end gap-3">
