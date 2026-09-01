@@ -87,6 +87,7 @@ const REMOVED_FIRM_SCOPE_TABLES = [
   "sample_requests",
 ];
 const FIRM_SCOPED_TABLES = new Set([
+  "material_firm_openings",
   "indents",
   "gate_entries",
   "material_in_packing_slips",
@@ -4763,6 +4764,30 @@ async function initDb(retries = 5) {
       `);
 
       await db.query(`
+        CREATE TABLE IF NOT EXISTS \`material_firm_openings\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`materialId\` VARCHAR(36) NOT NULL,
+          \`firmId\` VARCHAR(36) NOT NULL,
+          \`openingQty\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`openingRate\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`openingValue\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255),
+          UNIQUE KEY \`uq_material_firm_opening\` (\`materialId\`, \`firmId\`),
+          KEY \`idx_material_firm_openings_firmId\` (\`firmId\`),
+          KEY \`idx_material_firm_openings_materialId\` (\`materialId\`)
+        )
+      `);
+      await db.query(`
+        INSERT IGNORE INTO \`material_firm_openings\`
+          (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+        SELECT UUID(), id, firmId, COALESCE(openingQty, 0), COALESCE(openingRate, 0),
+          COALESCE(openingValue, COALESCE(openingQty, 0) * COALESCE(openingRate, 0)), updatedBy, updateTimestamp
+        FROM \`materials\`
+        WHERE firmId IS NOT NULL AND TRIM(firmId) <> ''
+      `);
+
+      await db.query(`
         CREATE TABLE IF NOT EXISTS \`reel_transfer_lines\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`reelTransferId\` VARCHAR(36) NOT NULL,
@@ -6912,7 +6937,19 @@ const createHandlers = (tableName: string) => {
           return res.json(sanitized);
         }
 
-        if (tableName === "items") {
+        if (tableName === "materials" && requestFirmId) {
+          await assertRequestFirm(db, requestFirmId);
+          [rows] = await db.query(`
+            SELECT m.*,
+              COALESCE(mfo.openingQty, 0) AS openingQty,
+              COALESCE(mfo.openingRate, 0) AS openingRate,
+              COALESCE(mfo.openingValue, 0) AS openingValue,
+              ? AS firmId
+            FROM \`materials\` m
+            LEFT JOIN \`material_firm_openings\` mfo
+              ON mfo.materialId = m.id AND mfo.firmId = ?
+          `, [requestFirmId, requestFirmId]);
+        } else if (tableName === "items") {
           rows = await fetchActiveNpdItems(db);
         } else if (tableName === "invoice_line_items") {
           [rows] = await db.query(`
@@ -7013,6 +7050,7 @@ const createHandlers = (tableName: string) => {
         normalizeNpdLinkedPayload(tableName, normalizeWorkflowStatus(tableName, req.body)),
         requestUser
       );
+      let materialOpening: null | { firmId: string; qty: number; rate: number; value: number } = null;
       try {
         if (REMOVED_FIRM_SCOPE_TABLES.includes(tableName)) {
           delete data.firmId;
@@ -7042,12 +7080,22 @@ const createHandlers = (tableName: string) => {
         }
 
         if (tableName === "materials") {
-          const materialFirmId = String(data.firmId || "").trim();
+          const materialFirmId = String(requestFirmId || data.firmId || "").trim();
           if (!materialFirmId) {
-            return res.status(400).json({ error: "Firm is required for materials." });
+            return res.status(400).json({ error: "Firm is required when saving material opening stock." });
           }
           await assertRequestFirm(db, materialFirmId);
-          data.firmId = materialFirmId;
+          const openingQty = Number(data.openingQty || 0);
+          const openingRate = Number(data.openingRate || 0);
+          const openingValue = data.openingValue == null || data.openingValue === "" ? openingQty * openingRate : Number(data.openingValue);
+          if (![openingQty, openingRate, openingValue].every(Number.isFinite) || openingQty < 0 || openingRate < 0 || openingValue < 0) {
+            return res.status(400).json({ error: "Opening quantity, rate, and value must be valid non-negative numbers." });
+          }
+          materialOpening = { firmId: materialFirmId, qty: openingQty, rate: openingRate, value: openingValue };
+          delete data.firmId;
+          delete data.openingQty;
+          delete data.openingRate;
+          delete data.openingValue;
           const normalizedType = String(data.type || "").trim();
           const rawErpCode = String(data.erpCode ?? "").trim();
           if (!/^\d+$/.test(rawErpCode)) {
@@ -7974,7 +8022,30 @@ const createHandlers = (tableName: string) => {
         }
 
         console.log(`[DB] Upserting to ${tableName}`, { id: data.id });
-        await db.query(query, values);
+        if (tableName === "materials" && materialOpening) {
+          const conn = await db.getConnection();
+          try {
+            await conn.beginTransaction();
+            await conn.query(query, values);
+            await conn.query(
+              `INSERT INTO \`material_firm_openings\`
+                (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+               VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)
+               ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate),
+                 openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`,
+              [String(data.id || ""), materialOpening.firmId, materialOpening.qty, materialOpening.rate,
+                materialOpening.value, data.updatedBy || null, data.updateTimestamp || null]
+            );
+            await conn.commit();
+          } catch (error) {
+            try { await conn.rollback(); } catch {}
+            throw error;
+          } finally {
+            conn.release();
+          }
+        } else {
+          await db.query(query, values);
+        }
         res.json({ success: true });
       } catch (error) {
         console.error(`[DB] Error upserting to ${tableName}:`, error);
@@ -7994,6 +8065,9 @@ const createHandlers = (tableName: string) => {
           return res.status(409).json({ error: `Cannot delete ${tableName}: used in ${details}.` });
         }
 
+        if (tableName === "materials") {
+          await db.query("DELETE FROM `material_firm_openings` WHERE materialId = ?", [id]);
+        }
         await db.query(`DELETE FROM \`${tableName}\` WHERE id = ?`, [id]);
         res.json({ success: true });
       } catch (error) {
@@ -8561,9 +8635,9 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       uploadedReelRows.set(reelKey, rowNumber);
       if (existingReelByKey.has(reelKey)) fail(`Row ${rowNumber}: Our Reel No. ${ourReelNo} already exists.`, 409);
 
-      const signature = JSON.stringify({ firmId: firm.id, size, gsm, bf, color: normalizeKey(color), remarks, active });
+      const signature = JSON.stringify({ size, gsm, bf, color: normalizeKey(color), remarks, active });
       const priorSignature = materialSignatureByErp.get(erpCode);
-      if (priorSignature && priorSignature !== signature) fail(`Row ${rowNumber}: Repeated ERP Code ${erpCode} must use the same Firm, Size, GSM, BF, Color, Remarks, and Active values.`);
+      if (priorSignature && priorSignature !== signature) fail(`Row ${rowNumber}: Repeated ERP Code ${erpCode} must use the same Size, GSM, BF, Color, Remarks, and Active values.`);
       materialSignatureByErp.set(erpCode, signature);
 
       normalizedRows.push({
@@ -8601,33 +8675,42 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       const existingMaterial = materialByErp.get(erpCode);
       const materialId = String(existingMaterial?.id || crypto.randomUUID());
       const displayName = `${erpCode} - Size: ${sample.size} CM X GSM: ${sample.gsm} X BF: ${sample.bf}   Color - ${sample.color}`;
-      const existingOpeningSlips = (packingSlipRows as any[]).filter(
-        (slip) => String(slip.materialId) === materialId && String(slip.materialInId || "").trim() === "OPENING"
-      );
-      const explicitOpeningQty = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
-      const explicitOpeningValue = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0) * Number(slip.openingRate || 0), 0);
-      const legacyOpeningQty = existingOpeningSlips.length === 0 ? Number(existingMaterial?.openingQty || 0) : 0;
-      const legacyOpeningValue = existingOpeningSlips.length === 0
-        ? Number(existingMaterial?.openingValue ?? legacyOpeningQty * Number(existingMaterial?.openingRate || 0))
-        : 0;
-      const addedQty = rowsForMaterial.reduce((sum, row) => sum + row.weightKg, 0);
-      const addedValue = rowsForMaterial.reduce((sum, row) => sum + row.weightKg * row.openingRate, 0);
-      const totalQty = Number((explicitOpeningQty + legacyOpeningQty + addedQty).toFixed(2));
-      const totalValue = Number((explicitOpeningValue + legacyOpeningValue + addedValue).toFixed(2));
-      const totalRate = totalQty > 0 ? Number((totalValue / totalQty).toFixed(2)) : 0;
-
       if (existingMaterial) {
         await conn.query(
-          `UPDATE \`materials\` SET firmId = ?, type = 'Reel', erpCode = ?, name = ?, uom = 'KGS', materialGroupId = ?, color = ?, size = ?, gsm = ?, bf = ?, openingQty = ?, openingRate = ?, openingValue = ?, remarks = ?, active = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`,
-          [sample.firmId, erpCode, displayName, reelGroup.id, sample.color, sample.size, sample.gsm, sample.bf, totalQty, totalRate, totalValue, sample.remarks || null, sample.active, actor, timestamp, materialId]
+          `UPDATE \`materials\` SET type = 'Reel', erpCode = ?, name = ?, uom = 'KGS', materialGroupId = ?, color = ?, size = ?, gsm = ?, bf = ?, remarks = ?, active = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`,
+          [erpCode, displayName, reelGroup.id, sample.color, sample.size, sample.gsm, sample.bf, sample.remarks || null, sample.active, actor, timestamp, materialId]
         );
         updatedMaterials += 1;
       } else {
         await conn.query(
-          `INSERT INTO \`materials\` (id, firmId, type, erpCode, name, uom, materialGroupId, color, size, gsm, bf, openingQty, openingRate, openingValue, remarks, active, updatedBy, updateTimestamp) VALUES (?, ?, 'Reel', ?, ?, 'KGS', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [materialId, sample.firmId, erpCode, displayName, reelGroup.id, sample.color, sample.size, sample.gsm, sample.bf, totalQty, totalRate, totalValue, sample.remarks || null, sample.active, actor, timestamp]
+          `INSERT INTO \`materials\` (id, type, erpCode, name, uom, materialGroupId, color, size, gsm, bf, remarks, active, updatedBy, updateTimestamp) VALUES (?, 'Reel', ?, ?, 'KGS', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [materialId, erpCode, displayName, reelGroup.id, sample.color, sample.size, sample.gsm, sample.bf, sample.remarks || null, sample.active, actor, timestamp]
         );
         createdMaterials += 1;
+      }
+
+      const rowsByFirm = new Map<string, OpeningBulkRow[]>();
+      rowsForMaterial.forEach((row) => rowsByFirm.set(row.firmId, [...(rowsByFirm.get(row.firmId) || []), row]));
+      for (const [firmId, firmRows] of rowsByFirm) {
+        const existingOpeningSlips = (packingSlipRows as any[]).filter(
+          (slip) => String(slip.materialId) === materialId && String(slip.firmId || "") === firmId && String(slip.materialInId || "").trim() === "OPENING"
+        );
+        const explicitQty = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
+        const explicitValue = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0) * Number(slip.openingRate || 0), 0);
+        const legacyForFirm = existingOpeningSlips.length === 0 && String(existingMaterial?.firmId || "") === firmId;
+        const legacyQty = legacyForFirm ? Number(existingMaterial?.openingQty || 0) : 0;
+        const legacyValue = legacyForFirm ? Number(existingMaterial?.openingValue ?? legacyQty * Number(existingMaterial?.openingRate || 0)) : 0;
+        const addedQty = firmRows.reduce((sum, row) => sum + row.weightKg, 0);
+        const addedValue = firmRows.reduce((sum, row) => sum + row.weightKg * row.openingRate, 0);
+        const totalQty = Number((explicitQty + legacyQty + addedQty).toFixed(2));
+        const totalValue = Number((explicitValue + legacyValue + addedValue).toFixed(2));
+        const totalRate = totalQty > 0 ? Number((totalValue / totalQty).toFixed(2)) : 0;
+        await conn.query(
+          `INSERT INTO \`material_firm_openings\` (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+           VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`,
+          [materialId, firmId, totalQty, totalRate, totalValue, actor, timestamp]
+        );
       }
 
       for (const row of rowsForMaterial) {
@@ -8651,6 +8734,52 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
     conn.release();
   }
 });
+app.get("/api/material-firm-openings", requireAuth, async (req, res) => {
+  try {
+    const db = await getPool();
+    if (!db) return res.status(500).json({ error: "DB connection not available" });
+    const firmId = getRequestFirmId(req);
+    if (!firmId) return res.status(400).json({ error: "firmId is required." });
+    await assertRequestFirm(db, firmId);
+    const [rows] = await db.query("SELECT * FROM `material_firm_openings` WHERE firmId = ?", [firmId]);
+    return res.json((rows as any[]).map((row) => normalizeFetchedRow("material_firm_openings", row)));
+  } catch (error) {
+    return res.status(Number((error as any)?.statusCode || 500)).json({ error: (error as Error).message });
+  }
+});
+
+app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
+  try {
+    const db = await getPool();
+    if (!db) return res.status(500).json({ error: "DB connection not available" });
+    const user = await getRequestUser(req);
+    if (!user || !hasPermission(user, "/masters/materials")) return res.status(403).json({ error: "Forbidden" });
+    const firmId = String(getRequestFirmId(req) || req.body?.firmId || "").trim();
+    const materialId = String(req.body?.materialId || "").trim();
+    if (!firmId || !materialId) return res.status(400).json({ error: "firmId and materialId are required." });
+    await assertRequestFirm(db, firmId);
+    const [materialRows] = await db.query("SELECT id FROM `materials` WHERE id = ? LIMIT 1", [materialId]);
+    if (!(materialRows as any[])[0]?.id) return res.status(404).json({ error: "Material was not found." });
+    const qty = Number(req.body?.openingQty || 0);
+    const rate = Number(req.body?.openingRate || 0);
+    const value = req.body?.openingValue == null || req.body.openingValue === "" ? qty * rate : Number(req.body.openingValue);
+    if (![qty, rate, value].every(Number.isFinite) || qty < 0 || rate < 0 || value < 0) {
+      return res.status(400).json({ error: "Opening quantity, rate, and value must be valid non-negative numbers." });
+    }
+    const actor = String(user.name || user.userId || "System");
+    const timestamp = new Date().toISOString();
+    await db.query(
+      `INSERT INTO \`material_firm_openings\` (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+       VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`,
+      [materialId, firmId, qty, rate, value, actor, timestamp]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(Number((error as any)?.statusCode || 500)).json({ error: (error as Error).message });
+  }
+});
+
 // Routes
 const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "gate_passes", "services", "npd", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 

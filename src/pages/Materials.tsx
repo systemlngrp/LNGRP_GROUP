@@ -17,7 +17,7 @@ type ActiveValue = NonNullable<Material["active"]>;
 type MaterialSortKey = "updated" | "size" | "gsm";
 type SortDirection = "asc" | "desc";
 type MaterialDisplayRow = Material & { isVirtualReceiptItem?: boolean; receiptQty?: number; receiptValue?: number };
-type MaterialMovementSummary = { receipts: number; receiptValue: number; issues: number; returns: number };
+type MaterialMovementSummary = { receipts: number; receiptValue: number; issues: number; issueValue: number; returns: number; returnValue: number };
 type OpeningReelDraft = {
   id: string;
   existingSlipId?: string;
@@ -123,8 +123,10 @@ function createInitialFormState(materials: Material[], reelGroupId = "", reelSta
 
 export function Materials() {
   const navigate = useNavigate();
-  const [materials, setMaterials, isMaterialsLoading] = useData<Material>("materials", []);
   const [firms] = useData<Firm>("firms", []);
+  const [selectedFirmId, setSelectedFirmId] = useState("");
+  const materialEndpoint = selectedFirmId ? `/api/materials?firmId=${encodeURIComponent(selectedFirmId)}` : "/api/materials";
+  const [materials, setMaterials, isMaterialsLoading] = useData<Material>("materials", [], { endpointOverride: materialEndpoint });
   const [settings] = useData<Setting>("settings", []);
   const [materialGroups, setMaterialGroups] = useData<MaterialGroup>("material-groups", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
@@ -139,6 +141,10 @@ export function Materials() {
   const [reelReturnLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [npdItems, setNpdItems] = useState<Item[]>([]);
+
+  useEffect(() => {
+    if (!selectedFirmId && firms.length > 0) setSelectedFirmId(firms[0].id);
+  }, [firms, selectedFirmId]);
   
   useEffect(() => {
     fetchNpdItems().then(setNpdItems).catch(() => setNpdItems([]));
@@ -178,7 +184,7 @@ export function Materials() {
   const [isApplyingBulkColor, setIsApplyingBulkColor] = useState(false);
 
   const movementSummaryMap = useMemo(() => {
-    const createEmptyMovement = (): MaterialMovementSummary => ({ receipts: 0, receiptValue: 0, issues: 0, returns: 0 });
+    const createEmptyMovement = (): MaterialMovementSummary => ({ receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
     const map = new Map<string, MaterialMovementSummary>();
     const materialTypeMap = new Map(materials.map(m => [m.id, m.type]));
     materials.forEach(m => map.set(m.id, createEmptyMovement()));
@@ -201,6 +207,7 @@ export function Materials() {
     const filteredReceiptIds = new Set(
       materialIn
         .filter(r => {
+          if (selectedFirmId && String(r.firmId || "") !== selectedFirmId) return false;
           const d = r.date || "";
           if (fromDate && d < fromDate) return false;
           if (toDate && d > toDate) return false;
@@ -213,6 +220,7 @@ export function Materials() {
     const filteredIssueIds = new Set(
       materialIssues
         .filter(i => {
+          if (selectedFirmId && String(i.firmId || "") !== selectedFirmId) return false;
           const d = i.date || "";
           if (fromDate && d < fromDate) return false;
           if (toDate && d > toDate) return false;
@@ -225,6 +233,7 @@ export function Materials() {
     const filteredReturnIds = new Set(
       materialReturnsHeader
         .filter(r => {
+          if (selectedFirmId && String(r.firmId || "") !== selectedFirmId) return false;
           const d = r.date || "";
           if (fromDate && d < fromDate) return false;
           if (toDate && d > toDate) return false;
@@ -263,10 +272,15 @@ export function Materials() {
     });
 
     // Aggregate Issues
+    const issueLineById = new Map(issueLines.map((line) => [line.id, line]));
     reelIssueLines.forEach(l => {
       if (!filteredIssueIds.has(l.materialIssueId)) return;
       const current = getMovement(l.materialId);
-      current.issues += Number(l.weightKg || 0);
+      const qty = Number(l.weightKg || 0);
+      const parentLine = issueLineById.get(l.materialIssueLineId);
+      const rate = Number(parentLine?.rate || parentLine?.lastPurchaseRate || parentLine?.openingRate || 0);
+      current.issues += qty;
+      current.issueValue += qty * rate;
     });
 
     issueLines.forEach(l => {
@@ -274,14 +288,21 @@ export function Materials() {
       // SKIP REELS to avoid double counting from reelIssueLines
       if (materialTypeMap.get(l.materialId) === "Reel") return;
       const current = getMovement(l.materialId);
-      current.issues += Number(l.qty || 0);
+      const qty = Number(l.qty || 0);
+      current.issues += qty;
+      current.issueValue += Number(l.amount ?? qty * Number(l.rate || l.lastPurchaseRate || l.openingRate || 0));
     });
 
     // Aggregate Returns
+    const returnLineById = new Map(returnLines.map((line) => [line.id, line]));
     reelReturnLines.forEach(l => {
       if (!filteredReturnIds.has(l.materialReturnId)) return;
       const current = getMovement(l.materialId);
-      current.returns += Number(l.weightKg || 0);
+      const qty = Number(l.weightKg || 0);
+      const parentLine = returnLineById.get(l.materialReturnLineId);
+      const rate = Number(parentLine?.rate || parentLine?.lastPurchaseRate || parentLine?.openingRate || 0);
+      current.returns += qty;
+      current.returnValue += qty * rate;
     });
 
     returnLines.forEach(l => {
@@ -289,11 +310,13 @@ export function Materials() {
       // SKIP REELS to avoid double counting from reelReturnLines
       if (materialTypeMap.get(l.materialId) === "Reel") return;
       const current = getMovement(l.materialId);
-      current.returns += Number(l.qty || 0);
+      const qty = Number(l.qty || 0);
+      current.returns += qty;
+      current.returnValue += Number(l.amount ?? qty * Number(l.rate || l.lastPurchaseRate || l.openingRate || 0));
     });
 
     return map;
-  }, [materials, packingSlips, materialIn, materialIssues, issueLines, reelIssueLines, materialReturnsHeader, returnLines, reelReturnLines, fromDate, toDate]);
+  }, [materials, packingSlips, materialIn, materialIssues, issueLines, reelIssueLines, materialReturnsHeader, returnLines, reelReturnLines, fromDate, toDate, selectedFirmId]);
   const materialDisplayRows = useMemo<MaterialDisplayRow[]>(() => {
     const existingMaterialIds = new Set(materials.map((material) => String(material.id)));
     const virtualRows = new Map<string, MaterialDisplayRow>();
@@ -376,7 +399,7 @@ export function Materials() {
   }, [colorFilter, gsmFilter, materialDisplayRows, searchTerm, sizeFilter, sortDirection, sortKey, typeFilter]);
 
   const getMaterialStockValues = (material: MaterialDisplayRow) => {
-    const movement = movementSummaryMap.get(material.id) || { receipts: 0, receiptValue: 0, issues: 0, returns: 0 };
+    const movement = movementSummaryMap.get(material.id) || { receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 };
     const openingQty = Number(material.openingQty || 0);
     const openingRate = Number(material.openingRate || 0);
     const openingValue = Number(material.openingValue ?? (openingQty * openingRate));
@@ -384,10 +407,11 @@ export function Materials() {
     const receiptValue = Number(movement.receiptValue || (receiptQty * openingRate));
     const issueQty = Number(movement.issues || 0);
     const returnQty = Number(movement.returns || 0);
-    const effectiveRate = openingRate || (receiptQty > 0 ? receiptValue / receiptQty : 0);
-    const issueValue = issueQty * effectiveRate;
+    const issueValue = Number(movement.issueValue || 0);
+    const returnValue = Number(movement.returnValue || 0);
     const balance = openingQty + receiptQty + returnQty - issueQty;
-    const closingValue = balance * effectiveRate;
+    const closingValue = openingValue + receiptValue + returnValue - issueValue;
+    const effectiveRate = balance !== 0 ? closingValue / balance : openingRate;
 
     return {
       openingQty,
@@ -399,6 +423,7 @@ export function Materials() {
       returnQty,
       balance,
       closingValue,
+      effectiveRate,
     };
   };
 
@@ -500,7 +525,7 @@ export function Materials() {
 
   const getOpeningReelsForMaterial = (material: Material): OpeningReelDraft[] => {
     const explicitRows = packingSlips
-      .filter((slip) => slip.materialId === material.id && isOpeningReelPackingSlip(slip))
+      .filter((slip) => slip.materialId === material.id && isOpeningReelPackingSlip(slip) && (!selectedFirmId || slip.firmId === selectedFirmId))
       .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }))
       .map((slip) => ({
         id: slip.id,
@@ -539,7 +564,7 @@ export function Materials() {
     if (matchingMaterialIds.size === 0) return [];
     const receiptNoById = new Map(materialIn.map((entry) => [entry.id, entry.transactionNo]));
     return packingSlips
-      .filter((slip) => matchingMaterialIds.has(slip.materialId))
+      .filter((slip) => matchingMaterialIds.has(slip.materialId) && (!selectedFirmId || slip.firmId === selectedFirmId))
       .map((slip) => ({
         id: slip.id,
         ourReelNo: String(slip.ourReelNo || ""),
@@ -549,7 +574,7 @@ export function Materials() {
         isOpening: isOpeningReelPackingSlip(slip),
       }))
       .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }));
-  }, [editingId, formData.erpCode, formData.type, materialIn, materials, packingSlips]);
+  }, [editingId, formData.erpCode, formData.type, materialIn, materials, packingSlips, selectedFirmId]);
 
   useEffect(() => {
     if (hasNormalizedExistingReelNamesRef.current) return;
@@ -678,8 +703,12 @@ export function Materials() {
   }
 
   function handleOpenNew() {
+    if (!selectedFirmId) {
+      alert("Select a firm before creating a material opening.");
+      return;
+    }
     setEditingId(null);
-    setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
+    setFormData({ ...createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber), firmId: selectedFirmId });
     setOpeningReels([]);
     setOpeningReelSupplierId("");
     setIsFormOpen(true);
@@ -692,7 +721,7 @@ export function Materials() {
     const openingSupplierIds = Array.from(new Set(materialOpeningReels.map((row) => String(row.supplierId || "").trim())));
     setOpeningReelSupplierId(openingSupplierIds.length === 1 ? openingSupplierIds[0] : "");
     setFormData({
-      firmId: material.firmId || "",
+      firmId: selectedFirmId,
       type: material.type,
       erpCode: String(material.erpCode ?? ""),
       name: material.type === "Other" ? material.name : "",
@@ -892,6 +921,7 @@ export function Materials() {
       const retainedSlipIds = new Set(normalizedOpeningReels.map((row) => row.existingSlipId).filter(Boolean));
       const removedUsedSlip = packingSlips.find((slip) =>
         slip.materialId === editingId &&
+        slip.firmId === firmId &&
         isOpeningReelPackingSlip(slip) &&
         !retainedSlipIds.has(slip.id) &&
         (
@@ -946,7 +976,7 @@ export function Materials() {
       if (normalizedType === "Reel") {
         const openingSlipIds = new Set(normalizedOpeningReels.map((row) => row.existingSlipId).filter(Boolean));
         const nextPackingSlips = [
-          ...packingSlips.filter((slip) => !(slip.materialId === materialId && isOpeningReelPackingSlip(slip) && !openingSlipIds.has(slip.id))),
+          ...packingSlips.filter((slip) => !(slip.materialId === materialId && slip.firmId === firmId && isOpeningReelPackingSlip(slip) && !openingSlipIds.has(slip.id))),
         ];
         normalizedOpeningReels.forEach((row) => {
           const existingSlipIndex = nextPackingSlips.findIndex((slip) => slip.id === row.existingSlipId);
@@ -1393,7 +1423,7 @@ export function Materials() {
                 <select
                   required
                   value={formData.firmId}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, firmId: e.target.value }))}
+                  disabled
                   className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                 >
                   <option value="">Select firm</option>
@@ -1814,6 +1844,15 @@ export function Materials() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedFirmId}
+                  onChange={(event) => setSelectedFirmId(event.target.value)}
+                  className="rounded border border-black bg-white px-3 py-2 text-xs font-bold text-black shadow"
+                  aria-label="Inventory firm"
+                >
+                  <option value="">Select firm</option>
+                  {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                </select>
                 <button
                   type="button"
                   onClick={downloadTemplate}
@@ -1979,6 +2018,7 @@ export function Materials() {
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Returns</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Balance</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Closing Value</th>
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Weighted Rate</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">UOM</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
                   </tr>
@@ -1986,7 +2026,7 @@ export function Materials() {
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={20} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={21} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2026,6 +2066,9 @@ export function Materials() {
                           </td>
                           <td className={`px-4 py-3 text-xs font-black border-r-2 border-black ${values.closingValue < 0 ? "text-red-600 bg-red-50" : "text-violet-700 bg-violet-50/30"}`}>
                             {values.closingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-4 py-3 text-cyan-800 text-xs font-black bg-cyan-50/30">
+                            {Number.isFinite(values.effectiveRate) ? values.effectiveRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}
                           </td>
                           <td className="px-4 py-3 text-black text-[10px] font-black uppercase">{material.uom || "-"}</td>
                           <td className="px-4 py-3 whitespace-nowrap">

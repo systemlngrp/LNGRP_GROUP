@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
-import type { Material, MaterialGroup, MaterialIn, MaterialIssueLine, MaterialReturnLine } from "../types";
+import type { Firm, Material, MaterialGroup, MaterialIn, MaterialIssue, MaterialIssueLine, MaterialReturn, MaterialReturnLine } from "../types";
 
 type OtherConsumableRow = {
   materialId: string;
@@ -52,11 +52,22 @@ function lineValue(value: unknown, qty: number, ...rates: unknown[]) {
 }
 
 export function OtherConsumablesInventoryReport() {
-  const [materials] = useData<Material>("materials", [], { cacheToLocalStorage: false });
+  const [firms] = useData<Firm>("firms", []);
+  const [selectedFirmId, setSelectedFirmId] = useState("");
+  const [materials] = useData<Material>("materials", [], {
+    cacheToLocalStorage: false,
+    endpointOverride: selectedFirmId ? `/api/materials?firmId=${encodeURIComponent(selectedFirmId)}` : "/api/materials",
+  });
   const [materialGroups] = useData<MaterialGroup>("material-groups", [], { cacheToLocalStorage: false });
   const [materialIn] = useData<MaterialIn>("material-in", [], { cacheToLocalStorage: false });
   const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { cacheToLocalStorage: false });
   const [returnLines] = useData<MaterialReturnLine>("material-return-lines", [], { cacheToLocalStorage: false });
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { cacheToLocalStorage: false });
+  const [materialReturns] = useData<MaterialReturn>("material-returns", [], { cacheToLocalStorage: false });
+
+  useEffect(() => {
+    if (!selectedFirmId && firms.length > 0) setSelectedFirmId(firms[0].id);
+  }, [firms, selectedFirmId]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
@@ -65,6 +76,9 @@ export function OtherConsumablesInventoryReport() {
   const groupById = useMemo(() => new Map(materialGroups.map((group) => [group.id, group])), [materialGroups]);
 
   const allRows = useMemo<OtherConsumableRow[]>(() => {
+    const receiptIds = new Set(materialIn.filter((row) => row.firmId === selectedFirmId).map((row) => row.id));
+    const issueIds = new Set(materialIssues.filter((row) => row.firmId === selectedFirmId).map((row) => row.id));
+    const returnIds = new Set(materialReturns.filter((row) => row.firmId === selectedFirmId).map((row) => row.id));
     return materials
       .filter((material) => material.type === "Other")
       .map((material) => {
@@ -75,6 +89,7 @@ export function OtherConsumablesInventoryReport() {
         let receiptQty = 0;
         let receiptValue = 0;
         materialIn.forEach((entry) => {
+          if (!receiptIds.has(entry.id)) return;
           entry.lines
             .filter((line) => line.itemId === material.id)
             .forEach((line) => {
@@ -87,7 +102,7 @@ export function OtherConsumablesInventoryReport() {
         let issuedQty = 0;
         let issuedValue = 0;
         issueLines
-          .filter((line) => line.materialId === material.id)
+          .filter((line) => line.materialId === material.id && issueIds.has(line.materialIssueId))
           .forEach((line) => {
             const qty = Number(line.qty || 0);
             issuedQty += qty;
@@ -97,7 +112,7 @@ export function OtherConsumablesInventoryReport() {
         let returnedQty = 0;
         let returnedValue = 0;
         returnLines
-          .filter((line) => line.materialId === material.id)
+          .filter((line) => line.materialId === material.id && returnIds.has(line.materialReturnId))
           .forEach((line) => {
             const qty = Number(line.qty || 0);
             returnedQty += qty;
@@ -127,7 +142,7 @@ export function OtherConsumablesInventoryReport() {
         };
       })
       .sort((a, b) => a.erp.localeCompare(b.erp, undefined, { numeric: true, sensitivity: "base" }) || a.itemName.localeCompare(b.itemName));
-  }, [groupById, issueLines, materialIn, materials, returnLines]);
+  }, [groupById, issueLines, materialIn, materialIssues, materialReturns, materials, returnLines, selectedFirmId]);
 
   const groupOptions = useMemo(() => makeOptions(allRows.map((row) => row.groupName === "-" ? "" : row.groupName)), [allRows]);
   const itemOptions = useMemo(() => makeOptions(allRows.map((row) => row.itemName)), [allRows]);
@@ -172,6 +187,15 @@ export function OtherConsumablesInventoryReport() {
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Other Consumables Inventory</h2>
         </div>
+        <select
+          value={selectedFirmId}
+          onChange={(event) => setSelectedFirmId(event.target.value)}
+          className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black"
+          aria-label="Inventory firm"
+        >
+          <option value="">Select firm</option>
+          {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+        </select>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">

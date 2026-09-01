@@ -272,6 +272,17 @@ export interface MaterialReturnReelLine {
   updateTimestamp?: string;
 }
 
+export interface MaterialFirmOpening {
+  id: string;
+  materialId: string;
+  firmId: string;
+  openingQty: number;
+  openingRate: number;
+  openingValue: number;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface ReelTransfer {
   id: string;
   transferNo: string;
