@@ -3025,6 +3025,33 @@ async function ensureUniqueMaterialErpIndex(db, database) {
     console.warn(`[DB] Could not ensure unique material ERP index:`, err.message);
   }
 }
+async function ensureUniquePackingSlipReelNoIndex(db, database) {
+  const indexName = "uq_material_in_packing_slips_ourReelNo";
+  try {
+    const [indexes] = await db.query(
+      "SELECT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'material_in_packing_slips' AND INDEX_NAME = ?",
+      [database, indexName]
+    );
+    if (indexes.length > 0) return;
+    const [duplicates] = await db.query(`
+      SELECT LOWER(TRIM(ourReelNo)) AS normalizedReelNo, MIN(ourReelNo) AS reelNo, COUNT(*) AS duplicateCount
+      FROM material_in_packing_slips
+      WHERE TRIM(COALESCE(ourReelNo, '')) <> ''
+      GROUP BY LOWER(TRIM(ourReelNo))
+      HAVING COUNT(*) > 1
+      ORDER BY duplicateCount DESC, reelNo
+      LIMIT 100
+    `);
+    if (duplicates.length > 0) {
+      console.warn(`[DB] Existing duplicate Our Reel Nos. prevent ${indexName}:`, duplicates);
+      return;
+    }
+    await db.query(`CREATE UNIQUE INDEX \`${indexName}\` ON \`material_in_packing_slips\` (\`ourReelNo\`)`);
+    console.log(`[DB] Added unique index ${indexName} on material_in_packing_slips(ourReelNo)`);
+  } catch (err) {
+    console.warn(`[DB] Could not ensure unique packing-slip reel number index:`, err.message);
+  }
+}
 async function ensureUniqueMachineNameIndex(db, database) {
   const indexName = "uq_machines_name";
   const [indexes] = await db.query(
@@ -5780,6 +5807,7 @@ async function initDb(retries = 5) {
       }
       await dropRemovedFirmScopeColumns(db, database);
       await ensureUniqueMaterialErpIndex(db, database);
+      await ensureUniquePackingSlipReelNoIndex(db, database);
       await ensureUniqueMachineNameIndex(db, database);
       for (const tableName of FIRM_SCOPED_TABLES) {
         try {
@@ -6357,6 +6385,23 @@ const createHandlers = (tableName) => {
           } else {
             data.color = null;
           }
+        }
+        if (tableName === "material_in_packing_slips") {
+          const normalizedReelNo = String(data.ourReelNo || "").trim();
+          if (!normalizedReelNo) {
+            return res.status(400).json({ error: "Our Reel No. is required." });
+          }
+          const [duplicateReelRows] = await db.query(
+            `SELECT id, ourReelNo FROM \`material_in_packing_slips\`
+             WHERE LOWER(TRIM(ourReelNo)) = LOWER(TRIM(?))
+               AND id <> ?
+             LIMIT 1`,
+            [normalizedReelNo, String(data.id || "")]
+          );
+          if (duplicateReelRows[0]?.id) {
+            return res.status(409).json({ error: `Our Reel No. ${normalizedReelNo} already exists.` });
+          }
+          data.ourReelNo = normalizedReelNo;
         }
         if (tableName === "settings") {
           const numberingFields = ["reelErpStartNumber", "ourReelNoStartNumber", "otherMaterialErpStartNumber"];
@@ -7554,6 +7599,162 @@ app.get("/api/truck-status-logs", async (req, res) => {
   } catch (error) {
     console.error("[TRUCK_STATUS_LOGS] fetch failed:", error);
     return res.status(500).json({ error: error.message });
+  }
+});
+app.post("/api/materials/opening-reels/bulk", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!hasPermission(user, "/masters/materials")) return res.status(403).json({ error: "Forbidden" });
+  const inputRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (inputRows.length === 0) return res.status(400).json({ error: "No opening-stock rows were provided." });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  const fail = (message, statusCode = 400) => {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    throw error;
+  };
+  try {
+    await conn.beginTransaction();
+    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms`");
+    const [supplierRows] = await conn.query("SELECT id, name FROM `suppliers`");
+    const [materialRows] = await conn.query("SELECT * FROM `materials` FOR UPDATE");
+    const [packingSlipRows] = await conn.query("SELECT * FROM `material_in_packing_slips` FOR UPDATE");
+    const [groupRows] = await conn.query("SELECT id, name FROM `material_groups` FOR UPDATE");
+    const normalizeKey = (value) => String(value ?? "").trim().toLowerCase();
+    const firmByName = new Map(firmRows.map((row) => [normalizeKey(row.firmName), row]));
+    const supplierByName = new Map(supplierRows.map((row) => [normalizeKey(row.name), row]));
+    const materialByErp = new Map(
+      materialRows.filter((row) => /^\d+$/.test(String(row.erpCode || "").trim())).map((row) => [String(Number(row.erpCode)), row])
+    );
+    const existingReelByKey = /* @__PURE__ */ new Map();
+    packingSlipRows.forEach((row) => {
+      const key = normalizeKey(row.ourReelNo);
+      if (key && !existingReelByKey.has(key)) existingReelByKey.set(key, row);
+    });
+    let reelGroup = groupRows.find((row) => normalizeKey(row.name) === "reel");
+    if (!reelGroup) {
+      reelGroup = { id: crypto.randomUUID(), name: "Reel" };
+      await conn.query(
+        "INSERT INTO `material_groups` (`id`, `name`, `updatedBy`, `updateTimestamp`) VALUES (?, 'Reel', ?, ?)",
+        [reelGroup.id, user.name || user.userId || "System", (/* @__PURE__ */ new Date()).toISOString()]
+      );
+    }
+    const normalizedRows = [];
+    const uploadedReelRows = /* @__PURE__ */ new Map();
+    const materialSignatureByErp = /* @__PURE__ */ new Map();
+    inputRows.forEach((raw, index) => {
+      const rowNumber = Number(raw?.rowNumber) || index + 2;
+      const firmName = String(raw?.firmName ?? raw?.["Firm Name"] ?? "").trim();
+      const supplierName = String(raw?.supplierName ?? raw?.["Supplier Name"] ?? "").trim();
+      const rawErp = String(raw?.erpCode ?? raw?.["ERP Code"] ?? "").trim();
+      const size = Number(raw?.size ?? raw?.["Size"]);
+      const gsm = Number(raw?.gsm ?? raw?.["GSM"]);
+      const bf = Number(raw?.bf ?? raw?.["BF"]);
+      const color = String(raw?.color ?? raw?.["Color"] ?? "").trim();
+      const ourReelNo = String(raw?.ourReelNo ?? raw?.["Our Reel No."] ?? "").trim();
+      const weightKg = Number(raw?.weightKg ?? raw?.["Opening Stock KG"]);
+      const openingRate = Number(raw?.openingRate ?? raw?.["Opening Rate"]);
+      const remarks = String(raw?.remarks ?? raw?.["Remarks"] ?? "").trim();
+      const active = String(raw?.active ?? raw?.["Active"] ?? "Yes").trim().toLowerCase() === "no" ? "No" : "Yes";
+      const firm = firmByName.get(normalizeKey(firmName));
+      if (!firm) fail(`Row ${rowNumber}: Firm Name "${firmName}" was not found.`);
+      const supplier = supplierName ? supplierByName.get(normalizeKey(supplierName)) : null;
+      if (supplierName && !supplier) fail(`Row ${rowNumber}: Supplier Name "${supplierName}" was not found.`);
+      if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
+      const erpCode = String(Number(rawErp));
+      if (!Number.isFinite(size) || size <= 0) fail(`Row ${rowNumber}: Size must be greater than 0.`);
+      if (!Number.isFinite(gsm) || gsm <= 0) fail(`Row ${rowNumber}: GSM must be greater than 0.`);
+      if (!Number.isFinite(bf) || bf <= 0) fail(`Row ${rowNumber}: BF must be greater than 0.`);
+      if (!color) fail(`Row ${rowNumber}: Color is required.`);
+      if (!ourReelNo) fail(`Row ${rowNumber}: Our Reel No. is required.`);
+      if (!Number.isFinite(weightKg) || weightKg <= 0) fail(`Row ${rowNumber}: Opening Stock KG must be greater than 0.`);
+      if (!Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
+      const reelKey = normalizeKey(ourReelNo);
+      const firstUploadedRow = uploadedReelRows.get(reelKey);
+      if (firstUploadedRow) fail(`Rows ${firstUploadedRow} and ${rowNumber}: Our Reel No. ${ourReelNo} is duplicated in the upload.`, 409);
+      uploadedReelRows.set(reelKey, rowNumber);
+      if (existingReelByKey.has(reelKey)) fail(`Row ${rowNumber}: Our Reel No. ${ourReelNo} already exists.`, 409);
+      const signature = JSON.stringify({ firmId: firm.id, size, gsm, bf, color: normalizeKey(color), remarks, active });
+      const priorSignature = materialSignatureByErp.get(erpCode);
+      if (priorSignature && priorSignature !== signature) fail(`Row ${rowNumber}: Repeated ERP Code ${erpCode} must use the same Firm, Size, GSM, BF, Color, Remarks, and Active values.`);
+      materialSignatureByErp.set(erpCode, signature);
+      normalizedRows.push({
+        rowNumber,
+        firmId: String(firm.id),
+        supplierId: supplier ? String(supplier.id) : "",
+        erpCode,
+        size,
+        gsm,
+        bf,
+        color,
+        ourReelNo,
+        weightKg: Number(weightKg.toFixed(2)),
+        openingRate: Number(openingRate.toFixed(2)),
+        remarks,
+        active
+      });
+    });
+    const actor = String(user.name || user.userId || "System").trim() || "System";
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    const rowsByErp = /* @__PURE__ */ new Map();
+    normalizedRows.forEach((row) => {
+      const current = rowsByErp.get(row.erpCode) || [];
+      current.push(row);
+      rowsByErp.set(row.erpCode, current);
+    });
+    let createdMaterials = 0;
+    let updatedMaterials = 0;
+    let insertedReels = 0;
+    for (const [erpCode, rowsForMaterial] of rowsByErp.entries()) {
+      const sample = rowsForMaterial[0];
+      const existingMaterial = materialByErp.get(erpCode);
+      const materialId = String(existingMaterial?.id || crypto.randomUUID());
+      const displayName = `${erpCode} - Size: ${sample.size} CM X GSM: ${sample.gsm} X BF: ${sample.bf}   Color - ${sample.color}`;
+      const existingOpeningSlips = packingSlipRows.filter(
+        (slip) => String(slip.materialId) === materialId && String(slip.materialInId || "").trim() === "OPENING"
+      );
+      const explicitOpeningQty = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
+      const explicitOpeningValue = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0) * Number(slip.openingRate || 0), 0);
+      const legacyOpeningQty = existingOpeningSlips.length === 0 ? Number(existingMaterial?.openingQty || 0) : 0;
+      const legacyOpeningValue = existingOpeningSlips.length === 0 ? Number(existingMaterial?.openingValue ?? legacyOpeningQty * Number(existingMaterial?.openingRate || 0)) : 0;
+      const addedQty = rowsForMaterial.reduce((sum, row) => sum + row.weightKg, 0);
+      const addedValue = rowsForMaterial.reduce((sum, row) => sum + row.weightKg * row.openingRate, 0);
+      const totalQty = Number((explicitOpeningQty + legacyOpeningQty + addedQty).toFixed(2));
+      const totalValue = Number((explicitOpeningValue + legacyOpeningValue + addedValue).toFixed(2));
+      const totalRate = totalQty > 0 ? Number((totalValue / totalQty).toFixed(2)) : 0;
+      if (existingMaterial) {
+        await conn.query(
+          `UPDATE \`materials\` SET firmId = ?, type = 'Reel', erpCode = ?, name = ?, uom = 'KGS', materialGroupId = ?, color = ?, size = ?, gsm = ?, bf = ?, openingQty = ?, openingRate = ?, openingValue = ?, remarks = ?, active = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`,
+          [sample.firmId, erpCode, displayName, reelGroup.id, sample.color, sample.size, sample.gsm, sample.bf, totalQty, totalRate, totalValue, sample.remarks || null, sample.active, actor, timestamp, materialId]
+        );
+        updatedMaterials += 1;
+      } else {
+        await conn.query(
+          `INSERT INTO \`materials\` (id, firmId, type, erpCode, name, uom, materialGroupId, color, size, gsm, bf, openingQty, openingRate, openingValue, remarks, active, updatedBy, updateTimestamp) VALUES (?, ?, 'Reel', ?, ?, 'KGS', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [materialId, sample.firmId, erpCode, displayName, reelGroup.id, sample.color, sample.size, sample.gsm, sample.bf, totalQty, totalRate, totalValue, sample.remarks || null, sample.active, actor, timestamp]
+        );
+        createdMaterials += 1;
+      }
+      for (const row of rowsForMaterial) {
+        const slipId = crypto.randomUUID();
+        await conn.query(
+          `INSERT INTO \`material_in_packing_slips\` (id, firmId, supplierId, materialInId, materialLineId, materialId, ourReelNo, weightKg, openingRate, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'OPENING', ?, ?, ?, ?, ?, ?, ?)`,
+          [slipId, row.firmId, row.supplierId || null, slipId, materialId, row.ourReelNo, row.weightKg, row.openingRate, actor, timestamp]
+        );
+        insertedReels += 1;
+      }
+    }
+    await conn.commit();
+    return res.json({ ok: true, processedRows: normalizedRows.length, createdMaterials, updatedMaterials, insertedReels });
+  } catch (error) {
+    await conn.rollback();
+    const statusCode = Number(error?.statusCode || (error?.code === "ER_DUP_ENTRY" ? 409 : 500));
+    console.error("[OPENING_REEL_BULK] failed:", error);
+    return res.status(statusCode).json({ error: error.message || "Opening-stock upload failed." });
+  } finally {
+    conn.release();
   }
 });
 const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "gate_passes", "services", "npd", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];

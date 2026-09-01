@@ -447,7 +447,6 @@ export function Materials() {
   const [openingReels, setOpeningReels] = useState<OpeningReelDraft[]>([]);
   const [openingReelSupplierId, setOpeningReelSupplierId] = useState("");
   const reelErpStartNumber = settings[0]?.reelErpStartNumber || 1;
-  const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const otherMaterialErpStartNumber = settings[0]?.otherMaterialErpStartNumber || 1;
 
   useEffect(() => {
@@ -491,21 +490,10 @@ export function Materials() {
     return { openingQty, openingRate, openingValue };
   }, [openingReels]);
 
-  const getNextOpeningReelNo = (draftRows: OpeningReelDraft[] = openingReels) =>
-    String(getNextPlainNumber(
-      [
-        ...packingSlips.map((slip) => slip.ourReelNo),
-        ...draftRows
-          .filter((row) => !row.existingSlipId)
-          .map((row) => row.ourReelNo),
-      ],
-      ourReelNoStartNumber
-    ));
-
-  const createOpeningReelDraft = (draftRows: OpeningReelDraft[] = openingReels): OpeningReelDraft => ({
+  const createOpeningReelDraft = (): OpeningReelDraft => ({
     id: crypto.randomUUID(),
     supplierId: openingReelSupplierId || undefined,
-    ourReelNo: getNextOpeningReelNo(draftRows),
+    ourReelNo: "",
     weightKg: "",
     openingRate: "",
   });
@@ -528,7 +516,7 @@ export function Materials() {
     return [{
       id: crypto.randomUUID(),
       isLegacyOpening: true,
-      ourReelNo: getNextOpeningReelNo([]),
+      ourReelNo: "",
       weightKg: formatOptionalNumber(material.openingQty),
       openingRate: formatOptionalNumber(material.openingRate),
     }];
@@ -892,7 +880,6 @@ export function Materials() {
       packingSlips.some((slip) => {
         if (normalizeText(slip.ourReelNo) !== normalizeText(row.ourReelNo)) return false;
         if (slip.id === row.existingSlipId) return false;
-        if (editingId && slip.materialId === editingId && isOpeningReelPackingSlip(slip)) return false;
         return true;
       })
     );
@@ -1022,17 +1009,19 @@ export function Materials() {
   }, [materials]);
 
   function downloadTemplate() {
+    const exampleFirmName = firms[0]?.firmName || "UNIT - 1";
+    const exampleSupplierName = suppliers.find((supplier) => supplier.active !== "No")?.name || "";
     const templateData = [
-      { "Type": "Reel", "ERP Code": "1001", "Item Name": "", "Item Group": "Reel", "MRR No.": "MI/26-27/00001", "MRR Date": "2026-06-02", "Supplier Name": "Bizskill", "Our Reel No.": "10001", "Reel Qty": 250.5, "Unit": "KGS", "Size": 120, "GSM": 150, "BF": 18, "Color": "LG", "Opening Qty": 0, "Opening Rate": 0, "Opening Value": 0, "Remarks": "", "Active": "Yes" },
-      { "Type": "Other", "ERP Code": "2001", "Item Name": "Service", "Item Group": "Consumable", "MRR No.": "", "MRR Date": "", "Supplier Name": "", "Our Reel No.": "", "Reel Qty": "", "Unit": "CM", "Size": "", "GSM": "", "BF": "", "Color": "", "Opening Qty": 0, "Opening Rate": 0, "Opening Value": 0, "Remarks": "", "Active": "Yes" }
+      { "Firm Name": exampleFirmName, "ERP Code": "76000001", "Size": 120, "GSM": 150, "BF": 18, "Color": "LG", "Supplier Name": exampleSupplierName, "Our Reel No.": "10000001", "Opening Stock KG": 250.5, "Opening Rate": 20, "Remarks": "", "Active": "Yes" },
+      { "Firm Name": exampleFirmName, "ERP Code": "76000001", "Size": 120, "GSM": 150, "BF": 18, "Color": "LG", "Supplier Name": exampleSupplierName, "Our Reel No.": "10000002", "Opening Stock KG": 275, "Opening Rate": 20, "Remarks": "", "Active": "Yes" }
     ];
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Materials");
-    XLSX.writeFile(wb, "Material_Master_Bulk_Template.xlsx");
+    XLSX.utils.book_append_sheet(wb, ws, "Opening Reels");
+    XLSX.writeFile(wb, "Opening_Reel_Stock_Bulk_Template.xlsx");
   }
 
-  function handleBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleLegacyMaterialBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -1168,6 +1157,49 @@ export function Materials() {
         console.error("Material bulk upload error:", error);
         alert(error instanceof Error ? error.message : "Failed to parse the Excel file.");
       } finally { setIsUploading(false); e.target.value = ""; }
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  function handleOpeningStockBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const workbook = XLSX.read(event.target?.result, { type: "binary" });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" })
+          .map((row, index) => ({ ...row, rowNumber: index + 2 }))
+          .filter((row) => !isBulkMaterialRowEmpty(row));
+        if (parsedRows.length === 0) throw new Error("The opening-stock file is empty.");
+
+        setIsUploading(true);
+        const token = window.localStorage.getItem("authToken") || "";
+        const response = await fetch("/api/materials/opening-reels/bulk", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ rows: parsedRows }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Opening-stock upload failed.");
+
+        window.dispatchEvent(new CustomEvent("sync-data-materials"));
+        window.dispatchEvent(new CustomEvent("sync-data-material-in-packing-slips"));
+        alert(
+          `Opening stock uploaded successfully. ${Number(result.insertedReels || 0)} reel(s), ` +
+          `${Number(result.createdMaterials || 0)} material(s) created, and ${Number(result.updatedMaterials || 0)} material(s) updated.`
+        );
+      } catch (error) {
+        console.error("Opening-stock bulk upload error:", error);
+        alert(error instanceof Error ? error.message : "Failed to upload opening stock.");
+      } finally {
+        setIsUploading(false);
+        e.target.value = "";
+      }
     };
     reader.readAsBinaryString(file);
   }
@@ -1589,7 +1621,7 @@ export function Materials() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setOpeningReels((current) => [...current, createOpeningReelDraft(current)])}
+                      onClick={() => setOpeningReels((current) => [...current, createOpeningReelDraft()])}
                       className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-indigo-600 px-3 py-2 text-xs font-bold uppercase text-white"
                     >
                       <Plus size={14} /> Add Reel
@@ -1620,6 +1652,7 @@ export function Materials() {
                                 <input
                                   value={row.ourReelNo}
                                   onChange={(e) => setOpeningReels((current) => current.map((entry) => entry.id === row.id ? { ...entry, ourReelNo: e.target.value } : entry))}
+                                  placeholder="Enter manually"
                                   className="w-36 rounded border border-black px-2 py-1.5 text-xs font-bold outline-none"
                                 />
                               </td>
@@ -1757,17 +1790,17 @@ export function Materials() {
                   onClick={downloadTemplate}
                   className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow"
                 >
-                  <Download size={14} /> Template
+                  <Download size={14} /> Opening Template
                 </button>
                 <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
                   {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
-                  Bulk Upload
+                  Opening Bulk Upload
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept=".xlsx, .xls"
                     className="hidden"
-                    onChange={handleBulkUpload}
+                    onChange={handleOpeningStockBulkUpload}
                   />
                 </label>
                 <button
