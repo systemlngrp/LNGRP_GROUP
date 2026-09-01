@@ -3341,6 +3341,7 @@ async function initDb(retries = 5) {
       await db.query(`
         CREATE TABLE IF NOT EXISTS \`materials\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
+          \`firmId\` VARCHAR(36),
           \`type\` VARCHAR(50) NOT NULL,
           \`erpCode\` VARCHAR(100),
           \`name\` VARCHAR(255) NOT NULL,
@@ -4940,6 +4941,7 @@ async function initDb(retries = 5) {
         { table: "items", column: "opening", type: "DECIMAL(15,2) DEFAULT 0" },
         { table: "item_groups", column: "name", type: "VARCHAR(255) NOT NULL" },
         { table: "material_groups", column: "name", type: "VARCHAR(255) NOT NULL" },
+        { table: "materials", column: "firmId", type: "VARCHAR(36)" },
         { table: "materials", column: "type", type: "VARCHAR(50) NOT NULL" },
         { table: "materials", column: "erpCode", type: "VARCHAR(100)" },
         { table: "materials", column: "name", type: "VARCHAR(255) NOT NULL" },
@@ -6314,6 +6316,12 @@ const createHandlers = (tableName) => {
           }
         }
         if (tableName === "materials") {
+          const materialFirmId = String(data.firmId || "").trim();
+          if (!materialFirmId) {
+            return res.status(400).json({ error: "Firm is required for materials." });
+          }
+          await assertRequestFirm(db, materialFirmId);
+          data.firmId = materialFirmId;
           const normalizedType = String(data.type || "").trim();
           const rawErpCode = String(data.erpCode ?? "").trim();
           if (!/^\d+$/.test(rawErpCode)) {

@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Layers, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting } from "../types";
+import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm } from "../types";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
@@ -102,6 +102,7 @@ function getNextOtherErpCode(materials: Material[], startNumber: unknown = 1) {
 
 function createInitialFormState(materials: Material[], reelGroupId = "", reelStartNumber: unknown = 1) {
   return {
+    firmId: "",
     type: "Reel" as MaterialType,
     erpCode: getNextNumericErpCode(materials, reelStartNumber),
     name: "",
@@ -122,6 +123,7 @@ function createInitialFormState(materials: Material[], reelGroupId = "", reelSta
 export function Materials() {
   const navigate = useNavigate();
   const [materials, setMaterials, isMaterialsLoading] = useData<Material>("materials", []);
+  const [firms] = useData<Firm>("firms", []);
   const [settings] = useData<Setting>("settings", []);
   const [materialGroups, setMaterialGroups] = useData<MaterialGroup>("material-groups", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
@@ -687,6 +689,7 @@ export function Materials() {
     setEditingId(material.id);
     setOpeningReels(getOpeningReelsForMaterial(material));
     setFormData({
+      firmId: material.firmId || "",
       type: material.type,
       erpCode: String(material.erpCode ?? ""),
       name: material.type === "Other" ? material.name : "",
@@ -781,6 +784,11 @@ export function Materials() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const normalizedType = formData.type;
+    const firmId = String(formData.firmId || "").trim();
+    if (!firmId) {
+      alert("Firm is required.");
+      return;
+    }
     const uom = normalizedType === "Reel" ? "KGS" : String(formData.uom || "").trim() || "CM";
     const timestamp = new Date().toISOString();
     const size = parseNumericInput(formData.size);
@@ -913,6 +921,7 @@ export function Materials() {
       const nextMaterial: Material = {
         ...existing,
         id: materialId,
+        firmId,
         type: normalizedType,
         erpCode: erpCode || undefined,
         name: normalizedType === "Reel" ? getReelDisplayName(erpCode, Number(size), Number(gsm), Number(bf), color) : formData.name.trim(),
@@ -943,6 +952,7 @@ export function Materials() {
           const nextSlip: MaterialInPackingSlip = {
             ...(existingSlipIndex >= 0 ? nextPackingSlips[existingSlipIndex] : {}),
             id: slipId,
+            firmId,
             materialInId: OPENING_REEL_MATERIAL_IN_ID,
             materialLineId: row.materialLineId || slipId,
             materialId,
@@ -1299,6 +1309,23 @@ export function Materials() {
 
           <form onSubmit={handleSubmit} className="space-y-7">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">
+                  Firm <span className="text-red-500">*</span>
+                </label>
+                <select
+                  required
+                  value={formData.firmId}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, firmId: e.target.value }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                >
+                  <option value="">Select firm</option>
+                  {firms.map((firm) => (
+                    <option key={firm.id} value={firm.id}>{firm.firmName}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">
                   Type <span className="text-red-500">*</span>

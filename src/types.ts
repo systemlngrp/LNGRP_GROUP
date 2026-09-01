@@ -14,6 +14,7 @@ export interface MaterialGroup {
 
 export interface Material {
   id: string;
+  firmId?: string;
   type: "Reel" | "Other";
   erpCode?: string | number;
   name: string;
