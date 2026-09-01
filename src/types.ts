@@ -160,6 +160,7 @@ export interface MaterialInPackingSlip {
   id: string;
   firmId?: string;
   firmName?: string;
+  supplierId?: string;
   materialInId: string;
   materialLineId: string;
   materialId: string;

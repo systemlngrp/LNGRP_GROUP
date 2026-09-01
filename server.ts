@@ -4068,6 +4068,7 @@ async function initDb(retries = 5) {
       await db.query(`
         CREATE TABLE IF NOT EXISTS \`material_in_packing_slips\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
+          \`supplierId\` VARCHAR(36),
           \`materialInId\` VARCHAR(36) NOT NULL,
           \`materialLineId\` VARCHAR(36) NOT NULL,
           \`materialId\` VARCHAR(36) NOT NULL,
@@ -5671,6 +5672,7 @@ await db.query(`
         { table: "gate_entry_photos", column: "slotNo", type: "INT NOT NULL" },
         { table: "gate_entry_photos", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "gate_entry_photos", column: "updateTimestamp", type: "VARCHAR(255)" },
+        { table: "material_in_packing_slips", column: "supplierId", type: "VARCHAR(36)" },
         { table: "material_in_packing_slips", column: "materialInId", type: "VARCHAR(36) NOT NULL" },
         { table: "material_in_packing_slips", column: "materialLineId", type: "VARCHAR(36) NOT NULL" },
         { table: "material_in_packing_slips", column: "materialId", type: "VARCHAR(36) NOT NULL" },

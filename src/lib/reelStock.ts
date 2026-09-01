@@ -139,7 +139,9 @@ export function buildReelStockRows({
     .map((slip) => {
       const material = materialMap.get(slip.materialId);
       const receipt = materialInMap.get(slip.materialInId);
-      const supplier = receipt ? supplierMap.get(receipt.supplierId) : undefined;
+      const supplier = isOpeningReelPackingSlip(slip)
+        ? supplierMap.get(String(slip.supplierId || ""))
+        : receipt ? supplierMap.get(receipt.supplierId) : undefined;
       const receiptLine =
         receipt?.lines.find((line) => line.id === slip.materialLineId) ||
         receipt?.lines.find((line) => line.itemId === slip.materialId);
@@ -162,7 +164,7 @@ export function buildReelStockRows({
         ourReelNo: slip.ourReelNo || "",
         erp: String(material?.erpCode || ""),
         itemName: String(material?.name || ""),
-        supplierName: isOpening ? "-" : supplier?.name || "",
+        supplierName: isOpeningReelPackingSlip(slip) ? supplier?.name || "-" : supplier?.name || "",
         gsm: Number(material?.gsm || 0),
         size: Number(material?.size || 0),
         bf: Number(material?.bf || 0),

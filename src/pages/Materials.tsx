@@ -23,6 +23,7 @@ type OpeningReelDraft = {
   existingSlipId?: string;
   materialLineId?: string;
   isLegacyOpening?: boolean;
+  supplierId?: string;
   ourReelNo: string;
   weightKg: string;
   openingRate: string;
@@ -444,9 +445,16 @@ export function Materials() {
 
   const [formData, setFormData] = useState(() => createInitialFormState(materials, reelGroup?.id || ""));
   const [openingReels, setOpeningReels] = useState<OpeningReelDraft[]>([]);
+  const [openingReelSupplierId, setOpeningReelSupplierId] = useState("");
   const reelErpStartNumber = settings[0]?.reelErpStartNumber || 1;
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const otherMaterialErpStartNumber = settings[0]?.otherMaterialErpStartNumber || 1;
+
+  useEffect(() => {
+    if (openingReels.length === 0) return;
+    const supplierIds = Array.from(new Set(openingReels.map((row) => String(row.supplierId || "").trim())));
+    setOpeningReelSupplierId(supplierIds.length === 1 ? supplierIds[0] : "");
+  }, [openingReels]);
 
   const unitOptions = useMemo(
     () =>
@@ -496,6 +504,7 @@ export function Materials() {
 
   const createOpeningReelDraft = (draftRows: OpeningReelDraft[] = openingReels): OpeningReelDraft => ({
     id: crypto.randomUUID(),
+    supplierId: openingReelSupplierId || undefined,
     ourReelNo: getNextOpeningReelNo(draftRows),
     weightKg: "",
     openingRate: "",
@@ -509,6 +518,7 @@ export function Materials() {
         id: slip.id,
         existingSlipId: slip.id,
         materialLineId: slip.materialLineId,
+        supplierId: slip.supplierId || "",
         ourReelNo: String(slip.ourReelNo || ""),
         weightKg: formatOptionalNumber(slip.weightKg),
         openingRate: formatOptionalNumber(slip.openingRate),
@@ -601,6 +611,7 @@ export function Materials() {
   function resetForm(nextMaterials = materials, nextReelGroupId = reelGroup?.id || "") {
     setFormData(createInitialFormState(nextMaterials, nextReelGroupId, reelErpStartNumber));
     setOpeningReels([]);
+    setOpeningReelSupplierId("");
     setEditingId(null);
     setIsFormOpen(false);
     setShowGroupModal(false);
@@ -682,12 +693,16 @@ export function Materials() {
     setEditingId(null);
     setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
     setOpeningReels([]);
+    setOpeningReelSupplierId("");
     setIsFormOpen(true);
   }
 
   function handleEdit(material: Material) {
     setEditingId(material.id);
-    setOpeningReels(getOpeningReelsForMaterial(material));
+    const materialOpeningReels = getOpeningReelsForMaterial(material);
+    setOpeningReels(materialOpeningReels);
+    const openingSupplierIds = Array.from(new Set(materialOpeningReels.map((row) => String(row.supplierId || "").trim())));
+    setOpeningReelSupplierId(openingSupplierIds.length === 1 ? openingSupplierIds[0] : "");
     setFormData({
       firmId: material.firmId || "",
       type: material.type,
@@ -953,6 +968,7 @@ export function Materials() {
             ...(existingSlipIndex >= 0 ? nextPackingSlips[existingSlipIndex] : {}),
             id: slipId,
             firmId,
+            supplierId: row.supplierId || undefined,
             materialInId: OPENING_REEL_MATERIAL_IN_ID,
             materialLineId: row.materialLineId || slipId,
             materialId,
@@ -1360,7 +1376,10 @@ export function Materials() {
                         remarks: prev.remarks || "",
                       });
                     });
-                    if (nextType === "Other") setOpeningReels([]);
+                    if (nextType === "Other") {
+                      setOpeningReels([]);
+                      setOpeningReelSupplierId("");
+                    }
                   }}
                   className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                 >
@@ -1550,13 +1569,32 @@ export function Materials() {
                     <h3 className="text-sm font-black uppercase text-indigo-700">Reel Opening Stock</h3>
                     <p className="text-xs font-bold text-slate-600">Add individual opening reels with their own KG and rate.</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setOpeningReels((current) => [...current, createOpeningReelDraft(current)])}
-                    className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-indigo-600 px-3 py-2 text-xs font-bold uppercase text-white"
-                  >
-                    <Plus size={14} /> Add Reel
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase text-slate-600">Apply Supplier to All Reels</label>
+                      <select
+                        value={openingReelSupplierId}
+                        onChange={(e) => {
+                          const supplierId = e.target.value;
+                          setOpeningReelSupplierId(supplierId);
+                          setOpeningReels((current) => current.map((row) => ({ ...row, supplierId: supplierId || undefined })));
+                        }}
+                        className="w-56 rounded border-2 border-black bg-white px-3 py-2 text-xs font-bold text-black"
+                      >
+                        <option value="">No supplier</option>
+                        {suppliers.filter((supplier) => supplier.active !== "No" || supplier.id === openingReelSupplierId).map((supplier) => (
+                          <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setOpeningReels((current) => [...current, createOpeningReelDraft(current)])}
+                      className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-indigo-600 px-3 py-2 text-xs font-bold uppercase text-white"
+                    >
+                      <Plus size={14} /> Add Reel
+                    </button>
+                  </div>
                 </div>
                 {openingReels.length === 0 ? (
                   <div className="rounded border border-dashed border-slate-400 bg-white p-4 text-center text-xs font-bold text-slate-500">
@@ -1567,7 +1605,7 @@ export function Materials() {
                     <table className="min-w-full border-collapse bg-white text-sm">
                       <thead className="bg-slate-100">
                         <tr>
-                          {["Our Reel No.", "Opening Stock KG", "Opening Rate", "Value", ""].map((heading) => (
+                          {["Our Reel No.", "Supplier", "Opening Stock KG", "Opening Rate", "Value", ""].map((heading) => (
                             <th key={heading} className="border border-black px-3 py-2 text-left text-xs font-black uppercase">{heading}</th>
                           ))}
                         </tr>
@@ -1584,6 +1622,22 @@ export function Materials() {
                                   onChange={(e) => setOpeningReels((current) => current.map((entry) => entry.id === row.id ? { ...entry, ourReelNo: e.target.value } : entry))}
                                   className="w-36 rounded border border-black px-2 py-1.5 text-xs font-bold outline-none"
                                 />
+                              </td>
+                              <td className="border border-black px-3 py-2">
+                                <select
+                                  value={row.supplierId || ""}
+                                  onChange={(e) => {
+                                    const supplierId = e.target.value;
+                                    setOpeningReelSupplierId("");
+                                    setOpeningReels((current) => current.map((entry) => entry.id === row.id ? { ...entry, supplierId: supplierId || undefined } : entry));
+                                  }}
+                                  className="w-52 rounded border border-black bg-white px-2 py-1.5 text-xs font-bold outline-none"
+                                >
+                                  <option value="">No supplier</option>
+                                  {suppliers
+                                    .filter((supplier) => supplier.active !== "No" || supplier.id === row.supplierId)
+                                    .map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+                                </select>
                               </td>
                               <td className="border border-black px-3 py-2">
                                 <input
