@@ -65,7 +65,8 @@ function getLineRate(line: MaterialIn["lines"][number] | undefined, material?: M
 }
 
 function isOpeningMrrNo(value?: string | number | null) {
-  return String(value ?? "").trim() === "1";
+  const normalizedValue = String(value ?? "").trim().toLowerCase();
+  return normalizedValue === "1" || normalizedValue === "opening";
 }
 
 export function buildReelStockRows({
@@ -112,7 +113,7 @@ export function buildReelStockRows({
         slipId: material.id,
         materialId: material.id,
         mrrDate: "2026-06-06",
-        mrrNo: "1",
+        mrrNo: "Opening",
         ourReelNo: formatOurReelNo(firstOpeningReelNo + index),
         erp: String(material.erpCode || ""),
         itemName: String(material.name || ""),
@@ -149,7 +150,7 @@ export function buildReelStockRows({
       const reelQty = round2(Number(slip.weightKg || 0));
       const netIssuedWeight = round2(issuedWeight - returnedWeight);
       const availableWeight = round2(Math.max(0, reelQty + returnedWeight - issuedWeight));
-      const mrrNo = isOpeningReelPackingSlip(slip) ? "1" : receipt?.transactionNo || "";
+      const mrrNo = isOpeningReelPackingSlip(slip) ? "Opening" : receipt?.transactionNo || "";
       const isOpening = isOpeningReelPackingSlip(slip) || isOpeningMrrNo(mrrNo);
       const rate = availableWeight > 0 ? round2(isOpeningReelPackingSlip(slip) ? Number(slip.openingRate || material?.openingRate || 0) : getLineRate(receiptLine, material)) : 0;
 
