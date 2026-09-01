@@ -1009,12 +1009,41 @@ export function Materials() {
   }, [materials]);
 
   function downloadTemplate() {
-    const exampleFirmName = firms[0]?.firmName || "UNIT - 1";
-    const exampleSupplierName = suppliers.find((supplier) => supplier.active !== "No")?.name || "";
-    const templateData = [
-      { "Firm Name": exampleFirmName, "ERP Code": "76000001", "Size": 120, "GSM": 150, "BF": 18, "Color": "LG", "Supplier Name": exampleSupplierName, "Our Reel No.": "10000001", "Opening Stock KG": 250.5, "Opening Rate": 20, "Remarks": "", "Active": "Yes" },
-      { "Firm Name": exampleFirmName, "ERP Code": "76000001", "Size": 120, "GSM": 150, "BF": 18, "Color": "LG", "Supplier Name": exampleSupplierName, "Our Reel No.": "10000002", "Opening Stock KG": 275, "Opening Rate": 20, "Remarks": "", "Active": "Yes" }
-    ];
+    const firmNameById = new Map(firms.map((firm) => [firm.id, firm.firmName]));
+    const templateData = materials
+      .filter((material) => material.type === "Reel")
+      .slice()
+      .sort((a, b) => Number(a.erpCode || 0) - Number(b.erpCode || 0))
+      .map((material) => ({
+        "Firm Name": firmNameById.get(material.firmId || "") || "",
+        "ERP Code": material.erpCode || "",
+        "Size": material.size ?? "",
+        "GSM": material.gsm ?? "",
+        "BF": material.bf ?? "",
+        "Color": material.color || "",
+        "Supplier Name": "",
+        "Our Reel No.": "",
+        "Opening Stock KG": "",
+        "Opening Rate": material.openingRate ?? "",
+        "Remarks": material.remarks || "",
+        "Active": material.active || "Yes",
+      }));
+    if (templateData.length === 0) {
+      templateData.push({
+        "Firm Name": firms[0]?.firmName || "",
+        "ERP Code": "",
+        "Size": "",
+        "GSM": "",
+        "BF": "",
+        "Color": "",
+        "Supplier Name": "",
+        "Our Reel No.": "",
+        "Opening Stock KG": "",
+        "Opening Rate": "",
+        "Remarks": "",
+        "Active": "Yes",
+      });
+    }
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Opening Reels");
@@ -1171,8 +1200,8 @@ export function Materials() {
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" })
           .map((row, index) => ({ ...row, rowNumber: index + 2 }))
-          .filter((row) => !isBulkMaterialRowEmpty(row));
-        if (parsedRows.length === 0) throw new Error("The opening-stock file is empty.");
+          .filter((row) => String(row["Our Reel No."] || "").trim() !== "" || String(row["Opening Stock KG"] || "").trim() !== "");
+        if (parsedRows.length === 0) throw new Error("Enter Our Reel No. and Opening Stock KG for at least one row.");
 
         setIsUploading(true);
         const token = window.localStorage.getItem("authToken") || "";
