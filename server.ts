@@ -2336,7 +2336,28 @@ async function ensureColumnExists(db: mysql.Pool, database: string, table: strin
 }
 
 async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
-  const base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any }) as { rows: any[]; total: number };
+  let base: { rows: any[]; total: number };
+  try {
+    base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any }) as { rows: any[]; total: number };
+  } catch (error) {
+    console.error("[DB] Firm-wise NPD aggregation failed; using basic NPD fallback:", error);
+    const status = String(options.status || "active").trim().toLowerCase();
+    const where: string[] = [];
+    const params: any[] = [];
+    if (status !== "all") {
+      where.push("COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') " + (status === "removed" ? "=" : "<>") + " 'removed'");
+    }
+    const search = String(options.search || "").trim();
+    if (search) {
+      const like = `%${search}%`;
+      where.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
+      params.push(like, like, like, like, like, like);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const [rows] = await db.query(`SELECT n.* FROM \`npd\` n ${whereSql} ORDER BY n.npdId ASC LIMIT ? OFFSET ?`, [...params, options.limit, options.offset]);
+    const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
+    base = { rows: rows as any[], total: Number((countRows as any[])[0]?.total || 0) };
+  }
   const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
   const firms = (firmRows as any[]).filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
   const itemIds = base.rows.map((row) => String(row.id || "").trim()).filter(Boolean);
