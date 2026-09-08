@@ -2056,26 +2056,30 @@ async function fetchFirmWiseNpdItems(db, options) {
   };
   const placeholders = itemIds.map(() => "?").join(",");
   if (itemIds.length) {
-    const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
-    for (const row of receipts) {
-      const id = String(row.npdId || row.itemId || "");
-      const firm = String(row.destinationFirmId || row.firmId || "");
-      const stock = ensure(id, firm);
-      if (stock) stock.receipt += Number(row.qty || 0);
-    }
-    const [productions] = await db.query(`SELECT p.firmId, p.destinationFirmId, COALESCE(NULLIF(p.npdId,''), p.itemId) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
-    for (const row of productions) {
-      const firm = String(row.destinationFirmId || row.firmId || "");
-      const stock = ensure(String(row.itemId || ""), firm);
-      if (stock) {
-        stock.production += Number(row.qty || 0);
-        stock.corrugation += Number(row.corrugation || 0);
+    try {
+      const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
+      for (const row of receipts) {
+        const id = String(row.npdId || row.itemId || "");
+        const firm = String(row.destinationFirmId || row.firmId || "");
+        const stock = ensure(id, firm);
+        if (stock) stock.receipt += Number(row.qty || 0);
       }
-    }
-    const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
-    for (const row of invoices) {
-      const stock = ensure(String(row.itemId || ""), String(row.firmId || ""));
-      if (stock) stock.invoiced += Number(row.qty || 0);
+      const [productions] = await db.query(`SELECT p.firmId, p.destinationFirmId, COALESCE(NULLIF(p.npdId,''), p.itemId) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
+      for (const row of productions) {
+        const firm = String(row.destinationFirmId || row.firmId || "");
+        const stock = ensure(String(row.itemId || ""), firm);
+        if (stock) {
+          stock.production += Number(row.qty || 0);
+          stock.corrugation += Number(row.corrugation || 0);
+        }
+      }
+      const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
+      for (const row of invoices) {
+        const stock = ensure(String(row.itemId || ""), String(row.firmId || ""));
+        if (stock) stock.invoiced += Number(row.qty || 0);
+      }
+    } catch (error) {
+      console.error("[DB] Firm-wise NPD stock aggregation failed; returning zero derived stock:", error);
     }
   }
   const rows = base.rows.map((row) => {
