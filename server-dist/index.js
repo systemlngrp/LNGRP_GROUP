@@ -7846,9 +7846,19 @@ const createHandlers = (tableName) => {
                     }
                 }
                 if (tableName === "production_processing" && String(data.completionStatus || "").trim().toLowerCase() === "full") {
-                    const [parentRows] = await db.query("SELECT interFirmFlow FROM `productions` WHERE id = ? LIMIT 1", [String(data.productionId || "")]);
+                    const productionId = String(data.productionId || "").trim();
+                    const [parentRows] = await db.query("SELECT interFirmFlow FROM `productions` WHERE id = ? LIMIT 1", [productionId]);
                     const machineName = normalizeMachineName(String(data.machineName || ""));
-                    if (String(parentRows[0]?.interFirmFlow || "").toLowerCase() === "yes" && machineName !== "Corrugation Liner") {
+                    // Corrugation Liner is the Firm 1 output that starts Stage 1.  Do not
+                    // wait for FFG/Printing: Scenario A exits inside the service because
+                    // source and order firm are equal, while Scenario B/C creates the
+                    // Firm 1 pending invoice and Firm 2 Gate Entry/MRR idempotently.
+                    if (machineName === "Corrugation Liner") {
+                        await automateInterFirmProduction(db, productionId, "Production");
+                    }
+                    else if (String(parentRows[0]?.interFirmFlow || "").toLowerCase() === "yes") {
+                        // Any completed Firm 2 output can start Stage 2; Printing is not a
+                        // mandatory condition for Firm 2 -> Firm 3 automation.
                         await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
                     }
                 }
