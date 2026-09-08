@@ -2433,7 +2433,11 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   const keyToItemId = new Map<string, string>();
   const addItemKey = (rawKey: any, itemId: string) => {
     const key = stringOrEmpty(rawKey);
-    if (key) keyToItemId.set(key.toLowerCase(), itemId);
+    if (key) {
+      keyToItemId.set(key.toLowerCase(), itemId);
+      const normalized = normalizeNpdLookupKey(key);
+      if (normalized) keyToItemId.set(normalized, itemId);
+    }
   };
   for (const row of base.rows) {
     const itemId = stringOrEmpty(row.id || row.npdId);
@@ -2441,6 +2445,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
     addItemKey(row.id, itemId);
     addItemKey(row.npdId, itemId);
     addItemKey(row.erp, itemId);
+    addItemKey(row.itemName, itemId);
   }
   const resolveStockItemId = (...rawKeys: any[]) => {
     for (const rawKey of rawKeys) {
@@ -2448,6 +2453,8 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       if (!key) continue;
       const matched = keyToItemId.get(key.toLowerCase());
       if (matched) return matched;
+      const normalized = keyToItemId.get(normalizeNpdLookupKey(key));
+      if (normalized) return normalized;
       if (keyToItemId.has(key)) return key;
     }
     return "";
@@ -2464,13 +2471,19 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   };
   if (itemIds.length) {
     try {
+      const [activeRouteRows] = await db.query(
+        "SELECT routeSourceFirmId, routeDestinationFirmId FROM `firms` WHERE routeActive = 'Yes' AND COALESCE(TRIM(routeSourceFirmId), '') <> '' AND COALESCE(TRIM(routeDestinationFirmId), '') <> '' ORDER BY routeSequence ASC LIMIT 1"
+      );
+      const activeRoute = (activeRouteRows as any[])[0] || {};
+      const sourceFirmFallback = String(activeRoute.routeSourceFirmId || "").trim();
+      const destinationFirmFallback = String(activeRoute.routeDestinationFirmId || "").trim();
       const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
       for (const row of receipts as any[]) { const id = resolveStockItemId(row.npdId, row.itemId); const firm = String(row.destinationFirmId || row.firmId || ""); const stock = ensure(id, firm); if (stock) stock.receipt += Number(row.qty || 0); }
-      const [productions] = await db.query(`SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode, COALESCE(NULLIF(pn.id,''), NULLIF(p.npdId,''), p.itemId, p.erpCode) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
+      const [productions] = await db.query(`SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode, p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
       for (const row of productions as any[]) {
         const isCorrugation = Number(row.corrugation || 0) > 0;
-        const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || "" : row.destinationFirmId || row.firmId || "");
-        const stock = ensure(resolveStockItemId(row.itemId, row.erpCode), firm);
+        const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || sourceFirmFallback : row.destinationFirmId || row.firmId || destinationFirmFallback);
+        const stock = ensure(resolveStockItemId(row.resolvedNpdId, row.npdId, row.itemId, row.erpCode, row.npdItemName), firm);
         if (stock) {
           stock.production += Number(row.qty || 0);
           stock.corrugation += Number(row.corrugation || 0);
@@ -2478,7 +2491,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       }
       const [processedOutputs] = await db.query(`
         SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode,
-          COALESCE(NULLIF(pn.id, ''), NULLIF(p.npdId, ''), p.itemId, p.erpCode) AS itemId,
+          p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName,
           COALESCE(pp.qty, 0) AS qty,
           CASE WHEN LOWER(COALESCE(pp.machineName, '')) LIKE '%corrug%'
             OR LOWER(COALESCE(p.category, '')) LIKE '%corrug%'
@@ -2492,8 +2505,8 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       `);
       for (const row of processedOutputs as any[]) {
         const isCorrugation = Number(row.corrugation || 0) > 0;
-        const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || "" : row.destinationFirmId || row.firmId || "");
-        const stock = ensure(resolveStockItemId(row.itemId, row.erpCode), firm);
+        const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || sourceFirmFallback : row.destinationFirmId || row.firmId || destinationFirmFallback);
+        const stock = ensure(resolveStockItemId(row.resolvedNpdId, row.npdId, row.itemId, row.erpCode, row.npdItemName), firm);
         if (stock) {
           stock.production += Number(row.qty || 0);
           stock.corrugation += Number(row.corrugation || 0);
