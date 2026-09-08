@@ -2412,10 +2412,17 @@ async function generateLockedMrrNo(db, dateStr) {
     const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
     return `MI/${fy}/${String(Number(rows[0]?.nextValue || 0)).padStart(5, "0")}`;
 }
-async function automateInterFirmProduction(db, productionId, sourceType = "Production") {
+async function automateInterFirmProduction(db, sourceId, sourceType = "Production") {
     const conn = await db.getConnection();
     try {
         await conn.beginTransaction();
+        let sourceRecord = null;
+        let productionId = sourceId;
+        if (sourceType === "Production Processing") {
+            const [processingRows] = await conn.query("SELECT * FROM `production_processing` WHERE id = ? LIMIT 1 FOR UPDATE", [sourceId]);
+            sourceRecord = processingRows[0] || null;
+            productionId = String(sourceRecord?.productionId || "");
+        }
         const [rows] = await conn.query("SELECT p.*, os.orderId FROM `productions` p LEFT JOIN `orders_schedule` os ON os.id = p.scheduleId WHERE p.id = ? FOR UPDATE", [productionId]);
         const production = rows[0];
         if (!production) {
@@ -2424,15 +2431,13 @@ async function automateInterFirmProduction(db, productionId, sourceType = "Produ
         }
         const [orders] = await conn.query("SELECT * FROM `orders` WHERE id = ? LIMIT 1", [production.orderId]);
         const order = orders[0];
-        // A processing completion represents the next movement from the production's
-        // destination firm.  The production itself remains the parent job, but the
-        // processing row supplies the output quantity/value for this transaction.
-        let sourceRecord = production;
-        if (sourceType === "Production Processing") {
-            const [processingRows] = await conn.query("SELECT * FROM `production_processing` WHERE id = ? LIMIT 1 FOR UPDATE", [productionId]);
-            sourceRecord = processingRows[0] || production;
+        sourceRecord = sourceRecord || production;
+        const normalizedMachine = normalizeMachineName(String(sourceRecord.machineName || ""));
+        if (sourceType === "Production Processing" && normalizedMachine === "Corrugation Liner") {
+            await conn.rollback();
+            return;
         }
-        const sourceFirmId = String(sourceType === "Production Processing"
+        const sourceFirmId = String(sourceType === "Production Processing" || sourceType === "Production Output"
             ? production.destinationFirmId || production.firmId || sourceRecord.firmId || ""
             : production.sourceFirmId || production.firmId || "").trim();
         const orderFirmId = String(production.orderFirmId || order?.firmId || "").trim();
@@ -2446,10 +2451,28 @@ async function automateInterFirmProduction(db, productionId, sourceType = "Produ
             await conn.rollback();
             return;
         }
-        const sourceTransactionId = productionId;
+        if (sourceType === "Production Processing" || sourceType === "Production Output") {
+            const [existingStageTwoRows] = await conn.query(`SELECT id FROM inter_firm_pending_invoices
+         WHERE jobId = ? AND sourceFirmId = ? AND destinationFirmId = ?
+           AND sourceTransactionType IN ('Production Processing', 'Production Output')
+           AND sourceTransactionId <> ?
+           AND status <> 'Cancelled'
+         LIMIT 1`, [production.id, sourceFirmId, destinationFirmId, sourceId]);
+            if (existingStageTwoRows.length > 0) {
+                await conn.rollback();
+                return;
+            }
+        }
+        const sourceTransactionId = sourceId;
         const sourceTransactionType = sourceType;
         const now = new Date().toISOString();
-        const qty = Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0);
+        const qty = Number(sourceType === "Production Output"
+            ? production.prodFromFFG || production.productionOutputQty || production.qty || 0
+            : sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0);
+        if (!Number.isFinite(qty) || qty <= 0) {
+            await conn.rollback();
+            return;
+        }
         const itemId = String(sourceRecord.itemId || production.itemId || sourceRecord.npdId || production.npdId || "");
         const rate = Number(sourceRecord.rate || production.rate || order?.rate || 0);
         const gstRate = Number(sourceRecord.gstRate || production.gstRate || order?.gstRate || 0);
@@ -2475,7 +2498,12 @@ async function automateInterFirmProduction(db, productionId, sourceType = "Produ
             gate = { id: gateId };
         }
         await conn.query("UPDATE `inter_firm_pending_invoices` SET linkedGateEntryId = ?, linkedMrrId = ?, updateTimestamp = ? WHERE id = ?", [gate.id, mrr.id, now, pending.id]);
-        await conn.query("UPDATE `productions` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, productionId]);
+        if (sourceType === "Production") {
+            await conn.query("UPDATE `productions` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, productionId]);
+        }
+        if (sourceType === "Production Processing") {
+            await conn.query("UPDATE `production_processing` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, sourceId]);
+        }
         await conn.commit();
     }
     catch (error) {
@@ -7802,6 +7830,9 @@ const createHandlers = (tableName) => {
                 }
                 if (tableName === "productions" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
                     await automateInterFirmProduction(db, String(data.id || ""));
+                    if (Number(data.prodFromFFG || 0) > 0) {
+                        await automateInterFirmProduction(db, String(data.id || ""), "Production Output");
+                    }
                 }
                 if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
                     const pendingId = String(data.sourceTransactionId || "").trim();
@@ -7816,8 +7847,9 @@ const createHandlers = (tableName) => {
                 }
                 if (tableName === "production_processing" && String(data.completionStatus || "").trim().toLowerCase() === "full") {
                     const [parentRows] = await db.query("SELECT interFirmFlow FROM `productions` WHERE id = ? LIMIT 1", [String(data.productionId || "")]);
-                    if (String(parentRows[0]?.interFirmFlow || "").toLowerCase() === "yes") {
-                        await automateInterFirmProduction(db, String(data.productionId || ""), "Production Processing");
+                    const machineName = normalizeMachineName(String(data.machineName || ""));
+                    if (String(parentRows[0]?.interFirmFlow || "").toLowerCase() === "yes" && machineName !== "Corrugation Liner") {
+                        await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
                     }
                 }
                 res.json({ success: true });
