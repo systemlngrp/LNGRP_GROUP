@@ -8540,7 +8540,10 @@ const createHandlers = (tableName: string) => {
         } else {
           await db.query(query, values);
         }
-        if (tableName === "productions" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
+        // Inter-firm automation is route-driven.  A newly created Unit 2 job
+        // may not have interFirmFlow populated yet; the automation routine is
+        // idempotent and safely exits when no active inter-firm route applies.
+        if (tableName === "productions") {
           await automateInterFirmProduction(db, String(data.id || ""));
           if (Number(data.prodFromFFG || 0) > 0) {
             await automateInterFirmProduction(db, String(data.id || ""), "Production Output");
@@ -8559,7 +8562,6 @@ const createHandlers = (tableName: string) => {
         }
         if (tableName === "production_processing" && String(data.completionStatus || "").trim().toLowerCase() === "full") {
           const productionId = String(data.productionId || "").trim();
-          const [parentRows] = await db.query("SELECT interFirmFlow FROM `productions` WHERE id = ? LIMIT 1", [productionId]);
           const machineName = normalizeMachineName(String(data.machineName || ""));
 
           // Corrugation Liner is the Firm 1 output that starts Stage 1.  Do not
@@ -8568,9 +8570,10 @@ const createHandlers = (tableName: string) => {
           // Firm 1 pending invoice and Firm 2 Gate Entry/MRR idempotently.
           if (machineName === "Corrugation Liner") {
             await automateInterFirmProduction(db, productionId, "Production");
-          } else if (String((parentRows as any[])[0]?.interFirmFlow || "").toLowerCase() === "yes") {
-            // Any completed Firm 2 output can start Stage 2; Printing is not a
-            // mandatory condition for Firm 2 -> Firm 3 automation.
+          } else {
+            // Any completed output can be checked here.  The automation is
+            // idempotent and uses the configured firm route to decide whether
+            // this is a real Firm 2 -> Firm 3 transfer.
             await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
           }
         }
