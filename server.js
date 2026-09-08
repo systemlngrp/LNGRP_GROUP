@@ -654,9 +654,23 @@ function hasPermission(user, required) {
     return false;
   });
 }
+const AUTH_COOKIE_NAME = "lngrp_auth";
+function getCookieValue(req, name) {
+  const prefix = `${name}=`;
+  return String(req.headers.cookie || "").split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length) || "";
+}
+function setAuthCookie(res, token) {
+  res.cookie(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: AUTH_TTL_SECONDS * 1e3,
+    path: "/"
+  });
+}
 function requireAuth(req, res, next) {
   const auth = String(req.headers.authorization || "");
-  const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : decodeURIComponent(getCookieValue(req, AUTH_COOKIE_NAME));
   if (!token) return res.status(401).json({ error: "Unauthorized" });
   const payload = verifyToken(token);
   if (!payload) return res.status(401).json({ error: "Unauthorized" });
@@ -700,6 +714,7 @@ app.post("/api/auth/login", async (req, res) => {
         truckId: String(truck.id)
       };
       const token2 = signToken({ uid: driverUser.id });
+      setAuthCookie(res, token2);
       return res.json({
         token: token2,
         user: {
@@ -730,6 +745,7 @@ app.post("/api/auth/login", async (req, res) => {
       menuAccess: normalizeMenuAccess(row.menuAccess)
     };
     const token = signToken({ uid: user.id });
+    setAuthCookie(res, token);
     res.json({
       token,
       user: {
@@ -763,6 +779,7 @@ app.get("/api/auth/me", requireAuth, async (req, res) => {
   });
 });
 app.post("/api/auth/logout", requireAuth, async (_req, res) => {
+  res.clearCookie(AUTH_COOKIE_NAME, { path: "/" });
   res.json({ success: true });
 });
 app.use("/api", (req, res, next) => {
