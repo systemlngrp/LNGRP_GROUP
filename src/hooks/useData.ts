@@ -102,18 +102,22 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     try {
       if (!background) setLoading(true);
       const response = await fetch(endpoint, { headers: getAuthHeaders(options?.firmScope !== 'all') });
-      if (response.status === 403) {
+      if (response.status === 401 || response.status === 403) {
         // Sidebar counts request data from modules that a selective user may not access.
         // Treat that expected denial as an empty dataset rather than a recurring app error.
         forbiddenUntilRef.current = Date.now() + 5 * 60_000;
         lastFetchAtRef.current = Date.now();
         setDataState([]);
         dataRef.current = [];
-        setError(null);
+        setError(response.status === 401 ? "Unauthorized" : null);
         return;
       }
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 500 && String(errorData.error || "").toLowerCase().includes("authorization failed")) {
+          forbiddenUntilRef.current = Date.now() + 5 * 60_000;
+          lastFetchAtRef.current = Date.now();
+        }
         throw new Error(errorData.error || "Failed to fetch data");
       }
       const result = await response.json();

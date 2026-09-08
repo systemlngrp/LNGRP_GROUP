@@ -3196,7 +3196,14 @@ async function ensureDevSeedUser(db) {
   console.log("[DB] Seeded dummy admin user:", userId);
 }
 async function getRequestUser(req) {
-  const id = String(req.authUserId || "");
+  let id = String(req.authUserId || "").trim();
+  if (!id) {
+    const auth = String(req.headers.authorization || "");
+    const rawToken = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : decodeURIComponent(getCookieValue(req, AUTH_COOKIE_NAME));
+    const payload = rawToken ? verifyToken(rawToken) : null;
+    id = String(payload?.uid || "").trim();
+    if (id) req.authUserId = id;
+  }
   if (!id) return null;
   return await loadAuthUserById(id);
 }

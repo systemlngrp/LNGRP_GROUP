@@ -3633,7 +3633,16 @@ async function ensureDevSeedUser(db: mysql.Pool) {
 }
 
 async function getRequestUser(req: express.Request): Promise<AuthUser | null> {
-  const id = String((req as any).authUserId || "");
+  let id = String((req as any).authUserId || "").trim();
+  if (!id) {
+    const auth = String(req.headers.authorization || "");
+    const rawToken = auth.toLowerCase().startsWith("bearer ")
+      ? auth.slice(7).trim()
+      : decodeURIComponent(getCookieValue(req, AUTH_COOKIE_NAME));
+    const payload = rawToken ? verifyToken(rawToken) : null;
+    id = String((payload as any)?.uid || "").trim();
+    if (id) (req as any).authUserId = id;
+  }
   if (!id) return null;
   return await loadAuthUserById(id);
 }
