@@ -2376,6 +2376,27 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       for (const row of receipts as any[]) { const id = String(row.npdId || row.itemId || ""); const firm = String(row.destinationFirmId || row.firmId || ""); const stock = ensure(id, firm); if (stock) stock.receipt += Number(row.qty || 0); }
       const [productions] = await db.query(`SELECT p.firmId, p.destinationFirmId, COALESCE(NULLIF(p.npdId,''), p.itemId) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
       for (const row of productions as any[]) { const firm = String(row.destinationFirmId || row.firmId || ""); const stock = ensure(String(row.itemId || ""), firm); if (stock) { stock.production += Number(row.qty || 0); stock.corrugation += Number(row.corrugation || 0); } }
+      const [processedOutputs] = await db.query(`
+        SELECT p.firmId, p.destinationFirmId,
+          COALESCE(NULLIF(p.npdId, ''), p.itemId) AS itemId,
+          COALESCE(pp.qty, 0) AS qty,
+          CASE WHEN LOWER(COALESCE(pp.machineName, '')) LIKE '%corrug%'
+            OR LOWER(COALESCE(p.category, '')) LIKE '%corrug%'
+            OR LOWER(COALESCE(p.jobType, '')) LIKE '%corrug%'
+            THEN COALESCE(pp.qty, 0) ELSE 0 END AS corrugation
+        FROM production_processing pp
+        JOIN productions p ON p.id = pp.productionId
+        WHERE LOWER(COALESCE(pp.completionStatus, '')) = 'full'
+          AND (p.status <> 'Cancelled' OR p.status IS NULL)
+      `);
+      for (const row of processedOutputs as any[]) {
+        const firm = String(row.destinationFirmId || row.firmId || "");
+        const stock = ensure(String(row.itemId || ""), firm);
+        if (stock) {
+          stock.production += Number(row.qty || 0);
+          stock.corrugation += Number(row.corrugation || 0);
+        }
+      }
       const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
       for (const row of invoices as any[]) { const stock = ensure(String(row.itemId || ""), String(row.firmId || "")); if (stock) stock.invoiced += Number(row.qty || 0); }
     } catch (error) {
