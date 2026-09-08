@@ -55,6 +55,15 @@ function getAuthHeaders(_includeActiveFirm = true) {
   const token = window.localStorage.getItem("authToken") || "";
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
+  if (_includeActiveFirm) {
+    const activeFirm = window.localStorage.getItem("activeFirm");
+    try {
+      const firmId = activeFirm ? JSON.parse(activeFirm)?.id : "";
+      if (firmId) headers["X-Firm-Id"] = String(firmId);
+    } catch {
+      // Ignore malformed local storage and let the server apply its default scope.
+    }
+  }
   return headers;
 }
 
@@ -73,7 +82,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const storageKey = `udc_${options?.storageKey || resolvedEntity}`;
   const syncEvent = options?.syncEventKey || `sync-data-${resolvedEntity}`;
   const shouldCacheToLocalStorage = options?.cacheToLocalStorage !== false;
-  const includeActiveFirm = false;
+  const includeActiveFirm = options?.firmScope !== "all";
 
   // Keep ref in sync
   useEffect(() => {

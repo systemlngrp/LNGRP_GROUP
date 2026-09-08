@@ -24,6 +24,10 @@ export function FirmMaster() {
   const [firmName, setFirmName] = useState("");
   const [logo, setLogo] = useState("");
   const [tallyPortNo, setTallyPortNo] = useState("");
+  const [routeSourceFirmId, setRouteSourceFirmId] = useState("");
+  const [routeDestinationFirmId, setRouteDestinationFirmId] = useState("");
+  const [routeSequence, setRouteSequence] = useState("1");
+  const [routeActive, setRouteActive] = useState<"Yes" | "No">("No");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -51,6 +55,10 @@ export function FirmMaster() {
     setFirmName("");
     setLogo("");
     setTallyPortNo("");
+    setRouteSourceFirmId("");
+    setRouteDestinationFirmId("");
+    setRouteSequence("1");
+    setRouteActive("No");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -64,6 +72,10 @@ export function FirmMaster() {
     setFirmName(firm.firmName || "");
     setLogo(firm.logo || "");
     setTallyPortNo(String(firm.tallyPortNo || ""));
+    setRouteSourceFirmId(String(firm.routeSourceFirmId || ""));
+    setRouteDestinationFirmId(String(firm.routeDestinationFirmId || ""));
+    setRouteSequence(String(firm.routeSequence || 1));
+    setRouteActive(firm.routeActive === "Yes" ? "Yes" : "No");
     setIsFormOpen(true);
   };
 
@@ -120,6 +132,10 @@ export function FirmMaster() {
         firmName: normalizedName,
         logo: logo || undefined,
         tallyPortNo: normalizedPort || undefined,
+        routeSourceFirmId: routeSourceFirmId || undefined,
+        routeDestinationFirmId: routeDestinationFirmId || undefined,
+        routeSequence: Math.max(1, Number(routeSequence) || 1),
+        routeActive,
         updatedBy: "System User",
         updateTimestamp: timestamp,
       };
@@ -164,6 +180,24 @@ export function FirmMaster() {
             <div className="flex flex-col space-y-1">
               <label className="font-bold text-black">Firm Name <span className="text-red-600">*</span></label>
               <input value={firmName} onChange={(event) => setFirmName(event.target.value)} required autoFocus className={inputClass} />
+            </div>
+            <div className="md:col-span-2 border-t-2 border-black pt-4">
+              <h3 className="font-bold text-black">Inter-Firm Route</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
+                <select value={routeSourceFirmId} onChange={(e) => setRouteSourceFirmId(e.target.value)} className={inputClass}>
+                  <option value="">Source firm</option>
+                  {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                </select>
+                <select value={routeDestinationFirmId} onChange={(e) => setRouteDestinationFirmId(e.target.value)} className={inputClass}>
+                  <option value="">Destination firm</option>
+                  {firms.filter((firm) => firm.id !== routeSourceFirmId).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                </select>
+                <input type="number" min="1" value={routeSequence} onChange={(e) => setRouteSequence(e.target.value)} className={inputClass} placeholder="Sequence" />
+                <select value={routeActive} onChange={(e) => setRouteActive(e.target.value as "Yes" | "No")} className={inputClass}>
+                  <option value="No">Route inactive</option>
+                  <option value="Yes">Route active</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex flex-col space-y-1">

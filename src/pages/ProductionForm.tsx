@@ -26,6 +26,7 @@ import { getProductionMatchingFields } from "../lib/productionMatching";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { calculateInternalUps } from "../lib/internalUps";
+import { useAuth } from "../auth/AuthContext";
 
 const getJobMasterEntityName = (source: "PHP" | "PLATE") =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -199,6 +200,7 @@ function createInitialFormData(initialDate: string) {
 }
 
 export function ProductionForm() {
+  const { activeFirmId } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Simple DOM-based table row filter bound to the search input
@@ -794,6 +796,9 @@ export function ProductionForm() {
         status: "Pending Consumption",
         updatedBy: "System User",
         updateTimestamp: timestamp,
+        orderFirmId: String((selectedOrder as any).firmId || "").trim() || undefined,
+        sourceFirmId: activeFirmId || undefined,
+        interFirmFlow: activeFirmId && String((selectedOrder as any).firmId || "").trim() && activeFirmId !== String((selectedOrder as any).firmId || "").trim() ? "Yes" : "No",
         ...Object.fromEntries(
           Object.entries(formData).filter(([key]) => !["date", "qty", "remarks"].includes(key))
         ),
