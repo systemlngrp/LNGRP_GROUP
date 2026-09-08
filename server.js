@@ -2191,14 +2191,24 @@ async function automateInterFirmProduction(db, productionId, sourceType = "Produ
     }
     const [orders] = await conn.query("SELECT * FROM `orders` WHERE id = ? LIMIT 1", [production.orderId]);
     const order = orders[0];
-    const sourceFirmId = String(production.sourceFirmId || production.firmId || "").trim();
+    let sourceRecord = production;
+    if (sourceType === "Production Processing") {
+      const [processingRows] = await conn.query(
+        "SELECT * FROM `production_processing` WHERE id = ? LIMIT 1 FOR UPDATE",
+        [productionId]
+      );
+      sourceRecord = processingRows[0] || production;
+    }
+    const sourceFirmId = String(
+      sourceType === "Production Processing" ? production.destinationFirmId || production.firmId || sourceRecord.firmId || "" : production.sourceFirmId || production.firmId || ""
+    ).trim();
     const orderFirmId = String(production.orderFirmId || order?.firmId || "").trim();
     if (!sourceFirmId || !orderFirmId || sourceFirmId === orderFirmId) {
       await conn.rollback();
       return;
     }
     const [routes] = await conn.query("SELECT routeDestinationFirmId FROM `firms` WHERE routeSourceFirmId = ? AND routeActive = 'Yes' ORDER BY routeSequence ASC LIMIT 1", [sourceFirmId]);
-    const destinationFirmId = String(production.destinationFirmId || routes[0]?.routeDestinationFirmId || orderFirmId).trim();
+    const destinationFirmId = String(routes[0]?.routeDestinationFirmId || orderFirmId).trim();
     if (!destinationFirmId || destinationFirmId === sourceFirmId) {
       await conn.rollback();
       return;
@@ -2206,20 +2216,20 @@ async function automateInterFirmProduction(db, productionId, sourceType = "Produ
     const sourceTransactionId = productionId;
     const sourceTransactionType = sourceType;
     const now = (/* @__PURE__ */ new Date()).toISOString();
-    const qty = Number(production.qty || production.productionOutputQty || 0);
-    const itemId = String(production.itemId || production.npdId || "");
-    const rate = Number(production.rate || order?.rate || 0);
-    const gstRate = Number(production.gstRate || order?.gstRate || 0);
+    const qty = Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0);
+    const itemId = String(sourceRecord.itemId || production.itemId || sourceRecord.npdId || production.npdId || "");
+    const rate = Number(sourceRecord.rate || production.rate || order?.rate || 0);
+    const gstRate = Number(sourceRecord.gstRate || production.gstRate || order?.gstRate || 0);
     const pendingId = crypto.randomUUID();
-    await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, productionId, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, production.itemSource || "FG", production.npdId || itemId, qty, production.uom || "", rate, gstRate, now]);
+    await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, now]);
     const [pendingRows] = await conn.query("SELECT * FROM `inter_firm_pending_invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
     const pending = pendingRows[0];
     const [existingMrr] = await conn.query("SELECT id, transactionNo FROM `material_in` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
     let mrr = existingMrr[0];
     if (!mrr) {
       const mrrId = crypto.randomUUID();
-      const transactionNo = await generateLockedMrrNo(db, String(production.date || now.slice(0, 10)));
-      await conn.query(`INSERT INTO material_in (id, firmId, transactionNo, mrrType, timestamp, entryEmailId, date, invoiceNo, supplierId, totalPoValue, totalInvoiceValue, totalActualValue, totalInvoiceValueAfterGst, totalAmount, lines, status, mrrSource, autoGenerated, interFirmFlow, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, linkedInvoiceId, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'FG Purchase', ?, 'system', ?, '', ?, ?, ?, ?, ?, ?, ?, 'Pending Tally', 'System Generated', 'Yes', 'Yes', ?, ?, ?, ?, NULL, 'System', ?)`, [mrrId, destinationFirmId, transactionNo, now, String(production.date || now.slice(0, 10)), sourceFirmId, qty * rate, qty * rate, qty * rate, qty * rate * (1 + gstRate / 100), qty * rate * (1 + gstRate / 100), JSON.stringify([{ itemId, qty, rate, gstRate }]), sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, now]);
+      const transactionNo = await generateLockedMrrNo(db, String(sourceRecord.date || production.date || now.slice(0, 10)));
+      await conn.query(`INSERT INTO material_in (id, firmId, transactionNo, mrrType, timestamp, entryEmailId, date, invoiceNo, supplierId, totalPoValue, totalInvoiceValue, totalActualValue, totalInvoiceValueAfterGst, totalAmount, lines, status, mrrSource, autoGenerated, interFirmFlow, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, linkedInvoiceId, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'FG Purchase', ?, 'system', ?, '', ?, ?, ?, ?, ?, ?, ?, 'Pending Tally', 'System Generated', 'Yes', 'Yes', ?, ?, ?, ?, NULL, 'System', ?)`, [mrrId, destinationFirmId, transactionNo, now, String(sourceRecord.date || production.date || now.slice(0, 10)), sourceFirmId, qty * rate, qty * rate, qty * rate, qty * rate * (1 + gstRate / 100), qty * rate * (1 + gstRate / 100), JSON.stringify([{ itemId, qty, rate, gstRate }]), sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, now]);
       mrr = { id: mrrId, transactionNo };
     }
     const [existingGate] = await conn.query("SELECT id, gateEntryNo FROM `gate_entries` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
