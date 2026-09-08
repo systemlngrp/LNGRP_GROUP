@@ -2020,6 +2020,51 @@ async function ensureColumnExists(db, database, table, column, type) {
   if (rows.length > 0) return;
   await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`);
 }
+async function dropConfirmedUnusedColumns(db, database, columns) {
+  for (const candidate of columns) {
+    const { table, column } = candidate;
+    try {
+      const [columnRows] = await db.query(
+        "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+        [database, table, column]
+      );
+      if (!columnRows.length) {
+        console.log(`[DB] Deprecated column already absent: ${table}.${column}`);
+        continue;
+      }
+      const [indexRows] = await db.query(
+        "SELECT DISTINCT INDEX_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+        [database, table, column]
+      );
+      const [constraintRows] = await db.query(
+        "SELECT DISTINCT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
+        [database, table, column]
+      );
+      const [viewRows] = await db.query(
+        "SELECT TABLE_NAME FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ? AND VIEW_DEFINITION LIKE ? LIMIT 1",
+        [database, `%${table}%${column}%`]
+      );
+      const [triggerRows] = await db.query(
+        "SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = ? AND ACTION_STATEMENT LIKE ? LIMIT 1",
+        [database, `%${column}%`]
+      );
+      const dependencies = [
+        ...indexRows.map((row) => `index ${row.INDEX_NAME}`),
+        ...constraintRows.map((row) => `constraint ${row.CONSTRAINT_NAME}`),
+        ...viewRows.map((row) => `view ${row.TABLE_NAME}`),
+        ...triggerRows.map((row) => `trigger ${row.TRIGGER_NAME}`)
+      ];
+      if (dependencies.length) {
+        console.warn(`[DB] Skipping deprecated column ${table}.${column}; dependencies found: ${dependencies.join(", ")}`);
+        continue;
+      }
+      await db.query(`ALTER TABLE \`${table}\` DROP COLUMN \`${column}\``);
+      console.log(`[DB] Dropped confirmed unused column ${table}.${column}`);
+    } catch (error) {
+      console.warn(`[DB] Could not clean deprecated column ${table}.${column}:`, error.message);
+    }
+  }
+}
 const INTER_FIRM_COLUMNS = [
   ["orderFirmId", "VARCHAR(36)"],
   ["sourceFirmId", "VARCHAR(36)"],
@@ -6079,20 +6124,7 @@ async function initDb(retries = 5) {
         { table: "productions", column: "realizationApprovalStatus" },
         { table: "productions", column: "wastageApproval" }
       ];
-      for (const m of dropMigrations) {
-        try {
-          const [columns] = await db.query(
-            "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
-            [database, m.table, m.column]
-          );
-          if (columns.length > 0) {
-            console.log(`[DB] Dropping deprecated column ${m.column} from table ${m.table}...`);
-            await db.query(`ALTER TABLE \`${m.table}\` DROP COLUMN \`${m.column}\``);
-          }
-        } catch (err) {
-          console.warn(`[DB] Could not drop column ${m.column} from ${m.table}:`, err.message);
-        }
-      }
+      await dropConfirmedUnusedColumns(db, database, dropMigrations);
       try {
         const [rows] = await db.query(
           "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_NAME = 'invoice_line_items' AND CONSTRAINT_NAME = 'fk_invoice_line_items_itemId_items' AND REFERENCED_TABLE_NAME = 'items'"
