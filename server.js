@@ -2084,8 +2084,9 @@ async function fetchFirmWiseNpdItems(db, options) {
   }
   const rows = base.rows.map((row) => {
     const firmStocks = {};
+    const rowKeys = [row.id, row.npdId].map((value) => String(value || "").trim()).filter(Boolean);
     for (const firm of firms) {
-      const source = stocks.get(String(row.id))?.get(firm.id);
+      const source = rowKeys.reduce((found, key) => found || stocks.get(key)?.get(firm.id), null);
       const opening = Number(source?.opening || 0);
       const receipt = Number(source?.receipt || 0);
       const production = Number(source?.production || 0);

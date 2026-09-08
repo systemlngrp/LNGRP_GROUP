@@ -2384,7 +2384,8 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   }
   const rows = base.rows.map((row) => {
     const firmStocks: Record<string, any> = {};
-    for (const firm of firms) { const source = stocks.get(String(row.id))?.get(firm.id); const opening = Number(source?.opening || 0); const receipt = Number(source?.receipt || 0); const production = Number(source?.production || 0); const invoiced = Number(source?.invoiced || 0); const balance = opening + receipt + production - invoiced; const rate = Number(row.rate || 0); firmStocks[firm.id] = { opening, receipt, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation: Number(source?.corrugation || 0) }; }
+    const rowKeys = [row.id, row.npdId].map((value) => String(value || "").trim()).filter(Boolean);
+    for (const firm of firms) { const source = rowKeys.reduce((found, key) => found || stocks.get(key)?.get(firm.id), null as any); const opening = Number(source?.opening || 0); const receipt = Number(source?.receipt || 0); const production = Number(source?.production || 0); const invoiced = Number(source?.invoiced || 0); const balance = opening + receipt + production - invoiced; const rate = Number(row.rate || 0); firmStocks[firm.id] = { opening, receipt, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation: Number(source?.corrugation || 0) }; }
     return { ...row, firmStocks };
   });
   return { rows, total: base.total, firms };

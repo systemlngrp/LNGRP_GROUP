@@ -12,6 +12,7 @@ import {
   Production,
   Setting,
   SampleRequest,
+  Firm,
 } from "../types";
 import { Spinner } from "../components/Spinner";
 
@@ -225,6 +226,7 @@ export function ProductionForm() {
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [sampleRequests, setSampleRequests] = useData<SampleRequest>("sample_requests", []);
   const [settings] = useData<Setting>("settings", []);
+  const [firms] = useData<Firm>("firms", []);
   const [npdItems, setNpdItems] = useState<Item[]>([]);
   const { resolveOrderItem } = useOrderItemCatalog();
 
@@ -785,6 +787,13 @@ export function ProductionForm() {
     const qty = Number(formData.qty);
     if (qty <= 0 || quantityDeviationError || maximumAllowedProductionError || gsmValidationError) return;
 
+    const firmByName = (name: string) => firms.find((firm) => String(firm.firmName || "").trim().toLowerCase().includes(name.toLowerCase()));
+    const productionLabel = `${String((selectedItem as any).category || "")} ${String((selectedItem as any).boxType || "")} ${String((selectedItem as any).typeName || "")} ${String((selectedOrder as any).jobType || "")}`.toLowerCase();
+    const isCorrugation = productionLabel.includes("corrug");
+    const isPrinting = productionLabel.includes("printing") || productionLabel.includes("print");
+    const forcedFirm = isCorrugation ? firmByName("unit 1") : isPrinting ? firmByName("unit 2") : undefined;
+    const productionFirmId = String(forcedFirm?.id || currentActiveFirmId).trim();
+
     setIsSubmitting(true);
     try {
       const timestamp = new Date().toISOString();
@@ -806,8 +815,9 @@ export function ProductionForm() {
         updatedBy: "System User",
         updateTimestamp: timestamp,
         orderFirmId: selectedOrderFirmId || undefined,
-        sourceFirmId: currentActiveFirmId || undefined,
-        interFirmFlow: currentActiveFirmId && selectedOrderFirmId && currentActiveFirmId !== selectedOrderFirmId ? "Yes" : "No",
+        sourceFirmId: productionFirmId || undefined,
+        firmId: productionFirmId || undefined,
+        interFirmFlow: productionFirmId && selectedOrderFirmId && productionFirmId !== selectedOrderFirmId ? "Yes" : "No",
         ...Object.fromEntries(
           Object.entries(formData).filter(([key]) => !["date", "qty", "remarks"].includes(key))
         ),
