@@ -2335,6 +2335,36 @@ async function ensureColumnExists(db: mysql.Pool, database: string, table: strin
   await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`);
 }
 
+async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
+  const base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any }) as { rows: any[]; total: number };
+  const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
+  const firms = (firmRows as any[]).filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
+  const itemIds = base.rows.map((row) => String(row.id || "").trim()).filter(Boolean);
+  const stocks = new Map<string, Map<string, any>>();
+  const ensure = (itemId: string, firmId: string) => {
+    if (!firmId) return null;
+    if (!stocks.has(itemId)) stocks.set(itemId, new Map());
+    const byFirm = stocks.get(itemId)!;
+    if (!byFirm.has(firmId)) byFirm.set(firmId, { opening: 0, receipt: 0, production: 0, invoiced: 0, tallyStock: null, tallyTimestamp: null, corrugation: 0 });
+    return byFirm.get(firmId);
+  };
+  const placeholders = itemIds.map(() => "?").join(",");
+  if (itemIds.length) {
+    const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
+    for (const row of receipts as any[]) { const id = String(row.npdId || row.itemId || ""); const firm = String(row.destinationFirmId || row.firmId || ""); const stock = ensure(id, firm); if (stock) stock.receipt += Number(row.qty || 0); }
+    const [productions] = await db.query(`SELECT p.firmId, p.destinationFirmId, COALESCE(NULLIF(p.npdId,''), p.itemId) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
+    for (const row of productions as any[]) { const firm = String(row.destinationFirmId || row.firmId || ""); const stock = ensure(String(row.itemId || ""), firm); if (stock) { stock.production += Number(row.qty || 0); stock.corrugation += Number(row.corrugation || 0); } }
+    const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
+    for (const row of invoices as any[]) { const stock = ensure(String(row.itemId || ""), String(row.firmId || "")); if (stock) stock.invoiced += Number(row.qty || 0); }
+  }
+  const rows = base.rows.map((row) => {
+    const firmStocks: Record<string, any> = {};
+    for (const firm of firms) { const source = stocks.get(String(row.id))?.get(firm.id); const opening = Number(source?.opening || 0); const receipt = Number(source?.receipt || 0); const production = Number(source?.production || 0); const invoiced = Number(source?.invoiced || 0); const balance = opening + receipt + production - invoiced; const rate = Number(row.rate || 0); firmStocks[firm.id] = { opening, receipt, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation: Number(source?.corrugation || 0) }; }
+    return { ...row, firmStocks };
+  });
+  return { rows, total: base.total, firms };
+}
+
 type DeprecatedColumn = { table: string; column: string };
 
 async function dropConfirmedUnusedColumns(db: mysql.Pool, database: string, columns: DeprecatedColumn[]) {
@@ -7135,6 +7165,12 @@ const createHandlers = (tableName: string) => {
             search,
             status,
           });
+        } else if (tableName === "npd-firm-wise") {
+          const page = Math.max(1, Number(req.query.page || 1));
+          const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
+          const statusParam = String(req.query.status || "active").trim().toLowerCase();
+          const result = await fetchFirmWiseNpdItems(db, { search: String(req.query.search || "").trim(), status: statusParam, limit: pageSize, offset: (page - 1) * pageSize });
+          return res.json({ ...result, page, pageSize, search: String(req.query.search || ""), status: statusParam });
         } else if (tableName === "production_processing") {
           const processingFirmWhere = requestFirmId ? `WHERE ${buildFirmScopeCondition("pp", requestFirmId)}` : "";
           [rows] = await db.query(`
@@ -8951,7 +8987,7 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
 });
 
 // Routes
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();

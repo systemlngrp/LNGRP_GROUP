@@ -272,6 +272,33 @@ export interface MaterialReturnReelLine {
   updateTimestamp?: string;
 }
 
+export interface NpdFirmStock {
+  opening: number;
+  receipt: number;
+  production: number;
+  invoiced: number;
+  balance: number;
+  tallyStock: number | null;
+  tallyTimestamp: string | null;
+  rate: number;
+  value: number;
+  corrugation: number;
+}
+
+export interface NpdFirmWiseRow {
+  id: string;
+  firmStocks: Record<string, NpdFirmStock>;
+  [key: string]: any;
+}
+
+export interface NpdFirmWiseResponse {
+  rows: NpdFirmWiseRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  firms: Firm[];
+}
+
 export interface MaterialFirmOpening {
   id: string;
   materialId: string;

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, Download } from "lucide-react";
 import { Spinner } from "../components/Spinner";
+import { ExcelExport } from "../components/ExcelExport";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
 import { useData } from "../hooks/useData";
@@ -9,10 +10,11 @@ import { NPD_COLUMNS } from "../lib/npdCardConfig";
 import { downloadNpdCardPdf } from "../lib/npdCardPdf";
 import { normalizeOrderCatalogItem } from "../lib/orderItems";
 import { calculateInternalRapc, calculateInternalUps } from "../lib/internalUps";
-import type { Setting } from "../types";
+import type { Firm, NpdFirmStock, Setting } from "../types";
 
 type NpdRecord = {
   id: string;
+  firmStocks?: Record<string, NpdFirmStock>;
   [key: string]: string | number | boolean | null | undefined;
 };
 
@@ -65,14 +67,29 @@ export function NpdMaster() {
   const [consumableDrafts, setConsumableDrafts] = useState<Record<string, boolean>>({});
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});
   const [rowSaveStates, setRowSaveStates] = useState<Record<string, RowSaveState>>({});
+  const [firms, setFirms] = useState<Firm[]>([]);
   const [phpRows] = useData<any>("php_item_master", []);
   const [plateRows] = useData<any>("plate_item_master", []);
   const [settings] = useData<Setting>("settings", []);
 
-  const tableColumns = useMemo(
-    () => [...NPD_COLUMNS, { key: "consumable", label: "Consumable" }],
-    []
-  );
+  const tableColumns = useMemo(() => [...NPD_COLUMNS.filter((column) => !["opening", "receipt", "production", "invoiced", "balance", "tallyStock", "tallyTimestamp", "stockValue"].includes(column.key)), { key: "consumable", label: "Consumable" }], []);
+  const firmColumns = [
+    { key: "opening", label: "Opening" }, { key: "receipt", label: "Receipt" }, { key: "production", label: "Production" },
+    { key: "invoiced", label: "Invoiced" }, { key: "balance", label: "Balance" }, { key: "tallyStock", label: "Tally Stock" },
+    { key: "tallyTimestamp", label: "Tally Timestamp" }, { key: "value", label: "Value" }, { key: "corrugation", label: "Corrugation" },
+  ] as const;
+  const exportRows = useMemo(() => rows.map((row, index) => Object.fromEntries([
+    ["SL No", (page - 1) * pageSize + index + 1],
+    ...tableColumns.map((column) => [column.label, row[column.key] ?? ""]),
+    ...firms.flatMap((firm) => firmColumns.map((column) => [`${firm.firmName} ${column.label}`, row.firmStocks?.[firm.id]?.[column.key] ?? ""])),
+  ])), [firms, firmColumns, page, pageSize, rows, tableColumns]);
+
+  useEffect(() => {
+    const token = window.localStorage.getItem("authToken") || "";
+    void fetch("/api/firms", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((response) => response.json()).then((value) => setFirms(Array.isArray(value) ? value.filter((firm) => String(firm.active || "Yes").toLowerCase() !== "no") : []))
+      .catch(() => setFirms([]));
+  }, []);
 
   const phpItems = useMemo(
     () => phpRows.map((row) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean),
@@ -96,7 +113,7 @@ export function NpdMaster() {
         if (customSearchTerm) params.set("search", customSearchTerm);
         params.set("status", "all");
 
-        const response = await fetch(`/api/npd?${params.toString()}`, {
+        const response = await fetch(`/api/npd-firm-wise?${params.toString()}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!response.ok) {
@@ -267,6 +284,7 @@ export function NpdMaster() {
             <span>{loading ? "Loading NPD items..." : pageLabel}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <ExcelExport data={exportRows} fileName="npd-items-firm-wise" sheetName="NPD Items" />
             <label className="flex items-center gap-2 text-xs font-black uppercase">
               Rows
               <select
@@ -315,9 +333,9 @@ export function NpdMaster() {
           <table className="min-w-max divide-y divide-black border-collapse border border-black">
             <thead className="bg-slate-100 divide-x divide-black sticky top-0 z-10">
               <tr className="divide-x divide-black">
-                <th className="border border-black px-3 py-3 text-right text-xs font-bold uppercase text-black align-top min-w-[72px] whitespace-nowrap">SL No</th>
+                <th rowSpan={2} className="border border-black px-3 py-3 text-right text-xs font-bold uppercase text-black align-top min-w-[72px] whitespace-nowrap">SL No</th>
                 {tableColumns.map((column) => (
-                  <th key={column.key} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase text-black align-top min-w-[92px] max-w-[180px] whitespace-normal break-words">
+                  <th rowSpan={2} key={column.key} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase text-black align-top min-w-[92px] max-w-[180px] whitespace-normal break-words">
                     <span className="block leading-4">
                       {getHeaderLines(column.label).map((line, index) => (
                         <span key={`${column.key}-${index}`} className="block">
@@ -327,15 +345,19 @@ export function NpdMaster() {
                     </span>
                   </th>
                 ))}
-                <th className="border border-black px-3 py-3 text-left text-xs font-bold uppercase text-black align-top min-w-[180px] whitespace-nowrap">
+                {firms.map((firm) => <th key={firm.id} colSpan={firmColumns.length} className="border border-black px-3 py-2 text-center text-xs font-bold uppercase text-black whitespace-nowrap">{firm.firmName}</th>)}
+                <th rowSpan={2} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase text-black align-top min-w-[180px] whitespace-nowrap">
                   Action
                 </th>
+              </tr>
+              <tr className="divide-x divide-black">
+                {firms.flatMap((firm) => firmColumns.map((column) => <th key={`${firm.id}-${column.key}`} className="border border-black px-2 py-2 text-left text-[10px] font-bold uppercase text-black min-w-[105px] whitespace-normal">{column.label}</th>))}
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {loading ? (
                 <tr>
-                  <td colSpan={tableColumns.length + 2} className="px-6 py-12">
+                  <td colSpan={1 + tableColumns.length + firms.length * firmColumns.length + 1} className="px-6 py-12">
                     <div className="flex items-center justify-center gap-3 text-black">
                       <Spinner size={28} />
                       <span className="font-semibold">Loading NPD items...</span>
@@ -344,7 +366,7 @@ export function NpdMaster() {
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={tableColumns.length + 2} className="px-6 py-8 text-center font-medium italic text-black">
+                  <td colSpan={1 + tableColumns.length + firms.length * firmColumns.length + 1} className="px-6 py-8 text-center font-medium italic text-black">
                     No NPD records found.
                   </td>
                 </tr>
@@ -408,6 +430,11 @@ export function NpdMaster() {
                           </td>
                         );
                       })}
+                      {firms.flatMap((firm) => firmColumns.map((column) => {
+                        const stock = row.firmStocks?.[firm.id];
+                        const value = stock?.[column.key];
+                        return <td key={`${firm.id}-${column.key}`} className="border border-black px-2 py-3 text-right text-sm text-black align-top whitespace-nowrap">{value === null || value === undefined || value === "" ? "-" : column.key === "tallyTimestamp" ? String(value) : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>;
+                      }))}
                       <td className="border border-black px-3 py-3 text-sm text-black align-top">
                         <div className="flex flex-col gap-2">
                           <button
