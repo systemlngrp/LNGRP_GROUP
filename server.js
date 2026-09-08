@@ -6517,13 +6517,35 @@ const createHandlers = (tableName) => {
           const search = String(req.query.search || "").trim();
           const statusParam = String(req.query.status || "active").trim().toLowerCase();
           const status = statusParam === "removed" || statusParam === "all" ? statusParam : "active";
-          const result = await fetchActiveNpdItems(db, {
-            search,
-            status,
-            limit: pageSize,
-            offset: (page - 1) * pageSize,
-            includeTotal: true
-          });
+          let result;
+          try {
+            result = await fetchActiveNpdItems(db, {
+              search,
+              status,
+              limit: pageSize,
+              offset: (page - 1) * pageSize,
+              includeTotal: true
+            });
+          } catch (error) {
+            console.error("[DB] NPD aggregation failed; using basic NPD fallback:", error);
+            const fallbackWhere = [];
+            const fallbackParams = [];
+            if (status !== "all") {
+              fallbackWhere.push("COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') " + (status === "removed" ? "=" : "<>") + " 'removed'");
+            }
+            if (search) {
+              const like = `%${search}%`;
+              fallbackWhere.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
+              fallbackParams.push(like, like, like, like, like, like);
+            }
+            const fallbackWhereSql = fallbackWhere.length ? `WHERE ${fallbackWhere.join(" AND ")}` : "";
+            const [fallbackRows] = await db.query(
+              `SELECT n.* FROM \`npd\` n ${fallbackWhereSql} ORDER BY n.npdId ASC LIMIT ? OFFSET ?`,
+              [...fallbackParams, pageSize, (page - 1) * pageSize]
+            );
+            const [fallbackCount] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${fallbackWhereSql}`, fallbackParams);
+            result = { rows: fallbackRows, total: Number(fallbackCount[0]?.total || 0) };
+          }
           const processedRows2 = result.rows.map((row) => normalizeFetchedRow(tableName, row));
           return res.json({
             rows: processedRows2,
