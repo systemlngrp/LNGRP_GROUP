@@ -764,6 +764,15 @@ export function ProductionForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedSchedule || !selectedOrder || !selectedItem || !formData.date) return;
+    const selectedOrderFirmId = String((selectedOrder as any).firmId || "").trim();
+    const currentActiveFirmId = String(activeFirmId || "").trim();
+    if (currentActiveFirmId && selectedOrderFirmId && currentActiveFirmId !== selectedOrderFirmId) {
+      const orderFirmName = String((selectedOrder as any).firmName || selectedOrderFirmId);
+      const confirmed = window.confirm(
+        `Active firm and Order firm are different.\n\nActive firm: ${currentActiveFirmId}\nOrder firm: ${orderFirmName}\n\nThis will create an inter-firm workflow. Continue only if this is intentional.`
+      );
+      if (!confirmed) return;
+    }
     if (hasMissingMandatoryLayerFields) {
       alert(`Please fill mandatory layer fields: ${missingMandatoryLayerFields.join(", ")}.`);
       return;
@@ -796,9 +805,9 @@ export function ProductionForm() {
         status: "Pending Consumption",
         updatedBy: "System User",
         updateTimestamp: timestamp,
-        orderFirmId: String((selectedOrder as any).firmId || "").trim() || undefined,
-        sourceFirmId: activeFirmId || undefined,
-        interFirmFlow: activeFirmId && String((selectedOrder as any).firmId || "").trim() && activeFirmId !== String((selectedOrder as any).firmId || "").trim() ? "Yes" : "No",
+        orderFirmId: selectedOrderFirmId || undefined,
+        sourceFirmId: currentActiveFirmId || undefined,
+        interFirmFlow: currentActiveFirmId && selectedOrderFirmId && currentActiveFirmId !== selectedOrderFirmId ? "Yes" : "No",
         ...Object.fromEntries(
           Object.entries(formData).filter(([key]) => !["date", "qty", "remarks"].includes(key))
         ),
