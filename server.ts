@@ -878,6 +878,9 @@ app.use("/api", (req, res, next) => {
     req.path.startsWith("/auth/") ||
     req.path === "/db-status" ||
     req.path.startsWith("/public/") ||
+    // Read-only stock report is intentionally accessible from a direct browser URL.
+    // All NPD create/update/delete endpoints remain protected below.
+    req.path.startsWith("/npd-firm-wise") ||
     req.path.startsWith("/npd-sync") ||
     req.path.startsWith("/tally-sync")
   ) return next();
