@@ -10,6 +10,7 @@ import { NPD_COLUMNS } from "../lib/npdCardConfig";
 import { downloadNpdCardPdf } from "../lib/npdCardPdf";
 import { normalizeOrderCatalogItem } from "../lib/orderItems";
 import { calculateInternalRapc, calculateInternalUps } from "../lib/internalUps";
+import { useAuth } from "../auth/AuthContext";
 import type { Firm, NpdFirmStock, Setting } from "../types";
 
 type NpdRecord = {
@@ -56,8 +57,10 @@ function formatStockValue(rate: NpdRecord[string], balance: NpdRecord[string]) {
 }
 
 export function NpdMaster() {
+  const { loading: authLoading, user } = useAuth();
   const [rows, setRows] = useState<NpdRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [searchInput, setSearchInput] = useState("");
@@ -85,11 +88,12 @@ export function NpdMaster() {
   ])), [firms, firmColumns, page, pageSize, rows, tableColumns]);
 
   useEffect(() => {
+    if (authLoading) return;
     const token = window.localStorage.getItem("authToken") || "";
     void fetch("/api/firms", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((response) => response.json()).then((value) => setFirms(Array.isArray(value) ? value.filter((firm) => String(firm.active || "Yes").toLowerCase() !== "no") : []))
       .catch(() => setFirms([]));
-  }, []);
+  }, [authLoading, user]);
 
   const phpItems = useMemo(
     () => phpRows.map((row) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean),
@@ -103,7 +107,12 @@ export function NpdMaster() {
   const loadRows = useCallback(
     async (showLoader = true, customSearchTerm = searchTerm) => {
       try {
+        if (authLoading) {
+          if (showLoader) setLoading(true);
+          return;
+        }
         if (showLoader) setLoading(true);
+        setLoadError("");
 
         const token = window.localStorage.getItem("authToken") || "";
         const params = new URLSearchParams({
@@ -117,7 +126,10 @@ export function NpdMaster() {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!response.ok) {
-          throw new Error("Failed to fetch NPD rows.");
+          const message = response.status === 401
+            ? "Session unauthorized. Please login again, then refresh NPD Items."
+            : "Failed to fetch NPD rows.";
+          throw new Error(message);
         }
         const result = await response.json();
         const nextRows = Array.isArray(result.rows) ? result.rows : [];
@@ -135,6 +147,7 @@ export function NpdMaster() {
         });
       } catch (error) {
         console.error("Failed to fetch NPD rows:", error);
+        setLoadError(error instanceof Error ? error.message : "Failed to fetch NPD rows.");
         if (showLoader || !page) {
           setRows([]);
           setTotal(0);
@@ -143,7 +156,7 @@ export function NpdMaster() {
         if (showLoader) setLoading(false);
       }
     },
-    [page, pageSize, searchTerm]
+    [authLoading, page, pageSize, searchTerm]
   );
 
   useEffect(() => {
@@ -362,6 +375,12 @@ export function NpdMaster() {
                       <Spinner size={28} />
                       <span className="font-semibold">Loading NPD items...</span>
                     </div>
+                  </td>
+                </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={1 + tableColumns.length + firms.length * firmColumns.length + 1} className="px-6 py-8 text-center font-semibold text-red-700">
+                    {loadError}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
