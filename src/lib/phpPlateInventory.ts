@@ -1,4 +1,5 @@
 import { LoadingSlip, OrderItemSource, Production } from "../types";
+import type { Firm } from "../types";
 
 type MasterRow = {
   id: string;
@@ -59,5 +60,28 @@ export function buildPhpPlateInventoryRows(masterRows: MasterRow[], jobs: Produc
       loadedQty,
       balance: openingQty + output - loadedQty,
     };
+  });
+}
+
+export function buildFirmWisePhpPlateInventoryRows(masterRows: MasterRow[], jobs: Production[], loadingSlips: LoadingSlip[], firms: Firm[], source: Extract<OrderItemSource, "PHP" | "PLATE">) {
+  return masterRows.map((row) => {
+    const firmStocks: Record<string, { opening: number; receipt: number; production: number; invoiced: number; balance: number }> = {};
+    for (const firm of firms) {
+      const firmId = String(firm.id || "").trim();
+      const production = jobs.reduce((sum, job) => {
+        const jobFirm = String(job.destinationFirmId || job.firmId || "").trim();
+        return jobFirm === firmId && job.status !== "Cancelled" && !job.cancelTimestamp && jobMatchesRow(job, row, source)
+          ? sum + toNumber(job.productionOutputQty)
+          : sum;
+      }, 0);
+      const invoiced = loadingSlips.reduce((sum, slip) => {
+        const slipFirm = String((slip as any).destinationFirmId || (slip as any).firmId || "").trim();
+        if (slipFirm !== firmId || slip.status === "Cancelled") return sum;
+        return sum + slip.lines.reduce((lineSum, line) => slipLineMatchesRow(line, row, source) ? lineSum + toNumber(line.loadedQty) : lineSum, 0);
+      }, 0);
+      const opening = String((row as any).firmId || "").trim() === firmId ? toNumber(row.openingQty) : 0;
+      firmStocks[firmId] = { opening, receipt: 0, production, invoiced, balance: opening + production - invoiced };
+    }
+    return { ...row, firmStocks };
   });
 }
