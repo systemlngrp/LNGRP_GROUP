@@ -2247,6 +2247,18 @@ async function fetchFirmWiseNpdItems(db, options) {
         addItemKey(row.erp, itemId);
         addItemKey(row.itemName, itemId);
     }
+    // The API is paginated, but historical production must resolve against the
+    // complete NPD master, not only the rows displayed on the current page.
+    const [allNpdRows] = await db.query("SELECT id, npdId, erp, itemName FROM `npd`");
+    for (const row of allNpdRows) {
+        const itemId = stringOrEmpty(row.id || row.npdId);
+        if (!itemId)
+            continue;
+        addItemKey(row.id, itemId);
+        addItemKey(row.npdId, itemId);
+        addItemKey(row.erp, itemId);
+        addItemKey(row.itemName, itemId);
+    }
     const resolveStockItemId = (...rawKeys) => {
         for (const rawKey of rawKeys) {
             const key = stringOrEmpty(rawKey);
@@ -2293,7 +2305,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             const [productions] = await db.query(`SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode, p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
             for (const row of productions) {
                 const isCorrugation = Number(row.corrugation || 0) > 0;
-                const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || sourceFirmFallback : row.destinationFirmId || row.firmId || destinationFirmFallback);
+                const firm = String(isCorrugation ? row.sourceFirmId || sourceFirmFallback : row.destinationFirmId || destinationFirmFallback);
                 const stock = ensure(resolveStockItemId(row.resolvedNpdId, row.npdId, row.itemId, row.erpCode, row.npdItemName), firm);
                 if (stock) {
                     stock.production += Number(row.qty || 0);
@@ -2316,7 +2328,7 @@ async function fetchFirmWiseNpdItems(db, options) {
       `);
             for (const row of processedOutputs) {
                 const isCorrugation = Number(row.corrugation || 0) > 0;
-                const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || sourceFirmFallback : row.destinationFirmId || row.firmId || destinationFirmFallback);
+                const firm = String(isCorrugation ? row.sourceFirmId || sourceFirmFallback : row.destinationFirmId || destinationFirmFallback);
                 const stock = ensure(resolveStockItemId(row.resolvedNpdId, row.npdId, row.itemId, row.erpCode, row.npdItemName), firm);
                 if (stock) {
                     stock.production += Number(row.qty || 0);
