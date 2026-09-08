@@ -729,6 +729,7 @@ function hasPermission(user: AuthUser, required: string) {
 }
 
 const AUTH_COOKIE_NAME = "lngrp_auth";
+const APP_BUILD_MARKER = "lngrp-erp-2026-09-08-npd-firm-wise-public-v2";
 
 function getCookieValue(req: express.Request, name: string) {
   const prefix = `${name}=`;
@@ -872,10 +873,15 @@ app.post("/api/auth/logout", requireAuth, async (_req, res) => {
   res.json({ success: true });
 });
 
+app.get("/api/version", (_req, res) => {
+  res.json({ build: APP_BUILD_MARKER });
+});
+
 // Protect all /api routes except auth + public integrations
 app.use("/api", (req, res, next) => {
   if (
     req.path.startsWith("/auth/") ||
+    req.path === "/version" ||
     req.path === "/db-status" ||
     req.path.startsWith("/public/") ||
     // Read-only stock report is intentionally accessible from a direct browser URL.
@@ -7282,6 +7288,7 @@ const createHandlers = (tableName: string) => {
           const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
           const statusParam = String(req.query.status || "active").trim().toLowerCase();
           const result = await fetchFirmWiseNpdItems(db, { search: String(req.query.search || "").trim(), status: statusParam, limit: pageSize, offset: (page - 1) * pageSize });
+          res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
           return res.json({ ...result, page, pageSize, search: String(req.query.search || ""), status: statusParam });
         } else if (tableName === "production_processing") {
           const processingFirmWhere = requestFirmId ? `WHERE ${buildFirmScopeCondition("pp", requestFirmId)}` : "";

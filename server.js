@@ -655,6 +655,7 @@ function hasPermission(user, required) {
   });
 }
 const AUTH_COOKIE_NAME = "lngrp_auth";
+const APP_BUILD_MARKER = "lngrp-erp-2026-09-08-npd-firm-wise-public-v2";
 function getCookieValue(req, name) {
   const prefix = `${name}=`;
   return String(req.headers.cookie || "").split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length) || "";
@@ -782,8 +783,11 @@ app.post("/api/auth/logout", requireAuth, async (_req, res) => {
   res.clearCookie(AUTH_COOKIE_NAME, { path: "/" });
   res.json({ success: true });
 });
+app.get("/api/version", (_req, res) => {
+  res.json({ build: APP_BUILD_MARKER });
+});
 app.use("/api", (req, res, next) => {
-  if (req.path.startsWith("/auth/") || req.path === "/db-status" || req.path.startsWith("/public/") || // Read-only stock report is intentionally accessible from a direct browser URL.
+  if (req.path.startsWith("/auth/") || req.path === "/version" || req.path === "/db-status" || req.path.startsWith("/public/") || // Read-only stock report is intentionally accessible from a direct browser URL.
   // All NPD create/update/delete endpoints remain protected below.
   req.path.startsWith("/npd-firm-wise") || req.path.startsWith("/npd-sync") || req.path.startsWith("/tally-sync")) return next();
   return requireAuth(req, res, next);
@@ -6626,6 +6630,7 @@ const createHandlers = (tableName) => {
           const pageSize = Math.min(1e4, Math.max(25, Number(req.query.pageSize || 1e4)));
           const statusParam = String(req.query.status || "active").trim().toLowerCase();
           const result = await fetchFirmWiseNpdItems(db, { search: String(req.query.search || "").trim(), status: statusParam, limit: pageSize, offset: (page - 1) * pageSize });
+          res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
           return res.json({ ...result, page, pageSize, search: String(req.query.search || ""), status: statusParam });
         } else if (tableName === "production_processing") {
           const processingFirmWhere = requestFirmId ? `WHERE ${buildFirmScopeCondition("pp", requestFirmId)}` : "";
