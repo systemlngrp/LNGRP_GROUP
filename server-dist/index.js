@@ -1752,6 +1752,17 @@ function toFiniteNumber(value) {
 function stringOrEmpty(value) {
     return String(value ?? "").trim();
 }
+function normalizeNpdLookupKey(value) {
+    return stringOrEmpty(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+async function resolveNpdId(db, ...values) {
+    const keys = new Set(values.map(normalizeNpdLookupKey).filter(Boolean));
+    if (!keys.size)
+        return "";
+    const [rows] = await db.query("SELECT id, npdId, erp, itemName FROM `npd`");
+    const match = rows.find((row) => [row.id, row.npdId, row.erp, row.itemName].some((value) => keys.has(normalizeNpdLookupKey(value))));
+    return stringOrEmpty(match?.id);
+}
 function normalizeConsumableValue(value) {
     if (typeof value === "boolean")
         return value;
@@ -2267,7 +2278,7 @@ async function fetchFirmWiseNpdItems(db, options) {
                 if (stock)
                     stock.receipt += Number(row.qty || 0);
             }
-            const [productions] = await db.query(`SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode, COALESCE(NULLIF(p.npdId,''), p.itemId) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
+            const [productions] = await db.query(`SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode, COALESCE(NULLIF(pn.id,''), NULLIF(p.npdId,''), p.itemId, p.erpCode) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
             for (const row of productions) {
                 const isCorrugation = Number(row.corrugation || 0) > 0;
                 const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || "" : row.destinationFirmId || row.firmId || "");
@@ -2279,7 +2290,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             }
             const [processedOutputs] = await db.query(`
         SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode,
-          COALESCE(NULLIF(p.npdId, ''), p.itemId) AS itemId,
+          COALESCE(NULLIF(pn.id, ''), NULLIF(p.npdId, ''), p.itemId, p.erpCode) AS itemId,
           COALESCE(pp.qty, 0) AS qty,
           CASE WHEN LOWER(COALESCE(pp.machineName, '')) LIKE '%corrug%'
             OR LOWER(COALESCE(p.category, '')) LIKE '%corrug%'
@@ -2287,6 +2298,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             THEN COALESCE(pp.qty, 0) ELSE 0 END AS corrugation
         FROM production_processing pp
         JOIN productions p ON p.id = pp.productionId
+        LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode
         WHERE LOWER(COALESCE(pp.completionStatus, '')) = 'full'
           AND (p.status <> 'Cancelled' OR p.status IS NULL)
       `);
@@ -7824,6 +7836,11 @@ const createHandlers = (tableName) => {
                         delete data[key];
                     }
                 });
+                if (tableName === "productions") {
+                    const resolvedNpdId = await resolveNpdId(db, data.npdId, data.itemId, data.erpCode, data.masterErp, data.itemName);
+                    if (resolvedNpdId)
+                        data.npdId = resolvedNpdId;
+                }
                 const keys = Object.keys(data);
                 if (keys.length === 0) {
                     return res.status(400).json({ error: "No valid columns provided." });
