@@ -2214,40 +2214,68 @@ async function fetchFirmWiseNpdItems(db, options) {
     }
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
     const firms = firmRows.filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
-    const itemIds = base.rows.map((row) => String(row.id || "").trim()).filter(Boolean);
+    const keyToItemId = new Map();
+    const addItemKey = (rawKey, itemId) => {
+        const key = stringOrEmpty(rawKey);
+        if (key)
+            keyToItemId.set(key.toLowerCase(), itemId);
+    };
+    for (const row of base.rows) {
+        const itemId = stringOrEmpty(row.id || row.npdId);
+        if (!itemId)
+            continue;
+        addItemKey(row.id, itemId);
+        addItemKey(row.npdId, itemId);
+        addItemKey(row.erp, itemId);
+    }
+    const resolveStockItemId = (...rawKeys) => {
+        for (const rawKey of rawKeys) {
+            const key = stringOrEmpty(rawKey);
+            if (!key)
+                continue;
+            const matched = keyToItemId.get(key.toLowerCase());
+            if (matched)
+                return matched;
+            if (keyToItemId.has(key))
+                return key;
+        }
+        return "";
+    };
+    const itemIds = Array.from(new Set(base.rows.map((row) => stringOrEmpty(row.id || row.npdId)).filter(Boolean)));
     const stocks = new Map();
     const ensure = (itemId, firmId) => {
-        if (!firmId)
+        const resolvedItemId = resolveStockItemId(itemId) || stringOrEmpty(itemId);
+        if (!resolvedItemId || !firmId)
             return null;
-        if (!stocks.has(itemId))
-            stocks.set(itemId, new Map());
-        const byFirm = stocks.get(itemId);
+        if (!stocks.has(resolvedItemId))
+            stocks.set(resolvedItemId, new Map());
+        const byFirm = stocks.get(resolvedItemId);
         if (!byFirm.has(firmId))
             byFirm.set(firmId, { opening: 0, receipt: 0, production: 0, invoiced: 0, tallyStock: null, tallyTimestamp: null, corrugation: 0 });
         return byFirm.get(firmId);
     };
-    const placeholders = itemIds.map(() => "?").join(",");
     if (itemIds.length) {
         try {
             const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
             for (const row of receipts) {
-                const id = String(row.npdId || row.itemId || "");
+                const id = resolveStockItemId(row.npdId, row.itemId);
                 const firm = String(row.destinationFirmId || row.firmId || "");
                 const stock = ensure(id, firm);
                 if (stock)
                     stock.receipt += Number(row.qty || 0);
             }
-            const [productions] = await db.query(`SELECT p.firmId, p.destinationFirmId, COALESCE(NULLIF(p.npdId,''), p.itemId) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
+            const [productions] = await db.query(`SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode, COALESCE(NULLIF(p.npdId,''), p.itemId) itemId, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
             for (const row of productions) {
-                const firm = String(row.destinationFirmId || row.firmId || "");
-                const stock = ensure(String(row.itemId || ""), firm);
+                const isCorrugation = Number(row.corrugation || 0) > 0;
+                const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || "" : row.destinationFirmId || row.firmId || "");
+                const stock = ensure(resolveStockItemId(row.itemId, row.erpCode), firm);
                 if (stock) {
                     stock.production += Number(row.qty || 0);
                     stock.corrugation += Number(row.corrugation || 0);
                 }
             }
             const [processedOutputs] = await db.query(`
-        SELECT p.firmId, p.destinationFirmId,
+        SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode,
           COALESCE(NULLIF(p.npdId, ''), p.itemId) AS itemId,
           COALESCE(pp.qty, 0) AS qty,
           CASE WHEN LOWER(COALESCE(pp.machineName, '')) LIKE '%corrug%'
@@ -2260,8 +2288,9 @@ async function fetchFirmWiseNpdItems(db, options) {
           AND (p.status <> 'Cancelled' OR p.status IS NULL)
       `);
             for (const row of processedOutputs) {
-                const firm = String(row.destinationFirmId || row.firmId || "");
-                const stock = ensure(String(row.itemId || ""), firm);
+                const isCorrugation = Number(row.corrugation || 0) > 0;
+                const firm = String(isCorrugation ? row.sourceFirmId || row.firmId || "" : row.destinationFirmId || row.firmId || "");
+                const stock = ensure(resolveStockItemId(row.itemId, row.erpCode), firm);
                 if (stock) {
                     stock.production += Number(row.qty || 0);
                     stock.corrugation += Number(row.corrugation || 0);
@@ -2269,7 +2298,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             }
             const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
             for (const row of invoices) {
-                const stock = ensure(String(row.itemId || ""), String(row.firmId || ""));
+                const stock = ensure(resolveStockItemId(row.itemId), String(row.firmId || ""));
                 if (stock)
                     stock.invoiced += Number(row.qty || 0);
             }
