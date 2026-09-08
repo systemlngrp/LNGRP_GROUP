@@ -832,6 +832,24 @@ app.post("/api/auth/logout", requireAuth, async (_req, res) => {
 app.get("/api/version", (_req, res) => {
     res.json({ build: APP_BUILD_MARKER });
 });
+app.get("/api/npd-firm-wise", async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    try {
+        const page = Math.max(1, Number(req.query.page || 1));
+        const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
+        const status = String(req.query.status || "active").trim().toLowerCase();
+        const search = String(req.query.search || "").trim();
+        const result = await fetchFirmWiseNpdItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
+        res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
+        return res.json({ ...result, page, pageSize, search, status });
+    }
+    catch (error) {
+        console.error("[DB] Error fetching firm-wise NPD items:", error);
+        return res.status(500).json({ error: error.message || "Failed to fetch firm-wise NPD items" });
+    }
+});
 // Protect all /api routes except auth + public integrations
 app.use("/api", (req, res, next) => {
     if (req.path.startsWith("/auth/") ||
