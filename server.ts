@@ -20,6 +20,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[PROCESS] Unhandled rejection:", reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("[PROCESS] Uncaught exception:", error);
+});
+
 app.use(express.json({ limit: "50mb" }));
 
 app.get("/uploads/:filename", async (req, res, next) => {
@@ -11116,5 +11124,8 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((error) => {
+  console.error("[SERVER] Startup failed:", error);
+  process.exitCode = 1;
+});
 
