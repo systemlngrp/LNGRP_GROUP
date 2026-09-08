@@ -734,10 +734,13 @@ app.post("/api/auth/login", async (req, res) => {
     if (!identifier || !password) {
         return res.status(400).json({ error: "Missing credentials" });
     }
-    const db = await getPool();
-    if (!db)
-        return res.status(500).json({ error: "DB connection not available" });
     try {
+        // Keep pool initialization inside the handler's error boundary.  A
+        // connection/configuration failure here previously escaped the try/catch
+        // and appeared to the browser as an unhelpful generic HTTP 500.
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ error: "Database connection is not configured" });
         const [rows] = await db.query("SELECT * FROM `users` WHERE userId = ? OR email = ? LIMIT 1", [identifier, identifier]);
         const row = rows[0];
         if (!row) {
