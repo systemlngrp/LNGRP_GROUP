@@ -2407,7 +2407,10 @@ async function generateLockedMrrNo(db, dateStr) {
     if (!fy)
         throw new Error("Could not generate MRR number because date is invalid.");
     const key = `MI/${fy}`;
-    await db.query(`INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, 0) ON DUPLICATE KEY UPDATE counterKey = counterKey`, [key]);
+    await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
+     SELECT ?, COALESCE(MAX(CAST(SUBSTRING_INDEX(transactionNo, '/', -1) AS UNSIGNED)), 0)
+     FROM material_in WHERE transactionNo LIKE ?
+     ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [key, `${key}/%`]);
     await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [key]);
     const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
     return `MI/${fy}/${String(Number(rows[0]?.nextValue || 0)).padStart(5, "0")}`;
@@ -2420,7 +2423,7 @@ async function generateLockedGateEntryNo(db, dateStr) {
     await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
      SELECT ?, COALESCE(MAX(CAST(SUBSTRING_INDEX(gateEntryNo, '/', -1) AS UNSIGNED)), 0)
      FROM gate_entries WHERE gateEntryNo LIKE ?
-     ON DUPLICATE KEY UPDATE counterKey = counterKey`, [key, `${key}/%`]);
+     ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [key, `${key}/%`]);
     await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [key]);
     const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
     return `${key}/${String(Number(rows[0]?.nextValue || 0)).padStart(5, "0")}`;
@@ -2451,10 +2454,23 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             await conn.rollback();
             return;
         }
-        const sourceFirmId = String(sourceType === "Production Processing" || sourceType === "Production Output"
-            ? production.destinationFirmId || production.firmId || sourceRecord.firmId || ""
-            : production.sourceFirmId || production.firmId || "").trim();
         const orderFirmId = String(production.orderFirmId || order?.firmId || "").trim();
+        const isStageOne = sourceType === "Production";
+        const [firstRouteRows] = isStageOne
+            ? await conn.query(`SELECT routeSourceFirmId, routeDestinationFirmId
+           FROM firms
+           WHERE routeActive = 'Yes'
+             AND COALESCE(TRIM(routeSourceFirmId), '') <> ''
+             AND COALESCE(TRIM(routeDestinationFirmId), '') <> ''
+           ORDER BY routeSequence ASC LIMIT 1`)
+            : [[]];
+        const firstRoute = firstRouteRows[0] || null;
+        // Corrugation Liner is always the first configured inter-firm leg. This
+        // also repairs legacy jobs that were created while Unit 2 was active and
+        // therefore carry Unit 2 in productions.firmId.
+        const sourceFirmId = String(isStageOne
+            ? firstRoute?.routeSourceFirmId || production.sourceFirmId || production.firmId || ""
+            : production.destinationFirmId || production.firmId || sourceRecord.firmId || "").trim();
         if (!sourceFirmId || !orderFirmId) {
             console.warn("[INTER-FIRM] Skipped: source/order firm missing", { sourceId, sourceType, productionId, sourceFirmId, orderFirmId, orderId: production.orderId });
             await conn.rollback();
@@ -2465,7 +2481,9 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             return;
         }
         const [routes] = await conn.query("SELECT routeDestinationFirmId FROM `firms` WHERE routeSourceFirmId = ? AND routeActive = 'Yes' ORDER BY routeSequence ASC LIMIT 1", [sourceFirmId]);
-        const destinationFirmId = String(routes[0]?.routeDestinationFirmId || orderFirmId).trim();
+        const destinationFirmId = String(isStageOne && firstRoute?.routeSourceFirmId === sourceFirmId
+            ? firstRoute.routeDestinationFirmId
+            : routes[0]?.routeDestinationFirmId || orderFirmId).trim();
         if (!destinationFirmId || destinationFirmId === sourceFirmId) {
             console.warn("[INTER-FIRM] Skipped: destination route missing/invalid", { sourceId, sourceType, productionId, sourceFirmId, orderFirmId, destinationFirmId });
             await conn.rollback();
@@ -2495,6 +2513,11 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             return;
         }
         const itemId = String(sourceRecord.itemId || production.itemId || sourceRecord.npdId || production.npdId || "");
+        if (!itemId.trim()) {
+            console.warn("[INTER-FIRM] Skipped: item/NPD reference missing", { sourceId, sourceType, productionId });
+            await conn.rollback();
+            return;
+        }
         const rate = Number(sourceRecord.rate || production.rate || order?.rate || 0);
         const gstRate = Number(sourceRecord.gstRate || production.gstRate || order?.gstRate || 0);
         const pendingId = crypto.randomUUID();
@@ -2537,6 +2560,47 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
     }
     finally {
         conn.release();
+    }
+}
+async function reconcileCompletedCorrugationInterFirm(db) {
+    try {
+        const [rows] = await db.query(`
+      SELECT DISTINCT p.id, p.transactionNo, p.jobCardNo
+      FROM production_processing pp
+      INNER JOIN productions p ON p.id = pp.productionId
+      WHERE LOWER(TRIM(COALESCE(pp.completionStatus, ''))) = 'full'
+        AND LOWER(TRIM(COALESCE(pp.machineName, ''))) IN ('corrugation liner', 'corrugation linear')
+        AND (p.status IS NULL OR LOWER(TRIM(p.status)) <> 'cancelled')
+    `);
+        let repaired = 0;
+        let failed = 0;
+        for (const row of rows) {
+            try {
+                const [beforeRows] = await db.query(`SELECT id FROM inter_firm_pending_invoices
+           WHERE sourceTransactionType = 'Production' AND sourceTransactionId = ? AND status <> 'Cancelled'
+           LIMIT 1`, [String(row.id)]);
+                await automateInterFirmProduction(db, String(row.id), "Production");
+                const [afterRows] = await db.query(`SELECT id FROM inter_firm_pending_invoices
+           WHERE sourceTransactionType = 'Production' AND sourceTransactionId = ? AND status <> 'Cancelled'
+           LIMIT 1`, [String(row.id)]);
+                if (!beforeRows.length && afterRows.length)
+                    repaired += 1;
+            }
+            catch (error) {
+                failed += 1;
+                console.error("[INTER-FIRM] Corrugation reconciliation failed", {
+                    productionId: row.id,
+                    jobNo: row.jobCardNo || row.transactionNo,
+                    error: error.message,
+                });
+            }
+        }
+        console.log("[INTER-FIRM] Corrugation reconciliation complete", { scanned: rows.length, repaired, failed });
+    }
+    catch (error) {
+        // Reconciliation must not prevent the ERP from starting. New saves still
+        // run the same idempotent automation path and the next restart retries.
+        console.error("[INTER-FIRM] Corrugation reconciliation could not run", error);
     }
 }
 function getDispatchPlanFinancialYear(dateValue) {
@@ -10246,6 +10310,9 @@ entities.forEach(entity => {
 // mysql2 handles objects/arrays as JSON if specified in the query.
 async function startServer() {
     await initDb();
+    const db = await getPool();
+    if (db)
+        await reconcileCompletedCorrugationInterFirm(db);
     if (process.env.NODE_ENV !== "production") {
         const vite = await createViteServer({
             server: { middlewareMode: true },
