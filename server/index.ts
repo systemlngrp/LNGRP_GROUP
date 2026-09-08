@@ -9,6 +9,19 @@ import crypto from "crypto";
 import { exec } from "child_process";
 import util from "util";
 import { GoogleGenAI } from "@google/genai";
+import {
+  APP_BUILD_MARKER,
+  AUTH_SECRET,
+  AUTH_TTL_SECONDS,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_API_KEY,
+  GLOBAL_ITEM_RENAME_ALLOWED_EMAIL,
+  NPD_SYNC_ALLOWED_TAB,
+  NPD_SYNC_LOG_PREFIX,
+  NPD_SYNC_SECRET,
+  PORT,
+  TALLY_SYNC_SECRET,
+} from "./config.js";
 
 const execPromise = util.promisify(exec);
 
@@ -18,8 +31,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = parseInt(process.env.PORT || "3000", 10);
-
 process.on("unhandledRejection", (reason) => {
   console.error("[PROCESS] Unhandled rejection:", reason);
 });
@@ -67,15 +78,6 @@ type AuthUser = {
   truckId?: string | null;
 };
 
-const AUTH_SECRET = process.env.AUTH_SECRET || "dev-auth-secret-change-me";
-const AUTH_TTL_SECONDS = Number(process.env.AUTH_TTL_SECONDS || 60 * 60 * 24); // 24h
-const GLOBAL_ITEM_RENAME_ALLOWED_EMAIL = "pankaj@bizskilledu.com";
-const NPD_SYNC_SECRET = String(process.env.NPD_SYNC_SECRET || "").trim();
-const NPD_SYNC_ALLOWED_TAB = String(process.env.NPD_SYNC_ALLOWED_TAB || "NPD").trim();
-const NPD_SYNC_LOG_PREFIX = "[NPD_SYNC]";
-const TALLY_SYNC_SECRET = String(process.env.TALLY_SYNC_SECRET || "!Office1@").trim();
-const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || "").trim();
-const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
 const REMOVED_FIRM_SCOPE_TABLES = [
   "boardline_qc_checks",
   "dispatch_plans",
@@ -737,8 +739,6 @@ function hasPermission(user: AuthUser, required: string) {
 }
 
 const AUTH_COOKIE_NAME = "lngrp_auth";
-const APP_BUILD_MARKER = "lngrp-erp-2026-09-08-npd-firm-wise-public-v2";
-
 function getCookieValue(req: express.Request, name: string) {
   const prefix = `${name}=`;
   return String(req.headers.cookie || "").split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length) || "";
