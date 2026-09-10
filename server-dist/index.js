@@ -2570,7 +2570,9 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             return;
         }
         const rate = Number(sourceRecord.rate || production.rate || order?.rate || 0);
-        const gstRate = Number(sourceRecord.gstRate || production.gstRate || order?.gstRate || 0);
+        // Inter-firm transfers use the fixed internal GST rate, independent of
+        // the customer order/item GST configuration. Manual MRRs are unaffected.
+        const gstRate = 18;
         const pendingId = crypto.randomUUID();
         await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, now]);
         const [pendingRows] = await conn.query("SELECT * FROM `inter_firm_pending_invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
