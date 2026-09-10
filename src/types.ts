@@ -1375,6 +1375,7 @@ export interface Setting {
   id: string;
   reelAsPerCalculation?: string;
   reelTransferWindowHours?: number;
+  interFirmRatePercent?: number;
   reelErpStartNumber?: number;
   ourReelNoStartNumber?: number;
   otherMaterialErpStartNumber?: number;

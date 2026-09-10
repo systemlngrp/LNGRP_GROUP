@@ -365,6 +365,7 @@ export function SettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [designationDraft, setDesignationDraft] = useState<string[]>([]);
   const [newDesignation, setNewDesignation] = useState("");
+  const [interFirmRateDraft, setInterFirmRateDraft] = useState("92");
   const [organizationDraft, setOrganizationDraft] = useState({
     organizationName: "",
     organizationAddress: "",
@@ -539,6 +540,10 @@ export function SettingsPage() {
   useEffect(() => {
     setPoMandatoryDraft(parsePoMandatoryMrrTypes(currentSetting));
   }, [currentSetting?.poMandatoryMrrTypes]);
+
+  useEffect(() => {
+    setInterFirmRateDraft(String(currentSetting?.interFirmRatePercent ?? 92));
+  }, [currentSetting?.interFirmRatePercent]);
 
   const selectedReelFormula = currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value;
   const selectedReelOption = useMemo(
@@ -771,6 +776,7 @@ export function SettingsPage() {
         id: currentSetting?.id || crypto.randomUUID(),
         reelAsPerCalculation: currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value,
         reelTransferWindowHours: Number(currentSetting?.reelTransferWindowHours || 12),
+        interFirmRatePercent: Number(currentSetting?.interFirmRatePercent ?? 92),
         reelErpStartNumber: Number(currentSetting?.reelErpStartNumber || 1),
         ourReelNoStartNumber: Number(currentSetting?.ourReelNoStartNumber || 1),
         otherMaterialErpStartNumber: Number(currentSetting?.otherMaterialErpStartNumber || 1),
@@ -816,6 +822,16 @@ export function SettingsPage() {
     setMaterialNumberingErrors((current) => ({ ...current, [key]: undefined }));
     if (Number(currentSetting?.[key] || 1) === value) return;
     await handleChange({ [key]: value });
+  };
+
+  const saveInterFirmRate = async () => {
+    const rawValue = interFirmRateDraft.trim();
+    const value = Number(rawValue);
+    if (!/^\d+(\.\d{1,2})?$/.test(rawValue) || !Number.isFinite(value) || value < 0 || value > 100) {
+      alert("Inter-firm transaction rate must be between 0 and 100 with up to 2 decimal places.");
+      return;
+    }
+    await handleChange({ interFirmRatePercent: value });
   };
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1891,6 +1907,36 @@ export function SettingsPage() {
           />
           <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
             Reels remain eligible for job-to-job transfer for this many hours after Corrugation Liner is marked Full.
+          </div>
+        </div>
+
+        <div className="flex flex-col space-y-2">
+          <label htmlFor="interFirmRatePercent" className="text-xs font-black uppercase tracking-wide text-black">
+            Inter-Firm Transaction Rate (%)
+          </label>
+          <div className="flex gap-3">
+            <input
+              id="interFirmRatePercent"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={interFirmRateDraft}
+              onChange={(event) => setInterFirmRateDraft(event.target.value)}
+              disabled={loading || saving || user?.role !== "Admin"}
+              className="flex-1 border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white"
+            />
+            <button
+              type="button"
+              onClick={() => void saveInterFirmRate()}
+              disabled={loading || saving || user?.role !== "Admin"}
+              className="rounded bg-indigo-600 px-5 py-2 font-bold text-white border-2 border-black disabled:opacity-50"
+            >
+              Save Rate
+            </button>
+          </div>
+          <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
+            New system-generated inter-firm transactions use this percentage of the customer order rate. Existing transactions are unchanged. Default: 92%.
           </div>
         </div>
 
