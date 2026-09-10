@@ -2227,7 +2227,14 @@ async function fetchFirmWiseNpdItems(db, options) {
         base = { rows: rows, total: Number(countRows[0]?.total || 0) };
     }
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
-    const firms = firmRows.filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
+    const firms = firmRows.filter((firm) => String(firm.id || "").trim() && String(firm.active || "Yes").trim().toLowerCase() !== "no").map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
+    const firmByName = new Map(firms.map((firm) => [firm.firmName.trim().toLowerCase(), firm.id]));
+    const unit1FirmId = firmByName.get("unit 1") || "";
+    const unit2FirmId = firmByName.get("unit 2") || "";
+    if (!unit1FirmId)
+        console.warn("[NPD] Firm Master firm 'Unit 1' is missing; Corrugation Liner quantities will not be assigned.");
+    if (!unit2FirmId)
+        console.warn("[NPD] Firm Master firm 'Unit 2' is missing; Printing quantities will not be assigned.");
     const keyToItemId = new Map();
     const addItemKey = (rawKey, itemId) => {
         const key = stringOrEmpty(rawKey);
@@ -2315,6 +2322,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             const [processedOutputs] = await db.query(`
         SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode,
           p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName,
+          pp.machineName,
           COALESCE(pp.qty, 0) AS qty,
           CASE WHEN LOWER(COALESCE(pp.machineName, '')) LIKE '%corrug%'
             OR LOWER(COALESCE(p.category, '')) LIKE '%corrug%'
@@ -2327,13 +2335,21 @@ async function fetchFirmWiseNpdItems(db, options) {
           AND (p.status <> 'Cancelled' OR p.status IS NULL)
       `);
             for (const row of processedOutputs) {
-                const isCorrugation = Number(row.corrugation || 0) > 0;
-                const firm = String(isCorrugation ? row.sourceFirmId || sourceFirmFallback : row.destinationFirmId || destinationFirmFallback);
+                const machineName = String(row.machineName || "").trim().toLowerCase();
+                const isCorrugationLiner = machineName === "corrugation liner";
+                const isPrinting = machineName === "printing";
+                if (!isCorrugationLiner && !isPrinting)
+                    continue;
+                const firm = isCorrugationLiner ? unit1FirmId : unit2FirmId;
+                if (!firm)
+                    continue;
                 const stock = ensure(resolveStockItemId(row.resolvedNpdId, row.npdId, row.itemId, row.erpCode, row.npdItemName), firm);
-                if (stock) {
+                if (!stock)
+                    continue;
+                if (isCorrugationLiner)
+                    stock.corrugation += Number(row.qty || 0);
+                if (isPrinting)
                     stock.production += Number(row.qty || 0);
-                    stock.corrugation += Number(row.corrugation || 0);
-                }
             }
             const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
             for (const row of invoices) {
