@@ -2529,6 +2529,16 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             } // Scenario A
             destinationFirmId = String(unit2.id); // Scenarios B and C
         }
+        else if (sourceType === "Production Processing" && normalizedMachine === "Printing") {
+            // Stage 2 (printing route): Firm-II sends the completed printing output
+            // to LNKI when the customer order belongs to Firm-III.
+            sourceFirmId = String(unit2.id);
+            if (orderFirmId !== String(lnki.id)) {
+                await conn.rollback();
+                return;
+            }
+            destinationFirmId = String(lnki.id);
+        }
         else if (sourceType === "Production Output") {
             // Stage 2 exists only for an LNKI customer order and starts at final FFG output.
             sourceFirmId = String(unit2.id);
@@ -7944,8 +7954,9 @@ const createHandlers = (tableName) => {
                 if (tableName === "production_processing" && String(data.completionStatus || "").trim().toLowerCase() === "full") {
                     const productionId = String(data.productionId || "").trim();
                     const machineName = normalizeMachineName(String(data.machineName || ""));
-                    // The exact Full Corrugation Liner row is the Stage-1 Manufacturing Journal.
-                    if (machineName === "Corrugation Liner") {
+                    // Corrugation is the Stage-1 Firm-I -> Firm-II movement.
+                    // Printing is the Stage-2 Firm-II -> Firm-III movement for LNKI orders.
+                    if (machineName === "Corrugation Liner" || machineName === "Printing") {
                         await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
                     }
                 }
