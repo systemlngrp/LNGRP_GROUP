@@ -8663,6 +8663,46 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
     }
 });
 // Routes
+const TRANSACTIONAL_RESET_CONFIRMATION = "CLEAR TRANSACTION DATA";
+const TRANSACTIONAL_RESET_TABLES = [
+    "reel_transfer_lines", "material_issue_reel_lines", "material_return_reel_lines",
+    "material_issue_lines", "material_return_lines", "boardline_qc_checks", "printing_qc_checks",
+    "production_processing", "consumptions", "material_issues", "material_returns", "reel_transfers",
+    "dispatch_plans", "loading_slips", "invoice_line_items", "gate_passes", "invoices",
+    "inter_firm_pending_invoices", "productions", "orders_schedule", "orders",
+];
+app.post("/api/settings/clear-transactional-data", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (user.role !== "Admin")
+        return res.status(403).json({ error: "Only administrators can clear transactional data." });
+    if (String(req.body?.confirmation || "") !== TRANSACTIONAL_RESET_CONFIRMATION) {
+        return res.status(400).json({ error: `Type ${TRANSACTIONAL_RESET_CONFIRMATION} to confirm this operation.` });
+    }
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database connection is not configured" });
+    const conn = await db.getConnection();
+    const counts = {};
+    try {
+        await conn.beginTransaction();
+        for (const table of TRANSACTIONAL_RESET_TABLES) {
+            const [result] = await conn.query(`DELETE FROM \`${table}\``);
+            counts[table] = Number(result?.affectedRows || 0);
+        }
+        await conn.commit();
+        return res.json({ ok: true, total: Object.values(counts).reduce((sum, count) => sum + count, 0), counts });
+    }
+    catch (error) {
+        await conn.rollback();
+        console.error("[DB] Transactional reset rolled back:", error);
+        return res.status(500).json({ error: error.message || "Failed to clear transactional data." });
+    }
+    finally {
+        conn.release();
+    }
+});
 const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 app.get("/api/tally-sync-debug", (req, res) => {
     const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
