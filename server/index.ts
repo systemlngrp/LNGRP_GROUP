@@ -2497,27 +2497,9 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   if (itemIds.length) {
     let aggregationStage = "initialization";
     try {
-      aggregationStage = "inter-firm route lookup";
-      const [activeRouteRows] = await db.query(
-        "SELECT routeSourceFirmId, routeDestinationFirmId FROM `firms` WHERE routeActive = 'Yes' AND COALESCE(TRIM(routeSourceFirmId), '') <> '' AND COALESCE(TRIM(routeDestinationFirmId), '') <> '' ORDER BY routeSequence ASC LIMIT 1"
-      );
-      const activeRoute = (activeRouteRows as any[])[0] || {};
-      const sourceFirmFallback = String(activeRoute.routeSourceFirmId || "").trim();
-      const destinationFirmFallback = String(activeRoute.routeDestinationFirmId || "").trim();
       aggregationStage = "material receipts";
       const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
       for (const row of receipts as any[]) { const id = resolveStockItemId(row.npdId, row.itemId); const firm = String(row.destinationFirmId || row.firmId || ""); const stock = ensure(id, firm); if (stock) stock.receipt += Number(row.qty || 0); }
-      aggregationStage = "production outputs";
-      const [productions] = await db.query(`SELECT p.sourceFirmId, p.destinationFirmId, p.erpCode, p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
-      for (const row of productions as any[]) {
-        const isCorrugation = Number(row.corrugation || 0) > 0;
-        const firm = String(isCorrugation ? row.sourceFirmId || sourceFirmFallback : row.destinationFirmId || destinationFirmFallback);
-        const stock = ensure(resolveStockItemId(row.resolvedNpdId, row.npdId, row.itemId, row.erpCode, row.npdItemName), firm);
-        if (stock) {
-          stock.production += Number(row.qty || 0);
-          stock.corrugation += Number(row.corrugation || 0);
-        }
-      }
       aggregationStage = "machine processing outputs";
       const [processedOutputs] = await db.query(`
         SELECT p.sourceFirmId, p.destinationFirmId, p.erpCode,
@@ -2547,7 +2529,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
         if (isPrinting) stock.production += Number(row.qty || 0);
       }
       aggregationStage = "invoice outputs";
-      const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
+      const [invoices] = await db.query(`SELECT CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ili.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
       for (const row of invoices as any[]) { const stock = ensure(resolveStockItemId(row.itemId), String(row.firmId || "")); if (stock) stock.invoiced += Number(row.qty || 0); }
     } catch (error) {
       console.error(`[DB] Firm-wise NPD stock aggregation failed during ${aggregationStage}; returning available derived stock:`, error);
@@ -2556,7 +2538,18 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   const rows = base.rows.map((row) => {
     const firmStocks: Record<string, any> = {};
     const rowKeys = [row.id, row.npdId].map((value) => String(value || "").trim()).filter(Boolean);
-    for (const firm of firms) { const source = rowKeys.reduce((found, key) => found || stocks.get(key)?.get(firm.id), null as any); const opening = Number(source?.opening || 0); const receipt = Number(source?.receipt || 0); const production = Number(source?.production || 0); const invoiced = Number(source?.invoiced || 0); const balance = opening + receipt + production - invoiced; const rate = Number(row.rate || 0); firmStocks[firm.id] = { opening, receipt, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation: Number(source?.corrugation || 0) }; }
+    for (const firm of firms) {
+      const source = rowKeys.reduce((found, key) => found || stocks.get(key)?.get(firm.id), null as any);
+      const opening = Number(source?.opening || 0);
+      const receipt = Number(source?.receipt || 0);
+      const production = Number(source?.production || 0);
+      const corrugation = Number(source?.corrugation || 0);
+      const invoiced = Number(source?.invoiced || 0);
+      const stockIn = firm.id === unit1FirmId ? corrugation : production;
+      const balance = opening + receipt + stockIn - invoiced;
+      const rate = Number(row.rate || 0);
+      firmStocks[firm.id] = { opening, receipt, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation };
+    }
     return { ...row, firmStocks };
   });
   return { rows, total: base.total, firms };
@@ -2709,54 +2702,32 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     const order = (orders as any[])[0];
     sourceRecord = sourceRecord || production;
     const normalizedMachine = normalizeMachineName(String(sourceRecord.machineName || ""));
-    if (sourceType === "Production Processing" && normalizedMachine === "Corrugation Liner") { await conn.rollback(); return; }
     const orderFirmId = String(production.orderFirmId || order?.firmId || "").trim();
-    const isStageOne = sourceType === "Production";
-    const [firstRouteRows] = isStageOne
-      ? await conn.query(
-          `SELECT routeSourceFirmId, routeDestinationFirmId
-           FROM firms
-           WHERE routeActive = 'Yes'
-             AND COALESCE(TRIM(routeSourceFirmId), '') <> ''
-             AND COALESCE(TRIM(routeDestinationFirmId), '') <> ''
-           ORDER BY routeSequence ASC LIMIT 1`
-        )
-      : [[]];
-    const firstRoute = (firstRouteRows as any[])[0] || null;
-    // Corrugation Liner is always the first configured inter-firm leg. This
-    // also repairs legacy jobs that were created while Unit 2 was active and
-    // therefore carry Unit 2 in productions.firmId.
-    const sourceFirmId = String(
-      isStageOne
-        ? firstRoute?.routeSourceFirmId || production.sourceFirmId || production.firmId || ""
-        : production.destinationFirmId || production.firmId || sourceRecord.firmId || ""
-    ).trim();
-    if (!sourceFirmId || !orderFirmId) {
-      console.warn("[INTER-FIRM] Skipped: source/order firm missing", { sourceId, sourceType, productionId, sourceFirmId, orderFirmId, orderId: production.orderId });
+    const [firmRows] = await conn.query("SELECT id, firmName FROM firms");
+    const normalizeFirm = (value: any) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+    const findFirm = (matcher: (name: string) => boolean) => (firmRows as any[]).find((row) => matcher(normalizeFirm(row.firmName)));
+    const unit1 = findFirm((name) => name.endsWith("unit1") || name.endsWith("uniti"));
+    const unit2 = findFirm((name) => name.endsWith("unit2") || name.endsWith("unitii"));
+    const lnki = findFirm((name) => name === "laxminarayankraftindustries");
+    if (!unit1?.id || !unit2?.id || !lnki?.id || !orderFirmId) {
+      console.warn("[INTER-FIRM] Skipped: required firm/order mapping missing", { sourceId, sourceType, productionId, orderFirmId, unit1FirmId: unit1?.id, unit2FirmId: unit2?.id, lnkiFirmId: lnki?.id });
       await conn.rollback(); return;
     }
-    if (sourceFirmId === orderFirmId) { await conn.rollback(); return; }
-    const [routes] = await conn.query("SELECT routeDestinationFirmId FROM `firms` WHERE routeSourceFirmId = ? AND routeActive = 'Yes' ORDER BY routeSequence ASC LIMIT 1", [sourceFirmId]);
-    const destinationFirmId = String(
-      isStageOne && firstRoute?.routeSourceFirmId === sourceFirmId
-        ? firstRoute.routeDestinationFirmId
-        : (routes as any[])[0]?.routeDestinationFirmId || orderFirmId
-    ).trim();
-    if (!destinationFirmId || destinationFirmId === sourceFirmId) {
-      console.warn("[INTER-FIRM] Skipped: destination route missing/invalid", { sourceId, sourceType, productionId, sourceFirmId, orderFirmId, destinationFirmId });
+
+    let sourceFirmId = "";
+    let destinationFirmId = "";
+    if (sourceType === "Production Processing" && normalizedMachine === "Corrugation Liner") {
+      // Stage 1: the Full Corrugation Liner row is the Manufacturing Journal.
+      sourceFirmId = String(unit1.id);
+      if (orderFirmId === sourceFirmId) { await conn.rollback(); return; } // Scenario A
+      destinationFirmId = String(unit2.id); // Scenarios B and C
+    } else if (sourceType === "Production Output") {
+      // Stage 2 exists only for an LNKI customer order and starts at final FFG output.
+      sourceFirmId = String(unit2.id);
+      if (orderFirmId !== String(lnki.id)) { await conn.rollback(); return; }
+      destinationFirmId = String(lnki.id);
+    } else {
       await conn.rollback(); return;
-    }
-    if (sourceType === "Production Processing" || sourceType === "Production Output") {
-      const [existingStageTwoRows] = await conn.query(
-        `SELECT id FROM inter_firm_pending_invoices
-         WHERE jobId = ? AND sourceFirmId = ? AND destinationFirmId = ?
-           AND sourceTransactionType IN ('Production Processing', 'Production Output')
-           AND sourceTransactionId <> ?
-           AND status <> 'Cancelled'
-         LIMIT 1`,
-        [production.id, sourceFirmId, destinationFirmId, sourceId]
-      );
-      if ((existingStageTwoRows as any[]).length > 0) { await conn.rollback(); return; }
     }
     const sourceTransactionId = sourceId;
     const sourceTransactionType = sourceType;
@@ -2802,7 +2773,7 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
       gate = { id: gateId, gateEntryNo };
     }
     await conn.query("UPDATE `inter_firm_pending_invoices` SET linkedGateEntryId = ?, linkedMrrId = ?, updateTimestamp = ? WHERE id = ?", [gate.id, mrr.id, now, pending.id]);
-    if (sourceType === "Production") {
+    if (sourceType === "Production Output") {
       await conn.query("UPDATE `productions` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, productionId]);
     }
     if (sourceType === "Production Processing") {
@@ -2811,51 +2782,6 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing" });
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
-}
-
-async function reconcileCompletedCorrugationInterFirm(db: mysql.Pool) {
-  try {
-    const [rows] = await db.query(`
-      SELECT DISTINCT p.id, p.transactionNo, p.jobCardNo
-      FROM production_processing pp
-      INNER JOIN productions p ON p.id = pp.productionId
-      WHERE LOWER(TRIM(COALESCE(pp.completionStatus, ''))) = 'full'
-        AND LOWER(TRIM(COALESCE(pp.machineName, ''))) IN ('corrugation liner', 'corrugation linear')
-        AND (p.status IS NULL OR LOWER(TRIM(p.status)) <> 'cancelled')
-    `);
-    let repaired = 0;
-    let failed = 0;
-    for (const row of rows as any[]) {
-      try {
-        const [beforeRows] = await db.query(
-          `SELECT id FROM inter_firm_pending_invoices
-           WHERE sourceTransactionType = 'Production' AND sourceTransactionId = ? AND status <> 'Cancelled'
-           LIMIT 1`,
-          [String(row.id)]
-        );
-        await automateInterFirmProduction(db, String(row.id), "Production");
-        const [afterRows] = await db.query(
-          `SELECT id FROM inter_firm_pending_invoices
-           WHERE sourceTransactionType = 'Production' AND sourceTransactionId = ? AND status <> 'Cancelled'
-           LIMIT 1`,
-          [String(row.id)]
-        );
-        if (!(beforeRows as any[]).length && (afterRows as any[]).length) repaired += 1;
-      } catch (error) {
-        failed += 1;
-        console.error("[INTER-FIRM] Corrugation reconciliation failed", {
-          productionId: row.id,
-          jobNo: row.jobCardNo || row.transactionNo,
-          error: (error as Error).message,
-        });
-      }
-    }
-    console.log("[INTER-FIRM] Corrugation reconciliation complete", { scanned: (rows as any[]).length, repaired, failed });
-  } catch (error) {
-    // Reconciliation must not prevent the ERP from starting. New saves still
-    // run the same idempotent automation path and the next restart retries.
-    console.error("[INTER-FIRM] Corrugation reconciliation could not run", error);
-  }
 }
 
 function getDispatchPlanFinancialYear(dateValue?: string | null) {
@@ -8611,11 +8537,8 @@ const createHandlers = (tableName: string) => {
         } else {
           await db.query(query, values);
         }
-        // Inter-firm automation is route-driven.  A newly created Unit 2 job
-        // may not have interFirmFlow populated yet; the automation routine is
-        // idempotent and safely exits when no active inter-firm route applies.
+        // Final FFG output is the only trigger for the Unit-II -> LNKI stage.
         if (tableName === "productions") {
-          await automateInterFirmProduction(db, String(data.id || ""));
           if (Number(data.prodFromFFG || 0) > 0) {
             await automateInterFirmProduction(db, String(data.id || ""), "Production Output");
           }
@@ -8635,16 +8558,8 @@ const createHandlers = (tableName: string) => {
           const productionId = String(data.productionId || "").trim();
           const machineName = normalizeMachineName(String(data.machineName || ""));
 
-          // Corrugation Liner is the Firm 1 output that starts Stage 1.  Do not
-          // wait for FFG/Printing: Scenario A exits inside the service because
-          // source and order firm are equal, while Scenario B/C creates the
-          // Firm 1 pending invoice and Firm 2 Gate Entry/MRR idempotently.
+          // The exact Full Corrugation Liner row is the Stage-1 Manufacturing Journal.
           if (machineName === "Corrugation Liner") {
-            await automateInterFirmProduction(db, productionId, "Production");
-          } else {
-            // Any completed output can be checked here.  The automation is
-            // idempotent and uses the configured firm route to decide whether
-            // this is a real Firm 2 -> Firm 3 transfer.
             await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
           }
         }
@@ -11408,8 +11323,7 @@ entities.forEach(entity => {
 
 async function startServer() {
   await initDb();
-  const db = await getPool();
-  if (db) await reconcileCompletedCorrugationInterFirm(db);
+  await getPool();
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
