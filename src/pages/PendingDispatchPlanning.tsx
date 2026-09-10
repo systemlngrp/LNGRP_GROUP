@@ -97,7 +97,6 @@ export function PendingDispatchPlanning() {
     productions.forEach((p) => {
       if (!p.itemId) return;
       if (p.status === "Cancelled" || p.cancelTimestamp) return;
-      if (isFfgFilled(p.prodFromFFG)) return;
       map.set(p.itemId, (map.get(p.itemId) || 0) + Number(p.qty || 0));
     });
     return map;

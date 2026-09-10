@@ -76,7 +76,7 @@ import { PlateProductionMaster } from "./pages/PlateProductionMaster";
 import { PlateProductionScheduling } from "./pages/PlateProductionScheduling";
 import { PlateProductionSequencing } from "./pages/PlateProductionSequencing";
 import { PlateProductionExecution } from "./pages/PlateProductionExecution";
-import { ProductionPendingConsumption, ProductionPendingFFG, ProductionPendingReelIssueScan } from "./pages/ProductionStageQueue";
+import { ProductionPendingConsumption, ProductionPendingReelIssueScan } from "./pages/ProductionStageQueue";
 import { ProductionPlan } from "./pages/ProductionPlan";
 import { PendingNpd } from "./pages/PendingNpd";
 import { OperationDashboard } from "./pages/OperationDashboard";
@@ -307,7 +307,6 @@ export default function App() {
           <Route path="production/pending-consumption" element={<ProductionPendingConsumption />} />
           <Route path="production/pending-material-return" element={<PendingMaterialReturn />} />
           <Route path="production/pending-job-transfer" element={<PendingJobTransfer />} />
-          <Route path="production/pending-ffg" element={<ProductionPendingFFG />} />
           <Route path="production/pending-tally" element={<ProductionPendingTally />} />
           <Route path="production/pending-job-closure" element={<PendingJobClosure />} />
           <Route path="production/pending-machine-processing" element={<MachinePendingProcessing />} />

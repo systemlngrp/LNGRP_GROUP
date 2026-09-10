@@ -609,12 +609,12 @@ export function PendingJobClosure() {
                   const procTotals = processingTotalsMap.get(p.id) || { paper: 0, liner: 0, printing: 0, pasting: 0, stitching: 0, punching: 0, gluing: 0 };
                   const closureStatus = jobClosureStatusMap.get(p.id);
                   const mandatoryCloseDataComplete = closureStatus?.canClose === true;
-                  const baseCloseFieldsDisabled = !Number(p.actualPaperUsed || 0) || !Number(p.prodFromFFG || 0);
+                  const baseCloseFieldsDisabled = !Number(p.actualPaperUsed || 0);
                   const closeFieldsDisabled = baseCloseFieldsDisabled || !mandatoryCloseDataComplete;
                   const closeFieldsDisabledTitle = !mandatoryCloseDataComplete
                     ? "Complete all mandatory machine processing data to enable job closer"
                     : baseCloseFieldsDisabled
-                      ? "Actual Paper and Production FFG are required to enable job closer"
+                      ? "Actual Paper Used is required to enable job closer"
                       : undefined;                  
                     return (
                     <tr key={p.id} className={`${isHighGsm ? "bg-amber-50" : "hover:bg-slate-50"} divide-x divide-black transition-colors`}>

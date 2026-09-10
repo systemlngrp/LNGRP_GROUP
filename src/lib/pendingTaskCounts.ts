@@ -33,7 +33,7 @@ import { getRequiredMachinesForProduction } from "./productionType";
 import { normalizeMachineName } from "./productionMachineNames";
 import { getCurrentProcessingMachine, isCorrugationLinerComplete, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
-import { isProductionPendingConsumption, isProductionPendingFFG, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
+import { isProductionPendingConsumption, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
 import { getAllReturnableReelLines } from "./materialMovement";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "./reelTransfer";
@@ -84,7 +84,6 @@ export const PENDING_TASK_DEFINITIONS = [
   { section: "Jobs", name: "Pending Material Issue", countKey: "/production/pending-consumption" },
   { section: "Jobs", name: "Pending Material Return", countKey: "/production/pending-material-return" },
   { section: "Jobs", name: "Job Transfer", countKey: "/production/pending-job-transfer" },
-  { section: "Jobs", name: "Pending FG", countKey: "/production/pending-ffg" },
   { section: "Jobs", name: "Pending Printing", countKey: "/production/pending-printing" },
   { section: "Jobs", name: "Pending Production Tally Entry", countKey: "/production/pending-tally" },
   { section: "Jobs", name: "Pending Job Closure", countKey: "/production/pending-job-closure" },
@@ -447,9 +446,6 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
         windowHours
       ).eligible;
     }).length,
-    "/production/pending-ffg": args.productions.filter((p) =>
-      isProductionPendingFFG(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
-    ).length,
     "/production/pending-tally": args.productions.filter((p) =>
       isProductionReadyForTally(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,

@@ -175,11 +175,7 @@ export function syncProductionWorkflowFromUsage(
   const hasEligibleMaterialIssue = normalizedUsage > 0 || hasCorrugatedSheetUsage || bypassedPaperIssue;
   let status: Production["status"] = "Pending Consumption";
 
-  if (hasEligibleMaterialIssue && hasWorkflowValue(production.prodFromFFG)) {
-    status = "Pending Tally";
-  } else if (hasEligibleMaterialIssue) {
-    status = "Pending FFG";
-  }
+  if (hasEligibleMaterialIssue) status = "Pending Tally";
 
   return {
     ...production,

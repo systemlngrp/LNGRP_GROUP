@@ -105,7 +105,7 @@ export function ConsumptionForm() {
               ? {
                   ...production,
                   actualPaperUsed: relatedConsumptionTotal,
-                  status: "Pending FFG",
+                  status: "Pending Tally",
                   updatedBy: "System User",
                   updateTimestamp: timestamp,
                 }

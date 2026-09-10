@@ -50,7 +50,6 @@ export const PRODUCTION_FORM_COLUMN_OPTIONS = [
   "Rate",
   "Realization/KG",
   "Prod (Sheet Plant)",
-  "Prod (FFG)",
   "Wastage",
   "Prod (Meter)",
   "Planned Prod (Mtr)",

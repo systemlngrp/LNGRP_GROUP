@@ -2580,15 +2580,6 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             }
             destinationFirmId = String(lnki.id);
         }
-        else if (sourceType === "Production Output") {
-            // Stage 2 exists only for an LNKI customer order and starts at final FFG output.
-            sourceFirmId = String(unit2.id);
-            if (orderFirmId !== String(lnki.id)) {
-                await conn.rollback();
-                return;
-            }
-            destinationFirmId = String(lnki.id);
-        }
         else {
             await conn.rollback();
             return;
@@ -2596,9 +2587,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         const sourceTransactionId = sourceId;
         const sourceTransactionType = sourceType;
         const now = new Date().toISOString();
-        const qty = Number(sourceType === "Production Output"
-            ? production.prodFromFFG || production.productionOutputQty || production.qty || 0
-            : sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0);
+        const qty = Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0);
         if (!Number.isFinite(qty) || qty <= 0) {
             console.warn("[INTER-FIRM] Skipped: output quantity is zero", { sourceId, sourceType, productionId, qty });
             await conn.rollback();
@@ -2667,9 +2656,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             gate = { id: gateId, gateEntryNo };
         }
         await conn.query("UPDATE `inter_firm_pending_invoices` SET linkedGateEntryId = ?, linkedMrrId = ?, updateTimestamp = ? WHERE id = ?", [gate.id, mrr.id, now, pending.id]);
-        if (sourceType === "Production Output") {
-            await conn.query("UPDATE `productions` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, productionId]);
-        }
+        await conn.query("UPDATE `productions` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, productionId]);
         if (sourceType === "Production Processing") {
             await conn.query("UPDATE `production_processing` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, sourceId]);
         }
@@ -3409,14 +3396,12 @@ function normalizeWorkflowStatus(tableName, row) {
             normalized.status = "Completed";
         else if (currentStatus === "Cancelled" || normalized.cancelTimestamp)
             normalized.status = "Cancelled";
-        else if (currentStatus === "Pending Consumption" || currentStatus === "Pending FFG")
+        else if (currentStatus === "Pending Consumption")
             normalized.status = currentStatus;
         else if (!normalized.phTimestamp)
             normalized.status = "Pending PH";
         else if (!hasWorkflowValue(normalized.actualPaperUsed))
             normalized.status = "Pending Consumption";
-        else if (!hasWorkflowValue(normalized.prodFromFFG))
-            normalized.status = "Pending FFG";
         else
             normalized.status = "Pending Tally";
         return normalized;
@@ -8019,12 +8004,6 @@ const createHandlers = (tableName) => {
                 else {
                     await db.query(query, values);
                 }
-                // Final FFG output is the only trigger for the Unit-II -> LNKI stage.
-                if (tableName === "productions") {
-                    if (Number(data.prodFromFFG || 0) > 0) {
-                        await automateInterFirmProduction(db, String(data.id || ""), "Production Output");
-                    }
-                }
                 if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
                     const pendingId = String(data.sourceTransactionId || "").trim();
                     if (pendingId) {
@@ -10381,7 +10360,7 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
             const usage = Math.max(0, Number(usageRows[0]?.usage || 0));
             let status = String(production.status || "Pending Consumption");
             if (!production.cancelTimestamp && status !== "Completed")
-                status = usage > 0 ? (Number(production.prodFromFFG || 0) > 0 ? "Pending Tally" : "Pending FFG") : "Pending Consumption";
+                status = usage > 0 ? "Pending Tally" : "Pending Consumption";
             await conn.query("UPDATE productions SET actualPaperUsed = ?, status = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [usage, status, actor, timestamp, productionId]);
         }
         await conn.commit();
