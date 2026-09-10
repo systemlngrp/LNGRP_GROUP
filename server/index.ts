@@ -2428,9 +2428,10 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
     const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
     base = { rows: rows as any[], total: Number((countRows as any[])[0]?.total || 0) };
   }
-  const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
+  const [firmRows] = await db.query("SELECT id, firmName, active FROM `firms` ORDER BY firmName ASC");
   const firms = (firmRows as any[]).filter((firm) => String(firm.id || "").trim() && String(firm.active || "Yes").trim().toLowerCase() !== "no").map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
-  const firmByName = new Map(firms.map((firm) => [firm.firmName.trim().toLowerCase(), firm.id]));
+  const normalizeFirmName = (value: any) => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const firmByName = new Map(firms.map((firm) => [normalizeFirmName(firm.firmName), firm.id]));
   const unit1FirmId = firmByName.get("unit 1") || "";
   const unit2FirmId = firmByName.get("unit 2") || "";
   if (!unit1FirmId) console.warn("[NPD] Firm Master firm 'Unit 1' is missing; Corrugation Liner quantities will not be assigned.");
