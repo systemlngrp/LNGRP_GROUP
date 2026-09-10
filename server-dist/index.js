@@ -2226,16 +2226,24 @@ async function fetchFirmWiseNpdItems(db, options) {
         const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
         base = { rows: rows, total: Number(countRows[0]?.total || 0) };
     }
-    const [firmRows] = await db.query("SELECT id, firmName, active FROM `firms` ORDER BY firmName ASC");
-    const firms = firmRows.filter((firm) => String(firm.id || "").trim() && String(firm.active || "Yes").trim().toLowerCase() !== "no").map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
+    // The firms table has no active/status column; every Firm Master row is a valid firm.
+    const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
+    const firms = firmRows.filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
     const normalizeFirmName = (value) => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
-    const firmByName = new Map(firms.map((firm) => [normalizeFirmName(firm.firmName), firm.id]));
-    const unit1FirmId = firmByName.get("unit 1") || "";
-    const unit2FirmId = firmByName.get("unit 2") || "";
+    const findUnitFirmId = (unit) => {
+        const arabicSuffix = `unit${unit}`;
+        const romanSuffix = unit === 1 ? "uniti" : "unitii";
+        return firms.find((firm) => {
+            const normalized = normalizeFirmName(firm.firmName);
+            return normalized === arabicSuffix || normalized.endsWith(arabicSuffix) || normalized.endsWith(romanSuffix);
+        })?.id || "";
+    };
+    const unit1FirmId = findUnitFirmId(1);
+    const unit2FirmId = findUnitFirmId(2);
     if (!unit1FirmId)
-        console.warn("[NPD] Firm Master firm 'Unit 1' is missing; Corrugation Liner quantities will not be assigned.");
+        console.warn("[NPD] Unit-I firm is missing from Firm Master; Corrugation Liner quantities will not be assigned.");
     if (!unit2FirmId)
-        console.warn("[NPD] Firm Master firm 'Unit 2' is missing; Printing quantities will not be assigned.");
+        console.warn("[NPD] Unit-II firm is missing from Firm Master; Printing quantities will not be assigned.");
     const keyToItemId = new Map();
     const addItemKey = (rawKey, itemId) => {
         const key = stringOrEmpty(rawKey);
