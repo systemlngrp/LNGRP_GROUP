@@ -386,9 +386,6 @@ export function SettingsPage() {
   const [transferPreview, setTransferPreview] = useState<GlobalItemTransferPreview | null>(null);
   const [transferSaving, setTransferSaving] = useState(false);
   const [transferStatus, setTransferStatus] = useState("");
-  const [clearConfirmation, setClearConfirmation] = useState("");
-  const [clearStatus, setClearStatus] = useState("");
-  const [clearingData, setClearingData] = useState(false);
   const [materialNumberingDraft, setMaterialNumberingDraft] = useState<Record<MaterialNumberingKey, string>>({
     reelErpStartNumber: "1",
     ourReelNoStartNumber: "1",
@@ -399,28 +396,6 @@ export function SettingsPage() {
   const currentSetting = settings[0];
   const isPankajUser = String(user?.email || "").trim().toLowerCase() === GLOBAL_ITEM_RENAME_ALLOWED_EMAIL;
   const allowInvoiceTallyEdit = currentSetting?.allowInvoiceTallyEdit === "Yes";
-
-  const clearTransactionalData = async () => {
-    if (clearConfirmation !== "CLEAR TRANSACTION DATA") return;
-    if (!window.confirm("This will permanently delete transactional data for ALL firms. Continue?")) return;
-    setClearingData(true);
-    setClearStatus("");
-    try {
-      const response = await fetch("/api/settings/clear-transactional-data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmation: clearConfirmation }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Failed to clear transactional data.");
-      setClearStatus(`Completed. ${Number(result.total || 0).toLocaleString()} transactional rows deleted.`);
-      setClearConfirmation("");
-    } catch (error) {
-      setClearStatus(error instanceof Error ? error.message : "Failed to clear transactional data.");
-    } finally {
-      setClearingData(false);
-    }
-  };
 
   useEffect(() => {
     setMaterialNumberingDraft({
@@ -893,38 +868,6 @@ export function SettingsPage() {
       </div>
 
       <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-
-      {user?.role === "Admin" && (
-        <div className="max-w-3xl space-y-4 rounded border-2 border-red-700 bg-red-50 p-6 text-black">
-          <div>
-            <h3 className="text-sm font-black uppercase text-red-800">Danger Zone: Clear Transactional Data</h3>
-            <p className="mt-2 text-sm leading-6">
-              Permanently removes orders, schedules, productions, production processing, issues, returns, reel transfers, and related dispatch, loading, billing, and QC records for all firms. Master data, users, settings, materials, and opening stock are preserved.
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <label className="flex-1 text-xs font-black uppercase tracking-wide">
-              Type CLEAR TRANSACTION DATA to confirm
-              <input
-                value={clearConfirmation}
-                onChange={(event) => setClearConfirmation(event.target.value)}
-                disabled={clearingData}
-                className="mt-1 w-full rounded border border-red-700 bg-white px-3 py-2 text-sm font-normal normal-case"
-                placeholder="CLEAR TRANSACTION DATA"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={() => void clearTransactionalData()}
-              disabled={clearingData || clearConfirmation !== "CLEAR TRANSACTION DATA"}
-              className="rounded bg-red-700 px-4 py-2 text-sm font-black uppercase text-white hover:bg-red-800 disabled:opacity-50"
-            >
-              {clearingData ? "Clearing..." : "Clear All Transactional Data"}
-            </button>
-          </div>
-          {clearStatus && <p className="text-sm font-bold">{clearStatus}</p>}
-        </div>
-      )}
 
       {isPankajUser && (
         <div className="bg-white p-6 rounded shadow-sm border border-black max-w-3xl space-y-4">
