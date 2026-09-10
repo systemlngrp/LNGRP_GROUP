@@ -264,6 +264,7 @@ export function Suppliers() {
       const nextSupplier: Supplier = {
         id: editingId || crypto.randomUUID(),
         name: formData.name.trim(),
+        firmId: editingId ? suppliers.find((supplier) => supplier.id === editingId)?.firmId : undefined,
         contactPerson: formData.contactPerson.trim() || undefined,
         contactNumber: formData.contactNumber.trim() || undefined,
         email: formData.email.trim() || undefined,

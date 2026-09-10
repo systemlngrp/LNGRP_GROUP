@@ -511,6 +511,7 @@ export interface GateEntryPhoto {
 
 export interface Supplier {
   id: string;
+  firmId?: string;
   name: string;
   contactPerson?: string;
   contactNumber?: string;
