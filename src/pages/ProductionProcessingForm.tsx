@@ -16,7 +16,7 @@ import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, type Co
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, type PrintingWastageDraft } from "../lib/printingWastage";
 
-const CORRUGATION_MATERIAL_MESSAGE = "Issue material or sheet against this job before reporting Corrugation Liner.";
+const PRINTING_MATERIAL_MESSAGE = "Issue material or sheet against this job before reporting Printing.";
 
 type ShiftValue = "" | "Day" | "Night";
 
@@ -62,7 +62,7 @@ function LockedReportForm() {
   const showCorrugationWastage = isCorrugationLiner && isFullReport;
   const showPrintingWastage = isPrinting && isFullReport;
   const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
-  const materialIssueBlocked = isCorrugationLiner &&
+  const materialIssueBlocked = isPrinting &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
 
   useEffect(() => {
@@ -76,7 +76,7 @@ function LockedReportForm() {
     e.preventDefault();
 
     if (materialIssueBlocked) {
-      alert(materialUsageLoading ? "Checking issued material. Please wait." : CORRUGATION_MATERIAL_MESSAGE);
+      alert(materialUsageLoading ? "Checking issued material. Please wait." : PRINTING_MATERIAL_MESSAGE);
       return;
     }
 
@@ -161,7 +161,7 @@ function LockedReportForm() {
           <MandatoryLegend />
           {materialIssueBlocked ? (
             <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
-              {materialUsageLoading ? "Checking issued material..." : CORRUGATION_MATERIAL_MESSAGE}
+              {materialUsageLoading ? "Checking issued material..." : PRINTING_MATERIAL_MESSAGE}
             </div>
           ) : null}
           <div className="space-y-4">
@@ -336,7 +336,7 @@ function FullReportForm() {
   const isFullReport = completionStatus === "Full";
   const showCorrugationWastage = isCorrugationLiner && isFullReport;
   const showPrintingWastage = isPrinting && isFullReport;
-  const materialIssueBlocked = isCorrugationLiner &&
+  const materialIssueBlocked = isPrinting &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
 
   const qtyContext = useMemo(() => {
@@ -381,7 +381,7 @@ function FullReportForm() {
     e.preventDefault();
 
     if (materialIssueBlocked) {
-      alert(materialUsageLoading ? "Checking issued material. Please wait." : CORRUGATION_MATERIAL_MESSAGE);
+      alert(materialUsageLoading ? "Checking issued material. Please wait." : PRINTING_MATERIAL_MESSAGE);
       return;
     }
 
@@ -453,7 +453,7 @@ function FullReportForm() {
           <MandatoryLegend />
           {materialIssueBlocked ? (
             <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
-              {materialUsageLoading ? "Checking issued material..." : CORRUGATION_MATERIAL_MESSAGE}
+              {materialUsageLoading ? "Checking issued material..." : PRINTING_MATERIAL_MESSAGE}
             </div>
           ) : null}
           <div className="space-y-4">

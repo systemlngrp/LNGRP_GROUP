@@ -7829,6 +7829,25 @@ const createHandlers = (tableName: string) => {
             data.delaminationKg = Number((data.delaminationBoxes * kgPerBox).toFixed(2));
             data.misalignmentKg = Number((data.misalignmentBoxes * kgPerBox).toFixed(2));
             data.sheerCutterKg = Number((data.sheerCutterBoxes * kgPerBox).toFixed(2));
+          } else {
+            ["warpageBoxes", "warpageKg", "delaminationBoxes", "delaminationKg", "misalignmentBoxes", "misalignmentKg", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "sheerCutterKg", "noHisabBoxes"]
+              .forEach((field) => { data[field] = 0; });
+          }
+          const printingWastageFields = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
+          if (data.machineName === "Printing" && completionStatus === "Full") {
+            for (const field of printingWastageFields) {
+              const rawValue = data[field];
+              const numericValue = rawValue === "" || rawValue == null ? 0 : Number(rawValue);
+              if (!Number.isFinite(numericValue) || numericValue < 0) {
+                return res.status(400).json({ error: `${field} must be a non-negative number.` });
+              }
+              data[field] = numericValue;
+            }
+          } else {
+            printingWastageFields.forEach((field) => { data[field] = 0; });
+          }
+
+          if (data.machineName === "Printing") {
             const [usageRows] = await db.query(
               `SELECT COALESCE(SUM(usagePart.qty), 0) AS netQty
                FROM (
@@ -7859,25 +7878,9 @@ const createHandlers = (tableName: string) => {
             const netMaterialUsage = Math.max(0, Number((usageRows as any[])[0]?.netQty || 0));
             if (netMaterialUsage <= 0) {
               return res.status(409).json({
-                error: "Issue material or sheet against this job before reporting Corrugation Liner.",
+                error: "Issue material or sheet against this job before reporting Printing.",
               });
             }
-          } else {
-            ["warpageBoxes", "warpageKg", "delaminationBoxes", "delaminationKg", "misalignmentBoxes", "misalignmentKg", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "sheerCutterKg", "noHisabBoxes"]
-              .forEach((field) => { data[field] = 0; });
-          }
-          const printingWastageFields = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
-          if (data.machineName === "Printing" && completionStatus === "Full") {
-            for (const field of printingWastageFields) {
-              const rawValue = data[field];
-              const numericValue = rawValue === "" || rawValue == null ? 0 : Number(rawValue);
-              if (!Number.isFinite(numericValue) || numericValue < 0) {
-                return res.status(400).json({ error: `${field} must be a non-negative number.` });
-              }
-              data[field] = numericValue;
-            }
-          } else {
-            printingWastageFields.forEach((field) => { data[field] = 0; });
           }
 
           const [existingProcessingRows] = await db.query(

@@ -292,7 +292,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                       </thead>
                       <tbody className="bg-white divide-y divide-black text-[11px] font-bold">
                         {group.jobs.map((job, idx) => {
-                          const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Corrugation Liner";
+                          const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Printing";
                           const materialIssueBlocked = requiresMaterialIssue &&
                             (materialUsageLoading || !hasProductionMaterialUsage(job.production, materialUsageMap));
                           return (
