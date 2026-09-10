@@ -19,7 +19,7 @@ import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { generateTransactionNo, formatDate, getProductionJobPrefix } from "../lib/serial";
-import { CircleHelp } from "lucide-react";
+import { CheckCircle2, CircleHelp, X } from "lucide-react";
 import { parseProductionFormVisibleColumns } from "../lib/productionFormColumns";
 import { fetchNpdItems } from "../lib/npdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -231,6 +231,7 @@ export function ProductionForm() {
   const { resolveOrderItem } = useOrderItemCatalog();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const urlScheduleId = searchParams.get("scheduleId") || searchParams.get("scheduledId") || "";
   const isScheduleLocked = Boolean(urlScheduleId);
   const [selectedScheduleId, setSelectedScheduleId] = useState(urlScheduleId);
@@ -240,6 +241,12 @@ export function ProductionForm() {
   }, []);
 
   const [formData, setFormData] = useState(() => createInitialFormData(todayStr));
+
+  useEffect(() => {
+    if (!saveNotice) return;
+    const timeoutId = window.setTimeout(() => setSaveNotice(null), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [saveNotice]);
 
   useEffect(() => {
     fetchNpdItems()
@@ -864,8 +871,10 @@ export function ProductionForm() {
         setSelectedScheduleId("");
         setSearchParams({});
       }
+      setSaveNotice({ type: "success", message: `Plan Job saved successfully. Job No: ${txnNo}` });
     } catch (err) {
       console.error("Failed to save production:", err);
+      setSaveNotice({ type: "error", message: err instanceof Error ? err.message : "Failed to save Plan Job." });
     } finally {
       setIsSubmitting(false);
     }
@@ -873,6 +882,28 @@ export function ProductionForm() {
 
   return (
     <div className="space-y-6">
+      {saveNotice && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none px-4">
+          <div
+            role="alert"
+            className={cn(
+              "pointer-events-auto flex w-full max-w-lg items-center gap-3 rounded-lg border-2 border-black px-5 py-4 text-center shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]",
+              saveNotice.type === "success" ? "bg-emerald-100 text-emerald-900" : "bg-rose-100 text-rose-900"
+            )}
+          >
+            {saveNotice.type === "success" ? <CheckCircle2 className="shrink-0" size={28} /> : <X className="shrink-0" size={28} />}
+            <span className="flex-1 text-center text-base font-black">{saveNotice.message}</span>
+            <button
+              type="button"
+              onClick={() => setSaveNotice(null)}
+              className="shrink-0 rounded border border-black bg-white p-1 text-black hover:bg-slate-100"
+              aria-label="Close notification"
+            >
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex justify-between items-center pb-4 border-b border-black">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production Form</h2>
       </div>
