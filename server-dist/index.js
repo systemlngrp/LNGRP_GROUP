@@ -2229,7 +2229,7 @@ async function fetchFirmWiseNpdItems(db, options) {
     // The firms table has no active/status column; every Firm Master row is a valid firm.
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
     const firms = firmRows.filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
-    const normalizeFirmName = (value) => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+    const normalizeFirmName = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
     const findUnitFirmId = (unit) => {
         const arabicSuffix = `unit${unit}`;
         const romanSuffix = unit === 1 ? "uniti" : "unitii";

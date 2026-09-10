@@ -2431,7 +2431,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   // The firms table has no active/status column; every Firm Master row is a valid firm.
   const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
   const firms = (firmRows as any[]).filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
-  const normalizeFirmName = (value: any) => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const normalizeFirmName = (value: any) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
   const findUnitFirmId = (unit: 1 | 2) => {
     const arabicSuffix = `unit${unit}`;
     const romanSuffix = unit === 1 ? "uniti" : "unitii";
