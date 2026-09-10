@@ -76,11 +76,21 @@ export function NpdMaster() {
   const [settings] = useData<Setting>("settings", []);
 
   const tableColumns = useMemo(() => [...NPD_COLUMNS.filter((column) => !["opening", "receipt", "production", "invoiced", "balance", "tallyStock", "tallyTimestamp", "stockValue"].includes(column.key)), { key: "consumable", label: "Consumable" }], []);
-  const firmColumns = useMemo(() => [
-    { key: "opening", label: "Opening" }, { key: "receipt", label: "Receipt" }, { key: "production", label: "Production" },
-    { key: "invoiced", label: "Invoiced" }, { key: "balance", label: "Balance" }, { key: "tallyStock", label: "Tally Stock" },
-    { key: "tallyTimestamp", label: "Tally Timestamp" }, { key: "value", label: "Value" }, { key: "corrugation", label: "Corrugation" },
-  ] as const, []);
+  const firmColumnsFor = useCallback((firm: Firm) => {
+    const name = String(firm.firmName || "").toLowerCase();
+    const isUnit1 = name.includes("unit-i") || name.includes("unit 1") || name.endsWith("uniti");
+    const isUnit2 = name.includes("unit-ii") || name.includes("unit 2") || name.endsWith("unitii");
+    const columns = [
+      ...(isUnit1 ? [{ key: "corrugation", label: "Corrugation Liner" }] : []),
+      { key: "receipt", label: "FG Purchase Receipt" },
+      ...(isUnit2 ? [{ key: "production", label: "Printing" }] : []),
+      { key: "invoiced", label: "Invoiced" },
+      { key: "balance", label: "Balance" },
+      { key: "value", label: "Value" },
+    ] as const;
+    return columns;
+  }, []);
+  const firmColumnCount = useMemo(() => displayFirms.reduce((sum, firm) => sum + firmColumnsFor(firm).length, 0), [displayFirms, firmColumnsFor]);
   const displayFirms = useMemo(() => {
     const knownFirmIds = new Set(firms.map((firm) => String(firm.id)));
     const orphanFirmIds = rows.flatMap((row) => Object.keys(row.firmStocks || {})).filter((id) => !knownFirmIds.has(String(id)));
@@ -92,8 +102,8 @@ export function NpdMaster() {
   const exportRows = useMemo(() => rows.map((row, index) => Object.fromEntries([
     ["SL No", (page - 1) * pageSize + index + 1],
     ...tableColumns.map((column) => [column.label, row[column.key] ?? ""]),
-    ...displayFirms.flatMap((firm) => firmColumns.map((column) => [`${firm.firmName} ${column.label}`, row.firmStocks?.[firm.id]?.[column.key] ?? ""])),
-  ])), [displayFirms, firmColumns, page, pageSize, rows, tableColumns]);
+    ...displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => [`${firm.firmName} ${column.label}`, row.firmStocks?.[firm.id]?.[column.key] ?? ""])),
+  ])), [displayFirms, firmColumnsFor, page, pageSize, rows, tableColumns]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -366,19 +376,19 @@ export function NpdMaster() {
                     </span>
                   </th>
                 ))}
-                {displayFirms.map((firm) => <th key={firm.id} colSpan={firmColumns.length} className="border border-black px-3 py-2 text-center text-xs font-bold uppercase text-black whitespace-nowrap">{firm.firmName}</th>)}
+                {displayFirms.map((firm) => <th key={firm.id} colSpan={firmColumnsFor(firm).length} className="border border-black px-3 py-2 text-center text-xs font-bold uppercase text-black whitespace-nowrap">{firm.firmName}</th>)}
                 <th rowSpan={2} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase text-black align-top min-w-[180px] whitespace-nowrap">
                   Action
                 </th>
               </tr>
               <tr className="divide-x divide-black">
-                {displayFirms.flatMap((firm) => firmColumns.map((column) => <th key={`${firm.id}-${column.key}`} className="border border-black px-2 py-2 text-left text-[10px] font-bold uppercase text-black min-w-[105px] whitespace-normal">{column.label}</th>))}
+                {displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => <th key={`${firm.id}-${column.key}`} className="border border-black px-2 py-2 text-left text-[10px] font-bold uppercase text-black min-w-[105px] whitespace-normal">{column.label}</th>))}
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {loading ? (
                 <tr>
-                  <td colSpan={1 + tableColumns.length + displayFirms.length * firmColumns.length + 1} className="px-6 py-12">
+                  <td colSpan={1 + tableColumns.length + firmColumnCount + 1} className="px-6 py-12">
                     <div className="flex items-center justify-center gap-3 text-black">
                       <Spinner size={28} />
                       <span className="font-semibold">Loading NPD items...</span>
@@ -387,13 +397,13 @@ export function NpdMaster() {
                 </tr>
               ) : loadError ? (
                 <tr>
-                  <td colSpan={1 + tableColumns.length + displayFirms.length * firmColumns.length + 1} className="px-6 py-8 text-center font-semibold text-red-700">
+                  <td colSpan={1 + tableColumns.length + firmColumnCount + 1} className="px-6 py-8 text-center font-semibold text-red-700">
                     {loadError}
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={1 + tableColumns.length + displayFirms.length * firmColumns.length + 1} className="px-6 py-8 text-center font-medium italic text-black">
+                  <td colSpan={1 + tableColumns.length + firmColumnCount + 1} className="px-6 py-8 text-center font-medium italic text-black">
                     No NPD records found.
                   </td>
                 </tr>
@@ -457,7 +467,7 @@ export function NpdMaster() {
                           </td>
                         );
                       })}
-                      {displayFirms.flatMap((firm) => firmColumns.map((column) => {
+                      {displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => {
                         const stock = row.firmStocks?.[firm.id];
                         const value = stock?.[column.key];
                         return <td key={`${firm.id}-${column.key}`} className="border border-black px-2 py-3 text-right text-sm text-black align-top whitespace-nowrap">{value === null || value === undefined || value === "" ? "-" : column.key === "tallyTimestamp" ? String(value) : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>;

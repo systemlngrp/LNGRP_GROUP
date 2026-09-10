@@ -2371,7 +2371,10 @@ async function fetchFirmWiseNpdItems(db, options) {
             const production = Number(source?.production || 0);
             const corrugation = Number(source?.corrugation || 0);
             const invoiced = Number(source?.invoiced || 0);
-            const stockIn = firm.id === unit1FirmId ? corrugation : production;
+            // Firm-wise NPD stock follows the physical flow:
+            // Unit-I carries Corrugation, Unit-II carries Printing, and LNKI only
+            // carries received FG. Do not expose Unit-II production as LNKI stock.
+            const stockIn = firm.id === unit1FirmId ? corrugation : firm.id === unit2FirmId ? production : 0;
             const balance = opening + receipt + stockIn - invoiced;
             const rate = Number(row.rate || 0);
             firmStocks[firm.id] = { opening, receipt, production, invoiced, balance, tallyStock: source?.tallyStock ?? null, tallyTimestamp: source?.tallyTimestamp ?? null, rate, value: balance * rate, corrugation };
