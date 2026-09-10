@@ -2305,11 +2305,14 @@ async function fetchFirmWiseNpdItems(db, options) {
         return byFirm.get(firmId);
     };
     if (itemIds.length) {
+        let aggregationStage = "initialization";
         try {
+            aggregationStage = "inter-firm route lookup";
             const [activeRouteRows] = await db.query("SELECT routeSourceFirmId, routeDestinationFirmId FROM `firms` WHERE routeActive = 'Yes' AND COALESCE(TRIM(routeSourceFirmId), '') <> '' AND COALESCE(TRIM(routeDestinationFirmId), '') <> '' ORDER BY routeSequence ASC LIMIT 1");
             const activeRoute = activeRouteRows[0] || {};
             const sourceFirmFallback = String(activeRoute.routeSourceFirmId || "").trim();
             const destinationFirmFallback = String(activeRoute.routeDestinationFirmId || "").trim();
+            aggregationStage = "material receipts";
             const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
             for (const row of receipts) {
                 const id = resolveStockItemId(row.npdId, row.itemId);
@@ -2318,7 +2321,8 @@ async function fetchFirmWiseNpdItems(db, options) {
                 if (stock)
                     stock.receipt += Number(row.qty || 0);
             }
-            const [productions] = await db.query(`SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode, p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
+            aggregationStage = "production outputs";
+            const [productions] = await db.query(`SELECT p.sourceFirmId, p.destinationFirmId, p.erpCode, p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName, COALESCE(p.prodFromFFG, 0) qty, CASE WHEN LOWER(COALESCE(p.category,'')) LIKE '%corrug%' OR LOWER(COALESCE(p.jobType,'')) LIKE '%corrug%' THEN COALESCE(p.prodFromFFG,0) ELSE 0 END corrugation FROM productions p LEFT JOIN npd pn ON pn.id = p.npdId OR pn.npdId = p.npdId OR pn.erp = p.npdId OR pn.id = p.itemId OR pn.npdId = p.itemId OR pn.erp = p.itemId OR pn.erp = p.erpCode WHERE (p.status <> 'Cancelled' OR p.status IS NULL)`);
             for (const row of productions) {
                 const isCorrugation = Number(row.corrugation || 0) > 0;
                 const firm = String(isCorrugation ? row.sourceFirmId || sourceFirmFallback : row.destinationFirmId || destinationFirmFallback);
@@ -2328,8 +2332,9 @@ async function fetchFirmWiseNpdItems(db, options) {
                     stock.corrugation += Number(row.corrugation || 0);
                 }
             }
+            aggregationStage = "machine processing outputs";
             const [processedOutputs] = await db.query(`
-        SELECT p.firmId, p.sourceFirmId, p.destinationFirmId, p.erpCode,
+        SELECT p.sourceFirmId, p.destinationFirmId, p.erpCode,
           p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName,
           pp.machineName,
           COALESCE(pp.qty, 0) AS qty,
@@ -2360,6 +2365,7 @@ async function fetchFirmWiseNpdItems(db, options) {
                 if (isPrinting)
                     stock.production += Number(row.qty || 0);
             }
+            aggregationStage = "invoice outputs";
             const [invoices] = await db.query(`SELECT inv.firmId, COALESCE(NULLIF(ili.npdId,''), ili.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId`);
             for (const row of invoices) {
                 const stock = ensure(resolveStockItemId(row.itemId), String(row.firmId || ""));
@@ -2368,7 +2374,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             }
         }
         catch (error) {
-            console.error("[DB] Firm-wise NPD stock aggregation failed; returning zero derived stock:", error);
+            console.error(`[DB] Firm-wise NPD stock aggregation failed during ${aggregationStage}; returning available derived stock:`, error);
         }
     }
     const rows = base.rows.map((row) => {
