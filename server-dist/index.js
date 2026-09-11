@@ -2502,6 +2502,74 @@ async function ensureInternalFirmSuppliers(db, database) {
             await db.query("UPDATE material_in SET supplierId = ? WHERE id = ?", [supplierId, row.id]);
     }
 }
+async function resolveInvoiceCompanyId(db, database, companyId) {
+    const requestedId = String(companyId || "").trim();
+    if (!requestedId)
+        return requestedId;
+    const [companyRows] = await db.query("SELECT id FROM `companies` WHERE id = ? LIMIT 1", [requestedId]);
+    if (companyRows.length > 0)
+        return requestedId;
+    let source = null;
+    const supplierColumns = await getExistingColumnNames(db, database, "suppliers");
+    const supplierWhere = supplierColumns.has("firmId") ? "id = ? OR firmId = ?" : "id = ?";
+    const supplierParams = supplierColumns.has("firmId") ? [requestedId, requestedId] : [requestedId];
+    const [supplierRows] = await db.query(`SELECT * FROM \`suppliers\` WHERE ${supplierWhere} LIMIT 1`, supplierParams);
+    const supplier = supplierRows[0];
+    if (supplier) {
+        source = {
+            id: requestedId,
+            name: supplier.name,
+            contactPerson: supplier.contactPerson,
+            contactNumber: supplier.contactNumber,
+            email: supplier.email,
+            gstNo: supplier.gstNo,
+            gstSupplyType: supplier.gstSupplyType,
+            state: supplier.state,
+            district: supplier.district,
+            pin: supplier.pinCode,
+            address: supplier.address,
+        };
+    }
+    if (!source) {
+        const [firmRows] = await db.query("SELECT * FROM `firms` WHERE id = ? LIMIT 1", [requestedId]);
+        const firm = firmRows[0];
+        if (firm) {
+            source = {
+                id: requestedId,
+                name: firm.firmName,
+                gstSupplyType: "INTRA_STATE",
+            };
+        }
+    }
+    if (!source?.name)
+        return requestedId;
+    const companyColumns = await getExistingColumnNames(db, database, "companies");
+    const now = new Date().toISOString();
+    const valuesByColumn = {
+        id: source.id,
+        name: source.name,
+        contactPerson: source.contactPerson || null,
+        contactNumber: source.contactNumber || null,
+        email: source.email || null,
+        address: source.address || null,
+        district: source.district || null,
+        state: source.state || null,
+        gstNo: source.gstNo || null,
+        gstSupplyType: source.gstSupplyType || "INTRA_STATE",
+        pin: source.pin || null,
+        active: "Yes",
+        syncSource: "inter_firm",
+        syncStatus: "active",
+        updatedBy: "System",
+        updateTimestamp: now,
+    };
+    const columns = Object.keys(valuesByColumn).filter((column) => companyColumns.has(column));
+    const placeholders = columns.map(() => "?").join(", ");
+    const updateColumns = columns.filter((column) => column !== "id");
+    const updates = updateColumns.map((column) => `\`${column}\` = VALUES(\`${column}\`)`).join(", ");
+    await db.query(`INSERT INTO \`companies\` (${columns.map((column) => `\`${column}\``).join(", ")}) VALUES (${placeholders})${updates ? ` ON DUPLICATE KEY UPDATE ${updates}` : ""}`, columns.map((column) => valuesByColumn[column]));
+    return requestedId;
+}
 async function generateLockedMrrNo(db, dateStr) {
     const fy = getShortFinancialYear(dateStr);
     if (!fy)
@@ -7643,6 +7711,10 @@ const createHandlers = (tableName) => {
                 // Auto-generate invoiceNo for invoices when not provided
                 if (tableName === 'invoices') {
                     try {
+                        const schemaName = process.env.DB_NAME || "u380633007_Inpidata";
+                        if (String(data.companyId || "").trim()) {
+                            data.companyId = await resolveInvoiceCompanyId(db, schemaName, data.companyId);
+                        }
                         const invoiceFirmId = String(data.firmId || data.sourceFirmId || "").trim();
                         if (invoiceFirmId && !String(data.firmId || "").trim()) {
                             data.firmId = invoiceFirmId;
