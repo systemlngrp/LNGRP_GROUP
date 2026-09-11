@@ -2308,7 +2308,10 @@ async function fetchFirmWiseNpdItems(db, options) {
         let aggregationStage = "initialization";
         try {
             aggregationStage = "material receipts";
-            const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
+            // FG Purchase/Rejection In is a physical receipt as soon as the MRR is
+            // created.  Do not wait for tally posting; only cancelled MRRs must be
+            // excluded from the NPD receipt balance.
+            const [receipts] = await db.query(`SELECT mi.firmId, mi.destinationFirmId, jt.itemId, jt.npdId, COALESCE(jt.invoiceQty, jt.qty, 0) qty FROM material_in mi JOIN JSON_TABLE(mi.lines, '$[*]' COLUMNS(itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId', qty DECIMAL(15,2) PATH '$.qty', invoiceQty DECIMAL(15,2) PATH '$.invoiceQty')) jt WHERE COALESCE(mi.status, '') NOT IN ('Cancelled', 'Canceled') AND mi.mrrType IN ('Rejection In', 'FG Purchase')`);
             for (const row of receipts) {
                 const id = resolveStockItemId(row.npdId, row.itemId);
                 const firm = String(row.destinationFirmId || row.firmId || "");
