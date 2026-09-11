@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { Machine, OrderItemSource, Setting, User } from "../types";
+import { Firm, Machine, OrderItemSource, Setting, User } from "../types";
 import { PRODUCTION_FORM_COLUMN_OPTIONS, parseProductionFormVisibleColumns } from "../lib/productionFormColumns";
 import { Spinner } from "../components/Spinner";
 
@@ -310,6 +310,7 @@ function getDefaultBenchmarkRange() {
 
 type InvoiceSeriesRow = {
   fy: string;
+  firmId: string;
   prefix: string;
   startingNumber: number | "";
   paddingLength: number | "";
@@ -330,6 +331,7 @@ function parseInvoiceNumberSeries(raw?: string): InvoiceSeriesRow[] {
     return parsed
       .map((row) => ({
         fy: String(row?.fy || "").trim(),
+        firmId: String(row?.firmId || "").trim(),
         prefix: normalizeInvoiceSeriesPrefix(row?.prefix),
         startingNumber: Number(row?.startingNumber || 1),
         paddingLength: Number(row?.paddingLength || 5),
@@ -357,6 +359,7 @@ export function SettingsPage() {
   }, [searchTerm]);
 
   const [settings, setSettings, loading] = useData<Setting>("settings", []);
+  const [firms] = useData<Firm>("firms", []);
   const [users] = useData<User>("users", []);
   const [machines] = useData<Machine>("machines", []);
   const npdItems = useNpdItems();
@@ -1275,6 +1278,7 @@ export function SettingsPage() {
               <table className="min-w-full divide-y divide-black border-collapse">
                 <thead className="sticky top-0 z-30 bg-slate-100">
                   <tr className="divide-x divide-black">
+                    <th className="px-4 py-2 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Firm</th>
                     <th className="px-4 py-2 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">FY</th>
                     <th className="px-4 py-2 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Prefix</th>
                     <th className="px-4 py-2 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Starting No</th>
@@ -1287,13 +1291,24 @@ export function SettingsPage() {
                 <tbody className="bg-white divide-y divide-black">
                   {invoiceSeriesDraft.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-4 text-sm text-slate-500 text-center">
+                      <td colSpan={8} className="px-4 py-4 text-sm text-slate-500 text-center">
                         No invoice series configured.
                       </td>
                     </tr>
                   ) : (
                     invoiceSeriesDraft.map((row, idx) => (
                       <tr key={`${row.fy}-${row.prefix}-${idx}`} className="divide-x divide-black">
+                        <td className="px-4 py-2 border border-black">
+                          <select
+                            value={row.firmId}
+                            onChange={(e) => setInvoiceSeriesDraft((prev) => prev.map((r, i) => (i === idx ? { ...r, firmId: e.target.value } : r)))}
+                            disabled={loading || saving}
+                            className="w-full border border-black rounded px-2 py-1 text-sm font-semibold text-black outline-none bg-white"
+                          >
+                            <option value="">Global fallback</option>
+                            {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                          </select>
+                        </td>
                         <td className="px-4 py-2 border border-black">
                           <select
                             value={row.fy}
@@ -1379,6 +1394,7 @@ export function SettingsPage() {
                     ...prev,
                     {
                       fy: getFinancialYear(new Date().toISOString()),
+                      firmId: "",
                       prefix: "",
                       startingNumber: 1,
                       paddingLength: 5,
@@ -1399,6 +1415,7 @@ export function SettingsPage() {
                   const cleaned = invoiceSeriesDraft
                     .map((row) => ({
                       fy: String(row.fy || "").trim(),
+                      firmId: String(row.firmId || "").trim(),
                       prefix: normalizeInvoiceSeriesPrefix(row.prefix),
                       startingNumber: Math.max(1, Number(row.startingNumber || 1)),
                       paddingLength: Math.max(1, Number(row.paddingLength || 5)),
@@ -1410,11 +1427,12 @@ export function SettingsPage() {
                   const activeByFy = new Set<string>();
                   for (const row of cleaned) {
                     if (row.active !== "Yes") continue;
-                    if (activeByFy.has(row.fy)) {
-                      alert(`Only one active invoice series is allowed for FY ${row.fy}.`);
+                    const key = `${row.firmId || "GLOBAL"}::${row.fy}`;
+                    if (activeByFy.has(key)) {
+                      alert(`Only one active invoice series is allowed for this firm and FY ${row.fy}.`);
                       return;
                     }
-                    activeByFy.add(row.fy);
+                    activeByFy.add(key);
                   }
 
                   void handleChange({ invoiceNumberSeries: JSON.stringify(cleaned) });

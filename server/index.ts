@@ -4000,6 +4000,7 @@ function entityPermissionKey(entity: string): string {
 
 type InvoiceNumberSeriesConfig = {
   fy: string;
+  firmId: string;
   prefix: string;
   startingNumber: number;
   paddingLength: number;
@@ -4120,6 +4121,7 @@ function parseInvoiceNumberSeries(raw: unknown): InvoiceNumberSeriesConfig[] {
     return parsed
       .map((row) => ({
         fy: String((row as any)?.fy || "").trim(),
+        firmId: String((row as any)?.firmId || "").trim(),
         prefix: normalizeInvoiceSeriesPrefix((row as any)?.prefix),
         startingNumber: Math.max(1, Number((row as any)?.startingNumber || 1)),
         paddingLength: Math.max(1, Number((row as any)?.paddingLength || 5)),
@@ -4277,8 +4279,11 @@ async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId
   const [settingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
   const settingsRow = (settingsRows as any[])[0] || {};
   const seriesRows = parseInvoiceNumberSeries(settingsRow.invoiceNumberSeries);
+  const scopedFirmId = String(firmId || "").trim();
   const series = seriesRows.find(
-    (row) => row.fy === fy && String(row.active || "Yes").toLowerCase() === "yes"
+    (row) => row.fy === fy && row.firmId === scopedFirmId && String(row.active || "Yes").toLowerCase() === "yes"
+  ) || seriesRows.find(
+    (row) => row.fy === fy && !row.firmId && String(row.active || "Yes").toLowerCase() === "yes"
   );
 
   if (!series) {
@@ -4295,7 +4300,6 @@ async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId
       `${escapeLikePattern(sequencePrefix)}${escapeLikePattern(separator)}${escapeLikePattern(fy)}${escapeLikePattern(separator)}%`
   );
 
-  const scopedFirmId = String(firmId || "").trim();
   const seriesWhere = sequencePrefixes.map(() => "invoiceNo LIKE ? ESCAPE '\\\\'").join(" OR ");
   const invoiceWhere = scopedFirmId ? `(${seriesWhere}) AND \`firmId\` = ?` : `(${seriesWhere})`;
   const invoiceParams = scopedFirmId ? [...likePatterns, scopedFirmId] : likePatterns;
@@ -8203,7 +8207,11 @@ const createHandlers = (tableName: string) => {
         if (tableName === 'invoices') {
           try {
             if (!data.invoiceNo) {
-              data.invoiceNo = await generateDynamicInvoiceNo(db, data.date || new Date().toISOString().slice(0, 10));
+              data.invoiceNo = await generateDynamicInvoiceNo(
+                db,
+                data.date || new Date().toISOString().slice(0, 10),
+                data.firmId || data.sourceFirmId
+              );
             }
           } catch (err) {
             const message = (err as Error).message || "Could not auto-generate invoiceNo.";

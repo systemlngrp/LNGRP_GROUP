@@ -3790,6 +3790,7 @@ function parseInvoiceNumberSeries(raw) {
         return parsed
             .map((row) => ({
             fy: String(row?.fy || "").trim(),
+            firmId: String(row?.firmId || "").trim(),
             prefix: normalizeInvoiceSeriesPrefix(row?.prefix),
             startingNumber: Math.max(1, Number(row?.startingNumber || 1)),
             paddingLength: Math.max(1, Number(row?.paddingLength || 5)),
@@ -3906,7 +3907,8 @@ async function generateDynamicInvoiceNo(db, dateStr, firmId) {
     const [settingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
     const settingsRow = settingsRows[0] || {};
     const seriesRows = parseInvoiceNumberSeries(settingsRow.invoiceNumberSeries);
-    const series = seriesRows.find((row) => row.fy === fy && String(row.active || "Yes").toLowerCase() === "yes");
+    const scopedFirmId = String(firmId || "").trim();
+    const series = seriesRows.find((row) => row.fy === fy && row.firmId === scopedFirmId && String(row.active || "Yes").toLowerCase() === "yes") || seriesRows.find((row) => row.fy === fy && !row.firmId && String(row.active || "Yes").toLowerCase() === "yes");
     if (!series) {
         throw new Error(`Invoice numbering series not configured for FY ${fy}.`);
     }
@@ -3916,7 +3918,6 @@ async function generateDynamicInvoiceNo(db, dateStr, firmId) {
     const paddingLength = Math.max(1, Number(series.paddingLength || 5));
     const sequencePrefixes = prefix === "LNGRP" ? ["LNGRP", "LNPI"] : [prefix];
     const likePatterns = sequencePrefixes.map((sequencePrefix) => `${escapeLikePattern(sequencePrefix)}${escapeLikePattern(separator)}${escapeLikePattern(fy)}${escapeLikePattern(separator)}%`);
-    const scopedFirmId = String(firmId || "").trim();
     const seriesWhere = sequencePrefixes.map(() => "invoiceNo LIKE ? ESCAPE '\\\\'").join(" OR ");
     const invoiceWhere = scopedFirmId ? `(${seriesWhere}) AND \`firmId\` = ?` : `(${seriesWhere})`;
     const invoiceParams = scopedFirmId ? [...likePatterns, scopedFirmId] : likePatterns;
@@ -7630,7 +7631,7 @@ const createHandlers = (tableName) => {
                 if (tableName === 'invoices') {
                     try {
                         if (!data.invoiceNo) {
-                            data.invoiceNo = await generateDynamicInvoiceNo(db, data.date || new Date().toISOString().slice(0, 10));
+                            data.invoiceNo = await generateDynamicInvoiceNo(db, data.date || new Date().toISOString().slice(0, 10), data.firmId || data.sourceFirmId);
                         }
                     }
                     catch (err) {
