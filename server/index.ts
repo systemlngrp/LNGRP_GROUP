@@ -6790,6 +6790,7 @@ await db.query(`
         { table: "invoices", column: "invoiceNo", type: "VARCHAR(100) NOT NULL" },
         { table: "invoices", column: "date", type: "VARCHAR(50) NOT NULL" },
         { table: "invoices", column: "companyId", type: "VARCHAR(36) NOT NULL" },
+        { table: "invoices", column: "firmId", type: "VARCHAR(36)" },
         { table: "invoices", column: "destination", type: "VARCHAR(255)" },
         { table: "invoices", column: "transporter", type: "VARCHAR(255)" },
         { table: "invoices", column: "gstRate", type: "DECIMAL(5,2) NOT NULL" },
