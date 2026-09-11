@@ -2535,8 +2535,16 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       // Use invoice-level sourceFirmId for inter-firm rows.  Some older
       // databases do not have the optional line-level sourceFirmId column;
       // referencing it would abort the complete NPD aggregation.
-      const [invoices] = await db.query(`SELECT CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId LEFT JOIN inter_firm_pending_invoices ip ON ip.id = inv.sourceTransactionId OR ip.sourceTransactionId = ili.sourceTransactionId`);
-      for (const row of invoices as any[]) { const stock = ensure(resolveStockItemId(row.itemId), String(row.firmId || "")); if (stock) stock.invoiced += Number(row.qty || 0); }
+      const [invoiceSettingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
+      const invoicePrefixFirms = parseInvoiceNumberSeries((invoiceSettingsRows as any[])[0]?.invoiceNumberSeries)
+        .filter((series) => series.firmId)
+        .map((series) => ({ prefix: `${series.prefix}${series.separator}`, firmId: series.firmId }));
+      const [invoices] = await db.query(`SELECT inv.invoiceNo, CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId LEFT JOIN inter_firm_pending_invoices ip ON ip.id = inv.sourceTransactionId OR ip.sourceTransactionId = ili.sourceTransactionId`);
+      for (const row of invoices as any[]) {
+        const prefixFirmId = invoicePrefixFirms.find((entry) => String(row.invoiceNo || "").startsWith(entry.prefix))?.firmId;
+        const stock = ensure(resolveStockItemId(row.itemId), String(prefixFirmId || row.firmId || ""));
+        if (stock) stock.invoiced += Number(row.qty || 0);
+      }
     } catch (error) {
       console.error(`[DB] Firm-wise NPD stock aggregation failed during ${aggregationStage}; returning available derived stock:`, error);
     }
@@ -4412,10 +4420,15 @@ async function backfillMissingConsumptionTransactionNos(db: mysql.Pool) {
 async function backfillInterFirmInvoiceSourceFirms(db: mysql.Pool, database: string) {
   const invoiceColumns = await getExistingColumnNames(db, database, "invoices");
   if (!invoiceColumns.has("firmId")) return 0;
+  const [settingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
+  const prefixFirmMap = new Map<string, string>();
+  for (const series of parseInvoiceNumberSeries((settingsRows as any[])[0]?.invoiceNumberSeries)) {
+    if (series.firmId) prefixFirmMap.set(`${series.prefix}${series.separator}`, series.firmId);
+  }
   const sourceExpr = invoiceColumns.has("sourceFirmId") ? "NULLIF(i.sourceFirmId, '')" : "NULL";
   const destinationExpr = invoiceColumns.has("destinationFirmId") ? "NULLIF(i.destinationFirmId, '')" : "NULL";
   const [rows] = await db.query(`
-    SELECT i.id, i.firmId, ${sourceExpr} AS invoiceSourceFirmId,
+    SELECT i.id, i.invoiceNo, i.firmId, ${sourceExpr} AS invoiceSourceFirmId,
       ${destinationExpr} AS invoiceDestinationFirmId,
       p.sourceFirmId AS productionSourceFirmId,
       ip.sourceFirmId AS pendingSourceFirmId
@@ -4426,11 +4439,13 @@ async function backfillInterFirmInvoiceSourceFirms(db: mysql.Pool, database: str
   `);
   let repaired = 0;
   for (const row of rows as any[]) {
-    const sourceFirmId = String(row.pendingSourceFirmId || row.productionSourceFirmId || row.invoiceSourceFirmId || row.firmId || "").trim();
+    const invoiceNo = String(row.invoiceNo || "").trim();
+    const prefixFirmId = Array.from(prefixFirmMap.entries()).find(([prefix]) => invoiceNo.startsWith(prefix))?.[1] || "";
+    const sourceFirmId = String(prefixFirmId || row.pendingSourceFirmId || row.productionSourceFirmId || row.invoiceSourceFirmId || row.firmId || "").trim();
     if (!sourceFirmId || sourceFirmId === String(row.firmId || "").trim()) continue;
     const updates = ["firmId = ?"];
     const params: any[] = [sourceFirmId];
-    if (invoiceColumns.has("sourceFirmId") && !String(row.invoiceSourceFirmId || "").trim()) {
+    if (invoiceColumns.has("sourceFirmId") && String(row.invoiceSourceFirmId || "").trim() !== sourceFirmId) {
       updates.push("sourceFirmId = ?"); params.push(sourceFirmId);
     }
     await db.query(`UPDATE invoices SET ${updates.join(", ")} WHERE id = ?`, [...params, row.id]);
