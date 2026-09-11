@@ -2538,9 +2538,8 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
         if (isPrinting) stock.production += Number(row.qty || 0);
       }
       aggregationStage = "invoice outputs";
-      // Use invoice-level sourceFirmId for inter-firm rows.  Some older
-      // databases do not have the optional line-level sourceFirmId column;
-      // referencing it would abort the complete NPD aggregation.
+      // Invoice stock reduces the source/stock-owning firm. The current
+      // invoice schema stores that on sourceFirmId/orderFirmId, not firmId.
       const [invoiceSettingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
       const invoicePrefixFirms = parseInvoiceNumberSeries((invoiceSettingsRows as any[])[0]?.invoiceNumberSeries)
         .filter((series) => series.firmId)
@@ -2555,9 +2554,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       };
       const [invoices] = await db.query(`
         SELECT inv.invoiceNo,
-          CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes'
-            THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId)
-            ELSE inv.firmId END firmId,
+          COALESCE(NULLIF(ili.sourceFirmId, ''), NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), NULLIF(ili.orderFirmId, ''), NULLIF(inv.orderFirmId, '')) firmId,
           COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId,
           COALESCE(ili.qty,0) qty
         FROM invoice_line_items ili
@@ -2567,9 +2564,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
         WHERE ili.loadingSlipId IS NULL
         UNION ALL
         SELECT inv.invoiceNo,
-          CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes'
-            THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId)
-            ELSE inv.firmId END firmId,
+          COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), NULLIF(o.firmId, ''), NULLIF(inv.orderFirmId, '')) firmId,
           COALESCE(NULLIF(jt.npdId,''), NULLIF(jt.itemId,''), o.npdId, o.itemId) itemId,
           COALESCE(jt.loadedQty, 0) qty
         FROM loading_slips ls
