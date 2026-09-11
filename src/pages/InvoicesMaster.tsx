@@ -197,7 +197,7 @@ export function InvoicesMaster() {
         itemName: item?.name || "Unknown",
         erp: String((item as any)?.erp || "").trim(),
         slipNo: slip?.slipNo || "N/A",
-        truckNo: slip.truckNo || truck?.truckNo || "N/A",
+        truckNo: slip?.truckNo || truck?.truckNo || "N/A",
         qty: Number(line.qty || 0),
         rate: Number(line.rate || 0),
         gstRate: Number(line.gstRate || invoice.gstRate || 0),
