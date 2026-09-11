@@ -13,9 +13,7 @@ export function getFinancialYear(dateStr?: string) {
 }
 
 export function getProductionJobPrefix(source?: "FG" | "PHP" | "PLATE") {
-  if (source === "PHP") return "PHP";
-  if (source === "PLATE") return "PLATE";
-  return "PR";
+  return "JOB";
 }
 
 export function generateTransactionNo(prefix: string, existingRecords: any[], dateStr: string = new Date().toISOString()) {

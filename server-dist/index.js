@@ -3898,6 +3898,54 @@ async function generateSimpleTransactionNumber(db, tableName, columnName, prefix
     }
     return `${prefix}/${fy}/${String(lastNum + 1).padStart(5, "0")}`;
 }
+function normalizeProductionJobNumber(value, dateValue) {
+    const raw = String(value || "").trim();
+    const fy = getShortFinancialYear(String(dateValue || "")) || getShortFinancialYear();
+    const parts = raw.split("/").map((part) => part.trim()).filter(Boolean);
+    const existingFy = parts.find((part) => /^\d{2}-\d{2}$/.test(part)) || fy;
+    const suffix = parts.length ? Number.parseInt(parts[parts.length - 1], 10) : 0;
+    return { fy: existingFy, number: Number.isFinite(suffix) && suffix > 0 ? suffix : 0 };
+}
+async function backfillProductionJobNumbers(db) {
+    const [rows] = await db.query("SELECT id, transactionNo, jobCardNo, date FROM `productions` ORDER BY date ASC, id ASC");
+    const used = new Set();
+    let changed = 0;
+    for (const row of rows) {
+        const parsed = normalizeProductionJobNumber(row.transactionNo || row.jobCardNo, row.date);
+        let next = parsed.number;
+        if (!next)
+            next = 1;
+        let candidate = `JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
+        while (used.has(candidate)) {
+            next += 1;
+            candidate = `JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
+        }
+        used.add(candidate);
+        if (String(row.transactionNo || "").trim() !== candidate) {
+            await db.query("UPDATE `productions` SET `transactionNo` = ? WHERE `id` = ?", [candidate, row.id]);
+            changed += 1;
+        }
+        if (String(row.jobCardNo || "").trim() && String(row.jobCardNo).trim() !== candidate) {
+            await db.query("UPDATE `productions` SET `jobCardNo` = ? WHERE `id` = ?", [candidate, row.id]);
+        }
+    }
+    try {
+        await db.query("ALTER TABLE `productions` ADD UNIQUE KEY `uq_productions_transactionNo` (`transactionNo`)");
+    }
+    catch (error) {
+        const message = String(error.message || "");
+        if (!message.toLowerCase().includes("duplicate") && !message.toLowerCase().includes("already exists")) {
+            console.warn("[DB] Could not add production job number uniqueness:", message);
+        }
+    }
+    return changed;
+}
+async function generateProductionJobNumber(db, dateValue) {
+    const fy = getShortFinancialYear(String(dateValue || "")) || getShortFinancialYear();
+    const [rows] = await db.query("SELECT transactionNo FROM `productions` WHERE transactionNo LIKE ? ORDER BY CAST(SUBSTRING_INDEX(transactionNo, '/', -1) AS UNSIGNED) DESC LIMIT 1", [`JOB/${fy}/%`]);
+    const last = Number.parseInt(String(rows[0]?.transactionNo || "").split("/").pop() || "0", 10) || 0;
+    return `JOB/${fy}/${String(last + 1).padStart(5, "0")}`;
+}
 async function generateScheduleNo(db, scheduledDate) {
     return generateSimpleTransactionNumber(db, "orders_schedule", "scheduleNo", "SCH", scheduledDate);
 }
@@ -6732,6 +6780,15 @@ async function initDb(retries = 5) {
                 console.warn("[DB] Could not backfill orders_schedule.scheduleNo:", err.message);
             }
             try {
+                const backfilledCount = await backfillProductionJobNumbers(db);
+                if (backfilledCount > 0) {
+                    console.log(`[DB] Backfilled ${backfilledCount} production job number(s) with JOB prefix.`);
+                }
+            }
+            catch (err) {
+                console.warn("[DB] Could not backfill production job numbers:", err.message);
+            }
+            try {
                 const [oldLeastSheetWeight] = await db.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?", [database, "productions", "leastSheetWeight"]);
                 const [newLeastGsm] = await db.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?", [database, "productions", "leastGsm"]);
                 if (oldLeastSheetWeight.length > 0 && newLeastGsm.length === 0) {
@@ -7833,6 +7890,23 @@ const createHandlers = (tableName) => {
                     data.mrrSource = String(data.mrrSource || "").trim() || "Manual";
                     if (!String(data.transactionNo || "").trim()) {
                         data.transactionNo = await generateLockedMrrNo(db, String(data.date || new Date().toISOString().slice(0, 10)));
+                    }
+                }
+                if (tableName === "productions") {
+                    try {
+                        const productionId = String(data.id || "").trim();
+                        if (productionId && !String(data.transactionNo || "").trim()) {
+                            const [existingRows] = await db.query("SELECT transactionNo FROM `productions` WHERE id = ? LIMIT 1", [productionId]);
+                            data.transactionNo = String(existingRows[0]?.transactionNo || "").trim();
+                        }
+                        if (!String(data.transactionNo || "").trim() || !String(data.transactionNo).startsWith("JOB/")) {
+                            data.transactionNo = await generateProductionJobNumber(db, data.date);
+                        }
+                        if (String(data.jobCardNo || "").trim())
+                            data.jobCardNo = data.transactionNo;
+                    }
+                    catch (err) {
+                        return res.status(400).json({ error: `Could not generate unique production job number: ${err.message}` });
                     }
                 }
                 console.log(`[DB] Upserting to ${tableName}`, {

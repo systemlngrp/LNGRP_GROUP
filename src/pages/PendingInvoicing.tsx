@@ -277,6 +277,12 @@ export function PendingInvoicing() {
     );
   };
 
+  const resolveInterFirmItemName = (row: InterFirmPendingInvoice) => {
+    const source = normalizeOrderItemSource(row.itemSource || "FG");
+    const item = findItemAcrossSources(String(row.itemId || "").trim(), source, String((row as any).erpCode || "").trim());
+    return getMeaningfulItemName(item?.name) || getMeaningfulItemName((row as any).itemName) || String(row.itemId || "").trim() || "Unknown";
+  };
+
   const resolveCanonicalSlipLineItemId = (line: LoadingSlip["lines"][number], order?: Order) => {
     const resolvedItem = resolveSlipLineItem(line, order);
     return String(resolvedItem?.id || line.itemId || order?.itemId || "").trim();
@@ -1093,7 +1099,7 @@ export function PendingInvoicing() {
                   <th className="px-3 py-2 text-left text-[10px] uppercase">Source</th><th className="px-3 py-2 text-left text-[10px] uppercase">Destination</th><th className="px-3 py-2 text-left text-[10px] uppercase">Job / Source</th><th className="px-3 py-2 text-left text-[10px] uppercase">Item</th><th className="px-3 py-2 text-right text-[10px] uppercase">Qty</th><th className="px-3 py-2 text-right text-[10px] uppercase">Rate</th><th className="px-3 py-2 text-left text-[10px] uppercase">MRR</th><th className="px-3 py-2 text-right text-[10px] uppercase">Action</th>
                 </tr></thead>
                 <tbody className="divide-y divide-black">{interFirmPending.filter((row) => row.status === "Pending").map((row) => (
-                  <tr key={row.id} className="divide-x divide-black"><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.sourceFirmId)?.firmName || row.sourceFirmId}</td><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.destinationFirmId)?.firmName || row.destinationFirmId}</td><td className="px-3 py-2 text-xs">{row.jobNo || row.sourceTransactionId}</td><td className="px-3 py-2 text-xs">{row.itemId}</td><td className="px-3 py-2 text-xs text-right">{Number(row.qty || 0).toLocaleString()}</td><td className="px-3 py-2 text-xs text-right">{format2(Number(row.rate || 0))}</td><td className="px-3 py-2 text-xs font-bold">{row.linkedMrrId ? (mrrNumberById.get(String(row.linkedMrrId)) || row.linkedMrrId) : "Pending"}</td><td className="px-3 py-2 text-right"><button type="button" onClick={() => submitInterFirmInvoice(row)} disabled={interFirmSubmittingId === row.id} className="bg-emerald-600 text-white px-3 py-1.5 rounded text-[10px] font-black uppercase disabled:opacity-50">{interFirmSubmittingId === row.id ? "Saving..." : "Generate Invoice"}</button></td></tr>
+                  <tr key={row.id} className="divide-x divide-black"><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.sourceFirmId)?.firmName || row.sourceFirmId}</td><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.destinationFirmId)?.firmName || row.destinationFirmId}</td><td className="px-3 py-2 text-xs">{row.jobNo || row.sourceTransactionId}</td><td className="px-3 py-2 text-xs">{resolveInterFirmItemName(row)}</td><td className="px-3 py-2 text-xs text-right">{Number(row.qty || 0).toLocaleString()}</td><td className="px-3 py-2 text-xs text-right">{format2(Number(row.rate || 0))}</td><td className="px-3 py-2 text-xs font-bold">{row.linkedMrrId ? (mrrNumberById.get(String(row.linkedMrrId)) || row.linkedMrrId) : "Pending"}</td><td className="px-3 py-2 text-right"><button type="button" onClick={() => submitInterFirmInvoice(row)} disabled={interFirmSubmittingId === row.id} className="bg-emerald-600 text-white px-3 py-1.5 rounded text-[10px] font-black uppercase disabled:opacity-50">{interFirmSubmittingId === row.id ? "Saving..." : "Generate Invoice"}</button></td></tr>
                 ))}</tbody>
               </table>
             </div>
