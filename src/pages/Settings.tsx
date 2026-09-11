@@ -488,12 +488,6 @@ export function SettingsPage() {
     }
   }, [currentSetting?.designations]);
 
-  const fyOptions = useMemo(() => {
-    const now = new Date();
-    const baseStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-    const toFy = (startYear: number) => `${String(startYear % 100).padStart(2, "0")}-${String((startYear + 1) % 100).padStart(2, "0")}`;
-    return Array.from({ length: 8 }, (_, i) => toFy(baseStartYear - 5 + i));
-  }, []);
   const realizationTargets = useMemo(
     () => parseRealizationTargets(currentSetting?.realizationPerKgTargets),
     [currentSetting?.realizationPerKgTargets]
@@ -1310,16 +1304,9 @@ export function SettingsPage() {
                           </select>
                         </td>
                         <td className="px-4 py-2 border border-black">
-                          <select
-                            value={row.fy}
-                            onChange={(e) => setInvoiceSeriesDraft((prev) => prev.map((r, i) => (i === idx ? { ...r, fy: e.target.value } : r)))}
-                            disabled={loading || saving}
-                            className="w-full border border-black rounded px-2 py-1 text-sm font-semibold text-black outline-none bg-white"
-                          >
-                            {fyOptions.map((fy) => (
-                              <option key={fy} value={fy}>{fy}</option>
-                            ))}
-                          </select>
+                          <span className="block w-full rounded border border-slate-300 bg-slate-100 px-2 py-1 text-sm font-semibold text-black">
+                            {row.fy}
+                          </span>
                         </td>
                         <td className="px-4 py-2 border border-black">
                           <input
