@@ -2360,9 +2360,18 @@ async function fetchFirmWiseNpdItems(db, options) {
             const invoicePrefixFirms = parseInvoiceNumberSeries(invoiceSettingsRows[0]?.invoiceNumberSeries)
                 .filter((series) => series.firmId)
                 .map((series) => ({ prefix: `${series.prefix}${series.separator}`, firmId: series.firmId }));
+            const inferInvoiceFirm = (invoiceNo) => {
+                const unit = String(invoiceNo || "").split(/[\\/]/)[0].toUpperCase().match(/[-_]([12])$/)?.[1];
+                if (!unit)
+                    return "";
+                return String(firms.find((firm) => {
+                    const name = String(firm.firmName || "").toLowerCase();
+                    return name.includes(`unit-${unit}`) || name.includes(`unit ${unit}`) || name.endsWith(`unit${unit}`);
+                })?.id || "");
+            };
             const [invoices] = await db.query(`SELECT inv.invoiceNo, CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId LEFT JOIN inter_firm_pending_invoices ip ON ip.id = inv.sourceTransactionId OR ip.sourceTransactionId = ili.sourceTransactionId`);
             for (const row of invoices) {
-                const prefixFirmId = invoicePrefixFirms.find((entry) => String(row.invoiceNo || "").startsWith(entry.prefix))?.firmId;
+                const prefixFirmId = invoicePrefixFirms.find((entry) => String(row.invoiceNo || "").startsWith(entry.prefix))?.firmId || inferInvoiceFirm(String(row.invoiceNo || ""));
                 const stock = ensure(resolveStockItemId(row.itemId), String(prefixFirmId || row.firmId || ""));
                 if (stock)
                     stock.invoiced += Number(row.qty || 0);
@@ -4077,6 +4086,18 @@ async function backfillInterFirmInvoiceSourceFirms(db, database) {
         if (series.firmId)
             prefixFirmMap.set(`${series.prefix}${series.separator}`, series.firmId);
     }
+    const [firmRows] = await db.query("SELECT id, firmName FROM `firms`");
+    const inferUnitFirm = (invoiceNo) => {
+        const prefix = invoiceNo.split(/[\\/]/)[0].toUpperCase();
+        const unit = prefix.match(/[-_]([12])$/)?.[1];
+        if (!unit)
+            return "";
+        const firm = firmRows.find((row) => {
+            const name = String(row.firmName || "").toLowerCase();
+            return name.includes(`unit-${unit}`) || name.includes(`unit ${unit}`) || name.endsWith(`unit${unit}`);
+        });
+        return String(firm?.id || "");
+    };
     const sourceExpr = invoiceColumns.has("sourceFirmId") ? "NULLIF(i.sourceFirmId, '')" : "NULL";
     const destinationExpr = invoiceColumns.has("destinationFirmId") ? "NULLIF(i.destinationFirmId, '')" : "NULL";
     const [rows] = await db.query(`
@@ -4092,7 +4113,7 @@ async function backfillInterFirmInvoiceSourceFirms(db, database) {
     let repaired = 0;
     for (const row of rows) {
         const invoiceNo = String(row.invoiceNo || "").trim();
-        const prefixFirmId = Array.from(prefixFirmMap.entries()).find(([prefix]) => invoiceNo.startsWith(prefix))?.[1] || "";
+        const prefixFirmId = Array.from(prefixFirmMap.entries()).find(([prefix]) => invoiceNo.startsWith(prefix))?.[1] || inferUnitFirm(invoiceNo);
         const sourceFirmId = String(prefixFirmId || row.pendingSourceFirmId || row.productionSourceFirmId || row.invoiceSourceFirmId || row.firmId || "").trim();
         if (!sourceFirmId || sourceFirmId === String(row.firmId || "").trim())
             continue;
