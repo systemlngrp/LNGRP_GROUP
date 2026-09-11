@@ -4022,6 +4022,40 @@ async function backfillMissingConsumptionTransactionNos(db) {
     }
     return rows.length;
 }
+async function backfillInterFirmInvoiceSourceFirms(db, database) {
+    const invoiceColumns = await getExistingColumnNames(db, database, "invoices");
+    if (!invoiceColumns.has("firmId"))
+        return 0;
+    const sourceExpr = invoiceColumns.has("sourceFirmId") ? "NULLIF(i.sourceFirmId, '')" : "NULL";
+    const destinationExpr = invoiceColumns.has("destinationFirmId") ? "NULLIF(i.destinationFirmId, '')" : "NULL";
+    const [rows] = await db.query(`
+    SELECT i.id, i.firmId, ${sourceExpr} AS invoiceSourceFirmId,
+      ${destinationExpr} AS invoiceDestinationFirmId,
+      p.sourceFirmId AS productionSourceFirmId,
+      ip.sourceFirmId AS pendingSourceFirmId
+    FROM invoices i
+    LEFT JOIN productions p ON p.id = i.sourceTransactionId
+    LEFT JOIN inter_firm_pending_invoices ip ON ip.id = i.sourceTransactionId
+    WHERE LOWER(COALESCE(i.interFirmFlow, '')) = 'yes'
+  `);
+    let repaired = 0;
+    for (const row of rows) {
+        const sourceFirmId = String(row.invoiceSourceFirmId || row.pendingSourceFirmId || row.productionSourceFirmId || row.firmId || "").trim();
+        if (!sourceFirmId || sourceFirmId === String(row.firmId || "").trim())
+            continue;
+        const updates = ["firmId = ?"];
+        const params = [sourceFirmId];
+        if (invoiceColumns.has("sourceFirmId") && !String(row.invoiceSourceFirmId || "").trim()) {
+            updates.push("sourceFirmId = ?");
+            params.push(sourceFirmId);
+        }
+        await db.query(`UPDATE invoices SET ${updates.join(", ")} WHERE id = ?`, [...params, row.id]);
+        repaired += 1;
+    }
+    if (repaired)
+        console.log(`[DB] Repaired source firm on ${repaired} inter-firm invoice(s).`);
+    return repaired;
+}
 async function generateDynamicInvoiceNo(db, dateStr, firmId) {
     const fy = getShortFinancialYear(dateStr);
     if (!fy)
@@ -6781,6 +6815,12 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] Could not backfill orders_schedule.scheduleNo:", err.message);
+            }
+            try {
+                await backfillInterFirmInvoiceSourceFirms(db, database);
+            }
+            catch (err) {
+                console.warn("[DB] Could not backfill inter-firm invoice source firms:", err.message);
             }
             try {
                 const backfilledCount = await backfillProductionJobNumbers(db);

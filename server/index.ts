@@ -4409,6 +4409,37 @@ async function backfillMissingConsumptionTransactionNos(db: mysql.Pool) {
   return (rows as any[]).length;
 }
 
+async function backfillInterFirmInvoiceSourceFirms(db: mysql.Pool, database: string) {
+  const invoiceColumns = await getExistingColumnNames(db, database, "invoices");
+  if (!invoiceColumns.has("firmId")) return 0;
+  const sourceExpr = invoiceColumns.has("sourceFirmId") ? "NULLIF(i.sourceFirmId, '')" : "NULL";
+  const destinationExpr = invoiceColumns.has("destinationFirmId") ? "NULLIF(i.destinationFirmId, '')" : "NULL";
+  const [rows] = await db.query(`
+    SELECT i.id, i.firmId, ${sourceExpr} AS invoiceSourceFirmId,
+      ${destinationExpr} AS invoiceDestinationFirmId,
+      p.sourceFirmId AS productionSourceFirmId,
+      ip.sourceFirmId AS pendingSourceFirmId
+    FROM invoices i
+    LEFT JOIN productions p ON p.id = i.sourceTransactionId
+    LEFT JOIN inter_firm_pending_invoices ip ON ip.id = i.sourceTransactionId
+    WHERE LOWER(COALESCE(i.interFirmFlow, '')) = 'yes'
+  `);
+  let repaired = 0;
+  for (const row of rows as any[]) {
+    const sourceFirmId = String(row.invoiceSourceFirmId || row.pendingSourceFirmId || row.productionSourceFirmId || row.firmId || "").trim();
+    if (!sourceFirmId || sourceFirmId === String(row.firmId || "").trim()) continue;
+    const updates = ["firmId = ?"];
+    const params: any[] = [sourceFirmId];
+    if (invoiceColumns.has("sourceFirmId") && !String(row.invoiceSourceFirmId || "").trim()) {
+      updates.push("sourceFirmId = ?"); params.push(sourceFirmId);
+    }
+    await db.query(`UPDATE invoices SET ${updates.join(", ")} WHERE id = ?`, [...params, row.id]);
+    repaired += 1;
+  }
+  if (repaired) console.log(`[DB] Repaired source firm on ${repaired} inter-firm invoice(s).`);
+  return repaired;
+}
+
 async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId?: string) {
   const fy = getShortFinancialYear(dateStr);
   if (!fy) throw new Error("Invoice date is invalid for invoice series generation.");
@@ -7265,6 +7296,12 @@ await db.query(`
         }
       } catch (err) {
         console.warn("[DB] Could not backfill orders_schedule.scheduleNo:", (err as Error).message);
+      }
+
+      try {
+        await backfillInterFirmInvoiceSourceFirms(db, database);
+      } catch (err) {
+        console.warn("[DB] Could not backfill inter-firm invoice source firms:", (err as Error).message);
       }
 
       try {
