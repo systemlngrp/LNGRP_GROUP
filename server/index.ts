@@ -2585,8 +2585,10 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
         WHERE COALESCE(ls.status, 'Active') <> 'Cancelled'
       `);
       for (const row of invoices as any[]) {
-        const prefixFirmId = invoicePrefixFirms.find((entry) => String(row.invoiceNo || "").startsWith(entry.prefix))?.firmId || inferInvoiceFirm(String(row.invoiceNo || ""));
-        const stock = ensure(resolveStockItemId(row.itemId), String(prefixFirmId || row.firmId || ""));
+        // The persisted firm/source-firm is authoritative. Invoice-number
+        // prefixes are only a fallback for legacy rows missing firm data.
+        const fallbackFirmId = invoicePrefixFirms.find((entry) => String(row.invoiceNo || "").startsWith(entry.prefix))?.firmId || inferInvoiceFirm(String(row.invoiceNo || ""));
+        const stock = ensure(resolveStockItemId(row.itemId), String(row.firmId || fallbackFirmId || ""));
         if (stock) stock.invoiced += Number(row.qty || 0);
       }
     } catch (error) {
