@@ -2535,7 +2535,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       // Use invoice-level sourceFirmId for inter-firm rows.  Some older
       // databases do not have the optional line-level sourceFirmId column;
       // referencing it would abort the complete NPD aggregation.
-      const [invoices] = await db.query(`SELECT CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId LEFT JOIN inter_firm_pending_invoices ip ON ip.id = inv.sourceTransactionId`);
+      const [invoices] = await db.query(`SELECT CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId LEFT JOIN inter_firm_pending_invoices ip ON ip.id = inv.sourceTransactionId OR ip.sourceTransactionId = ili.sourceTransactionId`);
       for (const row of invoices as any[]) { const stock = ensure(resolveStockItemId(row.itemId), String(row.firmId || "")); if (stock) stock.invoiced += Number(row.qty || 0); }
     } catch (error) {
       console.error(`[DB] Firm-wise NPD stock aggregation failed during ${aggregationStage}; returning available derived stock:`, error);
@@ -4421,7 +4421,7 @@ async function backfillInterFirmInvoiceSourceFirms(db: mysql.Pool, database: str
       ip.sourceFirmId AS pendingSourceFirmId
     FROM invoices i
     LEFT JOIN productions p ON p.id = i.sourceTransactionId
-    LEFT JOIN inter_firm_pending_invoices ip ON ip.id = i.sourceTransactionId
+    LEFT JOIN inter_firm_pending_invoices ip ON ip.id = i.sourceTransactionId OR ip.sourceTransactionId = i.sourceTransactionId
     WHERE LOWER(COALESCE(i.interFirmFlow, '')) = 'yes'
   `);
   let repaired = 0;
