@@ -4301,8 +4301,20 @@ async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId
   );
 
   const seriesWhere = sequencePrefixes.map(() => "invoiceNo LIKE ? ESCAPE '\\\\'").join(" OR ");
-  const invoiceWhere = scopedFirmId ? `(${seriesWhere}) AND \`firmId\` = ?` : `(${seriesWhere})`;
-  const invoiceParams = scopedFirmId ? [...likePatterns, scopedFirmId] : likePatterns;
+  const [databaseRows] = await db.query("SELECT DATABASE() as db");
+  const database = String((databaseRows as any[])[0]?.db || process.env.DB_NAME || "");
+  const invoiceColumns = await getExistingColumnNames(db, database, "invoices");
+  const invoiceFirmExpressions = [
+    invoiceColumns.has("firmId") ? "NULLIF(`firmId`, '')" : "",
+    invoiceColumns.has("sourceFirmId") ? "NULLIF(`sourceFirmId`, '')" : "",
+  ].filter(Boolean);
+  const invoiceFirmWhere = invoiceFirmExpressions.length > 0
+    ? `COALESCE(${invoiceFirmExpressions.join(", ")}) = ?`
+    : "";
+  const invoiceWhere = scopedFirmId && invoiceFirmWhere
+    ? `(${seriesWhere}) AND ${invoiceFirmWhere}`
+    : `(${seriesWhere})`;
+  const invoiceParams = scopedFirmId && invoiceFirmWhere ? [...likePatterns, scopedFirmId] : likePatterns;
   const [invoiceRows] = await db.query(
     `SELECT invoiceNo FROM \`invoices\` WHERE ${invoiceWhere}`,
     invoiceParams
@@ -8207,11 +8219,15 @@ const createHandlers = (tableName: string) => {
         // Auto-generate invoiceNo for invoices when not provided
         if (tableName === 'invoices') {
           try {
+            const invoiceFirmId = String(data.firmId || data.sourceFirmId || "").trim();
+            if (invoiceFirmId && !String(data.firmId || "").trim()) {
+              data.firmId = invoiceFirmId;
+            }
             if (!data.invoiceNo) {
               data.invoiceNo = await generateDynamicInvoiceNo(
                 db,
                 data.date || new Date().toISOString().slice(0, 10),
-                data.firmId || data.sourceFirmId
+                invoiceFirmId
               );
             }
           } catch (err) {
