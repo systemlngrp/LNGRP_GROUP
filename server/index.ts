@@ -2553,7 +2553,37 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
           return name.includes(`unit-${unit}`) || name.includes(`unit ${unit}`) || name.endsWith(`unit${unit}`);
         })?.id || "");
       };
-      const [invoices] = await db.query(`SELECT inv.invoiceNo, CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId LEFT JOIN inter_firm_pending_invoices ip ON ip.id = inv.sourceTransactionId OR ip.sourceTransactionId = ili.sourceTransactionId`);
+      const [invoices] = await db.query(`
+        SELECT inv.invoiceNo,
+          CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes'
+            THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId)
+            ELSE inv.firmId END firmId,
+          COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId,
+          COALESCE(ili.qty,0) qty
+        FROM invoice_line_items ili
+        JOIN invoices inv ON inv.id = ili.invoiceId
+        LEFT JOIN productions p ON p.id = ili.sourceTransactionId
+        LEFT JOIN inter_firm_pending_invoices ip ON ip.id = inv.sourceTransactionId OR ip.sourceTransactionId = ili.sourceTransactionId
+        WHERE ili.loadingSlipId IS NULL
+        UNION ALL
+        SELECT inv.invoiceNo,
+          CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes'
+            THEN COALESCE(NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId)
+            ELSE inv.firmId END firmId,
+          COALESCE(NULLIF(jt.npdId,''), NULLIF(jt.itemId,''), o.npdId, o.itemId) itemId,
+          COALESCE(jt.loadedQty, 0) qty
+        FROM loading_slips ls
+        JOIN invoices inv ON inv.id = ls.invoiceId
+        JOIN JSON_TABLE(ls.lines, '$[*]' COLUMNS(
+          itemId VARCHAR(36) PATH '$.itemId', npdId VARCHAR(36) PATH '$.npdId',
+          dispatchPlanId VARCHAR(36) PATH '$.dispatchPlanId', loadedQty DECIMAL(15,2) PATH '$.loadedQty'
+        )) jt
+        LEFT JOIN dispatch_plans dp ON dp.id = jt.dispatchPlanId
+        LEFT JOIN orders o ON o.id = dp.orderId
+        LEFT JOIN productions p ON p.id = dp.productionId
+        LEFT JOIN inter_firm_pending_invoices ip ON ip.sourceTransactionId = dp.productionId OR ip.sourceTransactionId = dp.id
+        WHERE COALESCE(ls.status, 'Active') <> 'Cancelled'
+      `);
       for (const row of invoices as any[]) {
         const prefixFirmId = invoicePrefixFirms.find((entry) => String(row.invoiceNo || "").startsWith(entry.prefix))?.firmId || inferInvoiceFirm(String(row.invoiceNo || ""));
         const stock = ensure(resolveStockItemId(row.itemId), String(prefixFirmId || row.firmId || ""));
