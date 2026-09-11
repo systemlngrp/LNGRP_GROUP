@@ -90,7 +90,6 @@ export function NpdMaster() {
     ] as const;
     return columns;
   }, []);
-  const firmColumnCount = useMemo(() => displayFirms.reduce((sum, firm) => sum + firmColumnsFor(firm).length, 0), [displayFirms, firmColumnsFor]);
   const displayFirms = useMemo(() => {
     const knownFirmIds = new Set(firms.map((firm) => String(firm.id)));
     const orphanFirmIds = rows.flatMap((row) => Object.keys(row.firmStocks || {})).filter((id) => !knownFirmIds.has(String(id)));
@@ -99,6 +98,7 @@ export function NpdMaster() {
       ...Array.from(new Set(orphanFirmIds)).map((id) => ({ id, firmName: "Unknown Firm", active: "Yes" } as Firm)),
     ];
   }, [firms, rows]);
+  const firmColumnCount = useMemo(() => displayFirms.reduce((sum, firm) => sum + firmColumnsFor(firm).length, 0), [displayFirms, firmColumnsFor]);
   const exportRows = useMemo(() => rows.map((row, index) => Object.fromEntries([
     ["SL No", (page - 1) * pageSize + index + 1],
     ...tableColumns.map((column) => [column.label, row[column.key] ?? ""]),
