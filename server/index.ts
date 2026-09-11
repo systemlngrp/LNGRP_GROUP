@@ -2532,7 +2532,10 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
         if (isPrinting) stock.production += Number(row.qty || 0);
       }
       aggregationStage = "invoice outputs";
-      const [invoices] = await db.query(`SELECT CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(ili.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId`);
+      // Use invoice-level sourceFirmId for inter-firm rows.  Some older
+      // databases do not have the optional line-level sourceFirmId column;
+      // referencing it would abort the complete NPD aggregation.
+      const [invoices] = await db.query(`SELECT CASE WHEN LOWER(COALESCE(inv.interFirmFlow, '')) = 'yes' THEN COALESCE(NULLIF(inv.sourceFirmId, ''), inv.firmId) ELSE inv.firmId END firmId, COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode) itemId, COALESCE(ili.qty,0) qty FROM invoice_line_items ili JOIN invoices inv ON inv.id = ili.invoiceId LEFT JOIN productions p ON p.id = ili.sourceTransactionId`);
       for (const row of invoices as any[]) { const stock = ensure(resolveStockItemId(row.itemId), String(row.firmId || "")); if (stock) stock.invoiced += Number(row.qty || 0); }
     } catch (error) {
       console.error(`[DB] Firm-wise NPD stock aggregation failed during ${aggregationStage}; returning available derived stock:`, error);
