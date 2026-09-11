@@ -3914,6 +3914,46 @@ function normalizeProductionJobNumber(value, dateValue) {
     const suffix = parts.length ? Number.parseInt(parts[parts.length - 1], 10) : 0;
     return { fy: existingFy, number: Number.isFinite(suffix) && suffix > 0 ? suffix : 0 };
 }
+function normalizeBusinessName(value) {
+    return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
+}
+async function backfillFirmSupplierAttribution(db, database) {
+    const [firms] = await db.query("SELECT id, firmName FROM `firms`");
+    const firmByName = new Map();
+    for (const firm of firms) {
+        const key = normalizeBusinessName(firm.firmName);
+        if (key && !firmByName.has(key))
+            firmByName.set(key, String(firm.id));
+    }
+    const supplierColumns = await getExistingColumnNames(db, database, "suppliers");
+    if (supplierColumns.has("name") && supplierColumns.has("firmId")) {
+        const [suppliers] = await db.query("SELECT id, name, firmId FROM `suppliers`");
+        for (const supplier of suppliers) {
+            if (String(supplier.firmId || "").trim())
+                continue;
+            const firmId = firmByName.get(normalizeBusinessName(supplier.name));
+            if (firmId) {
+                await db.query("UPDATE `suppliers` SET firmId = ? WHERE id = ?", [firmId, supplier.id]);
+                console.log(`[DB] Matched supplier ${supplier.id} to firm ${firmId}.`);
+            }
+        }
+    }
+    if (supplierColumns.has("firmId")) {
+        for (const table of ["purchase_orders", "material_in", "gate_entries"]) {
+            const columns = await getExistingColumnNames(db, database, table);
+            if (!columns.has("supplierId") || !columns.has("firmId"))
+                continue;
+            const [rows] = await db.query(`SELECT id, supplierId, firmId FROM \`${table}\` WHERE COALESCE(TRIM(firmId), '') = '' AND supplierId IS NOT NULL AND supplierId <> ''`);
+            for (const row of rows) {
+                const [supplierRows] = await db.query("SELECT firmId FROM `suppliers` WHERE id = ? LIMIT 1", [row.supplierId]);
+                const firmId = String(supplierRows[0]?.firmId || "").trim();
+                if (firmId)
+                    await db.query(`UPDATE \`${table}\` SET firmId = ? WHERE id = ?`, [firmId, row.id]);
+            }
+        }
+    }
+    return firmByName;
+}
 async function backfillProductionJobNumbers(db) {
     const [rows] = await db.query("SELECT id, transactionNo, jobCardNo, date FROM `productions` ORDER BY date ASC, id ASC");
     const used = new Set();
@@ -6830,10 +6870,11 @@ async function initDb(retries = 5) {
                 console.warn("[DB] Could not backfill orders_schedule.scheduleNo:", err.message);
             }
             try {
+                await backfillFirmSupplierAttribution(db, database);
                 await backfillInterFirmInvoiceSourceFirms(db, database);
             }
             catch (err) {
-                console.warn("[DB] Could not backfill inter-firm invoice source firms:", err.message);
+                console.warn("[DB] Could not backfill firm/supplier attribution:", err.message);
             }
             try {
                 const backfilledCount = await backfillProductionJobNumbers(db);

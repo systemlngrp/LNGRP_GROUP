@@ -4273,6 +4273,44 @@ function normalizeProductionJobNumber(value: unknown, dateValue: unknown) {
   return { fy: existingFy, number: Number.isFinite(suffix) && suffix > 0 ? suffix : 0 };
 }
 
+function normalizeBusinessName(value: unknown) {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
+}
+
+async function backfillFirmSupplierAttribution(db: mysql.Pool, database: string) {
+  const [firms] = await db.query("SELECT id, firmName FROM `firms`");
+  const firmByName = new Map<string, string>();
+  for (const firm of firms as any[]) {
+    const key = normalizeBusinessName(firm.firmName);
+    if (key && !firmByName.has(key)) firmByName.set(key, String(firm.id));
+  }
+  const supplierColumns = await getExistingColumnNames(db, database, "suppliers");
+  if (supplierColumns.has("name") && supplierColumns.has("firmId")) {
+    const [suppliers] = await db.query("SELECT id, name, firmId FROM `suppliers`");
+    for (const supplier of suppliers as any[]) {
+      if (String(supplier.firmId || "").trim()) continue;
+      const firmId = firmByName.get(normalizeBusinessName(supplier.name));
+      if (firmId) {
+        await db.query("UPDATE `suppliers` SET firmId = ? WHERE id = ?", [firmId, supplier.id]);
+        console.log(`[DB] Matched supplier ${supplier.id} to firm ${firmId}.`);
+      }
+    }
+  }
+  if (supplierColumns.has("firmId")) {
+    for (const table of ["purchase_orders", "material_in", "gate_entries"]) {
+      const columns = await getExistingColumnNames(db, database, table);
+      if (!columns.has("supplierId") || !columns.has("firmId")) continue;
+      const [rows] = await db.query(`SELECT id, supplierId, firmId FROM \`${table}\` WHERE COALESCE(TRIM(firmId), '') = '' AND supplierId IS NOT NULL AND supplierId <> ''`);
+      for (const row of rows as any[]) {
+        const [supplierRows] = await db.query("SELECT firmId FROM `suppliers` WHERE id = ? LIMIT 1", [row.supplierId]);
+        const firmId = String((supplierRows as any[])[0]?.firmId || "").trim();
+        if (firmId) await db.query(`UPDATE \`${table}\` SET firmId = ? WHERE id = ?`, [firmId, row.id]);
+      }
+    }
+  }
+  return firmByName;
+}
+
 async function backfillProductionJobNumbers(db: mysql.Pool) {
   const [rows] = await db.query(
     "SELECT id, transactionNo, jobCardNo, date FROM `productions` ORDER BY date ASC, id ASC"
@@ -7314,9 +7352,10 @@ await db.query(`
       }
 
       try {
+        await backfillFirmSupplierAttribution(db, database);
         await backfillInterFirmInvoiceSourceFirms(db, database);
       } catch (err) {
-        console.warn("[DB] Could not backfill inter-firm invoice source firms:", (err as Error).message);
+        console.warn("[DB] Could not backfill firm/supplier attribution:", (err as Error).message);
       }
 
       try {
