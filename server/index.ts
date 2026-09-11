@@ -2328,7 +2328,7 @@ async function fetchActiveNpdItems(
       SELECT masterId, SUM(invoiced) AS invoiced
       FROM (
         SELECT
-          COALESCE(NULLIF(CONVERT(jt.npdId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(CONVERT(jt.itemId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(o.npdId, ''), o.itemId) COLLATE utf8mb4_unicode_ci AS masterId,
+          COALESCE(n.id, NULLIF(CONVERT(jt.npdId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(CONVERT(jt.itemId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(o.npdId, ''), o.itemId) COLLATE utf8mb4_unicode_ci AS masterId,
           SUM(COALESCE(jt.loadedQty, 0)) AS invoiced
         FROM \`loading_slips\` ls
         JOIN JSON_TABLE(
@@ -2343,21 +2343,27 @@ async function fetchActiveNpdItems(
         JOIN \`invoices\` ls_invoice ON ls_invoice.id = ls.invoiceId
         LEFT JOIN \`dispatch_plans\` dp ON dp.id COLLATE utf8mb4_unicode_ci = CONVERT(jt.dispatchPlanId USING utf8mb4) COLLATE utf8mb4_unicode_ci
         LEFT JOIN \`orders\` o ON o.id = dp.orderId
+        LEFT JOIN \`npd\` n ON n.id = jt.npdId OR n.npdId = jt.npdId OR n.erp = jt.npdId
+          OR n.id = jt.itemId OR n.npdId = jt.itemId OR n.erp = jt.itemId
+          OR n.id = o.npdId OR n.npdId = o.npdId OR n.erp = o.npdId
+          OR n.id = o.itemId OR n.npdId = o.itemId OR n.erp = o.itemId
         WHERE COALESCE(NULLIF(ls.invoiceId, ''), '') <> ''
           AND COALESCE(ls.status, 'Active') <> 'Cancelled'
           AND COALESCE(NULLIF(CONVERT(jt.npdId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(CONVERT(jt.itemId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(o.npdId, ''), o.itemId, '') <> ''
-        GROUP BY COALESCE(NULLIF(CONVERT(jt.npdId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(CONVERT(jt.itemId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(o.npdId, ''), o.itemId)
+        GROUP BY COALESCE(n.id, NULLIF(CONVERT(jt.npdId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(CONVERT(jt.itemId USING utf8mb4) COLLATE utf8mb4_unicode_ci, ''), NULLIF(o.npdId, ''), o.itemId)
         UNION ALL
         SELECT
-          COALESCE(NULLIF(ili.npdId, ''), ili.itemId) COLLATE utf8mb4_unicode_ci AS masterId,
+          COALESCE(n.id, NULLIF(ili.npdId, ''), NULLIF(ili.itemId, '')) COLLATE utf8mb4_unicode_ci AS masterId,
           SUM(COALESCE(ili.qty, 0)) AS invoiced
         FROM \`invoice_line_items\` ili
         LEFT JOIN \`loading_slips\` ls
           ON ls.id = ili.loadingSlipId
           AND COALESCE(ls.status, 'Active') <> 'Cancelled'
         LEFT JOIN \`invoices\` ls_invoice ON ls_invoice.id = ls.invoiceId
+        LEFT JOIN \`npd\` n ON n.id = ili.npdId OR n.npdId = ili.npdId OR n.erp = ili.npdId
+          OR n.id = ili.itemId OR n.npdId = ili.itemId OR n.erp = ili.itemId
         WHERE ls_invoice.id IS NULL
-        GROUP BY COALESCE(NULLIF(ili.npdId, ''), ili.itemId)
+        GROUP BY COALESCE(n.id, NULLIF(ili.npdId, ''), NULLIF(ili.itemId, ''))
       ) billed
       GROUP BY masterId
     ) inv ON inv.masterId COLLATE utf8mb4_unicode_ci = n.id COLLATE utf8mb4_unicode_ci
