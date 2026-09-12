@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Indent, IndentLine, Material, User } from "../types";
+import { useAuth } from "../auth/AuthContext";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
@@ -30,6 +31,7 @@ function getIndentLineUom(indentType: Indent["indentType"], material?: Material 
 }
 
 export function IndentForm() {
+  const { activeFirm, activeFirmId } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Simple DOM-based table row filter bound to the search input
@@ -112,8 +114,8 @@ export function IndentForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!requestedBy.trim() || !requisitionDate) {
-      alert("Requested By and Requisition Date are required.");
+    if (!activeFirmId || !activeFirm || !requestedBy.trim() || !requisitionDate) {
+      alert("Active Firm, Requested By and Requisition Date are required.");
       return;
     }
 
@@ -154,6 +156,8 @@ export function IndentForm() {
 
     const nextIndent: Indent = {
       id: indentId,
+      firmId: activeFirmId,
+      firmName: activeFirm.firmName,
       requestedBy: requestedBy.trim(),
       requisitionDate,
       requiredDate: requisitionDate,
@@ -201,6 +205,10 @@ export function IndentForm() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="space-y-2">
+            <label className="text-blue-700 font-bold">Firm <span className="text-red-500">*</span></label>
+            <input value={activeFirm?.firmName || ""} readOnly className="w-full rounded border-2 border-black bg-slate-100 px-4 py-3 font-bold text-black" placeholder="Select active firm from header" />
+          </div>
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">
               Requested By <span className="text-red-500">*</span>

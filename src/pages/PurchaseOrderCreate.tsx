@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { Indent, IndentLine, Material, PurchaseOrder, PurchaseOrderLine, Supplier } from "../types";
+import { Firm, Indent, IndentLine, Material, PurchaseOrder, PurchaseOrderLine, Supplier } from "../types";
 import { Spinner } from "../components/Spinner";
 
 import { TableControls } from "../components/TableControls";
@@ -40,6 +40,7 @@ export function PurchaseOrderCreate() {
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [purchaseOrders, setPurchaseOrders] = useData<PurchaseOrder>("purchase-orders", []);
   const [purchaseOrderLines, setPurchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
 
   const indent = useMemo(() => indents.find((row) => row.id === indentId) || null, [indentId, indents]);
   const allIndentLines = useMemo(
@@ -55,6 +56,11 @@ export function PurchaseOrderCreate() {
   const [remarks, setRemarks] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rowDrafts, setRowDrafts] = useState<Record<string, RowDraft>>({});
+  const [poFirmId, setPoFirmId] = useState("");
+
+  useEffect(() => {
+    if (indent && !poFirmId) setPoFirmId(String(indent.firmId || ""));
+  }, [indent, poFirmId]);
 
   const supplierOptions = useMemo(
     () =>
@@ -188,6 +194,10 @@ export function PurchaseOrderCreate() {
       }
     }
 
+    if (!poFirmId) {
+      alert("Please select a firm for the Purchase Order.");
+      return;
+    }
     setIsSubmitting(true);
     const timestamp = new Date().toISOString();
     const newOrders: PurchaseOrder[] = [];
@@ -205,7 +215,9 @@ export function PurchaseOrderCreate() {
       orderGroups.forEach((group) => {
         const poNo = generateTransactionNo(
           "PO",
-          [...purchaseOrders, ...newOrders].map((order) => ({
+          [...purchaseOrders, ...newOrders]
+            .filter((order) => String(order.firmId || indent.firmId || "") === poFirmId)
+            .map((order) => ({
             transactionNo: order.poNo,
             date: order.poDate,
           })),
@@ -239,6 +251,8 @@ export function PurchaseOrderCreate() {
         const totals = summarizePurchaseOrderLines(nextOrderLines);
         const nextOrder: PurchaseOrder = {
           id: purchaseOrderId,
+          firmId: poFirmId,
+          firmName: firms.find((firm) => firm.id === poFirmId)?.firmName,
           poNo,
           indentId: indent.id,
           supplierId: group.supplierId,
@@ -359,7 +373,14 @@ export function PurchaseOrderCreate() {
           <SummaryCard label="Balance Qty" value={Number(normalizedIndent.totalBalanceQty || 0).toLocaleString()} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <label className="text-blue-700 font-bold">Purchase Firm</label>
+            <select value={poFirmId} onChange={(e) => setPoFirmId(e.target.value)} className="w-full rounded border-2 border-black bg-white px-4 py-3 text-black">
+              <option value="">Select firm...</option>
+              {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+            </select>
+          </div>
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">PO Date</label>
             <input

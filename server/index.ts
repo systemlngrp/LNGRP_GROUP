@@ -92,11 +92,11 @@ const REMOVED_FIRM_SCOPE_TABLES = [
   "printing_qc_checks",
   "productions",
   "purchase_order_lines",
-  "purchase_orders",
   "sample_requests",
 ];
 const FIRM_SCOPED_TABLES = new Set([
   "material_firm_openings",
+  "purchase_orders",
   "indents",
   "gate_entries",
   "material_in_packing_slips",
@@ -4827,6 +4827,7 @@ async function initDb(retries = 5) {
       await db.query(`
         CREATE TABLE IF NOT EXISTS \`purchase_orders\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
+          \`firmId\` VARCHAR(36),
           \`poNo\` VARCHAR(100) NOT NULL,
           \`indentId\` VARCHAR(36),
           \`supplierId\` VARCHAR(36) NOT NULL,
@@ -7181,6 +7182,7 @@ await db.query(`
         { table: "firms", column: "tallyPortNo", type: "VARCHAR(20)" },
         { table: "firms", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "firms", column: "updateTimestamp", type: "VARCHAR(255)" },
+        { table: "purchase_orders", column: "firmId", type: "VARCHAR(36)" },
         { table: "settings", column: "reelAsPerCalculation", type: "TEXT" },
         { table: "settings", column: "reelTransferWindowHours", type: "DECIMAL(10,2) DEFAULT 12" },
         { table: "settings", column: "interFirmRatePercent", type: "DECIMAL(5,2) DEFAULT 92.00" },
@@ -10124,11 +10126,13 @@ function summarizePurchaseOrderTaxTotals(
   };
 }
 
-app.get("/api/purchase-orders/pending-indent-lines", async (_req, res) => {
+app.get("/api/purchase-orders/pending-indent-lines", async (req, res) => {
   const db = await getPool();
   if (!db) return res.status(500).json({ error: "DB connection not available" });
 
   try {
+    const requestFirmId = getRequestFirmId(req);
+    if (requestFirmId) await assertRequestFirm(db, requestFirmId);
     const [rows] = await db.query(`
       SELECT 
         il.id as indentLineId,
@@ -10155,7 +10159,8 @@ app.get("/api/purchase-orders/pending-indent-lines", async (_req, res) => {
         GROUP BY pol.indentLineId
       ) pol_sum ON pol_sum.indentLineId = il.id
       WHERE i.status = 'Approved'
-    `);
+        AND (? = '' OR i.firmId = ? OR i.firmId IS NULL OR TRIM(i.firmId) = '')
+    `, [requestFirmId, requestFirmId]);
 
     const base = (rows as any[])
       .map((row) => {
@@ -10230,6 +10235,7 @@ app.post("/api/purchase-orders/create-from-indent-lines", async (req, res) => {
   const auditActor = resolveAuditActorName(requestUser);
   const auditTimestamp = new Date().toISOString();
   const { poDate, remarks, lines } = req.body || {};
+  let purchaseFirmId = String(req.body?.firmId || getRequestFirmId(req) || "").trim();
   if (!Array.isArray(lines) || lines.length === 0) {
     return res.status(400).json({ error: "No lines provided." });
   }
@@ -10263,6 +10269,7 @@ app.post("/api/purchase-orders/create-from-indent-lines", async (req, res) => {
           il.qty,
           il.cancelledQty,
           il.targetDeliveryDate,
+          i.firmId,
           COALESCE(pol_sum.poQtyCreated, 0) as poQtyCreated
         FROM indent_lines il
         JOIN indents i ON i.id = il.indentId
@@ -10279,6 +10286,9 @@ app.post("/api/purchase-orders/create-from-indent-lines", async (req, res) => {
     );
 
     const byId = new Map<string, any>((dbRows as any[]).map((r) => [String(r.indentLineId), r]));
+    if (!purchaseFirmId) purchaseFirmId = String((dbRows as any[])[0]?.firmId || "").trim();
+    if (!purchaseFirmId) return res.status(400).json({ error: "Purchase firm is required." });
+    await assertRequestFirm(db, purchaseFirmId);
     for (const l of normalizedLines) {
       const row = byId.get(l.indentLineId);
       if (!row) {
@@ -10307,8 +10317,8 @@ app.post("/api/purchase-orders/create-from-indent-lines", async (req, res) => {
       const prefix = "PO";
       const likePattern = `${prefix}/${fyLabel}/%`;
       const [poRows] = await conn.query(
-        "SELECT poNo FROM `purchase_orders` WHERE poNo LIKE ? ORDER BY CAST(SUBSTRING_INDEX(poNo,'/',-1) AS UNSIGNED) DESC LIMIT 1",
-        [likePattern]
+        "SELECT poNo FROM `purchase_orders` WHERE poNo LIKE ? AND (firmId = ? OR firmId IS NULL OR TRIM(firmId) = '') ORDER BY CAST(SUBSTRING_INDEX(poNo,'/',-1) AS UNSIGNED) DESC LIMIT 1",
+        [likePattern, purchaseFirmId]
       );
       let lastNum = 0;
       if ((poRows as any[]).length > 0) {
@@ -10355,9 +10365,10 @@ app.post("/api/purchase-orders/create-from-indent-lines", async (req, res) => {
       const indentIdForOrder = indentIdsForOrder.size === 1 ? Array.from(indentIdsForOrder)[0] : null;
 
       await conn.query(
-        "INSERT INTO `purchase_orders` (id, poNo, indentId, supplierId, poDate, requiredDate, totalQty, totalAmount, taxableAmount, cgst, sgst, igst, roundOff, grandTotal, remarks, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO `purchase_orders` (id, firmId, poNo, indentId, supplierId, poDate, requiredDate, totalQty, totalAmount, taxableAmount, cgst, sgst, igst, roundOff, grandTotal, remarks, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
           purchaseOrderId,
+          purchaseFirmId,
           poNo,
           indentIdForOrder,
           supplierId,

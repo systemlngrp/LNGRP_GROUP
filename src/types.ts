@@ -418,6 +418,8 @@ export interface IndentLine {
 
 export interface PurchaseOrder {
   id: string;
+  firmId?: string;
+  firmName?: string;
   poNo: string;
   indentId: string;
   supplierId: string;

@@ -118,6 +118,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
           return (
             (indent.indentNo || "").toLowerCase().includes(q) ||
+            (indent.firmName || "").toLowerCase().includes(q) ||
             (indent.requestedBy || "").toLowerCase().includes(q) ||
             (indent.indentType || "").toLowerCase().includes(q) ||
             itemSummary.includes(q)
@@ -500,6 +501,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                           </button>
                         ) : null}
                         <span>{indent.indentNo || indent.id}</span>
+                        {indent.firmName && <span className="text-xs font-semibold text-slate-600">{indent.firmName}</span>}
                       </div>
                     </td>
                     <td className="border border-black px-4 py-4 text-sm text-black">{indent.requestedBy}</td>

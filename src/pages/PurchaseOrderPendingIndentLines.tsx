@@ -8,7 +8,8 @@ import { formatDate } from "../lib/serial";
 import { ExcelExport } from "../components/ExcelExport";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
-import type { Indent, IndentLine, Supplier } from "../types";
+import type { Firm, Indent, IndentLine, Supplier } from "../types";
+import { useAuth } from "../auth/AuthContext";
 import { useAutoRefreshEffect, useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
 import { canIndentBeUnapproved, revertIndentToPending } from "../lib/indentTotals";
@@ -34,8 +35,10 @@ type PendingIndentLineRow = {
 };
 
 export function PurchaseOrderPendingIndentLines() {
+  const { activeFirmId } = useAuth();
   const navigate = useNavigate();
   const [suppliers] = useData<Supplier>("suppliers", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines] = useData<IndentLine>("indent-lines", []);
   const [rows, setRows] = useState<PendingIndentLineRow[]>([]);
@@ -46,6 +49,7 @@ export function PurchaseOrderPendingIndentLines() {
   const [rowInputs, setRowInputs] = useState<Record<string, { supplierId: string; qty: string; rate: string; gstRate: string }>>({});
   const [creating, setCreating] = useState(false);
   const [unapprovingIndentId, setUnapprovingIndentId] = useState<string | null>(null);
+  const [poFirmId, setPoFirmId] = useState(activeFirmId);
 
   useAutoRefreshPause(
     selectedIds.size > 0 ||
@@ -58,7 +62,7 @@ export function PurchaseOrderPendingIndentLines() {
       setLoading(true);
       const token = window.localStorage.getItem("authToken") || "";
       const response = await fetch("/api/purchase-orders/pending-indent-lines", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(activeFirmId ? { "X-Firm-Id": activeFirmId } : {}) },
       });
       if (!response.ok) throw new Error("Failed to fetch pending indent lines");
       const data = await response.json();
@@ -69,7 +73,7 @@ export function PurchaseOrderPendingIndentLines() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeFirmId]);
 
   useEffect(() => {
     void fetchRows();
@@ -181,6 +185,7 @@ export function PurchaseOrderPendingIndentLines() {
 
   const canCreate = useMemo(() => {
     if (creating) return false;
+    if (!poFirmId) return false;
     if (selectedIds.size === 0) return false;
     const selectedInView = Array.from(selectedIds).filter((id) => filteredRowIds.has(id));
     if (selectedInView.length === 0) return false;
@@ -195,7 +200,7 @@ export function PurchaseOrderPendingIndentLines() {
       if (!Number.isFinite(gstRate) || gstRate < 0) return false;
     }
     return true;
-  }, [creating, filteredRowIds, rowInputs, selectedIds]);
+  }, [creating, filteredRowIds, poFirmId, rowInputs, selectedIds]);
 
   const handleCreatePOs = async () => {
     const selectedInView = Array.from(selectedIds).filter((id) => filteredRowIds.has(id));
@@ -244,6 +249,7 @@ export function PurchaseOrderPendingIndentLines() {
         body: JSON.stringify({
           poDate: new Date().toISOString().slice(0, 10),
           remarks: "PO from Pending Indent Lines",
+          firmId: poFirmId,
           lines: payloadLines,
         }),
       });
@@ -315,6 +321,10 @@ export function PurchaseOrderPendingIndentLines() {
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Indent Lines for PO</h2>
         </div>
         <div className="flex items-center gap-3">
+          <select value={poFirmId} onChange={(event) => setPoFirmId(event.target.value)} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black">
+            <option value="">Purchase firm...</option>
+            {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+          </select>
           <button
             type="button"
             onClick={() => void handleCreatePOs()}
