@@ -3,13 +3,16 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
+import { useData } from "../hooks/useData";
+import { Firm } from "../types";
 import { useAppAutoRefresh, useAutoRefreshStatus, useAutoRefreshPause, useIsAutoRefreshPaused } from "../hooks/useAutoRefresh";
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
-  const { user, hasAccess, logout } = useAuth();
+  const { user, activeFirm, setActiveFirm, hasAccess, logout } = useAuth();
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const isFormRoute =
     /\/form(\/|$)/.test(location.pathname) ||
     /\/create(\/|$)/.test(location.pathname);
@@ -23,6 +26,12 @@ export function Layout() {
     const saved = window.localStorage.getItem("layout-sidebar-collapsed");
     setSidebarCollapsed(saved === "true");
   }, []);
+
+  useEffect(() => {
+    if (!user || activeFirm || firms.length === 0) return;
+    const firstFirm = firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName))[0];
+    setActiveFirm(firstFirm);
+  }, [activeFirm, firms, setActiveFirm, user]);
 
   const toggleSidebarCollapsed = () => {
     setSidebarCollapsed((prev) => {
@@ -95,6 +104,19 @@ export function Layout() {
                  </button>
                </div>
                <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
+                  {user && (
+                    <select
+                      value={activeFirm?.id || ""}
+                      onChange={(event) => setActiveFirm(firms.find((firm) => firm.id === event.target.value) || null)}
+                      className="max-w-[280px] rounded border border-black bg-white px-3 py-1.5 text-xs font-bold text-black"
+                      aria-label="Active firm"
+                    >
+                      <option value="">Select Firm</option>
+                      {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => (
+                        <option key={firm.id} value={firm.id}>{firm.firmName}</option>
+                      ))}
+                    </select>
+                  )}
                   {user && (
                     <div className="hidden lg:flex flex-col items-end leading-tight rounded border border-slate-300 bg-slate-50 px-3 py-1">
                       <div className="text-[10px] font-black uppercase text-slate-500">

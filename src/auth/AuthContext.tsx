@@ -147,12 +147,10 @@ async function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [activeFirm, setActiveFirmState] = useState<ActiveFirm | null>(null);
+  const [activeFirm, setActiveFirmState] = useState<ActiveFirm | null>(() =>
+    normalizeActiveFirm(window.localStorage.getItem(ACTIVE_FIRM_STORAGE_KEY))
+  );
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
-  }, []);
 
   const setActiveFirm = useCallback((firm: ActiveFirm | null) => {
     const normalizedFirm = normalizeActiveFirm(firm);
