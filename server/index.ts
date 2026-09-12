@@ -9757,6 +9757,15 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
 
 // Routes
 const TRANSACTIONAL_RESET_CONFIRMATION = "CLEAR TRANSACTION DATA";
+const CORE_JOB_RESET_CONFIRMATION = "CLEAR CORE JOB DATA";
+const CORE_JOB_RESET_TABLES = [
+  "material_issue_reel_lines", "material_return_reel_lines",
+  "material_issue_lines", "material_return_lines",
+  "boardline_qc_checks", "printing_qc_checks",
+  "production_processing", "consumptions",
+  "material_issues", "material_returns", "productions",
+  "php_job_master", "plate_job_master", "orders_schedule", "orders",
+] as const;
 const TRANSACTIONAL_RESET_TABLES = [
   "reel_transfer_lines", "material_issue_reel_lines", "material_return_reel_lines",
   "material_issue_lines", "material_return_lines", "boardline_qc_checks", "printing_qc_checks",
@@ -9764,6 +9773,51 @@ const TRANSACTIONAL_RESET_TABLES = [
   "dispatch_plans", "loading_slips", "invoice_line_items", "gate_passes", "invoices",
   "inter_firm_pending_invoices", "productions", "orders_schedule", "orders",
 ] as const;
+
+app.post("/api/settings/clear-core-job-data", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (user.role !== "Admin") return res.status(403).json({ error: "Only administrators can clear core job data." });
+  if (String(req.body?.confirmation || "") !== CORE_JOB_RESET_CONFIRMATION) {
+    return res.status(400).json({ error: `Type ${CORE_JOB_RESET_CONFIRMATION} to confirm this operation.` });
+  }
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "Database connection is not configured" });
+
+  const backupStamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  const backupTables: Record<string, string> = {};
+  try {
+    // MySQL DDL auto-commits, so finish every backup before beginning deletion.
+    for (const table of CORE_JOB_RESET_TABLES) {
+      const backupTable = `core_backup_${backupStamp}_${table}`;
+      await db.query(`CREATE TABLE \`${backupTable}\` LIKE \`${table}\``);
+      await db.query(`INSERT INTO \`${backupTable}\` SELECT * FROM \`${table}\``);
+      backupTables[table] = backupTable;
+    }
+  } catch (error) {
+    console.error("[DB] Core job reset backup failed; deletion was not started:", error);
+    return res.status(500).json({ error: "Backup failed. No transactional data was deleted.", backupTables });
+  }
+
+  const conn = await db.getConnection();
+  const counts: Record<string, number> = {};
+  try {
+    await conn.beginTransaction();
+    for (const table of CORE_JOB_RESET_TABLES) {
+      const [countRows] = await conn.query(`SELECT COUNT(*) AS count FROM \`${table}\``);
+      counts[table] = Number((countRows as any[])[0]?.count || 0);
+      await conn.query(`DELETE FROM \`${table}\``);
+    }
+    await conn.commit();
+    return res.json({ ok: true, backupStamp, backupTables, total: Object.values(counts).reduce((sum, count) => sum + count, 0), counts });
+  } catch (error) {
+    await conn.rollback();
+    console.error("[DB] Core job reset rolled back:", error);
+    return res.status(500).json({ error: (error as Error).message || "Failed to clear core job data.", backupTables });
+  } finally {
+    conn.release();
+  }
+});
 
 app.post("/api/settings/clear-transactional-data", async (req, res) => {
   const user = await getRequestUser(req);

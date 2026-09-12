@@ -377,6 +377,9 @@ export function SettingsPage() {
   const npdItems = useNpdItems();
   const { allItems: globalRenameItems } = useOrderItemCatalog();
   const [saving, setSaving] = useState(false);
+  const [coreResetConfirmation, setCoreResetConfirmation] = useState("");
+  const [coreResetting, setCoreResetting] = useState(false);
+  const [coreResetResult, setCoreResetResult] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [designationDraft, setDesignationDraft] = useState<string[]>([]);
   const [newDesignation, setNewDesignation] = useState("");
@@ -891,6 +894,33 @@ export function SettingsPage() {
     });
   };
 
+  const clearCoreJobData = async () => {
+    if (coreResetConfirmation !== "CLEAR CORE JOB DATA") return;
+    setCoreResetting(true);
+    setCoreResetResult("");
+    try {
+      const token = window.localStorage.getItem("authToken") || "";
+      const response = await fetch("/api/settings/clear-core-job-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ confirmation: coreResetConfirmation }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "Failed to clear core job data.");
+      const entities = ["orders", "orders_schedule", "productions", "production_processing", "consumptions", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "boardline_qc_checks", "printing_qc_checks", "php_job_master", "plate_job_master"];
+      entities.forEach((entity) => {
+        window.localStorage.removeItem(`udc_${entity}`);
+        window.dispatchEvent(new Event(`sync-data-${entity}`));
+      });
+      setCoreResetConfirmation("");
+      setCoreResetResult(`Cleared ${Number(result.total || 0).toLocaleString()} rows. Backup: ${result.backupStamp}.`);
+    } catch (error) {
+      setCoreResetResult(error instanceof Error ? error.message : "Failed to clear core job data.");
+    } finally {
+      setCoreResetting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center pb-4 border-b border-black">
@@ -898,6 +928,23 @@ export function SettingsPage() {
       </div>
 
       <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+
+      {user?.role === "Admin" && (
+        <div className="max-w-3xl space-y-4 rounded border-2 border-red-700 bg-red-50 p-6">
+          <div>
+            <h3 className="text-sm font-black uppercase text-red-800">Clear Core Job Data</h3>
+            <p className="mt-1 text-sm text-black">Creates timestamped database backup tables, then clears orders, jobs, processing, consumption, material issues/returns, QC, PHP jobs and Plate jobs. Masters, receipts, dispatch, loading and invoices remain unchanged.</p>
+          </div>
+          <label className="block space-y-2">
+            <span className="text-xs font-black uppercase text-black">Type CLEAR CORE JOB DATA to confirm</span>
+            <input value={coreResetConfirmation} onChange={(event) => setCoreResetConfirmation(event.target.value)} disabled={coreResetting} className="w-full rounded border-2 border-black bg-white p-2 text-black" />
+          </label>
+          <button type="button" onClick={() => void clearCoreJobData()} disabled={coreResetting || coreResetConfirmation !== "CLEAR CORE JOB DATA"} className="rounded border-2 border-black bg-red-700 px-5 py-2 font-black text-white disabled:opacity-40">
+            {coreResetting ? "Backing up and clearing..." : "Backup and Clear Core Data"}
+          </button>
+          {coreResetResult && <p className="text-sm font-bold text-black">{coreResetResult}</p>}
+        </div>
+      )}
 
       {isPankajUser && (
         <div className="bg-white p-6 rounded shadow-sm border border-black max-w-3xl space-y-4">
