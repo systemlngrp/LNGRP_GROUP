@@ -9044,13 +9044,16 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
 const TRANSACTIONAL_RESET_CONFIRMATION = "CLEAR TRANSACTION DATA";
 const CORE_JOB_RESET_CONFIRMATION = "CLEAR CORE JOB DATA";
 const CORE_JOB_RESET_TABLES = [
+    "gate_entry_photos",
     "invoice_line_items", "inter_firm_pending_invoices", "invoices",
     "material_issue_reel_lines", "material_return_reel_lines",
+    "material_in_packing_slips",
     "material_issue_lines", "material_return_lines",
     "boardline_qc_checks", "printing_qc_checks",
     "production_processing", "consumptions",
     "material_issues", "material_returns", "productions",
     "php_job_master", "plate_job_master", "orders_schedule", "orders",
+    "gate_entries", "material_in",
 ];
 const TRANSACTIONAL_RESET_TABLES = [
     "reel_transfer_lines", "material_issue_reel_lines", "material_return_reel_lines",
@@ -9074,6 +9077,13 @@ app.post("/api/settings/clear-core-job-data", async (req, res) => {
     const backupStamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
     const backupTables = {};
     try {
+        const [oldBackupRows] = await db.query("SELECT TABLE_NAME AS tableName FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'core_backup_%'");
+        for (const row of oldBackupRows) {
+            const tableName = String(row?.tableName || "");
+            if (/^core_backup_\d{14}_[A-Za-z0-9_]+$/.test(tableName)) {
+                await db.query(`DROP TABLE \`${tableName}\``);
+            }
+        }
         // MySQL DDL auto-commits, so finish every backup before beginning deletion.
         for (const table of CORE_JOB_RESET_TABLES) {
             const backupTable = `core_backup_${backupStamp}_${table}`;
