@@ -3,7 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
-import { Company, GateEntry, GateEntryPhoto, GatePass, Supplier } from "../types";
+import { Company, Firm, GateEntry, GateEntryPhoto, GatePass, Supplier } from "../types";
+import { useAuth } from "../auth/AuthContext";
 import { getPendingQtyForGatePass, hasSavedReturnableReceiptGateEntry, isReturnableGatePass } from "../lib/gatePassState";
 import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
 
@@ -49,6 +50,8 @@ export function GateEntryForm() {
   const [companies] = useData<Company>("companies", []);
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [materialIn] = useData("material-in", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const { activeFirm, setActiveFirm } = useAuth();
 
   const editingEntry = gateEntries.find((entry) => entry.id === editGateEntryId) || null;
   const isEditing = Boolean(editingEntry);
@@ -68,6 +71,8 @@ export function GateEntryForm() {
   const [truckNo, setTruckNo] = useState("");
   const [photoSlots, setPhotoSlots] = useState<PhotoSlot[]>(createInitialSlots);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [firmId, setFirmId] = useState("");
+  const selectedFirm = firms.find((firm) => firm.id === firmId);
 
   const eligibleReturnableRecipientIds = useMemo(() => {
     return new Set(
@@ -104,6 +109,7 @@ export function GateEntryForm() {
       setInvoiceNo("");
       setInvoiceValue("");
       setTruckNo(sourceGatePass?.truckNo || "");
+      setFirmId(activeFirm?.id || firms[0]?.id || "");
       setPhotoSlots(createInitialSlots());
       return;
     }
@@ -114,8 +120,9 @@ export function GateEntryForm() {
     setInvoiceNo(editingEntry.invoiceNo || "");
     setInvoiceValue(String(editingEntry.invoiceValue ?? ""));
     setTruckNo(editingEntry.truckNo || sourceGatePass?.truckNo || "");
+    setFirmId(editingEntry.firmId || activeFirm?.id || firms[0]?.id || "");
     setPhotoSlots(buildPhotoSlots(entryPhotos));
-  }, [editingEntry, entryPhotos, isEditing, purposeFromQuery, sourceGatePass?.recipientId, sourceGatePass?.truckNo]);
+  }, [activeFirm?.id, editingEntry, entryPhotos, firms, isEditing, purposeFromQuery, sourceGatePass?.recipientId, sourceGatePass?.truckNo]);
 
   useEffect(() => {
     if (!isEditing || !editingLocked) return;
@@ -167,6 +174,7 @@ export function GateEntryForm() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!firmId || !selectedFirm) { alert("Please select a valid Firm."); return; }
     if (!date || !supplierId || !invoiceNo.trim() || !invoiceValue || !truckNo.trim()) return;
     if (hasUploadingPhoto) {
       alert("Please wait for photo uploads to finish.");
@@ -186,6 +194,8 @@ export function GateEntryForm() {
         invoiceNo: invoiceNo.trim(),
         invoiceValue: Number(invoiceValue || 0),
         truckNo: truckNo.trim(),
+        firmId,
+        firmName: selectedFirm.firmName,
         sourceGatePassId: sourceGatePass?.id || editingEntry?.sourceGatePassId,
         sourceGatePassNo: sourceGatePass?.gatePassNo || editingEntry?.sourceGatePassNo,
         updatedBy: "System User",
@@ -258,6 +268,13 @@ export function GateEntryForm() {
                   <option value="Returnable Receipt">Returnable Receipt</option>
                 </select>
               )}
+            </Field>
+
+            <Field label="Firm" required>
+              <select value={firmId} disabled={purposeLocked} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg disabled:bg-slate-50">
+                <option value="">Select Firm...</option>
+                {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+              </select>
             </Field>
 
             <Field label="Supplier / Customer Name" required>

@@ -11,6 +11,7 @@ import {
   Material,
   MaterialGroup,
   MaterialIn,
+  Firm,
   MaterialInPackingSlip,
   MaterialLine,
   IndentLine,
@@ -23,6 +24,7 @@ import {
   UnitMaster,
   ColorMaster,
 } from "../types";
+import { useAuth } from "../auth/AuthContext";
 import { generateTransactionNo } from "../lib/serial";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
@@ -168,12 +170,15 @@ export function MaterialInForm() {
   const [purchaseOrderLines, setPurchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [settings] = useData<Setting>("settings", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const { activeFirm, setActiveFirm } = useAuth();
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [invoiceNo, setInvoiceNo] = useState("");
   const [invDate, setInvDate] = useState("");
   const [supplierId, setSupplierId] = useState("");
+  const [firmId, setFirmId] = useState("");
   const [invoiceCurrency, setInvoiceCurrency] = useState<InvoiceCurrency>("INR");
   const [exchangeRate, setExchangeRate] = useState<number | "">("");
   const [mrrType, setMrrType] = useState<MaterialIn["mrrType"]>("Others");
@@ -222,6 +227,8 @@ export function MaterialInForm() {
     () => materialIn.find((entry) => entry.id === editId) || null,
     [editId, materialIn]
   );
+  const selectedFirm = firms.find((firm) => firm.id === firmId);
+  const firmLocked = Boolean(linkedGateEntry);
 
   const linkedSupplierName = useMemo(() => {
     const s = suppliers.find((supplier) => supplier.id === supplierId);
@@ -344,6 +351,10 @@ export function MaterialInForm() {
     { value: "FG Purchase", label: "FG Purchase" },
     { value: "Service Return", label: "Service Return" },
   ];
+
+  useEffect(() => {
+    setFirmId(editingEntry?.firmId || linkedGateEntry?.firmId || activeFirm?.id || firms[0]?.id || "");
+  }, [activeFirm?.id, editingEntry?.firmId, firms, linkedGateEntry?.firmId]);
 
   useEffect(() => {
     if (editingEntry) return;
@@ -2121,6 +2132,14 @@ export function MaterialInForm() {
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!firmId || !selectedFirm) {
+      alert("Please select a valid Firm.");
+      return;
+    }
+    if (linkedGateEntry && firmId !== linkedGateEntry.firmId) {
+      alert("Linked MRR must use the Gate Entry firm.");
+      return;
+    }
     if (!date || !invoiceNo || !invDate || !supplierId || lines.length === 0) return;
 
     if (!editingEntry && gateEntryId && !linkedGateEntry) {
@@ -2272,6 +2291,8 @@ export function MaterialInForm() {
 
         const nextEntry: MaterialIn = {
           id: materialInId,
+          firmId,
+          firmName: selectedFirm.firmName,
           transactionNo,
           mrrType,
           gateEntryId: editingEntry?.gateEntryId || linkedGateEntry?.id,
@@ -2761,6 +2782,13 @@ export function MaterialInForm() {
             />
           </div>
           <div className="flex flex-col space-y-1">
+            <label className="font-bold text-black">
+              Firm <span className="text-red-500">*</span>
+              <select value={firmId} disabled={firmLocked} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="mt-2 w-full rounded border-2 border-indigo-300 p-2 disabled:bg-slate-100">
+                <option value="">Select Firm...</option>
+                {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+              </select>
+            </label>
             <label className="font-bold text-black">
               MRR Type <span className="text-red-500">*</span>
             </label>
