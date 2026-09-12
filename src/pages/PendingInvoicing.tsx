@@ -856,9 +856,17 @@ export function PendingInvoicing() {
       const timestamp = new Date().toISOString();
       const existingInvoice = editInvoiceId ? invoices.find((invoice) => invoice.id === editInvoiceId) : undefined;
       const invoiceId = existingInvoice?.id || crypto.randomUUID();
+      const allocatedFirmIds = Array.from(new Set(invoiceRows.flatMap((row) => row.allocations)
+        .map((allocation) => orders.find((order) => order.id === allocation.orderId)?.firmId)
+        .filter((firmId): firmId is string => Boolean(String(firmId || "").trim()))));
+      if (allocatedFirmIds.length > 1) {
+        throw new Error("Selected orders belong to different firms and cannot use one invoice numbering series.");
+      }
+      const billingFirmId = allocatedFirmIds[0] || activeFirmId;
+      if (!billingFirmId) throw new Error("Select an active firm before generating the invoice.");
       const newInvoice: Invoice = {
         id: invoiceId,
-        firmId: existingInvoice?.firmId || activeFirmId,
+        firmId: existingInvoice?.firmId || billingFirmId,
         invoiceNo: existingInvoice?.invoiceNo || "",
         date: existingInvoice?.date || new Date().toISOString().slice(0, 10),
         companyId: company.id,

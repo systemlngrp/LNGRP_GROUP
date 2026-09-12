@@ -83,7 +83,6 @@ const REMOVED_FIRM_SCOPE_TABLES = [
   "dispatch_plans",
   "gate_entry_photos",
   "indent_lines",
-  "invoices",
   "invoice_line_items",
   "loading_slips",
   "material_return_reel_lines",
