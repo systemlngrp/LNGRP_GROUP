@@ -907,7 +907,7 @@ export function SettingsPage() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error || "Failed to clear core job data.");
-      const entities = ["orders", "orders_schedule", "productions", "production_processing", "consumptions", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "boardline_qc_checks", "printing_qc_checks", "php_job_master", "plate_job_master"];
+      const entities = ["orders", "orders_schedule", "productions", "production_processing", "consumptions", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "boardline_qc_checks", "printing_qc_checks", "php_job_master", "plate_job_master", "invoices", "invoice_line_items", "inter_firm_pending_invoices"];
       entities.forEach((entity) => {
         window.localStorage.removeItem(`udc_${entity}`);
         window.dispatchEvent(new Event(`sync-data-${entity}`));
@@ -933,7 +933,7 @@ export function SettingsPage() {
         <div className="max-w-3xl space-y-4 rounded border-2 border-red-700 bg-red-50 p-6">
           <div>
             <h3 className="text-sm font-black uppercase text-red-800">Clear Core Job Data</h3>
-            <p className="mt-1 text-sm text-black">Creates timestamped database backup tables, then clears orders, jobs, processing, consumption, material issues/returns, QC, PHP jobs and Plate jobs. Masters, receipts, dispatch, loading and invoices remain unchanged.</p>
+            <p className="mt-1 text-sm text-black">Creates timestamped database backup tables, then clears orders, jobs, processing, consumption, material issues/returns, QC, PHP/Plate jobs, invoices and pending invoicing. Masters, receipts, dispatch and loading remain unchanged.</p>
           </div>
           <label className="block space-y-2">
             <span className="text-xs font-black uppercase text-black">Type CLEAR CORE JOB DATA to confirm</span>

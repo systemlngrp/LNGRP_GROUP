@@ -9759,6 +9759,7 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
 const TRANSACTIONAL_RESET_CONFIRMATION = "CLEAR TRANSACTION DATA";
 const CORE_JOB_RESET_CONFIRMATION = "CLEAR CORE JOB DATA";
 const CORE_JOB_RESET_TABLES = [
+  "invoice_line_items", "inter_firm_pending_invoices", "invoices",
   "material_issue_reel_lines", "material_return_reel_lines",
   "material_issue_lines", "material_return_lines",
   "boardline_qc_checks", "printing_qc_checks",
