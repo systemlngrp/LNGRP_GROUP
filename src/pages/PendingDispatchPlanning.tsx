@@ -14,7 +14,7 @@ import { ArrowUpDown, Save } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 
-type SortKey = "scheduledDate" | "orderNo" | "companyName" | "itemName" | "pendingQty";
+type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "companyName" | "itemName" | "pendingQty";
 
 export function PendingDispatchPlanning() {
   const navigate = useNavigate();
@@ -187,6 +187,7 @@ export function PendingDispatchPlanning() {
         const item = resolveOrderItem(order);
         const haystack = [
           formatDate(schedule.scheduledDate),
+          schedule.scheduleNo,
           order?.orderNo,
           company?.name,
           item?.name,
@@ -213,6 +214,9 @@ export function PendingDispatchPlanning() {
           break;
         case "orderNo":
           compare = (orderA?.orderNo || "").localeCompare(orderB?.orderNo || "", undefined, { numeric: true, sensitivity: "base" });
+          break;
+        case "scheduleNo":
+          compare = (a.scheduleNo || "").localeCompare(b.scheduleNo || "", undefined, { numeric: true, sensitivity: "base" });
           break;
         case "companyName":
           compare = companyA.localeCompare(companyB, undefined, { sensitivity: "base" });
@@ -606,6 +610,7 @@ export function PendingDispatchPlanning() {
                   />
                 </th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Order No", "orderNo")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Item Name", "itemName")}</th>
@@ -616,7 +621,7 @@ export function PendingDispatchPlanning() {
             <tbody className="divide-y divide-black bg-white">
               {filteredSchedules.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center text-black font-medium">No pending dispatch plans found.</td>
+                  <td colSpan={8} className="px-6 py-8 text-center text-black font-medium">No pending dispatch plans found.</td>
                 </tr>
               ) : (
                 paginatedSchedules.map((s) => {
@@ -648,6 +653,7 @@ export function PendingDispatchPlanning() {
                         {formatDate(s.scheduledDate)}
                         {isOverdue && <div className="text-[8px] uppercase px-1 border border-red-600 rounded inline-block ml-1">Overdue</div>}
                       </td>
+                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{s.scheduleNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black">{company?.name || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black">{item?.name || "-"}</td>
@@ -674,7 +680,7 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="bg-slate-100 border-t-2 border-black">
                 <tr className="divide-x divide-black font-black">
-                  <td colSpan={6} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={7} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="px-4 py-3 text-right text-sm text-indigo-700 bg-indigo-50 border border-black">
                     {totalSessionPlannedQty.toLocaleString()}
                   </td>
