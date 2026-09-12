@@ -2723,11 +2723,21 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             await conn.rollback();
             return;
         }
-        const [interFirmSettingRows] = await conn.query("SELECT interFirmRatePercent FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
+        const [interFirmSettingRows] = await conn.query("SELECT interFirmRatePercent, interFirmPairRates FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
         const configuredInterFirmRate = Number(interFirmSettingRows[0]?.interFirmRatePercent);
-        const interFirmRatePercent = Number.isFinite(configuredInterFirmRate) && configuredInterFirmRate >= 0 && configuredInterFirmRate <= 100
+        let interFirmRatePercent = Number.isFinite(configuredInterFirmRate) && configuredInterFirmRate >= 0 && configuredInterFirmRate <= 100
             ? configuredInterFirmRate
-            : 92;
+            : 100;
+        try {
+            const pairRatesRaw = interFirmSettingRows[0]?.interFirmPairRates;
+            const pairs = JSON.parse(String(pairRatesRaw || "[]"));
+            const pair = Array.isArray(pairs) && pairs.find((row) => String(row?.fromFirmId) === String(sourceFirmId) && String(row?.toFirmId) === String(destinationFirmId));
+            if (pair && Number.isFinite(Number(pair.rate)) && Number(pair.rate) >= 0 && Number(pair.rate) <= 100)
+                interFirmRatePercent = Number(pair.rate);
+            else if (pairRatesRaw !== null && pairRatesRaw !== undefined)
+                interFirmRatePercent = 100;
+        }
+        catch { /* retain legacy global fallback */ }
         const customerOrderRate = Number(order?.rate || 0);
         const baseRate = Number.isFinite(customerOrderRate) && customerOrderRate > 0
             ? customerOrderRate
@@ -5814,6 +5824,7 @@ async function initDb(retries = 5) {
           \`reelAsPerCalculation\` TEXT,
           \`reelTransferWindowHours\` DECIMAL(10,2) DEFAULT 12,
           \`interFirmRatePercent\` DECIMAL(5,2) DEFAULT 92.00,
+          \`interFirmPairRates\` LONGTEXT,
           \`reelErpStartNumber\` INT DEFAULT 1,
           \`ourReelNoStartNumber\` INT DEFAULT 1,
           \`otherMaterialErpStartNumber\` INT DEFAULT 1,
@@ -6705,6 +6716,7 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "reelAsPerCalculation", type: "TEXT" },
                 { table: "settings", column: "reelTransferWindowHours", type: "DECIMAL(10,2) DEFAULT 12" },
                 { table: "settings", column: "interFirmRatePercent", type: "DECIMAL(5,2) DEFAULT 92.00" },
+                { table: "settings", column: "interFirmPairRates", type: "LONGTEXT" },
                 { table: "settings", column: "reelErpStartNumber", type: "INT DEFAULT 1" },
                 { table: "settings", column: "ourReelNoStartNumber", type: "INT DEFAULT 1" },
                 { table: "settings", column: "otherMaterialErpStartNumber", type: "INT DEFAULT 1" },

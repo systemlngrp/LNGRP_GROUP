@@ -318,6 +318,18 @@ type InvoiceSeriesRow = {
   active: "Yes" | "No";
 };
 
+type InterFirmPairRate = { fromFirmId: string; toFirmId: string; rate: number };
+
+function parseInterFirmPairRates(raw?: string): InterFirmPairRate[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map((row) => ({
+      fromFirmId: String(row?.fromFirmId || ""), toFirmId: String(row?.toFirmId || ""), rate: Number(row?.rate),
+    })).filter((row) => row.fromFirmId && row.toFirmId && Number.isFinite(row.rate) && row.rate >= 0 && row.rate <= 100) : [];
+  } catch { return []; }
+}
+
 function normalizeInvoiceSeriesPrefix(value: unknown) {
   const prefix = String(value || "").trim().toUpperCase();
   return prefix === "LNPI" ? "LNGRP" : prefix;
@@ -368,7 +380,11 @@ export function SettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [designationDraft, setDesignationDraft] = useState<string[]>([]);
   const [newDesignation, setNewDesignation] = useState("");
-  const [interFirmRateDraft, setInterFirmRateDraft] = useState("92");
+  const [interFirmRateDraft, setInterFirmRateDraft] = useState("100");
+  const [interFirmPairRatesDraft, setInterFirmPairRatesDraft] = useState<InterFirmPairRate[]>([]);
+  const [pairFromFirmId, setPairFromFirmId] = useState("");
+  const [pairToFirmId, setPairToFirmId] = useState("");
+  const [pairRate, setPairRate] = useState("100");
   const [organizationDraft, setOrganizationDraft] = useState({
     organizationName: "",
     organizationAddress: "",
@@ -514,8 +530,10 @@ export function SettingsPage() {
   }, [currentSetting?.poMandatoryMrrTypes]);
 
   useEffect(() => {
-    setInterFirmRateDraft(String(currentSetting?.interFirmRatePercent ?? 92));
+    setInterFirmRateDraft(String(currentSetting?.interFirmRatePercent ?? 100));
   }, [currentSetting?.interFirmRatePercent]);
+
+  useEffect(() => setInterFirmPairRatesDraft(parseInterFirmPairRates(currentSetting?.interFirmPairRates)), [currentSetting?.interFirmPairRates]);
 
   const selectedReelFormula = currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value;
   const selectedReelOption = useMemo(
@@ -748,7 +766,8 @@ export function SettingsPage() {
         id: currentSetting?.id || crypto.randomUUID(),
         reelAsPerCalculation: currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value,
         reelTransferWindowHours: Number(currentSetting?.reelTransferWindowHours || 12),
-        interFirmRatePercent: Number(currentSetting?.interFirmRatePercent ?? 92),
+        interFirmRatePercent: Number(currentSetting?.interFirmRatePercent ?? 100),
+        interFirmPairRates: currentSetting?.interFirmPairRates || JSON.stringify([]),
         reelErpStartNumber: Number(currentSetting?.reelErpStartNumber || 1),
         ourReelNoStartNumber: Number(currentSetting?.ourReelNoStartNumber || 1),
         otherMaterialErpStartNumber: Number(currentSetting?.otherMaterialErpStartNumber || 1),
@@ -804,6 +823,20 @@ export function SettingsPage() {
       return;
     }
     await handleChange({ interFirmRatePercent: value });
+  };
+
+  const saveInterFirmPairRate = async () => {
+    const value = Number(pairRate);
+    if (!pairFromFirmId || !pairToFirmId || pairFromFirmId === pairToFirmId || !/^\d+(\.\d{1,2})?$/.test(pairRate) || value < 0 || value > 100) {
+      alert("Select different From/To Units and enter a rate from 0 to 100 with up to 2 decimals."); return;
+    }
+    const next = [...interFirmPairRatesDraft.filter((row) => !(row.fromFirmId === pairFromFirmId && row.toFirmId === pairToFirmId)), { fromFirmId: pairFromFirmId, toFirmId: pairToFirmId, rate: value }];
+    await handleChange({ interFirmPairRates: JSON.stringify(next) });
+    setPairFromFirmId(""); setPairToFirmId(""); setPairRate("100");
+  };
+
+  const deleteInterFirmPairRate = async (row: InterFirmPairRate) => {
+    await handleChange({ interFirmPairRates: JSON.stringify(interFirmPairRatesDraft.filter((item) => item.fromFirmId !== row.fromFirmId || item.toFirmId !== row.toFirmId)) });
   };
 
   const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1836,6 +1869,24 @@ export function SettingsPage() {
           <p className="mt-4 text-xs text-slate-700">Example: if Reel ERP Start Number is 77001290, the next available Reel ERP will start at 77001290 unless a higher ERP already exists.</p>
         </div>
 
+        <div className="flex flex-col space-y-2 border-t border-dashed border-black pt-4">
+          <div>
+            <h3 className="text-xs font-black uppercase tracking-wide text-black">Inter-firm Transactions</h3>
+            <p className="mt-1 text-sm text-black">Configure billing rates for each From Unit → To Unit pair. Unconfigured pairs use 100%.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <select value={pairFromFirmId} onChange={(e) => setPairFromFirmId(e.target.value)} className="rounded border-2 border-black bg-white p-2 text-black">
+              <option value="">From Unit</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+            </select>
+            <select value={pairToFirmId} onChange={(e) => setPairToFirmId(e.target.value)} className="rounded border-2 border-black bg-white p-2 text-black">
+              <option value="">To Unit</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+            </select>
+            <input type="number" min="0" max="100" step="0.01" value={pairRate} onChange={(e) => setPairRate(e.target.value)} placeholder="Rate %" className="rounded border-2 border-black bg-white p-2 text-black" />
+            <button type="button" onClick={() => void saveInterFirmPairRate()} disabled={loading || saving || user?.role !== "Admin"} className="rounded border-2 border-black bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">Add / Update Rate</button>
+          </div>
+          <div className="overflow-x-auto rounded border-2 border-black"><table className="w-full text-sm"><thead className="bg-black text-white"><tr><th className="p-2 text-left">From Unit</th><th className="p-2 text-left">To Unit</th><th className="p-2 text-right">Billing Rate</th><th className="p-2">Action</th></tr></thead><tbody>{interFirmPairRatesDraft.map((row) => <tr key={`${row.fromFirmId}-${row.toFirmId}`} className="border-t border-black"><td className="p-2">{firms.find((firm) => firm.id === row.fromFirmId)?.firmName || row.fromFirmId}</td><td className="p-2">{firms.find((firm) => firm.id === row.toFirmId)?.firmName || row.toFirmId}</td><td className="p-2 text-right font-bold">{row.rate}%</td><td className="p-2 text-center"><button type="button" onClick={() => { setPairFromFirmId(row.fromFirmId); setPairToFirmId(row.toFirmId); setPairRate(String(row.rate)); }} className="mr-2 font-bold text-indigo-700">Edit</button><button type="button" onClick={() => void deleteInterFirmPairRate(row)} disabled={saving || user?.role !== "Admin"} className="font-bold text-red-700">Delete</button></td></tr>)}{interFirmPairRatesDraft.length === 0 && <tr><td colSpan={4} className="p-3 text-center text-slate-500">No pair rates configured.</td></tr>}</tbody></table></div>
+        </div>
+
         <div className="flex flex-col space-y-2">
           <label htmlFor="reelTransferWindowHours" className="text-xs font-black uppercase tracking-wide text-black">
             Reel Transfer Window (Hours)
@@ -1884,7 +1935,7 @@ export function SettingsPage() {
             </button>
           </div>
           <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
-            New system-generated inter-firm transactions use this percentage of the customer order rate. Existing transactions are unchanged. Default: 92%.
+            Legacy default for system-generated inter-firm transactions. Use the Unit Pair Billing Rates section above for new configuration. Default: 100%.
           </div>
         </div>
 
