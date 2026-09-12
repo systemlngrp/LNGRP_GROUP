@@ -2540,7 +2540,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       aggregationStage = "invoice outputs";
       // Invoice stock reduces the source/stock-owning firm. The current
       // invoice schema stores that on sourceFirmId/orderFirmId, not firmId.
-      const [invoiceSettingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
+      const [invoiceSettingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
       const invoicePrefixFirms = parseInvoiceNumberSeries((invoiceSettingsRows as any[])[0]?.invoiceNumberSeries)
         .filter((series) => series.firmId)
         .map((series) => ({ prefix: `${series.prefix}${series.separator}`, firmId: series.firmId }));
@@ -4506,7 +4506,7 @@ async function backfillMissingConsumptionTransactionNos(db: mysql.Pool) {
 async function backfillInterFirmInvoiceSourceFirms(db: mysql.Pool, database: string) {
   const invoiceColumns = await getExistingColumnNames(db, database, "invoices");
   if (!invoiceColumns.has("firmId")) return 0;
-  const [settingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
+  const [settingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
   const prefixFirmMap = new Map<string, string>();
   for (const series of parseInvoiceNumberSeries((settingsRows as any[])[0]?.invoiceNumberSeries)) {
     if (series.firmId) prefixFirmMap.set(`${series.prefix}${series.separator}`, series.firmId);
@@ -4556,7 +4556,7 @@ async function generateDynamicInvoiceNo(db: mysql.Pool, dateStr?: string, firmId
   const fy = getShortFinancialYear(dateStr);
   if (!fy) throw new Error("Invoice date is invalid for invoice series generation.");
 
-  const [settingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` LIMIT 1");
+  const [settingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
   const settingsRow = (settingsRows as any[])[0] || {};
   const seriesRows = parseInvoiceNumberSeries(settingsRow.invoiceNumberSeries);
   const scopedFirmId = String(firmId || "").trim();
@@ -8521,7 +8521,7 @@ const createHandlers = (tableName: string) => {
             if (String(data.companyId || "").trim()) {
               data.companyId = await resolveInvoiceCompanyId(db, schemaName, data.companyId);
             }
-            const invoiceFirmId = String(data.firmId || data.sourceFirmId || "").trim();
+            const invoiceFirmId = String(data.sourceFirmId || data.firmId || requestFirmId || "").trim();
             if (invoiceFirmId && !String(data.firmId || "").trim()) {
               data.firmId = invoiceFirmId;
             }

@@ -1215,6 +1215,7 @@ export interface MaterialVisit {
 
 export interface Invoice {
   id: string;
+  firmId?: string;
   invoiceNo: string;
   date: string;
   companyId: string;

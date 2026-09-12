@@ -209,7 +209,7 @@ export function PendingInvoicing() {
       const invoiceId = crypto.randomUUID();
       const timestamp = new Date().toISOString();
       await postEntity("invoices", {
-        id: invoiceId, invoiceNo: "", date: new Date().toISOString().slice(0, 10),
+        id: invoiceId, firmId: pending.sourceFirmId, invoiceNo: "", date: new Date().toISOString().slice(0, 10),
         companyId: pending.destinationFirmId, gstRate, totalBeforeGst: amount,
         cgst: roundMoney(tax / 2), sgst: roundMoney(tax / 2), igst: 0,
         totalAfterGst: roundMoney(amount + tax), otherCharges: 0,
@@ -858,6 +858,7 @@ export function PendingInvoicing() {
       const invoiceId = existingInvoice?.id || crypto.randomUUID();
       const newInvoice: Invoice = {
         id: invoiceId,
+        firmId: existingInvoice?.firmId || activeFirmId,
         invoiceNo: existingInvoice?.invoiceNo || "",
         date: existingInvoice?.date || new Date().toISOString().slice(0, 10),
         companyId: company.id,
