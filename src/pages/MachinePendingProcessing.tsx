@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useData } from "../hooks/useData";
-import { Company, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
+import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
 import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Spinner } from "../components/Spinner";
@@ -13,6 +13,7 @@ import { normalizeMachineName } from "../lib/productionMachineNames";
 import { getCurrentProcessingMachine, isMachineStepFull } from "../lib/productionProcessingProgress";
 import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
+import { resolveProductionErp, resolveProductionItem, resolveProductionSource } from "../lib/productionErp";
 
 interface PendingMachineJob {
   production: Production;
@@ -21,6 +22,8 @@ interface PendingMachineJob {
   companyName: string;
   erpCode: string;
   itemName: string;
+  firmName: string;
+  fallbackErps: string[];
   requiredQty: number;
   ffgQty: number;
   reportedQty: number;
@@ -41,13 +44,14 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const fixedNormalizedMachineName = fixedMachineName ? normalizeMachineName(fixedMachineName) : "";
 
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
-  const { findItemAcrossSources } = useOrderItemCatalog();
+  const { itemsBySource } = useOrderItemCatalog();
   const [machines] = useData<Machine>("machines", []);
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -71,15 +75,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const scheduleById = useMemo(() => new Map(schedules.map((schedule) => [schedule.id, schedule])), [schedules]);
   const orderById = useMemo(() => new Map(orders.map((order) => [order.id, order])), [orders]);
   const companyNameById = useMemo(() => new Map(companies.map((company) => [company.id, company.name || ""])), [companies]);
-
-  const resolveSource = useCallback((production: Production): "FG" | "PHP" | "PLATE" => {
-    const explicit = String(production.itemSource || "").trim().toUpperCase();
-    if (explicit === "PHP" || explicit === "PLATE") return explicit;
-    const jobNo = String(production.jobCardNo || production.transactionNo || "").trim().toUpperCase();
-    if (jobNo.startsWith("PHP/")) return "PHP";
-    if (jobNo.startsWith("PLATE/")) return "PLATE";
-    return "FG";
-  }, []);
+  const firmNameById = useMemo(() => new Map(firms.map((firm) => [firm.id, firm.firmName || ""])), [firms]);
 
   const resolveCompanyName = useCallback((production: Production, item?: any) => {
     const productionCompany = String(production.companyName || "").trim();
@@ -120,9 +116,12 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     );
 
     activeProductions.forEach(p => {
-      const source = resolveSource(p);
+      const schedule = scheduleById.get(String(p.scheduleId || ""));
+      const order = schedule ? orderById.get(String(schedule.orderId || "")) : undefined;
+      const source = resolveProductionSource(p, order, itemsBySource);
       const sourceProduction = { ...p, itemSource: source } as Production;
-      const item = findItemAcrossSources(String(p.itemId || "").trim(), source, p.erpCode);
+      const item = resolveProductionItem(p, order, itemsBySource, source);
+      const erpCode = resolveProductionErp(p, order, item);
       const requiredMachines = Array.from(
         new Set(
           getRequiredMachinesForProduction(sourceProduction, item, mandatoryMachinesMapping, machines)
@@ -155,8 +154,10 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
               source,
               item,
               companyName: resolveCompanyName(p, item),
-              erpCode: String(item?.erp || p.erpCode || ""),
+              erpCode,
               itemName: item?.name || "",
+              firmName: String(schedule?.firmName || order?.firmName || firmNameById.get(String(schedule?.firmId || order?.firmId || p.firmId || "")) || "Unassigned"),
+              fallbackErps: [p.erpCode, p.masterErp, order?.erpCode, item?.erp].map((value) => String(value ?? "").trim()).filter(Boolean),
               requiredQty: Number(p.qty || 0),
               ffgQty: Number(p.prodFromFFG || 0),
               reportedQty: reportedForThisMachine,
@@ -173,10 +174,10 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         ...g,
         jobs: g.jobs.filter(j => {
           if (companyFilter && j.companyName !== companyFilter) return false;
-          const itemKey = j.item?.id || `${j.itemName}::${j.erpCode}`;
+          const itemKey = j.item?.id ? `${j.source}::${j.item.id}` : `${j.source}::${j.itemName}::${j.erpCode}`;
           if (itemFilter && itemKey !== itemFilter) return false;
           const search = searchTerm.toLowerCase();
-          const blob = `${j.production.transactionNo} ${j.itemName} ${j.companyName} ${j.erpCode}`.toLowerCase();
+          const blob = `${j.production.transactionNo} ${j.production.jobCardNo || ""} ${j.itemName} ${j.companyName} ${j.firmName} ${j.erpCode} ${j.fallbackErps.join(" ")}`.toLowerCase();
           return blob.includes(search);
         }).sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }))
       }))
@@ -186,7 +187,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
         return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
       });
-  }, [productions, findItemAcrossSources, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, resolveSource]);
+  }, [productions, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
 
   const companyOptions = useMemo(() => {
     const names = new Set<string>();
@@ -197,9 +198,9 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const itemOptions = useMemo(() => {
     const map = new Map<string, { value: string; label: string; searchText: string }>();
     machineGroups.forEach((group) => group.jobs.forEach((job) => {
-      const key = job.item?.id || `${job.itemName}::${job.erpCode}`;
+      const key = job.item?.id ? `${job.source}::${job.item.id}` : `${job.source}::${job.itemName}::${job.erpCode}`;
       if (!key || map.has(key)) return;
-      map.set(key, { value: key, label: job.erpCode && job.itemName && !job.itemName.toLowerCase().includes(job.erpCode.toLowerCase()) ? `${job.itemName} - ${job.erpCode}` : job.itemName || job.erpCode, searchText: `${job.itemName} ${job.erpCode}` });
+      map.set(key, { value: key, label: job.erpCode && job.itemName && !job.itemName.toLowerCase().includes(job.erpCode.toLowerCase()) ? `${job.itemName} - ${job.erpCode}` : job.itemName || job.erpCode, searchText: `${job.itemName} ${job.erpCode} ${job.fallbackErps.join(" ")}` });
     }));
     return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label));
   }, [machineGroups]);
@@ -296,6 +297,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                           <th className="px-3 py-2 text-left">Source</th>
                           <th className="px-3 py-2 text-left">Date</th>
                           <th className="px-3 py-2 text-left">ERP</th>
+                          <th className="px-3 py-2 text-left">Firm</th>
                           <th className="px-3 py-2 text-left">Company</th>
                           <th className="px-3 py-2 text-left">Item</th>
                           <th className="px-3 py-2 text-right">Plan Qty</th>
@@ -316,6 +318,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                             <td className="px-3 py-2 whitespace-nowrap">{job.source}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{formatDate(job.production.date)}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.erpCode || "-"}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{job.firmName}</td>
                             <td className="px-3 py-2 max-w-[220px] truncate" title={job.companyName}>{job.companyName || "-"}</td>
                             <td className="px-3 py-2 max-w-[280px] truncate text-slate-600" title={job.itemName}>{job.itemName || "-"}</td>
                             <td className="px-3 py-2 text-right">{job.requiredQty.toLocaleString()}</td>

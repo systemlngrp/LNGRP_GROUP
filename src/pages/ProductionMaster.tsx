@@ -18,6 +18,7 @@ import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/j
 import { getProductionMatchingFields, hasProductionMatchingFieldChanges } from "../lib/productionMatching";
 import { downloadJobCardPdf } from "../lib/jobCardPdf";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
+import { resolveProductionErp, resolveProductionItem as resolveProductionCatalogItem, resolveProductionSource } from "../lib/productionErp";
 
 const firstNonBlank = (...values: unknown[]) => {
   for (const value of values) {
@@ -57,7 +58,7 @@ export function ProductionMaster() {
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const { findItemAcrossSources, resolveOrderItem, phpItems, plateItems } = useOrderItemCatalog();
+  const { resolveOrderItem, phpItems, plateItems, itemsBySource } = useOrderItemCatalog();
   const firmMap = useMemo(() => new Map(firms.map((firm) => [String(firm.id), String(firm.firmName || "").trim()])), [firms]);
   
   const [searchTerm, setSearchTerm] = useState("");
@@ -69,13 +70,10 @@ export function ProductionMaster() {
   const [cancelError, setCancelError] = useState("");
   const [cancelSubmittingId, setCancelSubmittingId] = useState<string | null>(null);
 
-  const resolveProductionItem = (production?: Production | null) => {
+  const resolveProductionItem = (production?: Production | null, order?: Order | null) => {
     if (!production) return undefined;
-    return findItemAcrossSources(
-      String(production.itemId || ""),
-      production.itemSource,
-      production.erpCode
-    );
+    const source = resolveProductionSource(production, order, itemsBySource);
+    return resolveProductionCatalogItem(production, order, itemsBySource, source);
   };
 
   const getItemValue = (item: any, ...keys: string[]) => {
@@ -243,7 +241,7 @@ export function ProductionMaster() {
       machines,
       resolveProductionItem,
     });
-  }, [productions, processing, mandatoryMachinesByType, machines, findItemAcrossSources]);
+  }, [productions, processing, mandatoryMachinesByType, machines, itemsBySource]);
   const erpLeastGsmMap = useMemo(() => {
     const map = new Map<string, number>();
     productions.forEach(p => {
@@ -400,10 +398,13 @@ export function ProductionMaster() {
     return productions.map((production) => {
       const schedule = schedules.find((s) => s.id === production.scheduleId);
       const order = orders.find((o) => o.id === schedule?.orderId || o.id === (production as Production & { orderId?: string }).orderId);
-      const item = resolveProductionItem(production) || resolveOrderItem(order);
+      const item = resolveProductionItem(production, order) || resolveOrderItem(order);
       const company = companies.find((c) => c.id === order?.companyId);
       const itemName = String(item?.name || "").trim();
-      const itemErp = String(production.erpCode || item?.erp || "").trim();
+      const itemErp = resolveProductionErp(production, order, item);
+      const fallbackErps = [production.erpCode, production.masterErp, order?.erpCode, item?.erp]
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean);
       const companyName = String(company?.name || production.companyName || "").trim();
       const firmName = firstNonBlank(schedule?.firmName, order?.firmName, firmMap.get(String(schedule?.firmId || order?.firmId || production.firmId || "").trim()), "Unassigned");
       const itemKey = itemName || itemErp ? `${itemName}::${itemErp}` : "";
@@ -415,6 +416,7 @@ export function ProductionMaster() {
         itemKey,
         companyName,
         firmName,
+        fallbackErps,
         searchText: [
           production.transactionNo,
           production.date,
@@ -446,7 +448,7 @@ export function ProductionMaster() {
       map.set(row.itemKey, {
         value: row.itemKey,
         label: formatItemFilterLabel(row.itemName, row.itemErp),
-        searchText: `${row.itemName} ${row.itemErp}`,
+        searchText: `${row.itemName} ${row.itemErp} ${row.fallbackErps.join(" ")}`,
       });
     });
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
@@ -485,8 +487,8 @@ export function ProductionMaster() {
       const schedule = production.scheduleId ? schedules.find((row) => row.id === production.scheduleId) || null : null;
       const order = schedule ? orders.find((row) => row.id === schedule.orderId) || null : null;
       const company = order ? companies.find((row) => row.id === order.companyId) || null : null;
-      const item = resolveProductionItem(production) || null;
-      const itemErp = firstNonBlank(production.erpCode, order?.erpCode, item?.erp, production.masterErp);
+      const item = resolveProductionItem(production, order) || null;
+      const itemErp = resolveProductionErp(production, order, item);
       const phpItem = itemErp ? findLinkedItemByErp(phpItems, itemErp) || null : null;
       const plateItem = itemErp ? findLinkedItemByErp(plateItems, itemErp) || null : null;
       await downloadJobCardPdf({
@@ -787,9 +789,9 @@ export function ProductionMaster() {
                   const schedule = schedules.find(s => s.id === p.scheduleId);
                   const order = orders.find(o => o.id === schedule?.orderId || o.id === (p as Production & { orderId?: string }).orderId);
                   const company = companies.find(c => c.id === order?.companyId);
-                  const item = resolveProductionItem(p);
+                  const item = resolveProductionItem(p, order);
                   const normalizedFields = getProductionMatchingFields(p, item);
-                  const displayRow = { ...p, ...normalizedFields };
+                  const displayRow = { ...p, ...normalizedFields, erpCode: resolveProductionErp(p, order, item) };
                   const mandatory = getMandatoryStatus(p, item);
                   const erp = String(displayRow.erpCode || "").trim();
                   const leastGsm = erpLeastGsmMap.get(erp);
