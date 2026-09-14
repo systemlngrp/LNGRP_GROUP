@@ -46,6 +46,8 @@ const formatDecimal = (value: unknown) => {
 export function ProductionMaster() {
   const { user } = useAuth();
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
@@ -105,6 +107,52 @@ export function ProductionMaster() {
 
     void setProductions(() => normalizedRows);
   }, [productions]);
+
+  // Keep the PHP/Plate source output aligned with the linked main FG job.
+  // The link is created by scheduling and is stored on the FG production row.
+  useEffect(() => {
+    const timestamp = new Date().toISOString();
+    const phpUpdates = new Map<string, number>();
+    const plateUpdates = new Map<string, number>();
+
+    productions.forEach((production) => {
+      if (production.status === "Cancelled") return;
+      if (String(production.methodology || "").trim().toUpperCase() !== "CORRUGATION") return;
+
+      const phpId = String(production.phpScheduledJobId || "").trim();
+      const plateId = String(production.plateScheduledJobId || "").trim();
+      const output = Number(production.prodFromFFG || 0);
+      if (!Number.isFinite(output)) return;
+      if (phpId) phpUpdates.set(phpId, output);
+      else if (plateId) plateUpdates.set(plateId, output);
+    });
+
+    const phpChanged = phpJobs.some((job) => {
+      const output = phpUpdates.get(job.id);
+      return output !== undefined && Number(job.productionOutputQty || 0) !== output;
+    });
+    const plateChanged = plateJobs.some((job) => {
+      const output = plateUpdates.get(job.id);
+      return output !== undefined && Number(job.productionOutputQty || 0) !== output;
+    });
+
+    if (phpChanged) {
+      void setPhpJobs((previous) => previous.map((job) => {
+        const output = phpUpdates.get(job.id);
+        return output === undefined || Number(job.productionOutputQty || 0) === output
+          ? job
+          : { ...job, productionOutputQty: output, updatedBy: "System User", updateTimestamp: timestamp };
+      }));
+    }
+    if (plateChanged) {
+      void setPlateJobs((previous) => previous.map((job) => {
+        const output = plateUpdates.get(job.id);
+        return output === undefined || Number(job.productionOutputQty || 0) === output
+          ? job
+          : { ...job, productionOutputQty: output, updatedBy: "System User", updateTimestamp: timestamp };
+      }));
+    }
+  }, [phpJobs, plateJobs, productions, setPhpJobs, setPlateJobs]);
 
   const ffgSummaries = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
