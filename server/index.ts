@@ -2883,6 +2883,12 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
   const [databaseRows] = await db.query("SELECT DATABASE() AS db");
   const database = String((databaseRows as any[])[0]?.db || process.env.DB_NAME || "u380633007_Inpidata");
   await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
+  for (const table of ["php_loading_slips", "plate_loading_slips"]) {
+    await ensureColumnExists(db, database, table, "firmId", "VARCHAR(36)");
+    for (const [column, type] of INTER_FIRM_COLUMNS) {
+      await ensureColumnExists(db, database, table, column, type);
+    }
+  }
 
   const conn = await db.getConnection();
   try {
