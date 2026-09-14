@@ -73,9 +73,21 @@ function firstOptionalString(...values: unknown[]) {
 }
 
 export function StandaloneProductionScheduling({ source }: StandaloneProductionSchedulingProps) {
-  const [productions, setProductions] = useData<Production>("productions", []);
-  const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), []);
-  const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), []);
+  // Scheduling is a cross-firm queue. Loading these tables with the default
+  // active-firm scope hides valid jobs when the user changes firm or when a
+  // job was created under another firm.
+  const [productions, setProductions] = useData<Production>("productions", [], {
+    firmScope: "all",
+    storageKey: "productions-all-firms",
+  });
+  const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), [], {
+    firmScope: "all",
+    storageKey: "php-job-master-all-firms",
+  });
+  const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), [], {
+    firmScope: "all",
+    storageKey: "plate-job-master-all-firms",
+  });
   const { itemsBySource } = useOrderItemCatalog();
   const [searchTerm, setSearchTerm] = useState("");
   const [sourceFilter, setSourceFilter] = useState<WorkflowSource>(source === "ALL" ? "ALL" : source);
