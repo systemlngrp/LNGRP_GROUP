@@ -7536,8 +7536,13 @@ const createHandlers = (tableName) => {
                     data.firmId = requestFirmId;
                 }
                 if (["php_job_master", "plate_job_master"].includes(tableName)) {
-                    const [unitRows] = await db.query("SELECT id, firmName FROM firms WHERE LOWER(REPLACE(REPLACE(REPLACE(firmName, ' ', ''), '-', ''), '.', '')) LIKE '%unitii' OR LOWER(REPLACE(REPLACE(REPLACE(firmName, ' ', ''), '-', ''), '.', '')) LIKE '%unit2' LIMIT 1");
-                    const unit2 = unitRows[0];
+                    const [unitRows] = await db.query("SELECT id, firmName FROM firms");
+                    const normalizeFirmName = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+                    const unit2 = unitRows.find((row) => {
+                        const normalized = normalizeFirmName(row.firmName);
+                        return (normalized.includes("laxmi") || normalized.includes("laxminarayan")) &&
+                            (normalized.endsWith("unitii") || normalized.endsWith("unit2") || normalized.includes("unitii") || normalized.includes("unit2"));
+                    });
                     if (!unit2?.id)
                         return res.status(400).json({ error: "Unit-II firm mapping is missing." });
                     data.firmId = String(unit2.id);
