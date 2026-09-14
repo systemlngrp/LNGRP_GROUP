@@ -11,8 +11,8 @@ export function OrdersPendingScheduling() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const [orders, setOrders] = useData<Order>("orders", []);
-  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
+  const [orders, setOrders] = useData<Order>("orders", [], { firmScope: "all" });
+  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [companies] = useData("companies", []);
   const [firms] = useData<Firm>("firms", []);
   const { resolveOrderItem } = useOrderItemCatalog();

@@ -15,7 +15,7 @@ export function OrdersPendingPH() {
   const [orderByFilter, setOrderByFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const [orders, setOrders] = useData<Order>("orders", []);
+  const [orders, setOrders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData("companies", []);
   const [users] = useData<User>("users", []);
   const { resolveOrderItem } = useOrderItemCatalog();
