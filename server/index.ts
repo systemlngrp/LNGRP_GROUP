@@ -11754,8 +11754,14 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const actor = String((user as any).name || (user as any).email || "System User");
     const note = [`Reel transfer ${transferNo}`, remarks].filter(Boolean).join(" - ");
 
-    await conn.query("INSERT INTO material_returns (id, returnNo, date, returnType, productionId, jobNo, remarks, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'Job', ?, ?, ?, ?, ?)", [returnId, returnNo, transferDate, sourceProductionId, sourceJobNo, note, actor, timestamp]);
-    await conn.query("INSERT INTO material_issues (id, issueNo, date, issueType, productionId, jobNo, remarks, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'Job', ?, ?, ?, ?, ?)", [issueId, issueNo, transferDate, targetProductionId, targetJobNo, note, actor, timestamp]);
+    const [unitTwoRows] = await conn.query(
+      "SELECT id FROM firms WHERE active <> 'No' AND (LOWER(firmName) LIKE '%unit ii%' OR LOWER(firmName) LIKE '%unit-ii%' OR LOWER(firmName) LIKE '%unit 2%') ORDER BY firmName LIMIT 1"
+    );
+    const unitTwoFirmId = String((unitTwoRows as any[])[0]?.id || "").trim();
+    if (!unitTwoFirmId) throw new Error("Unit II firm is not configured.");
+
+    await conn.query("INSERT INTO material_returns (id, returnNo, date, returnType, productionId, jobNo, firmId, remarks, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'Job', ?, ?, ?, ?, ?, ?)", [returnId, returnNo, transferDate, sourceProductionId, sourceJobNo, unitTwoFirmId, note, actor, timestamp]);
+    await conn.query("INSERT INTO material_issues (id, issueNo, date, issueType, productionId, jobNo, firmId, remarks, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'Job', ?, ?, ?, ?, ?, ?)", [issueId, issueNo, transferDate, targetProductionId, targetJobNo, unitTwoFirmId, note, actor, timestamp]);
     await conn.query("INSERT INTO reel_transfers (id, transferNo, date, sourceProductionId, sourceJobNo, targetProductionId, targetJobNo, materialReturnId, materialIssueId, remarks, totalWeightKg, totalAmount, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [transferId, transferNo, transferDate, sourceProductionId, sourceJobNo, targetProductionId, targetJobNo, returnId, issueId, remarks || null, totalWeightKg, totalAmount, actor, timestamp]);
 
     const byMaterial = new Map<string, typeof selected>();

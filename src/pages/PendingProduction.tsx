@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { Company, Order, OrderSchedule, Production } from "../types";
+import { Company, Firm, Order, OrderSchedule, Production } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 
@@ -54,6 +54,7 @@ export function PendingProduction() {
   const [orders] = useData<Order>("orders", []);
   const { resolveOrderItem } = useOrderItemCatalog();
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", []);
 
   const [cancelValues, setCancelValues] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -73,6 +74,11 @@ export function PendingProduction() {
     [plateJobs, phpJobs, productions]
   );
 
+  const firmNameById = useMemo(
+    () => new Map(firms.map((firm) => [String(firm.id), String(firm.firmName || "").trim()])),
+    [firms]
+  );
+
   const pendingRows = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return schedules
@@ -89,6 +95,21 @@ export function PendingProduction() {
         const order = orders.find((row) => row.id === schedule.orderId);
         const item = resolveOrderItem(order);
         const company = companies.find((row) => row.id === order?.companyId);
+        const linkedProduction = productions.find((row) => {
+          if (row.scheduleId !== schedule.id) return false;
+          const productionWithFirm = row as Production & { firmId?: string };
+          return Boolean(String(productionWithFirm.firmId || row.orderFirmId || "").trim());
+        });
+        const productionWithFirm = linkedProduction as (Production & { firmId?: string }) | undefined;
+        const firmIds = [
+          schedule.firmId,
+          productionWithFirm?.firmId,
+          linkedProduction?.orderFirmId,
+          order?.firmId,
+        ]
+          .map((value) => String(value || "").trim())
+          .filter(Boolean);
+        const firm = firmIds.map((id) => firmNameById.get(id)).find(Boolean) || "Unassigned";
         const summary = consumptionByScheduleId.get(schedule.id);
         const plannedQty = Number(summary?.plannedQty || 0);
         const actualProducedQty = Number(summary?.actualProducedQty || 0);
@@ -99,6 +120,7 @@ export function PendingProduction() {
           order,
           item,
           company,
+          firm,
           plannedQty,
           actualProducedQty,
           plannedWithoutFfgQty,
@@ -106,7 +128,7 @@ export function PendingProduction() {
           pendingQty: getPendingProductionQty(schedule, consumedQty),
         };
       })
-      .filter(({ schedule, order, item, company, pendingQty, plannedQty, actualProducedQty, plannedWithoutFfgQty, consumedQty }) => {        if (companyFilter && order?.companyId !== companyFilter) return false;
+      .filter(({ schedule, order, item, company, firm, pendingQty, plannedQty, actualProducedQty, plannedWithoutFfgQty, consumedQty }) => {        if (companyFilter && order?.companyId !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${getPendingProductionErp(item, order)}`;
         if (itemFilter && itemKey !== itemFilter) return false;
         if (!normalizedSearch) return true;
@@ -117,6 +139,7 @@ export function PendingProduction() {
           order?.orderNo,
           formatDate(schedule.scheduledDate),
           company?.name,
+          firm,
           erpCode,
           item?.name,
           boxType,
@@ -137,7 +160,7 @@ export function PendingProduction() {
         const timeB = new Date(b.schedule.updateTimestamp || b.schedule.scheduledDate || 0).getTime();
         return timeB - timeA;
       });
-  }, [companies, companyFilter, consumptionByScheduleId, cutoffDate, itemFilter, orders, resolveOrderItem, schedules, searchTerm]);
+  }, [companies, companyFilter, consumptionByScheduleId, cutoffDate, firmNameById, itemFilter, orders, productions, resolveOrderItem, schedules, searchTerm]);
 
   const companyOptions = useMemo(() => Array.from(new Map(pendingRows.map((row) => [row.order?.companyId || "", { value: row.order?.companyId || "", label: row.company?.name || "" }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingRows]);
   const itemOptions = useMemo(() => Array.from(new Map(pendingRows.map((row) => { const erp = getPendingProductionErp(row.item, row.order); const key = row.item?.id || `${row.item?.name || ""}::${erp}`; const name = row.item?.name || ""; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingRows]);
@@ -227,6 +250,7 @@ export function PendingProduction() {
               <th className="px-3 py-2 border border-black">Schedule No</th>
               <th className="px-3 py-2 border border-black">Schedule Date</th>
               <th className="px-3 py-2 border border-black">Company</th>
+              <th className="px-3 py-2 border border-black">Firm</th>
               <th className="px-3 py-2 border border-black">ERP</th>
               <th className="px-3 py-2 border border-black">Item</th>
               <th className="px-3 py-2 border border-black">Box Type</th>
@@ -242,12 +266,12 @@ export function PendingProduction() {
           <tbody>
             {pendingRows.length === 0 ? (
               <tr>
-                <td colSpan={15} className="px-6 py-8 text-center text-black font-medium">
+                <td colSpan={16} className="px-6 py-8 text-center text-black font-medium">
                   No pending production schedules.
                 </td>
               </tr>
             ) : (
-              paginatedRows.map(({ schedule, order, item, company, pendingQty, plannedQty, actualProducedQty }, index) => {
+              paginatedRows.map(({ schedule, order, item, company, firm, pendingQty, plannedQty, actualProducedQty }, index) => {
                 const canPlanFgJob = normalizeOrderItemSource(order?.itemSource) === "FG";
     const boxType = canPlanFgJob ? String((item as any)?.boxType || "").trim() : "";
                 const hasBoxType = Boolean(boxType);
@@ -259,6 +283,7 @@ export function PendingProduction() {
                   <td className="px-3 py-2 border border-black font-bold text-indigo-700 whitespace-nowrap">{schedule.scheduleNo || "-"}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{formatDate(schedule.scheduledDate)}</td>
                   <td className="px-3 py-2 border border-black">{company?.name || "-"}</td>
+                  <td className="px-3 py-2 border border-black">{firm}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{erpCode}</td>
                   <td className="px-3 py-2 border border-black">{item?.name || "-"}</td>
                   <td className={`px-3 py-2 border border-black font-bold ${hasBoxType ? "text-black" : "bg-red-100 text-red-700"}`}>{boxType || "Missing"}</td>
