@@ -125,7 +125,7 @@ export function Materials() {
   const navigate = useNavigate();
   const [firms] = useData<Firm>("firms", []);
   const [selectedFirmId, setSelectedFirmId] = useState("");
-  const materialEndpoint = selectedFirmId ? `/api/materials?firmId=${encodeURIComponent(selectedFirmId)}` : "/api/materials";
+  const materialEndpoint = "/api/materials";
   const [materials, setMaterials, isMaterialsLoading] = useData<Material>("materials", [], { endpointOverride: materialEndpoint });
   const [settings] = useData<Setting>("settings", []);
   const [materialGroups, setMaterialGroups] = useData<MaterialGroup>("material-groups", []);
@@ -178,6 +178,12 @@ export function Materials() {
   const [showBulkColorModal, setShowBulkColorModal] = useState(false);
   const [bulkColor, setBulkColor] = useState("");
   const [isApplyingBulkColor, setIsApplyingBulkColor] = useState(false);
+
+  const displayFirms = useMemo(() => {
+    const knownFirmIds = new Set(firms.map((firm) => String(firm.id)));
+    const orphanFirmIds = materials.map((material) => String(material.firmId || "")).filter((id) => id && !knownFirmIds.has(id));
+    return [...firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)), ...Array.from(new Set(orphanFirmIds)).map((id) => ({ id, firmName: "Unknown Firm" } as Firm))];
+  }, [firms, materials]);
 
   const movementSummaryMap = useMemo(() => {
     const createEmptyMovement = (): MaterialMovementSummary => ({ receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
@@ -1902,20 +1908,6 @@ export function Materials() {
 
             <div className="bg-white border-2 border-black rounded-xl p-4 shadow-sm space-y-4 mt-6">
               <div className="flex flex-wrap items-end gap-4">
-                <div className="space-y-1">
-                  <div className="text-blue-700 font-bold text-[10px] uppercase tracking-wider">Firm</div>
-                  <select
-                    value={selectedFirmId}
-                    onChange={(event) => setSelectedFirmId(event.target.value)}
-                    className="rounded border border-black bg-white px-3 py-2 text-xs font-bold text-black"
-                    aria-label="Inventory firm"
-                  >
-                    <option value="">All Firms</option>
-                    {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => (
-                      <option key={firm.id} value={firm.id}>{firm.firmName}</option>
-                    ))}
-                  </select>
-                </div>
                 <div className="flex-1 min-w-[240px] space-y-1">
                   <div className="text-blue-700 font-bold text-[10px] uppercase tracking-wider">Search</div>
                   <div className="relative">
