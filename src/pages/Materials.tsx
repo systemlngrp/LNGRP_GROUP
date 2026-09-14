@@ -143,10 +143,6 @@ export function Materials() {
   const [npdItems, setNpdItems] = useState<Item[]>([]);
 
   useEffect(() => {
-    if (!selectedFirmId && firms.length > 0) setSelectedFirmId(firms[0].id);
-  }, [firms, selectedFirmId]);
-  
-  useEffect(() => {
     fetchNpdItems().then(setNpdItems).catch(() => setNpdItems([]));
   }, []);
 
@@ -1844,15 +1840,6 @@ export function Materials() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={selectedFirmId}
-                  onChange={(event) => setSelectedFirmId(event.target.value)}
-                  className="rounded border border-black bg-white px-3 py-2 text-xs font-bold text-black shadow"
-                  aria-label="Inventory firm"
-                >
-                  <option value="">Select firm</option>
-                  {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
-                </select>
                 <button
                   type="button"
                   onClick={downloadTemplate}
@@ -1915,6 +1902,20 @@ export function Materials() {
 
             <div className="bg-white border-2 border-black rounded-xl p-4 shadow-sm space-y-4 mt-6">
               <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-1">
+                  <div className="text-blue-700 font-bold text-[10px] uppercase tracking-wider">Firm</div>
+                  <select
+                    value={selectedFirmId}
+                    onChange={(event) => setSelectedFirmId(event.target.value)}
+                    className="rounded border border-black bg-white px-3 py-2 text-xs font-bold text-black"
+                    aria-label="Inventory firm"
+                  >
+                    <option value="">All Firms</option>
+                    {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => (
+                      <option key={firm.id} value={firm.id}>{firm.firmName}</option>
+                    ))}
+                  </select>
+                </div>
                 <div className="flex-1 min-w-[240px] space-y-1">
                   <div className="text-blue-700 font-bold text-[10px] uppercase tracking-wider">Search</div>
                   <div className="relative">
