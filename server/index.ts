@@ -2877,22 +2877,31 @@ async function generateLockedGateEntryNo(db: mysql.Pool | mysql.PoolConnection, 
   return `${key}/${String(Number((rows as any[])[0]?.nextValue || 0)).padStart(5, "0")}`;
 }
 
-async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sourceType = "Production") {
+async function ensureInterFirmAutomationSchema(db: mysql.Pool, database: string) {
+  await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
+  for (const table of ["php_loading_slips", "plate_loading_slips"]) {
+    await ensureColumnExists(db, database, table, "firmId", "VARCHAR(36)");
+    for (const [column, type] of INTER_FIRM_COLUMNS) await ensureColumnExists(db, database, table, column, type);
+  }
+}
+
+async function automateInterFirmProduction(
+  db: mysql.Pool,
+  sourceId: string,
+  sourceType = "Production",
+  providedConnection?: mysql.PoolConnection
+) {
   // Some legacy deployments already have the pending table but predate its
   // component-lines column. Repair it before opening the business transaction.
   const [databaseRows] = await db.query("SELECT DATABASE() AS db");
   const database = String((databaseRows as any[])[0]?.db || process.env.DB_NAME || "u380633007_Inpidata");
-  await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
-  for (const table of ["php_loading_slips", "plate_loading_slips"]) {
-    await ensureColumnExists(db, database, table, "firmId", "VARCHAR(36)");
-    for (const [column, type] of INTER_FIRM_COLUMNS) {
-      await ensureColumnExists(db, database, table, column, type);
-    }
-  }
+  if (!providedConnection) await ensureInterFirmAutomationSchema(db, database);
 
-  const conn = await db.getConnection();
+  const conn = providedConnection || await db.getConnection();
+  const ownsConnection = !providedConnection;
+  const skip = async () => { if (ownsConnection) await conn.rollback(); };
   try {
-    await conn.beginTransaction();
+    if (ownsConnection) await conn.beginTransaction();
     let sourceRecord: any = null;
     let productionId = sourceId;
     if (sourceType === "Production Processing") {
@@ -2907,7 +2916,7 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     const production = (rows as any[])[0];
     if (!production) {
       console.warn("[INTER-FIRM] Skipped: parent production not found", { sourceId, sourceType, productionId });
-      await conn.rollback(); return;
+      await skip(); return;
     }
     const [orders] = await conn.query("SELECT * FROM `orders` WHERE id = ? LIMIT 1", [production.orderId]);
     const order = (orders as any[])[0];
@@ -2928,7 +2937,7 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     );
     if (!orderFirmId) {
       console.warn("[INTER-FIRM] Skipped: order firm mapping missing", { sourceId, sourceType, productionId });
-      await conn.rollback(); return;
+      await skip(); return;
     }
 
     let sourceFirmId = "";
@@ -2936,24 +2945,24 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     if (sourceType === "Production Processing" && normalizedMachine === "Corrugation Liner") {
       if (!unit1?.id || !unit2?.id) {
         console.warn("[INTER-FIRM] Skipped: Unit-I/Unit-II firm mapping missing", { sourceId, productionId, unit1FirmId: unit1?.id, unit2FirmId: unit2?.id });
-        await conn.rollback(); return;
+        await skip(); return;
       }
       // Stage 1: the Full Corrugation Liner row is the Manufacturing Journal.
       sourceFirmId = String(unit1.id);
-      if (orderFirmId === sourceFirmId) { await conn.rollback(); return; } // Scenario A
+      if (orderFirmId === sourceFirmId) { await skip(); return; } // Scenario A
       destinationFirmId = String(unit2.id); // Scenarios B and C
     } else if (sourceType === "Production Processing" && normalizedMachine === "Printing") {
       if (!unit2?.id || !lnki?.id) {
         console.warn("[INTER-FIRM] Skipped: Unit-II/LNKI firm mapping missing", { sourceId, productionId, unit2FirmId: unit2?.id, lnkiFirmId: lnki?.id });
-        await conn.rollback(); return;
+        await skip(); return;
       }
       // Stage 2 (printing route): Firm-II sends the completed printing output
       // to LNKI when the customer order belongs to Firm-III.
       sourceFirmId = String(unit2.id);
-      if (orderFirmId !== String(lnki.id)) { await conn.rollback(); return; }
+      if (orderFirmId !== String(lnki.id)) { await skip(); return; }
       destinationFirmId = String(lnki.id);
     } else {
-      await conn.rollback(); return;
+      await skip(); return;
     }
     const sourceTransactionId = sourceId;
     const sourceTransactionType = sourceType;
@@ -2963,12 +2972,12 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     );
     if (!Number.isFinite(qty) || qty <= 0) {
       console.warn("[INTER-FIRM] Skipped: output quantity is zero", { sourceId, sourceType, productionId, qty });
-      await conn.rollback(); return;
+      await skip(); return;
     }
     const itemId = String(sourceRecord.itemId || production.itemId || sourceRecord.npdId || production.npdId || "");
     if (!itemId.trim()) {
       console.warn("[INTER-FIRM] Skipped: item/NPD reference missing", { sourceId, sourceType, productionId });
-      await conn.rollback(); return;
+      await skip(); return;
     }
     const componentLines: any[] = [];
     if (sourceType === "Production Processing" && normalizedMachine === "Printing" && orderFirmId === String(lnki.id)) {
@@ -3015,7 +3024,30 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
       { itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG", npdId: sourceRecord.npdId || production.npdId || itemId, qty, uom: sourceRecord.uom || production.uom || "", rate, gstRate },
       ...componentLines.map((line) => ({ ...line, rate: Number((line.baseRate * interFirmRatePercent / 100).toFixed(2)) })),
     ].map(({ baseRate: _baseRate, scheduleId: _scheduleId, ...line }) => line);
-    const pendingId = crypto.randomUUID();
+    const [orphanPendingRows] = await conn.query(
+      `SELECT ip.* FROM inter_firm_pending_invoices ip
+       LEFT JOIN production_processing oldpp ON oldpp.id = ip.sourceTransactionId
+       WHERE ip.sourceTransactionType = ? AND ip.jobId = ? AND ip.sourceFirmId = ? AND ip.destinationFirmId = ?
+         AND COALESCE(ip.status, 'Pending') <> 'Cancelled' AND oldpp.id IS NULL
+       ORDER BY ip.updateTimestamp DESC LIMIT 2`,
+      [sourceTransactionType, productionId, sourceFirmId, destinationFirmId]
+    );
+    const orphanCandidates = orphanPendingRows as any[];
+    if (orphanCandidates.length > 1) {
+      throw new Error(`Multiple orphaned inter-firm records exist for job ${production.jobCardNo || production.transactionNo}; resolve duplicates before retrying.`);
+    }
+    const orphanPending = orphanCandidates[0];
+    const legacySourceId = String(orphanPending?.sourceTransactionId || "").trim();
+    if (legacySourceId && legacySourceId !== sourceId) {
+      for (const table of ["php_loading_slips", "plate_loading_slips", "material_issues", "material_in", "gate_entries"]) {
+        await conn.query(
+          `UPDATE \`${table}\` SET sourceTransactionId = ?, updateTimestamp = ? WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ?`,
+          [sourceId, now, sourceTransactionType, legacySourceId, destinationFirmId]
+        );
+      }
+      await conn.query("UPDATE inter_firm_pending_invoices SET sourceTransactionId = ?, updateTimestamp = ? WHERE id = ?", [sourceId, now, orphanPending.id]);
+    }
+    const pendingId = String(orphanPending?.id || crypto.randomUUID());
     await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, \`lines\`, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), \`lines\`=VALUES(\`lines\`), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, JSON.stringify(invoiceLines), now]);
     const [pendingRows] = await conn.query("SELECT * FROM `inter_firm_pending_invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
     const pending = (pendingRows as any[])[0];
@@ -3088,8 +3120,13 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
       await conn.query("UPDATE `production_processing` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, sourceId]);
     }
     console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing" });
-    await conn.commit();
-  } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+    if (ownsConnection) await conn.commit();
+  } catch (error) {
+    if (ownsConnection) await conn.rollback();
+    throw error;
+  } finally {
+    if (ownsConnection) conn.release();
+  }
 }
 
 async function backfillInterFirmProductionProcessing(db: mysql.Pool) {
@@ -3105,6 +3142,8 @@ async function backfillInterFirmProductionProcessing(db: mysql.Pool) {
 
   let repaired = 0;
   let failed = 0;
+  let skipped = 0;
+  let duplicates = 0;
   for (const row of rows as any[]) {
     const machineName = normalizeMachineName(String(row.machineName || ""));
     if (machineName !== "Corrugation Liner" && machineName !== "Printing") continue;
@@ -3120,15 +3159,17 @@ async function backfillInterFirmProductionProcessing(db: mysql.Pool) {
       );
       const linked = (linkedRows as any[])[0];
       if (linked?.gateEntryId && linked?.mrrId) repaired += 1;
+      else skipped += 1;
     } catch (error) {
-      failed += 1;
+      if ((error as Error).message.startsWith("Multiple orphaned inter-firm records")) duplicates += 1;
+      else failed += 1;
       console.warn("[INTER-FIRM] Backfill failed for processing report", { id: row.id, machineName, error: (error as Error).message });
     }
   }
-  if (repaired > 0 || failed > 0) {
-    console.log(`[INTER-FIRM] Backfill complete: ${repaired} repaired, ${failed} failed.`);
+  if (repaired > 0 || skipped > 0 || failed > 0 || duplicates > 0) {
+    console.log(`[INTER-FIRM] Backfill complete: ${repaired} repaired, ${skipped} skipped, ${failed} failed, ${duplicates} duplicate sets flagged.`);
   }
-  return { repaired, failed };
+  return { repaired, skipped, failed, duplicates };
 }
 
 async function validateLnkiPrintingComponents(db: mysql.Pool, processing: any) {
@@ -9165,6 +9206,33 @@ const createHandlers = (tableName: string) => {
               await conn.rollback();
             } catch {}
             throw err;
+          } finally {
+            conn.release();
+          }
+        }
+
+        const processingMachineName = tableName === "production_processing"
+          ? normalizeMachineName(String(data.machineName || ""))
+          : "";
+        const isAtomicInterFirmProcessing =
+          tableName === "production_processing" &&
+          String(data.completionStatus || "").trim().toLowerCase() === "full" &&
+          (processingMachineName === "Corrugation Liner" || processingMachineName === "Printing");
+
+        if (isAtomicInterFirmProcessing) {
+          await ensureInterFirmAutomationSchema(db, schemaName);
+          await validateLnkiPrintingComponents(db, data);
+          const conn = await db.getConnection();
+          try {
+            await conn.beginTransaction();
+            console.log(`[DB] Atomically upserting ${tableName} with inter-firm automation`, { id: data.id });
+            await conn.query(query, values);
+            await automateInterFirmProduction(db, String(data.id || ""), "Production Processing", conn);
+            await conn.commit();
+            return res.json({ success: true });
+          } catch (error) {
+            try { await conn.rollback(); } catch {}
+            throw error;
           } finally {
             conn.release();
           }
