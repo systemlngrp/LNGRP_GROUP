@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
-import { Production, OrderSchedule, Order, Company, ProductionProcessing, Setting, LoadingSlip, LoadingSlipLine, Machine, Material, MaterialInPackingSlip, MaterialIssueReelLine, MaterialReturnReelLine } from "../types";
+import { Production, OrderSchedule, Order, Company, Firm, ProductionProcessing, Setting, LoadingSlip, LoadingSlipLine, Machine, Material, MaterialInPackingSlip, MaterialIssueReelLine, MaterialReturnReelLine } from "../types";
 import { formatDate } from "../lib/serial";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
@@ -45,9 +45,10 @@ const formatDecimal = (value: unknown) => {
 export function ProductionMaster() {
   const { user } = useAuth();
   const [productions, setProductions] = useData<Production>("productions", []);
-  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
+  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [settings] = useData<Setting>("settings", []);
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
@@ -57,6 +58,7 @@ export function ProductionMaster() {
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const { findItemAcrossSources, resolveOrderItem, phpItems, plateItems } = useOrderItemCatalog();
+  const firmMap = useMemo(() => new Map(firms.map((firm) => [String(firm.id), String(firm.firmName || "").trim()])), [firms]);
   
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -397,12 +399,13 @@ export function ProductionMaster() {
   const productionFilterRows = useMemo(() => {
     return productions.map((production) => {
       const schedule = schedules.find((s) => s.id === production.scheduleId);
-      const order = orders.find((o) => o.id === schedule?.orderId);
+      const order = orders.find((o) => o.id === schedule?.orderId || o.id === (production as Production & { orderId?: string }).orderId);
       const item = resolveProductionItem(production) || resolveOrderItem(order);
       const company = companies.find((c) => c.id === order?.companyId);
       const itemName = String(item?.name || "").trim();
       const itemErp = String(production.erpCode || item?.erp || "").trim();
       const companyName = String(company?.name || production.companyName || "").trim();
+      const firmName = firstNonBlank(schedule?.firmName, order?.firmName, firmMap.get(String(schedule?.firmId || order?.firmId || production.firmId || "").trim()), "Unassigned");
       const itemKey = itemName || itemErp ? `${itemName}::${itemErp}` : "";
 
       return {
@@ -411,6 +414,7 @@ export function ProductionMaster() {
         itemErp,
         itemKey,
         companyName,
+        firmName,
         searchText: [
           production.transactionNo,
           production.date,
@@ -421,13 +425,14 @@ export function ProductionMaster() {
           itemName,
           itemErp,
           order?.orderNo,
+          firmName,
           order?.erpCode,
           production.status,
           production.remarks,
         ].join(" ").toLowerCase(),
       };
     });
-  }, [productions, schedules, orders, companies, resolveOrderItem]);
+  }, [productions, schedules, orders, companies, firmMap, resolveOrderItem]);
 
   const companyOptions = useMemo(() => {
     const names = Array.from(new Set(productionFilterRows.map((row) => row.companyName).filter(Boolean)));
@@ -697,6 +702,7 @@ export function ProductionMaster() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Job No.</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Order No.</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">ERP Code</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Company</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Plan Date</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Item Name</th>
@@ -779,7 +785,7 @@ export function ProductionMaster() {
                 paginatedList.map((p, idx) => {
                   const srNo = (page - 1) * pageSize + idx + 1;
                   const schedule = schedules.find(s => s.id === p.scheduleId);
-                  const order = orders.find(o => o.id === schedule?.orderId);
+                  const order = orders.find(o => o.id === schedule?.orderId || o.id === (p as Production & { orderId?: string }).orderId);
                   const company = companies.find(c => c.id === order?.companyId);
                   const item = resolveProductionItem(p);
                   const normalizedFields = getProductionMatchingFields(p, item);
@@ -826,8 +832,9 @@ export function ProductionMaster() {
                     <tr key={p.id} className={`${isHighGsm ? "bg-amber-50" : "hover:bg-slate-50"} divide-x divide-black transition-colors`}>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{srNo}</td>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
+                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || (p as Production & { orderNo?: string }).orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{displayRow.erpCode || "-"}</td>
+                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{firstNonBlank(schedule?.firmName, order?.firmName, firmMap.get(String(schedule?.firmId || order?.firmId || p.firmId || "").trim()), "Unassigned")}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{company?.name || displayRow.companyName || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black min-w-[150px]">{item?.name || "Unknown"}</td>
