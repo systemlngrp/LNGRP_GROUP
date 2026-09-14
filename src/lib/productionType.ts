@@ -29,13 +29,16 @@ export function getAllMachineNames(machines: Machine[]) {
 }
 
 export function getRequiredMachinesForProduction(
-  production: Pick<Production, "itemSource">,
+  production: Pick<Production, "itemSource" | "methodology">,
   item: ProductionLikeItem | null | undefined,
   mapping: MandatoryMachinesByType,
   machines: Machine[]
 ) {
   const source = String(production.itemSource || "FG").trim().toUpperCase();
   if (source === "PHP" || source === "PLATE") {
+    if (String(production.methodology || "").trim().toUpperCase() === "CORRUGATION") {
+      return [normalizeMachineName("Corrugation Liner")];
+    }
     return getAllMachineNames(machines);
   }
   return getRequiredMachinesForType(mapping, getProductionEffectiveType(production, item));
