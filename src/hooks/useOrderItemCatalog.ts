@@ -38,9 +38,9 @@ export function useOrderItemCatalog() {
     storageKey: "npd_order_catalog",
     syncEventKey: "sync-data-npd",
   });
-  const [phpRows] = useData<any>("php_item_master", []);
-  const [plateRows] = useData<any>("plate_item_master", []);
-  const [materialRows] = useData<Material>("materials", []);
+  const [phpRows] = useData<any>("php_item_master", [], { firmScope: "all" });
+  const [plateRows] = useData<any>("plate_item_master", [], { firmScope: "all" });
+  const [materialRows] = useData<Material>("materials", [], { firmScope: "all" });
 
   const itemsBySource = useMemo<Record<OrderItemSource, OrderCatalogItem[]>>(
     () => ({

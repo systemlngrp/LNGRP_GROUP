@@ -216,17 +216,17 @@ export function ProductionForm() {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [productions, setProductions] = useData<Production>("productions", []);
-  const [phpJobMaster] = useData<Production>(getJobMasterEntityName("PHP"), []);
-  const [plateJobMaster] = useData<Production>(getJobMasterEntityName("PLATE"), []);
-  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
-  const [companies] = useData<Company>("companies", []);
+  const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [phpJobMaster] = useData<Production>(getJobMasterEntityName("PHP"), [], { firmScope: "all" });
+  const [plateJobMaster] = useData<Production>(getJobMasterEntityName("PLATE"), [], { firmScope: "all" });
+  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
+  const [companies] = useData<Company>("companies", [], { firmScope: "all" });
   const [plans] = useData<DispatchPlan>("dispatch_plans", []);
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [sampleRequests, setSampleRequests] = useData<SampleRequest>("sample_requests", []);
   const [settings] = useData<Setting>("settings", []);
-  const [firms] = useData<Firm>("firms", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [npdItems, setNpdItems] = useState<Item[]>([]);
   const { resolveOrderItem } = useOrderItemCatalog();
 

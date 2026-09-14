@@ -16,6 +16,7 @@ import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 
 interface PendingMachineJob {
   production: Production;
+  source: "FG" | "PHP" | "PLATE";
   item?: any;
   companyName: string;
   erpCode: string;
@@ -29,6 +30,7 @@ interface PendingMachineJob {
 interface MachineGroup {
   machineId: string;
   machineName: string;
+  source: "FG" | "PHP" | "PLATE";
   jobs: PendingMachineJob[];
 }
 
@@ -70,6 +72,15 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const orderById = useMemo(() => new Map(orders.map((order) => [order.id, order])), [orders]);
   const companyNameById = useMemo(() => new Map(companies.map((company) => [company.id, company.name || ""])), [companies]);
 
+  const resolveSource = useCallback((production: Production): "FG" | "PHP" | "PLATE" => {
+    const explicit = String(production.itemSource || "").trim().toUpperCase();
+    if (explicit === "PHP" || explicit === "PLATE") return explicit;
+    const jobNo = String(production.jobCardNo || production.transactionNo || "").trim().toUpperCase();
+    if (jobNo.startsWith("PHP/")) return "PHP";
+    if (jobNo.startsWith("PLATE/")) return "PLATE";
+    return "FG";
+  }, []);
+
   const resolveCompanyName = useCallback((production: Production, item?: any) => {
     const productionCompany = String(production.companyName || "").trim();
     if (productionCompany) return productionCompany;
@@ -97,7 +108,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     machines.forEach(m => {
       if (fixedNormalizedMachineName && normalizeMachineName(m.name) !== fixedNormalizedMachineName) return;
       if (filterMachineId && m.id !== filterMachineId) return;
-      groups.set(m.id, { machineId: m.id, machineName: m.name, jobs: [] });
+      groups.set(m.id, { machineId: m.id, machineName: m.name, source: "FG", jobs: [] });
     });
 
     // Filter productions that are active and not completed
@@ -109,10 +120,12 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     );
 
     activeProductions.forEach(p => {
-      const item = findItemAcrossSources(String(p.itemId || "").trim(), p.itemSource, p.erpCode);
+      const source = resolveSource(p);
+      const sourceProduction = { ...p, itemSource: source } as Production;
+      const item = findItemAcrossSources(String(p.itemId || "").trim(), source, p.erpCode);
       const requiredMachines = Array.from(
         new Set(
-          getRequiredMachinesForProduction(p, item, mandatoryMachinesMapping, machines)
+          getRequiredMachinesForProduction(sourceProduction, item, mandatoryMachinesMapping, machines)
             .map((machineName) => normalizeMachineName(machineName))
             .filter(Boolean)
         )
@@ -139,6 +152,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
           if (group) {
             group.jobs.push({
               production: p,
+              source,
               item,
               companyName: resolveCompanyName(p, item),
               erpCode: String(item?.erp || p.erpCode || ""),
@@ -172,7 +186,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
         return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
       });
-  }, [productions, findItemAcrossSources, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName]);
+  }, [productions, findItemAcrossSources, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, resolveSource]);
 
   const companyOptions = useMemo(() => {
     const names = new Set<string>();
@@ -279,6 +293,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                       <thead className="sticky top-0 z-30 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
                         <tr className="divide-x divide-black">
                           <th className="px-3 py-2 text-left">Job No</th>
+                          <th className="px-3 py-2 text-left">Source</th>
                           <th className="px-3 py-2 text-left">Date</th>
                           <th className="px-3 py-2 text-left">ERP</th>
                           <th className="px-3 py-2 text-left">Company</th>
@@ -298,6 +313,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                           return (
                           <tr key={`${job.production.id}-${idx}`} className="divide-x divide-black hover:bg-slate-50">
                             <td className="px-3 py-2 whitespace-nowrap">{job.production.transactionNo}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{job.source}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{formatDate(job.production.date)}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.erpCode || "-"}</td>
                             <td className="px-3 py-2 max-w-[220px] truncate" title={job.companyName}>{job.companyName || "-"}</td>
