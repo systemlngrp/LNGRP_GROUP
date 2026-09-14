@@ -4,15 +4,13 @@ import { Camera, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getAllReturnableReelLines } from "../lib/materialMovement";
-import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
-import type { MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
+import type { MaterialIssueReelLine, MaterialReturnReelLine, Production } from "../types";
 
 export function PendingMaterialReturn() {
   const navigate = useNavigate();
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [issueReels] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
   const [returnReels] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all" });
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const { findItemAcrossSources } = useOrderItemCatalog();
 
   const rows = useMemo(() => {
@@ -26,7 +24,7 @@ export function PendingMaterialReturn() {
     });
 
     return productions
-      .filter((production) => production.status !== "Cancelled" && byProduction.has(production.id) && isCorrugationLinerComplete(processing, production.id))
+      .filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp && byProduction.has(production.id))
       .map((production) => {
         const totals = byProduction.get(production.id)!;
         const item = findItemAcrossSources(
@@ -43,7 +41,7 @@ export function PendingMaterialReturn() {
         };
       })
       .sort((a, b) => String(b.production.date || "").localeCompare(String(a.production.date || "")));
-  }, [findItemAcrossSources, issueReels, processing, productions, returnReels]);
+  }, [findItemAcrossSources, issueReels, productions, returnReels]);
 
   const openReturn = (production: Production, mode: "manual" | "qr") => {
     const params = new URLSearchParams({

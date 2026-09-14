@@ -8311,6 +8311,11 @@ const createHandlers = (tableName: string) => {
         }
 
         if (tableName === "production_processing") {
+          // Processing reports are flat records. Never let a stale client/cache or
+          // shared form payload turn collection-only fields into SQL columns.
+          delete data.lines;
+          delete data.items;
+
           const missing: string[] = [];
           if (!String(data.productionId || "").trim()) missing.push("Job/Production");
           if (!String(data.machineId || "").trim()) missing.push("Machine");
@@ -8993,7 +8998,8 @@ const createHandlers = (tableName: string) => {
           await ensureColumnExists(db, schemaName, tableName, "itemSource", "VARCHAR(20) NOT NULL DEFAULT 'FG'");
         }
 
-        const schemaName = process.env.DB_NAME || "u380633007_Inpidata";
+        const [currentDatabaseRows] = await db.query("SELECT DATABASE() AS db");
+        const schemaName = String((currentDatabaseRows as any[])[0]?.db || process.env.DB_NAME || "u380633007_Inpidata");
         const existingColumns = await getExistingColumnNames(db, schemaName, tableName);
         Object.keys(data).forEach((key) => {
           if (!existingColumns.has(key)) {

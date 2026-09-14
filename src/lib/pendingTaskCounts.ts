@@ -31,7 +31,7 @@ import { parseMandatoryMachinesByType } from "./mandatoryMachines";
 import { buildProductionCorrugatedSheetUsageMap, buildProductionMaterialUsageMap, getProductionActualPaperUsed, hasProductionCorrugatedSheetUsage } from "./productionMaterialUsage";
 import { getRequiredMachinesForProduction } from "./productionType";
 import { normalizeMachineName } from "./productionMachineNames";
-import { getCurrentProcessingMachine, isCorrugationLinerComplete, isMachineStepFull } from "./productionProcessingProgress";
+import { getCurrentProcessingMachine, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
 import { isProductionPendingConsumption, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
@@ -421,7 +421,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
         .filter((line) => args.productions.some((production) =>
           production.id === line.productionId &&
           production.status !== "Cancelled" &&
-          isCorrugationLinerComplete(args.processing || [], production.id)
+          !production.cancelTimestamp
         ))
         .map((line) => line.productionId)
     ).size,
