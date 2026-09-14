@@ -194,8 +194,8 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   const [fgProductions] = useData<Production>("productions", []);
   const [phpJobMaster, setPhpJobMaster] = useData<Production>(getJobMasterEntityName("PHP"), []);
   const [plateJobMaster, setPlateJobMaster] = useData<Production>(getJobMasterEntityName("PLATE"), []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", []);
   const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();
 
