@@ -2684,7 +2684,10 @@ async function ensureInterFirmSchema(db: mysql.Pool, database: string) {
     updatedBy VARCHAR(255), updateTimestamp VARCHAR(255),
     UNIQUE KEY uq_ifpi_source_destination (sourceTransactionType, sourceTransactionId, destinationFirmId)
   )`);
-  try { await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT"); } catch {}
+  // This column is required by every inter-firm invoice write. Do not suppress
+  // migration failures, otherwise the first production report fails later with
+  // the misleading MySQL error "Unknown column 'lines' in INSERT INTO".
+  await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
   for (const table of ["orders", "productions", "production_processing", "gate_entries", "material_in", "material_issues", "invoices", "invoice_line_items"]) {
     for (const [column, type] of INTER_FIRM_COLUMNS) {
       try { await ensureColumnExists(db, database, table, column, type); } catch (error) {
@@ -2875,6 +2878,12 @@ async function generateLockedGateEntryNo(db: mysql.Pool | mysql.PoolConnection, 
 }
 
 async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sourceType = "Production") {
+  // Some legacy deployments already have the pending table but predate its
+  // component-lines column. Repair it before opening the business transaction.
+  const [databaseRows] = await db.query("SELECT DATABASE() AS db");
+  const database = String((databaseRows as any[])[0]?.db || process.env.DB_NAME || "u380633007_Inpidata");
+  await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
+
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
