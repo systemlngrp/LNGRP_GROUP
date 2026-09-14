@@ -2898,13 +2898,19 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     const order = (orders as any[])[0];
     sourceRecord = sourceRecord || production;
     const normalizedMachine = normalizeMachineName(String(sourceRecord.machineName || ""));
-    const orderFirmId = String(production.orderFirmId || order?.firmId || "").trim();
+    // Prefer the explicit order ownership, then the linked order, and finally
+    // the production's own firm for legacy rows created before orderFirmId was
+    // persisted.
+    const orderFirmId = String(production.orderFirmId || order?.firmId || production.firmId || "").trim();
     const [firmRows] = await conn.query("SELECT id, firmName FROM firms");
     const normalizeFirm = (value: any) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
     const findFirm = (matcher: (name: string) => boolean) => (firmRows as any[]).find((row) => matcher(normalizeFirm(row.firmName)));
     const unit1 = findFirm((name) => name.endsWith("unit1") || name.endsWith("uniti"));
     const unit2 = findFirm((name) => name.endsWith("unit2") || name.endsWith("unitii"));
-    const lnki = findFirm((name) => name === "laxminarayankraftindustries");
+    const lnki = findFirm((name) =>
+      name === "laxminarayankraftindustries" ||
+      (name.includes("laxminarayan") && name.includes("kraft"))
+    );
     if (!unit1?.id || !unit2?.id || !lnki?.id || !orderFirmId) {
       console.warn("[INTER-FIRM] Skipped: required firm/order mapping missing", { sourceId, sourceType, productionId, orderFirmId, unit1FirmId: unit1?.id, unit2FirmId: unit2?.id, lnkiFirmId: lnki?.id });
       await conn.rollback(); return;
