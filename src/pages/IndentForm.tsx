@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, User } from "../types";
-import { useAuth } from "../auth/AuthContext";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
@@ -31,7 +30,6 @@ function getIndentLineUom(indentType: Indent["indentType"], material?: Material 
 }
 
 export function IndentForm() {
-  const { activeFirm, activeFirmId, setActiveFirm } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Simple DOM-based table row filter bound to the search input
@@ -61,6 +59,8 @@ export function IndentForm() {
   const [indentType, setIndentType] = useState<Indent["indentType"]>("Reel");
   const [lines, setLines] = useState<EditableIndentLine[]>([createEmptyLine()]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedFirmId, setSelectedFirmId] = useState("");
+  const selectedFirm = firms.find((firm) => firm.id === selectedFirmId);
 
   const activeMaterials = useMemo(
     () => materials.filter((material) => material.active !== "No" && material.type === indentType),
@@ -120,8 +120,8 @@ export function IndentForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!activeFirmId || !activeFirm || !requestedBy.trim() || !requisitionDate) {
-      alert("Active Firm, Requested By and Requisition Date are required.");
+    if (!selectedFirmId || !selectedFirm || !requestedBy.trim() || !requisitionDate) {
+      alert("Firm, Requested By and Requisition Date are required.");
       return;
     }
 
@@ -162,8 +162,8 @@ export function IndentForm() {
 
     const nextIndent: Indent = {
       id: indentId,
-      firmId: activeFirmId,
-      firmName: activeFirm.firmName,
+      firmId: selectedFirmId,
+      firmName: selectedFirm.firmName,
       requestedBy: requestedBy.trim(),
       requisitionDate,
       requiredDate: requisitionDate,
@@ -214,8 +214,8 @@ export function IndentForm() {
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">Firm <span className="text-red-500">*</span></label>
             <select
-              value={activeFirmId}
-              onChange={(event) => setActiveFirm(firmOptions.find((firm) => firm.id === event.target.value) || null)}
+              value={selectedFirmId}
+              onChange={(event) => setSelectedFirmId(event.target.value)}
               required
               className="w-full rounded border-2 border-black bg-white px-4 py-3 font-bold text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
               aria-label="Firm"

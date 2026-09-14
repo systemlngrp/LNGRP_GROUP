@@ -109,7 +109,7 @@ export function GateEntryForm() {
       setInvoiceNo("");
       setInvoiceValue("");
       setTruckNo(sourceGatePass?.truckNo || "");
-      setFirmId(activeFirm?.id || firms[0]?.id || "");
+      setFirmId("");
       setPhotoSlots(createInitialSlots());
       return;
     }
@@ -120,7 +120,7 @@ export function GateEntryForm() {
     setInvoiceNo(editingEntry.invoiceNo || "");
     setInvoiceValue(String(editingEntry.invoiceValue ?? ""));
     setTruckNo(editingEntry.truckNo || sourceGatePass?.truckNo || "");
-    setFirmId(editingEntry.firmId || activeFirm?.id || firms[0]?.id || "");
+    setFirmId(editingEntry.firmId || "");
     setPhotoSlots(buildPhotoSlots(entryPhotos));
   }, [activeFirm?.id, editingEntry, entryPhotos, firms, isEditing, purposeFromQuery, sourceGatePass?.recipientId, sourceGatePass?.truckNo]);
 

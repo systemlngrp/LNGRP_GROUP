@@ -27,7 +27,6 @@ import { getProductionMatchingFields } from "../lib/productionMatching";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { calculateInternalUps } from "../lib/internalUps";
-import { useAuth } from "../auth/AuthContext";
 
 const getJobMasterEntityName = (source: "PHP" | "PLATE") =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -201,7 +200,6 @@ function createInitialFormData(initialDate: string) {
 }
 
 export function ProductionForm() {
-  const { activeFirmId } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Simple DOM-based table row filter bound to the search input
@@ -232,7 +230,6 @@ export function ProductionForm() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveNotice, setSaveNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [firmWarning, setFirmWarning] = useState<{ activeFirm: string; orderFirm: string } | null>(null);
   const urlScheduleId = searchParams.get("scheduleId") || searchParams.get("scheduledId") || "";
   const isScheduleLocked = Boolean(urlScheduleId);
   const [selectedScheduleId, setSelectedScheduleId] = useState(urlScheduleId);
@@ -771,18 +768,10 @@ export function ProductionForm() {
     };
   });
 
-  const handleSubmit = async (event: React.FormEvent, bypassFirmWarning = false) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedSchedule || !selectedOrder || !selectedItem || !formData.date) return;
-    const selectedOrderFirmId = String((selectedOrder as any).firmId || "").trim();
-    const currentActiveFirmId = String(activeFirmId || "").trim();
-    if (currentActiveFirmId && selectedOrderFirmId && currentActiveFirmId !== selectedOrderFirmId) {
-      const orderFirmName = String((selectedOrder as any).firmName || selectedOrderFirmId);
-      if (!bypassFirmWarning) {
-        setFirmWarning({ activeFirm: currentActiveFirmId, orderFirm: orderFirmName });
-        return;
-      }
-    }
+    const selectedOrderFirmId = String((selectedOrder as any).firmId || (selectedOrder as any).orderFirmId || selectedSchedule.firmId || "").trim();
     if (hasMissingMandatoryLayerFields) {
       alert(`Please fill mandatory layer fields: ${missingMandatoryLayerFields.join(", ")}.`);
       return;
@@ -800,7 +789,11 @@ export function ProductionForm() {
     const isCorrugation = productionLabel.includes("corrug");
     const isPrinting = productionLabel.includes("printing") || productionLabel.includes("print");
     const forcedFirm = isCorrugation ? firmByName("unit 1") : isPrinting ? firmByName("unit 2") : undefined;
-    const productionFirmId = String(forcedFirm?.id || currentActiveFirmId).trim();
+    const productionFirmId = String(forcedFirm?.id || selectedOrderFirmId).trim();
+    if (!productionFirmId) {
+      setSaveNotice({ type: "error", message: "Firm ownership is missing. Select an order or configure the firm in Firm Master before planning this job." });
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -873,7 +866,6 @@ export function ProductionForm() {
         setSearchParams({});
       }
       setSaveNotice({ type: "success", message: `Plan Job saved successfully. Job No: ${txnNo}` });
-      setFirmWarning(null);
     } catch (err) {
       console.error("Failed to save production:", err);
       setSaveNotice({ type: "error", message: err instanceof Error ? err.message : "Failed to save Plan Job." });
@@ -884,21 +876,6 @@ export function ProductionForm() {
 
   return (
     <div className="space-y-6">
-      {firmWarning && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true" aria-labelledby="firm-warning-title">
-          <div className="w-full max-w-lg rounded-xl border-2 border-black bg-white p-6 text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-            <h3 id="firm-warning-title" className="mb-4 text-lg font-black uppercase text-slate-900">Inter-Firm Workflow Confirmation</h3>
-            <p className="mb-2 text-sm font-bold text-slate-700">Active firm and order firm are different.</p>
-            <p className="text-sm text-slate-700"><span className="font-black">Active firm:</span> {firmWarning.activeFirm}</p>
-            <p className="mb-5 text-sm text-slate-700"><span className="font-black">Order firm:</span> {firmWarning.orderFirm}</p>
-            <p className="mb-6 text-sm text-slate-600">Continuing will create the configured inter-firm workflow.</p>
-            <div className="flex justify-center gap-3">
-              <button type="button" onClick={() => setFirmWarning(null)} className="rounded-lg border-2 border-black bg-slate-100 px-5 py-2 font-black text-slate-800 hover:bg-slate-200">Cancel</button>
-              <button type="button" onClick={() => void handleSubmit({ preventDefault: () => undefined } as React.FormEvent, true)} className="rounded-lg border-2 border-black bg-indigo-600 px-5 py-2 font-black text-white hover:bg-indigo-700">Continue</button>
-            </div>
-          </div>
-        </div>
-      )}
       {saveNotice && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none px-4">
           <div

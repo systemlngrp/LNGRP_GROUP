@@ -353,7 +353,7 @@ export function MaterialInForm() {
   ];
 
   useEffect(() => {
-    setFirmId(editingEntry?.firmId || linkedGateEntry?.firmId || activeFirm?.id || firms[0]?.id || "");
+    setFirmId(editingEntry?.firmId || linkedGateEntry?.firmId || "");
   }, [activeFirm?.id, editingEntry?.firmId, firms, linkedGateEntry?.firmId]);
 
   useEffect(() => {
