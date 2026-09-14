@@ -90,7 +90,6 @@ export const PENDING_TASK_DEFINITIONS = [
   { section: "Jobs", name: "Pending Machine Processing", countKey: "/production/pending-machine-processing" },
   { section: "Jobs", name: "Pending PHP Planning", countKey: "/production/php/pending-planning" },
   { section: "Jobs", name: "Pending Plate Planning", countKey: "/production/plate/pending-planning" },
-  { section: "Jobs", name: "Pending PHP/Plate Sequencing", countKey: "/production/php-plate/pending-sequencing" },
   { section: "Jobs", name: "Pending PHP/Plate Production", countKey: "/production/php-plate/pending-production" },
   { section: "Jobs", name: "Pending Samples", countKey: "/samples/pending" },
   { section: "Sales", name: "Pending Dispatch Planning", countKey: "/dispatch/pending-planning" },
@@ -278,13 +277,6 @@ function getPendingLinkedPlanningCount(
     if (scheduledQty <= 0 || !linkedItem || remainingQty <= 0) return false;
     return isDirectSourceOrder || Boolean(setsPerBox);
   }).length;
-}
-
-function getPendingSequencingCount(phpJobs: Production[], plateJobs: Production[]) {
-  return [...phpJobs, ...plateJobs]
-    .filter((job) => job.status !== "Cancelled")
-    .filter((job) => String(job.scheduledDate || "").trim() && String(job.shift || "").trim() && String(job.methodology || "").trim())
-    .filter((job) => !String(job.sequence || "").trim()).length;
 }
 
 function getPendingPhpPlateProductionCount(phpJobs: Production[], plateJobs: Production[]) {
@@ -487,7 +479,6 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       args.resolveOrderItem,
       args.itemsBySource
     ),
-    "/production/php-plate/pending-sequencing": getPendingSequencingCount(args.phpJobMaster, args.plateJobMaster),
     "/production/php-plate/pending-production": getPendingPhpPlateProductionCount(args.phpJobMaster, args.plateJobMaster),
     "/indent/pending": normalizedIndents.filter((i) => i.status === "Pending").length,
     "/purchase-orders/pending-indent-lines": args.indentLines.filter((line) =>

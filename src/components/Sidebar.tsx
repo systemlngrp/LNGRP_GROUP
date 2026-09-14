@@ -171,7 +171,6 @@ const phpPlateProcessItems: NavItem[] = [
   { name: "Pending PHP Planning", href: "/production/php/pending-planning", icon: ClipboardList, countKey: "/production/php/pending-planning" },
   { name: "Pending Plate Planning", href: "/production/plate/pending-planning", icon: ClipboardList, countKey: "/production/plate/pending-planning" },
   { name: "Scheduling", href: "/production/php-plate/scheduling", icon: ClipboardList },
-  { name: "Sequencing", href: "/production/php-plate/pending-sequencing", icon: Activity, countKey: "/production/php-plate/pending-sequencing" },
   { name: "Production", href: "/production/php-plate/pending-production", icon: Hammer, countKey: "/production/php-plate/pending-production" },
   { name: "PHP Production Master", href: "/production/php/master", icon: Database },
   { name: "Plate Production Master", href: "/production/plate/master", icon: Database },
