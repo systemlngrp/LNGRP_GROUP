@@ -2911,19 +2911,27 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
       name === "laxminarayankraftindustries" ||
       (name.includes("laxminarayan") && name.includes("kraft"))
     );
-    if (!unit1?.id || !unit2?.id || !lnki?.id || !orderFirmId) {
-      console.warn("[INTER-FIRM] Skipped: required firm/order mapping missing", { sourceId, sourceType, productionId, orderFirmId, unit1FirmId: unit1?.id, unit2FirmId: unit2?.id, lnkiFirmId: lnki?.id });
+    if (!orderFirmId) {
+      console.warn("[INTER-FIRM] Skipped: order firm mapping missing", { sourceId, sourceType, productionId });
       await conn.rollback(); return;
     }
 
     let sourceFirmId = "";
     let destinationFirmId = "";
     if (sourceType === "Production Processing" && normalizedMachine === "Corrugation Liner") {
+      if (!unit1?.id || !unit2?.id) {
+        console.warn("[INTER-FIRM] Skipped: Unit-I/Unit-II firm mapping missing", { sourceId, productionId, unit1FirmId: unit1?.id, unit2FirmId: unit2?.id });
+        await conn.rollback(); return;
+      }
       // Stage 1: the Full Corrugation Liner row is the Manufacturing Journal.
       sourceFirmId = String(unit1.id);
       if (orderFirmId === sourceFirmId) { await conn.rollback(); return; } // Scenario A
       destinationFirmId = String(unit2.id); // Scenarios B and C
     } else if (sourceType === "Production Processing" && normalizedMachine === "Printing") {
+      if (!unit2?.id || !lnki?.id) {
+        console.warn("[INTER-FIRM] Skipped: Unit-II/LNKI firm mapping missing", { sourceId, productionId, unit2FirmId: unit2?.id, lnkiFirmId: lnki?.id });
+        await conn.rollback(); return;
+      }
       // Stage 2 (printing route): Firm-II sends the completed printing output
       // to LNKI when the customer order belongs to Firm-III.
       sourceFirmId = String(unit2.id);
@@ -3067,6 +3075,45 @@ async function automateInterFirmProduction(db: mysql.Pool, sourceId: string, sou
     console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing" });
     await conn.commit();
   } catch (error) { await conn.rollback(); throw error; } finally { conn.release(); }
+}
+
+async function backfillInterFirmProductionProcessing(db: mysql.Pool) {
+  const [rows] = await db.query(`
+    SELECT pp.id, pp.machineName
+    FROM production_processing pp
+    LEFT JOIN gate_entries ge ON ge.id = pp.linkedGateEntryId
+    LEFT JOIN material_in mi ON mi.id = pp.linkedMrrId
+    WHERE LOWER(TRIM(COALESCE(pp.completionStatus, ''))) = 'full'
+      AND (ge.id IS NULL OR mi.id IS NULL)
+    ORDER BY pp.date, pp.id
+  `);
+
+  let repaired = 0;
+  let failed = 0;
+  for (const row of rows as any[]) {
+    const machineName = normalizeMachineName(String(row.machineName || ""));
+    if (machineName !== "Corrugation Liner" && machineName !== "Printing") continue;
+    try {
+      await automateInterFirmProduction(db, String(row.id || ""), "Production Processing");
+      const [linkedRows] = await db.query(
+        `SELECT ge.id AS gateEntryId, mi.id AS mrrId
+         FROM production_processing pp
+         LEFT JOIN gate_entries ge ON ge.id = pp.linkedGateEntryId
+         LEFT JOIN material_in mi ON mi.id = pp.linkedMrrId
+         WHERE pp.id = ? LIMIT 1`,
+        [String(row.id || "")]
+      );
+      const linked = (linkedRows as any[])[0];
+      if (linked?.gateEntryId && linked?.mrrId) repaired += 1;
+    } catch (error) {
+      failed += 1;
+      console.warn("[INTER-FIRM] Backfill failed for processing report", { id: row.id, machineName, error: (error as Error).message });
+    }
+  }
+  if (repaired > 0 || failed > 0) {
+    console.log(`[INTER-FIRM] Backfill complete: ${repaired} repaired, ${failed} failed.`);
+  }
+  return { repaired, failed };
 }
 
 async function validateLnkiPrintingComponents(db: mysql.Pool, processing: any) {
@@ -7405,6 +7452,7 @@ await db.query(`
 
       await ensureInterFirmSchema(db, database);
       await ensureInternalFirmSuppliers(db, database);
+      await backfillInterFirmProductionProcessing(db);
 
       await dropRemovedFirmScopeColumns(db, database);
 
