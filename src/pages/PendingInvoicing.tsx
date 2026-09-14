@@ -201,16 +201,21 @@ export function PendingInvoicing() {
     if (pending.status !== "Pending") return;
     setInterFirmSubmittingId(pending.id);
     try {
-      const qty = Number(pending.qty || 0);
-      const rate = Number(pending.rate || 0);
-      const gstRate = Number(pending.gstRate || 0);
-      const amount = roundMoney(qty * rate);
-      const tax = roundMoney(amount * gstRate / 100);
+      const pendingLines = Array.isArray(pending.lines) && pending.lines.length > 0
+        ? pending.lines
+        : [{ itemId: pending.itemId, itemSource: pending.itemSource || "FG", npdId: pending.npdId, qty: Number(pending.qty || 0), uom: pending.uom, rate: Number(pending.rate || 0), gstRate: Number(pending.gstRate || 0) }];
+      const calculatedLines = pendingLines.map((line) => {
+        const amount = roundMoney(Number(line.qty || 0) * Number(line.rate || 0));
+        const tax = roundMoney(amount * Number(line.gstRate || 0) / 100);
+        return { ...line, amount, tax };
+      });
+      const amount = roundMoney(calculatedLines.reduce((sum, line) => sum + line.amount, 0));
+      const tax = roundMoney(calculatedLines.reduce((sum, line) => sum + line.tax, 0));
       const invoiceId = crypto.randomUUID();
       const timestamp = new Date().toISOString();
       await postEntity("invoices", {
         id: invoiceId, firmId: pending.sourceFirmId, invoiceNo: "", date: new Date().toISOString().slice(0, 10),
-        companyId: pending.destinationFirmId, gstRate, totalBeforeGst: amount,
+        companyId: pending.destinationFirmId, gstRate: 18, totalBeforeGst: amount,
         cgst: roundMoney(tax / 2), sgst: roundMoney(tax / 2), igst: 0,
         totalAfterGst: roundMoney(amount + tax), otherCharges: 0,
         otherChargesCgst: 0, otherChargesSgst: 0, otherChargesIgst: 0, roundOff: 0,
@@ -220,15 +225,19 @@ export function PendingInvoicing() {
         linkedGateEntryId: pending.linkedGateEntryId, linkedMrrId: pending.linkedMrrId,
         updatedBy: user?.name || "System User", updateTimestamp: timestamp,
       });
-      await postEntity("invoice_line_items", {
-        id: crypto.randomUUID(), invoiceId, loadingSlipId: pending.id, itemId: pending.itemId,
-        itemSource: pending.itemSource || "FG", npdId: pending.npdId || pending.itemId,
-        qty, rate, amount, gstRate, cgst: roundMoney(tax / 2), sgst: roundMoney(tax / 2), igst: 0,
-        sourceTransactionType: pending.sourceTransactionType, sourceTransactionId: pending.sourceTransactionId,
-        sourceFirmId: pending.sourceFirmId, destinationFirmId: pending.destinationFirmId,
-        linkedGateEntryId: pending.linkedGateEntryId, linkedMrrId: pending.linkedMrrId,
-        linkedInvoiceId: invoiceId, updateTimestamp: timestamp,
-      });
+      for (const line of calculatedLines) {
+        await postEntity("invoice_line_items", {
+          id: crypto.randomUUID(), invoiceId, loadingSlipId: pending.id, itemId: line.itemId,
+          itemSource: line.itemSource || "FG", npdId: line.npdId || line.itemId,
+          qty: Number(line.qty || 0), rate: Number(line.rate || 0), amount: line.amount, gstRate: Number(line.gstRate || 0),
+          cgst: roundMoney(line.tax / 2), sgst: roundMoney(line.tax / 2), igst: 0,
+          sourceTransactionType: pending.sourceTransactionType, sourceTransactionId: pending.sourceTransactionId,
+          sourceFirmId: pending.sourceFirmId, destinationFirmId: pending.destinationFirmId,
+          linkedGateEntryId: line.itemSource === "FG" ? pending.linkedGateEntryId : undefined,
+          linkedMrrId: line.itemSource === "FG" ? pending.linkedMrrId : undefined,
+          linkedInvoiceId: invoiceId, updateTimestamp: timestamp,
+        });
+      }
       await postEntity("inter_firm_pending_invoices", { ...pending, status: "Invoiced", linkedInvoiceId: invoiceId, updateTimestamp: timestamp });
       await interFirmApi.refresh?.();
       await invoiceApi.refresh?.();
@@ -281,6 +290,15 @@ export function PendingInvoicing() {
     const source = normalizeOrderItemSource(row.itemSource || "FG");
     const item = findItemAcrossSources(String(row.itemId || "").trim(), source, String((row as any).erpCode || "").trim());
     return getMeaningfulItemName(item?.name) || getMeaningfulItemName((row as any).itemName) || String(row.itemId || "").trim() || "Unknown";
+  };
+
+  const getInterFirmLines = (row: InterFirmPendingInvoice) => Array.isArray(row.lines) && row.lines.length > 0
+    ? row.lines
+    : [{ itemId: row.itemId, itemSource: normalizeOrderItemSource(row.itemSource || "FG"), npdId: row.npdId, qty: row.qty, uom: row.uom, rate: row.rate, gstRate: Number(row.gstRate || 0) }];
+
+  const getInterFirmLineLabel = (line: NonNullable<InterFirmPendingInvoice["lines"]>[number]) => {
+    const item = findItemAcrossSources(String(line.itemId || "").trim(), line.itemSource, "");
+    return `${line.itemSource}: ${getMeaningfulItemName(item?.name) || line.itemId}`;
   };
 
   const resolveCanonicalSlipLineItemId = (line: LoadingSlip["lines"][number], order?: Order) => {
@@ -1108,7 +1126,7 @@ export function PendingInvoicing() {
                   <th className="px-3 py-2 text-left text-[10px] uppercase">Source</th><th className="px-3 py-2 text-left text-[10px] uppercase">Destination</th><th className="px-3 py-2 text-left text-[10px] uppercase">Job / Source</th><th className="px-3 py-2 text-left text-[10px] uppercase">Item</th><th className="px-3 py-2 text-right text-[10px] uppercase">Qty</th><th className="px-3 py-2 text-right text-[10px] uppercase">Rate</th><th className="px-3 py-2 text-left text-[10px] uppercase">MRR</th><th className="px-3 py-2 text-right text-[10px] uppercase">Action</th>
                 </tr></thead>
                 <tbody className="divide-y divide-black">{interFirmPending.filter((row) => row.status === "Pending").map((row) => (
-                  <tr key={row.id} className="divide-x divide-black"><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.sourceFirmId)?.firmName || row.sourceFirmId}</td><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.destinationFirmId)?.firmName || row.destinationFirmId}</td><td className="px-3 py-2 text-xs">{row.jobNo || row.sourceTransactionId}</td><td className="px-3 py-2 text-xs">{resolveInterFirmItemName(row)}</td><td className="px-3 py-2 text-xs text-right">{Number(row.qty || 0).toLocaleString()}</td><td className="px-3 py-2 text-xs text-right">{format2(Number(row.rate || 0))}</td><td className="px-3 py-2 text-xs font-bold">{row.linkedMrrId ? (mrrNumberById.get(String(row.linkedMrrId)) || row.linkedMrrId) : "Pending"}</td><td className="px-3 py-2 text-right"><button type="button" onClick={() => submitInterFirmInvoice(row)} disabled={interFirmSubmittingId === row.id} className="bg-emerald-600 text-white px-3 py-1.5 rounded text-[10px] font-black uppercase disabled:opacity-50">{interFirmSubmittingId === row.id ? "Saving..." : "Generate Invoice"}</button></td></tr>
+                  <tr key={row.id} className="divide-x divide-black"><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.sourceFirmId)?.firmName || row.sourceFirmId}</td><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.destinationFirmId)?.firmName || row.destinationFirmId}</td><td className="px-3 py-2 text-xs">{row.jobNo || row.sourceTransactionId}</td><td className="px-3 py-2 text-xs">{getInterFirmLines(row).map((line) => <div key={`${line.itemSource}-${line.itemId}`}>{getInterFirmLineLabel(line)}</div>)}</td><td className="px-3 py-2 text-xs text-right">{getInterFirmLines(row).map((line) => <div key={`${line.itemSource}-${line.itemId}`}>{Number(line.qty || 0).toLocaleString()}</div>)}</td><td className="px-3 py-2 text-xs text-right">{getInterFirmLines(row).map((line) => <div key={`${line.itemSource}-${line.itemId}`}>{format2(Number(line.rate || 0))}</div>)}</td><td className="px-3 py-2 text-xs font-bold">{row.linkedMrrId ? (mrrNumberById.get(String(row.linkedMrrId)) || row.linkedMrrId) : "Pending"}</td><td className="px-3 py-2 text-right"><button type="button" onClick={() => submitInterFirmInvoice(row)} disabled={interFirmSubmittingId === row.id} className="bg-emerald-600 text-white px-3 py-1.5 rounded text-[10px] font-black uppercase disabled:opacity-50">{interFirmSubmittingId === row.id ? "Saving..." : "Generate Invoice"}</button></td></tr>
                 ))}</tbody>
               </table>
             </div>

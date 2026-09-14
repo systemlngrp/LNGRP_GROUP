@@ -96,20 +96,23 @@ export function buildLinkedLoadingDetailsFromSlip({
   resolveOrderItem,
   sourceItems,
   existingDetails,
+  excludedScheduleIds,
 }: {
   slip: LoadingSlip;
   source: LinkedSource;
-  plans: Array<Pick<any, "id" | "orderId">>;
+  plans: Array<Pick<any, "id" | "orderId" | "scheduleId">>;
   orders: Order[];
   resolveOrderItem: (order?: Partial<Order> | null) => OrderCatalogItem | undefined;
   sourceItems: OrderCatalogItem[];
   existingDetails?: LinkedLoadingDetail[];
+  excludedScheduleIds?: Set<string>;
 }) {
   const detailsByItemId = new Map<string, LinkedLoadingDetail>();
   const existingDetailsByItemId = new Map((existingDetails || []).map((detail) => [detail.itemId, detail]));
 
   slip.lines.forEach((line) => {
     const plan = plans.find((row) => row.id === line.dispatchPlanId);
+    if (plan?.scheduleId && excludedScheduleIds?.has(String(plan.scheduleId))) return;
     const order = orders.find((row) => row.id === plan?.orderId);
     const fgItem = resolveOrderItem(order || (line.itemId ? ({ itemId: line.itemId, itemSource: line.itemSource || "FG" } as Partial<Order>) : null));
     const lineSource = normalizeSource(line.itemSource || order?.itemSource || fgItem?.source || "FG");

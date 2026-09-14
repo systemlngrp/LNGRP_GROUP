@@ -2479,12 +2479,17 @@ async function ensureInterFirmSchema(db, database) {
     customerOrderId VARCHAR(36), jobId VARCHAR(36), jobNo VARCHAR(100),
     sourceTransactionType VARCHAR(80) NOT NULL, sourceTransactionId VARCHAR(36) NOT NULL,
     itemId VARCHAR(36) NOT NULL, itemSource VARCHAR(20), npdId VARCHAR(36),
+    lines LONGTEXT,
     qty DECIMAL(15,2) NOT NULL DEFAULT 0, uom VARCHAR(50), rate DECIMAL(15,2) NOT NULL DEFAULT 0,
     gstRate DECIMAL(5,2) NOT NULL DEFAULT 0, linkedGateEntryId VARCHAR(36), linkedMrrId VARCHAR(36),
     linkedInvoiceId VARCHAR(36), status VARCHAR(30) NOT NULL DEFAULT 'Pending', remarks TEXT,
     updatedBy VARCHAR(255), updateTimestamp VARCHAR(255),
     UNIQUE KEY uq_ifpi_source_destination (sourceTransactionType, sourceTransactionId, destinationFirmId)
   )`);
+    try {
+        await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
+    }
+    catch { }
     for (const table of ["orders", "productions", "production_processing", "gate_entries", "material_in", "material_issues", "invoices", "invoice_line_items"]) {
         for (const [column, type] of INTER_FIRM_COLUMNS) {
             try {
@@ -2501,6 +2506,26 @@ async function ensureInterFirmSchema(db, database) {
         }
         catch { }
     }
+    for (const table of ["php_job_master", "plate_job_master"]) {
+        for (const [column, type] of [["firmId", "VARCHAR(36)"], ["firmName", "VARCHAR(255)"], ["orderFirmId", "VARCHAR(36)"], ["sourceFirmId", "VARCHAR(36)"], ["destinationFirmId", "VARCHAR(36)"]]) {
+            try {
+                await ensureColumnExists(db, database, table, column, type);
+            }
+            catch { }
+        }
+    }
+    for (const table of ["php_loading_slips", "plate_loading_slips"]) {
+        for (const [column, type] of INTER_FIRM_COLUMNS) {
+            try {
+                await ensureColumnExists(db, database, table, column, type);
+            }
+            catch { }
+        }
+        try {
+            await ensureColumnExists(db, database, table, "firmId", "VARCHAR(36)");
+        }
+        catch { }
+    }
     for (const [column, type] of [["routeSourceFirmId", "VARCHAR(36)"], ["routeDestinationFirmId", "VARCHAR(36)"], ["routeSequence", "INT NOT NULL DEFAULT 1"], ["routeActive", "VARCHAR(10) NOT NULL DEFAULT 'No'"]]) {
         try {
             await ensureColumnExists(db, database, "firms", column, type);
@@ -2512,6 +2537,16 @@ async function ensureInterFirmSchema(db, database) {
     await db.query(`CREATE TABLE IF NOT EXISTS transaction_counters (
     counterKey VARCHAR(100) PRIMARY KEY, lastValue INT NOT NULL DEFAULT 0
   )`);
+    const [firmRows] = await db.query("SELECT id, firmName FROM firms");
+    const unit2 = firmRows.find((row) => {
+        const name = String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+        return name.endsWith("unit2") || name.endsWith("unitii");
+    });
+    if (unit2?.id) {
+        for (const table of ["php_job_master", "plate_job_master"]) {
+            await db.query(`UPDATE \`${table}\` SET firmId = ?, firmName = ? WHERE firmId IS NULL OR TRIM(firmId) = ''`, [unit2.id, unit2.firmName]);
+        }
+    }
 }
 async function ensureInternalFirmSuppliers(db, database) {
     await ensureColumnExists(db, database, "suppliers", "firmId", "VARCHAR(36)");
@@ -2722,6 +2757,27 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             await conn.rollback();
             return;
         }
+        const componentLines = [];
+        if (sourceType === "Production Processing" && normalizedMachine === "Printing" && orderFirmId === String(lnki.id)) {
+            const mainErp = String(order?.erpCode || production.masterErp || production.erpCode || "").trim();
+            if (!mainErp)
+                throw new Error("LNKI PHP/Plate billing requires the customer order ERP code.");
+            for (const component of [{ source: "PHP", table: "php_item_master" }, { source: "PLATE", table: "plate_item_master" }]) {
+                const [componentRows] = await conn.query(`SELECT * FROM \`${component.table}\` WHERE LOWER(TRIM(COALESCE(masterItemNameErpCode, ''))) = LOWER(TRIM(?)) OR LOWER(TRIM(COALESCE(erpItemCode, ''))) = LOWER(TRIM(?)) LIMIT 1`, [mainErp, mainErp]);
+                const master = componentRows[0];
+                const setsPerBox = Number(master?.numberOfSetsPerBox || 0);
+                if (!master?.id)
+                    throw new Error(`No ${component.source} master item matches ERP ${mainErp}.`);
+                if (!Number.isFinite(setsPerBox) || setsPerBox <= 0)
+                    throw new Error(`${component.source} Sets/Pcs per box is missing for ERP ${mainErp}.`);
+                componentLines.push({
+                    itemId: String(master.id), itemSource: component.source, npdId: String(master.id),
+                    qty: Number((Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0) * setsPerBox).toFixed(2)),
+                    uom: String(master.uom || ""), baseRate: Number(master.rate || 0), gstRate: 18,
+                    scheduleId: String(production.scheduleId || ""),
+                });
+            }
+        }
         const [interFirmSettingRows] = await conn.query("SELECT interFirmRatePercent, interFirmPairRates FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
         const configuredInterFirmRate = Number(interFirmSettingRows[0]?.interFirmRatePercent);
         let interFirmRatePercent = Number.isFinite(configuredInterFirmRate) && configuredInterFirmRate >= 0 && configuredInterFirmRate <= 100
@@ -2745,10 +2801,30 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         // Inter-firm transfers use the fixed internal GST rate, independent of
         // the customer order/item GST configuration. Manual MRRs are unaffected.
         const gstRate = 18;
+        const invoiceLines = [
+            { itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG", npdId: sourceRecord.npdId || production.npdId || itemId, qty, uom: sourceRecord.uom || production.uom || "", rate, gstRate },
+            ...componentLines.map((line) => ({ ...line, rate: Number((line.baseRate * interFirmRatePercent / 100).toFixed(2)) })),
+        ].map(({ baseRate: _baseRate, scheduleId: _scheduleId, ...line }) => line);
         const pendingId = crypto.randomUUID();
-        await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, now]);
+        await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, \`lines\`, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), \`lines\`=VALUES(\`lines\`), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, JSON.stringify(invoiceLines), now]);
         const [pendingRows] = await conn.query("SELECT * FROM `inter_firm_pending_invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
         const pending = pendingRows[0];
+        for (const component of componentLines) {
+            const table = component.itemSource === "PHP" ? "php_loading_slips" : "plate_loading_slips";
+            const transactionColumn = component.itemSource === "PHP" ? "phpConsumptionTransactionNo" : "plateConsumptionTransactionNo";
+            const [existingRows] = await conn.query(`SELECT id, slipNo, \`${transactionColumn}\` transactionNo FROM \`${table}\` WHERE sourceTransactionType = ? AND sourceTransactionId = ? LIMIT 1`, [sourceTransactionType, sourceTransactionId]);
+            const existing = existingRows[0];
+            const slipId = String(existing?.id || crypto.randomUUID());
+            const slipNo = String(existing?.slipNo || await generateLoadingSlipNo(conn, table, String(sourceRecord.date || production.date || now.slice(0, 10))));
+            const consumptionNo = String(existing?.transactionNo || await generateSimpleTransactionNumber(conn, table, transactionColumn, component.itemSource === "PHP" ? "PHPCON" : "PLCON", String(sourceRecord.date || production.date || now.slice(0, 10))));
+            const componentSlipLines = JSON.stringify([{ dispatchPlanId: "", loadedQty: component.qty, itemId: component.itemId, itemSource: component.itemSource, uom: component.uom, rate: Number((component.baseRate * interFirmRatePercent / 100).toFixed(2)), scheduleId: component.scheduleId }]);
+            if (existing) {
+                await conn.query(`UPDATE \`${table}\` SET \`lines\` = ?, firmId = ?, sourceFirmId = ?, destinationFirmId = ?, orderFirmId = ?, interFirmFlow = 'Yes', autoGenerated = 'Yes', updateTimestamp = ? WHERE id = ?`, [componentSlipLines, sourceFirmId, sourceFirmId, destinationFirmId, orderFirmId, now, slipId]);
+            }
+            else {
+                await conn.query(`INSERT INTO \`${table}\` (id, slipNo, date, truckId, \`${transactionColumn}\`, \`lines\`, status, firmId, sourceFirmId, destinationFirmId, orderFirmId, sourceTransactionType, sourceTransactionId, interFirmFlow, autoGenerated, updatedBy, updateTimestamp) VALUES (?, ?, ?, NULL, ?, ?, 'Active', ?, ?, ?, ?, ?, ?, 'Yes', 'Yes', 'System', ?)`, [slipId, slipNo, String(sourceRecord.date || production.date || now.slice(0, 10)), consumptionNo, componentSlipLines, sourceFirmId, sourceFirmId, destinationFirmId, orderFirmId, sourceTransactionType, sourceTransactionId, now]);
+            }
+        }
         const [existingIssue] = await conn.query("SELECT id, issueNo FROM `material_issues` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
         let sourceIssue = existingIssue[0];
         if (!sourceIssue) {
@@ -2802,6 +2878,35 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
     }
     finally {
         conn.release();
+    }
+}
+async function validateLnkiPrintingComponents(db, processing) {
+    if (String(processing.completionStatus || "").trim().toLowerCase() !== "full")
+        return;
+    if (normalizeMachineName(String(processing.machineName || "")) !== "Printing")
+        return;
+    const productionId = String(processing.productionId || "").trim();
+    if (!productionId)
+        return;
+    const [rows] = await db.query("SELECT p.*, o.firmId orderFirmIdResolved, o.erpCode orderErp FROM productions p LEFT JOIN orders_schedule os ON os.id = p.scheduleId LEFT JOIN orders o ON o.id = os.orderId WHERE p.id = ? LIMIT 1", [productionId]);
+    const production = rows[0];
+    if (!production)
+        return;
+    const [firmRows] = await db.query("SELECT id, firmName FROM firms");
+    const lnki = firmRows.find((row) => String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "") === "laxminarayankraftindustries");
+    const orderFirmId = String(production.orderFirmId || production.orderFirmIdResolved || "").trim();
+    if (!lnki?.id || orderFirmId !== String(lnki.id))
+        return;
+    const mainErp = String(production.orderErp || production.masterErp || production.erpCode || "").trim();
+    if (!mainErp)
+        throw new Error("LNKI PHP/Plate billing requires the customer order ERP code.");
+    for (const component of [{ source: "PHP", table: "php_item_master" }, { source: "PLATE", table: "plate_item_master" }]) {
+        const [componentRows] = await db.query(`SELECT id, numberOfSetsPerBox FROM \`${component.table}\` WHERE LOWER(TRIM(COALESCE(masterItemNameErpCode, ''))) = LOWER(TRIM(?)) OR LOWER(TRIM(COALESCE(erpItemCode, ''))) = LOWER(TRIM(?)) LIMIT 1`, [mainErp, mainErp]);
+        const master = componentRows[0];
+        if (!master?.id)
+            throw new Error(`No ${component.source} master item matches ERP ${mainErp}.`);
+        if (!(Number(master.numberOfSetsPerBox) > 0))
+            throw new Error(`${component.source} Sets/Pcs per box is missing for ERP ${mainErp}.`);
     }
 }
 function getDispatchPlanFinancialYear(dateValue) {
@@ -7424,6 +7529,15 @@ const createHandlers = (tableName) => {
                 if (isFirmScopedTable(tableName) && requestFirmId && !String(data.firmId || "").trim()) {
                     data.firmId = requestFirmId;
                 }
+                if (["php_job_master", "plate_job_master"].includes(tableName)) {
+                    const [unitRows] = await db.query("SELECT id, firmName FROM firms WHERE LOWER(REPLACE(REPLACE(REPLACE(firmName, ' ', ''), '-', ''), '.', '')) LIKE '%unitii' OR LOWER(REPLACE(REPLACE(REPLACE(firmName, ' ', ''), '-', ''), '.', '')) LIKE '%unit2' LIMIT 1");
+                    const unit2 = unitRows[0];
+                    if (!unit2?.id)
+                        return res.status(400).json({ error: "Unit-II firm mapping is missing." });
+                    data.firmId = String(unit2.id);
+                    data.firmName = String(unit2.firmName || "");
+                    data.destinationFirmId = String(unit2.id);
+                }
                 if (tableName === "items") {
                     delete data.receipt;
                     delete data.production;
@@ -8374,6 +8488,7 @@ const createHandlers = (tableName) => {
                     // Corrugation is the Stage-1 Firm-I -> Firm-II movement.
                     // Printing is the Stage-2 Firm-II -> Firm-III movement for LNKI orders.
                     if (machineName === "Corrugation Liner" || machineName === "Printing") {
+                        await validateLnkiPrintingComponents(db, data);
                         await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
                     }
                 }

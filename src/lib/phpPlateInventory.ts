@@ -75,7 +75,11 @@ export function buildFirmWisePhpPlateInventoryRows(masterRows: MasterRow[], jobs
           : sum;
       }, 0);
       const invoiced = loadingSlips.reduce((sum, slip) => {
-        const slipFirm = String((slip as any).destinationFirmId || (slip as any).firmId || "").trim();
+        const slipFirm = String(
+          String((slip as any).interFirmFlow || "").toLowerCase() === "yes"
+            ? (slip as any).sourceFirmId || (slip as any).firmId
+            : (slip as any).firmId || (slip as any).destinationFirmId
+        ).trim();
         if (slipFirm !== firmId || slip.status === "Cancelled") return sum;
         return sum + slip.lines.reduce((lineSum, line) => slipLineMatchesRow(line, row, source) ? lineSum + toNumber(line.loadedQty) : lineSum, 0);
       }, 0);
