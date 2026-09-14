@@ -13,6 +13,8 @@ export function getFinancialYear(dateStr?: string) {
 }
 
 export function getProductionJobPrefix(source?: "FG" | "PHP" | "PLATE") {
+  if (source === "PHP") return "PHP";
+  if (source === "PLATE") return "PLATE";
   return "JOB";
 }
 

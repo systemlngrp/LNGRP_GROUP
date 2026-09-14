@@ -4150,6 +4150,12 @@ async function generateProductionJobNumber(db, dateValue) {
     const last = Number.parseInt(String(rows[0]?.transactionNo || "").split("/").pop() || "0", 10) || 0;
     return `JOB/${fy}/${String(last + 1).padStart(5, "0")}`;
 }
+async function generateStandaloneProductionJobNumber(db, tableName, prefix, dateValue) {
+    const fy = getShortFinancialYear(String(dateValue || "")) || getShortFinancialYear();
+    const [rows] = await db.query(`SELECT transactionNo FROM \`${tableName}\` WHERE transactionNo LIKE ? ORDER BY CAST(SUBSTRING_INDEX(transactionNo, '/', -1) AS UNSIGNED) DESC LIMIT 1`, [`${prefix}/${fy}/%`]);
+    const last = Number.parseInt(String(rows[0]?.transactionNo || "").split("/").pop() || "0", 10) || 0;
+    return `${prefix}/${fy}/${String(last + 1).padStart(5, "0")}`;
+}
 async function generateScheduleNo(db, scheduledDate) {
     return generateSimpleTransactionNumber(db, "orders_schedule", "scheduleNo", "SCH", scheduledDate);
 }
@@ -8170,15 +8176,21 @@ const createHandlers = (tableName) => {
                         data.transactionNo = await generateLockedMrrNo(db, String(data.date || new Date().toISOString().slice(0, 10)));
                     }
                 }
-                if (tableName === "productions") {
+                if (["productions", "php_job_master", "plate_job_master"].includes(tableName)) {
                     try {
                         const productionId = String(data.id || "").trim();
                         if (productionId && !String(data.transactionNo || "").trim()) {
                             const [existingRows] = await db.query("SELECT transactionNo FROM `productions` WHERE id = ? LIMIT 1", [productionId]);
                             data.transactionNo = String(existingRows[0]?.transactionNo || "").trim();
                         }
-                        if (!String(data.transactionNo || "").trim() || !String(data.transactionNo).startsWith("JOB/")) {
-                            data.transactionNo = await generateProductionJobNumber(db, data.date);
+                        const jobTableName = tableName;
+                        const acceptedPrefix = jobTableName === "php_job_master" ? "PHP/" : jobTableName === "plate_job_master" ? "PLATE/" : "JOB/";
+                        if (!String(data.transactionNo || "").trim() || !String(data.transactionNo).startsWith(acceptedPrefix)) {
+                            data.transactionNo = jobTableName === "php_job_master"
+                                ? await generateStandaloneProductionJobNumber(db, "php_job_master", "PHP", data.date)
+                                : jobTableName === "plate_job_master"
+                                    ? await generateStandaloneProductionJobNumber(db, "plate_job_master", "PLATE", data.date)
+                                    : await generateProductionJobNumber(db, data.date);
                         }
                         if (String(data.jobCardNo || "").trim())
                             data.jobCardNo = data.transactionNo;
