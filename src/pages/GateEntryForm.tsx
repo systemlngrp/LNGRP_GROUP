@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 import { Select } from "../components/Select";
@@ -45,13 +45,13 @@ export function GateEntryForm() {
   const purposeFromQuery = searchParams.get("purpose") === "Returnable Receipt" ? "Returnable Receipt" : "Material Receipt";
 
   const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", []);
-  const [gateEntryPhotos, setGateEntryPhotos] = useData<GateEntryPhoto>("gate-entry-photos", []);
+  const [gateEntryPhotos, setGateEntryPhotos, gateEntryPhotosLoading] = useData<GateEntryPhoto>("gate-entry-photos", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [materialIn] = useData("material-in", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const { activeFirm, setActiveFirm } = useAuth();
+  const { setActiveFirm } = useAuth();
 
   const editingEntry = gateEntries.find((entry) => entry.id === editGateEntryId) || null;
   const isEditing = Boolean(editingEntry);
@@ -65,6 +65,7 @@ export function GateEntryForm() {
 
   const [date, setDate] = useState(toInputDate());
   const [supplierId, setSupplierId] = useState("");
+  const [supplierLabel, setSupplierLabel] = useState("");
   const [purpose, setPurpose] = useState<GateEntry["purpose"]>(purposeFromQuery);
   const [invoiceNo, setInvoiceNo] = useState("");
   const [invoiceValue, setInvoiceValue] = useState("");
@@ -72,6 +73,8 @@ export function GateEntryForm() {
   const [photoSlots, setPhotoSlots] = useState<PhotoSlot[]>(createInitialSlots);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [firmId, setFirmId] = useState("");
+  const initializedContextRef = useRef("");
+  const initializedPhotosEntryRef = useRef("");
   const selectedFirm = firms.find((firm) => firm.id === firmId);
 
   const eligibleReturnableRecipientIds = useMemo(() => {
@@ -95,34 +98,66 @@ export function GateEntryForm() {
       purpose === "Returnable Receipt"
         ? combined.filter((option) => eligibleReturnableRecipientIds.has(option.value))
         : combined;
+    if (supplierId && supplierLabel && !filtered.some((option) => option.value === supplierId)) {
+      filtered.push({ value: supplierId, label: supplierLabel });
+    }
     return filtered.sort((a, b) => a.label.localeCompare(b.label));
-  }, [companies, eligibleReturnableRecipientIds, purpose, suppliers]);
+  }, [companies, eligibleReturnableRecipientIds, purpose, supplierId, supplierLabel, suppliers]);
+
+  useEffect(() => {
+    if (!supplierId) {
+      if (supplierLabel) setSupplierLabel("");
+      return;
+    }
+    const currentLabel = [...suppliers, ...companies].find((party) => party.id === supplierId)?.name || "";
+    if (currentLabel && currentLabel !== supplierLabel) setSupplierLabel(currentLabel);
+  }, [companies, supplierId, supplierLabel, suppliers]);
 
   const hasUploadingPhoto = photoSlots.some((slot) => slot.uploading);
   const purposeLocked = Boolean(effectiveSourceGatePassId || isEditing);
 
   useEffect(() => {
+    const contextKey = editGateEntryId
+      ? `edit:${editGateEntryId}`
+      : `new:${sourceGatePassId}:${purposeFromQuery}`;
+    if (initializedContextRef.current === contextKey) return;
+
+    // Route-linked defaults arrive asynchronously. Wait for them before the one-time
+    // initialization so a later data refresh never has to reset an in-progress draft.
+    if (editGateEntryId && !editingEntry) return;
+    if (!editGateEntryId && sourceGatePassId && !sourceGatePass) return;
+
     if (!isEditing || !editingEntry) {
       setDate(toInputDate());
       setSupplierId(sourceGatePass?.recipientId || "");
+      setSupplierLabel("");
       setPurpose(purposeFromQuery);
       setInvoiceNo("");
       setInvoiceValue("");
       setTruckNo(sourceGatePass?.truckNo || "");
       setFirmId("");
       setPhotoSlots(createInitialSlots());
+      initializedContextRef.current = contextKey;
       return;
     }
 
     setDate(toInputDate(editingEntry.date));
     setSupplierId(editingEntry.supplierId || sourceGatePass?.recipientId || "");
+    setSupplierLabel("");
     setPurpose((editingEntry.purpose || purposeFromQuery) as GateEntry["purpose"]);
     setInvoiceNo(editingEntry.invoiceNo || "");
     setInvoiceValue(String(editingEntry.invoiceValue ?? ""));
     setTruckNo(editingEntry.truckNo || sourceGatePass?.truckNo || "");
     setFirmId(editingEntry.firmId || "");
+    initializedContextRef.current = contextKey;
+  }, [editGateEntryId, editingEntry, isEditing, purposeFromQuery, sourceGatePass, sourceGatePassId]);
+
+  useEffect(() => {
+    if (!editGateEntryId || !editingEntry || gateEntryPhotosLoading) return;
+    if (initializedPhotosEntryRef.current === editGateEntryId) return;
     setPhotoSlots(buildPhotoSlots(entryPhotos));
-  }, [activeFirm?.id, editingEntry, entryPhotos, firms, isEditing, purposeFromQuery, sourceGatePass?.recipientId, sourceGatePass?.truckNo]);
+    initializedPhotosEntryRef.current = editGateEntryId;
+  }, [editGateEntryId, editingEntry, entryPhotos, gateEntryPhotosLoading]);
 
   useEffect(() => {
     if (!isEditing || !editingLocked) return;
@@ -135,6 +170,7 @@ export function GateEntryForm() {
     if (!supplierId) return;
     if (eligibleReturnableRecipientIds.has(supplierId)) return;
     setSupplierId(sourceGatePass?.recipientId || editingEntry?.supplierId || "");
+    setSupplierLabel("");
   }, [editingEntry?.supplierId, eligibleReturnableRecipientIds, purpose, sourceGatePass?.recipientId, supplierId]);
 
   const updateSlot = (index: number, next: Partial<PhotoSlot>) => {
@@ -280,7 +316,10 @@ export function GateEntryForm() {
             <Field label="Supplier / Customer Name" required>
               <Select
                 value={supplierId}
-                onChange={setSupplierId}
+                onChange={(value) => {
+                  setSupplierId(value);
+                  setSupplierLabel(supplierOptions.find((option) => option.value === value)?.label || "");
+                }}
                 options={supplierOptions}
                 placeholder={
                   purpose === "Returnable Receipt"
