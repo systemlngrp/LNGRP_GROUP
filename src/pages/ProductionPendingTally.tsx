@@ -53,15 +53,15 @@ function resolveProductionTallyItem(production: Production, npdItems: Item[]) {
 }
 export function ProductionPendingTally() {
   const { user } = useAuth();
-  const [productions, setProductions] = useData<Production>("productions", []);
+  const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [materialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturns] = useData<MaterialReturn>("material-returns", []);
-  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
+  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
+  const [materialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
+  const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
+  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all" });
+  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all" });
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");

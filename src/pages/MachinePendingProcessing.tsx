@@ -38,14 +38,14 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const filterMachineId = searchParams.get("machineId") || "";
   const fixedNormalizedMachineName = fixedMachineName ? normalizeMachineName(fixedMachineName) : "";
 
-  const [productions] = useData<Production>("productions", []);
+  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const { findItemAcrossSources } = useOrderItemCatalog();
   const [machines] = useData<Machine>("machines", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
-  const [companies] = useData<Company>("companies", []);
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
+  const [companies] = useData<Company>("companies", [], { firmScope: "all" });
   const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
 
   const [searchTerm, setSearchTerm] = useState("");

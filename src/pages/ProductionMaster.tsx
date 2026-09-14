@@ -44,12 +44,12 @@ const formatDecimal = (value: unknown) => {
 
 export function ProductionMaster() {
   const { user } = useAuth();
-  const [productions, setProductions] = useData<Production>("productions", []);
+  const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
-  const [companies] = useData<Company>("companies", []);
+  const [companies] = useData<Company>("companies", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [machines] = useData<Machine>("machines", []);

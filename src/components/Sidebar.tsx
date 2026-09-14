@@ -424,27 +424,27 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     firmScope: "all",
     storageKey: "material-in-all-firms",
   });
-  const [productions] = useData<Production>("productions", []);
+  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
   const [phpJobMaster] = useData<Production>("php_job_master", []);
   const [plateJobMaster] = useData<Production>("plate_job_master", []);
   const [materials] = useData<Material>("materials", []);
-  const [orders] = useData<Order>("orders", []);
+  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const npdItems = useNpdItems();
   const { resolveOrderItem, findItemAcrossSources, itemsBySource } = useOrderItemCatalog();
   const [consumptions] = useData<Consumption>("consumptions", []);
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [materialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturns] = useData<MaterialReturn>("material-returns", []);
-  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all", storageKey: "material-issues-all-firms" });
+  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all", storageKey: "material-issue-lines-all-firms" });
+  const [materialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", storageKey: "material-issue-reel-lines-all-firms" });
+  const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all", storageKey: "material-returns-all-firms" });
+  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all", storageKey: "material-return-lines-all-firms" });
+  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", storageKey: "material-return-reel-lines-all-firms" });
   const [sampleRequests] = useData<SampleRequest>("sample_requests", []);
   const [indents] = useData<Indent>("indents", []);
   const [indentLines] = useData<IndentLine>("indent-lines", []);
   const [purchaseOrders] = useData<PurchaseOrder>("purchase-orders", []);
   const [purchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
   const [gateEntries] = useData<GateEntry>("gate-entries", []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [phpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
@@ -452,7 +452,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const [invoices] = useData<Invoice>("invoices", []);
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [machines] = useData<Machine>("machines", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms" });
   const [settings] = useData<Setting>("settings", []);
 
   const [pendingJobClosureCount, setPendingJobClosureCount] = useState<number>(0);

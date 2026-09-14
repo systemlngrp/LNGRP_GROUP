@@ -20,11 +20,11 @@ import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/j
 export function PendingJobClosure() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [productions, setProductions] = useData<Production>("productions", []);
-  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
-  const [companies] = useData<Company>("companies", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
+  const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
+  const [companies] = useData<Company>("companies", [], { firmScope: "all" });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);

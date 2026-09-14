@@ -47,13 +47,13 @@ export function PendingProduction() {
   const [itemFilter, setItemFilter] = useState('');
 
   const navigate = useNavigate();
-  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [productions] = useData<Production>("productions", []);
+  const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs] = useData<Production>("php_job_master", []);
   const [plateJobs] = useData<Production>("plate_job_master", []);
-  const [orders] = useData<Order>("orders", []);
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const { resolveOrderItem } = useOrderItemCatalog();
-  const [companies] = useData<Company>("companies", []);
+  const [companies] = useData<Company>("companies", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", []);
 
   const [cancelValues, setCancelValues] = useState<Record<string, string>>({});

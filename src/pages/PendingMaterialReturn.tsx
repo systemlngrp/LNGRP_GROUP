@@ -9,10 +9,10 @@ import type { MaterialIssueReelLine, MaterialReturnReelLine, Production, Product
 
 export function PendingMaterialReturn() {
   const navigate = useNavigate();
-  const [productions] = useData<Production>("productions", []);
-  const [issueReels] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [returnReels] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
+  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [issueReels] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
+  const [returnReels] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all" });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const { findItemAcrossSources } = useOrderItemCatalog();
 
   const rows = useMemo(() => {
