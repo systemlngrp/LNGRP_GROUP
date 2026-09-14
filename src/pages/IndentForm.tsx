@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { Indent, IndentLine, Material, User } from "../types";
+import { Firm, Indent, IndentLine, Material, User } from "../types";
 import { useAuth } from "../auth/AuthContext";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
@@ -31,7 +31,7 @@ function getIndentLineUom(indentType: Indent["indentType"], material?: Material 
 }
 
 export function IndentForm() {
-  const { activeFirm, activeFirmId } = useAuth();
+  const { activeFirm, activeFirmId, setActiveFirm } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
   // Simple DOM-based table row filter bound to the search input
@@ -49,6 +49,12 @@ export function IndentForm() {
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [materials] = useData<Material>("materials", []);
   const [users] = useData<User>("users", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+
+  const firmOptions = useMemo(
+    () => firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)),
+    [firms]
+  );
 
   const [requestedBy, setRequestedBy] = useState("");
   const [requisitionDate, setRequisitionDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -207,7 +213,18 @@ export function IndentForm() {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">Firm <span className="text-red-500">*</span></label>
-            <input value={activeFirm?.firmName || ""} readOnly className="w-full rounded border-2 border-black bg-slate-100 px-4 py-3 font-bold text-black" placeholder="Select active firm from header" />
+            <select
+              value={activeFirmId}
+              onChange={(event) => setActiveFirm(firmOptions.find((firm) => firm.id === event.target.value) || null)}
+              required
+              className="w-full rounded border-2 border-black bg-white px-4 py-3 font-bold text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+              aria-label="Firm"
+            >
+              <option value="">Select firm...</option>
+              {firmOptions.map((firm) => (
+                <option key={firm.id} value={firm.id}>{firm.firmName}</option>
+              ))}
+            </select>
           </div>
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">
