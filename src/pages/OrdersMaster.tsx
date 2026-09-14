@@ -49,12 +49,12 @@ const isWithinDateRange = (value: string, fromDate: string, toDate: string) => {
 
 export function OrdersMaster() {
   const navigate = useNavigate();
-  const [orders] = useData<Order>("orders", []);
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [users] = useData<User>("users", []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const { resolveOrderItem } = useOrderItemCatalog();
