@@ -3172,6 +3172,44 @@ async function backfillInterFirmProductionProcessing(db: mysql.Pool) {
   return { repaired, skipped, failed, duplicates };
 }
 
+async function backfillIndentRequisitionNumbers(db: mysql.Pool) {
+  const [rows] = await db.query("SELECT id, indentNo FROM `indents` ORDER BY id");
+  const seen = new Map<string, string>();
+  let updated = 0;
+  let unchanged = 0;
+  let invalid = 0;
+  let duplicates = 0;
+
+  for (const row of rows as any[]) {
+    const id = String(row.id || "");
+    const value = String(row.indentNo || "").trim();
+    const match = value.match(/^(RQ)?(\d{2}-\d{2})\/(\d+)$/i);
+    if (!match) {
+      invalid += 1;
+      console.warn(`[DB] Indent requisition backfill skipped invalid number: ${id} -> ${value || "<missing>"}`);
+      continue;
+    }
+
+    const nextValue = `RQ${match[2]}/${String(Number(match[3])).padStart(5, "0")}`;
+    if (seen.has(nextValue)) {
+      duplicates += 1;
+      console.warn(`[DB] Duplicate indent requisition number detected: ${nextValue} (${seen.get(nextValue)}, ${id})`);
+    } else {
+      seen.set(nextValue, id);
+    }
+
+    if (value.toUpperCase() === nextValue) {
+      unchanged += 1;
+      continue;
+    }
+    await db.query("UPDATE `indents` SET `indentNo` = ? WHERE `id` = ?", [nextValue, id]);
+    updated += 1;
+    console.log(`[DB] Backfilled indent requisition number: ${id}: ${value} -> ${nextValue}`);
+  }
+
+  console.log(`[DB] Indent requisition backfill complete: updated=${updated}, unchanged=${unchanged}, invalid=${invalid}, duplicates=${duplicates}`);
+}
+
 /** Synchronize the source PHP/Plate output from a completed Corrugation Liner report. */
 async function syncCorrugationLinerOutput(db: mysql.Pool | mysql.PoolConnection, processingId: string) {
   const [processingRows] = await db.query(
@@ -7565,6 +7603,7 @@ await db.query(`
       await ensureInterFirmSchema(db, database);
       await ensureInternalFirmSuppliers(db, database);
       await backfillInterFirmProductionProcessing(db);
+      await backfillIndentRequisitionNumbers(db);
       await backfillLinkedProductionSources(db);
       await backfillCorrugationLinerOutput(db);
 
@@ -8776,9 +8815,12 @@ const createHandlers = (tableName: string) => {
               const fyLabel = `${String(fyStart).slice(2)}-${String(fyStart + 1).slice(2)}`;
 
               const likePattern = `${fyLabel}/%`;
+              const rqLikePattern = `RQ${fyLabel}/%`;
+              const lockName = `l ngr p_indent_no_${fyLabel}`.replace(/\s+/g, "");
+              await db.query("SELECT GET_LOCK(?, 10)", [lockName]);
               const [rows] = await db.query(
-                "SELECT indentNo FROM `indents` WHERE indentNo LIKE ? ORDER BY CAST(SUBSTRING_INDEX(indentNo,'/',-1) AS UNSIGNED) DESC LIMIT 1",
-                [likePattern]
+                "SELECT indentNo FROM `indents` WHERE indentNo LIKE ? OR indentNo LIKE ? ORDER BY CAST(SUBSTRING_INDEX(indentNo,'/',-1) AS UNSIGNED) DESC LIMIT 1",
+                [likePattern, rqLikePattern]
               );
               let lastNum = 0;
               if ((rows as any[]).length > 0) {
@@ -8789,7 +8831,8 @@ const createHandlers = (tableName: string) => {
               }
               const nextNum = lastNum + 1;
               const padded = String(nextNum).padStart(5, "0");
-              data.indentNo = `${fyLabel}/${padded}`;
+              data.indentNo = `RQ${fyLabel}/${padded}`;
+              await db.query("SELECT RELEASE_LOCK(?)", [lockName]);
             }
           } catch (err) {
             console.warn("[DB] Could not auto-generate indentNo:", (err as Error).message);
