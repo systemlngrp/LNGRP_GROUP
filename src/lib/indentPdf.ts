@@ -79,6 +79,10 @@ export async function downloadIndentPdf({
     const remarkLines = doc.splitTextToSize(indent.rejectedRemarks, 175);
     doc.text(remarkLines, 14, footerY + 5);
     footerY += remarkLines.length * 5 + 8;
+    doc.setFont("helvetica", "bold");
+    doc.text(`Rejected By: ${indent.rejectedBy || "-"}`, 14, footerY);
+    doc.text(`Rejected Date: ${indent.rejectedTimestamp ? formatDate(indent.rejectedTimestamp) : "-"}`, 110, footerY);
+    footerY += 8;
   }
 
   doc.setFontSize(9);

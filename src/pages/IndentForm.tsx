@@ -273,7 +273,7 @@ export function IndentForm() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => navigate("/masters/materials")}
+                onClick={() => navigate("/masters/materials?new=1")}
                 className="px-4 py-2 rounded border border-black text-indigo-700 font-bold hover:bg-white transition"
               >
                 + New Item

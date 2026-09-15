@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { ChevronDown, ChevronRight, Edit, Eye, FileText, RotateCcw, Search, ThumbsUp, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Edit, FileText, RotateCcw, Search, ThumbsUp, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
@@ -242,7 +242,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(15);
-      doc.text("Indent Document", 105, y, { align: "center" });
+      doc.text("Purchase Requisition", 105, y, { align: "center" });
       y += 10;
 
       doc.setFont("helvetica", "bold");
@@ -252,6 +252,8 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       y += 6;
       doc.text(`Requested By: ${indent.requestedBy || "-"}`, 14, y);
       doc.text(`Indent Type: ${indent.indentType || "-"}`, 140, y);
+      y += 6;
+      doc.text(`Firm: ${indent.firmName || "Firm unavailable"}`, 14, y);
       y += 6;
       doc.text(`Requisition Date: ${formatDate(indent.requisitionDate)}`, 14, y);
       doc.text(`Required Date: ${formatDate(indent.requiredDate)}`, 140, y);
@@ -269,6 +271,10 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         const remarksLines = doc.splitTextToSize(indent.rejectedRemarks.trim(), 170);
         doc.text(remarksLines, 32, y);
         y += Math.max(6, remarksLines.length * 5 + 2);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Rejected By: ${indent.rejectedBy || "-"}`, 14, y);
+        doc.text(`Rejected Date: ${indent.rejectedTimestamp ? formatDate(indent.rejectedTimestamp) : "-"}`, 140, y);
+        y += 6;
       }
 
       autoTable(doc, {
@@ -527,14 +533,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                     ) : null}
                     <td className="border border-black px-4 py-4">
                       <div className="flex justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/indent/view/${indent.id}`)}
-                          title="View Indent"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded border border-black bg-white text-black hover:bg-slate-50 transition"
-                        >
-                          <Eye size={16} />
-                        </button>
                         {mode === "Pending" ? (
                           <button
                             type="button"

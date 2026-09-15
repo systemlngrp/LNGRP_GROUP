@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Layers, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm } from "../types";
@@ -123,6 +123,7 @@ function createInitialFormState(materials: Material[], reelGroupId = "", reelSta
 
 export function Materials() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [firms] = useData<Firm>("firms", []);
   const [selectedFirmId, setSelectedFirmId] = useState("");
   const materialEndpoint = "/api/materials";
@@ -157,6 +158,7 @@ export function Materials() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [sizeFilter, setSizeFilter] = useState("All");
@@ -475,6 +477,22 @@ export function Materials() {
   const [openingReelSupplierId, setOpeningReelSupplierId] = useState("");
   const reelErpStartNumber = settings[0]?.reelErpStartNumber || 1;
   const otherMaterialErpStartNumber = settings[0]?.otherMaterialErpStartNumber || 1;
+
+  useEffect(() => {
+    if (searchParams.get("new") !== "1" || isFormOpen || materials.length === 0) return;
+    let activeFirmId = "";
+    try { activeFirmId = String(JSON.parse(window.localStorage.getItem("activeFirm") || "{}").id || ""); } catch {}
+    const firmId = activeFirmId || String(firms[0]?.id || "");
+    setSelectedFirmId(firmId);
+    setEditingId(null);
+    setFormData({ ...createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber), firmId });
+    setOpeningReels([]);
+    setOpeningReelSupplierId("");
+    setIsFormOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [firms, isFormOpen, materials, reelErpStartNumber, reelGroup, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (openingReels.length === 0) return;
