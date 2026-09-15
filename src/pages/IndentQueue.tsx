@@ -504,7 +504,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
               {mode === "Pending" ? (
                 <>
                   <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">ERP</th>
-                  <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black min-w-[320px]">Item</th>
                   <th className="border border-black px-4 py-3 text-right text-sm font-bold uppercase text-black">Qty</th>
                 </>
               ) : (
@@ -524,7 +523,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             {paginatedDisplayRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={mode === "Pending" ? 9 : mode === "Rejected" ? 8 : 7}
+                  colSpan={mode === "Pending" ? 8 : mode === "Rejected" ? 8 : 7}
                   className="border border-black px-6 py-10 text-center font-medium text-black"
                 >
                   No indent records found.
@@ -533,7 +532,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             ) : (
               paginatedDisplayRows.map(({ indent, line }) => {
                 const lineRows = indentLines.filter((row) => row.indentId === indent.id);
-                const material = line ? materials.find((row) => row.id === line.materialId) : null;
                 const canUnapprove = mode === "Approved" && canIndentBeUnapproved(lineRows);
 
                 return (
@@ -561,9 +559,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                     {mode === "Pending" ? (
                       <>
                         <td className="border border-black px-4 py-4 text-sm text-black">{mode === "Pending" ? lineRows.length : line?.erpCode || ""}</td>
-                        <td className="border border-black px-4 py-4 text-sm text-black min-w-[320px]">
-                          {mode === "Pending" ? getLineSummary(lineRows, materials) : material?.name || line?.erpCode || "Unknown Material"}
-                        </td>
                         <td className="border border-black px-4 py-4 text-sm text-black text-right">{mode === "Pending" ? Number(withIndentTotals(indent, lineRows).totalIndentQty || 0).toLocaleString() : Number(line?.qty || 0).toLocaleString()}</td>
                       </>
                     ) : (
@@ -647,7 +642,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                   </tr>
                   {showExpandableItems && expandedIndentIds.has(indent.id) ? (
                     <tr key={`${indent.id}-items`} className="bg-slate-50">
-                      <td colSpan={mode === "Pending" ? 9 : mode === "Rejected" ? 8 : 7} className="border border-black p-0">
+                      <td colSpan={mode === "Pending" ? 8 : mode === "Rejected" ? 8 : 7} className="border border-black p-0">
                         <div className="p-4">
                           <div className="mb-2 text-xs font-black uppercase text-slate-600">Items</div>
                           <div className="overflow-auto rounded border border-black bg-white">
