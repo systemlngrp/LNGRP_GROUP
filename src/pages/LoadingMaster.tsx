@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useConfirm } from "../components/ConfirmDialog";
 import { useData } from "../hooks/useData";
 import { 
   LoadingSlip, 
@@ -40,6 +41,7 @@ function getSlipNoSortValue(slipNo: string) {
 }
 
 export function LoadingMaster() {
+  const confirm = useConfirm();
   const [loadingSlips, setLoadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [trucks] = useData<Truck>("trucks", []);
   const [plans, setPlans] = useData<DispatchPlan>("dispatch_plans", []);
@@ -416,7 +418,7 @@ export function LoadingMaster() {
     if (slip.status === "Cancelled") return;
 
     const reason = window.prompt("Cancel reason (optional)") || "";
-    const confirmed = window.confirm(isDirectLoadingSlip(slip) ? "Cancel this direct loading slip? Linked PHP/Plate child slips will also be cancelled." : "Cancel this loading slip? This will reverse loaded qty from dispatch plans.");
+    const confirmed = await confirm(isDirectLoadingSlip(slip) ? "Cancel this direct loading slip? Linked PHP/Plate child slips will also be cancelled." : "Cancel this loading slip? This will reverse loaded qty from dispatch plans.");
     if (!confirmed) return;
 
     const now = new Date().toISOString();

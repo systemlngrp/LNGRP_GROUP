@@ -7,8 +7,10 @@ import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { RefreshCw } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { useConfirm } from "../components/ConfirmDialog";
 
 export function CanceledProductions() {
+  const confirm = useConfirm();
   const [productions, setProductions] = useData<Production>("productions", []);
   const npdItems = useNpdItems();
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
@@ -22,7 +24,7 @@ export function CanceledProductions() {
     const prod = productions.find(p => p.id === id);
     if (!prod) return;
 
-    if (!window.confirm("Are you sure you want to activate this canceled job? It will return to Pending Consumption.")) return;
+    if (!await confirm("Are you sure you want to activate this canceled job? It will return to Pending Consumption.")) return;
 
     setActivatingId(id);
     try {

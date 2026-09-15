@@ -10,6 +10,7 @@ import * as XLSX from "xlsx";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { fetchNpdItems } from "../lib/npdItems";
 import { getNextPlainNumber } from "../lib/materialNumbering";
+import { useConfirm } from "../components/ConfirmDialog";
 import { OPENING_REEL_MATERIAL_IN_ID, isOpeningReelPackingSlip } from "../lib/materialMovement";
 
 type MaterialType = Material["type"];
@@ -122,6 +123,7 @@ function createInitialFormState(materials: Material[], reelGroupId = "", reelSta
 }
 
 export function Materials() {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [firms] = useData<Firm>("firms", []);
@@ -699,7 +701,7 @@ export function Materials() {
   }
 
   async function handleTallySync() {
-    if (!window.confirm("Do you want to start Tally synchronization now?")) return;
+    if (!await confirm("Do you want to start Tally synchronization now?")) return;
     setIsSyncing(true);
     try {
       const response = await fetch("/api/tally/sync", {
@@ -760,8 +762,8 @@ export function Materials() {
     setIsFormOpen(true);
   }
 
-  function handleDelete(id: string) {
-    if (!window.confirm("Are you sure you want to delete this item?")) return;
+  async function handleDelete(id: string) {
+    if (!await confirm("Are you sure you want to delete this item?")) return;
     setMaterials(materials.filter((material) => material.id !== id));
   }
 

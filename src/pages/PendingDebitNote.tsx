@@ -6,8 +6,10 @@ import { TableControls } from "../components/TableControls";
 import { CheckCircle } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
+import { useConfirm } from "../components/ConfirmDialog";
 
 export function PendingDebitNote() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
@@ -30,7 +32,7 @@ export function PendingDebitNote() {
   }, [materialIn, searchTerm, suppliers]);
 
   const handleMarkPosted = async (mrrId: string) => {
-    if (!confirm("Are you sure you want to mark this Debit Note as Posted/Cleared?")) return;
+    if (!await confirm("Are you sure you want to mark this Debit Note as Posted/Cleared?")) return;
     
     setProcessingId(mrrId);
     try {

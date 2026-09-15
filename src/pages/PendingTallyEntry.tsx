@@ -10,8 +10,10 @@ import { CheckCircle, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react"
 import { useNavigate } from "react-router-dom";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
+import { useConfirm } from "../components/ConfirmDialog";
 
 export function PendingTallyEntry() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -88,7 +90,7 @@ export function PendingTallyEntry() {
 
   const handleBulkComplete = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Are you sure you want to complete tally entry for ${selectedIds.length} items?`)) return;
+    if (!await confirm(`Are you sure you want to complete tally entry for ${selectedIds.length} items?`)) return;
 
     setIsBulkSubmitting(true);
     try {

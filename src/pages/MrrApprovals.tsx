@@ -9,12 +9,14 @@ import { useNpdItems } from "../hooks/useNpdItems";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { useNavigate } from "react-router-dom";
+import { useConfirm } from "../components/ConfirmDialog";
 
 type Stage = "All Approval" | "Pending PH" | "Pending Accounts" | "Pending MD";
 type SortField = "timestamp" | "gateEntryNo" | "transactionNo";
 type SortDirection = "asc" | "desc";
 
 export function MrrApprovals() {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
     firmScope: "all",
@@ -231,7 +233,7 @@ export function MrrApprovals() {
       alert("No selected MRR is available for approval.");
       return;
     }
-    if (!confirm(`Are you sure you want to approve ${actionableIds.length} MRRs?`)) return;
+    if (!await confirm(`Are you sure you want to approve ${actionableIds.length} MRRs?`)) return;
     for (const id of actionableIds) {
       await handleAction(id, "Approve");
     }

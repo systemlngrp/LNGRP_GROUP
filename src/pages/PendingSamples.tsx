@@ -5,8 +5,10 @@ import { useData } from "../hooks/useData";
 import { SampleRequest } from "../types";
 import { formatDate } from "../lib/serial";
 import { sortSampleRequestsDesc } from "../lib/sampleRequests";
+import { useConfirm } from "../components/ConfirmDialog";
 
 export function PendingSamples() {
+  const confirm = useConfirm();
   const [sampleRequests, setSampleRequests] = useData<SampleRequest>("sample_requests", []);
   const [searchTerm, setSearchTerm] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function PendingSamples() {
   }, [sampleRequests, searchTerm]);
 
   const handleCancel = async (row: SampleRequest) => {
-    if (!window.confirm(`Cancel sample request for ${row.itemName}?`)) return;
+    if (!await confirm(`Cancel sample request for ${row.itemName}?`)) return;
 
     setSavingId(row.id);
     try {

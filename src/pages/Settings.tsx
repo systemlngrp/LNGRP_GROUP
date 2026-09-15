@@ -10,6 +10,7 @@ import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { getFinancialYear } from "../lib/serial";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { PO_MANDATORY_MRR_TYPES, parsePoMandatoryMrrTypes } from "../lib/materialInPoMandatory";
+import { useConfirm } from "../components/ConfirmDialog";
 import { useAuth } from "../auth/AuthContext";
 import { parseRealizationTargets } from "../lib/realizationTargets";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -357,6 +358,7 @@ function parseInvoiceNumberSeries(raw?: string): InvoiceSeriesRow[] {
 }
 
 export function SettingsPage() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -729,7 +731,7 @@ export function SettingsPage() {
       .filter((option) => selectedTransferModules.includes(option.key))
       .map((option) => `${option.label}: ${transferPreview.counts?.[option.key] || 0}`)
       .join("\n");
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       `Transfer linked usage?\n\nFrom: ${selectedTransferFromItem.name}\nTo: ${selectedTransferToItem.name}\n\n${countSummary}`
     );
     if (!confirmed) return;

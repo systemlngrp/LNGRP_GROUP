@@ -10,6 +10,7 @@ import { PROCESSING_MACHINE_COLUMNS } from "../lib/productionProcessingSummary";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { getProductionDisplayStatus } from "../lib/productionStageFilters";
+import { useConfirm } from "../components/ConfirmDialog";
 import { cn } from "../lib/utils";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -44,6 +45,7 @@ const formatDecimal = (value: unknown) => {
 };
 
 export function ProductionMaster() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
@@ -998,7 +1000,7 @@ export function ProductionMaster() {
                         <select
                           value={p.closeBy || ""}
                           disabled={closeFieldsDisabled}
-                          onChange={(e) => {
+                          onChange={async (e) => {
                              const nextValue = e.target.value;
                              if (nextValue === "Yes" && !mandatoryCloseDataComplete) {
                                alert(formatJobCloseBlockedMessage(jobClosureStatusMap.get(p.id)));
@@ -1006,7 +1008,7 @@ export function ProductionMaster() {
                              }
                              const today = new Date().toISOString().split("T")[0];
                              if (nextValue === "Yes") {
-                               const confirmSave = window.confirm("Set close date to today and save?");
+                               const confirmSave = await confirm("Set close date to today and save?");
                                if (!confirmSave) {
                                  return;
                                }

@@ -6,6 +6,7 @@ import { TableControls } from "../components/TableControls";
 import { useData } from "../hooks/useData";
 import { formatDate } from "../lib/serial";
 import { Company, MaterialIn, Supplier } from "../types";
+import { useConfirm } from "../components/ConfirmDialog";
 
 function getCreditNoteTaxableAmount(mrr: MaterialIn) {
   return (mrr.lines || []).reduce((sum, line) => {
@@ -17,6 +18,7 @@ function getCreditNoteTaxableAmount(mrr: MaterialIn) {
 }
 
 export function PendingCreditNote() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
@@ -45,7 +47,7 @@ export function PendingCreditNote() {
   }, [companies, materialIn, searchTerm, suppliers]);
 
   const handleMarkPosted = async (mrrId: string) => {
-    if (!confirm("Are you sure you want to mark this Credit Note as Posted/Cleared?")) return;
+    if (!await confirm("Are you sure you want to mark this Credit Note as Posted/Cleared?")) return;
 
     setProcessingId(mrrId);
     try {

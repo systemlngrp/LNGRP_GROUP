@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
-import { Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { AlertCircle, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { Firm } from "../types";
 import { useAppAutoRefresh, useAutoRefreshStatus, useAutoRefreshPause, useIsAutoRefreshPaused } from "../hooks/useAutoRefresh";
+import { ConfirmProvider } from "./ConfirmDialog";
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [alertQueue, setAlertQueue] = useState<string[]>([]);
   const location = useLocation();
   const { user, activeFirm, setActiveFirm, hasAccess, logout } = useAuth();
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
@@ -26,6 +28,32 @@ export function Layout() {
     const saved = window.localStorage.getItem("layout-sidebar-collapsed");
     setSidebarCollapsed(saved === "true");
   }, []);
+
+  useEffect(() => {
+    const nativeAlert = window.alert;
+    window.alert = (message?: unknown) => {
+      const text = String(message ?? "");
+      setAlertQueue((previous) => [...previous, text]);
+    };
+
+    return () => {
+      window.alert = nativeAlert;
+    };
+  }, []);
+
+  const currentAlert = alertQueue[0];
+
+  useEffect(() => {
+    if (currentAlert === undefined) return;
+    const timeoutId = window.setTimeout(() => {
+      setAlertQueue((previous) => previous.slice(1));
+    }, 7000);
+    return () => window.clearTimeout(timeoutId);
+  }, [currentAlert]);
+
+  const dismissAlert = () => {
+    setAlertQueue((previous) => previous.slice(1));
+  };
 
   useEffect(() => {
     if (!user || activeFirm || firms.length === 0) return;
@@ -70,6 +98,7 @@ export function Layout() {
     : lastRefreshLabel;
 
   return (
+    <ConfirmProvider>
     <div className="flex h-screen w-full bg-slate-50 font-sans">
       <Sidebar
         isOpen={sidebarOpen}
@@ -85,6 +114,28 @@ export function Layout() {
       )}
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {currentAlert !== undefined ? (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/10 px-4" role="presentation">
+            <div
+              role="alert"
+              aria-live="assertive"
+              className="relative w-full max-w-lg rounded-lg border-2 border-indigo-600 bg-white p-6 text-black shadow-2xl"
+            >
+              <button
+                type="button"
+                onClick={dismissAlert}
+                aria-label="Close message"
+                className="absolute right-3 top-3 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-black"
+              >
+                <X size={18} />
+              </button>
+              <div className="flex items-start gap-3 pr-7">
+                <AlertCircle className="mt-0.5 shrink-0 text-indigo-600" size={22} />
+                <p className="whitespace-pre-wrap break-words text-sm font-semibold leading-6">{currentAlert}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <header className="bg-white shadow-sm relative z-10 border-b border-black">
           <div className="w-full px-3 py-3 sm:px-4 lg:px-5">
              <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
@@ -140,5 +191,6 @@ export function Layout() {
         </div>
       </main>
     </div>
+    </ConfirmProvider>
   );
 }

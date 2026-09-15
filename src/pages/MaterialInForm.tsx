@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, FileText, Plus, Trash2, Upload, Download, Wand2, X } from "lucide-react";
+import { useConfirm } from "../components/ConfirmDialog";
 import { useData } from "../hooks/useData";
 import {
   Company,
@@ -150,6 +151,7 @@ function roundCurrencyValue(value: number) {
 }
 
 export function MaterialInForm() {
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -2039,7 +2041,7 @@ export function MaterialInForm() {
       alert("Please select at least one PO item first.");
       return;
     }
-    if (!window.confirm(`Update ${selectedCandidates.length} selected PO item${selectedCandidates.length === 1 ? "" : "s"}?`)) return;
+    if (!await confirm(`Update ${selectedCandidates.length} selected PO item${selectedCandidates.length === 1 ? "" : "s"}?`)) return;
 
     for (const candidate of selectedCandidates) {
       await handleUpdateSelectedAiPoItem(candidate);
@@ -2413,7 +2415,7 @@ export function MaterialInForm() {
       );
 
       if (!editingEntry && savedEntry) {
-        const shouldDownloadPdf = window.confirm(
+        const shouldDownloadPdf = await confirm(
           `MRR created with MRR No: ${transactionNo}. Do you want to download the MRR PDF now?`
         );
         if (shouldDownloadPdf) {

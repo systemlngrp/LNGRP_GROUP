@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useConfirm } from "../components/ConfirmDialog";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { 
@@ -36,6 +37,7 @@ const formatInr = new Intl.NumberFormat("en-IN", {
 });
 
 export function BillingPendingTally() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const [invoices, setInvoices, isLoading] = useData<Invoice>("invoices", []);
   const [lineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
@@ -170,7 +172,7 @@ export function BillingPendingTally() {
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); processedInvoices.forEach((inv) => inv.details.forEach((line: any) => { const key = line.itemId || `${line.itemName || ""}::${line.erp || ""}`; if (!key || map.has(key)) return; const name = line.itemName || ""; const erp = line.erp || ""; map.set(key, { value: key, label: erp && name && !name.toLowerCase().includes(String(erp).toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }); })); return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)); }, [processedInvoices]);
 
   const handleMarkPosted = async (id: string) => {
-    if (!confirm("Mark this invoice as Posted to Tally?")) return;
+    if (!await confirm("Mark this invoice as Posted to Tally?")) return;
 
     setProcessingId(id);
     try {
