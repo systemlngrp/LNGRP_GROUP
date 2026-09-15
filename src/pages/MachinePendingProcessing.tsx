@@ -13,7 +13,8 @@ import { normalizeMachineName } from "../lib/productionMachineNames";
 import { getCurrentProcessingMachine, isMachineStepFull } from "../lib/productionProcessingProgress";
 import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
-import { resolveProductionErp, resolveProductionItem, resolveProductionSource } from "../lib/productionErp";
+import { resolveProductionErp, resolveProductionItem } from "../lib/productionErp";
+import { getProductionOriginSource } from "../lib/productionOrigin";
 
 interface PendingMachineJob {
   production: Production;
@@ -44,6 +45,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const fixedNormalizedMachineName = fixedMachineName ? normalizeMachineName(fixedMachineName) : "";
 
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const { itemsBySource } = useOrderItemCatalog();
   const [machines] = useData<Machine>("machines", []);
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
@@ -76,6 +79,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const orderById = useMemo(() => new Map(orders.map((order) => [order.id, order])), [orders]);
   const companyNameById = useMemo(() => new Map(companies.map((company) => [company.id, company.name || ""])), [companies]);
   const firmNameById = useMemo(() => new Map(firms.map((firm) => [firm.id, firm.firmName || ""])), [firms]);
+  const phpJobIds = useMemo(() => new Set(phpJobs.map((job) => String(job.id))), [phpJobs]);
+  const plateJobIds = useMemo(() => new Set(plateJobs.map((job) => String(job.id))), [plateJobs]);
 
   const resolveCompanyName = useCallback((production: Production, item?: any) => {
     const productionCompany = String(production.companyName || "").trim();
@@ -118,7 +123,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     activeProductions.forEach(p => {
       const schedule = scheduleById.get(String(p.scheduleId || ""));
       const order = schedule ? orderById.get(String(schedule.orderId || "")) : undefined;
-      const source = resolveProductionSource(p, order, itemsBySource);
+      const source = getProductionOriginSource(p, phpJobIds, plateJobIds);
       const sourceProduction = { ...p, itemSource: source } as Production;
       const item = resolveProductionItem(p, order, itemsBySource, source);
       const erpCode = resolveProductionErp(p, order, item);
@@ -187,7 +192,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
         return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
       });
-  }, [productions, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
+  }, [productions, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
 
   const companyOptions = useMemo(() => {
     const names = new Set<string>();
