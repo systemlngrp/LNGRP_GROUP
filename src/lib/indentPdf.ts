@@ -20,7 +20,7 @@ export async function downloadIndentPdf({
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
-  doc.text("INDENT", 105, currentY, { align: "center" });
+  doc.text("PURCHASE REQUISITION", 105, currentY, { align: "center" });
   currentY += 10;
 
   doc.setFont("helvetica", "normal");
@@ -30,6 +30,7 @@ export async function downloadIndentPdf({
     ["Requested By", indent.requestedBy],
     ["Requisition Date", formatDate(indent.requisitionDate)],
     ["Indent Type", indent.indentType],
+    ["Firm", indent.firmName || "Firm unavailable"],
     ["Status", indent.status],
   ];
 
@@ -89,5 +90,5 @@ export async function downloadIndentPdf({
     safeIndentNo ||
     indent.requestedBy.trim().replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") ||
     "Indent";
-  doc.save(`Indent_${safeSuffix}_${indent.requisitionDate}.pdf`);
+  doc.save(`Purchase_Requisition_${safeSuffix}_${indent.requisitionDate}.pdf`);
 }

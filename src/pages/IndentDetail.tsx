@@ -22,6 +22,8 @@ export function IndentDetail() {
   const indent = useMemo(() => indents.find((row) => row.id === id) || null, [id, indents]);
   const lineRows = useMemo(() => indentLines.filter((line) => line.indentId === id), [id, indentLines]);
   const [editableQty, setEditableQty] = useState<Record<string, string>>({});
+  const [editableMaterial, setEditableMaterial] = useState<Record<string, string>>({});
+  const [editableDate, setEditableDate] = useState<Record<string, string>>({});
   const currentSetting = settings[0];
 
   const canEdit = indent?.status === "Pending";
@@ -31,18 +33,20 @@ export function IndentDetail() {
       lineRows
         .map((line) => ({
           ...line,
-          material: materials.find((row) => row.id === line.materialId) || null,
+          materialId: editableMaterial[line.id] ?? line.materialId,
+          targetDeliveryDate: editableDate[line.id] ?? line.targetDeliveryDate,
+          material: materials.find((row) => row.id === (editableMaterial[line.id] ?? line.materialId)) || null,
           qtyValue: editableQty[line.id] ?? String(Number(line.qty || 0)),
         }))
         .filter((row) => {
           if (!searchTerm.trim()) return true;
           const q = searchTerm.toLowerCase().trim();
           return (
-            (row.erpCode || "").toLowerCase().includes(q) ||
+            String(row.erpCode || "").toLowerCase().includes(q) ||
             (row.material?.name || "").toLowerCase().includes(q)
           );
         }),
-    [editableQty, lineRows, materials, searchTerm]
+    [editableDate, editableMaterial, editableQty, lineRows, materials, searchTerm]
   );
   const handleQtyChange = (lineId: string, value: string) => {
     setEditableQty((prev) => ({ ...prev, [lineId]: value }));
@@ -72,6 +76,10 @@ export function IndentDetail() {
       const cancelledQty = Number(line.cancelledQty || 0);
       return {
         ...line,
+        materialId: editableMaterial[line.id] ?? line.materialId,
+        erpCode: materials.find((material) => material.id === (editableMaterial[line.id] ?? line.materialId))?.erpCode || line.erpCode,
+        uom: materials.find((material) => material.id === (editableMaterial[line.id] ?? line.materialId))?.uom || line.uom,
+        targetDeliveryDate: editableDate[line.id] ?? line.targetDeliveryDate,
         qty,
         balanceQty: Math.max(0, qty - orderedQty - cancelledQty),
         updateTimestamp: timestamp,
@@ -89,6 +97,8 @@ export function IndentDetail() {
       };
       await setIndents((prev) => prev.map((row) => (row.id === indent.id ? nextIndent : row)));
       setEditableQty({});
+      setEditableMaterial({});
+      setEditableDate({});
       alert("Indent quantities updated.");
     } catch (error) {
       console.error("Failed to update indent lines:", error);
@@ -180,13 +190,14 @@ export function IndentDetail() {
                 <th className="border-2 border-black px-4 py-3 text-left text-sm font-bold">ERP</th>
                 <th className="border-2 border-black px-4 py-3 text-left text-sm font-bold">Material</th>
                 <th className="border-2 border-black px-4 py-3 text-left text-sm font-bold">Unit</th>
+                <th className="border-2 border-black px-4 py-3 text-left text-sm font-bold">Target Delivery</th>
                 <th className="border-2 border-black px-4 py-3 text-right text-sm font-bold">Qty</th>
               </tr>
             </thead>
             <tbody>
               {lineValues.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="border-2 border-black px-6 py-10 text-center font-medium text-black">
+                  <td colSpan={5} className="border-2 border-black px-6 py-10 text-center font-medium text-black">
                     No line items found.
                   </td>
                 </tr>
@@ -194,8 +205,17 @@ export function IndentDetail() {
                 lineValues.map((line) => (
                   <tr key={line.id} className="bg-white">
                     <td className="border-2 border-black px-4 py-4 text-sm text-black">{line.erpCode || ""}</td>
-                    <td className="border-2 border-black px-4 py-4 text-sm text-black">{line.material?.name || "Unknown Material"}</td>
-                    <td className="border-2 border-black px-4 py-4 text-sm text-black">{line.uom || line.material?.uom || ""}</td>
+                    <td className="border-2 border-black px-4 py-4 text-sm text-black">
+                      {canEdit ? (
+                        <select value={line.materialId} onChange={(e) => setEditableMaterial((prev) => ({ ...prev, [line.id]: e.target.value }))} className="w-full rounded border border-slate-300 px-2 py-2 text-black">
+                          {materials.filter((material) => material.active !== "No" && material.type === indent.indentType).map((material) => <option key={material.id} value={material.id}>{material.name}</option>)}
+                        </select>
+                      ) : line.material?.name || "Unknown Material"}
+                    </td>
+                    <td className="border-2 border-black px-4 py-4 text-sm text-black">{line.material?.uom || line.uom || ""}</td>
+                    <td className="border-2 border-black px-4 py-4 text-sm text-black">
+                      {canEdit ? <input type="date" value={line.targetDeliveryDate || ""} onChange={(e) => setEditableDate((prev) => ({ ...prev, [line.id]: e.target.value }))} className="rounded border border-slate-300 px-2 py-2 text-black" /> : formatDate(line.targetDeliveryDate)}
+                    </td>
                     <td className="border-2 border-black px-4 py-4 text-sm text-black">
                       {canEdit ? (
                         <input

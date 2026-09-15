@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { ChevronDown, ChevronRight, Eye, FileText, RotateCcw, Search, ThumbsUp, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Edit, Eye, FileText, RotateCcw, Search, ThumbsUp, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
@@ -63,6 +63,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   const [pdfIndentId, setPdfIndentId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [requestedByFilter, setRequestedByFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [indentTypeFilter, setIndentTypeFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -70,7 +71,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   const [expandedIndentIds, setExpandedIndentIds] = useState<Set<string>>(new Set());
 
   const currentSetting = settings[0];
-  const showExpandableItems = mode !== "Pending";
+  const showExpandableItems = true;
 
   const toggleIndentItems = (indentId: string) => {
     setExpandedIndentIds((prev) => {
@@ -89,6 +90,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   );
 
   const requestedByOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.requestedBy)), [statusIndents]);
+  const firmOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.firmName || "Firm unavailable")), [statusIndents]);
   const indentTypeOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.indentType)), [statusIndents]);
   const itemOptions = useMemo(() => {
     const statusIndentIds = new Set(statusIndents.map((indent) => indent.id));
@@ -105,6 +107,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         .filter((indent) => {
           const indentDate = toDateOnly(indent.requisitionDate);
           if (requestedByFilter && indent.requestedBy !== requestedByFilter) return false;
+          if (firmFilter && (indent.firmName || "Firm unavailable") !== firmFilter) return false;
           if (indentTypeFilter && indent.indentType !== indentTypeFilter) return false;
           if (dateFrom && indentDate < dateFrom) return false;
           if (dateTo && indentDate > dateTo) return false;
@@ -129,20 +132,13 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
           const timeB = new Date(b.updateTimestamp || b.requisitionDate || 0).getTime();
           return timeB - timeA;
         }),
-    [dateFrom, dateTo, indentLines, indentTypeFilter, itemFilter, materialById, materials, requestedByFilter, searchTerm, statusIndents]
+    [dateFrom, dateTo, firmFilter, indentLines, indentTypeFilter, itemFilter, materialById, materials, requestedByFilter, searchTerm, statusIndents]
   );
 
   const displayRows = useMemo(
     () =>
-      mode === "Pending"
-        ? visibleIndents.flatMap((indent) =>
-            indentLines
-              .filter((line) => line.indentId === indent.id)
-              .filter((line) => !itemFilter || getIndentLineItemName(line, materialById) === itemFilter)
-              .map((line) => ({ indent, line }))
-          )
-        : visibleIndents.map((indent) => ({ indent, line: null as IndentLine | null })),
-    [indentLines, itemFilter, materialById, mode, visibleIndents]
+      visibleIndents.map((indent) => ({ indent, line: null as IndentLine | null })),
+    [visibleIndents]
   );
   const {
     page,
@@ -232,7 +228,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       });
     }
 
-    doc.save(`${getQueueTitle(mode).replace(/[^a-z0-9]+/gi, "_")}.pdf`);
+    doc.save(`Purchase_Requisition_${getQueueTitle(mode).replace(/[^a-z0-9]+/gi, "_")}.pdf`);
   };
 
   const handleRowPdf = async (indent: Indent) => {
@@ -305,7 +301,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         }),
       });
 
-      doc.save(`Indent_${indent.indentNo || indent.id}.pdf`);
+      doc.save(`Purchase_Requisition_${indent.indentNo || indent.id}.pdf`);
     } finally {
       setPdfIndentId(null);
     }
@@ -417,16 +413,18 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
+        <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
         <Select value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="All Requested By" />
         <Select value={indentTypeFilter} onChange={setIndentTypeFilter} options={indentTypeOptions} placeholder="All Indent Types" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
         <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
         <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
-        {searchTerm || requestedByFilter || indentTypeFilter || itemFilter || dateFrom || dateTo ? (
+        {searchTerm || firmFilter || requestedByFilter || indentTypeFilter || itemFilter || dateFrom || dateTo ? (
           <button
             type="button"
             onClick={() => {
               setSearchTerm("");
+              setFirmFilter("");
               setRequestedByFilter("");
               setIndentTypeFilter("");
               setItemFilter("");
@@ -509,11 +507,11 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                     <td className="border border-black px-4 py-4 text-sm text-black whitespace-nowrap">{formatDate(indent.requiredDate)}</td>
                     {mode === "Pending" ? (
                       <>
-                        <td className="border border-black px-4 py-4 text-sm text-black">{line?.erpCode || ""}</td>
+                        <td className="border border-black px-4 py-4 text-sm text-black">{mode === "Pending" ? lineRows.length : line?.erpCode || ""}</td>
                         <td className="border border-black px-4 py-4 text-sm text-black min-w-[320px]">
-                          {material?.name || line?.erpCode || "Unknown Material"}
+                          {mode === "Pending" ? getLineSummary(lineRows, materials) : material?.name || line?.erpCode || "Unknown Material"}
                         </td>
-                        <td className="border border-black px-4 py-4 text-sm text-black text-right">{Number(line?.qty || 0).toLocaleString()}</td>
+                        <td className="border border-black px-4 py-4 text-sm text-black text-right">{mode === "Pending" ? Number(withIndentTotals(indent, lineRows).totalIndentQty || 0).toLocaleString() : Number(line?.qty || 0).toLocaleString()}</td>
                         <td className="border border-black px-4 py-4 text-sm text-black">{line?.uom || ""}</td>
                         <td className="border border-black px-4 py-4 text-sm text-black whitespace-nowrap">
                           {line?.targetDeliveryDate ? formatDate(line.targetDeliveryDate) : ""}
@@ -537,6 +535,16 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                         >
                           <Eye size={16} />
                         </button>
+                        {mode === "Pending" ? (
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/indent/view/${indent.id}`)}
+                            title="Edit child lines"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                          >
+                            <Edit size={16} />
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => void handleRowPdf(indent)}
