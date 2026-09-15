@@ -7488,6 +7488,7 @@ await db.query(`
         { table: "loading_slips", column: "cancelledAt", type: "VARCHAR(255)" },
         { table: "loading_slips", column: "cancelledBy", type: "VARCHAR(255)" },
         { table: "firms", column: "firmName", type: "VARCHAR(255) NOT NULL" },
+        { table: "firms", column: "shortName", type: "VARCHAR(100)" },
         { table: "firms", column: "logo", type: "LONGTEXT" },
         { table: "firms", column: "tallyPortNo", type: "VARCHAR(20)" },
         { table: "firms", column: "updatedBy", type: "VARCHAR(255)" },

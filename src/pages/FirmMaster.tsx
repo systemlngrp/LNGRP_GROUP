@@ -3,6 +3,7 @@ import { Edit, ImagePlus, Plus, Trash2, X } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { Firm } from "../types";
+import { generateFirmShortName } from "../lib/firmDisplay";
 
 const inputClass = "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors";
 
@@ -22,6 +23,7 @@ export function FirmMaster() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [firmName, setFirmName] = useState("");
+  const [shortName, setShortName] = useState("");
   const [logo, setLogo] = useState("");
   const [tallyPortNo, setTallyPortNo] = useState("");
   const [routeSourceFirmId, setRouteSourceFirmId] = useState("");
@@ -38,7 +40,7 @@ export function FirmMaster() {
           const q = searchTerm.trim().toLowerCase();
           if (!q) return true;
           return (
-            String(firm.firmName || "").toLowerCase().includes(q) ||
+            String(firm.firmName || "").toLowerCase().includes(q) || String(firm.shortName || generateFirmShortName(firm.firmName)).toLowerCase().includes(q) ||
             String(firm.tallyPortNo || "").toLowerCase().includes(q)
           );
         })
@@ -53,6 +55,7 @@ export function FirmMaster() {
   const resetForm = () => {
     setEditingId(null);
     setFirmName("");
+    setShortName("");
     setLogo("");
     setTallyPortNo("");
     setRouteSourceFirmId("");
@@ -70,6 +73,7 @@ export function FirmMaster() {
   const openEdit = (firm: Firm) => {
     setEditingId(firm.id);
     setFirmName(firm.firmName || "");
+    setShortName(firm.shortName || generateFirmShortName(firm.firmName));
     setLogo(firm.logo || "");
     setTallyPortNo(String(firm.tallyPortNo || ""));
     setRouteSourceFirmId(String(firm.routeSourceFirmId || ""));
@@ -106,11 +110,13 @@ export function FirmMaster() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const normalizedName = firmName.trim();
+    const normalizedShortName = shortName.trim().toUpperCase();
     const normalizedPort = tallyPortNo.trim();
     if (!normalizedName) {
       alert("Firm name is required.");
       return;
     }
+    if (!normalizedShortName) { alert("Short name is required."); return; }
     if (normalizedPort && !/^\d{1,5}$/.test(normalizedPort)) {
       alert("Tally port no must be a valid port number.");
       return;
@@ -123,6 +129,10 @@ export function FirmMaster() {
       alert("A firm with this name already exists.");
       return;
     }
+    if (firms.some((firm) => firm.id !== editingId && String(firm.shortName || generateFirmShortName(firm.firmName)).trim().toLowerCase() === normalizedShortName.toLowerCase())) {
+      alert("A firm with this short name already exists.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -130,6 +140,7 @@ export function FirmMaster() {
       const nextFirm: Firm = {
         id: editingId || crypto.randomUUID(),
         firmName: normalizedName,
+        shortName: normalizedShortName,
         logo: logo || undefined,
         tallyPortNo: normalizedPort || undefined,
         routeSourceFirmId: routeSourceFirmId || undefined,
@@ -181,16 +192,20 @@ export function FirmMaster() {
               <label className="font-bold text-black">Firm Name <span className="text-red-600">*</span></label>
               <input value={firmName} onChange={(event) => setFirmName(event.target.value)} required autoFocus className={inputClass} />
             </div>
+            <div className="flex flex-col space-y-1">
+              <label className="font-bold text-black">Short Name <span className="text-red-600">*</span></label>
+              <input value={shortName} onChange={(event) => setShortName(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20))} required className={inputClass} placeholder="e.g. LNCB" />
+            </div>
             <div className="md:col-span-2 border-t-2 border-black pt-4">
               <h3 className="font-bold text-black">Inter-Firm Route</h3>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
                 <select value={routeSourceFirmId} onChange={(e) => setRouteSourceFirmId(e.target.value)} className={inputClass}>
                   <option value="">Source firm</option>
-                  {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                  {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.shortName || generateFirmShortName(firm.firmName)}</option>)}
                 </select>
                 <select value={routeDestinationFirmId} onChange={(e) => setRouteDestinationFirmId(e.target.value)} className={inputClass}>
                   <option value="">Destination firm</option>
-                  {firms.filter((firm) => firm.id !== routeSourceFirmId).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                {firms.filter((firm) => firm.id !== routeSourceFirmId).map((firm) => <option key={firm.id} value={firm.id}>{firm.shortName || generateFirmShortName(firm.firmName)}</option>)}
                 </select>
                 <input type="number" min="1" value={routeSequence} onChange={(e) => setRouteSequence(e.target.value)} className={inputClass} placeholder="Sequence" />
                 <select value={routeActive} onChange={(e) => setRouteActive(e.target.value as "Yes" | "No")} className={inputClass}>
@@ -249,7 +264,7 @@ export function FirmMaster() {
               <tr>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">SL No</th>
                 <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Logo</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Firm Name</th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Short Name</th>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Tally Port No</th>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
               </tr>
@@ -270,7 +285,7 @@ export function FirmMaster() {
                         {firm.logo ? <img src={firm.logo} alt={`${firm.firmName} logo`} className="max-h-full max-w-full object-contain" /> : <span className="text-xs font-bold text-slate-500">No Logo</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm font-bold text-black border border-black">{firm.firmName}</td>
+                    <td className="px-4 py-3 text-sm font-bold text-black border border-black">{firm.shortName || generateFirmShortName(firm.firmName)}</td>
                     <td className="px-4 py-3 text-right text-sm text-black border border-black">{firm.tallyPortNo || "-"}</td>
                     <td className="px-4 py-3 text-right text-sm border border-black">
                       <button type="button" title="Edit" aria-label="Edit" onClick={(event) => { event.stopPropagation(); openEdit(firm); }} className="mr-4 text-indigo-600 hover:text-indigo-900">

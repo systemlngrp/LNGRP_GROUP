@@ -1349,6 +1349,7 @@ export interface Service {
 export interface Firm {
   id: string;
   firmName: string;
+  shortName?: string;
   logo?: string;
   tallyPortNo?: string;
   routeSourceFirmId?: string;
