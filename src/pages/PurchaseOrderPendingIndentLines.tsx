@@ -117,8 +117,6 @@ export function PurchaseOrderPendingIndentLines() {
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((r) => [r.materialId, r.materialName])).entries()).map(([value, label]) => ({ value, label })), [rows]);
   const supplierOptions = useMemo(() => suppliers.map((s) => ({ value: s.id, label: s.name })), [suppliers]);
 
-  useEffect(() => { setPage(1); }, [firmFilter, requestedByFilter, itemFilter, supplierFilter, searchTerm, setPage]);
-
   const sortedFilteredRows = useMemo(() =>
     filteredRows
       .slice()
@@ -138,6 +136,10 @@ export function PurchaseOrderPendingIndentLines() {
     totalItems,
     paginatedItems: paginatedRows,
   } = useClientPagination(sortedFilteredRows, 25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [firmFilter, requestedByFilter, itemFilter, supplierFilter, searchTerm, setPage]);
 
   const filteredRowIds = useMemo(() => new Set(filteredRows.map((r) => r.indentLineId)), [filteredRows]);
   const allVisibleSelected = useMemo(() => {
