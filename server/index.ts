@@ -3172,6 +3172,19 @@ async function backfillInterFirmProductionProcessing(db: mysql.Pool) {
   return { repaired, skipped, failed, duplicates };
 }
 
+async function backfillLinkedProductionSources(db: mysql.Pool) {
+  const [result] = await db.query(`
+    UPDATE \`productions\`
+    SET \`itemSource\` = 'FG'
+    WHERE (COALESCE(NULLIF(TRIM(\`phpScheduledJobId\`), ''), '') <> ''
+       OR COALESCE(NULLIF(TRIM(\`plateScheduledJobId\`), ''), '') <> '')
+      AND COALESCE(UPPER(TRIM(\`itemSource\`)), '') <> 'FG'
+  `);
+  const repaired = Number((result as any)?.affectedRows || 0);
+  if (repaired > 0) console.log(`[DB] Backfilled ${repaired} linked production row(s) to FG.`);
+  return repaired;
+}
+
 async function validateLnkiPrintingComponents(db: mysql.Pool, processing: any) {
   if (String(processing.completionStatus || "").trim().toLowerCase() !== "full") return;
   if (normalizeMachineName(String(processing.machineName || "")) !== "Printing") return;
@@ -7509,6 +7522,7 @@ await db.query(`
       await ensureInterFirmSchema(db, database);
       await ensureInternalFirmSuppliers(db, database);
       await backfillInterFirmProductionProcessing(db);
+      await backfillLinkedProductionSources(db);
 
       await dropRemovedFirmScopeColumns(db, database);
 
@@ -8887,6 +8901,9 @@ const createHandlers = (tableName: string) => {
 
         if (["productions", "php_job_master", "plate_job_master"].includes(tableName)) {
           try {
+            if (tableName === "productions" && (String(data.phpScheduledJobId || "").trim() || String(data.plateScheduledJobId || "").trim())) {
+              data.itemSource = "FG";
+            }
             const productionId = String(data.id || "").trim();
             if (productionId && !String(data.transactionNo || "").trim()) {
               const [existingRows] = await db.query("SELECT transactionNo FROM `productions` WHERE id = ? LIMIT 1", [productionId]);

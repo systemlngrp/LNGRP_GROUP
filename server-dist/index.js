@@ -2976,6 +2976,19 @@ async function backfillInterFirmProductionProcessing(db) {
     }
     return { repaired, skipped, failed, duplicates };
 }
+async function backfillLinkedProductionSources(db) {
+    const [result] = await db.query(`
+    UPDATE \`productions\`
+    SET \`itemSource\` = 'FG'
+    WHERE (COALESCE(NULLIF(TRIM(\`phpScheduledJobId\`), ''), '') <> ''
+       OR COALESCE(NULLIF(TRIM(\`plateScheduledJobId\`), ''), '') <> '')
+      AND COALESCE(UPPER(TRIM(\`itemSource\`)), '') <> 'FG'
+  `);
+    const repaired = Number(result?.affectedRows || 0);
+    if (repaired > 0)
+        console.log(`[DB] Backfilled ${repaired} linked production row(s) to FG.`);
+    return repaired;
+}
 async function validateLnkiPrintingComponents(db, processing) {
     if (String(processing.completionStatus || "").trim().toLowerCase() !== "full")
         return;
@@ -7025,6 +7038,7 @@ async function initDb(retries = 5) {
             await ensureInterFirmSchema(db, database);
             await ensureInternalFirmSuppliers(db, database);
             await backfillInterFirmProductionProcessing(db);
+            await backfillLinkedProductionSources(db);
             await dropRemovedFirmScopeColumns(db, database);
             await ensureUniqueMaterialErpIndex(db, database);
             await ensureUniquePackingSlipReelNoIndex(db, database);
@@ -8284,6 +8298,9 @@ const createHandlers = (tableName) => {
                 }
                 if (["productions", "php_job_master", "plate_job_master"].includes(tableName)) {
                     try {
+                        if (tableName === "productions" && (String(data.phpScheduledJobId || "").trim() || String(data.plateScheduledJobId || "").trim())) {
+                            data.itemSource = "FG";
+                        }
                         const productionId = String(data.id || "").trim();
                         if (productionId && !String(data.transactionNo || "").trim()) {
                             const [existingRows] = await db.query("SELECT transactionNo FROM `productions` WHERE id = ? LIMIT 1", [productionId]);
