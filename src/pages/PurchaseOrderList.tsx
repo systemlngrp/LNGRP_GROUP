@@ -796,7 +796,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       case "item-not-received":
         return "PO Item Not Received";
       case "item-cancelled":
-        return "PO Item Cancel";
+        return "PO Item Cancelled";
       default:
         return "Purchase Orders Master";
     }

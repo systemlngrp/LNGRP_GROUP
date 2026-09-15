@@ -104,7 +104,7 @@ const purchaseOrderItems: NavItem[] = [
   { name: "Approved PO", href: "/purchase-orders/approved", icon: CheckCircle, countKey: "/purchase-orders/approved" },
   { name: "Rejected PO", href: "/purchase-orders/rejected", icon: X, countKey: "/purchase-orders/rejected" },
   { name: "PO Item Not Received", href: "/purchase-orders/item-not-received", icon: Activity, countKey: "/purchase-orders/item-not-received" },
-  { name: "PO Item Cancel", href: "/purchase-orders/item-cancelled", icon: X, countKey: "/purchase-orders/item-cancelled" },
+  { name: "PO Item Cancelled", href: "/purchase-orders/item-cancelled", icon: X, countKey: "/purchase-orders/item-cancelled" },
   { name: "Purchase Order Master", href: "/purchase-orders/all", icon: Database, countKey: "/purchase-orders/all" },
 ];
 

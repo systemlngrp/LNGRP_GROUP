@@ -88,7 +88,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
   const getLineDraft = (line: IndentLine) => lineDrafts[line.id] || {
     qty: String(Number(line.qty || 0)),
-    cancelledQty: String(Number(line.cancelledQty || 0)),
+    cancelledQty: line.cancelledQty === null || line.cancelledQty === undefined ? "" : String(line.cancelledQty),
   };
 
   const updateLineDraft = (line: IndentLine, patch: Partial<{ qty: string; cancelledQty: string }>) => {
@@ -104,8 +104,9 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       const draft = getLineDraft(line);
       const qty = Number(draft.qty);
       const orderedQty = Number(line.orderedQty || 0);
-      const cancelledQty = Number(draft.cancelledQty);
       if (!Number.isFinite(qty) || qty <= 0) throw new Error("Requested quantity must be greater than zero.");
+      if (draft.cancelledQty.trim() === "") return { ...line, qty, cancelledQty: null, balanceQty: Math.max(0, qty - orderedQty), updatedBy: "System User", updateTimestamp: timestamp };
+      const cancelledQty = Number(draft.cancelledQty);
       if (!Number.isFinite(cancelledQty) || cancelledQty < 0) throw new Error("Cancelled quantity must be zero or greater.");
       if (qty < orderedQty + cancelledQty) throw new Error("Requested quantity cannot be less than ordered plus cancelled quantity.");
       if (cancelledQty > qty - orderedQty) throw new Error("Cancelled quantity cannot exceed the unfulfilled quantity.");

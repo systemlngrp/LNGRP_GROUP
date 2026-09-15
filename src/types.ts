@@ -410,7 +410,7 @@ export interface IndentLine {
   qty: number;
   targetDeliveryDate?: string;
   orderedQty?: number;
-  cancelledQty?: number;
+  cancelledQty?: number | null;
   balanceQty?: number;
   updatedBy?: string;
   updateTimestamp?: string;

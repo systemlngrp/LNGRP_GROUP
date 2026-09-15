@@ -8,7 +8,7 @@ import { ExcelExport } from "../components/ExcelExport";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
-import type { Firm, Indent, IndentLine, Supplier } from "../types";
+import type { Firm, GstRateMaster, Indent, IndentLine, Supplier } from "../types";
 import { useAuth } from "../auth/AuthContext";
 import { useAutoRefreshEffect, useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
@@ -38,6 +38,7 @@ export function PurchaseOrderPendingIndentLines() {
   const { activeFirmId } = useAuth();
   const navigate = useNavigate();
   const [suppliers] = useData<Supplier>("suppliers", []);
+  const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines] = useData<IndentLine>("indent-lines", []);
@@ -116,6 +117,14 @@ export function PurchaseOrderPendingIndentLines() {
   const requestedByOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.requestedBy).filter(Boolean))).sort().map((v) => ({ value: v, label: v })), [rows]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((r) => [r.materialId, r.materialName])).entries()).map(([value, label]) => ({ value, label })), [rows]);
   const supplierOptions = useMemo(() => suppliers.map((s) => ({ value: s.id, label: s.name })), [suppliers]);
+  const gstRateOptions = useMemo(
+    () => gstRateMasters
+      .filter((rate) => rate.active !== "No")
+      .sort((a, b) => Number(a.rate) - Number(b.rate))
+      .map((rate) => ({ value: String(rate.rate), label: `${rate.name} (${Number(rate.rate).toLocaleString()}%)` })),
+    [gstRateMasters],
+  );
+  const defaultGstRate = gstRateOptions.find((option) => option.value === "18")?.value || gstRateOptions[0]?.value || "";
 
   const sortedFilteredRows = useMemo(() =>
     filteredRows
@@ -163,7 +172,7 @@ export function PurchaseOrderPendingIndentLines() {
           supplierId: "",
           qty: String(Number(row.pendingQty || 0)),
           rate: String(Number.isFinite(suggestedRate) ? suggestedRate : 0),
-          gstRate: "18",
+          gstRate: defaultGstRate,
         },
       };
     });
@@ -188,7 +197,7 @@ export function PurchaseOrderPendingIndentLines() {
             supplierId: "",
             qty: String(Number(r.pendingQty || 0)),
             rate: String(Number.isFinite(suggestedRate) ? suggestedRate : 0),
-            gstRate: "18",
+            gstRate: defaultGstRate,
           };
         }
       });
@@ -496,15 +505,7 @@ export function PurchaseOrderPendingIndentLines() {
                       />
                     </td>
                     <td className="border border-black px-4 py-3 text-sm text-black text-right whitespace-nowrap">
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={rowInputs[row.indentLineId]?.gstRate || "18"}
-                        onChange={(e) => updateInput(row.indentLineId, { gstRate: e.target.value })}
-                        disabled={!selectedIds.has(row.indentLineId)}
-                        className="w-20 rounded border border-black bg-white px-2 py-1 text-right text-sm disabled:opacity-50"
-                      />
+                      <Select compact value={rowInputs[row.indentLineId]?.gstRate || defaultGstRate} onChange={(value) => updateInput(row.indentLineId, { gstRate: value })} options={gstRateOptions} placeholder="GST Rate" disabled={!selectedIds.has(row.indentLineId)} />
                     </td>
                     <td className="border border-black px-4 py-3 text-sm text-black text-right">{taxes.cgst ? taxes.cgst.toFixed(2) : "-"}</td>
                     <td className="border border-black px-4 py-3 text-sm text-black text-right">{taxes.sgst ? taxes.sgst.toFixed(2) : "-"}</td>
