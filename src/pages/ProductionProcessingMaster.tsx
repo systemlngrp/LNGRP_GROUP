@@ -41,6 +41,8 @@ export function ProductionProcessingMaster() {
   const { user } = useAuth();
   const [processing, setProcessing] = useData<ProductionProcessing>("production_processing", []);
   const [productions] = useData<Production>("productions", []);
+  const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
   const [searchTerm, setSearchTerm] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -102,6 +104,9 @@ export function ProductionProcessingMaster() {
     const auditUserName = user?.name || "System User";
     const normalizedMachineName = normalizeMachineName(selectedMachine.name);
     const timestamp = new Date().toISOString();
+    const existingProcessing = processing.find((item) => item.id === id);
+    const savedCompletionStatus = existingProcessing?.completionStatus || "Full";
+    const isFullCorrugationLiner = normalizedMachineName === "Corrugation Liner" && savedCompletionStatus === "Full";
 
     setProcessing((prev) =>
       prev.map((item) => {
@@ -135,6 +140,18 @@ export function ProductionProcessingMaster() {
             };
       })
     );
+    if (isFullCorrugationLiner) {
+      const sourceJob = phpJobs.find((job) => job.id === selectedProduction.id);
+      if (sourceJob) {
+        void setPhpJobs((prev) => prev.map((job) => job.id === sourceJob.id
+          ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUserName, updateTimestamp: timestamp }
+          : job));
+      } else if (plateJobs.some((job) => job.id === selectedProduction.id)) {
+        void setPlateJobs((prev) => prev.map((job) => job.id === selectedProduction.id
+          ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUserName, updateTimestamp: timestamp }
+          : job));
+      }
+    }
     cancelEdit();
   };
 

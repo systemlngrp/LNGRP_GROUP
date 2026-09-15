@@ -54,6 +54,8 @@ function LockedReportForm() {
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
   const [productions] = useData<Production>("productions", []);
+  const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const selectedProduction = productions.find((production) => production.id === productionId);
   const requiresCompletionStatus = usesPartFullProgress(machineName);
   const isCorrugationLiner = normalizeMachineName(machineName) === "Corrugation Liner";
@@ -433,6 +435,17 @@ function FullReportForm() {
       };
 
       await setProcessing((prev) => [...prev, newEntry]);
+      if (normalizeMachineName(newEntry.machineName) === "Corrugation Liner" && newEntry.completionStatus === "Full") {
+        if (phpJobs.some((job) => job.id === selectedProduction.id)) {
+          await setPhpJobs((prev) => prev.map((job) => job.id === selectedProduction.id
+            ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUser.name, updateTimestamp: newEntry.updateTimestamp }
+            : job));
+        } else if (plateJobs.some((job) => job.id === selectedProduction.id)) {
+          await setPlateJobs((prev) => prev.map((job) => job.id === selectedProduction.id
+            ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUser.name, updateTimestamp: newEntry.updateTimestamp }
+            : job));
+        }
+      }
       navigate(getProcessingBackUrl(initialMachineId));
     } catch (error) {
       console.error("Failed to submit processing report:", error);
