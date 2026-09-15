@@ -317,6 +317,7 @@ export function IndentForm() {
                           options={materialOptions}
                           value={line.materialId}
                           onChange={(value) => handleLineChange(line.id, "materialId", value)}
+                          wrapLabels
                           placeholder={activeMaterials.length === 0 ? "No material available..." : "Select Item..."}
                         />
                       </td>

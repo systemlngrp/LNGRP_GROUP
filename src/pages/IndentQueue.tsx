@@ -32,7 +32,7 @@ function getLineSummary(lines: IndentLine[], materials: Material[]) {
     .map((line) => {
       const material = materials.find((row) => row.id === line.materialId);
       const name = material?.name || line.erpCode || "Unknown Material";
-      return `${name} (${line.qty} ${line.uom || ""})`.trim();
+      return name;
     })
     .join(", ");
 }
@@ -54,7 +54,7 @@ function getIndentLineItemName(line: IndentLine, materialById: Map<string, Mater
 function IndentQueue({ mode }: { mode: QueueMode }) {
   const navigate = useNavigate();
   const [indents, setIndents] = useData<Indent>("indents", []);
-  const [indentLines] = useData<IndentLine>("indent-lines", []);
+  const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [materials] = useData<Material>("materials", []);
   const [settings] = useData<Setting>("settings", []);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
@@ -69,6 +69,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [expandedIndentIds, setExpandedIndentIds] = useState<Set<string>>(new Set());
+  const [lineDrafts, setLineDrafts] = useState<Record<string, { qty: string; cancelledQty: string }>>({});
 
   const currentSetting = settings[0];
   const showExpandableItems = true;
@@ -80,6 +81,43 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       else next.add(indentId);
       return next;
     });
+  };
+
+  const getLineDraft = (line: IndentLine) => lineDrafts[line.id] || {
+    qty: String(Number(line.qty || 0)),
+    cancelledQty: String(Number(line.cancelledQty || 0)),
+  };
+
+  const updateLineDraft = (line: IndentLine, patch: Partial<{ qty: string; cancelledQty: string }>) => {
+    const current = getLineDraft(line);
+    setLineDrafts((prev) => ({ ...prev, [line.id]: { ...current, ...patch } }));
+  };
+
+  const saveChildLines = async (indent: Indent, lines: IndentLine[]) => {
+    if (indent.status !== "Pending") return;
+    const timestamp = new Date().toISOString();
+    const nextLines = indentLines.map((line) => {
+      if (line.indentId !== indent.id) return line;
+      const draft = getLineDraft(line);
+      const qty = Number(draft.qty);
+      const orderedQty = Number(line.orderedQty || 0);
+      const cancelledQty = Number(draft.cancelledQty);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error("Requested quantity must be greater than zero.");
+      if (!Number.isFinite(cancelledQty) || cancelledQty < 0) throw new Error("Cancelled quantity must be zero or greater.");
+      if (qty < orderedQty + cancelledQty) throw new Error("Requested quantity cannot be less than ordered plus cancelled quantity.");
+      if (cancelledQty > qty - orderedQty) throw new Error("Cancelled quantity cannot exceed the unfulfilled quantity.");
+      return { ...line, qty, cancelledQty, balanceQty: Math.max(0, qty - orderedQty - cancelledQty), updatedBy: "System User", updateTimestamp: timestamp };
+    });
+    const nextIndent = withIndentTotals(indent, nextLines.filter((line) => line.indentId === indent.id));
+    await setIndentLines(nextLines);
+    await setIndents((prev) => prev.map((row) => row.id === indent.id ? { ...nextIndent, updatedBy: "System User", updateTimestamp: timestamp } : row));
+    setLineDrafts((prev) => { const next = { ...prev }; lines.forEach((line) => delete next[line.id]); return next; });
+    alert("Indent item quantities updated.");
+  };
+
+  const handleSaveChildLines = async (indent: Indent, lines: IndentLine[]) => {
+    try { await saveChildLines(indent, lines); }
+    catch (error) { alert(error instanceof Error ? error.message : "Failed to update indent item quantities."); }
   };
 
   const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
@@ -457,8 +495,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                   <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">ERP</th>
                   <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black min-w-[320px]">Item</th>
                   <th className="border border-black px-4 py-3 text-right text-sm font-bold uppercase text-black">Qty</th>
-                  <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Unit</th>
-                  <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Target Delivery</th>
                 </>
               ) : (
                 <>
@@ -477,7 +513,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             {paginatedDisplayRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={mode === "Pending" ? 10 : mode === "Rejected" ? 7 : 6}
+                  colSpan={mode === "Pending" ? 8 : mode === "Rejected" ? 7 : 6}
                   className="border border-black px-6 py-10 text-center font-medium text-black"
                 >
                   No indent records found.
@@ -518,10 +554,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                           {mode === "Pending" ? getLineSummary(lineRows, materials) : material?.name || line?.erpCode || "Unknown Material"}
                         </td>
                         <td className="border border-black px-4 py-4 text-sm text-black text-right">{mode === "Pending" ? Number(withIndentTotals(indent, lineRows).totalIndentQty || 0).toLocaleString() : Number(line?.qty || 0).toLocaleString()}</td>
-                        <td className="border border-black px-4 py-4 text-sm text-black">{line?.uom || ""}</td>
-                        <td className="border border-black px-4 py-4 text-sm text-black whitespace-nowrap">
-                          {line?.targetDeliveryDate ? formatDate(line.targetDeliveryDate) : ""}
-                        </td>
                       </>
                     ) : (
                       <>
@@ -604,14 +636,14 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                   </tr>
                   {showExpandableItems && expandedIndentIds.has(indent.id) ? (
                     <tr key={`${indent.id}-items`} className="bg-slate-50">
-                      <td colSpan={mode === "Rejected" ? 7 : 6} className="border border-black p-0">
+                      <td colSpan={mode === "Pending" ? 8 : mode === "Rejected" ? 7 : 6} className="border border-black p-0">
                         <div className="p-4">
                           <div className="mb-2 text-xs font-black uppercase text-slate-600">Items</div>
                           <div className="overflow-auto rounded border border-black bg-white">
                             <table className="min-w-full border-collapse">
                               <thead className="bg-slate-100">
                                 <tr>
-                                  {["ERP", "Item", "Qty", "Unit", "Target Delivery", "Ordered Qty", "Cancelled Qty", "Balance Qty"].map((heading) => (
+                                  {["ERP", "Item", "Requested Qty", "Unit", "Target Delivery", "Ordered Qty", "Cancelled Qty", "Balance Qty"].map((heading) => (
                                     <th key={heading} className="border border-black px-3 py-2 text-left text-xs font-black uppercase text-black">{heading}</th>
                                   ))}
                                 </tr>
@@ -624,15 +656,17 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                                 ) : (
                                   lineRows.map((row) => {
                                     const rowMaterial = materials.find((m) => m.id === row.materialId);
+                                    const draft = getLineDraft(row);
+                                    const canEditChild = mode === "Pending";
                                     return (
                                       <tr key={row.id}>
                                         <td className="border border-black px-3 py-2 text-sm text-black">{row.erpCode || ""}</td>
                                         <td className="border border-black px-3 py-2 text-sm font-medium text-black">{rowMaterial?.name || row.erpCode || "Unknown Material"}</td>
-                                        <td className="border border-black px-3 py-2 text-right text-sm text-black">{Number(row.qty || 0).toLocaleString()}</td>
+                                        <td className="border border-black px-3 py-2 text-right text-sm text-black">{canEditChild ? <input type="number" min="0.01" step="0.01" value={draft.qty} onChange={(event) => updateLineDraft(row, { qty: event.target.value })} className="w-28 rounded border border-slate-300 px-2 py-1 text-right" /> : Number(row.qty || 0).toLocaleString()}</td>
                                         <td className="border border-black px-3 py-2 text-sm text-black">{row.uom || ""}</td>
                                         <td className="border border-black px-3 py-2 text-sm text-black">{row.targetDeliveryDate ? formatDate(row.targetDeliveryDate) : ""}</td>
                                         <td className="border border-black px-3 py-2 text-right text-sm text-black">{Number(row.orderedQty || 0).toLocaleString()}</td>
-                                        <td className="border border-black px-3 py-2 text-right text-sm text-black">{Number(row.cancelledQty || 0).toLocaleString()}</td>
+                                        <td className="border border-black px-3 py-2 text-right text-sm text-black">{canEditChild ? <input type="number" min="0" step="0.01" value={draft.cancelledQty} onChange={(event) => updateLineDraft(row, { cancelledQty: event.target.value })} className="w-28 rounded border border-slate-300 px-2 py-1 text-right" /> : Number(row.cancelledQty || 0).toLocaleString()}</td>
                                         <td className="border border-black px-3 py-2 text-right text-sm font-bold text-black">{Number(row.balanceQty || 0).toLocaleString()}</td>
                                       </tr>
                                     );
@@ -641,6 +675,11 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                               </tbody>
                             </table>
                           </div>
+                          {mode === "Pending" ? (
+                            <div className="mt-3 flex justify-end">
+                              <button type="button" onClick={() => void handleSaveChildLines(indent, lineRows)} className="rounded bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">Save Item Updates</button>
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                     </tr>
