@@ -1772,7 +1772,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <div style={{ display: "none" }} className="space-y-4 border-b border-dashed border-black pb-5">
+        <div className="space-y-4 border-b border-dashed border-black pb-5">
             <div>
               <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Organization Details</h3>
             <p className="text-sm text-black leading-6">
