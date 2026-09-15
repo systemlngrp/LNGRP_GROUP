@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import Select from "react-select";
+import { Select as FirmSelect } from "../components/Select";
 import {
   Check,
   ChevronDown,
@@ -27,6 +28,7 @@ import type {
   MaterialIn,
   PurchaseOrder,
   PurchaseOrderLine,
+  Firm,
   Setting,
   Supplier,
 } from "../types";
@@ -108,9 +110,11 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [settings] = useData<Setting>("settings", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [poNumberFilter, setPoNumberFilter] = useState("");
   const [fromDateFilter, setFromDateFilter] = useState("");
   const [toDateFilter, setToDateFilter] = useState("");
@@ -131,6 +135,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const materialMap = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
   const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
   const supplierNameMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
+  const firmName = useCallback((order: PurchaseOrder) => String(order.firmName || firms.find((firm) => firm.id === order.firmId)?.firmName || "Unassigned"), [firms]);
   const indentMap = useMemo(() => new Map(indents.map((indent) => [indent.id, indent])), [indents]);
   const indentLineMap = useMemo(() => new Map(indentLines.map((line) => [line.id, line])), [indentLines]);
   const receivedQtyByPoLineId = useMemo(() => {
@@ -224,6 +229,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         return true;
       })
       .filter((po) => !supplierFilter || po.supplierId === supplierFilter)
+      .filter((po) => !firmFilter || String(po.firmId || "") === firmFilter)
       .filter((po) => {
         const lines = orderLines.filter((line) => line.purchaseOrderId === po.id);
         const modeLines = getModeLines(lines);
@@ -243,7 +249,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           new Date(b.updateTimestamp || b.poDate || 0).getTime() -
           new Date(a.updateTimestamp || a.poDate || 0).getTime(),
       );
-  }, [getModeLines, isLineMode, materialMap, mode, orderLines, purchaseOrders, searchTerm, supplierFilter, supplierNameMap]);
+  }, [firmFilter, getModeLines, isLineMode, materialMap, mode, orderLines, purchaseOrders, searchTerm, supplierFilter, supplierNameMap]);
   const filteredQtySummary = useMemo(() => {
     return filteredOrders.reduce(
       (summary, order) => {
@@ -278,6 +284,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     const search = searchTerm.trim().toLowerCase();
     return purchaseOrders
       .filter((order) => !supplierFilter || order.supplierId === supplierFilter)
+      .filter((order) => !firmFilter || String(order.firmId || "") === firmFilter)
       .filter((order) => !fromDateFilter || String(order.poDate || "") >= fromDateFilter)
       .filter((order) => !toDateFilter || String(order.poDate || "") <= toDateFilter)
       .flatMap((order) => {
@@ -326,7 +333,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           String(a.order.poNo || "").localeCompare(String(b.order.poNo || "")) ||
           String(a.itemLabel || "").localeCompare(String(b.itemLabel || "")),
       );
-  }, [fromDateFilter, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, indentLineMap, indentMap, materialMap, orderLines, purchaseOrders, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
+  }, [firmFilter, fromDateFilter, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, indentLineMap, indentMap, materialMap, orderLines, purchaseOrders, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
+
+  const firmOptions = useMemo(() => firms.filter((firm) => purchaseOrders.some((order) => order.firmId === firm.id)).map((firm) => ({ value: firm.id, label: firm.firmName })), [firms, purchaseOrders]);
 
   const poNumberOptions = useMemo(() => {
     const byId = new Map<string, string>();
@@ -1024,6 +1033,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
             </select>
           ) : null}
           <div className="w-full md:w-64">
+            <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
+          </div>
+          <div className="w-full md:w-64">
             <Select<SelectOption, false>
               options={supplierSelectOptions}
               value={supplierSelectOptions.find((option) => option.value === supplierFilter) || null}
@@ -1081,6 +1093,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
               <tr className="divide-x divide-black border-b border-black">
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">PO Number</th>
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">PO Date</th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Firm</th>
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Indent Number</th>
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Indent Date</th>
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Supplier</th>
@@ -1117,6 +1130,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                   <tr key={row.line.id} className="divide-x divide-black text-[10px] font-bold hover:bg-slate-50">
                     <td className="px-3 py-3 text-black uppercase">{row.order.poNo || "DRAFT"}</td>
                     <td className="px-3 py-3 text-black">{formatDate(row.order.poDate)}</td>
+                    <td className="px-3 py-3 text-black uppercase">{firmName(row.order)}</td>
                     <td className="px-3 py-3 text-black uppercase">{row.indent?.indentNo || "-"}</td>
                     <td className="px-3 py-3 text-black">{row.indent?.requisitionDate ? formatDate(row.indent.requisitionDate) : "-"}</td>
                     <td className="px-3 py-3 text-black uppercase">{row.supplierName}</td>
@@ -1181,6 +1195,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
               <th className="w-10 px-4 py-3"></th>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">PO Number</th>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">PO Date</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">Firm</th>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">Required Date</th>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">Supplier</th>
               <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black">Total Qty</th>
@@ -1197,7 +1212,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           <tbody className="divide-y divide-black">
             {paginatedOrders.length === 0 ? (
               <tr>
-                <td colSpan={mode === "rejected" ? 12 : 11} className="px-4 py-12 text-center text-slate-500 italic">
+                <td colSpan={mode === "rejected" ? 13 : 12} className="px-4 py-12 text-center text-slate-500 italic">
                   No purchase orders found.
                 </td>
               </tr>
@@ -1239,6 +1254,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                           formatDate(order.poDate)
                         )}
                       </td>
+                      <td className="px-4 py-4 text-sm text-black font-medium whitespace-nowrap">{firmName(order)}</td>
                       <td className="px-4 py-4 text-sm text-black font-medium whitespace-nowrap">
                         {isEditing ? (
                           <input

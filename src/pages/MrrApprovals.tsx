@@ -10,6 +10,7 @@ import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { useNavigate } from "react-router-dom";
 import { useConfirm } from "../components/ConfirmDialog";
+import { Select as FirmSelect } from "../components/Select";
 
 type Stage = "All Approval" | "Pending PH" | "Pending Accounts" | "Pending MD";
 type SortField = "timestamp" | "gateEntryNo" | "transactionNo";
@@ -36,6 +37,7 @@ export function MrrApprovals() {
   
   const [activeStage, setActiveStage] = useState<Stage>("All Approval");
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
@@ -103,6 +105,7 @@ export function MrrApprovals() {
   const filteredList = useMemo(() => {
     return materialIn
       .filter(m => activeStage === "All Approval" ? approvalStatuses.includes(m.status as Stage) : m.status === activeStage)
+      .filter(m => !firmFilter || String(m.firmId || m.destinationFirmId || "") === firmFilter)
       .filter(m => {
         const supplierName = getSupplierName(m.supplierId);
         const firmName = getFirmName(m);
@@ -122,7 +125,9 @@ export function MrrApprovals() {
 
         return sortDirection === "asc" ? comparison : -comparison;
       });
-  }, [materialIn, activeStage, searchTerm, suppliers, companies, firms, sortField, sortDirection]);
+  }, [materialIn, activeStage, searchTerm, suppliers, companies, firms, firmFilter, sortField, sortDirection]);
+
+  const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((m) => m.firmId === firm.id || m.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: firm.firmName })), [firms, materialIn]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -342,6 +347,7 @@ export function MrrApprovals() {
           <div className="bg-indigo-600 px-4 py-2 text-white font-black uppercase text-sm border-b border-black flex justify-between items-center">
             <span>{activeStage} ({filteredList.length})</span>
             <div className="flex items-center gap-2">
+              <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
               <Search size={14} />
               <input 
                 value={searchTerm}

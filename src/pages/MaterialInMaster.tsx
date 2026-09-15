@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { Company, Material, MaterialIn, MaterialInPackingSlip, Service, Setting, Supplier } from "../types";
+import { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Service, Setting, Supplier } from "../types";
 import { formatDate } from "../lib/serial";
 import { ChevronDown, ChevronRight, Search, Trash2, Download, QrCode } from "lucide-react";
 import { Select } from "../components/Select";
@@ -21,6 +21,7 @@ export function MaterialInMaster() {
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [services] = useData<Service>("services", []);
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [settings] = useData<Setting>("settings", []);
@@ -30,11 +31,14 @@ export function MaterialInMaster() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [mrrFilter, setMrrFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
   const statusOptions = ["All", "Pending PH", "Pending Accounts", "Pending MD", "Pending Tally", "Completed"];
   const mrrOptions = useMemo(() => makeOptions(materialIn.map((entry) => entry.transactionNo)), [materialIn]);
+  const getFirmName = (entry: MaterialIn) => String(entry.firmName || firms.find((firm) => firm.id === (entry.firmId || entry.destinationFirmId))?.firmName || "Unassigned");
+  const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((entry) => entry.firmId === firm.id || entry.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: firm.firmName })), [firms, materialIn]);
 
   const handleDelete = (id: string) => {
     if (deletingId !== id) {
@@ -189,12 +193,13 @@ export function MaterialInMaster() {
       const matchesSearch = searchableParentText.includes(searchTerm.toLowerCase());
 
       const matchesMrr = !mrrFilter || entry.transactionNo === mrrFilter;
+      const matchesFirm = !firmFilter || String(entry.firmId || entry.destinationFirmId || "") === firmFilter;
       const matchesStatus = statusFilter === "All" || entry.status === statusFilter;
       const receiptDate = entry.date || "";
       const matchesFromDate = !fromDate || receiptDate >= fromDate;
       const matchesToDate = !toDate || receiptDate <= toDate;
 
-      return matchesSearch && matchesMrr && matchesStatus && matchesFromDate && matchesToDate;
+      return matchesSearch && matchesMrr && matchesFirm && matchesStatus && matchesFromDate && matchesToDate;
     })
     .sort((a, b) => {
       const timeA = new Date(a.updateTimestamp || a.timestamp || 0).getTime();
@@ -289,6 +294,10 @@ export function MaterialInMaster() {
             </select>
           </div>
           <div className="flex flex-col gap-1 min-w-[180px]">
+            <label className="text-[10px] font-black uppercase text-slate-500">Firm</label>
+            <Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[180px]">
             <label className="text-[10px] font-black uppercase text-slate-500">MRR No</label>
             <Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="All MRR" />
           </div>
@@ -300,13 +309,14 @@ export function MaterialInMaster() {
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2">
-            {(fromDate || toDate || statusFilter !== "All" || mrrFilter || searchTerm) && (
+            {(fromDate || toDate || statusFilter !== "All" || mrrFilter || firmFilter || searchTerm) && (
               <button
                 onClick={() => {
                   setFromDate("");
                   setToDate("");
                   setStatusFilter("All");
                   setMrrFilter("");
+                  setFirmFilter("");
                   setSearchTerm("");
                 }}
                 className="text-[10px] font-black uppercase text-red-600 hover:text-red-800 underline"
@@ -398,6 +408,7 @@ export function MaterialInMaster() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MRR No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MRR Type</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Date</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Gate Entry No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Supplier</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Invoice No</th>
@@ -436,6 +447,7 @@ export function MaterialInMaster() {
                     <td className="px-4 py-3 text-sm font-bold text-black border border-black whitespace-nowrap">{getMrrNoElement(entry)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatText(entry.mrrType)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatDate(entry.date)}</td>
+                    <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{getFirmName(entry)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatText(entry.gateEntryNo)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black min-w-[180px]">{getSupplierName(entry.supplierId)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatText(entry.invoiceNo)}</td>
