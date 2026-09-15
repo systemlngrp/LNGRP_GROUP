@@ -8051,10 +8051,12 @@ const createHandlers = (tableName) => {
                         const mappingKey = Object.keys(mandatoryMapping).find((key) => key.toUpperCase() === typeName.toUpperCase());
                         let requiredMachines = mappingKey ? mandatoryMapping[mappingKey] : [];
                         if (source === "PHP" || source === "PLATE") {
-                            const [allMachineRows] = await db.query("SELECT `name` FROM `machines`");
-                            requiredMachines = allMachineRows.map((row) => normalizeMachineName(String(row.name || "")));
+                            requiredMachines = ["Corrugation Liner"];
                         }
                         requiredMachines = Array.from(new Set(requiredMachines.map((name) => normalizeMachineName(name)).filter(Boolean)));
+                        if ((source === "PHP" || source === "PLATE") && data.machineName !== "Corrugation Liner") {
+                            return res.status(409).json({ error: "PHP and Plate jobs can only be reported under Corrugation Liner." });
+                        }
                         if (requiredMachines.includes(data.machineName)) {
                             const [stepRows] = await db.query(`SELECT machineName, completionStatus FROM \`production_processing\` WHERE productionId = ?`, [data.productionId]);
                             const completedMachines = new Set();
