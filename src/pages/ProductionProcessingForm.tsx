@@ -435,13 +435,17 @@ function FullReportForm() {
       };
 
       await setProcessing((prev) => [...prev, newEntry]);
-      if (normalizeMachineName(newEntry.machineName) === "Corrugation Liner" && newEntry.completionStatus === "Full") {
-        if (phpJobs.some((job) => job.id === selectedProduction.id)) {
-          await setPhpJobs((prev) => prev.map((job) => job.id === selectedProduction.id
+      if (normalizeMachineName(newEntry.machineName) === "Corrugation Liner" && newEntry.completionStatus === "Full" && String(selectedProduction.methodology || "").trim().toUpperCase() === "CORRUGATION") {
+        const linkedPhpId = String(selectedProduction.phpScheduledJobId || "").trim();
+        const linkedPlateId = String(selectedProduction.plateScheduledJobId || "").trim();
+        const targetPhpId = linkedPhpId || (!linkedPlateId ? selectedProduction.id : "");
+        const targetPlateId = linkedPlateId || (!linkedPhpId && !linkedPlateId ? selectedProduction.id : "");
+        if (phpJobs.some((job) => job.id === targetPhpId)) {
+          await setPhpJobs((prev) => prev.map((job) => job.id === targetPhpId
             ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUser.name, updateTimestamp: newEntry.updateTimestamp }
             : job));
-        } else if (plateJobs.some((job) => job.id === selectedProduction.id)) {
-          await setPlateJobs((prev) => prev.map((job) => job.id === selectedProduction.id
+        } else if (plateJobs.some((job) => job.id === targetPlateId)) {
+          await setPlateJobs((prev) => prev.map((job) => job.id === targetPlateId
             ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUser.name, updateTimestamp: newEntry.updateTimestamp }
             : job));
         }
