@@ -58,6 +58,7 @@ export async function renderOrganizationHeader(
     try {
       const imageDataUrl = await getImageDataUrl(organizationLogoUrl);
       const props = doc.getImageProperties(imageDataUrl);
+      const imageFormat = imageDataUrl.match(/^data:image\/([^;]+)/i)?.[1]?.toUpperCase() || "PNG";
       
       // Target width 32mm (~90px), height auto
       const targetWidth = 32;
@@ -69,7 +70,7 @@ export async function renderOrganizationHeader(
       doc.rect(x, currentY, targetWidth, targetHeight, "F");
       
       // Add image with transparency support (PNG)
-      doc.addImage(imageDataUrl, "PNG", x, currentY, targetWidth, targetHeight, undefined, "FAST");
+      doc.addImage(imageDataUrl, imageFormat as "PNG" | "JPEG" | "WEBP", x, currentY, targetWidth, targetHeight, undefined, "FAST");
       currentY += targetHeight + 5;
     } catch (error) {
       console.warn("[PDF] Organization logo could not be loaded from the deployed uploads path:", organizationLogoUrl, error);
