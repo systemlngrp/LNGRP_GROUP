@@ -140,23 +140,7 @@ export function ProductionProcessingMaster() {
             };
       })
     );
-    if (isFullCorrugationLiner && String(selectedProduction.methodology || "").trim().toUpperCase() === "CORRUGATION") {
-      const linkedPhpId = String(selectedProduction.phpScheduledJobId || "").trim();
-      const linkedPlateId = String(selectedProduction.plateScheduledJobId || "").trim();
-      const sourceJob = phpJobs.find((job) => job.id === linkedPhpId)
-        || (!linkedPhpId && !linkedPlateId && phpJobs.find((job) => job.id === selectedProduction.id));
-      if (sourceJob) {
-        void setPhpJobs((prev) => prev.map((job) => job.id === sourceJob.id
-          ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUserName, updateTimestamp: timestamp }
-          : job));
-      } else {
-        const targetId = linkedPlateId || (!linkedPhpId && !linkedPlateId ? selectedProduction.id : "");
-        if (!targetId || !plateJobs.some((job) => job.id === targetId)) return;
-        void setPlateJobs((prev) => prev.map((job) => job.id === targetId
-          ? { ...job, productionOutputQty: qtyNumber, updatedBy: auditUserName, updateTimestamp: timestamp }
-          : job));
-      }
-    }
+    if (isFullCorrugationLiner) window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
     cancelEdit();
   };
 

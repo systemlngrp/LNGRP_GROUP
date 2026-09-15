@@ -3172,6 +3172,49 @@ async function backfillInterFirmProductionProcessing(db: mysql.Pool) {
   return { repaired, skipped, failed, duplicates };
 }
 
+/** Synchronize the source PHP/Plate output from a completed Corrugation Liner report. */
+async function syncCorrugationLinerOutput(db: mysql.Pool | mysql.PoolConnection, processingId: string) {
+  const [processingRows] = await db.query(
+    `SELECT pp.*, p.status AS productionStatus, p.phpScheduledJobId, p.plateScheduledJobId
+     FROM production_processing pp
+     LEFT JOIN productions p ON p.id = pp.productionId
+     WHERE pp.id = ? LIMIT 1`, [processingId]
+  );
+  const row = (processingRows as any[])[0];
+  if (!row || normalizeMachineName(String(row.machineName || "")) !== "Corrugation Liner" ||
+      String(row.completionStatus || "").trim().toLowerCase() !== "full") return { updated: false, reason: "not-applicable" };
+  if (!row.productionId || !row.phpScheduledJobId && !row.plateScheduledJobId) {
+    console.warn("[CORRUGATION-OUTPUT] Skipped row with missing production/origin link", { processingId, productionId: row.productionId });
+    return { updated: false, reason: "missing-link" };
+  }
+  if (["cancelled", "canceled"].includes(String(row.productionStatus || "").trim().toLowerCase())) return { updated: false, reason: "cancelled" };
+  const source = row.phpScheduledJobId ? { table: "php_job_master", id: row.phpScheduledJobId, kind: "PHP" } : { table: "plate_job_master", id: row.plateScheduledJobId, kind: "Plate" };
+  const qty = Number(row.qty);
+  if (!Number.isFinite(qty)) return { updated: false, reason: "invalid-qty" };
+  const now = String(row.updateTimestamp || new Date().toISOString());
+  await db.query(`UPDATE \`${source.table}\` SET productionOutputQty = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`, [qty, row.updatedBy || null, now, source.id]);
+  const [sourceRows] = await db.query(`SELECT id FROM \`${source.table}\` WHERE id = ? LIMIT 1`, [source.id]);
+  if (!(sourceRows as any[])[0]) {
+    console.warn("[CORRUGATION-OUTPUT] Skipped unresolved source job", { processingId, source: source.kind, sourceId: source.id });
+    return { updated: false, reason: "unresolved-source" };
+  }
+  console.log("[CORRUGATION-OUTPUT] Updated source job", { processingId, source: source.kind, sourceId: source.id, qty });
+  return { updated: true, source: source.kind, sourceId: source.id, qty };
+}
+
+async function backfillCorrugationLinerOutput(db: mysql.Pool) {
+  const [rows] = await db.query(`SELECT pp.id, pp.productionId, pp.date, pp.updateTimestamp
+    FROM production_processing pp JOIN productions p ON p.id = pp.productionId
+    WHERE LOWER(TRIM(pp.machineName)) = 'corrugation liner'
+      AND LOWER(TRIM(pp.completionStatus)) = 'full'
+      AND LOWER(TRIM(COALESCE(p.status, ''))) NOT IN ('cancelled', 'canceled')
+    ORDER BY pp.productionId, pp.date DESC, pp.updateTimestamp DESC, pp.id DESC`);
+  const seen = new Set<string>(); let updated = 0; let skipped = 0;
+  for (const row of rows as any[]) { if (seen.has(String(row.productionId))) continue; seen.add(String(row.productionId)); const result = await syncCorrugationLinerOutput(db, String(row.id)); if (result.updated) updated++; else skipped++; }
+  if (updated || skipped) console.log(`[CORRUGATION-OUTPUT] Backfill complete: ${updated} updated, ${skipped} skipped.`);
+  return { updated, skipped };
+}
+
 async function backfillLinkedProductionSources(db: mysql.Pool) {
   const [result] = await db.query(`
     UPDATE \`productions\`
@@ -7523,6 +7566,7 @@ await db.query(`
       await ensureInternalFirmSuppliers(db, database);
       await backfillInterFirmProductionProcessing(db);
       await backfillLinkedProductionSources(db);
+      await backfillCorrugationLinerOutput(db);
 
       await dropRemovedFirmScopeColumns(db, database);
 
@@ -9244,6 +9288,7 @@ const createHandlers = (tableName: string) => {
             await conn.beginTransaction();
             console.log(`[DB] Atomically upserting ${tableName} with inter-firm automation`, { id: data.id });
             await conn.query(query, values);
+            await syncCorrugationLinerOutput(conn, String(data.id || ""));
             await automateInterFirmProduction(db, String(data.id || ""), "Production Processing", conn);
             await conn.commit();
             return res.json({ success: true });
@@ -9279,6 +9324,9 @@ const createHandlers = (tableName: string) => {
           }
         } else {
           await db.query(query, values);
+        }
+        if (tableName === "production_processing") {
+          await syncCorrugationLinerOutput(db, String(data.id || ""));
         }
         if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
           const pendingId = String(data.sourceTransactionId || "").trim();
