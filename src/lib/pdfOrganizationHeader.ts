@@ -14,7 +14,10 @@ async function getImageDataUrl(url: string) {
 }
 
 function getOrganizationLogoUrl(setting?: Setting | null) {
-  if (!setting?.organizationLogo) return "";
+  if (!setting?.organizationLogo) {
+    console.warn("[PDF] Organization logo is missing from settings.organizationLogo.");
+    return "";
+  }
   const encoded = setting.organizationLogo.split("/").map(encodeURIComponent).join("/");
   if (typeof window === "undefined") return `/uploads/${encoded}`;
   return new URL(`/uploads/${encoded}`, window.location.origin).toString();
@@ -69,7 +72,7 @@ export async function renderOrganizationHeader(
       doc.addImage(imageDataUrl, "PNG", x, currentY, targetWidth, targetHeight, undefined, "FAST");
       currentY += targetHeight + 5;
     } catch (error) {
-      console.warn("Organization logo could not be added to PDF:", error);
+      console.warn("[PDF] Organization logo could not be loaded from the deployed uploads path:", organizationLogoUrl, error);
     }
   }
 
@@ -105,4 +108,3 @@ export async function renderOrganizationHeader(
 
   return { currentY, hasAnyContent };
 }
-

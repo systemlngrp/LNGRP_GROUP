@@ -12,7 +12,7 @@ import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { renderOrganizationHeader } from "../lib/pdfOrganizationHeader";
-import { Indent, IndentLine, Material, Setting } from "../types";
+import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { canIndentBeUnapproved, revertIndentToPending, withIndentTotals } from "../lib/indentTotals";
 
 type QueueMode = "Pending" | "Approved" | "Completed" | "Rejected";
@@ -56,6 +56,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [materials] = useData<Material>("materials", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -72,6 +73,8 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   const [lineDrafts, setLineDrafts] = useState<Record<string, { qty: string; cancelledQty: string }>>({});
 
   const currentSetting = settings[0];
+  const resolveFirmName = (indent: Indent) =>
+    String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "Firm unavailable").trim();
   const showExpandableItems = true;
 
   const toggleIndentItems = (indentId: string) => {
@@ -128,7 +131,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   );
 
   const requestedByOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.requestedBy)), [statusIndents]);
-  const firmOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.firmName || "Firm unavailable")), [statusIndents]);
+  const firmOptions = useMemo(() => makeOptions(statusIndents.map(resolveFirmName)), [statusIndents, firms]);
   const indentTypeOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.indentType)), [statusIndents]);
   const itemOptions = useMemo(() => {
     const statusIndentIds = new Set(statusIndents.map((indent) => indent.id));
@@ -145,7 +148,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         .filter((indent) => {
           const indentDate = toDateOnly(indent.requisitionDate);
           if (requestedByFilter && indent.requestedBy !== requestedByFilter) return false;
-          if (firmFilter && (indent.firmName || "Firm unavailable") !== firmFilter) return false;
+          if (firmFilter && resolveFirmName(indent) !== firmFilter) return false;
           if (indentTypeFilter && indent.indentType !== indentTypeFilter) return false;
           if (dateFrom && indentDate < dateFrom) return false;
           if (dateTo && indentDate > dateTo) return false;
@@ -159,7 +162,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
           return (
             (indent.indentNo || "").toLowerCase().includes(q) ||
-            (indent.firmName || "").toLowerCase().includes(q) ||
+            resolveFirmName(indent).toLowerCase().includes(q) ||
             (indent.requestedBy || "").toLowerCase().includes(q) ||
             (indent.indentType || "").toLowerCase().includes(q) ||
             itemSummary.includes(q)
@@ -170,7 +173,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
           const timeB = new Date(b.updateTimestamp || b.requisitionDate || 0).getTime();
           return timeB - timeA;
         }),
-    [dateFrom, dateTo, firmFilter, indentLines, indentTypeFilter, itemFilter, materialById, materials, requestedByFilter, searchTerm, statusIndents]
+    [dateFrom, dateTo, firmFilter, firms, indentLines, indentTypeFilter, itemFilter, materialById, materials, requestedByFilter, searchTerm, statusIndents]
   );
 
   const displayRows = useMemo(
@@ -283,23 +286,31 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       doc.text("Purchase Requisition", 105, y, { align: "center" });
       y += 10;
 
-      doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      doc.text(`Indent No: ${indent.indentNo || indent.id}`, 14, y);
-      doc.text(`Status: ${indent.status}`, 140, y);
+      const drawMeta = (label: string, value: string, x: number, rowY: number) => {
+        const labelText = `${label}:`;
+        doc.setFont("helvetica", "bold");
+        doc.text(labelText, x, rowY);
+        const labelWidth = doc.getTextWidth(`${labelText} `);
+        doc.setFont("helvetica", "normal");
+        doc.text(value || "-", x + labelWidth, rowY);
+      };
+
+      drawMeta("Requisition No", indent.indentNo || indent.id, 14, y);
+      drawMeta("Status", indent.status, 140, y);
       y += 6;
-      doc.text(`Requested By: ${indent.requestedBy || "-"}`, 14, y);
-      doc.text(`Indent Type: ${indent.indentType || "-"}`, 140, y);
+      drawMeta("Requested By", indent.requestedBy || "-", 14, y);
+      drawMeta("Indent Type", indent.indentType || "-", 140, y);
       y += 6;
-      doc.text(`Firm: ${indent.firmName || "Firm unavailable"}`, 14, y);
+      drawMeta("Firm", resolveFirmName(indent), 14, y);
       y += 6;
-      doc.text(`Requisition Date: ${formatDate(indent.requisitionDate)}`, 14, y);
-      doc.text(`Required Date: ${formatDate(indent.requiredDate)}`, 140, y);
+      drawMeta("Requisition Date", formatDate(indent.requisitionDate), 14, y);
+      drawMeta("Required Date", formatDate(indent.requiredDate), 140, y);
       y += 6;
 
       const totalsIndent = withIndentTotals(indent, lineRows);
-      doc.text(`Total Indent Qty: ${Number(totalsIndent.totalIndentQty || 0).toLocaleString()}`, 14, y);
-      doc.text(`Balance Qty: ${Number(totalsIndent.totalBalanceQty || 0).toLocaleString()}`, 140, y);
+      drawMeta("Total Indent Qty", Number(totalsIndent.totalIndentQty || 0).toLocaleString(), 14, y);
+      drawMeta("Balance Qty", Number(totalsIndent.totalBalanceQty || 0).toLocaleString(), 140, y);
       y += 8;
 
       if (indent.rejectedRemarks?.trim()) {
@@ -309,17 +320,16 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         const remarksLines = doc.splitTextToSize(indent.rejectedRemarks.trim(), 170);
         doc.text(remarksLines, 32, y);
         y += Math.max(6, remarksLines.length * 5 + 2);
-        doc.setFont("helvetica", "bold");
-        doc.text(`Rejected By: ${indent.rejectedBy || "-"}`, 14, y);
-        doc.text(`Rejected Date: ${indent.rejectedTimestamp ? formatDate(indent.rejectedTimestamp) : "-"}`, 140, y);
+        drawMeta("Rejected By", indent.rejectedBy || "-", 14, y);
+        drawMeta("Rejected Date", indent.rejectedTimestamp ? formatDate(indent.rejectedTimestamp) : "-", 140, y);
         y += 6;
       }
 
       autoTable(doc, {
         startY: y,
         theme: "grid",
-        headStyles: { fillColor: [37, 99, 235] },
-        styles: { fontSize: 8, cellPadding: 2 },
+        styles: { fontSize: 8, cellPadding: 2, fontStyle: "normal" },
+        headStyles: { fillColor: [37, 99, 235], fontStyle: "bold" },
         head: [[
           "ERP",
           "Item",
@@ -487,6 +497,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
           <thead className="sticky top-0 z-30">
             <tr className="bg-slate-100">
               <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black whitespace-nowrap">Requisition No</th>
+              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Firm</th>
               <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Requested By</th>
               <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Requisition Date</th>
               <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Required Date</th>
@@ -513,7 +524,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             {paginatedDisplayRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={mode === "Pending" ? 8 : mode === "Rejected" ? 7 : 6}
+                  colSpan={mode === "Pending" ? 9 : mode === "Rejected" ? 8 : 7}
                   className="border border-black px-6 py-10 text-center font-medium text-black"
                 >
                   No indent records found.
@@ -541,9 +552,9 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                           </button>
                         ) : null}
                         <span>{indent.indentNo || indent.id}</span>
-                        {indent.firmName && <span className="text-xs font-semibold text-slate-600">{indent.firmName}</span>}
                       </div>
                     </td>
+                    <td className="border border-black px-4 py-4 text-sm text-black">{resolveFirmName(indent)}</td>
                     <td className="border border-black px-4 py-4 text-sm text-black">{indent.requestedBy}</td>
                     <td className="border border-black px-4 py-4 text-sm text-black whitespace-nowrap">{formatDate(indent.requisitionDate)}</td>
                     <td className="border border-black px-4 py-4 text-sm text-black whitespace-nowrap">{formatDate(indent.requiredDate)}</td>
@@ -636,7 +647,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                   </tr>
                   {showExpandableItems && expandedIndentIds.has(indent.id) ? (
                     <tr key={`${indent.id}-items`} className="bg-slate-50">
-                      <td colSpan={mode === "Pending" ? 8 : mode === "Rejected" ? 7 : 6} className="border border-black p-0">
+                      <td colSpan={mode === "Pending" ? 9 : mode === "Rejected" ? 8 : 7} className="border border-black p-0">
                         <div className="p-4">
                           <div className="mb-2 text-xs font-black uppercase text-slate-600">Items</div>
                           <div className="overflow-auto rounded border border-black bg-white">

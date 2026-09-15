@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatDate } from "./serial";
-import { Indent, IndentLine, Material, Setting } from "../types";
+import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { renderOrganizationHeader } from "./pdfOrganizationHeader";
 
 export async function downloadIndentPdf({
@@ -9,11 +9,13 @@ export async function downloadIndentPdf({
   lines,
   materials,
   setting,
+  firms = [],
 }: {
   indent: Indent;
   lines: IndentLine[];
   materials: Material[];
   setting?: Setting | null;
+  firms?: Firm[];
 }) {
   const doc = new jsPDF("p", "mm", "a4");
   let currentY = (await renderOrganizationHeader(doc, setting)).currentY;
@@ -23,26 +25,39 @@ export async function downloadIndentPdf({
   doc.text("PURCHASE REQUISITION", 105, currentY, { align: "center" });
   currentY += 10;
 
-  doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
+  const drawMeta = (label: string, value: string, x: number, y: number) => {
+    const labelText = `${label}:`;
+    doc.setFont("helvetica", "bold");
+    doc.text(labelText, x, y);
+    const labelWidth = doc.getTextWidth(`${labelText} `);
+    doc.setFont("helvetica", "normal");
+    doc.text(value || "-", x + labelWidth, y);
+  };
+  const resolvedFirmName = String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "Firm unavailable").trim();
   const detailRows = [
     ["Requisition No", indent.indentNo || "-"],
     ["Requested By", indent.requestedBy],
     ["Requisition Date", formatDate(indent.requisitionDate)],
     ["Indent Type", indent.indentType],
-    ["Firm", indent.firmName || "Firm unavailable"],
+    ["Firm", resolvedFirmName],
     ["Status", indent.status],
+    ["Required Date", formatDate(indent.requiredDate)],
   ];
 
   detailRows.forEach(([label, value], index) => {
     const columnX = index % 2 === 0 ? 14 : 110;
     const rowY = currentY + Math.floor(index / 2) * 8;
-    doc.setFont("helvetica", "bold");
-    doc.text(`${label}:`, columnX, rowY);
-    doc.setFont("helvetica", "normal");
-    doc.text(String(value), columnX + 28, rowY);
+    drawMeta(label, String(value || "-"), columnX, rowY);
   });
-  currentY += 24;
+  const totals = lines.reduce((acc, line) => ({
+    totalIndentQty: acc.totalIndentQty + Number(line.qty || 0),
+    totalBalanceQty: acc.totalBalanceQty + Number(line.balanceQty ?? Math.max(0, Number(line.qty || 0) - Number(line.orderedQty || 0) - Number(line.cancelledQty || 0))),
+  }), { totalIndentQty: 0, totalBalanceQty: 0 });
+  currentY += 32;
+  drawMeta("Total Indent Qty", totals.totalIndentQty.toLocaleString(), 14, currentY);
+  drawMeta("Balance Qty", totals.totalBalanceQty.toLocaleString(), 110, currentY);
+  currentY += 8;
 
   const lineTableRows = lines.map((line, index) => {
     const material = materials.find((row) => row.id === line.materialId);
@@ -79,9 +94,8 @@ export async function downloadIndentPdf({
     const remarkLines = doc.splitTextToSize(indent.rejectedRemarks, 175);
     doc.text(remarkLines, 14, footerY + 5);
     footerY += remarkLines.length * 5 + 8;
-    doc.setFont("helvetica", "bold");
-    doc.text(`Rejected By: ${indent.rejectedBy || "-"}`, 14, footerY);
-    doc.text(`Rejected Date: ${indent.rejectedTimestamp ? formatDate(indent.rejectedTimestamp) : "-"}`, 110, footerY);
+    drawMeta("Rejected By", indent.rejectedBy || "-", 14, footerY);
+    drawMeta("Rejected Date", indent.rejectedTimestamp ? formatDate(indent.rejectedTimestamp) : "-", 110, footerY);
     footerY += 8;
   }
 
