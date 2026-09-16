@@ -8,7 +8,7 @@ import { useData } from "../hooks/useData";
 import { Company, Firm, GateEntry, GateEntryPhoto, Supplier } from "../types";
 import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
 import { useAuth } from "../auth/AuthContext";
-import { getFirmDisplayName } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type GateEntryMasterProps = { cancelledOnly?: boolean };
 
@@ -402,7 +402,7 @@ function getSupplierNameById(supplierId: string, suppliers: Supplier[], companie
 }
 
 function getFirmNameById(firmId: string | undefined, firms: Firm[]) {
-  return firms.find((firm) => firm.id === firmId)?.firmName || "";
+  return getFirmDisplayNameById(firmId, firms, "");
 }
 
 function PhotoCard({

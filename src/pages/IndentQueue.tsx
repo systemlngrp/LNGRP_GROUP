@@ -14,6 +14,7 @@ import { cn } from "../lib/utils";
 import { renderOrganizationHeader } from "../lib/pdfOrganizationHeader";
 import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { canIndentBeUnapproved, revertIndentToPending, withIndentTotals } from "../lib/indentTotals";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type QueueMode = "Pending" | "Approved" | "Completed" | "Rejected";
 
@@ -73,8 +74,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   const [lineDrafts, setLineDrafts] = useState<Record<string, { qty: string; cancelledQty: string }>>({});
 
   const currentSetting = settings[0];
-  const resolveFirmName = (indent: Indent) =>
-    String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "Firm unavailable").trim();
+  const resolveFirmName = (indent: Indent) => getFirmDisplayNameById(indent.firmId, firms, indent.firmName || "Firm unavailable");
   const showExpandableItems = true;
 
   const toggleIndentItems = (indentId: string) => {
@@ -132,7 +132,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   );
 
   const requestedByOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.requestedBy)), [statusIndents]);
-  const firmOptions = useMemo(() => makeOptions(statusIndents.map(resolveFirmName)), [statusIndents, firms]);
+  const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms]);
   const indentTypeOptions = useMemo(() => makeOptions(statusIndents.map((indent) => indent.indentType)), [statusIndents]);
   const itemOptions = useMemo(() => {
     const statusIndentIds = new Set(statusIndents.map((indent) => indent.id));
@@ -149,7 +149,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         .filter((indent) => {
           const indentDate = toDateOnly(indent.requisitionDate);
           if (requestedByFilter && indent.requestedBy !== requestedByFilter) return false;
-          if (firmFilter && resolveFirmName(indent) !== firmFilter) return false;
+          if (firmFilter && String(indent.firmId || "") !== firmFilter) return false;
           if (indentTypeFilter && indent.indentType !== indentTypeFilter) return false;
           if (dateFrom && indentDate < dateFrom) return false;
           if (dateTo && indentDate > dateTo) return false;
