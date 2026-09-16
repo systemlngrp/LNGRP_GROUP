@@ -10438,6 +10438,7 @@ app.get("/api/purchase-orders/pending-procurement", async (req, res) => {
         i.requisitionDate,
         m.name as materialName,
         m.erpCode as materialErpCode,
+        m.gstRate as materialGstRate,
         COALESCE(pol_sum.poQtyCreated, 0) as poQtyCreated
       FROM indent_lines il
       JOIN indents i ON i.id = il.indentId
@@ -10590,6 +10591,7 @@ app.get("/api/purchase-orders/pending-indent-lines", requireAuth, async (req, re
         il.materialId,
         m.name as materialName,
         m.erpCode as materialErpCode,
+        m.gstRate as materialGstRate,
         il.uom,
         il.qty,
         il.cancelledQty,
@@ -10626,6 +10628,7 @@ app.get("/api/purchase-orders/pending-indent-lines", requireAuth, async (req, re
           materialId: String(row.materialId),
           materialName: String(row.materialName || ""),
           materialErpCode: String(row.materialErpCode || ""),
+          materialGstRate: Number(row.materialGstRate),
           uom: String(row.uom || ""),
           qty,
           cancelledQty,

@@ -25,6 +25,7 @@ type PendingIndentLineRow = {
   requisitionDate: string;
   targetDeliveryDate: string;
   materialId: string;
+  materialGstRate?: number;
   materialErpCode: string;
   materialName: string;
   uom: string;
@@ -130,17 +131,22 @@ export function PurchaseOrderPendingIndentLines() {
   const requestedByOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.requestedBy).filter(Boolean))).sort().map((v) => ({ value: v, label: v })), [rows]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((r) => [r.materialId, r.materialName])).entries()).map(([value, label]) => ({ value, label })), [rows]);
   const supplierOptions = useMemo(() => suppliers.map((s) => ({ value: s.id, label: s.name })), [suppliers]);
-  const gstRateOptions = useMemo(
-    () => gstRateMasters
-      .filter((rate) => rate.active !== "No")
-      .sort((a, b) => Number(a.rate) - Number(b.rate))
-      .map((rate) => ({ value: String(rate.rate), label: rate.name })),
-    [gstRateMasters],
-  );
-  const defaultGstRate = gstRateOptions.find((option) => option.value === "18")?.value || gstRateOptions[0]?.value || "";
+  const gstRateOptions = useMemo(() => {
+    const rates = new Set<number>([0]);
+    gstRateMasters.filter((rate) => rate.active !== "No").forEach((rate) => {
+      const value = Number(rate.rate);
+      if (Number.isFinite(value) && value >= 0) rates.add(value);
+    });
+    rows.forEach((row) => {
+      const value = Number(row.materialGstRate);
+      if (Number.isFinite(value) && value >= 0) rates.add(value);
+    });
+    return Array.from(rates).sort((a, b) => a - b).map((rate) => ({ value: String(rate), label: `${rate.toFixed(2)}%` }));
+  }, [gstRateMasters, rows]);
+  const defaultGstRate = gstRateOptions.find((option) => option.value === "0")?.value || "0";
   const materialById = useMemo(() => new Map(materials.map((material) => [String(material.id), material])), [materials]);
-  const getDefaultGstRate = useCallback((materialId: string) => {
-    const materialRate = materialById.get(String(materialId))?.gstRate;
+  const getDefaultGstRate = useCallback((materialId: string, apiRate?: number) => {
+    const materialRate = apiRate ?? materialById.get(String(materialId))?.gstRate;
     if (materialRate === undefined || materialRate === null || !Number.isFinite(Number(materialRate)) || Number(materialRate) < 0) return defaultGstRate;
     const value = String(Number(materialRate));
     return gstRateOptions.some((option) => option.value === value) ? value : defaultGstRate;
@@ -192,7 +198,7 @@ export function PurchaseOrderPendingIndentLines() {
           supplierId: "",
           qty: String(Number(row.pendingQty || 0)),
           rate: String(Number.isFinite(suggestedRate) ? suggestedRate : 0),
-          gstRate: getDefaultGstRate(row.materialId),
+          gstRate: getDefaultGstRate(row.materialId, row.materialGstRate),
         },
       };
     });
@@ -217,7 +223,7 @@ export function PurchaseOrderPendingIndentLines() {
             supplierId: "",
             qty: String(Number(r.pendingQty || 0)),
             rate: String(Number.isFinite(suggestedRate) ? suggestedRate : 0),
-            gstRate: getDefaultGstRate(r.materialId),
+            gstRate: getDefaultGstRate(r.materialId, r.materialGstRate),
           };
         }
       });
@@ -525,9 +531,9 @@ export function PurchaseOrderPendingIndentLines() {
                         className={`w-24 rounded border ${!rowInputs[row.indentLineId]?.rate || Number(rowInputs[row.indentLineId]?.rate) <= 0 ? 'border-red-500' : 'border-black'} bg-white px-2 py-1 text-right text-sm disabled:opacity-50`}
                       />
                     </td>
-                    <td className="min-w-[140px] border border-black px-4 py-3 text-sm text-black text-right whitespace-nowrap">
-                      <div className="w-full min-w-[108px]">
-                        <Select compact value={rowInputs[row.indentLineId]?.gstRate || getDefaultGstRate(row.materialId)} onChange={(value) => updateInput(row.indentLineId, { gstRate: value })} options={gstRateOptions} placeholder="GST Rate" disabled={!selectedIds.has(row.indentLineId)} />
+                    <td className="min-w-[180px] border border-black px-4 py-3 text-sm text-black text-right whitespace-nowrap">
+                      <div className="w-full min-w-[150px]">
+                        <Select compact value={rowInputs[row.indentLineId]?.gstRate || getDefaultGstRate(row.materialId, row.materialGstRate)} onChange={(value) => updateInput(row.indentLineId, { gstRate: value })} options={gstRateOptions} placeholder="GST Rate" disabled={!selectedIds.has(row.indentLineId)} />
                       </div>
                     </td>
                     <td className="border border-black px-4 py-3 text-sm text-black text-right">{taxes.cgst ? taxes.cgst.toFixed(2) : "-"}</td>
