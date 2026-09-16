@@ -9790,14 +9790,20 @@ function summarizePurchaseOrderTaxTotals(lines) {
         grandTotal: roundPoValue(lines.reduce((sum, line) => sum + Number(line.lineTotal || 0), 0)),
     };
 }
-app.get("/api/purchase-orders/pending-indent-lines", async (req, res) => {
+app.get("/api/purchase-orders/pending-indent-lines", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)
         return res.status(500).json({ error: "DB connection not available" });
     try {
-        const requestFirmId = getRequestFirmId(req);
-        if (requestFirmId)
-            await assertRequestFirm(db, requestFirmId);
+        const requestUser = await getRequestUser(req);
+        if (!requestUser || !hasPermission(requestUser, "/purchase-orders")) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
+        // No active-firm header means all firms visible to this authenticated
+        // purchase-order user. An explicit query parameter remains ID-based.
+        const requestedFirmId = String(req.query.firmId || "").trim();
+        if (requestedFirmId)
+            await assertRequestFirm(db, requestedFirmId);
         const [rows] = await db.query(`
       SELECT 
         il.id as indentLineId,
@@ -9826,8 +9832,8 @@ app.get("/api/purchase-orders/pending-indent-lines", async (req, res) => {
         GROUP BY pol.indentLineId
       ) pol_sum ON pol_sum.indentLineId = il.id
       WHERE i.status = 'Approved'
-        AND (? = '' OR i.firmId = ? OR i.firmId IS NULL OR TRIM(i.firmId) = '')
-    `, [requestFirmId, requestFirmId]);
+        AND (? = '' OR i.firmId = ?)
+    `, [requestedFirmId, requestedFirmId]);
         const base = rows
             .map((row) => {
             const qty = Number(row.qty || 0);

@@ -42,7 +42,7 @@ export function PurchaseOrderPendingIndentLines() {
   const navigate = useNavigate();
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines] = useData<IndentLine>("indent-lines", []);
   const [rows, setRows] = useState<PendingIndentLineRow[]>([]);
@@ -69,8 +69,11 @@ export function PurchaseOrderPendingIndentLines() {
     try {
       setLoading(true);
       const token = window.localStorage.getItem("authToken") || "";
+      // This read-only queue is intentionally cross-firm. The Firm selector below
+      // filters the server-authoritative result by ID; do not scope it to the
+      // browser's active firm or another desktop will show a different dataset.
       const response = await fetch("/api/purchase-orders/pending-indent-lines", {
-        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(activeFirmId ? { "X-Firm-Id": activeFirmId } : {}) },
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
       if (!response.ok) throw new Error("Failed to fetch pending indent lines");
       const data = await response.json();
