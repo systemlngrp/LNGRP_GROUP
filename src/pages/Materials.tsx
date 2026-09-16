@@ -1529,6 +1529,13 @@ export function Materials() {
                 />
               </div>
 
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">GST Rate (%)</label>
+                <input type="number" min="0" max="100" step="0.01" value={formData.gstRate}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, gstRate: e.target.value }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+              </div>
+
               {formData.type === "Reel" && (
                 <div className="space-y-2">
                   <label className="text-blue-700 font-bold">Unit</label>
@@ -1666,12 +1673,6 @@ export function Materials() {
                   }
                   className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
                 />
-              </div>
-              <div className="space-y-2">
-                <label className="text-blue-700 font-bold">GST Rate (%)</label>
-                <input type="number" min="0" max="100" step="0.01" value={formData.gstRate}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, gstRate: e.target.value }))}
-                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
               </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Remarks</label>
