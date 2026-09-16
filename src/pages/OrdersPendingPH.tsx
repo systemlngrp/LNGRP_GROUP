@@ -9,15 +9,20 @@ import { formatDate } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ChevronUp, ChevronDown, CheckCircle, XCircle, Edit } from "lucide-react";
+import { FirmFilter } from "../components/FirmFilter";
+import { Firm } from "../types";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 export function OrdersPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
   const [orderByFilter, setOrderByFilter] = useState('');
+  const [firmFilter, setFirmFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [orders, setOrders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData("companies", []);
   const [users] = useData<User>("users", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const { resolveOrderItem } = useOrderItemCatalog();
   const navigate = useNavigate();
 
@@ -70,16 +75,19 @@ export function OrdersPendingPH() {
           order,
           item,
           companyName,
+          firmName: getFirmDisplayNameById(order.firmId, firms),
           orderByLabel: getOrderByLabel(order.orderBy),
         };
       })
-      .filter(({ order, item, companyName, orderByLabel }) => {
+      .filter(({ order, item, companyName, firmName, orderByLabel }) => {
+        if (firmFilter && String(order.firmId || "") !== firmFilter) return false;
         if (orderByFilter && String(order.orderBy || "") !== orderByFilter) return false;
         if (!normalizedSearch) return true;
         const haystack = [
           order.orderNo,
           formatDate(order.orderDate),
           companyName,
+          firmName,
           item?.name,
           item?.erp,
           orderByLabel,
@@ -95,7 +103,7 @@ export function OrdersPendingPH() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return sortOrder === "asc" ? cmp : -cmp;
       });
-  }, [companies, orderByFilter, pending, resolveOrderItem, searchTerm, sortOrder]);
+  }, [companies, firmFilter, firms, orderByFilter, pending, resolveOrderItem, searchTerm, sortOrder]);
 
   const presentOrderByValues = Array.from(new Set(pending.map(o => String(o.orderBy || "").trim()).filter(Boolean)));
   const unmappedOrderBys = presentOrderByValues.filter(v => !resolveOrderByUser(v));
@@ -166,6 +174,7 @@ export function OrdersPendingPH() {
             />
           </div>
         </div>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
       </div>
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
@@ -187,6 +196,7 @@ export function OrdersPendingPH() {
                 </div>
               </th>
               <th className="px-4 py-2 border border-black">Order Date</th>
+              <th className="px-4 py-2 border border-black">Firm</th>
               <th className="px-4 py-2 border border-black">Company</th>
               <th className="px-4 py-2 border border-black">Item</th>
               <th className="px-4 py-2 border border-black">Item ERP</th>
@@ -196,10 +206,11 @@ export function OrdersPendingPH() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(({ order: o, item, companyName, orderByLabel }) => (
+            {filtered.map(({ order: o, item, companyName, firmName, orderByLabel }) => (
               <tr key={o.id} className="hover:bg-slate-50">
                 <td className="px-4 py-2 border border-black">{o.orderNo}</td>
                 <td className="px-4 py-2 border border-black">{formatDate(o.orderDate)}</td>
+                <td className="px-4 py-2 border border-black font-semibold">{firmName}</td>
                 <td className="px-4 py-2 border border-black">{companyName || "-"}</td>
                 <td className="px-4 py-2 border border-black">{item?.name || "-"}</td>
                 <td className="px-4 py-2 border border-black">{item?.erp || "-"}</td>

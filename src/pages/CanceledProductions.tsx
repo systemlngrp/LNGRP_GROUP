@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { Production, OrderSchedule, Order, Company } from "../types";
+import { Production, OrderSchedule, Order, Company, Firm } from "../types";
 import { formatDate } from "../lib/serial";
 import { TableControls } from "../components/TableControls";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
@@ -8,6 +8,8 @@ import { RefreshCw } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useConfirm } from "../components/ConfirmDialog";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 export function CanceledProductions() {
   const confirm = useConfirm();
@@ -16,8 +18,10 @@ export function CanceledProductions() {
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
   const [orders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [activatingId, setActivatingId] = useState<string | null>(null);
 
   const handleActivate = async (id: string) => {
@@ -68,11 +72,14 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
         const item = npdItems.find((row) => row.id === production.itemId);
         const schedule = schedules.find((row) => row.id === production.scheduleId);
         const order = orders.find((row) => row.id === schedule?.orderId);
-        const company = companies.find((row) => row.id === order?.companyId);        if (!needle) return true;
-        return [production.transactionNo, item?.name, order?.orderNo, company?.name].join(" ").toLowerCase().includes(needle);
+        const company = companies.find((row) => row.id === order?.companyId);
+        const firmId = String(schedule?.firmId || production.firmId || production.orderFirmId || order?.firmId || "");
+        if (firmFilter && firmId !== firmFilter) return false;
+        if (!needle) return true;
+        return [production.transactionNo, item?.name, order?.orderNo, company?.name, getFirmDisplayNameById(firmId, firms)].join(" ").toLowerCase().includes(needle);
       })
       .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: "base" }));
-  }, [canceledProductions, companies, npdItems, orders, schedules, searchTerm]);
+  }, [canceledProductions, companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
 
   return (
     <div className="space-y-6">
@@ -80,11 +87,11 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Canceled Jobs (Productions)</h2>
       </div>
 
-      <TableControls 
+      <div className="flex flex-wrap items-end gap-3"><div className="min-w-[280px] flex-1"><TableControls
         searchTerm={searchTerm} 
         onSearchChange={setSearchTerm} 
         placeholder="Search canceled jobs..." 
-      />
+      /></div><FirmFilter value={firmFilter} onChange={setFirmFilter} /></div>
 
       <DataSummaryTiles totalRecords={canceledProductions.length} filteredRecords={filteredList.length} showingRecords={filteredList.length} pageLabel="1 / 1" />
 
@@ -96,6 +103,7 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">SL No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Job No.</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Order No.</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Item Name</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Qty</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Cancel Date</th>
@@ -106,18 +114,20 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-black font-medium">No canceled jobs found.</td>
+                  <td colSpan={9} className="px-6 py-8 text-center text-black font-medium">No canceled jobs found.</td>
                 </tr>
               ) : (
                 filteredList.map((p, index) => {
                   const schedule = schedules.find(s => s.id === p.scheduleId);
                   const order = orders.find(o => o.id === schedule?.orderId);
+                  const firmId = String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "");
                   
                   return (
                     <tr key={p.id} className="hover:bg-red-50 divide-x divide-black transition-colors">
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{index + 1}</td>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
+                      <td className="px-4 py-4 text-xs font-semibold text-black border border-black whitespace-nowrap">{getFirmDisplayNameById(firmId, firms)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black min-w-[150px]">{npdItems.find(i => i.id === p.itemId)?.name || "Unknown"}</td>
                       <td className="px-4 py-4 text-right text-xs font-medium text-black border border-black whitespace-nowrap">{p.qty} {p.uom}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.cancelTimestamp ? formatDate(p.cancelTimestamp) : "-"}</td>

@@ -12,6 +12,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/serial";
+import { FirmFilter } from "../components/FirmFilter";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 
@@ -46,6 +47,7 @@ export function PendingProduction() {
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
+  const [firmFilter, setFirmFilter] = useState('');
 
   const navigate = useNavigate();
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
@@ -110,7 +112,8 @@ export function PendingProduction() {
         ]
           .map((value) => String(value || "").trim())
           .filter(Boolean);
-        const firm = firmIds.map((id) => firmNameById.get(id)).find(Boolean) || "Unassigned";
+        const firmId = firmIds[0] || "";
+        const firm = firmId ? (firmNameById.get(firmId) || "Unknown firm") : "Unassigned";
         const summary = consumptionByScheduleId.get(schedule.id);
         const plannedQty = Number(summary?.plannedQty || 0);
         const actualProducedQty = Number(summary?.actualProducedQty || 0);
@@ -122,6 +125,7 @@ export function PendingProduction() {
           item,
           company,
           firm,
+          firmId,
           plannedQty,
           actualProducedQty,
           plannedWithoutFfgQty,
@@ -129,7 +133,9 @@ export function PendingProduction() {
           pendingQty: getPendingProductionQty(schedule, consumedQty),
         };
       })
-      .filter(({ schedule, order, item, company, firm, pendingQty, plannedQty, actualProducedQty, plannedWithoutFfgQty, consumedQty }) => {        if (companyFilter && order?.companyId !== companyFilter) return false;
+      .filter(({ schedule, order, item, company, firm, firmId, pendingQty, plannedQty, actualProducedQty, plannedWithoutFfgQty, consumedQty }) => {
+        if (firmFilter && firmId !== firmFilter) return false;
+        if (companyFilter && order?.companyId !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${getPendingProductionErp(item, order)}`;
         if (itemFilter && itemKey !== itemFilter) return false;
         if (!normalizedSearch) return true;
@@ -161,7 +167,7 @@ export function PendingProduction() {
         const timeB = new Date(b.schedule.updateTimestamp || b.schedule.scheduledDate || 0).getTime();
         return timeB - timeA;
       });
-  }, [companies, companyFilter, consumptionByScheduleId, cutoffDate, firmNameById, itemFilter, orders, productions, resolveOrderItem, schedules, searchTerm]);
+  }, [companies, companyFilter, consumptionByScheduleId, cutoffDate, firmFilter, firmNameById, itemFilter, orders, productions, resolveOrderItem, schedules, searchTerm]);
 
   const companyOptions = useMemo(() => Array.from(new Map(pendingRows.map((row) => [row.order?.companyId || "", { value: row.order?.companyId || "", label: row.company?.name || "" }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingRows]);
   const itemOptions = useMemo(() => Array.from(new Map(pendingRows.map((row) => { const erp = getPendingProductionErp(row.item, row.order); const key = row.item?.id || `${row.item?.name || ""}::${erp}`; const name = row.item?.name || ""; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingRows]);
@@ -231,12 +237,13 @@ export function PendingProduction() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Production Plan</h2>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
+      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
         <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
-        {(searchTerm || companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
+        {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
+          <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
         ) : null}
       </div>
 

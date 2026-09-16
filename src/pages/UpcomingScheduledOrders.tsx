@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { Company, Order, OrderSchedule, Production } from "../types";
+import { Company, Firm, Order, OrderSchedule, Production } from "../types";
 import { Spinner } from "../components/Spinner";
 
 import { TableControls } from "../components/TableControls";
@@ -10,6 +10,8 @@ import { useNavigate } from "react-router-dom";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 function getPendingProductionQty(schedule: OrderSchedule, consumedQty: number) {
   return Math.max(
@@ -33,6 +35,7 @@ function parseLocalYmd(dateStr?: string) {
 
 export function UpcomingScheduledOrders() {
   const [searchTerm, setSearchTerm] = useState('');
+  const [firmFilter, setFirmFilter] = useState('');
 
   const navigate = useNavigate();
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
@@ -43,6 +46,7 @@ export function UpcomingScheduledOrders() {
   const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
 
   const [cancelValues, setCancelValues] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -76,6 +80,7 @@ export function UpcomingScheduledOrders() {
           const order = orders.find((row) => row.id === schedule.orderId);
           const item = resolveOrderItem(order);
           const company = companies.find((row) => row.id === order?.companyId);
+          const firmId = String(schedule.firmId || order?.firmId || "");
           const plannedQty = Number(consumptionByScheduleId.get(schedule.id)?.plannedQty || 0);
           const actualProducedQty = Number(consumptionByScheduleId.get(schedule.id)?.actualProducedQty || 0);
           const consumedQty = Number(consumptionByScheduleId.get(schedule.id)?.effectiveConsumedQty || 0);
@@ -84,13 +89,17 @@ export function UpcomingScheduledOrders() {
             order,
             item,
             company,
+            firmId,
+            firmName: getFirmDisplayNameById(firmId, firms),
             plannedQty,
             actualProducedQty,
             pendingQty: getPendingProductionQty(schedule, consumedQty),
           };
         })
-        .filter(({ schedule, order, item, company, pendingQty, plannedQty, actualProducedQty }) => {          if (!lowered) return true;
-          return [order?.orderNo, formatDate(schedule.scheduledDate), company?.name, item?.name, schedule.qty, plannedQty, actualProducedQty, schedule.canceledQty, pendingQty]
+        .filter(({ schedule, order, item, company, firmId, firmName, pendingQty, plannedQty, actualProducedQty }) => {
+          if (firmFilter && firmId !== firmFilter) return false;
+          if (!lowered) return true;
+          return [order?.orderNo, formatDate(schedule.scheduledDate), firmName, company?.name, item?.name, schedule.qty, plannedQty, actualProducedQty, schedule.canceledQty, pendingQty]
             .join(" ")
             .toLowerCase()
             .includes(lowered);
@@ -100,7 +109,7 @@ export function UpcomingScheduledOrders() {
           const timeB = new Date(b.schedule.scheduledDate || 0).getTime();
           return timeA - timeB; // Ascending by date
         });
-  }, [companies, consumptionByScheduleId, cutoffDate, orders, resolveOrderItem, schedules, searchTerm]);
+  }, [companies, consumptionByScheduleId, cutoffDate, firmFilter, firms, orders, resolveOrderItem, schedules, searchTerm]);
 
   const handleCancelQty = async (schedule: OrderSchedule) => {
     const rawValue = cancelValues[schedule.id];
@@ -157,7 +166,10 @@ export function UpcomingScheduledOrders() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Upcoming Scheduled Orders</h2>
       </div>
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[280px] flex-1"><TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+      </div>
 
       <DataSummaryTiles totalRecords={schedules.length} filteredRecords={upcomingRows.length} showingRecords={upcomingRows.length} pageLabel="1 / 1" />
 
@@ -169,6 +181,7 @@ export function UpcomingScheduledOrders() {
               <th className="px-3 py-2 border border-black">Order No</th>
               <th className="px-3 py-2 border border-black">Schedule No</th>
               <th className="px-3 py-2 border border-black">Schedule Date</th>
+              <th className="px-3 py-2 border border-black">Firm</th>
               <th className="px-3 py-2 border border-black">Company</th>
               <th className="px-3 py-2 border border-black">Item</th>
               <th className="px-3 py-2 border border-black">Scheduled Qty</th>
@@ -183,17 +196,18 @@ export function UpcomingScheduledOrders() {
           <tbody>
             {upcomingRows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-6 py-8 text-center text-black font-medium italic">
+                <td colSpan={14} className="px-6 py-8 text-center text-black font-medium italic">
                   No upcoming production schedules (beyond today + 2 days).
                 </td>
               </tr>
             ) : (
-              upcomingRows.map(({ schedule, order, item, company, pendingQty, plannedQty, actualProducedQty }, index) => (
+              upcomingRows.map(({ schedule, order, item, company, firmName, pendingQty, plannedQty, actualProducedQty }, index) => (
                 <tr key={schedule.id} className="hover:bg-slate-50">
                   <td className="px-3 py-2 border border-black font-bold">{index + 1}</td>
                   <td className="px-3 py-2 border border-black font-medium">{order?.orderNo || "-"}</td>
                   <td className="px-3 py-2 border border-black font-bold text-indigo-700 whitespace-nowrap">{schedule.scheduleNo || "-"}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap font-bold text-indigo-700">{formatDate(schedule.scheduledDate)}</td>
+                  <td className="px-3 py-2 border border-black font-semibold">{firmName}</td>
                   <td className="px-3 py-2 border border-black">{company?.name || "-"}</td>
                   <td className="px-3 py-2 border border-black">{item?.name || "-"}</td>
                   <td className="px-3 py-2 border border-black text-right">{schedule.qty || 0}</td>

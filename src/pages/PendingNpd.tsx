@@ -3,16 +3,20 @@ import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { normalizeOrderItemSource } from "../lib/orderItems";
-import { Company, Order, OrderSchedule } from "../types";
+import { Company, Firm, Order, OrderSchedule } from "../types";
 import { formatDate } from "../lib/serial";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 export function PendingNpd() {
   const [orders] = useData<Order>("orders", []);
   const [schedules] = useData<OrderSchedule>("orders_schedule", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const npdItems = useNpdItems();
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
 
   const pendingRows = useMemo(() => {
     const rows = schedules
@@ -22,6 +26,7 @@ export function PendingNpd() {
         if (normalizeOrderItemSource(order.itemSource) !== "FG") return null;
         const item = npdItems.find((row) => row.id === String(order.itemId || "").trim());
         const company = companies.find((row) => row.id === order.companyId);
+        const firmId = String(schedule.firmId || order.firmId || "");
         const boxType = String((item as any)?.boxType || "").trim();
         const rapcValue = String((item as any)?.rapc ?? "").trim();
         return {
@@ -29,23 +34,27 @@ export function PendingNpd() {
           order,
           item,
           company,
+          firmId,
+          firmName: getFirmDisplayNameById(firmId, firms),
           boxType,
           rapcValue,
         };
       })
       .filter(Boolean)
-      .filter((row) => row.item && !row.boxType && !row.rapcValue);
+      .filter((row) => row.item && !row.boxType && !row.rapcValue)
+      .filter((row) => !firmFilter || row.firmId === firmFilter);
 
     const needle = searchTerm.trim().toLowerCase();
     if (!needle) return rows;
 
-    return rows.filter(({ schedule, order, item, company, boxType, rapcValue }) => {
+    return rows.filter(({ schedule, order, item, company, firmName, boxType, rapcValue }) => {
       const blob = [
         order.orderNo,
         order.orderDate,
         schedule.scheduledDate,
         order.erpCode,
         company?.name,
+        firmName,
         item?.name,
         (item as any)?.itemName,
         (item as any)?.customerName,
@@ -58,7 +67,7 @@ export function PendingNpd() {
         .toLowerCase();
       return blob.includes(needle);
     });
-  }, [companies, npdItems, orders, searchTerm]);
+  }, [companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
 
   return (
     <div className="bg-white p-6 rounded shadow-sm border border-black flex flex-col gap-4">
@@ -69,7 +78,8 @@ export function PendingNpd() {
             Scheduled NPD items where both Box Type and RAPC are still blank.
           </p>
         </div>
-        <label className="relative w-full lg:w-[360px]">
+        <div className="flex w-full flex-wrap items-end gap-3 lg:w-auto">
+        <label className="relative min-w-[280px] flex-1 lg:w-[360px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
           <input
             value={searchTerm}
@@ -78,6 +88,8 @@ export function PendingNpd() {
             className="w-full border border-black rounded pl-10 pr-3 py-2 text-sm"
           />
         </label>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+        </div>
       </div>
 
       <DataSummaryTiles
@@ -98,6 +110,7 @@ export function PendingNpd() {
               <th className="px-3 py-2 border border-black">Order Date</th>
               <th className="px-3 py-2 border border-black">Schedule No</th>
               <th className="px-3 py-2 border border-black">Schedule Date</th>
+              <th className="px-3 py-2 border border-black">Firm</th>
               <th className="px-3 py-2 border border-black">Company</th>
               <th className="px-3 py-2 border border-black">ERP</th>
               <th className="px-3 py-2 border border-black">Item</th>
@@ -108,18 +121,19 @@ export function PendingNpd() {
           <tbody>
             {pendingRows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-6 py-8 text-center text-black font-medium">
+                <td colSpan={11} className="px-6 py-8 text-center text-black font-medium">
                   No scheduled items are pending NPD completion.
                 </td>
               </tr>
             ) : (
-              pendingRows.map(({ schedule, order, item, company, boxType, rapcValue }, index) => (
+              pendingRows.map(({ schedule, order, item, company, firmName, boxType, rapcValue }, index) => (
                 <tr key={schedule.id} className="hover:bg-slate-50">
                   <td className="px-3 py-2 border border-black font-bold whitespace-nowrap">{index + 1}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{order.orderNo || "-"}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{formatDate(order.orderDate)}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap font-bold text-indigo-700">{schedule.scheduleNo || "-"}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{formatDate(schedule.scheduledDate)}</td>
+                  <td className="px-3 py-2 border border-black font-semibold">{firmName}</td>
                   <td className="px-3 py-2 border border-black">{company?.name || "-"}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{order.erpCode || "-"}</td>
                   <td className="px-3 py-2 border border-black">{item?.name || "-"}</td>

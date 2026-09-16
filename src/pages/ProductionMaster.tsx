@@ -20,6 +20,8 @@ import { getProductionMatchingFields, hasProductionMatchingFieldChanges } from "
 import { downloadJobCardPdf } from "../lib/jobCardPdf";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { resolveProductionErp, resolveProductionItem as resolveProductionCatalogItem, resolveProductionSource } from "../lib/productionErp";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 const firstNonBlank = (...values: unknown[]) => {
   for (const value of values) {
@@ -63,11 +65,12 @@ export function ProductionMaster() {
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const { resolveOrderItem, phpItems, plateItems, itemsBySource } = useOrderItemCatalog();
-  const firmMap = useMemo(() => new Map(firms.map((firm) => [String(firm.id), String(firm.firmName || "").trim()])), [firms]);
+  const firmMap = useMemo(() => new Map(firms.map((firm) => [String(firm.id), getFirmDisplayName(firm)])), [firms]);
   
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [closingId, setClosingId] = useState<string | null>(null);
   const [cancelModalJobId, setCancelModalJobId] = useState<string | null>(null);
   const [cancelRemarks, setCancelRemarks] = useState("");
@@ -456,7 +459,8 @@ export function ProductionMaster() {
         .map((value) => String(value ?? "").trim())
         .filter(Boolean);
       const companyName = String(company?.name || production.companyName || "").trim();
-      const firmName = firstNonBlank(schedule?.firmName, order?.firmName, firmMap.get(String(schedule?.firmId || order?.firmId || production.firmId || "").trim()), "Unassigned");
+      const firmId = String(schedule?.firmId || production.firmId || production.orderFirmId || order?.firmId || "").trim();
+      const firmName = firmId ? (firmMap.get(firmId) || "Unknown firm") : "Unassigned";
       const itemKey = itemName || itemErp ? `${itemName}::${itemErp}` : "";
 
       return {
@@ -466,6 +470,7 @@ export function ProductionMaster() {
         itemKey,
         companyName,
         firmName,
+        firmId,
         fallbackErps,
         searchText: [
           production.transactionNo,
@@ -509,12 +514,13 @@ export function ProductionMaster() {
     return productionFilterRows
       .filter((row) => {
         if (companyFilter && row.companyName !== companyFilter) return false;
+        if (firmFilter && row.firmId !== firmFilter) return false;
         if (itemFilter && row.itemKey !== itemFilter) return false;
         return !normalizedSearch || row.searchText.includes(normalizedSearch);
       })
       .map((row) => row.production)
       .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [companyFilter, itemFilter, productionFilterRows, searchTerm]);
+  }, [companyFilter, firmFilter, itemFilter, productionFilterRows, searchTerm]);
   const {
     page,
     setPage,
@@ -599,7 +605,7 @@ export function ProductionMaster() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
+      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
@@ -609,6 +615,7 @@ export function ProductionMaster() {
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm font-medium focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
         <Select
           value={companyFilter}
           onChange={setCompanyFilter}
@@ -621,11 +628,12 @@ export function ProductionMaster() {
           options={itemOptions}
           placeholder="All Items"
         />
-        {(searchTerm || companyFilter || itemFilter) ? (
+        {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
           <button
             type="button"
             onClick={() => {
               setSearchTerm("");
+              setFirmFilter("");
               setCompanyFilter("");
               setItemFilter("");
             }}
@@ -886,7 +894,7 @@ export function ProductionMaster() {
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || (p as Production & { orderNo?: string }).orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{displayRow.erpCode || "-"}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{firstNonBlank(schedule?.firmName, order?.firmName, firmMap.get(String(schedule?.firmId || order?.firmId || p.firmId || "").trim()), "Unassigned")}</td>
+                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{firmMap.get(String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "").trim()) || (schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId ? "Unknown firm" : "Unassigned")}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{company?.name || displayRow.companyName || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black min-w-[150px]">{item?.name || "Unknown"}</td>

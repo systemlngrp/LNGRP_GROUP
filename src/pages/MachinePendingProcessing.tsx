@@ -16,6 +16,7 @@ import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage"
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { resolveProductionErp, resolveProductionItem } from "../lib/productionErp";
 import { getProductionOriginSource } from "../lib/productionOrigin";
+import { FirmFilter } from "../components/FirmFilter";
 
 interface PendingMachineJob {
   production: Production;
@@ -25,6 +26,7 @@ interface PendingMachineJob {
   erpCode: string;
   itemName: string;
   firmName: string;
+  firmId: string;
   fallbackErps: string[];
   requiredQty: number;
   ffgQty: number;
@@ -61,6 +63,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -155,6 +158,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         if (!stepIsFull && (pending > 0 || reportedForThisMachine > 0)) {
           const group = groups.get(machine.id);
           if (group) {
+            const firmId = String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "");
             group.jobs.push({
               production: p,
               source,
@@ -162,7 +166,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
               companyName: resolveCompanyName(p, item),
               erpCode,
               itemName: item?.name || "",
-              firmName: String(schedule?.firmName || order?.firmName || firmNameById.get(String(schedule?.firmId || order?.firmId || p.firmId || "")) || "Unassigned"),
+              firmId,
+              firmName: firmId ? (firmNameById.get(firmId) || "Unknown firm") : "Unassigned",
               fallbackErps: [p.erpCode, p.masterErp, order?.erpCode, item?.erp].map((value) => String(value ?? "").trim()).filter(Boolean),
               requiredQty: Number(p.qty || 0),
               ffgQty: Number(p.prodFromFFG || 0),
@@ -180,6 +185,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         ...g,
         jobs: g.jobs.filter(j => {
           if (companyFilter && j.companyName !== companyFilter) return false;
+          if (firmFilter && j.firmId !== firmFilter) return false;
           const itemKey = j.item?.id ? `${j.source}::${j.item.id}` : `${j.source}::${j.itemName}::${j.erpCode}`;
           if (itemFilter && itemKey !== itemFilter) return false;
           const search = searchTerm.toLowerCase();
@@ -193,7 +199,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
         return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
       });
-  }, [productions, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
+  }, [productions, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, firmFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
 
   const companyOptions = useMemo(() => {
     const names = new Set<string>();
@@ -250,7 +256,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             {title || (filterMachineId ? `${selectedMachineName} - Pending Jobs` : "Pending Processing")}
           </h2>
         </div>
-        <div className="grid w-full gap-3 md:grid-cols-[minmax(240px,1.4fr)_minmax(200px,1fr)_minmax(240px,1.1fr)_auto] md:items-center md:max-w-4xl">
+        <div className="grid w-full gap-3 md:grid-cols-[minmax(240px,1.4fr)_minmax(170px,0.8fr)_minmax(200px,1fr)_minmax(240px,1.1fr)_auto] md:items-center">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
@@ -261,10 +267,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
             />
           </div>
+          <FirmFilter value={firmFilter} onChange={setFirmFilter} />
           <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All Companies" />
           <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
-          {(searchTerm || companyFilter || itemFilter) ? (
-            <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
+          {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
+            <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
           ) : null}
         </div>
       </div>

@@ -7,15 +7,28 @@ export function generateFirmShortName(firmName?: string): string {
 }
 
 export function getFirmDisplayName(firm?: { firmName?: string; shortName?: string } | null): string {
-  if (!firm) return "Unassigned";
-  return String(firm.shortName || generateFirmShortName(firm.firmName) || "Unassigned").trim();
+  if (!firm) return "Unknown firm";
+  return String(firm.shortName || generateFirmShortName(firm.firmName) || "Unknown firm").trim();
 }
 
 export function getFirmDisplayNameById(
   firmId: string | undefined,
   firms: Array<{ id: string; firmName?: string; shortName?: string }>,
-  fallbackName?: string,
+  _legacyTransactionName?: string,
 ): string {
   const firm = firms.find((item) => String(item.id) === String(firmId || ""));
-  return firm ? getFirmDisplayName(firm) : String(fallbackName || "Unassigned");
+  if (firm) return getFirmDisplayName(firm);
+  return String(firmId || "").trim() ? "Unknown firm" : "Unassigned";
+}
+
+export function getFirmOptions(
+  firms: Array<{ id: string; firmName?: string; shortName?: string }>,
+): Array<{ value: string; label: string; searchText: string }> {
+  return firms
+    .map((firm) => ({
+      value: String(firm.id),
+      label: getFirmDisplayName(firm),
+      searchText: `${getFirmDisplayName(firm)} ${String(firm.firmName || "")}`.trim(),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }

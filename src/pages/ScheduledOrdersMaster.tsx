@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { FirmFilter } from "../components/FirmFilter";
 import { 
   OrderSchedule, 
   Order, 
@@ -50,6 +51,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [scheduleNoSortDirection, setScheduleNoSortDirection] = useState<SortDirection>("desc");
@@ -63,10 +65,8 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   );
 
   const getFirmName = useCallback((schedule: OrderSchedule, order?: Order) => {
-    const directName = String(schedule.firmName || order?.firmName || "").trim();
-    if (directName) return directName;
     const directFirmId = String(schedule.firmId || order?.firmId || "").trim();
-    return firmMap.get(directFirmId) || "Unassigned";
+    return firmMap.get(directFirmId) || (directFirmId ? "Unknown firm" : "Unassigned");
   }, [firmMap]);
 
   const companyOptions = useMemo<SelectOption[]>(
@@ -137,6 +137,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         scheduleNo: s.scheduleNo || "-",
         orderNo: order?.orderNo || "-",
         firmName: getFirmName(s, order),
+        firmId: String(s.firmId || order?.firmId || ""),
         companyId: company?.id || "",
         companyName: company?.name || "-",
         itemId: item?.id || "",
@@ -197,11 +198,12 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
           s.itemErp,
         ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch));
         const matchCompany = !companyFilter || s.companyId === companyFilter;
+        const matchFirm = !firmFilter || s.firmId === firmFilter;
         const matchItem = !itemFilter || s.itemId === itemFilter;
         const matchFromDate = !fromDate || s.scheduledDate >= fromDate;
         const matchToDate = !toDate || s.scheduledDate <= toDate;
 
-        return matchSearch && matchCompany && matchItem && matchFromDate && matchToDate;
+        return matchSearch && matchFirm && matchCompany && matchItem && matchFromDate && matchToDate;
       })
       .sort((a, b) => {
         const aScheduleNo = a.scheduleNo === "-" ? "" : a.scheduleNo;
@@ -210,7 +212,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         if (comparison !== 0) return scheduleNoSortDirection === "asc" ? comparison : -comparison;
         return b.scheduledDate.localeCompare(a.scheduledDate);
       });
-  }, [scheduleDispatchDetails, pendingOnly, searchTerm, companyFilter, itemFilter, fromDate, toDate, scheduleNoSortDirection]);
+  }, [scheduleDispatchDetails, pendingOnly, searchTerm, firmFilter, companyFilter, itemFilter, fromDate, toDate, scheduleNoSortDirection]);
   const {
     page,
     setPage,
@@ -224,6 +226,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
     setSearchTerm("");
     setCompanyFilter("");
     setItemFilter("");
+    setFirmFilter("");
     setFromDate("");
     setToDate("");
   };
@@ -290,7 +293,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
       </div>
 
       {/* Filter Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-white p-4 border border-black rounded shadow-sm">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 bg-white p-4 border border-black rounded shadow-sm">
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -302,6 +305,8 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
             className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"
           />
         </div>
+
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} label="Firm" className="min-w-0" />
 
         {/* Company Filter */}
         <div className="relative">

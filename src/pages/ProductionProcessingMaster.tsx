@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { Machine, Production, ProductionProcessing } from "../types";
+import { Firm, Machine, Production, ProductionProcessing } from "../types";
 import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { TableControls } from "../components/TableControls";
 import { useNavigate } from "react-router-dom";
@@ -12,6 +12,8 @@ import { CorrugationWastageFields } from "../components/CorrugationWastageFields
 import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, wastageDraftFromEntry, type CorrugationWastageDraft } from "../lib/corrugationWastage";
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, printingWastageDraftFromEntry, type PrintingWastageDraft } from "../lib/printingWastage";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type EditDraft = {
   date: string;
@@ -44,7 +46,9 @@ export function ProductionProcessingMaster() {
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -156,8 +160,13 @@ export function ProductionProcessingMaster() {
   };
 
   const filtered = useMemo(() => {
+    const jobs = [...productions, ...phpJobs, ...plateJobs];
     return processing
       .filter((p) => {
+        const production = jobs.find((job) => job.id === p.productionId);
+        const firmId = String(production?.firmId || production?.orderFirmId || "");
+        const firmName = getFirmDisplayNameById(firmId, firms);
+        if (firmFilter && firmId !== firmFilter) return false;
         const query = searchTerm.toLowerCase();
         const matchesSearch = (
           String(p.jobNo || "").toLowerCase().includes(query) ||
@@ -165,14 +174,15 @@ export function ProductionProcessingMaster() {
           String(p.shift || "Day").toLowerCase().includes(query) ||
           String(p.itemName || "").toLowerCase().includes(query) ||
           String(p.erp || "").toLowerCase().includes(query) ||
-          String(p.boxType || "").toLowerCase().includes(query)
+          String(p.boxType || "").toLowerCase().includes(query) ||
+          firmName.toLowerCase().includes(query)
         );
         const matchesFrom = !fromDate || String(p.date || "") >= fromDate;
         const matchesTo = !toDate || String(p.date || "") <= toDate;
         return matchesSearch && matchesFrom && matchesTo;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [processing, searchTerm, fromDate, toDate]);
+  }, [firmFilter, firms, fromDate, phpJobs, plateJobs, processing, productions, searchTerm, toDate]);
 
   return (
     <div className="space-y-6">
@@ -190,6 +200,7 @@ export function ProductionProcessingMaster() {
         <div className="min-w-0 flex-1">
           <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search by Job No, Machine, Item, or ERP..." />
         </div>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
         <div className="flex shrink-0 items-end gap-3 rounded border border-black bg-white px-3 py-2">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-bold uppercase tracking-widest text-slate-600">From</label>
@@ -229,6 +240,7 @@ export function ProductionProcessingMaster() {
               <tr className="divide-x divide-black">
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Date</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Job No</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Firm</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Item Name</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">ERP</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Box Type</th>
@@ -242,7 +254,7 @@ export function ProductionProcessingMaster() {
             <tbody className="bg-white divide-y divide-black">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
+                  <td colSpan={11} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
                 </tr>
               ) : (
                 filtered.map((item) => {
@@ -251,6 +263,9 @@ export function ProductionProcessingMaster() {
                   const editCompletionStatus = item.completionStatus || "Full";
                   const showEditCorrugationWastage = editMachineName === "Corrugation Liner" && editCompletionStatus === "Full";
                   const showEditPrintingWastage = editMachineName === "Printing" && editCompletionStatus === "Full";
+                  const linkedProduction = [...productions, ...phpJobs, ...plateJobs].find((job) => job.id === item.productionId);
+                  const linkedFirmId = String(linkedProduction?.firmId || linkedProduction?.orderFirmId || "");
+                  const firmName = getFirmDisplayNameById(linkedFirmId, firms);
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-50 transition-colors divide-x divide-black">
@@ -282,6 +297,7 @@ export function ProductionProcessingMaster() {
                           item.jobNo
                         )}
                       </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-black border border-black">{firmName}</td>
                       <td className="px-6 py-4 text-sm text-black border border-black">{item.itemName || "-"}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">{item.erp || "-"}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">{item.boxType || "-"}</td>
