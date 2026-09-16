@@ -489,7 +489,7 @@ export function Materials() {
     const firmId = activeFirmId || String(firms[0]?.id || "");
     setSelectedFirmId(firmId);
     setEditingId(null);
-    setFormData({ ...createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber), firmId });
+    setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
     setOpeningReels([]);
     setOpeningReelSupplierId("");
     setIsFormOpen(true);
@@ -740,7 +740,7 @@ export function Materials() {
       return;
     }
     setEditingId(null);
-    setFormData({ ...createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber), firmId: selectedFirmId });
+    setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
     setOpeningReels([]);
     setOpeningReelSupplierId("");
     setIsFormOpen(true);
@@ -849,11 +849,7 @@ export function Materials() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const normalizedType = formData.type;
-    const firmId = String(formData.firmId || "").trim();
-    if (!firmId) {
-      alert("Firm is required.");
-      return;
-    }
+    const firmId = String(selectedFirmId || "").trim();
     const uom = normalizedType === "Reel" ? "KGS" : String(formData.uom || "").trim() || "CM";
     const timestamp = new Date().toISOString();
     const size = parseNumericInput(formData.size);
@@ -992,7 +988,6 @@ export function Materials() {
       const nextMaterial: Material = {
         ...existing,
         id: materialId,
-        firmId,
         type: normalizedType,
         erpCode: erpCode || undefined,
         name: normalizedType === "Reel" ? getReelDisplayName(erpCode, Number(size), Number(gsm), Number(bf), color) : formData.name.trim(),
@@ -1457,23 +1452,6 @@ export function Materials() {
 
           <form onSubmit={handleSubmit} className="space-y-7">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="text-blue-700 font-bold">
-                  Firm <span className="text-red-500">*</span>
-                </label>
-                <select
-                  required
-                  value={formData.firmId}
-                  disabled
-                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                >
-                  <option value="">Select firm</option>
-                  {firms.map((firm) => (
-                    <option key={firm.id} value={firm.id}>{firm.firmName}</option>
-                  ))}
-                </select>
-              </div>
-
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">
                   Type <span className="text-red-500">*</span>
