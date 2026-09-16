@@ -22,6 +22,7 @@ export async function downloadIndentPdf({
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
+  doc.setTextColor(0);
   doc.text("PURCHASE REQUISITION", 105, currentY, { align: "center" });
   currentY += 10;
 
@@ -29,6 +30,7 @@ export async function downloadIndentPdf({
   const drawMeta = (label: string, value: string, x: number, y: number) => {
     const labelText = `${label}:`;
     doc.setFont("helvetica", "bold");
+    doc.setTextColor(0);
     doc.text(labelText, x, y);
     const labelWidth = doc.getTextWidth(`${labelText} `);
     doc.setFont("helvetica", "normal");
@@ -41,7 +43,6 @@ export async function downloadIndentPdf({
     ["Requisition Date", formatDate(indent.requisitionDate)],
     ["Indent Type", indent.indentType],
     ["Firm", resolvedFirmName],
-    ["Status", indent.status],
     ["Required Date", formatDate(indent.requiredDate)],
   ];
 
@@ -54,7 +55,7 @@ export async function downloadIndentPdf({
     totalIndentQty: acc.totalIndentQty + Number(line.qty || 0),
     totalBalanceQty: acc.totalBalanceQty + Number(line.balanceQty ?? Math.max(0, Number(line.qty || 0) - Number(line.orderedQty || 0) - Number(line.cancelledQty || 0))),
   }), { totalIndentQty: 0, totalBalanceQty: 0 });
-  currentY += 32;
+  currentY += 24;
   drawMeta("Total Indent Qty", totals.totalIndentQty.toLocaleString(), 14, currentY);
   drawMeta("Balance Qty", totals.totalBalanceQty.toLocaleString(), 110, currentY);
   currentY += 8;
@@ -75,8 +76,8 @@ export async function downloadIndentPdf({
     head: [["SL", "ERP", "Material Name", "Unit", "Quantity"]],
     body: lineTableRows,
     theme: "grid",
-    headStyles: { fillColor: [79, 70, 229] },
-    styles: { fontSize: 9, cellPadding: 2.5, textColor: 0 },
+    headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: "bold" },
+    styles: { fontSize: 9, cellPadding: 2.5, textColor: 0, fontStyle: "normal" },
     columnStyles: {
       0: { halign: "center", cellWidth: 14 },
       1: { cellWidth: 28 },
@@ -100,7 +101,7 @@ export async function downloadIndentPdf({
   }
 
   doc.setFontSize(9);
-  doc.setTextColor(80);
+  doc.setTextColor(0);
   doc.text(`Generated on ${formatDate(new Date().toISOString())}`, 14, Math.min(footerY, 285));
 
   const safeIndentNo = String(indent.indentNo || "").replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "");

@@ -193,6 +193,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
   const handleExportPdf = () => {
     const doc = new jsPDF("l", "mm", "a4");
+    doc.setTextColor(0);
     doc.setFontSize(16);
     doc.text(getQueueTitle(mode), 14, 16);
     doc.setFontSize(10);
@@ -233,8 +234,8 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         body: pendingRows,
         startY: 30,
         theme: "grid",
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [37, 99, 235] },
+        styles: { fontSize: 8, cellPadding: 2, textColor: 0, fontStyle: "normal" },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
         columnStyles: {
           5: { cellWidth: 72 },
         },
@@ -262,8 +263,8 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         }),
         startY: 30,
         theme: "grid",
-        styles: { fontSize: 8, cellPadding: 2 },
-        headStyles: { fillColor: [37, 99, 235] },
+        styles: { fontSize: 8, cellPadding: 2, textColor: 0, fontStyle: "normal" },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
         columnStyles: {
           5: { cellWidth: 120 },
         },
@@ -284,6 +285,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(15);
+      doc.setTextColor(0);
       doc.text("Purchase Requisition", 105, y, { align: "center" });
       y += 10;
 
@@ -291,6 +293,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       const drawMeta = (label: string, value: string, x: number, rowY: number) => {
         const labelText = `${label}:`;
         doc.setFont("helvetica", "bold");
+        doc.setTextColor(0);
         doc.text(labelText, x, rowY);
         const labelWidth = doc.getTextWidth(`${labelText} `);
         doc.setFont("helvetica", "normal");
@@ -298,12 +301,10 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       };
 
       drawMeta("Indent No", indent.indentNo || indent.id, 14, y);
-      drawMeta("Status", indent.status, 140, y);
-      y += 6;
-      drawMeta("Requested By", indent.requestedBy || "-", 14, y);
       drawMeta("Indent Type", indent.indentType || "-", 140, y);
       y += 6;
-      drawMeta("Firm", resolveFirmName(indent), 14, y);
+      drawMeta("Requested By", indent.requestedBy || "-", 14, y);
+      drawMeta("Firm", resolveFirmName(indent), 140, y);
       y += 6;
       drawMeta("Requisition Date", formatDate(indent.requisitionDate), 14, y);
       drawMeta("Required Date", formatDate(indent.requiredDate), 140, y);
@@ -329,8 +330,8 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       autoTable(doc, {
         startY: y,
         theme: "grid",
-        styles: { fontSize: 8, cellPadding: 2, fontStyle: "normal" },
-        headStyles: { fillColor: [37, 99, 235], fontStyle: "bold" },
+        styles: { fontSize: 8, cellPadding: 2, textColor: 0, fontStyle: "normal" },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
         head: [[
           "ERP",
           "Item",

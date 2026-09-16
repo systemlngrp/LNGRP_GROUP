@@ -831,6 +831,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
 
   const handleExportPdf = () => {
     const doc = new jsPDF("l", "mm", "a4");
+    doc.setTextColor(0);
     doc.setFontSize(16);
     doc.text(getTitle(mode), 14, 16);
     doc.setFontSize(10);
@@ -853,7 +854,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           ...(mode === "item-cancelled" ? ["Cancel By", "Cancel Reason"] : []),
           "Not Received",
           "Target Delivery",
-          ...(mode === "item-not-received" ? ["Cancel Qty", "Action", "Status"] : []),
+          ...(mode === "item-not-received" ? ["Cancel Qty"] : []),
         ]],
         body: filteredFlatItemRows.map((row) => [
           row.order.poNo || "DRAFT",
@@ -869,14 +870,12 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           ...(mode === "item-cancelled" ? [row.line.cancelledBy || "-", row.line.cancelReason || "-"] : []),
           row.pendingQty.toLocaleString(),
           row.line.targetDeliveryDate ? formatDate(row.line.targetDeliveryDate) : "-",
-          ...(mode === "item-not-received"
-            ? [cancelQtyByLineId[row.line.id] || "", row.order.status !== "Rejected" ? "Cancel" : "-", row.order.status]
-            : []),
+          ...(mode === "item-not-received" ? [cancelQtyByLineId[row.line.id] || ""] : []),
         ]),
         startY: 34,
         theme: "grid",
-        styles: { fontSize: 7, cellPadding: 1.8 },
-        headStyles: { fillColor: [37, 99, 235] },
+        styles: { fontSize: 7, cellPadding: 1.8, textColor: 0, fontStyle: "normal" },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
       });
 
       doc.save(`${getTitle(mode).replace(/\s+/g, "_")}.pdf`);
@@ -894,7 +893,6 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         "Total Yet To Receive",
         "Total Amount",
         ...(mode === "rejected" ? ["Rejection Reason"] : []),
-        "Status",
       ]],
       body: filteredOrders.map((order) => {
         const lines = getModeLines(orderLines.filter((line) => line.purchaseOrderId === order.id));
@@ -913,13 +911,12 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
             maximumFractionDigits: 2,
           }),
           ...(mode === "rejected" ? [order.rejectedRemarks || ""] : []),
-          order.status,
         ];
       }),
       startY: 30,
       theme: "grid",
-      styles: { fontSize: 8, cellPadding: 2 },
-      headStyles: { fillColor: [37, 99, 235] },
+      styles: { fontSize: 8, cellPadding: 2, textColor: 0, fontStyle: "normal" },
+      headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
       columnStyles: {},
     });
 
@@ -929,6 +926,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const handleRowPdf = async (order: PurchaseOrder) => {
     const lines = getModeLines(orderLines.filter((line) => line.purchaseOrderId === order.id));
     const indentRefs = getOrderIndentRefs(order, lines);
+    const indentNo = indentRefs.join(", ") || "Manual PO";
     const supplierName = supplierNameMap.get(order.supplierId) || "Unknown";
     const showIntegratedTax = Number(order.igst || 0) > 0 && Number(order.cgst || 0) === 0 && Number(order.sgst || 0) === 0;
     const doc = new jsPDF("p", "mm", "a4");
@@ -940,36 +938,50 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(15);
+      doc.setTextColor(0);
       doc.text("Purchase Order", 105, y, { align: "center" });
       y += 10;
 
-      doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      doc.text(`PO No: ${order.poNo || "DRAFT"}`, 14, y);
-      doc.text(`Status: ${order.status}`, 140, y);
+      const drawMeta = (label: string, value: string, x: number, rowY: number) => {
+        const labelText = `${label}:`;
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0);
+        doc.text(labelText, x, rowY);
+        const labelWidth = doc.getTextWidth(`${labelText} `);
+        doc.setFont("helvetica", "normal");
+        doc.text(value || "-", x + labelWidth, rowY);
+      };
+
+      drawMeta("PO No", order.poNo || "DRAFT", 14, y);
+      drawMeta("Indent No", indentNo, 140, y);
       y += 6;
-      doc.text(`Supplier: ${supplierName}`, 14, y);
-      doc.text(`Indent Ref: ${indentRefs.join(", ") || "-"}`, 140, y);
+      drawMeta("Supplier", supplierName, 14, y);
+      drawMeta("Required Date", formatDate(order.requiredDate), 140, y);
       y += 6;
-      doc.text(`PO Date: ${formatDate(order.poDate)}`, 14, y);
-      doc.text(`Required Date: ${formatDate(order.requiredDate)}`, 140, y);
+      drawMeta("PO Date", formatDate(order.poDate), 14, y);
+      drawMeta("Grand Total", formatMoney(Number(order.grandTotal ?? order.totalAmount ?? 0)), 140, y);
       y += 6;
-      doc.text(`Total Qty: ${Number(order.totalQty || 0).toLocaleString()}`, 14, y);
-      doc.text(`Grand Total: ${formatMoney(Number(order.grandTotal ?? order.totalAmount ?? 0))}`, 140, y);
+      drawMeta("Total Qty", Number(order.totalQty || 0).toLocaleString(), 14, y);
       y += 8;
 
       if (order.rejectedRemarks?.trim()) {
+        const labelText = "Rejection Reason:";
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(0);
+        doc.text(labelText, 14, y);
+        const labelWidth = doc.getTextWidth(`${labelText} `);
         doc.setFont("helvetica", "normal");
-        const noteLines = doc.splitTextToSize(`Rejection Reason: ${order.rejectedRemarks.trim()}`, 180);
-        doc.text(noteLines, 14, y);
+        const noteLines = doc.splitTextToSize(order.rejectedRemarks.trim(), 180 - labelWidth);
+        doc.text(noteLines, 14 + labelWidth, y);
         y += noteLines.length * 5 + 2;
       }
 
       autoTable(doc, {
         startY: y,
         theme: "grid",
-        headStyles: { fillColor: [37, 99, 235] },
-        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
+        styles: { fontSize: 8, cellPadding: 2, textColor: 0, fontStyle: "normal" },
         head: [[
           "ERP",
           "Item",
@@ -1008,20 +1020,18 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       const summaryY = finalY + 8;
 
       doc.setFont("helvetica", "bold");
+      doc.setTextColor(0);
       doc.text("Summary", 140, summaryY);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Taxable Amount: ${formatMoney(taxableAmount)}`, 140, summaryY + 6);
+      drawMeta("Taxable Amount", formatMoney(taxableAmount), 140, summaryY + 6);
       if (showIntegratedTax) {
-        doc.text(`IGST: ${formatMoney(igst)}`, 140, summaryY + 12);
-        doc.text(`Round Off: ${formatMoney(roundOff)}`, 140, summaryY + 18);
-        doc.setFont("helvetica", "bold");
-        doc.text(`Grand Total: ${formatMoney(grandTotal)}`, 140, summaryY + 26);
+        drawMeta("IGST", formatMoney(igst), 140, summaryY + 12);
+        drawMeta("Round Off", formatMoney(roundOff), 140, summaryY + 18);
+        drawMeta("Grand Total", formatMoney(grandTotal), 140, summaryY + 26);
       } else {
-        doc.text(`CGST: ${formatMoney(cgst)}`, 140, summaryY + 12);
-        doc.text(`SGST: ${formatMoney(sgst)}`, 140, summaryY + 18);
-        doc.text(`Round Off: ${formatMoney(roundOff)}`, 140, summaryY + 24);
-        doc.setFont("helvetica", "bold");
-        doc.text(`Grand Total: ${formatMoney(grandTotal)}`, 140, summaryY + 32);
+        drawMeta("CGST", formatMoney(cgst), 140, summaryY + 12);
+        drawMeta("SGST", formatMoney(sgst), 140, summaryY + 18);
+        drawMeta("Round Off", formatMoney(roundOff), 140, summaryY + 24);
+        drawMeta("Grand Total", formatMoney(grandTotal), 140, summaryY + 32);
       }
 
       doc.save(`PO_${order.poNo || order.id}.pdf`);
