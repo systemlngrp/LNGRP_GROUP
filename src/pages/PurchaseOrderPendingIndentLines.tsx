@@ -8,7 +8,7 @@ import { ExcelExport } from "../components/ExcelExport";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
-import type { Firm, GstRateMaster, Indent, IndentLine, Supplier } from "../types";
+import type { Firm, GstRateMaster, Indent, IndentLine, Material, Supplier } from "../types";
 import { useAuth } from "../auth/AuthContext";
 import { useAutoRefreshEffect, useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
@@ -43,6 +43,7 @@ export function PurchaseOrderPendingIndentLines() {
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [materials] = useData<Material>("materials", [], { firmScope: "all", storageKey: "materials-all-firms" });
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines] = useData<IndentLine>("indent-lines", []);
   const [rows, setRows] = useState<PendingIndentLineRow[]>([]);
@@ -137,6 +138,13 @@ export function PurchaseOrderPendingIndentLines() {
     [gstRateMasters],
   );
   const defaultGstRate = gstRateOptions.find((option) => option.value === "18")?.value || gstRateOptions[0]?.value || "";
+  const materialById = useMemo(() => new Map(materials.map((material) => [String(material.id), material])), [materials]);
+  const getDefaultGstRate = useCallback((materialId: string) => {
+    const materialRate = materialById.get(String(materialId))?.gstRate;
+    if (materialRate === undefined || materialRate === null || !Number.isFinite(Number(materialRate)) || Number(materialRate) < 0) return defaultGstRate;
+    const value = String(Number(materialRate));
+    return gstRateOptions.some((option) => option.value === value) ? value : defaultGstRate;
+  }, [defaultGstRate, gstRateOptions, materialById]);
 
   const sortedFilteredRows = useMemo(() =>
     filteredRows
@@ -184,7 +192,7 @@ export function PurchaseOrderPendingIndentLines() {
           supplierId: "",
           qty: String(Number(row.pendingQty || 0)),
           rate: String(Number.isFinite(suggestedRate) ? suggestedRate : 0),
-          gstRate: defaultGstRate,
+          gstRate: getDefaultGstRate(row.materialId),
         },
       };
     });
@@ -209,7 +217,7 @@ export function PurchaseOrderPendingIndentLines() {
             supplierId: "",
             qty: String(Number(r.pendingQty || 0)),
             rate: String(Number.isFinite(suggestedRate) ? suggestedRate : 0),
-            gstRate: defaultGstRate,
+            gstRate: getDefaultGstRate(r.materialId),
           };
         }
       });
@@ -519,7 +527,7 @@ export function PurchaseOrderPendingIndentLines() {
                     </td>
                     <td className="min-w-[140px] border border-black px-4 py-3 text-sm text-black text-right whitespace-nowrap">
                       <div className="w-full min-w-[108px]">
-                        <Select compact value={rowInputs[row.indentLineId]?.gstRate || defaultGstRate} onChange={(value) => updateInput(row.indentLineId, { gstRate: value })} options={gstRateOptions} placeholder="GST Rate" disabled={!selectedIds.has(row.indentLineId)} />
+                        <Select compact value={rowInputs[row.indentLineId]?.gstRate || getDefaultGstRate(row.materialId)} onChange={(value) => updateInput(row.indentLineId, { gstRate: value })} options={gstRateOptions} placeholder="GST Rate" disabled={!selectedIds.has(row.indentLineId)} />
                       </div>
                     </td>
                     <td className="border border-black px-4 py-3 text-sm text-black text-right">{taxes.cgst ? taxes.cgst.toFixed(2) : "-"}</td>

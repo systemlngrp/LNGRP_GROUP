@@ -1043,14 +1043,16 @@ export function MaterialInForm() {
     purchaseOrders.find((order) => order.id === purchaseOrderId);
 
   const gstRateOptions = useMemo(
-    () =>
-      [...gstRateMasters]
+    () => {
+      const options = [...gstRateMasters]
         .filter((entry) => entry.active !== "No")
         .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0))
         .map((entry) => ({
           value: String(Number(entry.rate || 0)),
           label: entry.name,
-        })),
+        }));
+      return options.some((option) => option.value === "0") ? options : [{ value: "0", label: "0%" }, ...options];
+    },
     [gstRateMasters]
   );
 
@@ -1254,7 +1256,7 @@ export function MaterialInForm() {
         ? { invoiceRateUsd: resolvedInvoiceRateInput }
         : { invoiceRate: resolvedInvoiceRateInput, rate: resolvedInvoiceRateInput, value: qty * resolvedInvoiceRateInput }),
       actualQty: qty,
-      gstRate: Number(selectedPoLine?.gstRate ?? material.gstRate ?? 0),
+      gstRate: Number(material.gstRate ?? 0) >= 0 && Number.isFinite(Number(material.gstRate)) ? Number(material.gstRate) : 0,
       cgstRate: 0,
       sgstRate: 0,
       igstRate: 0,
@@ -1486,7 +1488,7 @@ export function MaterialInForm() {
         actualQty: totalWeight,
         rate: invoiceRate,
         value: totalWeight * invoiceRate,
-        gstRate: existingLine?.gstRate || 0,
+        gstRate: existingLine?.gstRate ?? (Number(materials.find((material) => material.id === materialId)?.gstRate) >= 0 && Number.isFinite(Number(materials.find((material) => material.id === materialId)?.gstRate)) ? Number(materials.find((material) => material.id === materialId)?.gstRate) : 0),
         cgstRate: existingLine?.cgstRate || 0,
         sgstRate: existingLine?.sgstRate || 0,
         igstRate: existingLine?.igstRate || 0,
@@ -2097,7 +2099,7 @@ export function MaterialInForm() {
           ? { invoiceRateUsd: invoiceRate }
           : { invoiceRate, rate: invoiceRate, value: qty * invoiceRate }),
         actualQty: qty,
-        gstRate: Number(match.line.gstRate || 0),
+        gstRate: Number(materials.find((material) => material.id === match.line.materialId)?.gstRate) >= 0 && Number.isFinite(Number(materials.find((material) => material.id === match.line.materialId)?.gstRate)) ? Number(materials.find((material) => material.id === match.line.materialId)?.gstRate) : 0,
         cgstRate: 0,
         sgstRate: 0,
         igstRate: 0,
@@ -3112,7 +3114,7 @@ export function MaterialInForm() {
                           <td className="px-4 py-3 text-sm text-black border border-black min-w-[220px]">
                             <Select
                               options={gstRateOptions}
-                              value={Number(line.gstRate || 0) > 0 ? String(Number(line.gstRate || 0)) : ""}
+                              value={String(Number(line.gstRate || 0))}
                               onChange={(value) => updateLine(line.id, { gstRate: Number(value || 0) })}
                               placeholder="Select GST..."
                             />
