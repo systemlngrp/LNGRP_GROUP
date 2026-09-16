@@ -10,3 +10,12 @@ export function getFirmDisplayName(firm?: { firmName?: string; shortName?: strin
   if (!firm) return "Unassigned";
   return String(firm.shortName || generateFirmShortName(firm.firmName) || "Unassigned").trim();
 }
+
+export function getFirmDisplayNameById(
+  firmId: string | undefined,
+  firms: Array<{ id: string; firmName?: string; shortName?: string }>,
+  fallbackName?: string,
+): string {
+  const firm = firms.find((item) => String(item.id) === String(firmId || ""));
+  return firm ? getFirmDisplayName(firm) : String(fallbackName || "Unassigned");
+}

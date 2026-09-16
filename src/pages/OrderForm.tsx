@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useData } from "../hooks/useData";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Plus, Edit, Trash2, Upload, Download } from "lucide-react";
 import { Order, Company, Firm, OrderItemSource } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -142,7 +143,7 @@ export function OrderForm() {
       .filter((firm) => firm.id && firm.firmName)
       .slice()
       .sort((a, b) => (a.firmName || "").localeCompare(b.firmName || ""))
-      .map((firm) => ({ value: firm.id, label: firm.firmName }));
+      .map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) }));
   }, [firms]);
 
   const getFirmName = (id: string) => firms.find((firm) => firm.id === id)?.firmName || "";

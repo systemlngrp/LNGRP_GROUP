@@ -11,6 +11,7 @@ import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { useNavigate } from "react-router-dom";
 import { useConfirm } from "../components/ConfirmDialog";
 import { Select as FirmSelect } from "../components/Select";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type Stage = "All Approval" | "Pending PH" | "Pending Accounts" | "Pending MD";
 type SortField = "timestamp" | "gateEntryNo" | "transactionNo";
@@ -78,9 +79,7 @@ export function MrrApprovals() {
   };
 
   const getFirmName = (mrr: MaterialIn) => {
-    const storedFirmName = String(mrr.firmName || "").trim();
-    if (storedFirmName) return storedFirmName;
-    return firms.find((firm) => firm.id === mrr.firmId)?.firmName?.trim() || "Unassigned";
+    return getFirmDisplayNameById(mrr.firmId || mrr.destinationFirmId, firms, mrr.firmName);
   };
 
   const stages: { label: string; value: Stage }[] = [
@@ -127,7 +126,7 @@ export function MrrApprovals() {
       });
   }, [materialIn, activeStage, searchTerm, suppliers, companies, firms, firmFilter, sortField, sortDirection]);
 
-  const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((m) => m.firmId === firm.id || m.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: firm.firmName })), [firms, materialIn]);
+  const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((m) => m.firmId === firm.id || m.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms, materialIn]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);

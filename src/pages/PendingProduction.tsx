@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { Company, Firm, Order, OrderSchedule, Production } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -75,7 +76,7 @@ export function PendingProduction() {
   );
 
   const firmNameById = useMemo(
-    () => new Map(firms.map((firm) => [String(firm.id), String(firm.firmName || "").trim()])),
+    () => new Map(firms.map((firm) => [String(firm.id), getFirmDisplayName(firm)])),
     [firms]
   );
 

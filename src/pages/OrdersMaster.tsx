@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowDown, ArrowUp, Plus, Search, Calendar } from "lucide-react";
 import Select from "react-select";
 import { useData } from "../hooks/useData";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -85,7 +86,7 @@ export function OrdersMaster() {
     [orders, resolveOrderItem]
   );
   const firmMap = useMemo(
-    () => new Map(firms.map((firm) => [firm.id, firm.firmName || ""])), 
+    () => new Map(firms.map((firm) => [firm.id, getFirmDisplayName(firm)])), 
     [firms]
   );
   const userMap = useMemo(

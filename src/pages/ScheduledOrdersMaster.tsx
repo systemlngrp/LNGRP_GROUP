@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { 
   OrderSchedule, 
   Order, 
@@ -57,7 +58,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   const [savingCancelId, setSavingCancelId] = useState<string | null>(null);
 
   const firmMap = useMemo(
-    () => new Map(firms.map((firm) => [firm.id, firm.firmName || ""])), 
+    () => new Map(firms.map((firm) => [firm.id, getFirmDisplayName(firm)])), 
     [firms]
   );
 

@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { Indent, IndentLine, Material, Setting } from "../types";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { Spinner } from "../components/Spinner";
 
 import { TableControls } from "../components/TableControls";
@@ -16,6 +17,7 @@ export function IndentDetail() {
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [materials] = useData<Material>("materials", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -167,7 +169,7 @@ export function IndentDetail() {
           <div className="rounded border border-black bg-slate-50 p-3">
             <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Requisition No</div>
             <div className="mt-1 text-sm font-bold text-black">{indent.indentNo || "-"}</div>
-            <div className="mt-1 text-xs font-semibold text-slate-600">Firm: {indent.firmName || "Active Firm"}</div>
+            <div className="mt-1 text-xs font-semibold text-slate-600">Firm: {getFirmDisplayNameById(indent.firmId, firms, indent.firmName || "Active Firm")}</div>
           </div>
           <div className="rounded border border-black bg-slate-50 p-3">
             <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Requisition Date</div>

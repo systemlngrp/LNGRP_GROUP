@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useData } from "../hooks/useData";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
 import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
@@ -78,7 +79,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const scheduleById = useMemo(() => new Map(schedules.map((schedule) => [schedule.id, schedule])), [schedules]);
   const orderById = useMemo(() => new Map(orders.map((order) => [order.id, order])), [orders]);
   const companyNameById = useMemo(() => new Map(companies.map((company) => [company.id, company.name || ""])), [companies]);
-  const firmNameById = useMemo(() => new Map(firms.map((firm) => [firm.id, firm.firmName || ""])), [firms]);
+  const firmNameById = useMemo(() => new Map(firms.map((firm) => [firm.id, getFirmDisplayName(firm)])), [firms]);
   const phpJobIds = useMemo(() => new Set(phpJobs.map((job) => String(job.id))), [phpJobs]);
   const plateJobIds = useMemo(() => new Set(plateJobs.map((job) => String(job.id))), [plateJobs]);
 
