@@ -12258,10 +12258,13 @@ app.get("/api/indent-lines", requireAuth, async (req, res) => {
   try {
     if (!await requirePurchaseOrderReadAccess(req, res)) return;
     const indentId = String(req.query.indentId || "").trim();
-    if (!indentId) return res.status(400).json({ error: "indentId is required" });
 
     const db = await getPool();
     if (!db) return res.status(500).json({ error: "DB connection not available" });
+    if (!indentId) {
+      const [rows] = await db.query("SELECT * FROM `indent_lines` ORDER BY `id`");
+      return res.json((rows as any[]).map((row) => normalizeFetchedRow("indent_lines", row)));
+    }
     // Confirm the immutable parent ID first. This avoids treating an invalid
     // parent as an empty, valid indent and keeps the response authoritative.
     const [indentRows] = await db.query("SELECT `id` FROM `indents` WHERE `id` = ? LIMIT 1", [indentId]);
