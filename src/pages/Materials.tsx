@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Layers, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm } from "../types";
+import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm, GstRateMaster } from "../types";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
@@ -135,6 +135,7 @@ export function Materials() {
   const [materialGroups, setMaterialGroups] = useData<MaterialGroup>("material-groups", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
   const [units, setUnits] = useData<UnitMaster>("units", []);
+  const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
   const [packingSlips, setPackingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);
@@ -519,6 +520,14 @@ export function Materials() {
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((color) => ({ value: color.name, label: color.name })),
     [colors]
+  );
+
+  const gstRateOptions = useMemo(
+    () => gstRateMasters
+      .filter((entry) => entry.active !== "No")
+      .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0))
+      .map((entry) => ({ value: String(Number(entry.rate || 0)), label: entry.name })),
+    [gstRateMasters]
   );
 
   const openingReelTotals = useMemo(() => {
@@ -1531,9 +1540,12 @@ export function Materials() {
 
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">GST Rate (%)</label>
-                <input type="number" min="0" max="100" step="0.01" value={formData.gstRate}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, gstRate: e.target.value }))}
-                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+                <Select
+                  value={formData.gstRate}
+                  onChange={(value) => setFormData((prev) => ({ ...prev, gstRate: value }))}
+                  options={gstRateOptions}
+                  placeholder="Select GST Rate"
+                />
               </div>
 
               {formData.type === "Reel" && (
