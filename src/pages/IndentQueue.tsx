@@ -220,7 +220,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
       autoTable(doc, {
         head: [[
-          "Requisition No",
+          "Indent No",
           "Requested By",
           "Requisition Date",
           "Required Date",
@@ -242,7 +242,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
     } else {
       autoTable(doc, {
         head: [[
-          "Requisition No",
+          "Indent No",
           "Requested By",
           "Requisition Date",
           "Required Date",
@@ -297,7 +297,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         doc.text(value || "-", x + labelWidth, rowY);
       };
 
-      drawMeta("Requisition No", indent.indentNo || indent.id, 14, y);
+      drawMeta("Indent No", indent.indentNo || indent.id, 14, y);
       drawMeta("Status", indent.status, 140, y);
       y += 6;
       drawMeta("Requested By", indent.requestedBy || "-", 14, y);
@@ -497,7 +497,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         <table className="min-w-full border-collapse">
           <thead className="sticky top-0 z-30">
             <tr className="bg-slate-100">
-              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black whitespace-nowrap">Requisition No</th>
+              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black whitespace-nowrap">Indent No</th>
               <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Firm</th>
               <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Requested By</th>
               <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Requisition Date</th>

@@ -10438,7 +10438,7 @@ app.get("/api/purchase-orders/pending-procurement", async (req, res) => {
         i.requisitionDate,
         m.name as materialName,
         m.erpCode as materialErpCode,
-        m.gstRate as materialGstRate,
+        18 as materialGstRate,
         COALESCE(pol_sum.poQtyCreated, 0) as poQtyCreated
       FROM indent_lines il
       JOIN indents i ON i.id = il.indentId
@@ -10591,7 +10591,9 @@ app.get("/api/purchase-orders/pending-indent-lines", requireAuth, async (req, re
         il.materialId,
         m.name as materialName,
         m.erpCode as materialErpCode,
-        m.gstRate as materialGstRate,
+        -- Production databases created before the GST-rate master column
+        -- still support this queue; line creation falls back to the standard rate.
+        18 as materialGstRate,
         il.uom,
         il.qty,
         il.cancelledQty,

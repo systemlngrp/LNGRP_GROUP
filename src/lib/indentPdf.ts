@@ -36,7 +36,7 @@ export async function downloadIndentPdf({
   };
   const resolvedFirmName = String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "Firm unavailable").trim();
   const detailRows = [
-    ["Requisition No", indent.indentNo || "-"],
+    ["Indent No", indent.indentNo || "-"],
     ["Requested By", indent.requestedBy],
     ["Requisition Date", formatDate(indent.requisitionDate)],
     ["Indent Type", indent.indentType],

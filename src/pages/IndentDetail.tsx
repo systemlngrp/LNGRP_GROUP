@@ -225,7 +225,7 @@ export function IndentDetail() {
             <div className="mt-1 text-sm font-bold text-black">{indent.requestedBy}</div>
           </div>
           <div className="rounded border border-black bg-slate-50 p-3">
-            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Requisition No</div>
+            <div className="text-xs font-bold uppercase tracking-wide text-slate-500">Indent No</div>
             <div className="mt-1 text-sm font-bold text-black">{indent.indentNo || "-"}</div>
             <div className="mt-1 text-xs font-semibold text-slate-600">Firm: {getFirmDisplayNameById(indent.firmId, firms, indent.firmName || "Active Firm")}</div>
           </div>
