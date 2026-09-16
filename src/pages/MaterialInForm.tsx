@@ -1254,7 +1254,7 @@ export function MaterialInForm() {
         ? { invoiceRateUsd: resolvedInvoiceRateInput }
         : { invoiceRate: resolvedInvoiceRateInput, rate: resolvedInvoiceRateInput, value: qty * resolvedInvoiceRateInput }),
       actualQty: qty,
-      gstRate: 0,
+      gstRate: Number(selectedPoLine?.gstRate ?? material.gstRate ?? 0),
       cgstRate: 0,
       sgstRate: 0,
       igstRate: 0,

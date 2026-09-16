@@ -27,6 +27,7 @@ export interface Material {
   openingQty?: number;
   openingRate?: number;
   openingValue?: number;
+  gstRate?: number;
   remarks?: string;
   active?: "Yes" | "No";
   tallyStock?: number | null;

@@ -85,7 +85,7 @@ export function PurchaseOrderCreate() {
       if (!existing || new Date(po.poDate).getTime() > new Date(existing.poDate).getTime()) {
         best.set(materialId, {
           rate: Number(line.rate || 0),
-          gstRate: Number(line.gstRate || 18),
+          gstRate: Number(line.gstRate ?? 0),
           poDate: po.poDate,
         });
       }
@@ -93,7 +93,7 @@ export function PurchaseOrderCreate() {
     return best;
   }, [purchaseOrderLines, purchaseOrderMap]);
 
-  const getDraft = (lineId: string): RowDraft => rowDrafts[lineId] || { supplierId: "", poQty: "", cancelQty: "", rate: "", gstRate: "18" };
+  const getDraft = (lineId: string): RowDraft => rowDrafts[lineId] || { supplierId: "", poQty: "", cancelQty: "", rate: "", gstRate: "0" };
 
   const setDraftField = (lineId: string, patch: Partial<RowDraft>) => {
     setRowDrafts((prev) => ({
@@ -119,7 +119,7 @@ export function PurchaseOrderCreate() {
           poQty: balanceQty > 0 ? String(balanceQty) : "",
           cancelQty: "",
           rate: last?.rate ? String(last.rate) : "",
-          gstRate: String(last?.gstRate || 18),
+          gstRate: String(last ? last.gstRate : Number(materialMap.get(line.materialId)?.gstRate ?? 0)),
         };
         changed = true;
       }

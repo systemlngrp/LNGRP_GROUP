@@ -117,6 +117,7 @@ function createInitialFormState(materials: Material[], reelGroupId = "", reelSta
     openingQty: "",
     openingRate: "",
     openingValue: "",
+    gstRate: "0",
     remarks: "",
     active: "Yes" as ActiveValue,
   };
@@ -756,6 +757,7 @@ export function Materials() {
       openingQty: formatOptionalNumber(material.openingQty),
       openingRate: formatOptionalNumber(material.openingRate),
       openingValue: formatOptionalNumber(material.openingValue),
+      gstRate: formatOptionalNumber(material.gstRate) || "0",
       remarks: material.remarks || "",
       active: material.active === "No" ? "No" : "Yes",
     });
@@ -852,6 +854,8 @@ export function Materials() {
     const openingQty = parseNumericInput(formData.openingQty);
     const openingRate = parseNumericInput(formData.openingRate);
     const openingValueInput = parseNumericInput(formData.openingValue);
+    const gstRateInput = parseNumericInput(formData.gstRate);
+    const gstRate = gstRateInput === "" ? 0 : Number(gstRateInput);
     const openingValue = openingValueInput !== "" ? Number(openingValueInput) : openingQty !== "" && openingRate !== "" ? Number(openingQty) * Number(openingRate) : undefined;
     if (normalizedType === "Reel" && (size === "" || gsm === "" || bf === "" || !color)) {
       alert("Size, GSM, BF, and Color are required for Reel.");
@@ -863,6 +867,10 @@ export function Materials() {
     }
     if (normalizedType === "Other" && !formData.name.trim()) {
       alert("Item Name is required for Other items.");
+      return;
+    }
+    if (!Number.isFinite(gstRate) || gstRate < 0 || gstRate > 100) {
+      alert("GST Rate must be between 0 and 100.");
       return;
     }
     if (!editingId && isMaterialsLoading) {
@@ -988,6 +996,7 @@ export function Materials() {
         openingQty: savedOpeningQty,
         openingRate: savedOpeningRate,
         openingValue: savedOpeningValue,
+        gstRate,
         remarks: String(formData.remarks || "").trim() || undefined,
         active: formData.active,
         updatedBy: "System User",
@@ -1308,6 +1317,7 @@ export function Materials() {
         Returns: Number(values.returnQty || 0),
         Balance: Number(values.balance || 0),
         "Closing Value": Number(values.closingValue || 0),
+        "GST Rate (%)": Number(material.gstRate ?? 0),
         UOM: material.uom || "-",
         Active: material.active || "Yes",
       };
@@ -1656,6 +1666,12 @@ export function Materials() {
                   }
                   className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">GST Rate (%)</label>
+                <input type="number" min="0" max="100" step="0.01" value={formData.gstRate}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, gstRate: e.target.value }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
               </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Remarks</label>
