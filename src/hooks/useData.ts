@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAutoRefreshEffect } from "./useAutoRefresh";
+import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
 
 type UseDataOptions = {
   cacheToLocalStorage?: boolean;
@@ -171,12 +172,21 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       forbiddenUntilRef.current = 0;
       fetchData({ background: true, force: true });
     };
+    const handleRealtimeDataChange = (event: Event) => {
+      const entities = (event as CustomEvent<{ entities?: string[] }>).detail?.entities || ["*"];
+      const entityNames = new Set([entity, resolvedEntity, entity.replace(/_/g, "-"), resolvedEntity.replace(/_/g, "-")]);
+      if (entities.includes("*") || entities.some((name) => entityNames.has(String(name)))) {
+        fetchData({ background: true, force: true });
+      }
+    };
 
     window.addEventListener(syncEvent, handleSync);
     window.addEventListener("active-firm-changed", handleFirmChange);
+    window.addEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
     return () => {
       window.removeEventListener(syncEvent, handleSync);
       window.removeEventListener("active-firm-changed", handleFirmChange);
+      window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
     };
   }, [fetchData, syncEvent]);
 
@@ -255,8 +265,11 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
 
   // Providing a more robust interface
   const addItem = async (item: T) => {
+    const nextData = [...dataRef.current, item];
     try {
-      setDataState(prev => [...prev, item]);
+      setDataState(nextData);
+      dataRef.current = nextData;
+      if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",
@@ -267,6 +280,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || "Failed to add item");
       }
+      window.dispatchEvent(new CustomEvent(syncEvent));
     } catch (err) {
       console.error("Error adding item:", err);
       fetchData();
@@ -275,13 +289,17 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   };
 
   const removeItem = async (id: string) => {
+    const nextData = dataRef.current.filter((item) => item.id !== id);
     try {
-      setDataState(prev => prev.filter(i => i.id !== id));
+      setDataState(nextData);
+      dataRef.current = nextData;
+      if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getAuthHeaders(includeActiveFirm);
       const response = await fetch(`${endpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
       if (!response.ok) {
         throw new Error("Failed to delete item");
       }
+      window.dispatchEvent(new CustomEvent(syncEvent));
     } catch (err) {
       console.error("Error deleting item:", err);
       fetchData();
@@ -290,8 +308,11 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   };
 
   const saveItem = async (item: T) => {
+    const nextData = dataRef.current.map((current) => current.id === item.id ? item : current);
     try {
-      setDataState(prev => prev.map(i => i.id === item.id ? item : i));
+      setDataState(nextData);
+      dataRef.current = nextData;
+      if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",
@@ -302,6 +323,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || "Failed to save item");
       }
+      window.dispatchEvent(new CustomEvent(syncEvent));
     } catch (err) {
       console.error("Error saving item:", err);
       fetchData();

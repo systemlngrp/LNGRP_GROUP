@@ -738,6 +738,22 @@ function hasPermission(user: AuthUser, required: string) {
 }
 
 const AUTH_COOKIE_NAME = "lngrp_auth";
+const realtimeClients = new Set<express.Response>();
+
+function publishRealtimeDataChange(entities: string[] = ["*"]) {
+  const payload = JSON.stringify({
+    type: "data-changed",
+    entities: Array.from(new Set(entities.filter(Boolean))),
+    timestamp: new Date().toISOString(),
+  });
+  for (const client of realtimeClients) {
+    try {
+      client.write(`event: data-changed\ndata: ${payload}\n\n`);
+    } catch {
+      realtimeClients.delete(client);
+    }
+  }
+}
 function getCookieValue(req: express.Request, name: string) {
   const prefix = `${name}=`;
   return String(req.headers.cookie || "").split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length) || "";
@@ -764,6 +780,30 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
   (req as any).authUserId = uid;
   next();
 }
+
+app.get("/api/realtime/updates", requireAuth, (req, res) => {
+  res.status(200);
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+  res.write(`event: connected\ndata: ${JSON.stringify({ timestamp: new Date().toISOString() })}\n\n`);
+  realtimeClients.add(res);
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`: heartbeat ${Date.now()}\n\n`);
+    } catch {
+      // The close handler below removes failed connections.
+    }
+  }, 25_000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    realtimeClients.delete(res);
+  });
+});
 
 app.post("/api/auth/login", async (req, res) => {
   const identifier = String(req.body?.identifier || req.body?.userId || req.body?.email || "").trim();
@@ -918,6 +958,19 @@ app.use("/api", (req, res, next) => {
     req.path.startsWith("/tally-sync")
   ) return next();
   return requireAuth(req, res, next);
+});
+
+// Notify every connected client only after a successful API mutation.  A
+// wildcard invalidation is deliberate: custom workflows often change several
+// tables in one request, and sidebar counts depend on those related records.
+app.use("/api", (req, res, next) => {
+  const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method);
+  if (!isMutation || req.path.startsWith("/auth/") || req.path.startsWith("/realtime/")) return next();
+
+  res.on("finish", () => {
+    if (res.statusCode >= 200 && res.statusCode < 300) publishRealtimeDataChange();
+  });
+  next();
 });
 
 // Ensure uploads directory exists

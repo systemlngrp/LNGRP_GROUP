@@ -8,6 +8,7 @@ import { Firm } from "../types";
 import { useAppAutoRefresh, useAutoRefreshStatus, useAutoRefreshPause, useIsAutoRefreshPaused } from "../hooks/useAutoRefresh";
 import { ConfirmProvider } from "./ConfirmDialog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { useRealtimeDataSync } from "../hooks/useRealtimeDataSync";
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -22,6 +23,7 @@ export function Layout() {
 
   useAutoRefreshPause(isFormRoute);
   useAppAutoRefresh(Boolean(user));
+  useRealtimeDataSync(Boolean(user));
   const autoRefreshStatus = useAutoRefreshStatus(Boolean(user));
   const isAutoRefreshPaused = useIsAutoRefreshPaused(Boolean(user));
 
