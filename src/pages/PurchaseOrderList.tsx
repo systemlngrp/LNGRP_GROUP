@@ -140,15 +140,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     const firmId = String(order.firmId || "");
     const firm = firms.find((item) => String(item.id) === firmId);
     const shortName = firm ? getFirmDisplayName(firm) : (firmId ? "Unknown firm" : "Unassigned");
-    const legalName = String(firm?.firmName || "").trim();
 
     return (
-      <div className="min-w-[120px] normal-case leading-tight">
-        <div className="font-bold uppercase text-black">{shortName}</div>
-        {legalName && legalName !== shortName ? (
-          <div className="mt-1 text-[10px] font-medium text-slate-500 whitespace-normal">{legalName}</div>
-        ) : null}
-      </div>
+      <div className="min-w-[90px] font-bold uppercase leading-tight text-black">{shortName}</div>
     );
   }, [firms]);
   const indentMap = useMemo(() => new Map(indents.map((indent) => [indent.id, indent])), [indents]);
