@@ -1135,8 +1135,8 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         ))}
       </div>
       {isFlatItemMode ? (
-        <div className="overflow-hidden rounded border border-black bg-white shadow-sm">
-          <table className="min-w-full border-collapse">
+        <div className="w-full min-w-0 overflow-x-scroll rounded border border-black bg-white shadow-sm">
+          <table className="min-w-max w-full border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black border-b border-black">
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">PO Number</th>

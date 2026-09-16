@@ -186,7 +186,7 @@ export function Layout() {
           </div>
         </header>
         <div className="flex-1 overflow-auto bg-white">
-          <div className="w-full py-4 px-2 sm:px-3 lg:px-4">
+          <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
             <Outlet />
           </div>
         </div>
