@@ -8,6 +8,7 @@ import { Spinner } from "../components/Spinner";
 
 import { TableControls } from "../components/TableControls";
 import { summarizeIndentLines } from "../lib/indentTotals";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 type EditableIndentLine = {
   id: string;
@@ -222,7 +223,7 @@ export function IndentForm() {
             >
               <option value="">Select firm...</option>
               {firmOptions.map((firm) => (
-                <option key={firm.id} value={firm.id}>{firm.firmName}</option>
+                <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>
               ))}
             </select>
           </div>

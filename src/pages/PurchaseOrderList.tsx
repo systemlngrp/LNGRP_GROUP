@@ -16,6 +16,7 @@ import {
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { useData } from "../hooks/useData";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { computePurchaseOrderTaxes, summarizePurchaseOrderLines } from "../lib/purchaseOrderTaxes";
 import { renderOrganizationHeader } from "../lib/pdfOrganizationHeader";
@@ -335,7 +336,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       );
   }, [firmFilter, fromDateFilter, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, indentLineMap, indentMap, materialMap, orderLines, purchaseOrders, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
 
-  const firmOptions = useMemo(() => firms.filter((firm) => purchaseOrders.some((order) => order.firmId === firm.id)).map((firm) => ({ value: firm.id, label: firm.firmName })), [firms, purchaseOrders]);
+  const firmOptions = useMemo(() => firms.filter((firm) => purchaseOrders.some((order) => order.firmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms, purchaseOrders]);
 
   const poNumberOptions = useMemo(() => {
     const byId = new Map<string, string>();

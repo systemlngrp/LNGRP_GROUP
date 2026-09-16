@@ -13,11 +13,14 @@ import { useAuth } from "../auth/AuthContext";
 import { useAutoRefreshEffect, useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
 import { canIndentBeUnapproved, revertIndentToPending } from "../lib/indentTotals";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 type PendingIndentLineRow = {
   indentLineId: string;
   indentId: string;
   indentNo: string;
+  firmId: string;
+  firmName: string;
   requestedBy: string;
   requisitionDate: string;
   targetDeliveryDate: string;
@@ -98,8 +101,8 @@ export function PurchaseOrderPendingIndentLines() {
     const indentFirm = (r: PendingIndentLineRow) => indents.find((i) => i.id === r.indentId);
     return rows.filter((r) => {
       const indent = indentFirm(r);
-      const firmId = String(indent?.firmId || "");
-      const firmName = String(indent?.firmName || firms.find((f) => f.id === firmId)?.firmName || "Unassigned");
+      const firmId = String(r.firmId || indent?.firmId || "");
+      const firmName = String(r.firmName || indent?.firmName || firms.find((f) => f.id === firmId)?.firmName || "Unassigned");
       if (firmFilter && firmId !== firmFilter) return false;
       if (requestedByFilter && r.requestedBy !== requestedByFilter) return false;
       if (itemFilter && r.materialId !== itemFilter) return false;
@@ -113,7 +116,7 @@ export function PurchaseOrderPendingIndentLines() {
     });
   }, [firms, firmFilter, indents, itemFilter, requestedByFilter, rowInputs, rows, searchTerm, supplierFilter]);
 
-  const firmOptions = useMemo(() => firms.map((f) => ({ value: f.id, label: f.firmName })), [firms]);
+  const firmOptions = useMemo(() => firms.map((f) => ({ value: f.id, label: getFirmDisplayName(f) })), [firms]);
   const requestedByOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.requestedBy).filter(Boolean))).sort().map((v) => ({ value: v, label: v })), [rows]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((r) => [r.materialId, r.materialName])).entries()).map(([value, label]) => ({ value, label })), [rows]);
   const supplierOptions = useMemo(() => suppliers.map((s) => ({ value: s.id, label: s.name })), [suppliers]);

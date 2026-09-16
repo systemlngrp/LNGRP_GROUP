@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { generateFirmShortName } from "../lib/firmDisplay";
 
 export type AuthUser = {
   id: string;
@@ -14,6 +15,7 @@ export type AuthUser = {
 export type ActiveFirm = {
   id: string;
   firmName: string;
+  shortName?: string | null;
   logo?: string | null;
   tallyPortNo?: string | null;
 };
@@ -48,6 +50,7 @@ function normalizeActiveFirm(raw: unknown): ActiveFirm | null {
   return {
     id,
     firmName,
+    shortName: (value as any)?.shortName ? String((value as any).shortName) : generateFirmShortName(firmName),
     logo: (value as any)?.logo ? String((value as any).logo) : null,
     tallyPortNo: (value as any)?.tallyPortNo ? String((value as any).tallyPortNo) : null,
   };

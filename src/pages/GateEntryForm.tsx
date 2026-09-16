@@ -7,6 +7,7 @@ import { Company, Firm, GateEntry, GateEntryPhoto, GatePass, Supplier } from "..
 import { useAuth } from "../auth/AuthContext";
 import { getPendingQtyForGatePass, hasSavedReturnableReceiptGateEntry, isReturnableGatePass } from "../lib/gatePassState";
 import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 const PHOTO_SLOTS = 8;
 
@@ -309,7 +310,7 @@ export function GateEntryForm() {
             <Field label="Firm" required>
               <select value={firmId} disabled={purposeLocked} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg disabled:bg-slate-50">
                 <option value="">Select Firm...</option>
-                {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
               </select>
             </Field>
 

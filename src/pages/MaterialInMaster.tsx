@@ -9,6 +9,7 @@ import { useNpdItems } from "../hooks/useNpdItems";
 import { normalizeMaterialInRecord, recalculateMaterialLine } from "../lib/materialInTaxes";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -38,7 +39,7 @@ export function MaterialInMaster() {
   const statusOptions = ["All", "Pending PH", "Pending Accounts", "Pending MD", "Pending Tally", "Completed"];
   const mrrOptions = useMemo(() => makeOptions(materialIn.map((entry) => entry.transactionNo)), [materialIn]);
   const getFirmName = (entry: MaterialIn) => String(entry.firmName || firms.find((firm) => firm.id === (entry.firmId || entry.destinationFirmId))?.firmName || "Unassigned");
-  const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((entry) => entry.firmId === firm.id || entry.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: firm.firmName })), [firms, materialIn]);
+  const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((entry) => entry.firmId === firm.id || entry.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms, materialIn]);
 
   const handleDelete = (id: string) => {
     if (deletingId !== id) {

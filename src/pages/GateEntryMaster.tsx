@@ -8,6 +8,7 @@ import { useData } from "../hooks/useData";
 import { Company, Firm, GateEntry, GateEntryPhoto, Supplier } from "../types";
 import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
 import { useAuth } from "../auth/AuthContext";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 type GateEntryMasterProps = { cancelledOnly?: boolean };
 
@@ -53,7 +54,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
   );
   const truckOptions = useMemo(() => makeOptions(baseEntries.map((entry) => entry.truckNo)), [baseEntries]);
   const firmOptions = useMemo(
-    () => firms.map((firm) => ({ value: firm.id, label: firm.firmName })).sort((a, b) => a.label.localeCompare(b.label)),
+    () => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)),
     [firms]
   );
 
@@ -396,7 +397,7 @@ function getSupplierNameById(supplierId: string, suppliers: Supplier[], companie
   const company = companies.find((row) => row.id === supplierId);
   if (company) return company.name;
   const firm = firms.find((row) => row.id === supplierId);
-  if (firm) return firm.firmName;
+  if (firm) return getFirmDisplayName(firm);
   return "";
 }
 

@@ -7,6 +7,7 @@ import { useData } from "../hooks/useData";
 import { Firm } from "../types";
 import { useAppAutoRefresh, useAutoRefreshStatus, useAutoRefreshPause, useIsAutoRefreshPaused } from "../hooks/useAutoRefresh";
 import { ConfirmProvider } from "./ConfirmDialog";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -57,7 +58,7 @@ export function Layout() {
 
   useEffect(() => {
     if (!user || activeFirm || firms.length === 0) return;
-    const firstFirm = firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName))[0];
+    const firstFirm = firms.slice().sort((a, b) => getFirmDisplayName(a).localeCompare(getFirmDisplayName(b)))[0];
     setActiveFirm(firstFirm);
   }, [activeFirm, firms, setActiveFirm, user]);
 
