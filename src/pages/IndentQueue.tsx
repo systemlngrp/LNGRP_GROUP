@@ -75,8 +75,11 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
   const currentSetting = settings[0];
   const resolveFirmName = (indent: Indent) => getFirmDisplayNameById(indent.firmId, firms, indent.firmName || "Firm unavailable");
-  const resolveFirmPdfName = (indent: Indent) =>
-    String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "-").trim() || "-";
+  const resolveFirmPdfName = (indent: Indent) => {
+    const firm = firms.find((item) => item.id === indent.firmId);
+    if (firm) return getFirmDisplayName(firm);
+    return indent.firmName ? getFirmDisplayName({ firmName: indent.firmName }) : "-";
+  };
   const showExpandableItems = true;
 
   const toggleIndentItems = (indentId: string) => {
@@ -225,7 +228,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       autoTable(doc, {
         head: [[
           "Indent No",
-          "Firm Name",
+          "Firm",
           "Requested By",
           "Requisition Date",
           "Required Date",
@@ -248,7 +251,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       autoTable(doc, {
         head: [[
           "Indent No",
-          "Firm Name",
+          "Firm",
           "Requested By",
           "Requisition Date",
           "Required Date",
@@ -310,7 +313,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       drawMeta("Indent Type", indent.indentType || "-", 140, y);
       y += 6;
       drawMeta("Requested By", indent.requestedBy || "-", 14, y);
-      drawMeta("Firm Name", resolveFirmPdfName(indent), 140, y);
+      drawMeta("Firm", resolveFirmPdfName(indent), 140, y);
       y += 6;
       drawMeta("Requisition Date", formatDate(indent.requisitionDate), 14, y);
       drawMeta("Required Date", formatDate(indent.requiredDate), 140, y);

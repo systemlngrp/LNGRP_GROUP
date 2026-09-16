@@ -143,8 +143,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const supplierNameMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
   const resolvePurchaseFirmName = useCallback((order: PurchaseOrder) => {
     const storedFirmName = String(order.firmName || "").trim();
-    if (storedFirmName) return storedFirmName;
-    return String(firms.find((firm) => firm.id === order.firmId)?.firmName || "").trim() || "-";
+    const firm = firms.find((item) => item.id === order.firmId);
+    if (firm) return getFirmDisplayName(firm);
+    return storedFirmName ? getFirmDisplayName({ firmName: storedFirmName }) : "-";
   }, [firms]);
   const renderFirm = useCallback((order: PurchaseOrder) => {
     const firmId = String(order.firmId || "");
@@ -848,7 +849,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         head: [[
           "PO Number",
           "PO Date",
-          "Firm Name",
+          "Firm",
           "Indent Number",
           "Indent Date",
           "Supplier",
@@ -893,7 +894,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       head: [[
         "PO No",
         "Date",
-        "Firm Name",
+        "Firm",
         "Supplier",
         "Total Qty",
         "Total Received",
@@ -973,7 +974,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       drawMeta("Grand Total", formatMoney(Number(order.grandTotal ?? order.totalAmount ?? 0)), 140, y);
       y += 6;
       drawMeta("Total Qty", Number(order.totalQty || 0).toLocaleString(), 14, y);
-      drawMeta("Firm Name", firmName, 140, y);
+      drawMeta("Firm", firmName, 140, y);
       y += 8;
 
       if (order.rejectedRemarks?.trim()) {
