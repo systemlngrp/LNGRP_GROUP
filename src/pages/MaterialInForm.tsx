@@ -160,6 +160,10 @@ export function MaterialInForm() {
   const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", []);
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [materials, setMaterials] = useData<Material>("materials", []);
+  const resolveMaterialGstRate = (materialId: string) => {
+    const rate = Number(materials.find((material) => material.id === materialId)?.gstRate);
+    return Number.isFinite(rate) && rate >= 0 ? rate : 0;
+  };
   const [services] = useData<Service>("services", []);
   const [materialGroups] = useData<MaterialGroup>("material-groups", []);
   const [units] = useData<UnitMaster>("units", []);
@@ -1256,7 +1260,7 @@ export function MaterialInForm() {
         ? { invoiceRateUsd: resolvedInvoiceRateInput }
         : { invoiceRate: resolvedInvoiceRateInput, rate: resolvedInvoiceRateInput, value: qty * resolvedInvoiceRateInput }),
       actualQty: qty,
-      gstRate: Number(material.gstRate ?? 0) >= 0 && Number.isFinite(Number(material.gstRate)) ? Number(material.gstRate) : 0,
+      gstRate: resolveMaterialGstRate(material.id),
       cgstRate: 0,
       sgstRate: 0,
       igstRate: 0,
@@ -1488,7 +1492,7 @@ export function MaterialInForm() {
         actualQty: totalWeight,
         rate: invoiceRate,
         value: totalWeight * invoiceRate,
-        gstRate: existingLine?.gstRate ?? (Number(materials.find((material) => material.id === materialId)?.gstRate) >= 0 && Number.isFinite(Number(materials.find((material) => material.id === materialId)?.gstRate)) ? Number(materials.find((material) => material.id === materialId)?.gstRate) : 0),
+        gstRate: existingLine?.gstRate ?? resolveMaterialGstRate(materialId),
         cgstRate: existingLine?.cgstRate || 0,
         sgstRate: existingLine?.sgstRate || 0,
         igstRate: existingLine?.igstRate || 0,
@@ -2099,7 +2103,7 @@ export function MaterialInForm() {
           ? { invoiceRateUsd: invoiceRate }
           : { invoiceRate, rate: invoiceRate, value: qty * invoiceRate }),
         actualQty: qty,
-        gstRate: Number(materials.find((material) => material.id === match.line.materialId)?.gstRate) >= 0 && Number.isFinite(Number(materials.find((material) => material.id === match.line.materialId)?.gstRate)) ? Number(materials.find((material) => material.id === match.line.materialId)?.gstRate) : 0,
+        gstRate: resolveMaterialGstRate(match.line.materialId),
         cgstRate: 0,
         sgstRate: 0,
         igstRate: 0,
