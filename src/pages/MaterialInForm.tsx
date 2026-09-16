@@ -1049,7 +1049,7 @@ export function MaterialInForm() {
         .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0))
         .map((entry) => ({
           value: String(Number(entry.rate || 0)),
-          label: `${entry.name} (${Number(entry.rate || 0).toFixed(2)}%)`,
+          label: entry.name,
         })),
     [gstRateMasters]
   );

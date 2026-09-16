@@ -165,7 +165,7 @@ export function PendingAccountsApproval() {
       [...gstRateMasters]
         .filter((entry) => entry.active !== "No")
         .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0))
-        .map((entry) => ({ value: String(Number(entry.rate || 0)), label: `${entry.name} (${Number(entry.rate || 0).toFixed(2)}%)` })),
+        .map((entry) => ({ value: String(Number(entry.rate || 0)), label: entry.name })),
     [gstRateMasters]
   );
 

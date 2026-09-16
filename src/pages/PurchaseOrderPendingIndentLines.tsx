@@ -133,7 +133,7 @@ export function PurchaseOrderPendingIndentLines() {
     () => gstRateMasters
       .filter((rate) => rate.active !== "No")
       .sort((a, b) => Number(a.rate) - Number(b.rate))
-      .map((rate) => ({ value: String(rate.rate), label: `${rate.name} (${Number(rate.rate).toLocaleString()}%)` })),
+      .map((rate) => ({ value: String(rate.rate), label: rate.name })),
     [gstRateMasters],
   );
   const defaultGstRate = gstRateOptions.find((option) => option.value === "18")?.value || gstRateOptions[0]?.value || "";
