@@ -4699,6 +4699,8 @@ async function initDb(retries = 5) {
             await db.query(`
         CREATE TABLE IF NOT EXISTS \`indents\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
+          \`firmId\` VARCHAR(36),
+          \`firmName\` VARCHAR(255),
           \`indentNo\` VARCHAR(30),
           \`requestedBy\` VARCHAR(255) NOT NULL,
           \`requisitionDate\` VARCHAR(50) NOT NULL,
@@ -6304,6 +6306,8 @@ async function initDb(retries = 5) {
                 { table: "materials", column: "tallyTimestamp", type: "VARCHAR(255)" },
                 { table: "materials", column: "tallyMaterialId", type: "VARCHAR(255)" },
                 { table: "materials", column: "tallySyncRemark", type: "TEXT" },
+                { table: "indents", column: "firmId", type: "VARCHAR(36)" },
+                { table: "indents", column: "firmName", type: "VARCHAR(255)" },
                 { table: "indents", column: "indentNo", type: "VARCHAR(30)" },
                 { table: "indents", column: "requestedBy", type: "VARCHAR(255) NOT NULL" },
                 { table: "indents", column: "requisitionDate", type: "VARCHAR(50) NOT NULL" },
@@ -7248,6 +7252,20 @@ async function initDb(retries = 5) {
             }
             catch (err) {
                 console.warn("[DB] Could not backfill orders_schedule.scheduleNo:", err.message);
+            }
+            // Keep legacy indents usable after firm tracking was introduced. The firm ID
+            // is authoritative; firmName is a display snapshot and is only filled when blank.
+            try {
+                await db.query(`
+          UPDATE \`indents\` i
+          INNER JOIN \`firms\` f ON f.id = i.firmId
+          SET i.firmName = f.firmName
+          WHERE COALESCE(TRIM(i.firmId), '') <> ''
+            AND COALESCE(TRIM(i.firmName), '') = ''
+        `);
+            }
+            catch (err) {
+                console.warn(`[DB] Could not backfill indent firm names:`, err.message);
             }
             try {
                 await backfillFirmSupplierAttribution(db, database);
