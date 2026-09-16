@@ -375,15 +375,6 @@ export function PurchaseOrderPendingIndentLines() {
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Indent Lines for PO</h2>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void handleCreatePOs()}
-            disabled={!canCreate}
-            className="rounded bg-indigo-600 px-4 py-2 text-sm font-bold text-white border border-black hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {creating ? "Creating..." : "Create PO(s)"}
-          </button>
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -393,7 +384,6 @@ export function PurchaseOrderPendingIndentLines() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded border border-black bg-white py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
-        </div>
         </div>
       </div>
 
@@ -587,6 +577,16 @@ export function PurchaseOrderPendingIndentLines() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+      <div className="flex justify-end border border-black bg-slate-50 p-3">
+        <button
+          type="button"
+          onClick={() => void handleCreatePOs()}
+          disabled={!canCreate}
+          className="min-w-36 border border-black bg-indigo-600 px-6 py-3 text-sm font-black uppercase text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {creating ? "Creating..." : "Create PO"}
+        </button>
+      </div>
     </div>
     </div>
   );
