@@ -79,3 +79,38 @@
     background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
   }
 }
+/* Table action columns must stay horizontal. Context actions retain their source order,
+   followed by the standard Approve -> Edit -> Reject -> Delete sequence. */
+.table-action-cell > *,
+table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]) button {
+  flex-shrink: 0;
+}
+
+table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]) {
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]) > div {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+.table-action-cell > [data-action="approve"],
+table td button:is([title*="approve" i], [aria-label*="approve" i]) { order: 100; }
+.table-action-cell > [data-action="edit"],
+table td button:is([title*="edit" i], [aria-label*="edit" i]) { order: 200; }
+.table-action-cell > [data-action="reject"],
+table td button:is([title*="reject" i], [aria-label*="reject" i]) { order: 300; }
+.table-action-cell > [data-action="delete"],
+table td button:is([title*="delete" i], [aria-label*="delete" i]) { order: 400; }
+
+.table-action-cell > button:focus-visible,
+table td button:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}

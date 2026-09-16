@@ -12,6 +12,7 @@ import { ChevronUp, ChevronDown, CheckCircle, XCircle, Edit } from "lucide-react
 import { FirmFilter } from "../components/FirmFilter";
 import { Firm } from "../types";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { TableActionCell } from "../components/TableActionCell";
 
 export function OrdersPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -217,29 +218,35 @@ export function OrdersPendingPH() {
                 <td className="px-4 py-2 border border-black whitespace-nowrap">{orderByLabel || '-'}</td>
                 <td className="px-4 py-2 border border-black">{o.qty}</td>
                 <td className="px-4 py-2 border border-black">
-                  <div className="flex items-center gap-2">
-                    <button 
+                  <TableActionCell align="center">
+                    <button
+                      data-action="approve"
                       onClick={() => handleApprove(o.id)} 
                       title="Approve"
+                      aria-label="Approve"
                       className="text-emerald-600 hover:text-emerald-800 transition-colors"
                     >
                       <CheckCircle size={20} />
                     </button>
                     <button 
-                      onClick={() => handleCancel(o.id)} 
-                      title="Cancel"
-                      className="text-red-600 hover:text-red-800 transition-colors"
-                    >
-                      <XCircle size={20} />
-                    </button>
-                    <button 
+                      data-action="edit"
                       onClick={() => navigate(`/orders/form?edit=${o.id}`)} 
                       title="Edit"
+                      aria-label="Edit"
                       className="text-slate-600 hover:text-slate-900 transition-colors"
                     >
                       <Edit size={20} />
                     </button>
-                  </div>
+                    <button
+                      data-action="reject"
+                      onClick={() => handleCancel(o.id)}
+                      title="Reject"
+                      aria-label="Reject"
+                      className="shrink-0 text-red-600 transition-colors hover:text-red-800"
+                    >
+                      <XCircle size={20} />
+                    </button>
+                  </TableActionCell>
                 </td>
               </tr>
             ))}
