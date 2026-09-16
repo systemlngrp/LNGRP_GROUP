@@ -75,6 +75,8 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
 
   const currentSetting = settings[0];
   const resolveFirmName = (indent: Indent) => getFirmDisplayNameById(indent.firmId, firms, indent.firmName || "Firm unavailable");
+  const resolveFirmPdfName = (indent: Indent) =>
+    String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "-").trim() || "-";
   const showExpandableItems = true;
 
   const toggleIndentItems = (indentId: string) => {
@@ -207,6 +209,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             const material = materials.find((row) => row.id === line.materialId);
             return [
               indent.indentNo || indent.id,
+              resolveFirmPdfName(indent),
               indent.requestedBy || "",
               formatDate(indent.requisitionDate),
               formatDate(indent.requiredDate),
@@ -222,6 +225,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       autoTable(doc, {
         head: [[
           "Indent No",
+          "Firm Name",
           "Requested By",
           "Requisition Date",
           "Required Date",
@@ -237,13 +241,14 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         styles: { fontSize: 8, cellPadding: 2, textColor: 0, fontStyle: "normal" },
         headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
         columnStyles: {
-          5: { cellWidth: 72 },
+          6: { cellWidth: 72 },
         },
       });
     } else {
       autoTable(doc, {
         head: [[
           "Indent No",
+          "Firm Name",
           "Requested By",
           "Requisition Date",
           "Required Date",
@@ -254,6 +259,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
           const lineRows = indentLines.filter((row) => row.indentId === indent.id);
           return [
             indent.indentNo || indent.id,
+            resolveFirmPdfName(indent),
             indent.requestedBy || "",
             formatDate(indent.requisitionDate),
             formatDate(indent.requiredDate),
@@ -266,7 +272,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         styles: { fontSize: 8, cellPadding: 2, textColor: 0, fontStyle: "normal" },
         headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
         columnStyles: {
-          5: { cellWidth: 120 },
+          6: { cellWidth: 120 },
         },
       });
     }
@@ -304,7 +310,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       drawMeta("Indent Type", indent.indentType || "-", 140, y);
       y += 6;
       drawMeta("Requested By", indent.requestedBy || "-", 14, y);
-      drawMeta("Firm", resolveFirmName(indent), 140, y);
+      drawMeta("Firm Name", resolveFirmPdfName(indent), 140, y);
       y += 6;
       drawMeta("Requisition Date", formatDate(indent.requisitionDate), 14, y);
       drawMeta("Required Date", formatDate(indent.requiredDate), 140, y);

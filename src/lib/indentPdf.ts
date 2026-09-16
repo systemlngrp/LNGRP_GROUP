@@ -36,7 +36,7 @@ export async function downloadIndentPdf({
     doc.setFont("helvetica", "normal");
     doc.text(value || "-", x + labelWidth, y);
   };
-  const resolvedFirmName = String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "Firm unavailable").trim();
+  const resolvedFirmName = String(indent.firmName || firms.find((firm) => firm.id === indent.firmId)?.firmName || "-").trim() || "-";
   const detailRows = [
     ["Indent No", indent.indentNo || "-"],
     ["Requested By", indent.requestedBy],

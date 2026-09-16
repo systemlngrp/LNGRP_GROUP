@@ -141,6 +141,11 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const materialMap = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
   const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
   const supplierNameMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
+  const resolvePurchaseFirmName = useCallback((order: PurchaseOrder) => {
+    const storedFirmName = String(order.firmName || "").trim();
+    if (storedFirmName) return storedFirmName;
+    return String(firms.find((firm) => firm.id === order.firmId)?.firmName || "").trim() || "-";
+  }, [firms]);
   const renderFirm = useCallback((order: PurchaseOrder) => {
     const firmId = String(order.firmId || "");
     const firm = firms.find((item) => String(item.id) === firmId);
@@ -843,6 +848,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         head: [[
           "PO Number",
           "PO Date",
+          "Firm Name",
           "Indent Number",
           "Indent Date",
           "Supplier",
@@ -859,6 +865,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         body: filteredFlatItemRows.map((row) => [
           row.order.poNo || "DRAFT",
           formatDate(row.order.poDate),
+          resolvePurchaseFirmName(row.order),
           row.indentReference.indentNo,
           row.indentReference.indentDate ? formatDate(row.indentReference.indentDate) : "-",
           row.supplierName,
@@ -886,6 +893,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       head: [[
         "PO No",
         "Date",
+        "Firm Name",
         "Supplier",
         "Total Qty",
         "Total Received",
@@ -901,6 +909,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         return [
           order.poNo || "DRAFT",
           formatDate(order.poDate),
+          resolvePurchaseFirmName(order),
           supplierNameMap.get(order.supplierId) || "Unknown",
           qtySummary.totalQty.toLocaleString(),
           qtySummary.totalReceived.toLocaleString(),
@@ -927,6 +936,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     const lines = getModeLines(orderLines.filter((line) => line.purchaseOrderId === order.id));
     const indentRefs = getOrderIndentRefs(order, lines);
     const indentNo = indentRefs.join(", ") || "Manual PO";
+    const firmName = resolvePurchaseFirmName(order);
     const supplierName = supplierNameMap.get(order.supplierId) || "Unknown";
     const showIntegratedTax = Number(order.igst || 0) > 0 && Number(order.cgst || 0) === 0 && Number(order.sgst || 0) === 0;
     const doc = new jsPDF("p", "mm", "a4");
@@ -963,6 +973,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       drawMeta("Grand Total", formatMoney(Number(order.grandTotal ?? order.totalAmount ?? 0)), 140, y);
       y += 6;
       drawMeta("Total Qty", Number(order.totalQty || 0).toLocaleString(), 14, y);
+      drawMeta("Firm Name", firmName, 140, y);
       y += 8;
 
       if (order.rejectedRemarks?.trim()) {
