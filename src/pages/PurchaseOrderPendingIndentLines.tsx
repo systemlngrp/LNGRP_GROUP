@@ -13,7 +13,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useAutoRefreshEffect, useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
 import { canIndentBeUnapproved, revertIndentToPending } from "../lib/indentTotals";
-import { getFirmDisplayName } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type PendingIndentLineRow = {
   indentLineId: string;
@@ -102,7 +102,7 @@ export function PurchaseOrderPendingIndentLines() {
     return rows.filter((r) => {
       const indent = indentFirm(r);
       const firmId = String(r.firmId || indent?.firmId || "");
-      const firmName = String(r.firmName || indent?.firmName || firms.find((f) => f.id === firmId)?.firmName || "Unassigned");
+      const firmName = getFirmDisplayNameById(firmId, firms);
       if (firmFilter && firmId !== firmFilter) return false;
       if (requestedByFilter && r.requestedBy !== requestedByFilter) return false;
       if (itemFilter && r.materialId !== itemFilter) return false;
@@ -411,7 +411,7 @@ export function PurchaseOrderPendingIndentLines() {
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Last PO Date</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Indent Qty <span className="text-red-500">*</span></th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Rate <span className="text-red-500">*</span></th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">GST Rate</th>
+              <th className="min-w-[140px] border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">GST Rate</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">CGST</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">SGST</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">IGST</th>
@@ -433,6 +433,8 @@ export function PurchaseOrderPendingIndentLines() {
             ) : (
               paginatedRows.map((row) => {
                   const input = rowInputs[row.indentLineId];
+                  const indent = indents.find((item) => item.id === row.indentId);
+                  const rowFirmId = String(row.firmId || indent?.firmId || "");
                   const supplier = suppliers.find((s) => s.id === input?.supplierId);
                   const taxes = computePurchaseOrderTaxes(
                     Number(input?.qty || 0),
@@ -455,7 +457,7 @@ export function PurchaseOrderPendingIndentLines() {
                     <td className="border border-black px-4 py-3 text-sm text-black whitespace-nowrap">
                       {row.requisitionDate ? formatDate(row.requisitionDate) : ""}
                     </td>
-                    <td className="border border-black px-4 py-3 text-sm text-black whitespace-nowrap">{indents.find((i) => i.id === row.indentId)?.firmName || firms.find((f) => f.id === indents.find((i) => i.id === row.indentId)?.firmId)?.firmName || "Unassigned"}</td>
+                    <td className="border border-black px-4 py-3 text-sm font-semibold text-black whitespace-nowrap">{getFirmDisplayNameById(rowFirmId, firms)}</td>
                     <td className="border border-black px-4 py-3 text-sm text-black">{row.requestedBy}</td>
                     <td className="border border-black px-4 py-3 text-sm font-bold text-black whitespace-nowrap">{row.materialErpCode}</td>
                     <td className="border border-black px-4 py-3 text-sm text-black">
@@ -507,8 +509,10 @@ export function PurchaseOrderPendingIndentLines() {
                         className={`w-24 rounded border ${!rowInputs[row.indentLineId]?.rate || Number(rowInputs[row.indentLineId]?.rate) <= 0 ? 'border-red-500' : 'border-black'} bg-white px-2 py-1 text-right text-sm disabled:opacity-50`}
                       />
                     </td>
-                    <td className="border border-black px-4 py-3 text-sm text-black text-right whitespace-nowrap">
-                      <Select compact value={rowInputs[row.indentLineId]?.gstRate || defaultGstRate} onChange={(value) => updateInput(row.indentLineId, { gstRate: value })} options={gstRateOptions} placeholder="GST Rate" disabled={!selectedIds.has(row.indentLineId)} />
+                    <td className="min-w-[140px] border border-black px-4 py-3 text-sm text-black text-right whitespace-nowrap">
+                      <div className="w-full min-w-[108px]">
+                        <Select compact value={rowInputs[row.indentLineId]?.gstRate || defaultGstRate} onChange={(value) => updateInput(row.indentLineId, { gstRate: value })} options={gstRateOptions} placeholder="GST Rate" disabled={!selectedIds.has(row.indentLineId)} />
+                      </div>
                     </td>
                     <td className="border border-black px-4 py-3 text-sm text-black text-right">{taxes.cgst ? taxes.cgst.toFixed(2) : "-"}</td>
                     <td className="border border-black px-4 py-3 text-sm text-black text-right">{taxes.sgst ? taxes.sgst.toFixed(2) : "-"}</td>
