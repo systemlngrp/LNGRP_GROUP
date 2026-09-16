@@ -127,7 +127,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
   const materialById = useMemo(() => new Map(materials.map((material) => [material.id, material])), [materials]);
 
   const statusIndents = useMemo(
-    () => indents.filter((indent) => indent.status === mode),
+    () => indents.filter((indent) => String(indent.status || "").trim().toLowerCase() === mode.toLowerCase()),
     [indents, mode]
   );
 
