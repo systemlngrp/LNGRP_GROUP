@@ -11222,6 +11222,65 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
         conn.release();
     }
 });
+// Detail screens must load a record by its immutable ID rather than from the
+// browser's active-firm collection.  In particular, an authorized user may
+// open an indent created on another desktop while a different firm is active.
+async function requirePurchaseOrderReadAccess(req, res) {
+    const user = await getRequestUser(req);
+    if (!user) {
+        res.status(401).json({ error: "Unauthorized" });
+        return null;
+    }
+    if (user.role === "TruckDriver" || !hasPermission(user, "/purchase-orders")) {
+        res.status(403).json({ error: "Forbidden" });
+        return null;
+    }
+    return user;
+}
+app.get("/api/indents/:id", requireAuth, async (req, res) => {
+    try {
+        if (!await requirePurchaseOrderReadAccess(req, res))
+            return;
+        const indentId = String(req.params.id || "").trim();
+        if (!indentId)
+            return res.status(400).json({ error: "Indent ID is required" });
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const [rows] = await db.query("SELECT * FROM `indents` WHERE `id` = ? LIMIT 1", [indentId]);
+        const indent = rows[0];
+        if (!indent)
+            return res.status(404).json({ error: "Indent not found" });
+        return res.json(normalizeFetchedRow("indents", indent));
+    }
+    catch (error) {
+        console.error("[INDENT_DETAIL] failed:", error);
+        return res.status(500).json({ error: "Failed to load indent" });
+    }
+});
+app.get("/api/indent-lines", requireAuth, async (req, res) => {
+    try {
+        if (!await requirePurchaseOrderReadAccess(req, res))
+            return;
+        const indentId = String(req.query.indentId || "").trim();
+        if (!indentId)
+            return res.status(400).json({ error: "indentId is required" });
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        // Confirm the immutable parent ID first. This avoids treating an invalid
+        // parent as an empty, valid indent and keeps the response authoritative.
+        const [indentRows] = await db.query("SELECT `id` FROM `indents` WHERE `id` = ? LIMIT 1", [indentId]);
+        if (!indentRows[0])
+            return res.status(404).json({ error: "Indent not found" });
+        const [rows] = await db.query("SELECT * FROM `indent_lines` WHERE `indentId` = ? ORDER BY `id`", [indentId]);
+        return res.json(rows.map((row) => normalizeFetchedRow("indent_lines", row)));
+    }
+    catch (error) {
+        console.error("[INDENT_LINES_DETAIL] failed:", error);
+        return res.status(500).json({ error: "Failed to load indent lines" });
+    }
+});
 entities.forEach(entity => {
     const handlers = createHandlers(entity);
     const route = `/api/${entity.replace(/_/g, "-")}`;

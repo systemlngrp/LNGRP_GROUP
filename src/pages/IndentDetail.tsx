@@ -14,15 +14,52 @@ export function IndentDetail() {
 
   const navigate = useNavigate();
   const { id = "" } = useParams();
-  const [indents, setIndents] = useData<Indent>("indents", []);
-  const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [materials] = useData<Material>("materials", []);
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
   const [settings] = useData<Setting>("settings", []);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [detailIndent, setDetailIndent] = useState<Indent | null>(null);
+  const [detailLines, setDetailLines] = useState<IndentLine[]>([]);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailStatus, setDetailStatus] = useState<number | null>(null);
 
-  const indent = useMemo(() => indents.find((row) => row.id === id) || null, [id, indents]);
-  const lineRows = useMemo(() => indentLines.filter((line) => line.indentId === id), [id, indentLines]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadDetail = async () => {
+      setDetailLoading(true);
+      setDetailStatus(null);
+      const token = window.localStorage.getItem("authToken") || "";
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      try {
+        const [indentResponse, linesResponse] = await Promise.all([
+          fetch(`/api/indents/${encodeURIComponent(id)}`, { headers }),
+          fetch(`/api/indent-lines?indentId=${encodeURIComponent(id)}`, { headers }),
+        ]);
+        if (cancelled) return;
+        if (!indentResponse.ok) {
+          setDetailStatus(indentResponse.status);
+          setDetailIndent(null);
+          return;
+        }
+        const indentData = await indentResponse.json();
+        const linesData = linesResponse.ok ? await linesResponse.json() : [];
+        setDetailIndent(indentData);
+        setDetailLines(Array.isArray(linesData) ? linesData : []);
+      } catch {
+        if (!cancelled) setDetailStatus(500);
+      } finally {
+        if (!cancelled) setDetailLoading(false);
+      }
+    };
+    if (id) void loadDetail();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  // A detail route must never decide that a record is missing from a cached or
+  // active-firm-scoped collection.  The API response for this immutable ID is
+  // the source of truth, including when an indent has no lines.
+  const indent = detailIndent;
+  const lineRows = detailLines;
   const [editableQty, setEditableQty] = useState<Record<string, string>>({});
   const [editableMaterial, setEditableMaterial] = useState<Record<string, string>>({});
   const [editableDate, setEditableDate] = useState<Record<string, string>>({});
@@ -69,8 +106,7 @@ export function IndentDetail() {
 
     setIsSubmitting(true);
     const timestamp = new Date().toISOString();
-    const nextLines = indentLines.map((line) => {
-      if (line.indentId !== indent.id) return line;
+    const nextLines = lineRows.map((line) => {
       const qtyValue = editableQty[line.id];
       if (qtyValue === undefined) return line;
       const qty = Number(qtyValue);
@@ -90,14 +126,22 @@ export function IndentDetail() {
     });
 
     try {
-      await setIndentLines(nextLines);
-      const nextIndentLines = nextLines.filter((line) => line.indentId === indent.id);
+      const token = window.localStorage.getItem("authToken") || "";
+      const headers = { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+      for (const line of nextLines) {
+        const response = await fetch("/api/indent-lines", { method: "POST", headers, body: JSON.stringify(line) });
+        if (!response.ok) throw new Error("Failed to save indent line");
+      }
+      const nextIndentLines = nextLines;
       const nextIndent = {
         ...withIndentTotals(indent, nextIndentLines),
         updatedBy: "System User",
         updateTimestamp: timestamp,
       };
-      await setIndents((prev) => prev.map((row) => (row.id === indent.id ? nextIndent : row)));
+      const indentResponse = await fetch("/api/indents", { method: "POST", headers, body: JSON.stringify(nextIndent) });
+      if (!indentResponse.ok) throw new Error("Failed to save indent");
+      setDetailIndent(nextIndent);
+      setDetailLines(nextLines);
       setEditableQty({});
       setEditableMaterial({});
       setEditableDate({});
@@ -110,6 +154,20 @@ export function IndentDetail() {
     }
   };
 
+  if (detailLoading) {
+    return <Spinner />;
+  }
+
+  if (detailStatus === 403) {
+    return (
+      <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-4">
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Indent Detail</h2>
+        <p className="text-black font-medium">You are not authorized to view this indent.</p>
+        <button type="button" onClick={() => navigate(-1)} className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition">Back</button>
+      </div>
+    );
+  }
+
   if (!indent) {
     return (
       <>
@@ -117,7 +175,7 @@ export function IndentDetail() {
 
         <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Indent Detail</h2>
-          <p className="text-black font-medium">Indent not found.</p>
+          <p className="text-black font-medium">{detailStatus === 404 ? "Indent not found." : "Unable to load this indent. Please try again."}</p>
           <button
             type="button"
             onClick={() => navigate(-1)}
