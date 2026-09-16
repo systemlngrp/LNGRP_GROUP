@@ -54,8 +54,8 @@ function getIndentLineItemName(line: IndentLine, materialById: Map<string, Mater
 }
 function IndentQueue({ mode }: { mode: QueueMode }) {
   const navigate = useNavigate();
-  const [indents, setIndents] = useData<Indent>("indents", []);
-  const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
+  const [indents, setIndents] = useData<Indent>("indents", [], { firmScope: "all", storageKey: "indents-all-firms" });
+  const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", [], { firmScope: "all", storageKey: "indent-lines-all-firms" });
   const [materials] = useData<Material>("materials", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
