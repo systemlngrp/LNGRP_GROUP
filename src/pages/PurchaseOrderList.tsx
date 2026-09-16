@@ -58,10 +58,15 @@ type EditingLineDraft = {
   targetDeliveryDate: string;
 };
 
+type IndentReference = {
+  indentNo: string;
+  indentDate: string;
+};
+
 type NotReceivedItemRow = {
   order: PurchaseOrder;
   line: PurchaseOrderLine;
-  indent?: Indent;
+  indentReference: IndentReference;
   supplierName: string;
   itemLabel: string;
   erpCode: string | number;
@@ -147,6 +152,20 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   }, [firms]);
   const indentMap = useMemo(() => new Map(indents.map((indent) => [indent.id, indent])), [indents]);
   const indentLineMap = useMemo(() => new Map(indentLines.map((line) => [line.id, line])), [indentLines]);
+  const resolveIndentReference = useCallback((order: PurchaseOrder, line: PurchaseOrderLine): IndentReference => {
+    const headerIndent = order.indentId ? indentMap.get(order.indentId) : undefined;
+    const lineIndentId = indentLineMap.get(line.indentLineId)?.indentId;
+    const indent = headerIndent || (lineIndentId ? indentMap.get(lineIndentId) : undefined);
+
+    if (!indent) {
+      return { indentNo: "Manual PO", indentDate: "" };
+    }
+
+    return {
+      indentNo: String(indent.indentNo || "Manual PO"),
+      indentDate: String(indent.requisitionDate || ""),
+    };
+  }, [indentLineMap, indentMap]);
   const receivedQtyByPoLineId = useMemo(() => {
     const map = new Map<string, number>();
     materialIn.forEach((entry) => {
@@ -301,8 +320,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         return orderLines
           .filter((line) => line.purchaseOrderId === order.id)
           .map((line) => {
-            const indentLine = indentLineMap.get(line.indentLineId);
-            const indent = (order.indentId ? indentMap.get(order.indentId) : undefined) || (indentLine?.indentId ? indentMap.get(indentLine.indentId) : undefined);
+            const indentReference = resolveIndentReference(order, line);
             const item = materialMap.get(line.materialId);
             const receivedQty = getLineReceivedQty(line.id);
             const cancelledQty = getLineCancelledQty(line);
@@ -310,7 +328,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
             return {
               order,
               line,
-              indent,
+              indentReference,
               supplierName,
               itemLabel: item?.name || "Unknown",
               erpCode: line.erpCode || item?.erpCode || "",
@@ -328,7 +346,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           row.supplierName,
           row.itemLabel,
           row.erpCode,
-          row.indent?.indentNo,
+          row.indentReference.indentNo,
         ]
           .filter(Boolean)
           .join(" ")
@@ -342,7 +360,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           String(a.order.poNo || "").localeCompare(String(b.order.poNo || "")) ||
           String(a.itemLabel || "").localeCompare(String(b.itemLabel || "")),
       );
-  }, [firmFilter, fromDateFilter, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, indentLineMap, indentMap, materialMap, orderLines, purchaseOrders, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
+  }, [firmFilter, fromDateFilter, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, materialMap, orderLines, purchaseOrders, resolveIndentReference, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
 
   const firmOptions = useMemo(() => firms.filter((firm) => purchaseOrders.some((order) => order.firmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm), searchText: `${getFirmDisplayName(firm)} ${firm.firmName || ""}` })), [firms, purchaseOrders]);
 
@@ -840,8 +858,8 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         body: filteredFlatItemRows.map((row) => [
           row.order.poNo || "DRAFT",
           formatDate(row.order.poDate),
-          row.indent?.indentNo || "-",
-          row.indent?.requisitionDate ? formatDate(row.indent.requisitionDate) : "-",
+          row.indentReference.indentNo,
+          row.indentReference.indentDate ? formatDate(row.indentReference.indentDate) : "-",
           row.supplierName,
           row.erpCode,
           row.itemLabel,
@@ -1140,8 +1158,8 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                     <td className="px-3 py-3 text-black uppercase">{row.order.poNo || "DRAFT"}</td>
                     <td className="px-3 py-3 text-black">{formatDate(row.order.poDate)}</td>
                     <td className="px-3 py-3 text-black">{renderFirm(row.order)}</td>
-                    <td className="px-3 py-3 text-black uppercase">{row.indent?.indentNo || "-"}</td>
-                    <td className="px-3 py-3 text-black">{row.indent?.requisitionDate ? formatDate(row.indent.requisitionDate) : "-"}</td>
+                    <td className="px-3 py-3 text-black uppercase">{row.indentReference.indentNo}</td>
+                    <td className="px-3 py-3 text-black">{row.indentReference.indentDate ? formatDate(row.indentReference.indentDate) : "-"}</td>
                     <td className="px-3 py-3 text-black uppercase">{row.supplierName}</td>
                     <td className="px-3 py-3 text-black">{row.erpCode}</td>
                     <td className="px-3 py-3 text-black uppercase min-w-[220px]">{row.itemLabel}</td>
