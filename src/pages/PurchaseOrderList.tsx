@@ -136,7 +136,21 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const materialMap = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
   const supplierMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s])), [suppliers]);
   const supplierNameMap = useMemo(() => new Map(suppliers.map((s) => [s.id, s.name])), [suppliers]);
-  const firmName = useCallback((order: PurchaseOrder) => String(order.firmName || firms.find((firm) => firm.id === order.firmId)?.firmName || "Unassigned"), [firms]);
+  const renderFirm = useCallback((order: PurchaseOrder) => {
+    const firmId = String(order.firmId || "");
+    const firm = firms.find((item) => String(item.id) === firmId);
+    const shortName = firm ? getFirmDisplayName(firm) : (firmId ? "Unknown firm" : "Unassigned");
+    const legalName = String(firm?.firmName || "").trim();
+
+    return (
+      <div className="min-w-[120px] normal-case leading-tight">
+        <div className="font-bold uppercase text-black">{shortName}</div>
+        {legalName && legalName !== shortName ? (
+          <div className="mt-1 text-[10px] font-medium text-slate-500 whitespace-normal">{legalName}</div>
+        ) : null}
+      </div>
+    );
+  }, [firms]);
   const indentMap = useMemo(() => new Map(indents.map((indent) => [indent.id, indent])), [indents]);
   const indentLineMap = useMemo(() => new Map(indentLines.map((line) => [line.id, line])), [indentLines]);
   const receivedQtyByPoLineId = useMemo(() => {
@@ -336,7 +350,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       );
   }, [firmFilter, fromDateFilter, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, indentLineMap, indentMap, materialMap, orderLines, purchaseOrders, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
 
-  const firmOptions = useMemo(() => firms.filter((firm) => purchaseOrders.some((order) => order.firmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms, purchaseOrders]);
+  const firmOptions = useMemo(() => firms.filter((firm) => purchaseOrders.some((order) => order.firmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm), searchText: `${getFirmDisplayName(firm)} ${firm.firmName || ""}` })), [firms, purchaseOrders]);
 
   const poNumberOptions = useMemo(() => {
     const byId = new Map<string, string>();
@@ -1131,7 +1145,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                   <tr key={row.line.id} className="divide-x divide-black text-[10px] font-bold hover:bg-slate-50">
                     <td className="px-3 py-3 text-black uppercase">{row.order.poNo || "DRAFT"}</td>
                     <td className="px-3 py-3 text-black">{formatDate(row.order.poDate)}</td>
-                    <td className="px-3 py-3 text-black uppercase">{firmName(row.order)}</td>
+                    <td className="px-3 py-3 text-black">{renderFirm(row.order)}</td>
                     <td className="px-3 py-3 text-black uppercase">{row.indent?.indentNo || "-"}</td>
                     <td className="px-3 py-3 text-black">{row.indent?.requisitionDate ? formatDate(row.indent.requisitionDate) : "-"}</td>
                     <td className="px-3 py-3 text-black uppercase">{row.supplierName}</td>
@@ -1255,7 +1269,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                           formatDate(order.poDate)
                         )}
                       </td>
-                      <td className="px-4 py-4 text-sm text-black font-medium whitespace-nowrap">{firmName(order)}</td>
+                      <td className="px-4 py-4 text-sm text-black font-medium">{renderFirm(order)}</td>
                       <td className="px-4 py-4 text-sm text-black font-medium whitespace-nowrap">
                         {isEditing ? (
                           <input
