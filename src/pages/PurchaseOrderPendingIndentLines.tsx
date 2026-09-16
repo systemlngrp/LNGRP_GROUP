@@ -99,6 +99,12 @@ export function PurchaseOrderPendingIndentLines() {
     setRowInputs({});
   }, [rows]);
 
+  // The separate Purchase Firm selector was removed from the UI. Use the
+  // optional Firm filter for creation when selected, otherwise active firm.
+  useEffect(() => {
+    setPoFirmId(firmFilter || activeFirmId);
+  }, [activeFirmId, firmFilter]);
+
   const filteredRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     const indentFirm = (r: PendingIndentLineRow) => indents.find((i) => i.id === r.indentId);
@@ -378,7 +384,6 @@ export function PurchaseOrderPendingIndentLines() {
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
-        <div className="min-w-[190px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Purchase Firm</label><Select value={poFirmId} onChange={setPoFirmId} options={firmOptions} placeholder="Select purchase firm" /></div>
         <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Firm</label><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" /></div>
         <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Requested By</label><Select compact value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="All Requested By" /></div>
         <div className="min-w-[220px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item</label><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" /></div>
