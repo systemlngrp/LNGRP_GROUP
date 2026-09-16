@@ -62,6 +62,7 @@ export function OrdersMaster() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [orderByFilter, setOrderByFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -164,6 +165,7 @@ export function OrdersMaster() {
     return rows
       .filter((row) => {
         if (companyFilter && row.companyName !== companyFilter) return false;
+        if (firmFilter && String(row.order.firmId || "") !== firmFilter) return false;
         if (itemFilter && row.itemKey !== itemFilter) return false;
         if (orderByFilter && row.orderByName !== orderByFilter) return false;
         if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return false;
@@ -193,7 +195,9 @@ export function OrdersMaster() {
         const orderNoCompare = String(left.order.orderNo || "").localeCompare(String(right.order.orderNo || ""));
         return orderNoSort === "asc" ? orderNoCompare : -orderNoCompare;
       });
-  }, [companyFilter, dateFrom, dateTo, itemFilter, orderByFilter, orderNoSort, rows, searchTerm, valueGreaterThan, quantityGreaterThan]);
+  }, [companyFilter, dateFrom, dateTo, firmFilter, itemFilter, orderByFilter, orderNoSort, rows, searchTerm, valueGreaterThan, quantityGreaterThan]);
+
+  const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)), [firms]);
 
   const availableCompanies = useMemo(() => {
     const ns = searchTerm.trim().toLowerCase();
@@ -333,6 +337,7 @@ export function OrdersMaster() {
                 className="w-full rounded border border-black py-2 pl-10 pr-3 font-normal"
               />
             </div>
+            <Select options={firmOptions} value={firmFilter ? { value: firmFilter, label: firmOptions.find((f) => f.value === firmFilter)?.label || firmFilter } : null} onChange={(option) => setFirmFilter(option?.value || "")} placeholder="All Firms" isClearable />
           </label>
 
           <label className="flex flex-col gap-1 text-sm font-bold text-black">
