@@ -2028,6 +2028,7 @@ export function Materials() {
                       {renderSortableHeader("GSM", "gsm")}
                     </th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">BF</th>
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">GST Rate (%)</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Color</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Opening</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Opening Value</th>
@@ -2046,7 +2047,7 @@ export function Materials() {
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={21} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={22} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2073,6 +2074,7 @@ export function Materials() {
                           <td className="px-4 py-3 text-black text-xs">{material.size ?? "-"}</td>
                           <td className="px-4 py-3 text-black text-xs">{material.gsm ?? "-"}</td>
                           <td className="px-4 py-3 text-black text-xs">{material.bf ?? "-"}</td>
+                          <td className="px-4 py-3 text-black text-xs font-semibold">{Number(material.gstRate ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                           <td className="px-4 py-3 text-black text-xs font-bold">{material.type === "Reel" ? material.color || "-" : "-"}</td>
                           <td className="px-4 py-3 text-black text-xs font-medium bg-slate-50">{values.openingQty.toLocaleString()}</td>
                           <td className="px-4 py-3 text-indigo-700 text-xs font-bold bg-indigo-50/30">{values.openingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
