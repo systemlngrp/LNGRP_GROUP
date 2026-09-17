@@ -275,16 +275,17 @@ export function OrdersPendingScheduling() {
         </div>
         {/* Modal scheduler */}
         {modalOpen && modalOrderId && (
-          <div className="fixed inset-0 bg-black/40 flex items-start justify-center p-4 z-50">
-            <div className="bg-white rounded shadow-lg border border-black max-w-2xl w-full p-4">
-              <div className="flex justify-between items-center mb-3">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+            <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded border border-black bg-white shadow-lg">
+              <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
                 <h3 className="font-bold">Schedule Order {orders.find(o=>o.id===modalOrderId)?.orderNo}</h3>
                 <div className="flex gap-2">
                   <button onClick={() => { setModalOpen(false); setModalOrderId(null); }} className="bg-white border border-black px-3 py-1 rounded">Close</button>
                 </div>
               </div>
 
-              <div className="text-sm mb-3"><strong>Firm:</strong> {getFirmName(orders.find(o=>o.id===modalOrderId))} | <strong>Company:</strong> {(companies as any[]).find(c=>c.id===orders.find(o=>o.id===modalOrderId)?.companyId)?.name} | <strong>Item:</strong> {resolveOrderItem(orders.find(o => o.id === modalOrderId))?.name || "-"}</div>
+              <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3">
+                <div className="text-sm mb-3"><strong>Firm:</strong> {getFirmName(orders.find(o=>o.id===modalOrderId))} | <strong>Company:</strong> {(companies as any[]).find(c=>c.id===orders.find(o=>o.id===modalOrderId)?.companyId)?.name} | <strong>Item:</strong> {resolveOrderItem(orders.find(o => o.id === modalOrderId))?.name || "-"}</div>
 
               <div className="grid grid-cols-3 gap-4 mb-3">
                 <div className="bg-slate-50 p-2 border border-black rounded">
@@ -301,7 +302,8 @@ export function OrdersPendingScheduling() {
                 </div>
               </div>
 
-              <table className="min-w-full divide-y divide-black border-collapse border border-black mb-3">
+              <div className="mb-3 overflow-x-auto">
+              <table className="min-w-[650px] w-full divide-y divide-black border-collapse border border-black">
                 <thead className="sticky top-0 z-30 bg-slate-100">
                   <tr>
                     <th className="px-3 py-2 border border-black">S.No</th>
@@ -323,7 +325,10 @@ export function OrdersPendingScheduling() {
                   ))}
                 </tbody>
               </table>
+              </div>
+              </div>
 
+              <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
               <div className="flex gap-2">
                 {(() => {
                   const order = orders.find(o => o.id === modalOrderId);
@@ -342,6 +347,7 @@ export function OrdersPendingScheduling() {
               {modalError && <div className="text-sm text-red-600 mt-2">{modalError}</div>}
 
               <div className="mt-3 text-sm">Total Scheduled: {displayedTotalScheduled(modalOrderId)} / {orders.find(o=>o.id===modalOrderId)?.qty}</div>
+              </div>
             </div>
           </div>
         )}
