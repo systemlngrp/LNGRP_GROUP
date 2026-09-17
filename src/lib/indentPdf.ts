@@ -3,7 +3,6 @@ import autoTable from "jspdf-autotable";
 import { formatDate } from "./serial";
 import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { renderOrganizationHeader } from "./pdfOrganizationHeader";
-import { getFirmDisplayName } from "./firmDisplay";
 
 export async function downloadIndentPdf({
   indent,
@@ -37,16 +36,11 @@ export async function downloadIndentPdf({
     doc.setFont("helvetica", "normal");
     doc.text(value || "-", x + labelWidth, y);
   };
-  const firm = firms.find((item) => item.id === indent.firmId);
-  const resolvedFirmName = firm
-    ? getFirmDisplayName(firm)
-    : indent.firmName ? getFirmDisplayName({ firmName: indent.firmName }) : "-";
   const detailRows = [
     ["Indent No", indent.indentNo || "-"],
     ["Requested By", indent.requestedBy],
     ["Requisition Date", formatDate(indent.requisitionDate)],
     ["Indent Type", indent.indentType],
-    ["Firm", resolvedFirmName],
     ["Required Date", formatDate(indent.requiredDate)],
   ];
 

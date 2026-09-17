@@ -937,14 +937,17 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     const lines = getModeLines(orderLines.filter((line) => line.purchaseOrderId === order.id));
     const indentRefs = getOrderIndentRefs(order, lines);
     const indentNo = indentRefs.join(", ") || "Manual PO";
-    const firmName = resolvePurchaseFirmName(order);
     const supplierName = supplierNameMap.get(order.supplierId) || "Unknown";
     const showIntegratedTax = Number(order.igst || 0) > 0 && Number(order.cgst || 0) === 0 && Number(order.sgst || 0) === 0;
     const doc = new jsPDF("p", "mm", "a4");
     setPdfOrderId(order.id);
 
     try {
-      const { currentY } = await renderOrganizationHeader(doc, currentSetting, { startY: 12 });
+      const { currentY } = await renderOrganizationHeader(doc, currentSetting, {
+        startY: 12,
+        firmId: order.firmId,
+        firms,
+      });
       let y = currentY;
 
       doc.setFont("helvetica", "bold");
@@ -974,7 +977,6 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       drawMeta("Grand Total", formatMoney(Number(order.grandTotal ?? order.totalAmount ?? 0)), 140, y);
       y += 6;
       drawMeta("Total Qty", Number(order.totalQty || 0).toLocaleString(), 14, y);
-      drawMeta("Firm", firmName, 140, y);
       y += 8;
 
       if (order.rejectedRemarks?.trim()) {

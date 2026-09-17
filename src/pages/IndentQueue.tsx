@@ -289,7 +289,11 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
     setPdfIndentId(indent.id);
 
     try {
-      const { currentY } = await renderOrganizationHeader(doc, currentSetting, { startY: 12 });
+      const { currentY } = await renderOrganizationHeader(doc, currentSetting, {
+        startY: 12,
+        firmId: indent.firmId,
+        firms,
+      });
       let y = currentY;
 
       doc.setFont("helvetica", "bold");
@@ -313,7 +317,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       drawMeta("Indent Type", indent.indentType || "-", 140, y);
       y += 6;
       drawMeta("Requested By", indent.requestedBy || "-", 14, y);
-      drawMeta("Firm", resolveFirmPdfName(indent), 140, y);
       y += 6;
       drawMeta("Requisition Date", formatDate(indent.requisitionDate), 14, y);
       drawMeta("Required Date", formatDate(indent.requiredDate), 140, y);
