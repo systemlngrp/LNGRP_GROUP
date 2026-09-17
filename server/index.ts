@@ -2145,6 +2145,7 @@ function normalizeNpdRowForItemConsumers(row: any) {
     breadth: row?.breadth ?? toFiniteNumber(row?.breadthId),
     height: row?.height ?? toFiniteNumber(row?.heightId),
     flute: row?.flute ?? row?.fluteType ?? "",
+    ups: toFiniteNumber(row?.ups) ?? toFiniteNumber(row?.noOfUps),
     lOd: row?.lOd ?? toFiniteNumber(row?.lengthOd),
     wOd: row?.wOd ?? toFiniteNumber(row?.breadthOd),
     hOd: row?.hOd ?? toFiniteNumber(row?.heightOd),

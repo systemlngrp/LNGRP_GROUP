@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import { useSearchParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
@@ -104,16 +104,51 @@ function isBlankRequiredValue(value: string | number) {
   return value === "" || value === null || value === undefined;
 }
 
-function hasLayerDefaultValue(value: unknown) {
-  return value !== "" && value !== null && value !== undefined;
+function normalizeItemLookupKey(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
 }
 
-function getLayerDefaultValue(
-  production: Production | undefined,
-  item: Item,
-  field: "l1" | "f1" | "l2" | "f2" | "l3"
-) {
-  return hasLayerDefaultValue(production?.[field]) ? production?.[field] : item[field] ?? "";
+function getNpdLookupKeys(value: any) {
+  return [...new Set([
+    value?.id,
+    value?.npdId,
+    value?.itemId,
+    value?.erp,
+    value?.erpCode,
+    value?.raw?.id,
+    value?.raw?.npdId,
+    value?.raw?.itemId,
+    value?.raw?.erp,
+    value?.raw?.erpCode,
+  ].map(normalizeItemLookupKey).filter(Boolean))];
+}
+
+function findNpdItemForOrder(order: Order | undefined, catalogItem: any, npdItems: Item[]) {
+  const linkedKeys = [
+    order?.itemId,
+    order?.npdId,
+    catalogItem?.id,
+    catalogItem?.raw?.id,
+    catalogItem?.raw?.npdId,
+    catalogItem?.raw?.itemId,
+  ].map(normalizeItemLookupKey).filter(Boolean);
+
+  const byLinkedId = npdItems.find((item) => {
+    const itemKeys = getNpdLookupKeys(item);
+    return linkedKeys.some((key) => itemKeys.includes(key));
+  });
+  if (byLinkedId) return byLinkedId;
+
+  const erpKeys = [order?.erpCode, catalogItem?.erp, catalogItem?.raw?.erp, catalogItem?.raw?.erpCode]
+    .map(normalizeItemLookupKey)
+    .filter(Boolean);
+  return npdItems.find((item) => erpKeys.some((key) => getNpdLookupKeys(item).includes(key)));
+}
+
+function isSameNpdItem(item: Item | undefined, value: any) {
+  if (!item) return false;
+  const itemKeys = getNpdLookupKeys(item);
+  return getNpdLookupKeys(value).some((key) => itemKeys.includes(key));
 }
 
 function isPlateItemForProductionForm(order?: Order, item?: Item) {
@@ -227,6 +262,7 @@ export function ProductionForm() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [npdItems, setNpdItems] = useState<Item[]>([]);
   const { resolveOrderItem } = useOrderItemCatalog();
+  const lastPrefilledSelectionKey = useRef("");
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveNotice, setSaveNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -288,29 +324,13 @@ export function ProductionForm() {
     return map;
   }, [productions]);
 
-  const erpLowestGsmProductionMap = useMemo(() => {
-    const map = new Map<string, Production>();
-    productions.forEach((production) => {
-      if ((production.itemSource || "FG") !== "FG" || production.status === "Cancelled" || production.cancelTimestamp) return;
-
-      const erp = String(production.erpCode || "").trim();
-      const gsm = Number(production.gsm || 0);
-      if (!erp || gsm <= 0) return;
-
-      const existing = map.get(erp);
-      if (!existing || gsm < Number(existing.gsm || 0)) {
-        map.set(erp, production);
-      }
-    });
-    return map;
-  }, [productions]);
-
   const selectedSchedule = pendingSchedules.find((schedule) => schedule.id === selectedScheduleId);
   const selectedOrder = orders.find((order) => order.id === selectedSchedule?.orderId);
-  const selectedItem = npdItems.find((item) => item.id === String(selectedOrder?.itemId || "").trim());
+  const selectedCatalogItem = resolveOrderItem(selectedOrder);
+  const selectedItem = findNpdItemForOrder(selectedOrder, selectedCatalogItem, npdItems);
   const selectedInternalUps = calculateInternalUps((selectedItem as any)?.rapcForSingleBox);
   const selectedCompany = companies.find((company) => company.id === selectedOrder?.companyId);
-  const selectedErp = String(selectedOrder?.erpCode || "").trim();
+  const selectedErp = String(selectedItem?.erp ?? selectedCatalogItem?.erp ?? selectedOrder?.erpCode ?? "").trim();
   const selectedScheduleConsumedQty = selectedSchedule
     ? Number(consumptionByScheduleId.get(selectedSchedule.id)?.effectiveConsumedQty || 0)
     : 0;
@@ -327,7 +347,6 @@ export function ProductionForm() {
         0
       )
     : 0;
-  const selectedLowestGsmProduction = selectedErp ? erpLowestGsmProductionMap.get(selectedErp) : undefined;
   const reelFormulaMode = settings[0]?.reelAsPerCalculation || REEL_FORMULA_MODE.breadthHeightBased;
   const cuttingSizeFormulaMode = settings[0]?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_MODE.currentLogic;
   const gsmFormulaMode = settings[0]?.gsmAsPerCalculation || GSM_FORMULA_MODE.currentLogic;
@@ -357,7 +376,7 @@ export function ProductionForm() {
     [productions]
   );
 
-  const lastItem = npdItems.find((item) => item.id === String(latestRelevantProduction?.itemId || "").trim());
+  const lastItem = npdItems.find((item) => isSameNpdItem(item, latestRelevantProduction));
   const lastPlanQty = Number(latestRelevantProduction?.qty || 0);
   const isSameAsLastItem = Boolean(selectedItem?.id && lastItem?.id && selectedItem.id === lastItem.id);
 
@@ -367,7 +386,7 @@ export function ProductionForm() {
     return [...sampleRequests]
       .filter(
         (row) =>
-          String(row.itemId || "").trim() === selectedItem.id &&
+          isSameNpdItem(selectedItem, row) &&
           !row.cancelTimestamp &&
           (row.jobCardNo === "" || row.jobCardNo === null || row.jobCardNo === undefined)
       )
@@ -389,7 +408,7 @@ export function ProductionForm() {
 
     return schedules.reduce((sum, schedule) => {
       const order = orders.find((row) => row.id === schedule.orderId);
-      if (!order || String(order.itemId || "").trim() !== selectedItem.id) return sum;
+      if (!order || !isSameNpdItem(selectedItem, order)) return sum;
 
       const invoiced = getScheduleInvoicedQty(schedule.id, plans, loadingSlips);
       const pendingOrderQty = Math.max(
@@ -409,7 +428,7 @@ export function ProductionForm() {
         const prodFromFFGValue = production.prodFromFFG;
         const hasFFGValue = !(prodFromFFGValue === null || prodFromFFGValue === undefined || String(prodFromFFGValue) === "");
 
-        return String(production.itemId || "").trim() === selectedItem.id && !production.cancelTimestamp && !hasFFGValue;
+        return isSameNpdItem(selectedItem, production) && !production.cancelTimestamp && !hasFFGValue;
       })
       .reduce((sum, production) => sum + (Number(production.qty) || 0), 0);
   }, [productions, selectedItem?.id]);
@@ -466,33 +485,39 @@ export function ProductionForm() {
     realizationValue < realizationTargetValue;
 
   useEffect(() => {
-    if (selectedItem) {
-      setFormData((prev) => ({
-        ...prev,
-        companyName: selectedCompany?.name || "",
-        rate: selectedOrder?.rate ?? "",
-        erpCode: String(selectedOrder?.erpCode || ""),
-        noOfParts: selectedItem.noOfParts ?? "",
-        ups: selectedInternalUps ?? selectedItem.ups ?? "",
-        length: selectedItem.length ?? "",
-        breadth: selectedItem.breadth ?? "",
-        height: selectedItem.height ?? "",
-        ply: selectedItem.ply ?? "",
-        flute: selectedItem.flute || "",
-        plateWeight: selectedItem.plateWeight ?? "",
-        top: selectedItem.l1 ?? "",
-        takeUpFactor: selectedItem.takeUpFactor ?? "",
-        l1: getLayerDefaultValue(selectedLowestGsmProduction, selectedItem, "l1"),
-        f1: getLayerDefaultValue(selectedLowestGsmProduction, selectedItem, "f1"),
-        l2: getLayerDefaultValue(selectedLowestGsmProduction, selectedItem, "l2"),
-        f2: getLayerDefaultValue(selectedLowestGsmProduction, selectedItem, "f2"),
-        l3: getLayerDefaultValue(selectedLowestGsmProduction, selectedItem, "l3"),
-        color1: selectedItem.printingColour1 || "",
-        color2: selectedItem.printingColour2 || "",
-        printingColor: joinPrintingColors(selectedItem.printingColour1, selectedItem.printingColour2),
-      }));
-    }
-  }, [selectedItem, selectedCompany, selectedOrder, selectedLowestGsmProduction, selectedInternalUps]);
+    if (!selectedItem || !selectedSchedule) return;
+
+    // A selection gets one NPD prefill. This keeps NPD authoritative when the
+    // schedule changes without replacing an operator's subsequent edits.
+    const selectionKey = `${selectedSchedule.id}:${selectedItem.id}`;
+    if (lastPrefilledSelectionKey.current === selectionKey) return;
+    lastPrefilledSelectionKey.current = selectionKey;
+
+    setFormData((prev) => ({
+      ...prev,
+      companyName: selectedCompany?.name || "",
+      rate: selectedOrder?.rate ?? "",
+      erpCode: String(selectedItem.erp ?? selectedOrder?.erpCode ?? ""),
+      noOfParts: selectedItem.noOfParts ?? "",
+      ups: selectedInternalUps ?? selectedItem.ups ?? "",
+      length: selectedItem.length ?? "",
+      breadth: selectedItem.breadth ?? "",
+      height: selectedItem.height ?? "",
+      ply: selectedItem.ply ?? "",
+      flute: selectedItem.flute || "",
+      plateWeight: selectedItem.plateWeight ?? "",
+      top: selectedItem.l1 ?? "",
+      takeUpFactor: selectedItem.takeUpFactor ?? "",
+      l1: selectedItem.l1 ?? "",
+      f1: selectedItem.f1 ?? "",
+      l2: selectedItem.l2 ?? "",
+      f2: selectedItem.f2 ?? "",
+      l3: selectedItem.l3 ?? "",
+      color1: selectedItem.printingColour1 || "",
+      color2: selectedItem.printingColour2 || "",
+      printingColor: joinPrintingColors(selectedItem.printingColour1, selectedItem.printingColour2),
+    }));
+  }, [selectedItem, selectedSchedule, selectedCompany, selectedOrder, selectedInternalUps]);
 
   useEffect(() => {
     if (!selectedScheduleId) {
@@ -719,6 +744,8 @@ export function ProductionForm() {
     formData.height,
     formData.ups,
     formData.noOfParts,
+    formData.takeUpFactor,
+    formData.top,
     formData.l1,
     formData.f1,
     formData.l2,
