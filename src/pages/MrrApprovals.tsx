@@ -252,6 +252,8 @@ export function MrrApprovals() {
       suppliers,
       companies,
       setting: settings[0] || null,
+      firms,
+      packingSlips,
     });
   };
 
@@ -269,6 +271,7 @@ export function MrrApprovals() {
         suppliers,
         companies,
         setting: settings[0] || null,
+        firms,
         paperSize,
       });
       if (result.warnings.length > 0) {

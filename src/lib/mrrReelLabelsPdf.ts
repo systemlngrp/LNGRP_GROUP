@@ -93,6 +93,7 @@ export async function downloadMrrReelLabelsPdf({
   suppliers,
   companies = [],
   setting = null,
+  firms = [],
   paperSize = "A4",
   qrPayloadByPackingSlipId = {},
   weightKgByPackingSlipId = {},

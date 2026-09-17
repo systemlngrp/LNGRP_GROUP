@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatDate } from "./serial";
-import { MaterialIn, Material, Item, Service, Supplier, Setting, Company, Firm } from "../types";
+import { MaterialIn, Material, Item, Service, Supplier, Setting, Company, Firm, MaterialInPackingSlip } from "../types";
 import { renderOrganizationHeader } from "./pdfOrganizationHeader";
 
 function formatMoney(value: number) {
@@ -36,6 +36,7 @@ export async function downloadMaterialInPdf({
   companies,
   setting,
   firms,
+  packingSlips = [],
 }: {
   mrr: MaterialIn;
   materials: Material[];
@@ -45,6 +46,7 @@ export async function downloadMaterialInPdf({
   companies?: Company[];
   setting?: Setting | null;
   firms?: Firm[];
+  packingSlips?: MaterialInPackingSlip[];
 }) {
   const doc = new jsPDF("l", "mm", "a4");
   const pageSize = getPageSize(doc);
@@ -52,10 +54,14 @@ export async function downloadMaterialInPdf({
   const printableWidth = pageSize.width - margin.left - margin.right;
   let currentY = (await renderOrganizationHeader(doc, setting, { firmId: mrr.firmId, firms })).currentY;
 
+  doc.setFillColor(43, 63, 100);
+  doc.roundedRect(margin.left, currentY, printableWidth, 10, 1.5, 1.5, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text("MATERIAL RECEIPT", pageSize.width / 2, currentY, { align: "center" });
-  currentY += 8;
+  doc.setFontSize(15);
+  doc.setTextColor(255);
+  doc.text("MATERIAL RECEIPT", pageSize.width / 2, currentY + 6.7, { align: "center" });
+  doc.setTextColor(0);
+  currentY += 15;
 
   const supplier = suppliers.find((s) => s.id === mrr.supplierId);
   const company = companies?.find((entry) => entry.id === mrr.supplierId);
@@ -85,17 +91,17 @@ export async function downloadMaterialInPdf({
     body: metadataRows,
     theme: "grid",
     styles: {
-      fontSize: 9.5,
-      cellPadding: { top: 2.6, right: 3, bottom: 2.6, left: 3 },
-      textColor: 0,
-      lineColor: [0, 0, 0],
-      lineWidth: 0.2,
+      fontSize: 9,
+      cellPadding: { top: 2.2, right: 3, bottom: 2.2, left: 3 },
+      textColor: [25, 35, 55],
+      lineColor: [190, 198, 210],
+      lineWidth: 0.15,
       valign: "middle",
       overflow: "linebreak",
     },
     margin: { left: metadataLeft, right: metadataLeft },
     columnStyles: {
-      0: { cellWidth: metadataLabelWidth, fontStyle: "bold", fillColor: [247, 248, 251] },
+      0: { cellWidth: metadataLabelWidth, fontStyle: "bold", fillColor: [234, 239, 247], textColor: [43, 63, 100] },
       1: { cellWidth: metadataWidth - metadataLabelWidth },
     },
   });
@@ -216,7 +222,53 @@ export async function downloadMaterialInPdf({
     margin,
   });
 
-  let footerY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : currentY + 40;
+  let footerY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 8 : currentY + 40;
+
+  const materialById = new Map(materials.map((material) => [material.id, material]));
+  const lineById = new Map(mrr.lines.map((line) => [line.id, line]));
+  const reelRows = packingSlips
+    .filter((slip) => slip.materialInId === mrr.id && slip.ourReelNo)
+    .sort((left, right) => left.ourReelNo.localeCompare(right.ourReelNo, undefined, { numeric: true, sensitivity: "base" }))
+    .map((slip, index) => {
+      const line = lineById.get(slip.materialLineId);
+      const material = materialById.get(slip.materialId);
+      const itemName = line?.itemName || material?.name || npdItems.find((item) => item.id === slip.materialId)?.name || "Unknown";
+      const erpCode = material?.erpCode || "-";
+      return [index + 1, slip.ourReelNo, `${itemName}\nERP: ${erpCode}`, formatQty(Number(slip.weightKg || 0))];
+    });
+
+  if (reelRows.length > 0) {
+    if (footerY + 18 > pageSize.height - margin.bottom) {
+      doc.addPage();
+      footerY = margin.top;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(43, 63, 100);
+    doc.text("OUR REEL NUMBER DETAILS", margin.left, footerY);
+    doc.setTextColor(0);
+    footerY += 4;
+
+    autoTable(doc, {
+      startY: footerY,
+      head: [["SL", "Our Reel Number", "Material / ERP Code", "Weight (KG)"]],
+      body: reelRows,
+      theme: "grid",
+      headStyles: { fillColor: [43, 63, 100], textColor: 255, fontStyle: "bold", fontSize: 8, cellPadding: 2 },
+      bodyStyles: { lineColor: [180, 188, 200], lineWidth: 0.15 },
+      alternateRowStyles: { fillColor: [248, 250, 252] },
+      styles: { fontSize: 8.5, cellPadding: 2, textColor: [25, 35, 55], valign: "middle", overflow: "linebreak" },
+      columnStyles: {
+        0: { halign: "center", cellWidth: 12 },
+        1: { halign: "center", cellWidth: 44, fontStyle: "bold" },
+        2: { cellWidth: printableWidth - 12 - 44 - 32 },
+        3: { halign: "right", cellWidth: 32 },
+      },
+      margin,
+    });
+    footerY = ((doc as any).lastAutoTable?.finalY || footerY) + 10;
+  }
+
   const summaryRows: Array<[string, string]> = [
     ["Invoice Value", formatMoney(Number(mrr.totalInvoiceValue || 0))],
     ["Actual Value", formatMoney(Number(mrr.totalActualValue || 0))],

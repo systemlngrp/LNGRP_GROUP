@@ -2355,6 +2355,7 @@ export function MaterialInForm() {
           : [...prev, nextEntry];
       });
 
+      let savedPackingSlips = packingSlips.filter((row) => row.materialInId !== materialInId);
       if (mrrType === "Reel") {
         const newPackingSlips: MaterialInPackingSlip[] = Object.values(packingSlipDrafts)
           .flat()
@@ -2372,6 +2373,7 @@ export function MaterialInForm() {
             updatedBy: "System User",
             updateTimestamp: timestamp,
           }));
+        savedPackingSlips = newPackingSlips;
 
         if (newPackingSlips.length > 0) {
           await setPackingSlips((prev) => [
@@ -2434,6 +2436,8 @@ export function MaterialInForm() {
               suppliers,
               companies,
               setting: settings[0] || null,
+              firms,
+              packingSlips: savedPackingSlips,
             });
           } catch (pdfError) {
             console.error("Failed to download MRR PDF after create:", pdfError);
