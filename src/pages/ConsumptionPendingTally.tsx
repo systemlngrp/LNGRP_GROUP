@@ -55,17 +55,15 @@ export function ConsumptionPendingTally() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Consumption: Pending Tally Entry</h2>
       </div>
 
-      <div className="flex flex-wrap gap-4 items-center justify-between bg-white p-4 border border-black rounded shadow-sm">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-          <input 
-            type="text" 
-            placeholder="Search entries..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          />
-        </div>
+      <div className="relative w-full max-w-sm">
+        <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
+        <input
+          type="text"
+          placeholder="Search entries..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600"
+        />
       </div>
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">

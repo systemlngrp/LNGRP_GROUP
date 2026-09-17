@@ -159,7 +159,7 @@ export function RapcRangeMaster() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-4 items-center justify-between bg-white p-4 border border-black rounded shadow-sm mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
           <input

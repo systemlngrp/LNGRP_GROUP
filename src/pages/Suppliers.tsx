@@ -457,7 +457,7 @@ export function Suppliers() {
             </div>
           </div>
 
-<div className="bg-white p-4 border border-black rounded shadow-sm">
+<div className="max-w-sm">
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
