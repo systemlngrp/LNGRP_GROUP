@@ -160,7 +160,7 @@ export function MaterialInMaster() {
     );
   };
 
-  const filteredMaterialIn = materialIn
+  const filteredMaterialIn = useMemo(() => materialIn
     .map((entry) => normalizeMaterialInRecord(entry))
     .filter((entry) => {
       const supplierName = getSupplierName(entry.supplierId);
@@ -206,11 +206,23 @@ export function MaterialInMaster() {
       const timeA = new Date(a.updateTimestamp || a.timestamp || 0).getTime();
       const timeB = new Date(b.updateTimestamp || b.timestamp || 0).getTime();
       return timeB - timeA;
-    });
+    }), [
+      companies,
+      firmFilter,
+      fromDate,
+      materials,
+      materialIn,
+      mrrFilter,
+      npdItems,
+      searchTerm,
+      statusFilter,
+      suppliers,
+      toDate,
+    ]);
 
   const metrics = useMemo(
     () => ({
-      total: filteredMaterialIn.length,
+      receiptCount: filteredMaterialIn.length,
       totalInvoice: filteredMaterialIn.reduce((sum, row) => sum + Number(row.totalInvoiceValue || 0), 0),
       totalInvoiceAfterGst: filteredMaterialIn.reduce((sum, row) => sum + Number(row.totalInvoiceValueAfterGst || 0), 0),
       totalActual: filteredMaterialIn.reduce((sum, row) => sum + Number(row.totalActualValue || row.totalAmount || 0), 0),
@@ -258,7 +270,7 @@ export function MaterialInMaster() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
           <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Total Receipts</div>
-          <div className="text-2xl font-black">{metrics.total}</div>
+          <div className="text-2xl font-black">{metrics.receiptCount}</div>
           <div className="text-[10px] font-bold mt-1 opacity-90">{metrics.completed} Fully Completed</div>
         </div>
         <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
