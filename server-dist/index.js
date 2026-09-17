@@ -909,7 +909,11 @@ app.use("/api", (req, res, next) => {
 // tables in one request, and sidebar counts depend on those related records.
 app.use("/api", (req, res, next) => {
     const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method);
-    if (!isMutation || req.path.startsWith("/auth/") || req.path.startsWith("/realtime/"))
+    // This endpoint is currently POST for compatibility, but it only reads data.
+    // Excluding it prevents Sidebar's realtime refresh from publishing another
+    // event and continually requesting itself.
+    const isReadOnlyPost = req.path === "/get-pending-job-closure";
+    if (!isMutation || isReadOnlyPost || req.path.startsWith("/auth/") || req.path.startsWith("/realtime/"))
         return next();
     res.on("finish", () => {
         if (res.statusCode >= 200 && res.statusCode < 300)

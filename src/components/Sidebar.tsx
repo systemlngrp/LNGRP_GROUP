@@ -26,6 +26,7 @@ import {
   Camera
 } from "lucide-react";
 import { useData } from "../hooks/useData";
+import { REALTIME_DATA_CHANGE_EVENT } from "../hooks/useRealtimeDataSync";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { useAuth } from "../auth/AuthContext";
@@ -478,6 +479,17 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
 
   useEffect(() => {
     void refreshPendingJobClosureCount();
+  }, [refreshPendingJobClosureCount]);
+
+  useEffect(() => {
+    const handleRealtimeDataChange = () => {
+      void refreshPendingJobClosureCount();
+    };
+
+    window.addEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
+    return () => {
+      window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
+    };
   }, [refreshPendingJobClosureCount]);
 
   useAutoRefreshEffect(() => {

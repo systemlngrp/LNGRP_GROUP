@@ -74,6 +74,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const isFetchingRef = useRef(false);
+  const pendingForcedFetchRef = useRef(false);
   const lastFetchAtRef = useRef(0);
   const forbiddenUntilRef = useRef(0);
 
@@ -95,7 +96,13 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     const force = Boolean(config?.force);
     const now = Date.now();
 
-    if (isFetchingRef.current) return;
+    if (isFetchingRef.current) {
+      // Realtime and local sync signals can arrive while the initial request is
+      // still running. Remember one forced follow-up so its result cannot leave
+      // this hook (and sidebar counts derived from it) stale.
+      if (force) pendingForcedFetchRef.current = true;
+      return;
+    }
     if (now < forbiddenUntilRef.current) return;
     if (!force && now - lastFetchAtRef.current < 10_000) return;
 
@@ -157,6 +164,10 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     } finally {
       if (!background) setLoading(false);
       isFetchingRef.current = false;
+      if (pendingForcedFetchRef.current) {
+        pendingForcedFetchRef.current = false;
+        void fetchData({ background: true, force: true });
+      }
     }
   }, [endpoint, entity, includeActiveFirm, shouldCacheToLocalStorage, storageKey]);
 
