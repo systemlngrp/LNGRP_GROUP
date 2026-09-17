@@ -8,6 +8,7 @@ import { Spinner } from "../components/Spinner";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
+import { buildMrrReelLabelData } from "../lib/mrrReelLabelData";
 import { useNavigate } from "react-router-dom";
 import { useConfirm } from "../components/ConfirmDialog";
 import { Select as FirmSelect } from "../components/Select";
@@ -423,6 +424,9 @@ export function MrrApprovals() {
                     const invWeight = linesToDisplay.reduce((s, l) => s + (l.invoiceQty || 0), 0);
                     const firstLine: Partial<MaterialIn["lines"][0]> = linesToDisplay[0] || {};
                     const basicValue = linesToDisplay.reduce((s, l) => s + (l.actualValue || l.value || 0), 0);
+                    const reelLabels = m.mrrType === "Reel"
+                      ? buildMrrReelLabelData({ mrr: m, packingSlips, materials, suppliers, companies }).labels
+                      : [];
 
                     return (
                       <Fragment key={m.id}>
@@ -586,6 +590,52 @@ export function MrrApprovals() {
                                   </div>
                                 ))}
                               </div>
+                              {m.mrrType === "Reel" ? (
+                                <div className="mt-4 overflow-hidden rounded border border-indigo-200 bg-white">
+                                  <div className="border-b border-indigo-200 bg-indigo-50 px-3 py-2">
+                                    <div className="text-xs font-black text-indigo-800">REEL LABEL DETAILS</div>
+                                    <div className="mt-0.5 text-[10px] font-medium text-slate-600">
+                                      MRR: {m.transactionNo} | Date: {formatDate(m.date)} | Supplier: {getSupplierName(m.supplierId)}
+                                    </div>
+                                  </div>
+                                  {reelLabels.length === 0 ? (
+                                    <div className="px-3 py-4 text-center text-[11px] font-semibold text-slate-500">
+                                      No reel details saved for this MRR.
+                                    </div>
+                                  ) : (
+                                    <div className="overflow-x-auto">
+                                      <table className="min-w-[900px] w-full border-collapse text-[10px]">
+                                        <thead className="bg-indigo-700 text-white">
+                                          <tr className="divide-x divide-indigo-500">
+                                            <th className="px-3 py-2 text-center font-black">SL</th>
+                                            <th className="px-3 py-2 text-left font-black">OUR REEL NO.</th>
+                                            <th className="px-3 py-2 text-left font-black">SUPPLIER REEL NO.</th>
+                                            <th className="px-3 py-2 text-left font-black">ERP CODE</th>
+                                            <th className="px-3 py-2 text-right font-black">SIZE</th>
+                                            <th className="px-3 py-2 text-right font-black">GSM</th>
+                                            <th className="px-3 py-2 text-right font-black">BF</th>
+                                            <th className="px-3 py-2 text-right font-black">WEIGHT (KG)</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {reelLabels.map((label, index) => (
+                                            <tr key={label.packingSlipId} className="divide-x divide-slate-200 border-b border-slate-200 last:border-b-0 odd:bg-slate-50">
+                                              <td className="px-3 py-2 text-center font-semibold">{index + 1}</td>
+                                              <td className="px-3 py-2 font-black text-indigo-800">{label.reelNo}</td>
+                                              <td className="px-3 py-2">{label.suppReel || "-"}</td>
+                                              <td className="px-3 py-2">{label.code || "-"}</td>
+                                              <td className="px-3 py-2 text-right">{label.sizeCm || "-"}</td>
+                                              <td className="px-3 py-2 text-right">{label.gsm || "-"}</td>
+                                              <td className="px-3 py-2 text-right">{label.bf || "-"}</td>
+                                              <td className="px-3 py-2 text-right font-bold">{Number(label.weightKg || 0).toFixed(2)}</td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : null}
                             </td>
                           </tr>
                         )}
