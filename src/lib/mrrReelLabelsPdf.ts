@@ -1,7 +1,8 @@
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
-import type { Company, Material, MaterialIn, MaterialInPackingSlip, Setting, Supplier } from "../types";
+import type { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Setting, Supplier } from "../types";
 import { buildMrrReelLabelData } from "./mrrReelLabelData";
+import { resolvePdfFirm } from "./pdfOrganizationHeader";
 
 type DownloadMrrReelLabelsPdfArgs = {
   mrr: MaterialIn;
@@ -10,6 +11,7 @@ type DownloadMrrReelLabelsPdfArgs = {
   suppliers: Supplier[];
   companies?: Company[];
   setting?: Setting | null;
+  firms?: Firm[];
   paperSize?: "A4" | "A3";
   qrPayloadByPackingSlipId?: Record<string, string>;
   weightKgByPackingSlipId?: Record<string, number>;
@@ -125,7 +127,7 @@ export async function downloadMrrReelLabelsPdf({
     }
   }
 
-  const organizationName = firstNonEmpty(setting?.organizationName, "LAXMI NARAYAN GROUP");
+  const organizationName = firstNonEmpty(resolvePdfFirm({ firmId: mrr.firmId, firms })?.firmName, "LAXMI NARAYAN GROUP");
 
   const drawLabelA4 = async (row: (typeof labels)[number], slotX: number, slotY: number, slotW: number, slotH: number) => {
     const pageMargin = 10;

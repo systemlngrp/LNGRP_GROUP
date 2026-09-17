@@ -391,9 +391,6 @@ export function SettingsPage() {
   const [pairToFirmId, setPairToFirmId] = useState("");
   const [pairRate, setPairRate] = useState("100");
   const [organizationDraft, setOrganizationDraft] = useState({
-    organizationName: "",
-    organizationAddress: "",
-    organizationGstDetails: "",
     organizationLogo: "",
   });
   const [invoiceSeriesDraft, setInvoiceSeriesDraft] = useState<InvoiceSeriesRow[]>([]);
@@ -572,39 +569,17 @@ export function SettingsPage() {
   }, [organizationDraft.organizationLogo]);
   const organizationValues = useMemo(
     () => ({
-      organizationName: currentSetting?.organizationName || "",
-      organizationAddress: currentSetting?.organizationAddress || "",
-      organizationGstDetails: currentSetting?.organizationGstDetails || "",
       organizationLogo: currentSetting?.organizationLogo || "",
     }),
-    [
-      currentSetting?.organizationAddress,
-      currentSetting?.organizationGstDetails,
-      currentSetting?.organizationLogo,
-      currentSetting?.organizationName,
-    ]
+    [currentSetting?.organizationLogo]
   );
 
   useEffect(() => {
     setOrganizationDraft(organizationValues);
   }, [organizationValues]);
 
-  const hasOrganizationContent = useMemo(
-    () =>
-      Boolean(
-        organizationDraft.organizationName.trim() ||
-        organizationDraft.organizationAddress.trim() ||
-        organizationDraft.organizationGstDetails.trim() ||
-        organizationDraft.organizationLogo
-      ),
-    [organizationDraft]
-  );
-
   const hasOrganizationChanges = useMemo(
     () =>
-      organizationDraft.organizationName !== organizationValues.organizationName ||
-      organizationDraft.organizationAddress !== organizationValues.organizationAddress ||
-      organizationDraft.organizationGstDetails !== organizationValues.organizationGstDetails ||
       organizationDraft.organizationLogo !== organizationValues.organizationLogo,
     [organizationDraft, organizationValues]
   );
@@ -787,9 +762,6 @@ export function SettingsPage() {
         invoiceNumberSeries: currentSetting?.invoiceNumberSeries || JSON.stringify([]),
         mandatoryMachinesByType: currentSetting?.mandatoryMachinesByType || JSON.stringify({}),
         designations: currentSetting?.designations || JSON.stringify([]),
-        organizationName: currentSetting?.organizationName || "",
-        organizationAddress: currentSetting?.organizationAddress || "",
-        organizationGstDetails: currentSetting?.organizationGstDetails || "",
         organizationLogo: currentSetting?.organizationLogo || "",
         updatedBy: "System User",
         updateTimestamp: timestamp,
@@ -887,11 +859,8 @@ export function SettingsPage() {
   };
 
   const handleOrganizationSave = async () => {
-    if (!hasOrganizationContent || !hasOrganizationChanges) return;
+    if (!hasOrganizationChanges) return;
     await handleChange({
-      organizationName: organizationDraft.organizationName,
-      organizationAddress: organizationDraft.organizationAddress,
-      organizationGstDetails: organizationDraft.organizationGstDetails,
       organizationLogo: organizationDraft.organizationLogo,
     });
   };
@@ -1774,55 +1743,13 @@ export function SettingsPage() {
 
         <div className="space-y-4 border-b border-dashed border-black pb-5">
             <div>
-              <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Organization Details</h3>
+              <h3 className="text-sm font-black uppercase text-slate-600 mb-2">PDF Logo</h3>
             <p className="text-sm text-black leading-6">
-              These details can be used as the centered header section in generated PDFs such as indent documents.
+              This shared logo is printed on every generated PDF. Firm name, address, and GST are maintained in Firm Master.
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="flex flex-col space-y-2 md:col-span-2">
-              <label htmlFor="organizationName" className="text-xs font-black uppercase tracking-wide text-black">
-                Organization Name
-              </label>
-              <input
-                id="organizationName"
-                type="text"
-                value={organizationDraft.organizationName}
-                onChange={(e) => setOrganizationDraft((prev) => ({ ...prev, organizationName: e.target.value }))}
-                disabled={loading || saving}
-                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white"
-              />
-            </div>
-
-            <div className="flex flex-col space-y-2 md:col-span-2">
-              <label htmlFor="organizationAddress" className="text-xs font-black uppercase tracking-wide text-black">
-                Organization Address
-              </label>
-              <textarea
-                id="organizationAddress"
-                value={organizationDraft.organizationAddress}
-                onChange={(e) => setOrganizationDraft((prev) => ({ ...prev, organizationAddress: e.target.value }))}
-                disabled={loading || saving}
-                rows={3}
-                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white resize-y"
-              />
-            </div>
-
-            <div className="flex flex-col space-y-2 md:col-span-2">
-              <label htmlFor="organizationGstDetails" className="text-xs font-black uppercase tracking-wide text-black">
-                Organization GST Details
-              </label>
-              <textarea
-                id="organizationGstDetails"
-                value={organizationDraft.organizationGstDetails}
-                onChange={(e) => setOrganizationDraft((prev) => ({ ...prev, organizationGstDetails: e.target.value }))}
-                disabled={loading || saving}
-                rows={2}
-                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white resize-y"
-              />
-            </div>
-
             <div className="flex flex-col space-y-2 md:col-span-2">
               <label className="text-xs font-black uppercase tracking-wide text-black">Organization Logo</label>
               <div className="flex flex-col gap-3 md:flex-row md:items-start">
@@ -1866,10 +1793,10 @@ export function SettingsPage() {
               <button
                 type="button"
                 onClick={() => void handleOrganizationSave()}
-                disabled={loading || saving || uploadingLogo || !hasOrganizationContent || !hasOrganizationChanges}
+                disabled={loading || saving || uploadingLogo || !hasOrganizationChanges}
                 className="inline-flex items-center justify-center min-w-[170px] rounded bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50"
               >
-                {saving ? <Spinner size={16} className="text-white" /> : "Save Organization"}
+                {saving ? <Spinner size={16} className="text-white" /> : "Save Logo"}
               </button>
             </div>
           </div>

@@ -19,7 +19,7 @@ export async function downloadIndentPdf({
   firms?: Firm[];
 }) {
   const doc = new jsPDF("p", "mm", "a4");
-  let currentY = (await renderOrganizationHeader(doc, setting)).currentY;
+  let currentY = (await renderOrganizationHeader(doc, setting, { firmId: indent.firmId, firms })).currentY;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);

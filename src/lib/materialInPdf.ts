@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatDate } from "./serial";
-import { MaterialIn, Material, Item, Service, Supplier, Setting, Company } from "../types";
+import { MaterialIn, Material, Item, Service, Supplier, Setting, Company, Firm } from "../types";
 import { renderOrganizationHeader } from "./pdfOrganizationHeader";
 
 function formatMoney(value: number) {
@@ -35,6 +35,7 @@ export async function downloadMaterialInPdf({
   suppliers,
   companies,
   setting,
+  firms,
 }: {
   mrr: MaterialIn;
   materials: Material[];
@@ -43,12 +44,13 @@ export async function downloadMaterialInPdf({
   suppliers: Supplier[];
   companies?: Company[];
   setting?: Setting | null;
+  firms?: Firm[];
 }) {
   const doc = new jsPDF("l", "mm", "a4");
   const pageSize = getPageSize(doc);
   const margin = { left: 14, right: 14, top: 14, bottom: 14 };
   const printableWidth = pageSize.width - margin.left - margin.right;
-  let currentY = (await renderOrganizationHeader(doc, setting)).currentY;
+  let currentY = (await renderOrganizationHeader(doc, setting, { firmId: mrr.firmId, firms })).currentY;
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);

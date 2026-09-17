@@ -6641,7 +6641,8 @@ await db.query(`
         CREATE TABLE IF NOT EXISTS \`firms\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`firmName\` VARCHAR(255) NOT NULL,
-          \`logo\` LONGTEXT,
+          \`address\` TEXT,
+          \`gstDetails\` TEXT,
           \`tallyPortNo\` VARCHAR(20),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
@@ -7552,7 +7553,8 @@ await db.query(`
         { table: "loading_slips", column: "cancelledBy", type: "VARCHAR(255)" },
         { table: "firms", column: "firmName", type: "VARCHAR(255) NOT NULL" },
         { table: "firms", column: "shortName", type: "VARCHAR(100)" },
-        { table: "firms", column: "logo", type: "LONGTEXT" },
+        { table: "firms", column: "address", type: "TEXT" },
+        { table: "firms", column: "gstDetails", type: "TEXT" },
         { table: "firms", column: "tallyPortNo", type: "VARCHAR(20)" },
         { table: "firms", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "firms", column: "updateTimestamp", type: "VARCHAR(255)" },
@@ -7665,6 +7667,18 @@ await db.query(`
       }
 
       await ensureInterFirmSchema(db, database);
+      try {
+        const [settingRows] = await db.query("SELECT organizationAddress, organizationGstDetails FROM settings ORDER BY updateTimestamp DESC LIMIT 1");
+        const [firmRows] = await db.query("SELECT id FROM firms ORDER BY firmName ASC, id ASC LIMIT 1");
+        const legacy = (settingRows as any[])[0];
+        const firm = (firmRows as any[])[0];
+        if (legacy && firm) await db.query(
+          "UPDATE firms SET address = CASE WHEN COALESCE(NULLIF(TRIM(address), ''), '') = '' THEN ? ELSE address END, gstDetails = CASE WHEN COALESCE(NULLIF(TRIM(gstDetails), ''), '') = '' THEN ? ELSE gstDetails END WHERE id = ?",
+          [String(legacy.organizationAddress || ""), String(legacy.organizationGstDetails || ""), firm.id]
+        );
+      } catch (err) {
+        console.warn("[DB] Could not migrate legacy organization details to Firm Master:", (err as Error).message);
+      }
       await ensureInternalFirmSuppliers(db, database);
       await backfillInterFirmProductionProcessing(db);
       await backfillIndentRequisitionNumbers(db);

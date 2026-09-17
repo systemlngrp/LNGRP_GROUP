@@ -1,7 +1,8 @@
 import jsPDF from "jspdf";
-import type { Company, Material, MaterialInPackingSlip, MaterialIssueReelLine, MaterialReturnReelLine, Order, OrderSchedule, Production, ProductionProcessing, Setting } from "../types";
+import type { Company, Firm, Material, MaterialInPackingSlip, MaterialIssueReelLine, MaterialReturnReelLine, Order, OrderSchedule, Production, ProductionProcessing, Setting } from "../types";
 import type { OrderCatalogItem } from "./orderItems";
 import { formatDate } from "./serial";
+import { resolvePdfFirm } from "./pdfOrganizationHeader";
 
 type PdfArgs = {
   production: Production;
@@ -18,6 +19,7 @@ type PdfArgs = {
   returnReelLines?: MaterialReturnReelLine[];
   processingEntries?: ProductionProcessing[];
   setting?: Setting | null;
+  firms?: Firm[];
   createdBy?: string;
 };
 
@@ -421,7 +423,7 @@ function formatDimension(...values: unknown[]) {
   return parts.some(Boolean) ? parts.join("   ") : "";
 }
 
-export async function downloadJobCardPdf({ production, schedule, order, company, item, itemErp, phpItem, plateItem, materials, packingSlips, issueReelLines, returnReelLines, processingEntries, setting, createdBy }: PdfArgs) {
+export async function downloadJobCardPdf({ production, schedule, order, company, item, itemErp, phpItem, plateItem, materials, packingSlips, issueReelLines, returnReelLines, processingEntries, setting, firms, createdBy }: PdfArgs) {
   const doc = new jsPDF("p", "mm", "a4");
   const raw = rawOf(item);
   const phpRaw = rawOf(phpItem);
@@ -432,7 +434,7 @@ export async function downloadJobCardPdf({ production, schedule, order, company,
   const x = 7;
   const w = 196;
   let y = 8;
-  const orgName = firstValue(setting?.organizationName, "LAXMI NARAYAN PACKAGING INDUSTRIES");
+  const orgName = firstValue(resolvePdfFirm({ firmId: production.firmId || order?.firmId, firms })?.firmName, "LAXMI NARAYAN PACKAGING INDUSTRIES");
   const jobNo = firstValue(production.jobCardNo, production.transactionNo);
   const partyName = firstValue(company?.name, production.companyName, item?.companyName, raw.customerName, raw.companyName, raw.company);
   const itemName = firstValue(item?.name, raw.itemName, production.itemId);

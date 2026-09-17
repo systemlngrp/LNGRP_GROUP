@@ -1,5 +1,5 @@
 import type jsPDF from "jspdf";
-import type { Setting } from "../types";
+import type { Firm, Setting } from "../types";
 
 async function getImageDataUrl(url: string) {
   const response = await fetch(url);
@@ -29,7 +29,30 @@ export type OrganizationHeaderOptions = {
   drawDivider?: boolean;
   dividerStartX?: number;
   dividerEndX?: number;
+  firm?: Firm | null;
+  firmId?: string;
+  firms?: Firm[];
 };
+
+function getActiveFirmId() {
+  try { return String(JSON.parse(window.localStorage.getItem("activeFirm") || "{}").id || ""); } catch { return ""; }
+}
+
+function getCachedFirms(): Firm[] {
+  try {
+    const rows = JSON.parse(window.localStorage.getItem("udc_firms") || "[]");
+    return Array.isArray(rows) ? rows : [];
+  } catch { return []; }
+}
+
+export function resolvePdfFirm(options: Pick<OrganizationHeaderOptions, "firm" | "firmId" | "firms"> = {}) {
+  if (options.firm?.id) return options.firm;
+  const firms = options.firms?.length ? options.firms : getCachedFirms();
+  const id = String(options.firmId || getActiveFirmId() || "");
+  const resolvedFirm = firms.find((firm) => firm.id === id) || null;
+  if (!resolvedFirm) throw new Error("Select a firm before generating this PDF.");
+  return resolvedFirm;
+}
 
 export async function renderOrganizationHeader(
   doc: jsPDF,
@@ -40,13 +63,17 @@ export async function renderOrganizationHeader(
     drawDivider = true,
     dividerStartX = 14,
     dividerEndX = 196,
+    firm,
+    firmId,
+    firms,
   }: OrganizationHeaderOptions = {}
 ) {
   let currentY = startY;
 
-  const organizationName = setting?.organizationName?.trim() || "";
-  const organizationAddress = setting?.organizationAddress?.trim() || "";
-  const organizationGstDetails = setting?.organizationGstDetails?.trim() || "";
+  const resolvedFirm = resolvePdfFirm({ firm, firmId, firms });
+  const organizationName = resolvedFirm.firmName?.trim() || "";
+  const organizationAddress = resolvedFirm.address?.trim() || "";
+  const organizationGstDetails = resolvedFirm.gstDetails?.trim() || "";
   const organizationLogoUrl = getOrganizationLogoUrl(setting);
 
   const hasAnyContent = Boolean(organizationLogoUrl || organizationName || organizationAddress || organizationGstDetails);

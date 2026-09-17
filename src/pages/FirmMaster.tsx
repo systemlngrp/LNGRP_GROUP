@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { Edit, ImagePlus, Plus, Trash2, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Edit, Plus, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { Firm } from "../types";
@@ -7,24 +7,15 @@ import { generateFirmShortName } from "../lib/firmDisplay";
 
 const inputClass = "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors";
 
-function readLogoFile(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Failed to read logo file."));
-    reader.readAsDataURL(file);
-  });
-}
-
 export function FirmMaster() {
   const [firms, setFirms, isLoading] = useData<Firm>("firms", []);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [firmName, setFirmName] = useState("");
   const [shortName, setShortName] = useState("");
-  const [logo, setLogo] = useState("");
+  const [address, setAddress] = useState("");
+  const [gstDetails, setGstDetails] = useState("");
   const [tallyPortNo, setTallyPortNo] = useState("");
   const [routeSourceFirmId, setRouteSourceFirmId] = useState("");
   const [routeDestinationFirmId, setRouteDestinationFirmId] = useState("");
@@ -56,13 +47,13 @@ export function FirmMaster() {
     setEditingId(null);
     setFirmName("");
     setShortName("");
-    setLogo("");
+    setAddress("");
+    setGstDetails("");
     setTallyPortNo("");
     setRouteSourceFirmId("");
     setRouteDestinationFirmId("");
     setRouteSequence("1");
     setRouteActive("No");
-    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const openCreate = () => {
@@ -74,7 +65,8 @@ export function FirmMaster() {
     setEditingId(firm.id);
     setFirmName(firm.firmName || "");
     setShortName(firm.shortName || generateFirmShortName(firm.firmName));
-    setLogo(firm.logo || "");
+    setAddress(firm.address || "");
+    setGstDetails(firm.gstDetails || "");
     setTallyPortNo(String(firm.tallyPortNo || ""));
     setRouteSourceFirmId(String(firm.routeSourceFirmId || ""));
     setRouteDestinationFirmId(String(firm.routeDestinationFirmId || ""));
@@ -86,25 +78,6 @@ export function FirmMaster() {
   const closeForm = () => {
     resetForm();
     setIsFormOpen(false);
-  };
-
-  const handleLogoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      alert("Please select an image file for the logo.");
-      return;
-    }
-    if (file.size > 750 * 1024) {
-      alert("Logo file is too large. Please upload an image under 750 KB.");
-      return;
-    }
-    try {
-      setLogo(await readLogoFile(file));
-    } catch (error) {
-      console.error("Failed to read logo:", error);
-      alert("Failed to read logo file.");
-    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -141,7 +114,8 @@ export function FirmMaster() {
         id: editingId || crypto.randomUUID(),
         firmName: normalizedName,
         shortName: normalizedShortName,
-        logo: logo || undefined,
+        address: address.trim() || undefined,
+        gstDetails: gstDetails.trim() || undefined,
         tallyPortNo: normalizedPort || undefined,
         routeSourceFirmId: routeSourceFirmId || undefined,
         routeDestinationFirmId: routeDestinationFirmId || undefined,
@@ -196,6 +170,14 @@ export function FirmMaster() {
               <label className="font-bold text-black">Short Name <span className="text-red-600">*</span></label>
               <input value={shortName} onChange={(event) => setShortName(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20))} required className={inputClass} placeholder="e.g. LNCB" />
             </div>
+            <div className="md:col-span-2 flex flex-col space-y-1">
+              <label className="font-bold text-black">Address</label>
+              <textarea value={address} onChange={(event) => setAddress(event.target.value)} rows={3} className={inputClass} />
+            </div>
+            <div className="md:col-span-2 flex flex-col space-y-1">
+              <label className="font-bold text-black">GST Details</label>
+              <textarea value={gstDetails} onChange={(event) => setGstDetails(event.target.value)} rows={2} className={inputClass} />
+            </div>
             <div className="md:col-span-2 border-t-2 border-black pt-4">
               <h3 className="font-bold text-black">Inter-Firm Route</h3>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
@@ -220,25 +202,6 @@ export function FirmMaster() {
               <input value={tallyPortNo} onChange={(event) => setTallyPortNo(event.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" placeholder="9000" className={inputClass} />
             </div>
 
-            <div className="md:col-span-2 flex flex-col space-y-2">
-              <label className="font-bold text-black">Logo</label>
-              <div className="flex flex-col sm:flex-row gap-4 sm:items-center">
-                <div className="flex h-24 w-40 items-center justify-center overflow-hidden rounded border-2 border-black bg-slate-50">
-                  {logo ? <img src={logo} alt="Firm logo preview" className="max-h-full max-w-full object-contain" /> : <ImagePlus className="h-8 w-8 text-slate-500" />}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-4 py-2 font-bold text-black hover:bg-slate-100">
-                    <ImagePlus size={18} /> Upload Logo
-                  </button>
-                  {logo && (
-                    <button type="button" onClick={() => setLogo("")} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-4 py-2 font-bold text-black hover:bg-slate-100">
-                      <X size={18} /> Remove
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="flex items-center gap-3 pt-2">
@@ -263,8 +226,10 @@ export function FirmMaster() {
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">SL No</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Logo</th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Firm Name</th>
                 <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Short Name</th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Address</th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">GST</th>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Tally Port No</th>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
               </tr>
@@ -272,7 +237,7 @@ export function FirmMaster() {
             <tbody className="bg-white">
               {sortedFirms.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center font-medium text-black border border-black">
+                  <td colSpan={7} className="px-6 py-8 text-center font-medium text-black border border-black">
                     {isLoading ? <div className="flex justify-center"><Spinner /></div> : "No firms found."}
                   </td>
                 </tr>
@@ -280,12 +245,10 @@ export function FirmMaster() {
                 sortedFirms.map((firm, index) => (
                   <tr key={firm.id} onClick={() => openEdit(firm)} className="cursor-pointer hover:bg-slate-50">
                     <td className="px-4 py-3 text-right text-sm font-bold text-black border border-black">{index + 1}</td>
-                    <td className="px-4 py-3 border border-black">
-                      <div className="flex h-12 w-20 items-center justify-center overflow-hidden rounded border border-black bg-slate-50">
-                        {firm.logo ? <img src={firm.logo} alt={`${firm.firmName} logo`} className="max-h-full max-w-full object-contain" /> : <span className="text-xs font-bold text-slate-500">No Logo</span>}
-                      </div>
-                    </td>
+                    <td className="px-4 py-3 text-sm text-black border border-black">{firm.firmName}</td>
                     <td className="px-4 py-3 text-sm font-bold text-black border border-black">{firm.shortName || generateFirmShortName(firm.firmName)}</td>
+                    <td className="px-4 py-3 text-sm text-black border border-black">{firm.address || "-"}</td>
+                    <td className="px-4 py-3 text-sm text-black border border-black">{firm.gstDetails || "-"}</td>
                     <td className="px-4 py-3 text-right text-sm text-black border border-black">{firm.tallyPortNo || "-"}</td>
                     <td className="px-4 py-3 text-right text-sm border border-black">
                       <button type="button" title="Edit" aria-label="Edit" onClick={(event) => { event.stopPropagation(); openEdit(firm); }} className="mr-4 text-indigo-600 hover:text-indigo-900">

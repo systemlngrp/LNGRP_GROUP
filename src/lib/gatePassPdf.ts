@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import type { GatePass, Setting } from "../types";
+import type { Firm, GatePass, Setting } from "../types";
 import { formatDate } from "./serial";
 import { getGatePassLineLabel, getGatePassPrimaryPartyName, isReturnableGatePass } from "./gatePassState";
 import { renderOrganizationHeader } from "./pdfOrganizationHeader";
@@ -11,15 +11,17 @@ export async function downloadGatePassPdf({
   invoiceDisplayNo,
   destination,
   transporter,
+  firms,
 }: {
   gatePass: GatePass;
   setting?: Setting | null;
   invoiceDisplayNo?: string;
   destination?: string;
   transporter?: string;
+  firms?: Firm[];
 }) {
   const doc = new jsPDF("p", "mm", "a4");
-  let currentY = (await renderOrganizationHeader(doc, setting)).currentY;
+  let currentY = (await renderOrganizationHeader(doc, setting, { firmId: gatePass.firmId, firms })).currentY;
   const isReturnable = isReturnableGatePass(gatePass);
   const heading = isReturnable ? "RETURNABLE GATE PASS" : "NON RETURNABLE GATE PASS";
   const resolvedInvoiceNo = isReturnable ? getGatePassPrimaryPartyName(gatePass) : invoiceDisplayNo || gatePass.invoiceNo || "-";

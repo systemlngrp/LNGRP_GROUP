@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import type { Setting } from "../types";
+import { resolvePdfFirm } from "./pdfOrganizationHeader";
 
 type RowRecord = Record<string, string | number | boolean | null | undefined>;
 
@@ -239,7 +240,7 @@ async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | nul
   doc.setFont("helvetica", "bold");
   doc.setFontSize(FONT_SMALL);
   doc.setTextColor(0);
-  doc.text("LAXMINARAYAN CORRUGATED BOARDS LLP", SHEET_X + 73, y + 25, { align: "center" });
+  doc.text(resolvePdfFirm({ firmId: String(npdRow.firmId || "") })?.firmName || "LAXMINARAYAN CORRUGATED BOARDS LLP", SHEET_X + 73, y + 25, { align: "center" });
 
   cell(doc, SHEET_X + 107, y, 23, 28, "Special\nRemarks", { bold: true, fontSize: FONT_SMALL });
   cell(doc, SHEET_X + 130, y, 66, 28, "", { fontSize: FONT_BODY_12PX });

@@ -344,8 +344,8 @@ const jobCardMappings: JobCardMapping[] = [
   {
     field: "Organization Name",
     source: "settings",
-    key: "settings.organizationName",
-    notes: "Uses organizationName from settings; default is LAXMI NARAYAN PACKAGING INDUSTRIES.",
+    key: "firms.firmName",
+    notes: "Uses the production/order firm name from Firm Master; the active firm is used when no document firm is available.",
   },
   {
     field: "Created By",

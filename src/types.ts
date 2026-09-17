@@ -1351,7 +1351,8 @@ export interface Firm {
   id: string;
   firmName: string;
   shortName?: string;
-  logo?: string;
+  address?: string;
+  gstDetails?: string;
   tallyPortNo?: string;
   routeSourceFirmId?: string;
   routeDestinationFirmId?: string;
@@ -1416,9 +1417,6 @@ export interface Setting {
   invoiceNumberSeries?: string;
   mandatoryMachinesByType?: string;
   designations?: string;
-  organizationName?: string;
-  organizationAddress?: string;
-  organizationGstDetails?: string;
   organizationLogo?: string;
   updatedBy?: string;
   updateTimestamp?: string;

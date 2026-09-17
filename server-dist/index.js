@@ -700,6 +700,22 @@ function hasPermission(user, required) {
     });
 }
 const AUTH_COOKIE_NAME = "lngrp_auth";
+const realtimeClients = new Set();
+function publishRealtimeDataChange(entities = ["*"]) {
+    const payload = JSON.stringify({
+        type: "data-changed",
+        entities: Array.from(new Set(entities.filter(Boolean))),
+        timestamp: new Date().toISOString(),
+    });
+    for (const client of realtimeClients) {
+        try {
+            client.write(`event: data-changed\ndata: ${payload}\n\n`);
+        }
+        catch {
+            realtimeClients.delete(client);
+        }
+    }
+}
 function getCookieValue(req, name) {
     const prefix = `${name}=`;
     return String(req.headers.cookie || "").split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length) || "";
@@ -727,6 +743,28 @@ function requireAuth(req, res, next) {
     req.authUserId = uid;
     next();
 }
+app.get("/api/realtime/updates", requireAuth, (req, res) => {
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+    res.write(`event: connected\ndata: ${JSON.stringify({ timestamp: new Date().toISOString() })}\n\n`);
+    realtimeClients.add(res);
+    const heartbeat = setInterval(() => {
+        try {
+            res.write(`: heartbeat ${Date.now()}\n\n`);
+        }
+        catch {
+            // The close handler below removes failed connections.
+        }
+    }, 25_000);
+    req.on("close", () => {
+        clearInterval(heartbeat);
+        realtimeClients.delete(res);
+    });
+});
 app.post("/api/auth/login", async (req, res) => {
     const identifier = String(req.body?.identifier || req.body?.userId || req.body?.email || "").trim();
     const password = String(req.body?.password || "").trim();
@@ -865,6 +903,19 @@ app.use("/api", (req, res, next) => {
         req.path.startsWith("/tally-sync"))
         return next();
     return requireAuth(req, res, next);
+});
+// Notify every connected client only after a successful API mutation.  A
+// wildcard invalidation is deliberate: custom workflows often change several
+// tables in one request, and sidebar counts depend on those related records.
+app.use("/api", (req, res, next) => {
+    const isMutation = ["POST", "PUT", "PATCH", "DELETE"].includes(req.method);
+    if (!isMutation || req.path.startsWith("/auth/") || req.path.startsWith("/realtime/"))
+        return next();
+    res.on("finish", () => {
+        if (res.statusCode >= 200 && res.statusCode < 300)
+            publishRealtimeDataChange();
+    });
+    next();
 });
 // Ensure uploads directory exists
 if (!fs.existsSync(path.join(process.cwd(), "uploads"))) {
@@ -6125,7 +6176,8 @@ async function initDb(retries = 5) {
         CREATE TABLE IF NOT EXISTS \`firms\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`firmName\` VARCHAR(255) NOT NULL,
-          \`logo\` LONGTEXT,
+          \`address\` TEXT,
+          \`gstDetails\` TEXT,
           \`tallyPortNo\` VARCHAR(20),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
@@ -7025,7 +7077,8 @@ async function initDb(retries = 5) {
                 { table: "loading_slips", column: "cancelledBy", type: "VARCHAR(255)" },
                 { table: "firms", column: "firmName", type: "VARCHAR(255) NOT NULL" },
                 { table: "firms", column: "shortName", type: "VARCHAR(100)" },
-                { table: "firms", column: "logo", type: "LONGTEXT" },
+                { table: "firms", column: "address", type: "TEXT" },
+                { table: "firms", column: "gstDetails", type: "TEXT" },
                 { table: "firms", column: "tallyPortNo", type: "VARCHAR(20)" },
                 { table: "firms", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "firms", column: "updateTimestamp", type: "VARCHAR(255)" },
@@ -7132,6 +7185,17 @@ async function initDb(retries = 5) {
                 }
             }
             await ensureInterFirmSchema(db, database);
+            try {
+                const [settingRows] = await db.query("SELECT organizationAddress, organizationGstDetails FROM settings ORDER BY updateTimestamp DESC LIMIT 1");
+                const [firmRows] = await db.query("SELECT id FROM firms ORDER BY firmName ASC, id ASC LIMIT 1");
+                const legacy = settingRows[0];
+                const firm = firmRows[0];
+                if (legacy && firm)
+                    await db.query("UPDATE firms SET address = CASE WHEN COALESCE(NULLIF(TRIM(address), ''), '') = '' THEN ? ELSE address END, gstDetails = CASE WHEN COALESCE(NULLIF(TRIM(gstDetails), ''), '') = '' THEN ? ELSE gstDetails END WHERE id = ?", [String(legacy.organizationAddress || ""), String(legacy.organizationGstDetails || ""), firm.id]);
+            }
+            catch (err) {
+                console.warn("[DB] Could not migrate legacy organization details to Firm Master:", err.message);
+            }
             await ensureInternalFirmSuppliers(db, database);
             await backfillInterFirmProductionProcessing(db);
             await backfillIndentRequisitionNumbers(db);
@@ -9711,7 +9775,7 @@ app.get("/api/purchase-orders/pending-procurement", async (req, res) => {
         i.requisitionDate,
         m.name as materialName,
         m.erpCode as materialErpCode,
-        m.gstRate as materialGstRate,
+        18 as materialGstRate,
         COALESCE(pol_sum.poQtyCreated, 0) as poQtyCreated
       FROM indent_lines il
       JOIN indents i ON i.id = il.indentId
@@ -9847,7 +9911,9 @@ app.get("/api/purchase-orders/pending-indent-lines", requireAuth, async (req, re
         il.materialId,
         m.name as materialName,
         m.erpCode as materialErpCode,
-        m.gstRate as materialGstRate,
+        -- Production databases created before the GST-rate master column
+        -- still support this queue; line creation falls back to the standard rate.
+        18 as materialGstRate,
         il.uom,
         il.qty,
         il.cancelledQty,

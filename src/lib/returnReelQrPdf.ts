@@ -1,6 +1,7 @@
 ﻿import jsPDF from "jspdf";
 import QRCode from "qrcode";
-import type { Setting } from "../types";
+import type { Firm, Setting } from "../types";
+import { resolvePdfFirm } from "./pdfOrganizationHeader";
 
 type ReturnReelQrPdfArgs = {
   returnNo: string;
@@ -12,6 +13,8 @@ type ReturnReelQrPdfArgs = {
   reelNo: string;
   weight: number;
   setting?: Setting | null;
+  firmId?: string;
+  firms?: Firm[];
 };
 
 function safeFileName(value: string) {
@@ -108,7 +111,7 @@ export async function downloadReturnReelQrPdf({
     }
   }
 
-  const organizationName = firstNonEmpty(setting?.organizationName, "LAXMI NARAYAN GROUP");
+  const organizationName = firstNonEmpty(resolvePdfFirm({ firmId, firms })?.firmName, "LAXMI NARAYAN GROUP");
   const qrPayload = JSON.stringify({
     source: "RETURN",
     returnNo,

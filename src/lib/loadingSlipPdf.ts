@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable, { type UserOptions } from "jspdf-autotable";
 import { formatDate } from "./serial";
-import type { Company, DispatchPlan, Item, LoadingSlip, Order, PackingDetail, Setting, Truck } from "../types";
+import type { Company, DispatchPlan, Firm, Item, LoadingSlip, Order, PackingDetail, Setting, Truck } from "../types";
 import { summarizeLoadingSlip } from "./loadingSlipContext";
 import { normalizeOrderCatalogItem } from "./orderItems";
 import { renderOrganizationHeader } from "./pdfOrganizationHeader";
@@ -263,6 +263,7 @@ export async function downloadLoadingSlipPdf({
   orders,
   npdItems,
   companies,
+  firms,
 }: {
   slip: LoadingSlip;
   setting?: Setting | null;
@@ -271,12 +272,15 @@ export async function downloadLoadingSlipPdf({
   orders: Order[];
   npdItems: Item[];
   companies: Company[];
+  firms?: Firm[];
 }) {
   const doc = new jsPDF("p", "mm", "a4");
 
   let currentY = (await renderOrganizationHeader(doc, setting, {
     startY: PAGE_Y + 3,
     drawDivider: false,
+    firmId: slip.firmId,
+    firms,
   } as any)).currentY;
 
   const resolveOrderItem = (order?: Partial<Order> | null) => resolveFgItem(order, npdItems);
