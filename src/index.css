@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+/* Route pages were authored independently, but most use a flex header whose
+   title and controls share one line. Keep the title as a stable, full-width
+   row and place the existing controls beneath it across the authenticated app. */
+.app-view-content > div > :is(div, main, section) > :is(div, header):has(> :is(h1, h2, h3)) {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+}
+
+.app-view-content > div > :is(div, main, section) > :is(div, header):has(> :is(h1, h2, h3)) > :is(h1, h2, h3) {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.app-view-content > div > :is(div, main, section) > :is(div, header):has(> :is(h1, h2, h3)) > :not(h1, h2, h3) {
+  width: 100%;
+}
+
 @layer utilities {
   .table-scroll-shell {
     overflow-x: auto;
