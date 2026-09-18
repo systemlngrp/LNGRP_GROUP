@@ -9918,6 +9918,7 @@ app.get("/api/purchase-orders/pending-indent-lines", requireAuth, async (req, re
         il.materialId,
         m.name as materialName,
         m.erpCode as materialErpCode,
+        COALESCE(NULLIF(TRIM(m.type), ''), 'Others') as materialItemType,
         -- Production databases created before the GST-rate master column
         -- still support this queue; line creation falls back to the standard rate.
         18 as materialGstRate,

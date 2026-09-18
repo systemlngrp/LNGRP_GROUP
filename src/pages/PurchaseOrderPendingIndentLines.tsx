@@ -28,6 +28,7 @@ type PendingIndentLineRow = {
   materialGstRate?: number;
   materialErpCode: string;
   materialName: string;
+  materialItemType?: string;
   uom: string;
   qty: number;
   cancelledQty: number;
@@ -60,6 +61,11 @@ export function PurchaseOrderPendingIndentLines() {
   const [requestedByFilter, setRequestedByFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
+  const [itemTypeFilter, setItemTypeFilter] = useState("");
+  const [indentNoFilter, setIndentNoFilter] = useState("");
+  const [indentFromDateFilter, setIndentFromDateFilter] = useState("");
+  const [indentToDateFilter, setIndentToDateFilter] = useState("");
+  const materialById = useMemo(() => new Map(materials.map((material) => [String(material.id), material])), [materials]);
 
   useAutoRefreshPause(
     selectedIds.size > 0 ||
@@ -117,6 +123,10 @@ export function PurchaseOrderPendingIndentLines() {
       if (firmFilter && firmId !== firmFilter) return false;
       if (requestedByFilter && r.requestedBy !== requestedByFilter) return false;
       if (itemFilter && r.materialId !== itemFilter) return false;
+      if (itemTypeFilter && String(r.materialItemType || materialById.get(String(r.materialId))?.type || "Others") !== itemTypeFilter) return false;
+      if (indentNoFilter && r.indentNo !== indentNoFilter) return false;
+      if (indentFromDateFilter && String(r.requisitionDate || "") < indentFromDateFilter) return false;
+      if (indentToDateFilter && String(r.requisitionDate || "") > indentToDateFilter) return false;
       if (supplierFilter && rowInputs[r.indentLineId]?.supplierId !== supplierFilter) return false;
       return (
         String(r.indentNo || "").toLowerCase().includes(q) ||
@@ -125,11 +135,13 @@ export function PurchaseOrderPendingIndentLines() {
         String(r.requestedBy || "").toLowerCase().includes(q) || firmName.toLowerCase().includes(q)
       );
     });
-  }, [firms, firmFilter, indents, itemFilter, requestedByFilter, rowInputs, rows, searchTerm, supplierFilter]);
+  }, [firms, firmFilter, indentFromDateFilter, indentNoFilter, indentToDateFilter, indents, itemFilter, itemTypeFilter, materialById, requestedByFilter, rowInputs, rows, searchTerm, supplierFilter]);
 
   const firmOptions = useMemo(() => firms.map((f) => ({ value: f.id, label: getFirmDisplayName(f) })), [firms]);
   const requestedByOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.requestedBy).filter(Boolean))).sort().map((v) => ({ value: v, label: v })), [rows]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((r) => [r.materialId, r.materialName])).entries()).map(([value, label]) => ({ value, label })), [rows]);
+  const itemTypeOptions = useMemo(() => Array.from(new Set(rows.map((r) => String(r.materialItemType || materialById.get(String(r.materialId))?.type || "Others")))).sort().map((value) => ({ value, label: value })), [materialById, rows]);
+  const indentNoOptions = useMemo(() => Array.from(new Set(rows.map((r) => r.indentNo).filter(Boolean))).sort().map((value) => ({ value, label: value })), [rows]);
   const supplierOptions = useMemo(() => suppliers.map((s) => ({ value: s.id, label: s.name })), [suppliers]);
   const gstRateOptions = useMemo(() => {
     const rates = new Set<number>([0]);
@@ -144,7 +156,6 @@ export function PurchaseOrderPendingIndentLines() {
     return Array.from(rates).sort((a, b) => a - b).map((rate) => ({ value: String(rate), label: `${rate.toFixed(2)}%` }));
   }, [gstRateMasters, rows]);
   const defaultGstRate = gstRateOptions.find((option) => option.value === "0")?.value || "0";
-  const materialById = useMemo(() => new Map(materials.map((material) => [String(material.id), material])), [materials]);
   const getDefaultGstRate = useCallback((materialId: string, apiRate?: number) => {
     const materialRate = apiRate ?? materialById.get(String(materialId))?.gstRate;
     if (materialRate === undefined || materialRate === null || !Number.isFinite(Number(materialRate)) || Number(materialRate) < 0) return defaultGstRate;
@@ -174,7 +185,7 @@ export function PurchaseOrderPendingIndentLines() {
 
   useEffect(() => {
     setPage(1);
-  }, [firmFilter, requestedByFilter, itemFilter, supplierFilter, searchTerm, setPage]);
+  }, [firmFilter, requestedByFilter, itemFilter, itemTypeFilter, indentNoFilter, indentFromDateFilter, indentToDateFilter, supplierFilter, searchTerm, setPage]);
 
   const filteredRowIds = useMemo(() => new Set(filteredRows.map((r) => r.indentLineId)), [filteredRows]);
   const allVisibleSelected = useMemo(() => {
@@ -390,9 +401,13 @@ export function PurchaseOrderPendingIndentLines() {
       <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
         <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Firm</label><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" /></div>
         <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Requested By</label><Select compact value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="All Requested By" /></div>
-        <div className="min-w-[220px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item</label><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" /></div>
+        <div className="min-w-[220px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Label</label><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Item Labels" /></div>
+        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Type</label><Select compact value={itemTypeFilter} onChange={setItemTypeFilter} options={itemTypeOptions} placeholder="All Item Types" /></div>
+        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent No</label><Select compact value={indentNoFilter} onChange={setIndentNoFilter} options={indentNoOptions} placeholder="All Indent Nos" /></div>
+        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date From</label><input type="date" value={indentFromDateFilter} onChange={(e) => setIndentFromDateFilter(e.target.value)} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
+        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date To</label><input type="date" value={indentToDateFilter} onChange={(e) => setIndentToDateFilter(e.target.value)} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
         <div className="min-w-[200px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Supplier</label><Select compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="All Suppliers" /></div>
-        <button type="button" onClick={() => { setFirmFilter(""); setRequestedByFilter(""); setItemFilter(""); setSupplierFilter(""); setSearchTerm(""); }} className="rounded border border-black px-3 py-2 text-xs font-black uppercase hover:bg-slate-100">Reset</button>
+        <button type="button" onClick={() => { setFirmFilter(""); setRequestedByFilter(""); setItemFilter(""); setItemTypeFilter(""); setIndentNoFilter(""); setIndentFromDateFilter(""); setIndentToDateFilter(""); setSupplierFilter(""); setSearchTerm(""); }} className="rounded border border-black px-3 py-2 text-xs font-black uppercase hover:bg-slate-100">Reset</button>
       </div>
 
       {error ? (
@@ -416,7 +431,8 @@ export function PurchaseOrderPendingIndentLines() {
               <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Firm</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black">Requested By</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">ERP</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black min-w-[320px]">Item Name</th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black min-w-[320px]">Item Label</th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Item Type</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">UOM</th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Supplier <span className="text-red-500">*</span></th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Last PO Rate</th>
@@ -438,7 +454,7 @@ export function PurchaseOrderPendingIndentLines() {
           <tbody>
             {paginatedRows.length === 0 ? (
               <tr>
-                <td colSpan={23} className="border border-black px-6 py-10 text-center text-sm text-slate-600">
+                <td colSpan={24} className="border border-black px-6 py-10 text-center text-sm text-slate-600">
                   No pending indent lines found.
                 </td>
               </tr>
@@ -475,6 +491,7 @@ export function PurchaseOrderPendingIndentLines() {
                     <td className="border border-black px-4 py-3 text-sm text-black">
                       <div className="font-bold">{row.materialName}</div>
                     </td>
+                    <td className="border border-black px-4 py-3 text-sm text-black whitespace-nowrap">{row.materialItemType || materialById.get(String(row.materialId))?.type || "Others"}</td>
                     <td className="border border-black px-4 py-3 text-sm text-black whitespace-nowrap">{row.uom}</td>
                     <td className="border border-black px-4 py-3 text-sm text-black whitespace-nowrap">
                       <select

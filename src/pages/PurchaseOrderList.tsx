@@ -69,6 +69,7 @@ type NotReceivedItemRow = {
   indentReference: IndentReference;
   supplierName: string;
   itemLabel: string;
+  itemType: string;
   erpCode: string | number;
   receivedQty: number;
   cancelledQty: number;
@@ -124,6 +125,11 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const [poNumberFilter, setPoNumberFilter] = useState("");
   const [fromDateFilter, setFromDateFilter] = useState("");
   const [toDateFilter, setToDateFilter] = useState("");
+  const [itemTypeFilter, setItemTypeFilter] = useState("");
+  const [indentNoFilter, setIndentNoFilter] = useState("");
+  const [indentFromDateFilter, setIndentFromDateFilter] = useState("");
+  const [indentToDateFilter, setIndentToDateFilter] = useState("");
+  const [itemLabelFilter, setItemLabelFilter] = useState("");
   const [cancelQtyByLineId, setCancelQtyByLineId] = useState<Record<string, string>>({});
   const [cancelRequest, setCancelRequest] = useState<NotReceivedCancelRequest | null>(null);
   const [cancelReasonDraft, setCancelReasonDraft] = useState("");
@@ -245,6 +251,22 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     return Array.from(refs);
   }, [indentLineMap, indentMap]);
 
+  const getItemType = useCallback((line: PurchaseOrderLine) => {
+    return String(materialMap.get(line.materialId)?.type || "Others");
+  }, [materialMap]);
+
+  const lineMatchesDetailFilters = useCallback((order: PurchaseOrder, line: PurchaseOrderLine) => {
+    const indentReference = resolveIndentReference(order, line);
+    const item = materialMap.get(line.materialId);
+    const itemLabel = String(item?.name || "Unknown").toLowerCase();
+    const itemType = getItemType(line);
+    return (!itemTypeFilter || itemType === itemTypeFilter)
+      && (!indentNoFilter || indentReference.indentNo === indentNoFilter)
+      && (!indentFromDateFilter || String(indentReference.indentDate || "") >= indentFromDateFilter)
+      && (!indentToDateFilter || String(indentReference.indentDate || "") <= indentToDateFilter)
+      && (!itemLabelFilter || itemLabel.includes(itemLabelFilter.toLowerCase()));
+  }, [getItemType, indentFromDateFilter, indentNoFilter, indentToDateFilter, itemLabelFilter, itemTypeFilter, materialMap, resolveIndentReference]);
+
   const isFlatItemMode = mode === "item-not-received" || mode === "item-cancelled";
   const isLineMode = isFlatItemMode;
 
@@ -264,10 +286,13 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       })
       .filter((po) => !supplierFilter || po.supplierId === supplierFilter)
       .filter((po) => !firmFilter || String(po.firmId || "") === firmFilter)
+      .filter((po) => !fromDateFilter || String(po.poDate || "") >= fromDateFilter)
+      .filter((po) => !toDateFilter || String(po.poDate || "") <= toDateFilter)
       .filter((po) => {
         const lines = orderLines.filter((line) => line.purchaseOrderId === po.id);
         const modeLines = getModeLines(lines);
         if (isLineMode && modeLines.length === 0) return false;
+        if (!modeLines.some((line) => lineMatchesDetailFilters(po, line))) return false;
 
         const supplierName = (supplierNameMap.get(po.supplierId) || "").toLowerCase();
         const poNo = (po.poNo || "").toLowerCase();
@@ -283,7 +308,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           new Date(b.updateTimestamp || b.poDate || 0).getTime() -
           new Date(a.updateTimestamp || a.poDate || 0).getTime(),
       );
-  }, [firmFilter, getModeLines, isLineMode, materialMap, mode, orderLines, purchaseOrders, searchTerm, supplierFilter, supplierNameMap]);
+  }, [firmFilter, fromDateFilter, getModeLines, isLineMode, lineMatchesDetailFilters, materialMap, mode, orderLines, purchaseOrders, searchTerm, supplierFilter, supplierNameMap, toDateFilter]);
   const filteredQtySummary = useMemo(() => {
     return filteredOrders.reduce(
       (summary, order) => {
@@ -337,6 +362,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
               indentReference,
               supplierName,
               itemLabel: item?.name || "Unknown",
+              itemType: getItemType(line),
               erpCode: line.erpCode || item?.erpCode || "",
               receivedQty,
               cancelledQty,
@@ -345,6 +371,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           });
       })
       .filter((row) => (mode === "item-cancelled" ? row.cancelledQty > 0 : row.pendingQty > 0))
+      .filter((row) => lineMatchesDetailFilters(row.order, row.line))
       .filter((row) => {
         if (!search) return true;
         const haystack = [
@@ -366,7 +393,18 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           String(a.order.poNo || "").localeCompare(String(b.order.poNo || "")) ||
           String(a.itemLabel || "").localeCompare(String(b.itemLabel || "")),
       );
-  }, [firmFilter, fromDateFilter, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, materialMap, orderLines, purchaseOrders, resolveIndentReference, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
+  }, [firmFilter, fromDateFilter, getItemType, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, lineMatchesDetailFilters, materialMap, orderLines, purchaseOrders, resolveIndentReference, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
+
+  const itemTypeOptions = useMemo<SelectOption[]>(() => Array.from(new Set(
+    orderLines.map((line) => getItemType(line)).filter(Boolean),
+  )).sort().map((value) => ({ value, label: value })), [getItemType, orderLines]);
+
+  const indentNoOptions = useMemo<SelectOption[]>(() => Array.from(new Set(
+    purchaseOrders.flatMap((order) => orderLines
+      .filter((line) => line.purchaseOrderId === order.id)
+      .map((line) => resolveIndentReference(order, line).indentNo)
+      .filter((value) => value && value !== "Manual PO")),
+  )).sort().map((value) => ({ value, label: value })), [orderLines, purchaseOrders, resolveIndentReference]);
 
   const firmOptions = useMemo(() => firms.filter((firm) => purchaseOrders.some((order) => order.firmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm), searchText: `${getFirmDisplayName(firm)} ${firm.firmName || ""}` })), [firms, purchaseOrders]);
 
@@ -855,6 +893,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           "Supplier",
           "ERP",
           "Item Label",
+          "Item Type",
           "Ordered Qty",
           "Received",
           "Cancelled",
@@ -872,6 +911,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           row.supplierName,
           row.erpCode,
           row.itemLabel,
+          row.itemType,
           Number(row.line.qty || 0).toLocaleString(),
           row.receivedQty.toLocaleString(),
           row.cancelledQty.toLocaleString(),
@@ -1103,25 +1143,18 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
               }}
             />
           </div>
-          {isFlatItemMode ? (
-            <>
-              <input
-                type="date"
-                value={fromDateFilter}
-                onChange={(e) => setFromDateFilter(e.target.value)}
-                className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black focus:outline-none focus:ring-1 focus:ring-black md:w-40"
-                aria-label="From Date"
-              />
-              <input
-                type="date"
-                value={toDateFilter}
-                onChange={(e) => setToDateFilter(e.target.value)}
-                className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black focus:outline-none focus:ring-1 focus:ring-black md:w-40"
-                aria-label="To Date"
-              />
-            </>
-          ) : null}
+          <input type="date" value={fromDateFilter} onChange={(e) => setFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date From" title="PO Date From" />
+          <input type="date" value={toDateFilter} onChange={(e) => setToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date To" title="PO Date To" />
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
+        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Type</label><select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">All Item Types</option>{itemTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent No</label><select value={indentNoFilter} onChange={(e) => setIndentNoFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">All Indent Nos</option>{indentNoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date From</label><input type="date" value={indentFromDateFilter} onChange={(e) => setIndentFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
+        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date To</label><input type="date" value={indentToDateFilter} onChange={(e) => setIndentToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
+        <div className="min-w-[200px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Label</label><input type="search" value={itemLabelFilter} onChange={(e) => setItemLabelFilter(e.target.value)} placeholder="Filter item label" className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
+        <button type="button" onClick={() => { setSearchTerm(""); setSupplierFilter(""); setFirmFilter(""); setPoNumberFilter(""); setFromDateFilter(""); setToDateFilter(""); setItemTypeFilter(""); setIndentNoFilter(""); setIndentFromDateFilter(""); setIndentToDateFilter(""); setItemLabelFilter(""); }} className="rounded border border-black px-3 py-2 text-xs font-black uppercase hover:bg-slate-100">Reset</button>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -1150,6 +1183,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Supplier</th>
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">ERP</th>
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Item Label</th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Item Type</th>
                 <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Ordered Qty</th>
                 <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Received</th>
                 <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Cancelled</th>
@@ -1187,6 +1221,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                     <td className="px-3 py-3 text-black uppercase">{row.supplierName}</td>
                     <td className="px-3 py-3 text-black">{row.erpCode}</td>
                     <td className="px-3 py-3 text-black uppercase min-w-[220px]">{row.itemLabel}</td>
+                    <td className="px-3 py-3 text-black">{row.itemType}</td>
                     <td className="px-3 py-3 text-right text-black">{Number(row.line.qty || 0).toLocaleString()}</td>
                     <td className="px-3 py-3 text-right text-emerald-700">{row.receivedQty.toLocaleString()}</td>
                     <td className="px-3 py-3 text-right text-red-700">{row.cancelledQty.toLocaleString()}</td>
@@ -1457,6 +1492,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                                 <tr className="divide-x divide-black text-[9px] font-black uppercase text-slate-500">
                                   <th className="px-3 py-2 text-left">ERP</th>
                                   <th className="px-3 py-2 text-left">Item Name</th>
+                                  <th className="px-3 py-2 text-left">Item Type</th>
+                                  <th className="px-3 py-2 text-left">Indent No</th>
+                                  <th className="px-3 py-2 text-left">Indent Date</th>
                                   <th className="px-3 py-2 text-right">Ordered Qty</th>
                                   <th className="px-3 py-2 text-right">Received</th>
                                   <th className="px-3 py-2 text-right">Cancelled</th>
@@ -1487,6 +1525,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
                                     <tr key={line.id} className="divide-x divide-black text-[10px] font-bold">
                                       <td className="px-3 py-2 text-black">{line.erpCode || materialMap.get(line.materialId)?.erpCode || ""}</td>
                                       <td className="px-3 py-2 text-black uppercase">{materialMap.get(line.materialId)?.name || "Unknown"}</td>
+                                      <td className="px-3 py-2 text-black">{getItemType(line)}</td>
+                                      <td className="px-3 py-2 text-black uppercase">{resolveIndentReference(order, line).indentNo}</td>
+                                      <td className="px-3 py-2 text-black">{resolveIndentReference(order, line).indentDate ? formatDate(resolveIndentReference(order, line).indentDate) : "-"}</td>
                                       <td className="px-3 py-2 text-right">
                                         {isEditing ? (
                                           <input
