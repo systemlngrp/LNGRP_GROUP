@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
+import { PageHeader } from "../components/PageHeader";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -1096,9 +1097,8 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">{getTitle(mode)}</h2>
-        <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
+      <PageHeader title={getTitle(mode)}>
+        <div className="flex w-full flex-wrap gap-3 items-center">
           <div className="relative w-full md:w-72">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
@@ -1146,7 +1146,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           <input type="date" value={fromDateFilter} onChange={(e) => setFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date From" title="PO Date From" />
           <input type="date" value={toDateFilter} onChange={(e) => setToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date To" title="PO Date To" />
         </div>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
         <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Type</label><select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">All Item Types</option>{itemTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>

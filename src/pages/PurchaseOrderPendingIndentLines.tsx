@@ -7,6 +7,7 @@ import { formatDate } from "../lib/serial";
 import { ExcelExport } from "../components/ExcelExport";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
+import { PageHeader } from "../components/PageHeader";
 import { useClientPagination } from "../hooks/useClientPagination";
 import type { Firm, GstRateMaster, Indent, IndentLine, Material, Supplier } from "../types";
 import { useAuth } from "../auth/AuthContext";
@@ -382,10 +383,7 @@ export function PurchaseOrderPendingIndentLines() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-black pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Indent Lines for PO</h2>
-        </div>
+      <PageHeader title="Pending Indent Lines for PO">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -396,7 +394,7 @@ export function PurchaseOrderPendingIndentLines() {
             className="w-full rounded border border-black bg-white py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
         </div>
-      </div>
+      </PageHeader>
 
       <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
         <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Firm</label><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" /></div>
