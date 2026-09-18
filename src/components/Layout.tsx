@@ -54,6 +54,37 @@ export function Layout() {
     return () => window.clearTimeout(timeoutId);
   }, [currentAlert]);
 
+  // Legacy route pages use independently authored flex headers. Normalize those
+  // headers at the application boundary so a title can never share its row with
+  // search, filters, actions, or dates while pages are incrementally migrated to
+  // the PageHeader component.
+  useEffect(() => {
+    const content = document.querySelector<HTMLElement>(".app-view-content");
+    if (!content) return;
+
+    const normalizeHeaders = () => {
+      content.querySelectorAll<HTMLElement>("h1, h2").forEach((title) => {
+        const header = title.parentElement as HTMLElement | null;
+        if (!header || header.children.length < 2 || getComputedStyle(header).display !== "flex") return;
+
+        header.style.flexDirection = "column";
+        header.style.alignItems = "stretch";
+        header.style.justifyContent = "flex-start";
+        title.style.width = "100%";
+        title.style.whiteSpace = "nowrap";
+
+        Array.from(header.children).forEach((child) => {
+          if (child !== title && child instanceof HTMLElement) child.style.width = "100%";
+        });
+      });
+    };
+
+    normalizeHeaders();
+    const observer = new MutationObserver(normalizeHeaders);
+    observer.observe(content, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [location.pathname]);
+
   const dismissAlert = () => {
     setAlertQueue((previous) => previous.slice(1));
   };
