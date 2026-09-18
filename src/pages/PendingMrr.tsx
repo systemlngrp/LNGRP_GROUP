@@ -16,6 +16,10 @@ export function PendingMrr() {
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -32,14 +36,19 @@ export function PendingMrr() {
             .filter(Boolean)
             .join(" ")
             .toLowerCase();
-          return haystack.includes(searchTerm.toLowerCase());
+          const firmId = String(entry.firmId || entry.destinationFirmId || "");
+          return haystack.includes(searchTerm.toLowerCase())
+            && (!firmFilter || firmId === firmFilter)
+            && (!supplierFilter || supplierName === supplierFilter)
+            && (!fromDate || entry.date >= fromDate)
+            && (!toDate || entry.date <= toDate);
         })
         .sort((a, b) => {
           const timeA = new Date(a.updateTimestamp || a.date || 0).getTime();
           const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
           return timeB - timeA;
         }),
-    [gateEntries, searchTerm, suppliers, companies, firms]
+    [gateEntries, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, fromDate, toDate]
   );
 
   const selectedEntry = pendingEntries.find((entry) => entry.id === selectedEntryId) || null;
@@ -106,13 +115,26 @@ export function PendingMrr() {
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-4 shadow-sm">
+      <div className="rounded border border-black bg-white p-4 shadow-sm space-y-3">
         <input
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search gate entry no, supplier/customer, invoice no, truck no..."
           className="w-full max-w-xl rounded-xl border-2 border-black px-4 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-600"
         />
+        <div className="flex flex-wrap gap-3">
+          <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="rounded border border-black px-3 py-2 text-sm">
+            <option value="">All Firms</option>
+            {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+          </select>
+          <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} className="rounded border border-black px-3 py-2 text-sm">
+            <option value="">All Suppliers / Customers</option>
+            {Array.from(new Set(pendingEntries.map((entry) => getSupplierName(entry.supplierId)).filter(Boolean))).sort().map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded border border-black px-3 py-2 text-sm" />
+          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="rounded border border-black px-3 py-2 text-sm" />
+          {(firmFilter || supplierFilter || fromDate || toDate) ? <button type="button" onClick={() => { setFirmFilter(""); setSupplierFilter(""); setFromDate(""); setToDate(""); }} className="text-sm font-bold text-red-700 underline">Reset filters</button> : null}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-black bg-white shadow-sm">

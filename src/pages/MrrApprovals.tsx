@@ -40,6 +40,9 @@ export function MrrApprovals() {
   const [activeStage, setActiveStage] = useState<Stage>("All Approval");
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [remarks, setRemarks] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
@@ -106,6 +109,8 @@ export function MrrApprovals() {
     return materialIn
       .filter(m => activeStage === "All Approval" ? approvalStatuses.includes(m.status as Stage) : m.status === activeStage)
       .filter(m => !firmFilter || String(m.firmId || m.destinationFirmId || "") === firmFilter)
+      .filter(m => !supplierFilter || getSupplierName(m.supplierId) === supplierFilter)
+      .filter(m => (!fromDate || m.date >= fromDate) && (!toDate || m.date <= toDate))
       .filter(m => {
         const supplierName = getSupplierName(m.supplierId);
         const firmName = getFirmName(m);
@@ -125,9 +130,10 @@ export function MrrApprovals() {
 
         return sortDirection === "asc" ? comparison : -comparison;
       });
-  }, [materialIn, activeStage, searchTerm, suppliers, companies, firms, firmFilter, sortField, sortDirection]);
+  }, [materialIn, activeStage, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, fromDate, toDate, sortField, sortDirection]);
 
   const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((m) => m.firmId === firm.id || m.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms, materialIn]);
+  const supplierOptions = useMemo(() => Array.from(new Set(materialIn.map((m) => getSupplierName(m.supplierId)).filter(Boolean))).sort().map((name) => ({ value: name, label: name })), [materialIn, suppliers, companies]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -351,6 +357,10 @@ export function MrrApprovals() {
             <span>{activeStage} ({filteredList.length})</span>
             <div className="flex items-center gap-2">
               <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
+              <FirmSelect compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="All Suppliers" />
+              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded px-2 py-0.5 text-xs text-black" />
+              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="rounded px-2 py-0.5 text-xs text-black" />
+              {(firmFilter || supplierFilter || fromDate || toDate) ? <button type="button" onClick={() => { setFirmFilter(""); setSupplierFilter(""); setFromDate(""); setToDate(""); }} className="text-xs underline">Reset</button> : null}
               <Search size={14} />
               <input 
                 value={searchTerm}
