@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { Eye, XCircle } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { Company, GateEntry, GateEntryPhoto, Supplier } from "../types";
+import { Company, Firm, GateEntry, GateEntryPhoto, Supplier } from "../types";
 import { useNavigate } from "react-router-dom";
 import { canCreateMrrForGateEntry, hasGateEntryMrr } from "../lib/gateEntryState";
 import { useAuth } from "../auth/AuthContext";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 export function PendingMrr() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export function PendingMrr() {
   const [gateEntryPhotos] = useData<GateEntryPhoto>("gate-entry-photos", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -25,7 +27,8 @@ export function PendingMrr() {
           const s = suppliers.find((supplier) => supplier.id === entry.supplierId);
           const c = companies.find((company) => company.id === entry.supplierId);
           const supplierName = s ? s.name : (c ? c.name : "");
-          const haystack = [entry.gateEntryNo, supplierName, entry.invoiceNo, entry.truckNo]
+          const firmName = getFirmName(entry);
+          const haystack = [entry.gateEntryNo, firmName, supplierName, entry.invoiceNo, entry.truckNo]
             .filter(Boolean)
             .join(" ")
             .toLowerCase();
@@ -36,7 +39,7 @@ export function PendingMrr() {
           const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
           return timeB - timeA;
         }),
-    [gateEntries, searchTerm, suppliers, companies]
+    [gateEntries, searchTerm, suppliers, companies, firms]
   );
 
   const selectedEntry = pendingEntries.find((entry) => entry.id === selectedEntryId) || null;
@@ -52,6 +55,9 @@ export function PendingMrr() {
     return "";
   };
   const getPhotoCount = (gateEntryId: string) => gateEntryPhotos.filter((photo) => photo.gateEntryId === gateEntryId).length;
+  function getFirmName(entry: GateEntry) {
+    return getFirmDisplayNameById(entry.firmId || entry.destinationFirmId, firms, "Unassigned");
+  }
 
   const handleCancel = async (entry: GateEntry) => {
     if (hasGateEntryMrr(entry)) {
@@ -113,7 +119,7 @@ export function PendingMrr() {
         <table className="min-w-full border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              {["Gate Entry No", "Date", "Supplier/Customer", "Invoice No", "Invoice Value", "Truck No", "Photos", "Action"].map((heading) => (
+              {["Gate Entry No", "Firm", "Date", "Supplier/Customer", "Invoice No", "Invoice Value", "Truck No", "Photos", "Action"].map((heading) => (
                 <th key={heading} className="whitespace-nowrap border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">
                   {heading}
                 </th>
@@ -123,7 +129,7 @@ export function PendingMrr() {
           <tbody>
             {pendingEntries.length === 0 ? (
               <tr>
-                <td colSpan={8} className="border border-black px-6 py-10 text-center font-medium text-black">
+                <td colSpan={9} className="border border-black px-6 py-10 text-center font-medium text-black">
                   No pending MRR gate entries found.
                 </td>
               </tr>
@@ -131,6 +137,7 @@ export function PendingMrr() {
               pendingEntries.map((entry) => (
                 <tr key={entry.id} className="hover:bg-slate-50">
                   <td className="border border-black px-4 py-3 text-sm font-semibold text-black">{entry.gateEntryNo || "Syncing..."}</td>
+                  <td className="border border-black px-4 py-3 text-sm text-black">{getFirmName(entry)}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{entry.date}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{getSupplierName(entry.supplierId)}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{entry.invoiceNo}</td>

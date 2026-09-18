@@ -203,7 +203,6 @@ export function MaterialInForm() {
   const [currentInvoiceRate, setCurrentInvoiceRate] = useState<number | "">("");
   const [currentPoLineId, setCurrentPoLineId] = useState("");
   const [packingSlipDrafts, setPackingSlipDrafts] = useState<Record<string, PackingSlipDraft[]>>({});
-  const reelBulkInputRef = useRef<HTMLInputElement>(null);
   const hasAutoFilledServiceReturnRef = useRef(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2944,30 +2943,6 @@ export function MaterialInForm() {
           <h3 className="text-lg font-bold text-black mb-4 uppercase">
             {isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
           </h3>
-          {mrrType === "Reel" ? (
-            <div className="mb-4 flex flex-wrap items-center gap-2 rounded border border-black bg-indigo-50 px-4 py-3">
-              <button
-                type="button"
-                onClick={downloadWholeFormReelTemplate}
-                className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50 transition"
-              >
-                <Download size={16} /> Reel Bulk Template
-              </button>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50 transition">
-                <Upload size={16} /> Reel Bulk Upload
-                <input
-                  ref={reelBulkInputRef}
-                  type="file"
-                  accept=".xlsx, .xls"
-                  className="hidden"
-                  onChange={handleWholeFormReelBulkUpload}
-                />
-              </label>
-              <div className="text-xs font-semibold text-slate-600">
-                One row = one reel. Upload creates grouped reel lines and reel stock rows together.
-              </div>
-            </div>
-          ) : null}
           <div className="flex flex-wrap gap-4 items-end mb-4 bg-slate-50 p-4 rounded border border-black">
             <div className="flex flex-col space-y-1 w-full md:w-80">
               <label className="text-sm font-bold text-black">
@@ -3186,22 +3161,6 @@ export function MaterialInForm() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => downloadReelTemplate(getMaterial(line.itemId)?.name || "Reel")}
-                              className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50 transition"
-                            >
-                              <Download size={16} /> Template
-                            </button>
-                            <label className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50 transition cursor-pointer">
-                              <Upload size={16} /> Bulk Upload
-                              <input
-                                type="file"
-                                accept=".xlsx, .xls"
-                                className="hidden"
-                                onChange={(e) => handleReelBulkUpload(e, line)}
-                              />
-                            </label>
                             <button
                               type="button"
                               onClick={() => handleAddPackingSlip(line)}
