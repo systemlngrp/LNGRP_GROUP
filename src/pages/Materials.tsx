@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Layers, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { Material, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm, GstRateMaster } from "../types";
+import { Material, MaterialFirmOpening, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm, GstRateMaster } from "../types";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
@@ -137,7 +137,8 @@ export function Materials() {
   const [units, setUnits] = useData<UnitMaster>("units", []);
   const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
-  const [packingSlips, setPackingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
+  const [packingSlips, setPackingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [materialFirmOpenings, setMaterialFirmOpenings] = useData<MaterialFirmOpening>("material-firm-openings", [], { endpointOverride: "/api/material-firm-openings?firmId=all", firmScope: "all", cacheToLocalStorage: false });
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);
   const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [reelIssueLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
@@ -479,6 +480,7 @@ export function Materials() {
   const [formData, setFormData] = useState(() => createInitialFormState(materials, reelGroup?.id || ""));
   const [openingReels, setOpeningReels] = useState<OpeningReelDraft[]>([]);
   const [openingReelSupplierId, setOpeningReelSupplierId] = useState("");
+  const [openingReelsAreFirmSpecific, setOpeningReelsAreFirmSpecific] = useState(false);
   const reelErpStartNumber = settings[0]?.reelErpStartNumber || 1;
   const otherMaterialErpStartNumber = settings[0]?.otherMaterialErpStartNumber || 1;
 
@@ -492,6 +494,7 @@ export function Materials() {
     setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
     setOpeningReels([]);
     setOpeningReelSupplierId("");
+    setOpeningReelsAreFirmSpecific(false);
     setIsFormOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete("new");
@@ -555,9 +558,9 @@ export function Materials() {
     openingRate: "",
   });
 
-  const getOpeningReelsForMaterial = (material: Material): OpeningReelDraft[] => {
+  const getOpeningReelsForMaterial = (material: Material, firmId: string): OpeningReelDraft[] => {
     const explicitRows = packingSlips
-      .filter((slip) => slip.materialId === material.id && isOpeningReelPackingSlip(slip) && (!selectedFirmId || slip.firmId === selectedFirmId))
+      .filter((slip) => slip.materialId === material.id && isOpeningReelPackingSlip(slip) && String(slip.firmId || "") === firmId)
       .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }))
       .map((slip) => ({
         id: slip.id,
@@ -569,15 +572,42 @@ export function Materials() {
         openingRate: formatOptionalNumber(slip.openingRate),
       }));
     if (explicitRows.length > 0) return explicitRows;
-    if (material.type !== "Reel" || Number(material.openingQty || 0) <= 0) return [];
+    const opening = materialFirmOpenings.find((row) => row.materialId === material.id && String(row.firmId || "") === firmId);
+    if (material.type !== "Reel" || Number(opening?.openingQty || 0) <= 0) return [];
     return [{
       id: crypto.randomUUID(),
       isLegacyOpening: true,
       ourReelNo: "",
-      weightKg: formatOptionalNumber(material.openingQty),
-      openingRate: formatOptionalNumber(material.openingRate),
+      weightKg: formatOptionalNumber(opening?.openingQty),
+      openingRate: formatOptionalNumber(opening?.openingRate),
     }];
   };
+
+  useEffect(() => {
+    if (!isFormOpen || !editingId) return;
+    const firmId = String(formData.firmId || "").trim();
+    const material = materials.find((row) => row.id === editingId);
+    if (!material) return;
+    if (!firmId) {
+      setFormData((current) => ({ ...current, openingQty: "", openingRate: "", openingValue: "" }));
+      setOpeningReels([]);
+      setOpeningReelSupplierId("");
+      setOpeningReelsAreFirmSpecific(false);
+      return;
+    }
+    const opening = materialFirmOpenings.find((row) => row.materialId === editingId && String(row.firmId || "") === firmId);
+    const nextOpeningReels = getOpeningReelsForMaterial(material, firmId);
+    setFormData((current) => ({
+      ...current,
+      openingQty: formatOptionalNumber(opening?.openingQty),
+      openingRate: formatOptionalNumber(opening?.openingRate),
+      openingValue: formatOptionalNumber(opening?.openingValue),
+    }));
+    setOpeningReels(nextOpeningReels);
+    setOpeningReelsAreFirmSpecific(packingSlips.some((slip) => slip.materialId === editingId && String(slip.firmId || "") === firmId && isOpeningReelPackingSlip(slip)));
+    const supplierIds = Array.from(new Set(nextOpeningReels.map((row) => String(row.supplierId || "").trim()).filter(Boolean)));
+    setOpeningReelSupplierId(supplierIds.length === 1 ? supplierIds[0] : "");
+  }, [editingId, formData.firmId, isFormOpen, materialFirmOpenings, materials, packingSlips]);
 
   const connectedReelsForCurrentMaterial = useMemo<ConnectedReelRow[]>(() => {
     if (formData.type !== "Reel") return [];
@@ -596,7 +626,7 @@ export function Materials() {
     if (matchingMaterialIds.size === 0) return [];
     const receiptNoById = new Map(materialIn.map((entry) => [entry.id, entry.transactionNo]));
     return packingSlips
-      .filter((slip) => matchingMaterialIds.has(slip.materialId) && (!selectedFirmId || slip.firmId === selectedFirmId))
+      .filter((slip) => matchingMaterialIds.has(slip.materialId) && (!formData.firmId || slip.firmId === formData.firmId))
       .map((slip) => ({
         id: slip.id,
         ourReelNo: String(slip.ourReelNo || ""),
@@ -606,7 +636,7 @@ export function Materials() {
         isOpening: isOpeningReelPackingSlip(slip),
       }))
       .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }));
-  }, [editingId, formData.erpCode, formData.type, materialIn, materials, packingSlips, selectedFirmId]);
+  }, [editingId, formData.erpCode, formData.firmId, formData.type, materialIn, materials, packingSlips]);
 
   useEffect(() => {
     if (hasNormalizedExistingReelNamesRef.current) return;
@@ -657,6 +687,7 @@ export function Materials() {
     setFormData(createInitialFormState(nextMaterials, nextReelGroupId, reelErpStartNumber));
     setOpeningReels([]);
     setOpeningReelSupplierId("");
+    setOpeningReelsAreFirmSpecific(false);
     setEditingId(null);
     setIsFormOpen(false);
     setShowGroupModal(false);
@@ -739,15 +770,12 @@ export function Materials() {
     setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
     setOpeningReels([]);
     setOpeningReelSupplierId("");
+    setOpeningReelsAreFirmSpecific(false);
     setIsFormOpen(true);
   }
 
   function handleEdit(material: Material) {
     setEditingId(material.id);
-    const materialOpeningReels = getOpeningReelsForMaterial(material);
-    setOpeningReels(materialOpeningReels);
-    const openingSupplierIds = Array.from(new Set(materialOpeningReels.map((row) => String(row.supplierId || "").trim())));
-    setOpeningReelSupplierId(openingSupplierIds.length === 1 ? openingSupplierIds[0] : "");
     setFormData({
       firmId: selectedFirmId,
       type: material.type,
@@ -759,13 +787,16 @@ export function Materials() {
       size: formatOptionalNumber(material.size),
       gsm: formatOptionalNumber(material.gsm),
       bf: formatOptionalNumber(material.bf),
-      openingQty: formatOptionalNumber(material.openingQty),
-      openingRate: formatOptionalNumber(material.openingRate),
-      openingValue: formatOptionalNumber(material.openingValue),
+      openingQty: "",
+      openingRate: "",
+      openingValue: "",
       gstRate: formatOptionalNumber(material.gstRate) || "0",
       remarks: material.remarks || "",
       active: material.active === "No" ? "No" : "Yes",
     });
+    setOpeningReels([]);
+    setOpeningReelSupplierId("");
+    setOpeningReelsAreFirmSpecific(false);
     setIsFormOpen(true);
   }
 
@@ -845,7 +876,7 @@ export function Materials() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const normalizedType = formData.type;
-    const firmId = String(selectedFirmId || "").trim();
+    const firmId = String(formData.firmId || "").trim();
     const uom = normalizedType === "Reel" ? "KGS" : String(formData.uom || "").trim() || "CM";
     const timestamp = new Date().toISOString();
     const size = parseNumericInput(formData.size);
@@ -969,9 +1000,10 @@ export function Materials() {
     const reelOpeningQty = round2(normalizedOpeningReels.reduce((sum, row) => sum + row.weightKg, 0));
     const reelOpeningValue = round2(normalizedOpeningReels.reduce((sum, row) => sum + row.weightKg * row.openingRate, 0));
     const reelOpeningRate = reelOpeningQty > 0 ? round2(reelOpeningValue / reelOpeningQty) : 0;
-    const savedOpeningQty = !firmId ? undefined : normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningQty : openingQty === "" ? undefined : Number(openingQty);
-    const savedOpeningRate = !firmId ? undefined : normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningRate : openingRate === "" ? undefined : Number(openingRate);
-    const savedOpeningValue = !firmId ? undefined : normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningValue : openingValue;
+    const useFirmReelBalance = normalizedType === "Reel" && (openingReelsAreFirmSpecific || normalizedOpeningReels.length > 0);
+    const savedOpeningQty = !firmId ? undefined : useFirmReelBalance ? reelOpeningQty : openingQty === "" ? undefined : Number(openingQty);
+    const savedOpeningRate = !firmId ? undefined : useFirmReelBalance ? reelOpeningRate : openingRate === "" ? undefined : Number(openingRate);
+    const savedOpeningValue = !firmId ? undefined : useFirmReelBalance ? reelOpeningValue : openingValue;
 
     setIsSubmitting(true);
     try {
@@ -984,7 +1016,7 @@ export function Materials() {
       const nextMaterial: Material = {
         ...existing,
         id: materialId,
-        firmId: firmId || undefined,
+        firmId: existing?.firmId,
         type: normalizedType,
         erpCode: erpCode || undefined,
         name: normalizedType === "Reel" ? getReelDisplayName(erpCode, Number(size), Number(gsm), Number(bf), color) : formData.name.trim(),
@@ -994,9 +1026,9 @@ export function Materials() {
         size: normalizedType === "Reel" ? Number(size) : undefined,
         gsm: normalizedType === "Reel" ? Number(gsm) : undefined,
         bf: normalizedType === "Reel" ? Number(bf) : undefined,
-        openingQty: savedOpeningQty,
-        openingRate: savedOpeningRate,
-        openingValue: savedOpeningValue,
+        openingQty: existing?.openingQty,
+        openingRate: existing?.openingRate,
+        openingValue: existing?.openingValue,
         gstRate,
         remarks: String(formData.remarks || "").trim() || undefined,
         active: formData.active,
@@ -1005,6 +1037,24 @@ export function Materials() {
       };
       const nextMaterials = editingId ? materials.map((material) => (material.id === editingId ? nextMaterial : material)) : [nextMaterial, ...materials];
       await setMaterials(nextMaterials);
+      if (firmId) {
+        const existingOpening = materialFirmOpenings.find((row) => row.materialId === materialId && String(row.firmId || "") === firmId);
+        const nextOpening: MaterialFirmOpening = {
+          ...(existingOpening || {}),
+          id: existingOpening?.id || crypto.randomUUID(),
+          materialId,
+          firmId,
+          openingQty: savedOpeningQty === undefined ? 0 : savedOpeningQty,
+          openingRate: savedOpeningRate === undefined ? 0 : savedOpeningRate,
+          openingValue: savedOpeningValue === undefined ? 0 : savedOpeningValue,
+          updatedBy: "System User",
+          updateTimestamp: timestamp,
+        };
+        await setMaterialFirmOpenings([
+          ...materialFirmOpenings.filter((row) => row.id !== nextOpening.id),
+          nextOpening,
+        ]);
+      }
       if (normalizedType === "Reel" && firmId) {
         const openingSlipIds = new Set(normalizedOpeningReels.map((row) => row.existingSlipId).filter(Boolean));
         const nextPackingSlips = [
@@ -1032,7 +1082,7 @@ export function Materials() {
         });
         await setPackingSlips(nextPackingSlips);
       } else if (editingId && firmId) {
-        await setPackingSlips(packingSlips.filter((slip) => !(slip.materialId === editingId && isOpeningReelPackingSlip(slip))));
+        await setPackingSlips(packingSlips.filter((slip) => !(slip.materialId === editingId && slip.firmId === firmId && isOpeningReelPackingSlip(slip))));
       }
       resetForm(nextMaterials, reelGroupId);
     } catch (error) {
@@ -1450,6 +1500,18 @@ export function Materials() {
           <form onSubmit={handleSubmit} className="space-y-7">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
+                <label className="text-blue-700 font-bold">Firm</label>
+                <select
+                  value={formData.firmId}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, firmId: e.target.value }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                >
+                  <option value="">No firm (material only)</option>
+                  {displayFirms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                </select>
+                <p className="text-xs font-semibold text-slate-500">Select a firm to add or edit opening stock for that firm.</p>
+              </div>
+              <div className="space-y-2">
                 <label className="text-blue-700 font-bold">
                   Type <span className="text-red-500">*</span>
                 </label>
@@ -1628,7 +1690,7 @@ export function Materials() {
               )}
             </div>
 
-            {selectedFirmId ? (
+            {formData.firmId ? (
               <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
@@ -1692,7 +1754,10 @@ export function Materials() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setOpeningReels((current) => [...current, createOpeningReelDraft()])}
+                      onClick={() => {
+                        setOpeningReelsAreFirmSpecific(true);
+                        setOpeningReels((current) => [...current, createOpeningReelDraft()]);
+                      }}
                       className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-indigo-600 px-3 py-2 text-xs font-bold uppercase text-white"
                     >
                       <Plus size={14} /> Add Reel

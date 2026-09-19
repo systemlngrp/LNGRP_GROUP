@@ -9526,11 +9526,15 @@ app.get("/api/material-firm-openings", requireAuth, async (req, res) => {
         const db = await getPool();
         if (!db)
             return res.status(500).json({ error: "DB connection not available" });
-        const firmId = getRequestFirmId(req);
-        if (!firmId)
+        const requestedFirmId = getRequestFirmId(req);
+        if (requestedFirmId === "all") {
+            const [rows] = await db.query("SELECT * FROM `material_firm_openings`");
+            return res.json(rows.map((row) => normalizeFetchedRow("material_firm_openings", row)));
+        }
+        if (!requestedFirmId)
             return res.status(400).json({ error: "firmId is required." });
-        await assertRequestFirm(db, firmId);
-        const [rows] = await db.query("SELECT * FROM `material_firm_openings` WHERE firmId = ?", [firmId]);
+        await assertRequestFirm(db, requestedFirmId);
+        const [rows] = await db.query("SELECT * FROM `material_firm_openings` WHERE firmId = ?", [requestedFirmId]);
         return res.json(rows.map((row) => normalizeFetchedRow("material_firm_openings", row)));
     }
     catch (error) {
