@@ -8416,18 +8416,19 @@ const createHandlers = (tableName: string) => {
         }
 
         if (tableName === "materials") {
-          const materialFirmId = String(requestFirmId || data.firmId || "").trim();
-          if (!materialFirmId) {
-            return res.status(400).json({ error: "Firm is required when saving material opening stock." });
+          // Materials are shared master records. A firm is only supplied when
+          // the request is also saving that firm's opening balance.
+          const materialFirmId = String(data.firmId || "").trim();
+          if (materialFirmId) {
+            await assertRequestFirm(db, materialFirmId);
+            const openingQty = Number(data.openingQty || 0);
+            const openingRate = Number(data.openingRate || 0);
+            const openingValue = data.openingValue == null || data.openingValue === "" ? openingQty * openingRate : Number(data.openingValue);
+            if (![openingQty, openingRate, openingValue].every(Number.isFinite) || openingQty < 0 || openingRate < 0 || openingValue < 0) {
+              return res.status(400).json({ error: "Opening quantity, rate, and value must be valid non-negative numbers." });
+            }
+            materialOpening = { firmId: materialFirmId, qty: openingQty, rate: openingRate, value: openingValue };
           }
-          await assertRequestFirm(db, materialFirmId);
-          const openingQty = Number(data.openingQty || 0);
-          const openingRate = Number(data.openingRate || 0);
-          const openingValue = data.openingValue == null || data.openingValue === "" ? openingQty * openingRate : Number(data.openingValue);
-          if (![openingQty, openingRate, openingValue].every(Number.isFinite) || openingQty < 0 || openingRate < 0 || openingValue < 0) {
-            return res.status(400).json({ error: "Opening quantity, rate, and value must be valid non-negative numbers." });
-          }
-          materialOpening = { firmId: materialFirmId, qty: openingQty, rate: openingRate, value: openingValue };
           delete data.firmId;
           delete data.openingQty;
           delete data.openingRate;

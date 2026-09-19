@@ -735,10 +735,6 @@ export function Materials() {
   }
 
   function handleOpenNew() {
-    if (!selectedFirmId) {
-      alert("Select a firm before creating a material opening.");
-      return;
-    }
     setEditingId(null);
     setFormData(createInitialFormState(materials, reelGroup?.id || "", reelErpStartNumber));
     setOpeningReels([]);
@@ -898,7 +894,7 @@ export function Materials() {
       return;
     }
 
-    const normalizedOpeningReels = normalizedType === "Reel"
+    const normalizedOpeningReels = firmId && normalizedType === "Reel"
       ? openingReels
           .map((row) => {
             const ourReelNo = String(row.ourReelNo || "").trim();
@@ -973,9 +969,9 @@ export function Materials() {
     const reelOpeningQty = round2(normalizedOpeningReels.reduce((sum, row) => sum + row.weightKg, 0));
     const reelOpeningValue = round2(normalizedOpeningReels.reduce((sum, row) => sum + row.weightKg * row.openingRate, 0));
     const reelOpeningRate = reelOpeningQty > 0 ? round2(reelOpeningValue / reelOpeningQty) : 0;
-    const savedOpeningQty = normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningQty : openingQty === "" ? undefined : Number(openingQty);
-    const savedOpeningRate = normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningRate : openingRate === "" ? undefined : Number(openingRate);
-    const savedOpeningValue = normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningValue : openingValue;
+    const savedOpeningQty = !firmId ? undefined : normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningQty : openingQty === "" ? undefined : Number(openingQty);
+    const savedOpeningRate = !firmId ? undefined : normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningRate : openingRate === "" ? undefined : Number(openingRate);
+    const savedOpeningValue = !firmId ? undefined : normalizedType === "Reel" && normalizedOpeningReels.length > 0 ? reelOpeningValue : openingValue;
 
     setIsSubmitting(true);
     try {
@@ -988,6 +984,7 @@ export function Materials() {
       const nextMaterial: Material = {
         ...existing,
         id: materialId,
+        firmId: firmId || undefined,
         type: normalizedType,
         erpCode: erpCode || undefined,
         name: normalizedType === "Reel" ? getReelDisplayName(erpCode, Number(size), Number(gsm), Number(bf), color) : formData.name.trim(),
@@ -1008,7 +1005,7 @@ export function Materials() {
       };
       const nextMaterials = editingId ? materials.map((material) => (material.id === editingId ? nextMaterial : material)) : [nextMaterial, ...materials];
       await setMaterials(nextMaterials);
-      if (normalizedType === "Reel") {
+      if (normalizedType === "Reel" && firmId) {
         const openingSlipIds = new Set(normalizedOpeningReels.map((row) => row.existingSlipId).filter(Boolean));
         const nextPackingSlips = [
           ...packingSlips.filter((slip) => !(slip.materialId === materialId && slip.firmId === firmId && isOpeningReelPackingSlip(slip) && !openingSlipIds.has(slip.id))),
@@ -1034,7 +1031,7 @@ export function Materials() {
           else nextPackingSlips.push(nextSlip);
         });
         await setPackingSlips(nextPackingSlips);
-      } else if (editingId) {
+      } else if (editingId && firmId) {
         await setPackingSlips(packingSlips.filter((slip) => !(slip.materialId === editingId && isOpeningReelPackingSlip(slip))));
       }
       resetForm(nextMaterials, reelGroupId);
@@ -1631,6 +1628,8 @@ export function Materials() {
               )}
             </div>
 
+            {selectedFirmId ? (
+              <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Opening Qty</label>
@@ -1662,22 +1661,6 @@ export function Materials() {
                       : ""
                   }
                   className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-blue-700 font-bold">Remarks</label>
-                <input
-                  value={formData.remarks}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, remarks: e.target.value }))}
-                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-blue-700 font-bold">RAPC</label>
-                <input
-                  value={formData.type === "Reel" ? getMaterialRapcFromSize(formData.size) : ""}
-                  readOnly
-                  className="w-full rounded border-2 border-black bg-slate-100 px-4 py-3 text-black focus:outline-none"
                 />
               </div>
             </div>
@@ -1835,6 +1818,31 @@ export function Materials() {
                 ) : null}
               </div>
             ) : null}
+              </>
+            ) : (
+              <div className="rounded border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-900">
+                This material can be saved without a firm. Select a firm later to enter opening quantity, value, or opening reels.
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">Remarks</label>
+                <input
+                  value={formData.remarks}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, remarks: e.target.value }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">RAPC</label>
+                <input
+                  value={formData.type === "Reel" ? getMaterialRapcFromSize(formData.size) : ""}
+                  readOnly
+                  className="w-full rounded border-2 border-black bg-slate-100 px-4 py-3 text-black focus:outline-none"
+                />
+              </div>
+            </div>
 
             <div className="space-y-2">
               <label className="text-blue-700 font-bold">Active</label>
