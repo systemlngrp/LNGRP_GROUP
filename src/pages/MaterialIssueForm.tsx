@@ -161,7 +161,7 @@ export function MaterialIssueForm() {
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
   const [productions, setProductions] = useData<Production>("productions", []);
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
@@ -170,6 +170,29 @@ export function MaterialIssueForm() {
   const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const npdItems = useNpdItems();
+
+  const [activeFirmId, setActiveFirmId] = useState(() => {
+    try {
+      return String(JSON.parse(window.localStorage.getItem("activeFirm") || "{}").id || "").trim();
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    const refreshActiveFirm = () => {
+      try {
+        setActiveFirmId(String(JSON.parse(window.localStorage.getItem("activeFirm") || "{}").id || "").trim());
+      } catch {
+        setActiveFirmId("");
+      }
+    };
+    window.addEventListener("active-firm-changed", refreshActiveFirm);
+    return () => window.removeEventListener("active-firm-changed", refreshActiveFirm);
+  }, []);
+  const issuePackingSlips = useMemo(
+    () => packingSlips.filter((slip) => !activeFirmId || String(slip.firmId || "") === activeFirmId),
+    [activeFirmId, packingSlips]
+  );
 
   const requestedDate = normalizeDate(searchParams.get("date"));
   const lockDate = searchParams.get("lockDate") === "1";
@@ -417,7 +440,7 @@ export function MaterialIssueForm() {
 
   const getLineAvailableReels = (lineId: string, materialId: string) => {
     const selectedElsewhere = getSelectedReelsAcrossOtherLines(lineId);
-    return getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber).filter(
+    return getAvailableReelPackingSlips(materialId, issuePackingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber).filter(
       (slip) => !selectedElsewhere.has(slip.id)
     );
   };
@@ -437,7 +460,7 @@ export function MaterialIssueForm() {
         alert("This reel is already selected in another line.");
         return prev;
       }
-      const totalWeight = getAvailableReelPackingSlips(materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
+      const totalWeight = getAvailableReelPackingSlips(materialId, issuePackingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
         .filter((slip) => nextIds.includes(slip.id))
         .reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
       setLines((old) => old.map((line) => (line.id === lineId ? { ...line, qty: totalWeight } : line)));
@@ -453,7 +476,7 @@ export function MaterialIssueForm() {
     const reelNo = String(parsed.reelNo || "").trim();
     if (!reelNo) throw new Error("Reel number is required in QR.");
 
-    const originalSlip = packingSlips.find((slip) => normalizeText(slip.ourReelNo) === normalizeText(reelNo));
+    const originalSlip = issuePackingSlips.find((slip) => normalizeText(slip.ourReelNo) === normalizeText(reelNo));
     if (!originalSlip) throw new Error(`Reel ${reelNo} was not found in reel stock.`);
 
     const material = getMaterial(originalSlip.materialId);
@@ -464,7 +487,7 @@ export function MaterialIssueForm() {
 
     const availableSlip = getAvailableReelPackingSlips(
       originalSlip.materialId,
-      packingSlips,
+      issuePackingSlips,
       materialIssueReelLines,
       materialReturnReelLines,
       materials,
@@ -479,7 +502,7 @@ export function MaterialIssueForm() {
     const nextSelectedForLine = Array.from(new Set([...(existingLine ? selectedReels[existingLine.id] || [] : []), originalSlip.id]));
     const availableForMaterial = getAvailableReelPackingSlips(
       originalSlip.materialId,
-      packingSlips,
+      issuePackingSlips,
       materialIssueReelLines,
       materialReturnReelLines,
       materials,
@@ -638,7 +661,7 @@ export function MaterialIssueForm() {
 
         if (line.isReel) {
           const reelIds = selectedReels[line.id] || [];
-          const reelAmount = getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
+          const reelAmount = getAvailableReelPackingSlips(line.materialId, issuePackingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
             .filter((slip) => reelIds.includes(slip.id))
             .reduce((sum, slip) => {
               const receipt = materialIn.find((entry) => entry.id === slip.materialInId);
@@ -668,7 +691,7 @@ export function MaterialIssueForm() {
 
         if (line.isReel) {
           const reelIds = selectedReels[line.id] || [];
-          getAvailableReelPackingSlips(line.materialId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
+          getAvailableReelPackingSlips(line.materialId, issuePackingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
             .filter((slip) => reelIds.includes(slip.id))
             .forEach((slip) => {
               nextReelLines.push({
@@ -880,7 +903,7 @@ export function MaterialIssueForm() {
                     const material = getMaterial(line.materialId);
                     const selectedIds = selectedReels[line.id] || [];
                     return selectedIds.map((slipId) => {
-                      const slip = packingSlips.find((entry) => entry.id === slipId);
+                      const slip = issuePackingSlips.find((entry) => entry.id === slipId);
                       return (
                         <div key={`${line.id}-${slipId}`} className="rounded border-2 border-black bg-white p-3 shadow-sm">
                           <div className="flex items-start justify-between gap-3 border-b border-black pb-2">
