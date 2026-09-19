@@ -70,7 +70,7 @@ export function MaterialVisitMaster() {
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-3 py-2 border border-black rounded text-sm font-bold uppercase bg-white"
           >
-            <option value="All">All Statuses</option>
+            <option value="All">Statuses</option>
             <option value="Pending">Pending</option>
             <option value="In-Progress">In-Progress</option>
             <option value="Completed">Completed</option>

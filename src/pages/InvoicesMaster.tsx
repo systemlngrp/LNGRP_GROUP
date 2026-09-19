@@ -388,8 +388,8 @@ export function InvoicesMaster() {
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
             />
           </div>
-          <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All Companies" />
-          <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
+          <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
+          <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
           {(searchTerm || companyFilter || itemFilter) ? (
             <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
           ) : null}

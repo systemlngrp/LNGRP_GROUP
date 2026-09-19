@@ -142,9 +142,9 @@ export function GatePassMaster() {
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
-        <Select value={typeFilter} onChange={setTypeFilter} options={typeOptions} placeholder="All Types" />
-        <Select value={recipientFilter} onChange={setRecipientFilter} options={recipientOptions} placeholder="All Recipients / Invoices" />
-        <Select value={truckFilter} onChange={setTruckFilter} options={truckOptions} placeholder="All Trucks" />
+        <Select value={typeFilter} onChange={setTypeFilter} options={typeOptions} placeholder="Types" />
+        <Select value={recipientFilter} onChange={setRecipientFilter} options={recipientOptions} placeholder="Recipients / Invoices" />
+        <Select value={truckFilter} onChange={setTruckFilter} options={truckOptions} placeholder="Trucks" />
         {hasActiveFilters ? (
           <button type="button" onClick={clearFilters} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">
             Clear Filters

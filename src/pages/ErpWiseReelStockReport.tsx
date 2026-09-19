@@ -245,11 +245,11 @@ export function ErpWiseReelStockReport() {
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>
-          <Select value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="All MRR" />
-          <Select value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="All ERP" />
-          <Select value={sizeFilter} onChange={setSizeFilter} options={sizeOptions} placeholder="All Size" />
-          <Select value={gsmFilter} onChange={setGsmFilter} options={gsmOptions} placeholder="All GSM" />
-          <Select value={bfFilter} onChange={setBfFilter} options={bfOptions} placeholder="All BF" />
+          <Select value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="MRR" />
+          <Select value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="ERP" />
+          <Select value={sizeFilter} onChange={setSizeFilter} options={sizeOptions} placeholder="Size" />
+          <Select value={gsmFilter} onChange={setGsmFilter} options={gsmOptions} placeholder="GSM" />
+          <Select value={bfFilter} onChange={setBfFilter} options={bfOptions} placeholder="BF" />
           <div className="flex items-center justify-end gap-2">
             {hasActiveFilters ? (
               <button

@@ -5,7 +5,7 @@ import type { Truck, TruckLiveStatus, TruckStatusLog } from "../types";
 import { formatTruckDateTime, normalizeTruckStatus, TRUCK_LIVE_STATUSES, TRUCK_STATUS_STYLES } from "../lib/truckStatus";
 
 const SOURCE_OPTIONS = [
-  { value: "", label: "All Sources" },
+  { value: "", label: "Sources" },
   { value: "TruckDriver", label: "Truck Login" },
   { value: "PublicDriver", label: "Driver Link" },
   { value: "AppVehicleUpdate", label: "App Form" },
@@ -77,7 +77,7 @@ export function TruckLogs() {
                 value={truckNo}
                 onChange={(event) => setTruckNo(event.target.value)}
                 onKeyDown={(event) => { if (event.key === "Enter") void fetchLogs(); }}
-                placeholder="All vehicles"
+                placeholder="Vehicles"
                 className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-indigo-600"
               />
               <datalist id="truck-log-trucks">
@@ -103,7 +103,7 @@ export function TruckLogs() {
                 onChange={(event) => setStatus(event.target.value as TruckLiveStatus | "")}
                 className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-indigo-600"
               >
-                <option value="">All Status</option>
+                <option value="">Status</option>
                 {TRUCK_LIVE_STATUSES.map((row) => <option key={row} value={row}>{row}</option>)}
               </select>
             </label>

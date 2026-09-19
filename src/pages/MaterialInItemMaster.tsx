@@ -461,7 +461,7 @@ export function MaterialInItemMaster() {
 
         <div className="w-[180px] flex flex-col gap-1">
           <label className="text-[10px] font-black uppercase text-slate-500">MRR No</label>
-          <Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="All MRR" />
+          <Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="MRR" />
         </div>
 
         <div className="flex-1 min-w-[200px] flex flex-col gap-1">

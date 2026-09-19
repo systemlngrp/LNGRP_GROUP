@@ -337,7 +337,7 @@ export function OrdersMaster() {
                 className="w-full rounded border border-black py-2 pl-10 pr-3 font-normal"
               />
             </div>
-            <Select options={firmOptions} value={firmFilter ? { value: firmFilter, label: firmOptions.find((f) => f.value === firmFilter)?.label || firmFilter } : null} onChange={(option) => setFirmFilter(option?.value || "")} placeholder="All Firms" isClearable />
+            <Select options={firmOptions} value={firmFilter ? { value: firmFilter, label: firmOptions.find((f) => f.value === firmFilter)?.label || firmFilter } : null} onChange={(option) => setFirmFilter(option?.value || "")} placeholder="Firms" isClearable />
           </label>
 
           <label className="flex flex-col gap-1 text-sm font-bold text-black">
@@ -347,7 +347,7 @@ export function OrdersMaster() {
               value={companyFilter ? { value: companyFilter, label: companyFilter } : null}
               onChange={(opt) => setCompanyFilter(opt ? (opt as any).value : "")}
               isClearable
-              placeholder="All Companies"
+              placeholder="Companies"
               menuPlacement="bottom"
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               menuPosition="fixed"
@@ -366,7 +366,7 @@ export function OrdersMaster() {
               value={availableItems.find((option) => option.value === itemFilter) || null}
               onChange={(opt) => setItemFilter(opt ? (opt as any).value : "")}
               isClearable
-              placeholder="All Items"
+              placeholder="Items"
               menuPlacement="bottom"
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               menuPosition="fixed"
@@ -385,7 +385,7 @@ export function OrdersMaster() {
               value={orderByFilter ? { value: orderByFilter, label: orderByFilter } : null}
               onChange={(opt) => setOrderByFilter(opt ? (opt as any).value : "")}
               isClearable
-              placeholder="All Users"
+              placeholder="Users"
               menuPlacement="bottom"
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               menuPosition="fixed"

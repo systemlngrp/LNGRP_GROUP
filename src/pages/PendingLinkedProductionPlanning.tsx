@@ -504,7 +504,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                   setSelectedIds(new Set());
                 }}
                 options={companyOptions}
-                placeholder="All Companies"
+                placeholder="Companies"
               />
             </div>
             <div className="min-w-[260px] flex-1 space-y-1">
@@ -516,7 +516,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                   setSelectedIds(new Set());
                 }}
                 options={itemOptions}
-                placeholder="All Items"
+                placeholder="Items"
               />
             </div>
             {(selectedCompanyId || selectedItemId || searchTerm) && (

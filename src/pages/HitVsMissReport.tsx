@@ -516,10 +516,10 @@ export function HitVsMissReport() {
                 className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
               />
             </div>
-            <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All Companies" />
-            <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
-            <Select value={fyFilter} onChange={setFyFilter} options={fySelectOptions} placeholder="All FY" />
-            <Select value={monthFilter} onChange={setMonthFilter} options={monthSelectOptions} placeholder="All Months" />
+            <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
+            <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
+            <Select value={fyFilter} onChange={setFyFilter} options={fySelectOptions} placeholder="FY" />
+            <Select value={monthFilter} onChange={setMonthFilter} options={monthSelectOptions} placeholder="Months" />
           </div>
 
           <div className="flex flex-wrap items-center gap-3">

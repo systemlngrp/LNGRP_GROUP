@@ -210,7 +210,7 @@ export function SheetMasterPage({
                 value={filterValues[filter.key] || ""}
                 onChange={(value) => setFilterValues((prev) => ({ ...prev, [filter.key]: value }))}
                 options={filter.options}
-                placeholder={`All ${filter.label}`}
+                placeholder={filter.label}
               />
             ) : (
               <select
@@ -219,7 +219,7 @@ export function SheetMasterPage({
                 onChange={(e) => setFilterValues((prev) => ({ ...prev, [filter.key]: e.target.value }))}
                 className="w-full rounded border border-black bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
               >
-                <option value="">All {filter.label}</option>
+                <option value="">{filter.label}</option>
                 {filter.options.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}

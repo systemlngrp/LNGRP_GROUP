@@ -36,7 +36,14 @@ export function MaterialInMaster() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const statusOptions = ["All", "Pending PH", "Pending Accounts", "Pending MD", "Pending Tally", "Completed"];
+  const statusOptions = [
+    { value: "All", label: "Statuses" },
+    { value: "Pending PH", label: "Pending PH" },
+    { value: "Pending Accounts", label: "Pending Accounts" },
+    { value: "Pending MD", label: "Pending MD" },
+    { value: "Pending Tally", label: "Pending Tally" },
+    { value: "Completed", label: "Completed" },
+  ];
   const mrrOptions = useMemo(() => makeOptions(materialIn.map((entry) => entry.transactionNo)), [materialIn]);
   const getFirmName = (entry: MaterialIn) => getFirmDisplayNameById(entry.firmId || entry.destinationFirmId, firms, entry.firmName);
   const firmOptions = useMemo(() => firms.filter((firm) => materialIn.some((entry) => entry.firmId === firm.id || entry.destinationFirmId === firm.id)).map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms, materialIn]);
@@ -306,16 +313,16 @@ export function MaterialInMaster() {
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-black uppercase text-slate-500">Status</label>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="px-3 py-1.5 border border-black rounded text-xs focus:outline-none focus:ring-1 focus:ring-black bg-white font-bold uppercase">
-              {statusOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+              {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-1 min-w-[180px]">
             <label className="text-[10px] font-black uppercase text-slate-500">Firm</label>
-            <Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
+            <Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
           </div>
           <div className="flex flex-col gap-1 min-w-[180px]">
             <label className="text-[10px] font-black uppercase text-slate-500">MRR No</label>
-            <Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="All MRR" />
+            <Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="MRR" />
           </div>
           <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
             <label className="text-[10px] font-black uppercase text-slate-500">Search</label>

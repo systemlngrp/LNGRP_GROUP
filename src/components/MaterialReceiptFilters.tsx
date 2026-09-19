@@ -30,7 +30,7 @@ export function MaterialReceiptFilters({
       <label className="min-w-[150px] flex-1 text-xs font-bold uppercase text-black">
         Firm
         <select value={firmFilter} onChange={(event) => onFirmChange(event.target.value)} className="mt-1 w-full border-2 border-black bg-white px-2 py-2 text-sm font-medium normal-case">
-          <option value="">All firms</option>
+          <option value="">Firms</option>
           {firms.map((firm) => <option key={firm} value={firm}>{firm}</option>)}
         </select>
       </label>
@@ -44,7 +44,7 @@ export function MaterialReceiptFilters({
       <label className="min-w-[190px] flex-1 text-xs font-bold uppercase text-black">
         Supplier
         <select value={supplierFilter} onChange={(event) => onSupplierChange(event.target.value)} className="mt-1 w-full border-2 border-black bg-white px-2 py-2 text-sm font-medium normal-case">
-          <option value="">All suppliers</option>
+          <option value="">Suppliers</option>
           {suppliers.map((supplier) => <option key={supplier} value={supplier}>{supplier}</option>)}
         </select>
       </label>

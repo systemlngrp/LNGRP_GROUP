@@ -800,15 +800,15 @@ export function PrintingQcMaster() {
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
           <select value={jobFilter} onChange={(event) => setJobFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
-            <option value="">All Job No.</option>
+            <option value="">Job No.</option>
             {filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
           <select value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
-            <option value="">All Party Name</option>
+            <option value="">Party Name</option>
             {filterOptions.parties.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
           <select value={qcPersonFilter} onChange={(event) => setQcPersonFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
-            <option value="">All QC Person</option>
+            <option value="">QC Person</option>
             {filterOptions.qcPeople.map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
           <select value={warningFilter} onChange={(event) => setWarningFilter(event.target.value)} className="rounded border border-black p-2 text-sm">

@@ -18,7 +18,7 @@ export function FirmFilter({
   value,
   onChange,
   label = "Firm",
-  placeholder = "All Firms",
+  placeholder = "Firms",
   compact = true,
   className = "min-w-[180px]",
 }: FirmFilterProps) {

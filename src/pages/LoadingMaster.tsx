@@ -528,15 +528,15 @@ export function LoadingMaster() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase text-slate-500">Company Filter</label>
-            <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All Companies" />
+            <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase text-slate-500">Item Filter</label>
-            <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
+            <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase text-slate-500">ERP Filter</label>
-            <Select value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="All ERP" />
+            <Select value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="ERP" />
           </div>
         </div>
       </div>

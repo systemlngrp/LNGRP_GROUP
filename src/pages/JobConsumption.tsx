@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { ExcelExport } from "../components/ExcelExport";
@@ -223,7 +223,7 @@ export function JobConsumption() {
             onChange={(e) => setDackelFilter(e.target.value)}
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           >
-            <option value="">All Dackel</option>
+            <option value="">Dackel</option>
             {dackelOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -236,7 +236,7 @@ export function JobConsumption() {
             onChange={(e) => setGsmFilter(e.target.value)}
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           >
-            <option value="">All GSM</option>
+            <option value="">GSM</option>
             {gsmOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}

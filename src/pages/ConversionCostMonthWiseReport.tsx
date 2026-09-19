@@ -197,7 +197,7 @@ export function ConversionCostMonthWiseReport() {
             ))}
           </select>
           <select className="rounded border border-gray-900 p-2 text-sm font-bold" value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)}>
-            <option value="">All Months</option>
+            <option value="">Months</option>
             {FY_MONTHS.map((month) => (
               <option key={month.value} value={month.value}>
                 {month.label}

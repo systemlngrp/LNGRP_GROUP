@@ -126,11 +126,11 @@ export function PendingMrr() {
         />
         <div className="flex flex-wrap gap-3">
           <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="rounded border border-black px-3 py-2 text-sm">
-            <option value="">All Firms</option>
+            <option value="">Firms</option>
             {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
           </select>
           <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} className="rounded border border-black px-3 py-2 text-sm">
-            <option value="">All Suppliers / Customers</option>
+            <option value="">Suppliers / Customers</option>
             {Array.from(new Set(pendingEntries.map((entry) => getSupplierName(entry.supplierId)).filter(Boolean))).sort().map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
           <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded border border-black px-3 py-2 text-sm" />

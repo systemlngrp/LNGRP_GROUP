@@ -383,7 +383,7 @@ export function LmL1Report() {
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           >
             {yearOptions.map((option) => (
-              <option key={option} value={option}>{option === "All" ? "All Years" : option}</option>
+              <option key={option} value={option}>{option === "All" ? "Years" : option}</option>
             ))}
           </select>
           <select
@@ -392,7 +392,7 @@ export function LmL1Report() {
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           >
             {["All", ...MONTHS].map((option) => (
-              <option key={option} value={option}>{option === "All" ? "All Months" : option}</option>
+              <option key={option} value={option}>{option === "All" ? "Months" : option}</option>
             ))}
           </select>
           <button

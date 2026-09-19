@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, Pencil, Plus, Search, X, XCircle } from "lucide-react";
 import { Select } from "../components/Select";
@@ -189,9 +189,9 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
-        <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
-        <Select value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="All Suppliers" />
-        <Select value={truckFilter} onChange={setTruckFilter} options={truckOptions} placeholder="All Trucks" />
+        <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
+        <Select value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers" />
+        <Select value={truckFilter} onChange={setTruckFilter} options={truckOptions} placeholder="Trucks" />
         {!cancelledOnly ? (
           <Select
             value={mrrStatusFilter}
@@ -200,7 +200,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
               { value: "created", label: "MRR Created" },
               { value: "pending", label: "Pending MRR" },
             ]}
-            placeholder="All MRR Status"
+            placeholder="MRR Status"
           />
         ) : null}
         <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />

@@ -1115,7 +1115,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
               onChange={(e) => setPoNumberFilter(e.target.value)}
               className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black focus:outline-none focus:ring-1 focus:ring-black md:w-44"
             >
-              <option value="">All PO Numbers</option>
+              <option value="">PO Numbers</option>
               {poNumberOptions.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.poNo}
@@ -1124,7 +1124,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
             </select>
           ) : null}
           <div className="w-full md:w-64">
-            <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
+            <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
           </div>
           <div className="w-full md:w-64">
             <Select<SelectOption, false>
@@ -1132,7 +1132,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
               value={supplierSelectOptions.find((option) => option.value === supplierFilter) || null}
               onChange={(option) => setSupplierFilter(option?.value || "")}
               isClearable
-              placeholder="All Suppliers"
+              placeholder="Suppliers"
               menuPlacement="bottom"
               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
               menuPosition="fixed"
@@ -1149,8 +1149,8 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       </PageHeader>
 
       <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
-        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Type</label><select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">All Item Types</option>{itemTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent No</label><select value={indentNoFilter} onChange={(e) => setIndentNoFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">All Indent Nos</option>{indentNoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Type</label><select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">Item Types</option>{itemTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent No</label><select value={indentNoFilter} onChange={(e) => setIndentNoFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">Indent Nos</option>{indentNoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
         <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date From</label><input type="date" value={indentFromDateFilter} onChange={(e) => setIndentFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
         <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date To</label><input type="date" value={indentToDateFilter} onChange={(e) => setIndentToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
         <div className="min-w-[200px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Label</label><input type="search" value={itemLabelFilter} onChange={(e) => setItemLabelFilter(e.target.value)} placeholder="Filter item label" className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>

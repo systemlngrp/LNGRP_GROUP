@@ -218,7 +218,7 @@ export function RealizationReport() {
 
   const companyOptions = useMemo(
     () => [
-      { value: "", label: "All Companies" },
+      { value: "", label: "Companies" },
       ...companies
         .slice()
         .sort((a, b) => a.name.localeCompare(b.name))
@@ -235,7 +235,7 @@ export function RealizationReport() {
       if (!byId.has(salesPerson.id)) byId.set(salesPerson.id, salesPerson.label);
     });
     return [
-      { value: "", label: "All Sales Persons" },
+      { value: "", label: "Sales Persons" },
       ...Array.from(byId.entries())
         .map(([id, label]) => ({ value: id, label, searchText: label }))
         .sort((a, b) => a.label.localeCompare(b.label)),
@@ -460,14 +460,14 @@ export function RealizationReport() {
             options={companyOptions}
             value={companyId}
             onChange={setCompanyId}
-            placeholder="All Companies"
+            placeholder="Companies"
           />
           <Select
             id="realization-sales-person-filter"
             options={salesPersonOptions}
             value={salesPersonId}
             onChange={setSalesPersonId}
-            placeholder="All Sales Persons"
+            placeholder="Sales Persons"
           />
           <button
             type="button"

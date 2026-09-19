@@ -130,8 +130,8 @@ export function ItemwiseLeastCost() {
             className="flex-1 outline-none text-sm font-medium"
           />
         </div>
-        <div className="min-w-[220px] flex-1"><Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All Companies" /></div>
-        <div className="min-w-[260px] flex-1"><Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" /></div>
+        <div className="min-w-[220px] flex-1"><Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" /></div>
+        <div className="min-w-[260px] flex-1"><Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" /></div>
         {(searchTerm || companyFilter || itemFilter) ? (
           <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
         ) : null}

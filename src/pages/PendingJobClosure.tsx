@@ -393,8 +393,8 @@ export function PendingJobClosure() {
           placeholder="Search pending closures..."
         />
         <FirmFilter value={firmFilter} onChange={setFirmFilter} />
-        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All Companies" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
+        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
+        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
         {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
           <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
         ) : null}

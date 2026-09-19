@@ -356,8 +356,8 @@ export function MrrApprovals() {
           <div className="bg-indigo-600 px-4 py-2 text-white font-black uppercase text-sm border-b border-black flex justify-between items-center">
             <span>{activeStage} ({filteredList.length})</span>
             <div className="flex items-center gap-2">
-              <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
-              <FirmSelect compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="All Suppliers" />
+              <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
+              <FirmSelect compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers" />
               <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded px-2 py-0.5 text-xs text-black" />
               <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="rounded px-2 py-0.5 text-xs text-black" />
               {(firmFilter || supplierFilter || fromDate || toDate) ? <button type="button" onClick={() => { setFirmFilter(""); setSupplierFilter(""); setFromDate(""); setToDate(""); }} className="text-xs underline">Reset</button> : null}

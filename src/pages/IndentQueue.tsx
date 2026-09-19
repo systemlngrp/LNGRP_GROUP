@@ -481,10 +481,10 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
-        <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All Firms" />
-        <Select value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="All Requested By" />
-        <Select value={indentTypeFilter} onChange={setIndentTypeFilter} options={indentTypeOptions} placeholder="All Indent Types" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
+        <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
+        <Select value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="Requested By" />
+        <Select value={indentTypeFilter} onChange={setIndentTypeFilter} options={indentTypeOptions} placeholder="Indent Types" />
+        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
         <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
         <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
         {searchTerm || firmFilter || requestedByFilter || indentTypeFilter || itemFilter || dateFrom || dateTo ? (

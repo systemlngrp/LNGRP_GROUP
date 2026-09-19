@@ -380,11 +380,11 @@ export function ReelwiseStockReport() {
                 className="h-[34px] w-full rounded border-2 border-black pl-8 pr-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
               />
             </div>
-            <div className="min-w-0"><Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="All MRR" /></div>
-            <div className="min-w-0"><Select compact value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="All ERP" /></div>
-            <div className="min-w-0"><Select compact value={gsmFilter} onChange={setGsmFilter} options={gsmOptions} placeholder="All GSM" /></div>
-            <div className="min-w-0"><Select compact value={sizeFilter} onChange={setSizeFilter} options={sizeOptions} placeholder="All Size" /></div>
-            <div className="min-w-0"><Select compact value={bfFilter} onChange={setBfFilter} options={bfOptions} placeholder="All BF" /></div>
+            <div className="min-w-0"><Select compact value={mrrFilter} onChange={setMrrFilter} options={mrrOptions} placeholder="MRR" /></div>
+            <div className="min-w-0"><Select compact value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="ERP" /></div>
+            <div className="min-w-0"><Select compact value={gsmFilter} onChange={setGsmFilter} options={gsmOptions} placeholder="GSM" /></div>
+            <div className="min-w-0"><Select compact value={sizeFilter} onChange={setSizeFilter} options={sizeOptions} placeholder="Size" /></div>
+            <div className="min-w-0"><Select compact value={bfFilter} onChange={setBfFilter} options={bfOptions} placeholder="BF" /></div>
           </div>
 
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[130px_130px_90px_90px_150px_145px_155px_90px] xl:items-center">

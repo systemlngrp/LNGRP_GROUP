@@ -225,8 +225,8 @@ export function OtherConsumablesInventoryReport() {
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>
-          <Select value={groupFilter} onChange={setGroupFilter} options={groupOptions} placeholder="All Groups" />
-          <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All Items" />
+          <Select value={groupFilter} onChange={setGroupFilter} options={groupOptions} placeholder="Groups" />
+          <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
           {hasActiveFilters ? (
             <button
               type="button"

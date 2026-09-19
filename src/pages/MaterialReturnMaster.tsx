@@ -26,7 +26,7 @@ function resolveLineRate(line: MaterialReturnLine | undefined, material: Materia
 }
 
 const returnTypeOptions = [
-  { value: "all", label: "All Types" },
+  { value: "all", label: "Types" },
   { value: "job", label: "Job Specific" },
   { value: "general", label: "General" },
 ];
@@ -300,10 +300,10 @@ export function MaterialReturnMaster() {
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>
-          <Select options={returnTypeOptions} value={typeFilter} onChange={(value) => setTypeFilter(value || "all")} placeholder="All Types" />
-          <Select options={materialOptions} value={materialFilter} onChange={setMaterialFilter} placeholder="All Materials" />
-          <Select options={jobOptions} value={jobFilter} onChange={setJobFilter} placeholder="All Jobs" />
-          <Select options={reelOptions} value={reelFilter} onChange={setReelFilter} placeholder="All Reels" />
+          <Select options={returnTypeOptions} value={typeFilter} onChange={(value) => setTypeFilter(value || "all")} placeholder="Types" />
+          <Select options={materialOptions} value={materialFilter} onChange={setMaterialFilter} placeholder="Materials" />
+          <Select options={jobOptions} value={jobFilter} onChange={setJobFilter} placeholder="Jobs" />
+          <Select options={reelOptions} value={reelFilter} onChange={setReelFilter} placeholder="Reels" />
           <input
             type="date"
             value={fromDate}

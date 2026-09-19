@@ -186,7 +186,7 @@ export function WastageReport() {
             onChange={(event) => setCompanyId(event.target.value)}
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           >
-            <option value="">All Companies</option>
+            <option value="">Companies</option>
             {companyOptions.map((company) => (
               <option key={company.id} value={company.id}>{company.name}</option>
             ))}

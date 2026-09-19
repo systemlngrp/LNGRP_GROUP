@@ -316,7 +316,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
             value={companyOptions.find((option) => option.value === companyFilter) || null}
             onChange={(option) => setCompanyFilter(option ? (option as SelectOption).value : "")}
             isClearable
-            placeholder="All Companies"
+            placeholder="Companies"
             menuPlacement="bottom"
             menuPortalTarget={typeof document !== "undefined" ? document.body : null}
             menuPosition="fixed"
@@ -336,7 +336,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
             value={itemOptions.find((option) => option.value === itemFilter) || null}
             onChange={(option) => setItemFilter(option ? (option as SelectOption).value : "")}
             isClearable
-            placeholder="All Items"
+            placeholder="Items"
             menuPlacement="bottom"
             menuPortalTarget={typeof document !== "undefined" ? document.body : null}
             menuPosition="fixed"

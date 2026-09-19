@@ -620,13 +620,13 @@ export function ProductionMaster() {
           value={companyFilter}
           onChange={setCompanyFilter}
           options={companyOptions}
-          placeholder="All Companies"
+          placeholder="Companies"
         />
         <Select
           value={itemFilter}
           onChange={setItemFilter}
           options={itemOptions}
-          placeholder="All Items"
+          placeholder="Items"
         />
         {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
           <button

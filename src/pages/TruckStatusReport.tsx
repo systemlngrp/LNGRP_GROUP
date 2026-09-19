@@ -108,7 +108,7 @@ export function TruckStatusReport() {
 
   const vehicleNoOptions = useMemo(
     () => [
-      { value: "", label: "All Vehicle No." },
+      { value: "", label: "Vehicle No." },
       ...Array.from(new Set(baseRows.map((row) => String(row.truck.truckNo || "").trim()).filter(Boolean)))
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
         .map((truckNo) => ({ value: truckNo, label: truckNo, searchText: truckNo })),
@@ -118,7 +118,7 @@ export function TruckStatusReport() {
 
   const partyOptions = useMemo(
     () => [
-      { value: "", label: "All Party" },
+      { value: "", label: "Party" },
       ...Array.from(new Set(baseRows.map((row) => String(row.party || "").trim()).filter((party) => party && party !== "-")))
         .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
         .map((party) => ({ value: party, label: party, searchText: party })),
@@ -183,14 +183,14 @@ export function TruckStatusReport() {
             options={vehicleNoOptions}
             value={vehicleNoFilter}
             onChange={setVehicleNoFilter}
-            placeholder="All Vehicle No."
+            placeholder="Vehicle No."
           />
           <Select
             id="truck-status-party-filter"
             options={partyOptions}
             value={partyFilter}
             onChange={setPartyFilter}
-            placeholder="All Party"
+            placeholder="Party"
           />
           <div className="flex flex-col items-stretch gap-1">
             <button

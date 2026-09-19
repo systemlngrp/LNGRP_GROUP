@@ -523,7 +523,7 @@ export function PendingDispatchPlanning() {
                 }}
                 className="border-2 border-black rounded px-3 py-1.5 text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[240px]"
               >
-                <option value="">All Companies</option>
+                <option value="">Companies</option>
                 {availableCompanies.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
