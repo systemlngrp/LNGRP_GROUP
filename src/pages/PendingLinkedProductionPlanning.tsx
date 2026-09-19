@@ -10,7 +10,8 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionMatchingFields } from "../lib/productionMatching";
 import { generateTransactionNo, getProductionJobPrefix, formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
-import type { Company, Order, OrderItemSource, OrderSchedule, Production } from "../types";
+import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import type { Company, Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import type { OrderCatalogItem } from "../lib/orderItems";
 
 type PlanningSource = Extract<OrderItemSource, "PHP" | "PLATE">;
@@ -131,6 +132,8 @@ function buildPlannedProduction({
     transactionNo,
     date: schedule.scheduledDate,
     scheduleId: schedule.id,
+    firmId: schedule.firmId || order?.firmId,
+    firmName: schedule.firmName || order?.firmName,
     planningId: schedule.id,
     scheduledDate: schedule.scheduledDate,
     itemId: sourceItem.id,
@@ -185,6 +188,9 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedItemId, setSelectedItemId] = useState("");
+  const [selectedFirmId, setSelectedFirmId] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [rowPlannedQty, setRowPlannedQty] = useState<Record<string, number | "">>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -197,6 +203,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();
 
   const jobRows = source === "PHP" ? phpJobMaster : plateJobMaster;
@@ -282,12 +289,18 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   }, [companies, rows]);
 
   const companyOptions = useMemo(() => availableCompanies.map((company) => ({ value: company.id, label: company.name })), [availableCompanies]);
+  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((row) => { const item = row.linkedItem || row.fgItem; const erp = String(item?.erp || row.order?.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
 
   const filteredRows = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     const filtered = rows.filter((row) => {
       if (selectedCompanyId && row.company?.id !== selectedCompanyId) return false;
+      const firmId = String(row.schedule.firmId || row.order?.firmId || "");
+      if (selectedFirmId && firmId !== selectedFirmId) return false;
+      const date = String(row.schedule.scheduledDate || "").slice(0, 10);
+      if (fromDate && date < fromDate) return false;
+      if (toDate && date > toDate) return false;
       const item = row.linkedItem || row.fgItem;
       const itemKey = item?.id || `${item?.name || ""}::${item?.erp || row.order?.erpCode || ""}`;
       if (selectedItemId && itemKey !== selectedItemId) return false;
@@ -295,7 +308,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
       const haystack = [
         formatDate(row.schedule.scheduledDate),
         row.order?.orderNo,
-        row.company?.name,
+        row.company?.name, getFirmDisplayNameById(firmId, firms),
         row.fgItem?.name,
         row.fgItem?.erp,
         row.linkedItem?.name,
@@ -330,7 +343,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
       }
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [rows, searchTerm, selectedCompanyId, selectedItemId, sortDirection, sortKey]);
+  }, [rows, searchTerm, selectedCompanyId, selectedFirmId, selectedItemId, fromDate, toDate, firms, sortDirection, sortKey]);
 
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredRows, 25);
 
@@ -507,6 +520,10 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 placeholder="Companies"
               />
             </div>
+            <div className="min-w-[180px] flex-1 space-y-1">
+              <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Firm</div>
+              <Select value={selectedFirmId} onChange={(value) => { setSelectedFirmId(value); setSelectedIds(new Set()); }} options={firmOptions} placeholder="Firms" />
+            </div>
             <div className="min-w-[260px] flex-1 space-y-1">
               <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Item</div>
               <Select
@@ -519,12 +536,17 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 placeholder="Items"
               />
             </div>
-            {(selectedCompanyId || selectedItemId || searchTerm) && (
+            <div className="min-w-[150px] space-y-1"><div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">From Date</div><input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setSelectedIds(new Set()); }} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
+            <div className="min-w-[150px] space-y-1"><div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">To Date</div><input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setSelectedIds(new Set()); }} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
+            {(selectedCompanyId || selectedFirmId || selectedItemId || searchTerm || fromDate || toDate) && (
               <button
                 onClick={() => {
                   setSelectedCompanyId("");
+                  setSelectedFirmId("");
                   setSelectedItemId("");
                   setSearchTerm("");
+                  setFromDate("");
+                  setToDate("");
                   setSelectedIds(new Set());
                 }}
                 className="text-[10px] font-black uppercase text-red-600 hover:text-red-800 underline pb-2"
@@ -551,6 +573,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 </th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Schedule No</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Firm</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Order No", "orderNo")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("FG Item", "fgItemName")}</th>
@@ -568,7 +591,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
             <tbody className="divide-y divide-black bg-white">
               {paginatedItems.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-6 py-8 text-center text-black font-medium">No pending {source} planning rows found.</td>
+                  <td colSpan={16} className="px-6 py-8 text-center text-black font-medium">No pending {source} planning rows found.</td>
                 </tr>
               ) : (
                 paginatedItems.map((row) => {
@@ -587,6 +610,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                       </td>
                       <td className="px-4 py-4 text-xs font-bold border border-black whitespace-nowrap">{formatDate(row.schedule.scheduledDate)}</td>
                       <td className="px-4 py-4 text-xs font-bold text-indigo-700 border border-black whitespace-nowrap">{row.schedule.scheduleNo || "-"}</td>
+                      <td className="px-4 py-4 text-xs border border-black whitespace-nowrap">{getFirmDisplayNameById(String(row.schedule.firmId || row.order?.firmId || ""), firms)}</td>
                       <td className="px-4 py-4 text-xs border border-black whitespace-nowrap">{row.order?.orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs border border-black">{row.company?.name || "-"}</td>
                       <td className="px-4 py-4 text-xs border border-black">{row.isDirectSourceOrder ? "Direct Order" : row.fgItem?.name || "-"}</td>
@@ -617,7 +641,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
             {selectedIds.size > 0 && (
               <tfoot className="bg-slate-100 border-t-2 border-black">
                 <tr className="divide-x divide-black font-black">
-                  <td colSpan={14} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={15} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="px-4 py-3 text-right text-sm text-indigo-700 bg-indigo-50 border border-black">{totalSelectedQty.toLocaleString()}</td>
                 </tr>
               </tfoot>

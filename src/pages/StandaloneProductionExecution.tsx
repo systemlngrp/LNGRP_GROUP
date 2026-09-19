@@ -6,8 +6,10 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { resolvePhpPlateFgLink } from "../lib/phpPlateFgLink";
-import { OrderItemSource, Production } from "../types";
+import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { Select } from "../components/Select";
+import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -39,12 +41,18 @@ function getFgCellClasses(isBlocked: boolean, requiresFgGate: boolean) {
 }
 
 export function StandaloneProductionExecution({ source }: Props) {
-  const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), []);
-  const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), []);
-  const [fgProductions] = useData<Production>("productions", []);
+  const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
+  const [fgProductions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const { itemsBySource } = useOrderItemCatalog();
   const [searchTerm, setSearchTerm] = useState("");
   const [sourceFilter, setSourceFilter] = useState<WorkflowSource>(source === "ALL" ? "ALL" : source);
+  const [firmFilter, setFirmFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedJobKey, setSelectedJobKey] = useState("");
   const [completionTime, setCompletionTime] = useState("");
   const [outputQty, setOutputQty] = useState("");
@@ -58,12 +66,15 @@ export function StandaloneProductionExecution({ source }: Props) {
   }, [phpJobs, plateJobs, source]);
 
   const activeSourceFilter = source === "ALL" ? sourceFilter : source;
+  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
 
   const pendingJobs = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return jobs
       .filter((job) => job.status !== "Cancelled")
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
+      .filter((job) => !firmFilter || resolvePhpPlateFirmId(job, schedules, orders) === firmFilter)
+      .filter((job) => { const date = workflowDate(job); return (!fromDate || date >= fromDate) && (!toDate || date <= toDate); })
       .filter((job) => String(job.scheduledDate || "").trim() && String(job.shift || "").trim() && String(job.sequence || "").trim())
       .filter((job) => !String(job.jobCompletionTimeOutput || "").trim() || !(Number(job.productionOutputQty || 0) > 0))
       .filter((job) => {
@@ -73,7 +84,7 @@ export function StandaloneProductionExecution({ source }: Props) {
         return haystack.includes(query);
       })
       .sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.sequence || 0) - Number(b.sequence || 0));
-  }, [activeSourceFilter, itemsBySource, jobs, searchTerm]);
+  }, [activeSourceFilter, firmFilter, fromDate, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
 
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(pendingJobs, 25);
   const selectedJob = pendingJobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey) || jobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey);
@@ -140,12 +151,19 @@ export function StandaloneProductionExecution({ source }: Props) {
           </div>
         ) : null}
       </div>
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search job no, sequence, item..." />
+      <div className="flex flex-wrap gap-3">
+        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search job no, sequence, item..." />
+        <div className="min-w-[180px]"><Select options={firmOptions} value={firmFilter} onChange={(value) => { setFirmFilter(value); closeModal(); }} placeholder="Firms" /></div>
+        <label className="text-xs font-bold uppercase">From Date<input type="date" aria-label="From Date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); closeModal(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
+        <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => { setToDate(e.target.value); closeModal(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
+        {(searchTerm || firmFilter || fromDate || toDate || (source === "ALL" && sourceFilter !== "ALL")) && <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); setSourceFilter("ALL"); closeModal(); }} className="rounded border border-black px-3 py-2 text-sm font-bold">Clear Filters</button>}
+      </div>
       <div className="bg-white border border-black rounded shadow-sm overflow-auto">
         <table className="min-w-[1560px] w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Source</th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase">Firm</th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Sequence</th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Shift</th>
@@ -158,13 +176,14 @@ export function StandaloneProductionExecution({ source }: Props) {
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
-              <tr><td colSpan={9} className="px-6 py-8 text-center text-black font-medium">No jobs pending production.</td></tr>
+              <tr><td colSpan={10} className="px-6 py-8 text-center text-black font-medium">No jobs pending production.</td></tr>
             ) : paginatedItems.map((job) => {
               const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
               const fgState = resolvePhpPlateFgLink(job, fgProductions, job.jobSource);
               return (
                 <tr key={`${job.jobSource}:${job.id}`} className="border-t border-black">
                   <td className="px-3 py-2 text-sm font-bold">{job.jobSource}</td>
+                  <td className="px-3 py-2 text-sm">{getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms)}</td>
                   <td className="px-3 py-2 text-sm font-semibold">{formatCell(job.transactionNo)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.sequence)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.shift)}</td>
