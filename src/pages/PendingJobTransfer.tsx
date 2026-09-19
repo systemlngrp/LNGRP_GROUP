@@ -1,10 +1,11 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRightLeft } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
+import { TableControls } from "../components/TableControls";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, hasReelIssueHistory } from "../lib/reelTransfer";
-import type { MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
+import type { MaterialIn, MaterialInPackingSlip, MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
 
 export function PendingJobTransfer() {
   const navigate = useNavigate();
@@ -13,11 +14,18 @@ export function PendingJobTransfer() {
   const [issueReels] = useData<MaterialIssueReelLine>("material_issue_reel_lines", []);
   const [returnReels] = useData<MaterialReturnReelLine>("material_return_reel_lines", []);
   const [issueLines] = useData<MaterialIssueLine>("material_issue_lines", []);
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
+  const [materialIn] = useData<MaterialIn>("material-in", []);
   const [settings] = useData<Setting>("settings", []);
+  const [searchTerm, setSearchTerm] = useState("");
   const { findItemAcrossSources } = useOrderItemCatalog();
   const windowHours = Number(settings[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
 
-  const rows = useMemo(() => productions
+  const rows = useMemo(() => {
+    const receiptNoById = new Map(materialIn.map((receipt) => [receipt.id, receipt.transactionNo]));
+    const receiptIdByPackingSlipId = new Map(packingSlips.map((slip) => [slip.id, slip.materialInId]));
+
+    return productions
     .filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp)
     .map((production) => {
       const context = buildReelTransferContext(production, processing, issueReels, returnReels, issueLines, productions, windowHours);
@@ -31,12 +39,27 @@ export function PendingJobTransfer() {
         context,
         company: String(production.companyName || "-").trim() || "-",
         item: String(item?.name || production.erpCode || production.masterErp || "-").trim() || "-",
+        mrrNos: Array.from(new Set(context.reels
+          .map((reel) => receiptNoById.get(receiptIdByPackingSlipId.get(reel.packingSlipId) || ""))
+          .filter((mrrNo): mrrNo is string => Boolean(mrrNo)))),
         transferableWeight: context.reels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0),
       };
     })
     .filter((row) => row.context.fullTime > 0 && row.context.status !== "window_expired" && hasReelIssueHistory(row.production, issueReels))
-    .sort((a, b) => Number(b.context.eligible) - Number(a.context.eligible) || b.context.fullTime - a.context.fullTime),
-  [findItemAcrossSources, issueLines, issueReels, processing, productions, returnReels, windowHours]);
+      .sort((a, b) => Number(b.context.eligible) - Number(a.context.eligible) || b.context.fullTime - a.context.fullTime);
+  }, [findItemAcrossSources, issueLines, issueReels, materialIn, packingSlips, processing, productions, returnReels, windowHours]);
+
+  const filteredRows = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    if (!needle) return rows;
+    return rows.filter(({ production, company, item, mrrNos, context }) =>
+      [production.transactionNo, production.jobCardNo, production.date, company, item, ...mrrNos, ...context.reels.map((reel) => reel.ourReelNo)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    );
+  }, [rows, searchTerm]);
 
   const openTransfer = (productionId: string) => {
     const params = new URLSearchParams({
@@ -55,29 +78,38 @@ export function PendingJobTransfer() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Metric label="Eligible Source Jobs" value={String(rows.filter((row) => row.context.eligible).length)} />
-        <Metric label="Eligible Reels" value={String(rows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.context.reels.length, 0))} />
-        <Metric label="Transferable Weight" value={`${rows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.transferableWeight, 0).toFixed(2)} KG`} />
+        <Metric label="Eligible Source Jobs" value={String(filteredRows.filter((row) => row.context.eligible).length)} />
+        <Metric label="Eligible Reels" value={String(filteredRows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.context.reels.length, 0))} />
+        <Metric label="Transferable Weight" value={`${filteredRows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.transferableWeight, 0).toFixed(2)} KG`} />
+      </div>
+
+      <div className="max-w-md">
+        <TableControls
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          placeholder="Search job, company, item, MRR, reel..."
+        />
       </div>
 
       <div className="overflow-x-auto rounded border border-black bg-white shadow-sm">
         <table className="min-w-full border-collapse">
           <thead className="bg-slate-800 text-white">
             <tr>
-              {["Source Job", "Date", "Company", "Item", "Reels", "Transferable KG", "Window Expires", "Status", "Action"].map((heading) => (
+              {["Source Job", "Date", "Company", "Item", "MRR No.", "Reels", "Transferable KG", "Window Expires", "Status", "Action"].map((heading) => (
                 <th key={heading} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase">{heading}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
-              <tr><td colSpan={9} className="px-6 py-10 text-center font-medium text-slate-500">No jobs are currently eligible for reel balance transfer.</td></tr>
-            ) : rows.map(({ production, context, company, item, transferableWeight }, index) => (
+            {filteredRows.length === 0 ? (
+              <tr><td colSpan={10} className="px-6 py-10 text-center font-medium text-slate-500">{rows.length ? "No jobs match the current search." : "No jobs are currently eligible for reel balance transfer."}</td></tr>
+            ) : filteredRows.map(({ production, context, company, item, mrrNos, transferableWeight }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
                 <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>
                 <td className="border border-black px-3 py-3 text-sm">{String(production.date || "").slice(0, 10) || "-"}</td>
                 <td className="border border-black px-3 py-3 text-sm">{company}</td>
                 <td className="border border-black px-3 py-3 text-sm">{item}</td>
+                <td className="border border-black px-3 py-3 text-sm font-medium">{mrrNos.length ? mrrNos.join(", ") : "-"}</td>
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{context.reels.length}</td>
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{transferableWeight.toFixed(2)}</td>
                 <td className="border border-black px-3 py-3 text-sm">{new Date(context.expiresAt).toLocaleString()}</td>
