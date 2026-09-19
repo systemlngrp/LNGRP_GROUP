@@ -1,26 +1,20 @@
 import { useData } from "../hooks/useData";
 import { Firm, Material, MaterialIn, Item, Supplier } from "../types";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { CheckCircle } from "lucide-react";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { ApprovalFilters } from "../components/ApprovalFilters";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 export function PendingPHApproval() {
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
+  const [firmFilter, setFirmFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [itemFilter, setItemFilter] = useState('');
 
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
     firmScope: "all",
@@ -110,7 +104,7 @@ export function PendingPHApproval() {
         {lines.map((l, idx) => {
           const itemName = materials.find(i => i.id === l.itemId)?.name || npdItems.find(i => i.id === l.itemId)?.name;
           return (
-            <li key={idx} className="whitespace-nowrap border-b border-black last:border-0 pb-1 last:pb-0 mb-1 last:mb-0">
+            <li key={idx} className="whitespace-normal break-words border-b border-black last:border-0 pb-1 last:pb-0 mb-1 last:mb-0">
               <span className="font-medium text-black">{itemName || 'Unknown'}</span>
               <span className="ml-2 text-black">[{l.qty} {l.uom} @ {l.rate}]</span>
             </li>
@@ -123,9 +117,22 @@ export function PendingPHApproval() {
   const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || id;
   const getFirmName = (mrr: MaterialIn) => {
     const storedFirmName = String(mrr.firmName || "").trim();
-    if (storedFirmName) return storedFirmName;
-    return firms.find((firm) => firm.id === mrr.firmId)?.firmName?.trim() || "Unassigned";
+    const firm = firms.find((entry) => entry.id === mrr.firmId);
+    return getFirmDisplayName(firm || (storedFirmName ? { firmName: storedFirmName } : null));
   };
+  const pendingRows = materialIn.filter((m) => {
+    if (!isPendingPH(m.status)) return false;
+    const firmName = getFirmName(m);
+    const supplierName = getSupplierName(m.supplierId);
+    const itemNames = m.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
+    const searchText = `${firmName} ${supplierName} ${itemNames} ${m.transactionNo}`.toLowerCase();
+    return (!searchTerm.trim() || searchText.includes(searchTerm.trim().toLowerCase())) &&
+      (!firmFilter || firmName === firmFilter) &&
+      (!supplierFilter || supplierName === supplierFilter) &&
+      (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase()));
+  });
+  const firmOptions = Array.from(new Set(materialIn.filter((m) => isPendingPH(m.status)).map(getFirmName))).sort();
+  const supplierOptions = Array.from(new Set(materialIn.filter((m) => isPendingPH(m.status)).map((m) => getSupplierName(m.supplierId)))).sort();
 
   return (
     <div className="space-y-6">
@@ -151,10 +158,9 @@ export function PendingPHApproval() {
         
         {/* Mobile View - Cards */}
         <div className="block md:hidden p-4 space-y-4">
-          {materialIn.filter((m) => isPendingPH(m.status)).length === 0 ? (
+          {pendingRows.length === 0 ? (
             <div className="p-6 text-center text-black font-bold border-2 border-dashed border-black">No pending approvals.</div>
-          ) : materialIn
-              .filter((m) => isPendingPH(m.status))
+            ) : pendingRows
               .sort((a, b) => {
                 const timeA = new Date(a.updateTimestamp || a.timestamp || a.date || 0).getTime();
                 const timeB = new Date(b.updateTimestamp || b.timestamp || b.date || 0).getTime();
@@ -216,17 +222,18 @@ export function PendingPHApproval() {
 
         {/* Desktop View - Table */}
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+      <ApprovalFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} itemFilter={itemFilter} onItemChange={setItemFilter} firms={firmOptions} suppliers={supplierOptions} />
 
-      <table className="hidden md:table min-w-full divide-y divide-black border-collapse border border-black">
+      <div className="hidden md:block max-h-[calc(100vh-270px)] overflow-auto">
+      <table className="min-w-[1100px] divide-y divide-black border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
               <th className="px-6 py-3 w-10 border border-black">
                 <input 
                   type="checkbox" 
                   className="rounded border-black text-sky-600 focus:ring-sky-500 w-4 h-4 cursor-pointer"
-                  checked={materialIn.filter(m => isPendingPH(m.status)).length > 0 && selectedIds.size === materialIn.filter(m => isPendingPH(m.status)).length}
-                  onChange={() => toggleSelectAll(materialIn.filter(m => isPendingPH(m.status)).map(m => m.id))}
+                  checked={pendingRows.length > 0 && selectedIds.size === pendingRows.length}
+                  onChange={() => toggleSelectAll(pendingRows.map(m => m.id))}
                 />
               </th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Firm Name</th>
@@ -239,12 +246,11 @@ export function PendingPHApproval() {
             </tr>
           </thead>
           <tbody className="divide-y divide-black bg-white">
-            {materialIn.filter((m) => isPendingPH(m.status)).length === 0 ? (
+            {pendingRows.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-6 py-8 text-center text-black font-medium text-bold">No pending approvals.</td>
               </tr>
-            ) : materialIn
-              .filter((m) => isPendingPH(m.status))
+            ) : pendingRows
               .sort((a, b) => {
                 const timeA = new Date(a.updateTimestamp || a.timestamp || a.date || 0).getTime();
                 const timeB = new Date(b.updateTimestamp || b.timestamp || b.date || 0).getTime();
@@ -260,11 +266,11 @@ export function PendingPHApproval() {
                       onChange={() => toggleSelect(m.id)}
                     />
                   </td>
-                  <td className="px-6 py-4 text-sm font-bold text-black border border-black">{getFirmName(m)}</td>
+                  <td className="px-6 py-4 max-w-[150px] break-words text-sm font-bold text-black border border-black">{getFirmName(m)}</td>
                   <td className="px-6 py-4 text-sm font-medium text-black border border-black">{m.transactionNo}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black whitespace-nowrap">{formatDate(m.date)}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black">{getSupplierName(m.supplierId)}</td>
-                  <td className="px-6 py-4 text-sm text-black border border-black">
+                  <td className="px-6 py-4 max-w-[420px] break-words text-sm text-black border border-black">
                     {getLineItemsElement(m.lines)}
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium text-black border border-black whitespace-nowrap font-mono">{m.totalAmount.toLocaleString()}</td>
@@ -293,6 +299,7 @@ export function PendingPHApproval() {
               ))}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );
