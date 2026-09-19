@@ -15,6 +15,8 @@ export function PendingMDApproval() {
   const [firmFilter, setFirmFilter] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
     firmScope: "all",
@@ -31,6 +33,16 @@ export function PendingMDApproval() {
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isBulkApproving, setIsBulkApproving] = useState(false);
+
+  const handleFromDateChange = (value: string) => {
+    setFromDate(value);
+    setSelectedIds(new Set());
+  };
+
+  const handleToDateChange = (value: string) => {
+    setToDate(value);
+    setSelectedIds(new Set());
+  };
 
   const toggleSelectAll = (ids: string[]) => {
     if (selectedIds.size === ids.length) {
@@ -117,8 +129,9 @@ export function PendingMDApproval() {
     const firmName = getFirmName(m);
     const supplierName = getSupplierName(m.supplierId);
     const itemNames = m.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
+    const mrrDate = String(m.date || "").slice(0, 10);
     const searchText = `${firmName} ${supplierName} ${itemNames} ${m.transactionNo}`.toLowerCase();
-    return (!searchTerm.trim() || searchText.includes(searchTerm.trim().toLowerCase())) && (!firmFilter || firmName === firmFilter) && (!supplierFilter || supplierName === supplierFilter) && (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase()));
+    return (!searchTerm.trim() || searchText.includes(searchTerm.trim().toLowerCase())) && (!firmFilter || firmName === firmFilter) && (!supplierFilter || supplierName === supplierFilter) && (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!fromDate || mrrDate >= fromDate) && (!toDate || mrrDate <= toDate);
   });
   const firmOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending MD").map(getFirmName))).sort();
   const supplierOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending MD").map((m) => getSupplierName(m.supplierId)))).sort();
@@ -205,7 +218,7 @@ export function PendingMDApproval() {
               ))}
         </div>
 
-      <ApprovalFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} itemFilter={itemFilter} onItemChange={setItemFilter} firms={firmOptions} suppliers={supplierOptions} />
+      <ApprovalFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} itemFilter={itemFilter} onItemChange={setItemFilter} fromDate={fromDate} onFromDateChange={handleFromDateChange} toDate={toDate} onToDateChange={handleToDateChange} firms={firmOptions} suppliers={supplierOptions} />
 
       <div className="hidden md:block max-h-[calc(100vh-270px)] overflow-auto">
       <table className="min-w-[1100px] divide-y divide-black border-collapse border border-black">

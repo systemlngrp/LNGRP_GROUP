@@ -9,6 +9,10 @@ type ApprovalFiltersProps = {
   onSupplierChange: (value: string) => void;
   itemFilter: string;
   onItemChange: (value: string) => void;
+  fromDate: string;
+  onFromDateChange: (value: string) => void;
+  toDate: string;
+  onToDateChange: (value: string) => void;
   firms: string[];
   suppliers: string[];
 };
@@ -22,6 +26,10 @@ export function ApprovalFilters({
   onSupplierChange,
   itemFilter,
   onItemChange,
+  fromDate,
+  onFromDateChange,
+  toDate,
+  onToDateChange,
   firms,
   suppliers,
 }: ApprovalFiltersProps) {
@@ -60,6 +68,24 @@ export function ApprovalFilters({
           value={itemFilter}
           onChange={(event) => onItemChange(event.target.value)}
           className="mt-1 w-full border-2 border-black bg-white px-3 py-2 text-sm font-medium normal-case focus:outline-none focus:ring-1 focus:ring-indigo-600"
+        />
+      </label>
+      <label className="min-w-[145px] text-xs font-bold uppercase text-black">
+        From Date
+        <input
+          type="date"
+          value={fromDate}
+          onChange={(event) => onFromDateChange(event.target.value)}
+          className="mt-1 w-full border-2 border-black bg-white px-2 py-2 text-sm font-medium normal-case"
+        />
+      </label>
+      <label className="min-w-[145px] text-xs font-bold uppercase text-black">
+        To Date
+        <input
+          type="date"
+          value={toDate}
+          onChange={(event) => onToDateChange(event.target.value)}
+          className="mt-1 w-full border-2 border-black bg-white px-2 py-2 text-sm font-medium normal-case"
         />
       </label>
     </div>

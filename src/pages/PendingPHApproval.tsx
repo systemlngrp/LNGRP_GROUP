@@ -15,6 +15,8 @@ export function PendingPHApproval() {
   const [firmFilter, setFirmFilter] = useState('');
   const [supplierFilter, setSupplierFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
     firmScope: "all",
@@ -33,6 +35,16 @@ export function PendingPHApproval() {
   const [isBulkApproving, setIsBulkApproving] = useState(false);
 
   const isPendingPH = (status?: string | null) => !status || status === "Pending PH";
+
+  const handleFromDateChange = (value: string) => {
+    setFromDate(value);
+    setSelectedIds(new Set());
+  };
+
+  const handleToDateChange = (value: string) => {
+    setToDate(value);
+    setSelectedIds(new Set());
+  };
 
   const toggleSelectAll = (ids: string[]) => {
     if (selectedIds.size === ids.length) {
@@ -125,11 +137,14 @@ export function PendingPHApproval() {
     const firmName = getFirmName(m);
     const supplierName = getSupplierName(m.supplierId);
     const itemNames = m.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
+    const mrrDate = String(m.date || "").slice(0, 10);
     const searchText = `${firmName} ${supplierName} ${itemNames} ${m.transactionNo}`.toLowerCase();
     return (!searchTerm.trim() || searchText.includes(searchTerm.trim().toLowerCase())) &&
       (!firmFilter || firmName === firmFilter) &&
       (!supplierFilter || supplierName === supplierFilter) &&
-      (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase()));
+      (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase())) &&
+      (!fromDate || mrrDate >= fromDate) &&
+      (!toDate || mrrDate <= toDate);
   });
   const firmOptions = Array.from(new Set(materialIn.filter((m) => isPendingPH(m.status)).map(getFirmName))).sort();
   const supplierOptions = Array.from(new Set(materialIn.filter((m) => isPendingPH(m.status)).map((m) => getSupplierName(m.supplierId)))).sort();
@@ -222,7 +237,7 @@ export function PendingPHApproval() {
 
         {/* Desktop View - Table */}
 
-      <ApprovalFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} itemFilter={itemFilter} onItemChange={setItemFilter} firms={firmOptions} suppliers={supplierOptions} />
+      <ApprovalFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} itemFilter={itemFilter} onItemChange={setItemFilter} fromDate={fromDate} onFromDateChange={handleFromDateChange} toDate={toDate} onToDateChange={handleToDateChange} firms={firmOptions} suppliers={supplierOptions} />
 
       <div className="hidden md:block max-h-[calc(100vh-270px)] overflow-auto">
       <table className="min-w-[1100px] divide-y divide-black border-collapse border border-black">
