@@ -10,7 +10,9 @@ import { getFirmDisplayNameById } from "../lib/firmDisplay";
 export function PendingMrr() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", []);
+  // Pending MRR is a workflow queue, like Gate Entry Master. Load all firms so
+  // a valid pending entry is not hidden merely because another firm is active.
+  const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
   const [gateEntryPhotos] = useData<GateEntryPhoto>("gate-entry-photos", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
