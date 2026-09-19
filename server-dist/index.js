@@ -700,21 +700,15 @@ function hasPermission(user, required) {
     });
 }
 const AUTH_COOKIE_NAME = "lngrp_auth";
-const realtimeClients = new Set();
+// A short polling endpoint is intentionally used instead of a long-lived SSE
+// connection.  Some TLS/HTTP2 reverse proxies terminate SSE streams with
+// ERR_HTTP2_PROTOCOL_ERROR, which caused a persistent browser console error.
+let realtimeDataVersion = 0;
 function publishRealtimeDataChange(entities = ["*"]) {
-    const payload = JSON.stringify({
-        type: "data-changed",
-        entities: Array.from(new Set(entities.filter(Boolean))),
-        timestamp: new Date().toISOString(),
-    });
-    for (const client of realtimeClients) {
-        try {
-            client.write(`event: data-changed\ndata: ${payload}\n\n`);
-        }
-        catch {
-            realtimeClients.delete(client);
-        }
-    }
+    // Keep the argument for callers that may later publish entity-specific
+    // changes.  Clients currently invalidate safely using a wildcard refresh.
+    void entities;
+    realtimeDataVersion += 1;
 }
 function getCookieValue(req, name) {
     const prefix = `${name}=`;
@@ -744,26 +738,8 @@ function requireAuth(req, res, next) {
     next();
 }
 app.get("/api/realtime/updates", requireAuth, (req, res) => {
-    res.status(200);
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.flushHeaders();
-    res.write(`event: connected\ndata: ${JSON.stringify({ timestamp: new Date().toISOString() })}\n\n`);
-    realtimeClients.add(res);
-    const heartbeat = setInterval(() => {
-        try {
-            res.write(`: heartbeat ${Date.now()}\n\n`);
-        }
-        catch {
-            // The close handler below removes failed connections.
-        }
-    }, 25_000);
-    req.on("close", () => {
-        clearInterval(heartbeat);
-        realtimeClients.delete(res);
-    });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ version: realtimeDataVersion });
 });
 app.post("/api/auth/login", async (req, res) => {
     const identifier = String(req.body?.identifier || req.body?.userId || req.body?.email || "").trim();

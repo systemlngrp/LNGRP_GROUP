@@ -34,40 +34,34 @@ export function useRealtimeDataSync(enabled = true) {
       if (event.data?.type === "data-changed") emit(event.data);
     });
 
-    let source: EventSource | null = null;
-    let reconnectTimer: number | null = null;
-    let reconnectAttempts = 0;
+    let pollTimer: number | null = null;
+    let lastVersion: number | null = null;
     let disposed = false;
 
-    const connect = () => {
-      if (disposed) return;
-      source = new EventSource("/api/realtime/updates");
-      source.addEventListener("data-changed", (event: MessageEvent<string>) => {
-        reconnectAttempts = 0;
-        try {
-          emit(JSON.parse(event.data), true);
-        } catch {
-          emit({ entities: ["*"] }, true);
-        }
-      });
-      source.onerror = () => {
-        source?.close();
-        source = null;
-        if (disposed || reconnectTimer !== null) return;
-        const delay = Math.min(30_000, 1_000 * 2 ** Math.min(reconnectAttempts++, 5));
-        reconnectTimer = window.setTimeout(() => {
-          reconnectTimer = null;
-          connect();
-        }, delay);
-      };
+    const poll = async () => {
+      try {
+        const response = await fetch("/api/realtime/updates", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+        if (disposed) return;
+        if (!response.ok) return;
+        const payload = await response.json() as { version?: number };
+        const version = Number(payload.version);
+        if (!Number.isFinite(version)) return;
+        if (lastVersion !== null && version !== lastVersion) emit({ entities: ["*"] }, true);
+        lastVersion = version;
+      } catch {
+        // A transient network failure is retried on the next polling cycle.
+      }
     };
 
-    connect();
+    void poll();
+    pollTimer = window.setInterval(() => void poll(), 10_000);
     return () => {
       disposed = true;
-      source?.close();
       channel?.close();
-      if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+      if (pollTimer !== null) window.clearInterval(pollTimer);
       if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
     };
   }, [enabled]);
