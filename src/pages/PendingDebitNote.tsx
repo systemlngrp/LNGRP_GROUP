@@ -1,35 +1,53 @@
 import { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { MaterialIn, Supplier } from "../types";
+import { Firm, Material, MaterialIn, Supplier } from "../types";
 import { formatDate } from "../lib/serial";
-import { TableControls } from "../components/TableControls";
+import { MaterialReceiptFilters } from "../components/MaterialReceiptFilters";
 import { CheckCircle } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
+import { useNpdItems } from "../hooks/useNpdItems";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 export function PendingDebitNote() {
   const confirm = useConfirm();
   const { user } = useAuth();
   const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
+  const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
+  const [materials] = useData<Material>("materials", []);
+  const npdItems = useNpdItems();
   
-  const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [mrrFilter, setMrrFilter] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostDebitNote = currentUserEmail === "pankaj@bizskilledu.com";
-  const columnCount = canPostDebitNote ? 6 : 5;
+  const columnCount = canPostDebitNote ? 7 : 6;
+
+  function getSupplierName(id: string) {
+    return suppliers.find(s => s.id === id)?.name || id;
+  }
+  function getFirmName(mrr: MaterialIn) {
+    return getFirmDisplayName(firms.find((firm) => firm.id === mrr.firmId || firm.id === mrr.destinationFirmId) || (mrr.firmName ? { firmName: mrr.firmName } : null));
+  }
+  function getItemNames(mrr: MaterialIn) {
+    return mrr.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
+  }
 
   const debitNoteList = useMemo(() => {
     return materialIn
       .filter(m => m.debitNote && !m.debitTallySync)
       .filter(m => {
-        const supplierName = suppliers.find(s => s.id === m.supplierId)?.name || "";
+        const supplierName = getSupplierName(m.supplierId);
         const searchStr = `${m.transactionNo} ${m.debitNote} ${supplierName} ${m.invoiceNo}`.toLowerCase();
-        return searchStr.includes(searchTerm.toLowerCase());
+        return (!firmFilter || getFirmName(m) === firmFilter) && (!itemFilter || getItemNames(m).toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || supplierName === supplierFilter) && (!mrrFilter || searchStr.includes(mrrFilter.trim().toLowerCase()));
       })
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
-  }, [materialIn, searchTerm, suppliers]);
+  }, [firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter, suppliers]);
 
   const handleMarkPosted = async (mrrId: string) => {
     if (!await confirm("Are you sure you want to mark this Debit Note as Posted/Cleared?")) return;
@@ -51,7 +69,8 @@ export function PendingDebitNote() {
     }
   };
 
-  const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || id;
+  const firmOptions = Array.from(new Set(materialIn.filter((m) => m.debitNote && !m.debitTallySync).map(getFirmName))).sort();
+  const supplierOptions = Array.from(new Set(materialIn.filter((m) => m.debitNote && !m.debitTallySync).map((m) => getSupplierName(m.supplierId)))).sort();
 
   return (
     <div className="space-y-6">
@@ -59,18 +78,15 @@ export function PendingDebitNote() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Debit Notes</h2>
       </div>
 
-      <TableControls 
-        searchTerm={searchTerm} 
-        onSearchChange={setSearchTerm} 
-        placeholder="Search MRR, Debit Note, Supplier..." 
-      />
+      <MaterialReceiptFilters firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={firmOptions} suppliers={supplierOptions} />
 
       <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-black border-collapse">
+        <div className="max-h-[calc(100vh-300px)] overflow-auto">
+          <table className="min-w-[950px] divide-y divide-black border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">MRR Details</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Supplier/Customer</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Amount</th>
@@ -94,6 +110,7 @@ export function PendingDebitNote() {
                       <div className="font-bold">{m.transactionNo}</div>
                       <div className="text-[10px] text-slate-500">INV: {m.invoiceNo}</div>
                     </td>
+                    <td className="px-4 py-4 max-w-[130px] break-words">{getFirmName(m)}</td>
                     <td className="px-4 py-4">{getSupplierName(m.supplierId)}</td>
                     <td className="px-4 py-4">{m.debitNoteDate ? formatDate(m.debitNoteDate) : "-"}</td>
                     <td className="px-4 py-4 text-right font-black text-indigo-700">{Number(m.debitNoteAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>

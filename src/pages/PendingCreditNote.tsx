@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 import { CheckCircle } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { Spinner } from "../components/Spinner";
-import { TableControls } from "../components/TableControls";
+import { MaterialReceiptFilters } from "../components/MaterialReceiptFilters";
 import { useData } from "../hooks/useData";
 import { formatDate } from "../lib/serial";
-import { Company, MaterialIn, Supplier } from "../types";
+import { Company, Firm, Material, MaterialIn, Supplier } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
+import { useNpdItems } from "../hooks/useNpdItems";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 function getCreditNoteTaxableAmount(mrr: MaterialIn) {
   return (mrr.lines || []).reduce((sum, line) => {
@@ -23,12 +25,25 @@ export function PendingCreditNote() {
   const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
+  const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
+  const [materials] = useData<Material>("materials", []);
+  const npdItems = useNpdItems();
 
-  const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("");
+  const [mrrFilter, setMrrFilter] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostCreditNote = currentUserEmail === "pankaj@bizskilledu.com";
-  const columnCount = canPostCreditNote ? 6 : 5;
+  const columnCount = canPostCreditNote ? 7 : 6;
+
+  function getFirmName(mrr: MaterialIn) {
+    return getFirmDisplayName(firms.find((firm) => firm.id === mrr.firmId || firm.id === mrr.destinationFirmId) || (mrr.firmName ? { firmName: mrr.firmName } : null));
+  }
+  function getItemNames(mrr: MaterialIn) {
+    return mrr.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
+  }
 
   const getPartyName = (id: string) =>
     suppliers.find((supplier) => supplier.id === id)?.name ||
@@ -41,10 +56,10 @@ export function PendingCreditNote() {
       .filter((mrr) => {
         const partyName = getPartyName(mrr.supplierId);
         const searchStr = `${mrr.transactionNo} ${partyName} ${mrr.invoiceNo}`.toLowerCase();
-        return searchStr.includes(searchTerm.toLowerCase());
+        return (!firmFilter || getFirmName(mrr) === firmFilter) && (!itemFilter || getItemNames(mrr).toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || partyName === supplierFilter) && (!mrrFilter || searchStr.includes(mrrFilter.trim().toLowerCase()));
       })
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
-  }, [companies, materialIn, searchTerm, suppliers]);
+  }, [companies, firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter, suppliers]);
 
   const handleMarkPosted = async (mrrId: string) => {
     if (!await confirm("Are you sure you want to mark this Credit Note as Posted/Cleared?")) return;
@@ -79,18 +94,15 @@ export function PendingCreditNote() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Credit Notes</h2>
       </div>
 
-      <TableControls
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        placeholder="Search MRR, Credit Note, Supplier..."
-      />
+      <MaterialReceiptFilters firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={Array.from(new Set(materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).map(getFirmName))).sort()} suppliers={Array.from(new Set(materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).map((m) => getPartyName(m.supplierId)))).sort()} />
 
       <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-black border-collapse">
+        <div className="max-h-[calc(100vh-300px)] overflow-auto">
+          <table className="min-w-[950px] divide-y divide-black border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">MRR Details</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Supplier/Customer</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Taxable Amount</th>
@@ -114,6 +126,7 @@ export function PendingCreditNote() {
                       <div className="font-bold">{mrr.transactionNo}</div>
                       <div className="text-[10px] text-slate-500">INV: {mrr.invoiceNo}</div>
                     </td>
+                    <td className="px-4 py-4 max-w-[130px] break-words">{getFirmName(mrr)}</td>
                     <td className="px-4 py-4">{getPartyName(mrr.supplierId)}</td>
                     <td className="px-4 py-4">{mrr.date ? formatDate(mrr.date) : "-"}</td>
                     <td className="px-4 py-4 text-right font-black text-indigo-700">

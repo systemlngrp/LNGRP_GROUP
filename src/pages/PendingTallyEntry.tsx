@@ -1,9 +1,9 @@
 import { useData } from "../hooks/useData";
-import { Material, MaterialIn, Item, Supplier } from "../types";
-import { Fragment, useState, useMemo, useEffect } from "react";
+import { Firm, Material, MaterialIn, Item, Supplier } from "../types";
+import { Fragment, useState, useMemo } from "react";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
+import { MaterialReceiptFilters } from "../components/MaterialReceiptFilters";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { CheckCircle, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
@@ -11,27 +11,22 @@ import { useNavigate } from "react-router-dom";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 export function PendingTallyEntry() {
   const confirm = useConfirm();
   const { user } = useAuth();
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
+  const [firmFilter, setFirmFilter] = useState('');
+  const [itemFilter, setItemFilter] = useState('');
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [mrrFilter, setMrrFilter] = useState('');
 
   const navigate = useNavigate();
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
+  const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -39,15 +34,21 @@ export function PendingTallyEntry() {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostTally = currentUserEmail === "pankaj@bizskilledu.com";
-  const tableColumnCount = canPostTally ? 20 : 18;
+  const tableColumnCount = canPostTally ? 21 : 19;
   const formatMoney = (value?: number) =>
     `${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const pendingList = useMemo(() => {
     return materialIn
       .filter((m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in")
+      .filter((m) => {
+        const firmName = getFirmName(m);
+        const itemNames = getItemNames(m).toLowerCase();
+        const supplierName = getSupplierName(m.supplierId);
+        return (!firmFilter || firmName === firmFilter) && (!itemFilter || itemNames.includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || supplierName === supplierFilter) && (!mrrFilter || String(m.transactionNo || "").toLowerCase().includes(mrrFilter.trim().toLowerCase()));
+      })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [materialIn]);
+  }, [firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -115,7 +116,7 @@ export function PendingTallyEntry() {
         {lines.map((l, idx) => {
           const itemName = materials.find(i => i.id === l.itemId)?.name || npdItems.find(i => i.id === l.itemId)?.name;
           return (
-            <li key={idx} className="whitespace-nowrap border-b border-black last:border-0 pb-1 last:pb-0 mb-1 last:mb-0 text-[10px]">
+            <li key={idx} className="whitespace-normal break-words border-b border-black last:border-0 pb-1 last:pb-0 mb-1 last:mb-0 text-[10px]">
               <span className="font-medium text-black">{itemName || 'Unknown'}</span>
               <span className="ml-2 text-black">[{l.qty} {l.uom} @ {l.rate}]</span>
             </li>
@@ -132,7 +133,18 @@ export function PendingTallyEntry() {
       return sum + lineValue;
     }, 0);
 
-  const getSupplierName = (id: string) => suppliers.find(s => s.id === id)?.name || id;
+  function getSupplierName(id: string) {
+    return suppliers.find(s => s.id === id)?.name || id;
+  }
+  function getFirmName(mrr: MaterialIn) {
+    const firm = firms.find((entry) => entry.id === mrr.firmId || entry.id === mrr.destinationFirmId);
+    return getFirmDisplayName(firm || (mrr.firmName ? { firmName: mrr.firmName } : null));
+  }
+  function getItemNames(mrr: MaterialIn) {
+    return mrr.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
+  }
+  const firmOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Tally").map(getFirmName))).sort();
+  const supplierOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Tally").map((m) => getSupplierName(m.supplierId)))).sort();
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 pb-20">
@@ -142,7 +154,7 @@ export function PendingTallyEntry() {
 
       <div className="p-4">
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+      <MaterialReceiptFilters firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={firmOptions} suppliers={supplierOptions} />
 
       <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
           <div className="bg-fuchsia-700 px-4 py-2 text-white font-black uppercase text-sm border-b border-black flex justify-between items-center">
@@ -162,8 +174,8 @@ export function PendingTallyEntry() {
             ) : null}
           </div>
           
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-black border-collapse">
+          <div className="max-h-[calc(100vh-300px)] overflow-auto">
+            <table className="min-w-[1500px] divide-y divide-black border-collapse">
               <thead className="sticky top-0 z-30 bg-fuchsia-700 text-white text-[10px] font-black uppercase tracking-widest">
                 <tr className="divide-x divide-white/20">
                   {canPostTally ? (
@@ -177,6 +189,7 @@ export function PendingTallyEntry() {
                     </th>
                   ) : null}
                   <th className="px-4 py-3 text-left">Trn No</th>
+                  <th className="px-4 py-3 text-left">Firm</th>
                   <th className="px-4 py-3 text-left">MRR Type</th>
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-left">Supplier</th>
@@ -221,6 +234,7 @@ export function PendingTallyEntry() {
                             </td>
                           ) : null}
                           <td className="px-4 py-4 whitespace-nowrap">{m.transactionNo}</td>
+                          <td className="px-4 py-4 max-w-[130px] break-words">{getFirmName(m)}</td>
                           <td className="px-4 py-4 whitespace-nowrap">{m.mrrType || "-"}</td>
                           <td className="px-4 py-4 whitespace-nowrap">{formatDate(m.date)}</td>
                           <td className="px-4 py-4">{getSupplierName(m.supplierId)}</td>
