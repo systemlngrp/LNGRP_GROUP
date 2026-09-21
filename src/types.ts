@@ -238,6 +238,7 @@ export interface MaterialIssueReelLine {
   weightKg: number;
   productionId: string;
   jobNo: string;
+  jobTransfer?: "Yes" | "No" | string;
   updatedBy?: string;
   updateTimestamp?: string;
 }
@@ -280,6 +281,7 @@ export interface MaterialReturnReelLine {
   weightKg: number;
   productionId: string;
   jobNo: string;
+  jobTransfer?: "Yes" | "No" | string;
   updatedBy?: string;
   updateTimestamp?: string;
 }
@@ -814,6 +816,8 @@ export interface Production {
   uom: string;
   remarks: string;
   status: "Pending PH" | "Pending Consumption" | "Pending FFG" | "Pending Tally" | "Completed" | "Cancelled";
+  reelTransferId?: string;
+  reelTransferTimestamp?: string;
   
   // New production fields
   jobCardNo?: string | number;

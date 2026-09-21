@@ -7084,6 +7084,7 @@ await db.query(`
         { table: "material_issue_reel_lines", column: "weightKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
         { table: "material_issue_reel_lines", column: "productionId", type: "VARCHAR(36) NOT NULL" },
         { table: "material_issue_reel_lines", column: "jobNo", type: "VARCHAR(100) NOT NULL" },
+        { table: "material_issue_reel_lines", column: "jobTransfer", type: "VARCHAR(10) DEFAULT 'No'" },
         { table: "material_issue_reel_lines", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "material_issue_reel_lines", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "material_returns", column: "returnNo", type: "VARCHAR(100) NOT NULL" },
@@ -7112,6 +7113,7 @@ await db.query(`
         { table: "material_return_reel_lines", column: "weightKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
         { table: "material_return_reel_lines", column: "productionId", type: "VARCHAR(36) NOT NULL" },
         { table: "material_return_reel_lines", column: "jobNo", type: "VARCHAR(100) NOT NULL" },
+        { table: "material_return_reel_lines", column: "jobTransfer", type: "VARCHAR(10) DEFAULT 'No'" },
         { table: "material_return_reel_lines", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "material_return_reel_lines", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "suppliers", column: "name", type: "VARCHAR(255) NOT NULL" },
@@ -7790,6 +7792,8 @@ await db.query(`
       await ensureUniqueMaterialErpIndex(db, database);
       await ensureUniquePackingSlipReelNoIndex(db, database);
       await ensureUniqueMachineNameIndex(db, database);
+      await ensureColumnExists(db, database, "productions", "reelTransferId", "VARCHAR(36)");
+      await ensureColumnExists(db, database, "productions", "reelTransferTimestamp", "VARCHAR(255)");
       await migrateReelInventoryToUnitOne(db);
 
       for (const tableName of FIRM_SCOPED_TABLES) {
@@ -12634,10 +12638,11 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
   const sourceProductionId = String(req.body?.sourceProductionId || "").trim();
   const targetProductionId = String(req.body?.targetProductionId || "").trim();
   const packingSlipIds: string[] = Array.from(new Set<string>((Array.isArray(req.body?.packingSlipIds) ? req.body.packingSlipIds : []).map((value: unknown) => String(value || "").trim()).filter(Boolean)));
+  const totalTransferWeight = Number(req.body?.totalTransferWeight || 0);
   const transferDate = String(req.body?.date || new Date().toISOString().slice(0, 10)).trim();
   const remarks = String(req.body?.remarks || "").trim();
-  if (!sourceProductionId || !targetProductionId || sourceProductionId === targetProductionId || !packingSlipIds.length) {
-    return res.status(400).json({ error: "Select a source job, a different target job, and at least one reel." });
+  if (!sourceProductionId || !targetProductionId || sourceProductionId === targetProductionId || !packingSlipIds.length || !Number.isFinite(totalTransferWeight) || totalTransferWeight <= 0) {
+    return res.status(400).json({ error: "Select a source job, a different target job, reels, and a positive Total Transfer Weight." });
   }
 
   const db = await getPool();
@@ -12734,13 +12739,32 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const averageNotionalKg = outstanding.length ? notionalLeftKg / outstanding.length : 0;
     if (averageNotionalKg <= 0.004) throw new Error("No positive notional reel balance is available for transfer.");
 
-    const selected = packingSlipIds.map((packingSlipId) => {
+    const selectedCandidates = packingSlipIds.map((packingSlipId) => {
       const balance = Number(balanceBySlip.get(packingSlipId) || 0);
-      const issue = [...issues].reverse().find((row) => String(row.packingSlipId) === packingSlipId);
-      const weightKg = Number(Math.min(balance, averageNotionalKg).toFixed(2));
-      if (!issue || balance <= 0.004 || weightKg <= 0) throw new Error("A selected reel no longer has an available source balance.");
-      return { issue, weightKg, rate: Number(issue.rate || 0), amount: Number((weightKg * Number(issue.rate || 0)).toFixed(2)) };
+      const reelIssues = issues.filter((row) => String(row.packingSlipId) === packingSlipId);
+      const issue = reelIssues[reelIssues.length - 1];
+      const originalIssuedWeight = reelIssues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+      if (!issue || balance <= 0.004 || originalIssuedWeight <= 0) throw new Error("A selected reel has no valid original issue weight or available balance.");
+      return { issue, balance, originalIssuedWeight };
     });
+    const selectedAvailableWeight = selectedCandidates.reduce((sum, row) => sum + row.balance, 0);
+    if (totalTransferWeight > selectedAvailableWeight + 0.004) throw new Error("Total Transfer Weight exceeds the selected reels' available balance.");
+    const selectedOriginalIssuedWeight = selectedCandidates.reduce((sum, row) => sum + row.originalIssuedWeight, 0);
+    let distributedWeight = 0;
+    const selected = selectedCandidates.map((row, index) => {
+      const weightKg = index === selectedCandidates.length - 1
+        ? Number((totalTransferWeight - distributedWeight).toFixed(2))
+        : Number((totalTransferWeight * row.originalIssuedWeight / selectedOriginalIssuedWeight).toFixed(2));
+      distributedWeight = Number((distributedWeight + weightKg).toFixed(2));
+      if (weightKg <= 0 || weightKg > row.balance + 0.004) throw new Error(`Proportional transfer weight exceeds the available balance for reel ${row.issue.ourReelNo || row.issue.packingSlipId}.`);
+      return { issue: row.issue, weightKg, rate: Number(row.issue.rate || 0), amount: Number((weightKg * Number(row.issue.rate || 0)).toFixed(2)) };
+    });
+    const [priorTransferReturns] = await conn.query(
+      `SELECT packingSlipId FROM material_return_reel_lines
+       WHERE productionId = ? AND jobTransfer = 'Yes' AND packingSlipId IN (${packingSlipIds.map(() => "?").join(",")})`,
+      [sourceProductionId, ...packingSlipIds]
+    );
+    if ((priorTransferReturns as any[]).length) throw new Error("A selected reel already has a job-transfer return against the source job.");
 
     const timestamp = new Date().toISOString();
     const transferId = crypto.randomUUID();
@@ -12776,8 +12800,8 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
         const returnReelLineId = crypto.randomUUID();
         const issueReelLineId = crypto.randomUUID();
         const transferLineId = crypto.randomUUID();
-        await conn.query("INSERT INTO material_return_reel_lines (id, materialReturnId, materialReturnLineId, materialId, packingSlipId, ourReelNo, weightKg, productionId, jobNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [returnReelLineId, returnId, returnLineId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, sourceProductionId, sourceJobNo, actor, timestamp]);
-        await conn.query("INSERT INTO material_issue_reel_lines (id, materialIssueId, materialIssueLineId, materialId, packingSlipId, ourReelNo, weightKg, productionId, jobNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [issueReelLineId, issueId, issueLineId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, targetProductionId, targetJobNo, actor, timestamp]);
+        await conn.query("INSERT INTO material_return_reel_lines (id, materialReturnId, materialReturnLineId, materialId, packingSlipId, ourReelNo, weightKg, productionId, jobNo, jobTransfer, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Yes', ?, ?)", [returnReelLineId, returnId, returnLineId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, sourceProductionId, sourceJobNo, actor, timestamp]);
+        await conn.query("INSERT INTO material_issue_reel_lines (id, materialIssueId, materialIssueLineId, materialId, packingSlipId, ourReelNo, weightKg, productionId, jobNo, jobTransfer, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Yes', ?, ?)", [issueReelLineId, issueId, issueLineId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, targetProductionId, targetJobNo, actor, timestamp]);
         await conn.query("INSERT INTO reel_transfer_lines (id, reelTransferId, materialId, packingSlipId, ourReelNo, weightKg, rate, amount, materialReturnReelLineId, materialIssueReelLineId, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [transferLineId, transferId, materialId, row.issue.packingSlipId, row.issue.ourReelNo, row.weightKg, row.rate, row.amount, returnReelLineId, issueReelLineId, actor, timestamp]);
       }
     }
@@ -12796,6 +12820,7 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
       if (!production.cancelTimestamp && status !== "Completed") status = usage > 0 ? "Pending Tally" : "Pending Consumption";
       await conn.query("UPDATE productions SET actualPaperUsed = ?, status = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [usage, status, actor, timestamp, productionId]);
     }
+    await conn.query("UPDATE productions SET reelTransferId = ?, reelTransferTimestamp = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [transferId, timestamp, actor, timestamp, sourceProductionId]);
 
     await conn.commit();
     return res.json({ ok: true, transferId, transferNo, returnId, returnNo, issueId, issueNo, totalWeightKg, totalAmount });

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Material, MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
-import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
+import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, distributeProportionalTransferWeight } from "../lib/reelTransfer";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
@@ -27,6 +27,7 @@ export function ReelTransferForm() {
   const [sourceId, setSourceId] = useState(requestedSourceId);
   const [targetId, setTargetId] = useState("");
   const [selectedSlips, setSelectedSlips] = useState<string[]>([]);
+  const [totalTransferWeight, setTotalTransferWeight] = useState<number | "">("");
   const [remarks, setRemarks] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -46,18 +47,25 @@ export function ReelTransferForm() {
   ).map((p) => ({ value: p.id, label: String(p.transactionNo) }));
   const materialMap = new Map(materials.map((row) => [row.id, row]));
   const selectedRows = (sourceContext?.reels || []).filter((row) => selectedSlips.includes(row.packingSlipId));
-  const totalWeight = selectedRows.reduce((sum, row) => sum + row.transferWeightKg, 0);
-  const totalAmount = selectedRows.reduce((sum, row) => sum + row.amount, 0);
+  const originalIssuedBySlip = useMemo(() => {
+    const values = new Map<string, number>();
+    issueReels.filter((row) => row.productionId === sourceId).forEach((row) => values.set(row.packingSlipId, (values.get(row.packingSlipId) || 0) + Number(row.weightKg || 0)));
+    return values;
+  }, [issueReels, sourceId]);
+  const allocations = useMemo(() => distributeProportionalTransferWeight(selectedRows.map((row) => ({ id: row.packingSlipId, issuedWeightKg: originalIssuedBySlip.get(row.packingSlipId) || 0, availableWeightKg: row.weightKg })), Number(totalTransferWeight || 0)), [originalIssuedBySlip, selectedRows, totalTransferWeight]);
+  const allocationBySlip = useMemo(() => new Map(allocations.map((row) => [row.id, row.weightKg])), [allocations]);
+  const totalWeight = allocations.reduce((sum, row) => sum + row.weightKg, 0);
+  const totalAmount = selectedRows.reduce((sum, row) => sum + (allocationBySlip.get(row.packingSlipId) || 0) * row.rate, 0);
 
-  const handleSource = (value: string) => { setSourceId(value); setTargetId(""); setSelectedSlips([]); };
+  const handleSource = (value: string) => { setSourceId(value); setTargetId(""); setSelectedSlips([]); setTotalTransferWeight(""); };
   const toggleReel = (id: string) => setSelectedSlips((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (saving || !sourceId || !targetId || !selectedSlips.length) return;
+    if (saving || !sourceId || !targetId || !selectedSlips.length || Number(totalTransferWeight) <= 0) return;
     setSaving(true);
     try {
       const token = localStorage.getItem("authToken") || "";
-      const response = await fetch("/api/reel-transfers/execute", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ date, sourceProductionId: sourceId, targetProductionId: targetId, packingSlipIds: selectedSlips, remarks }) });
+      const response = await fetch("/api/reel-transfers/execute", { method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ date, sourceProductionId: sourceId, targetProductionId: targetId, packingSlipIds: selectedSlips, totalTransferWeight, remarks }) });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Failed to transfer reels.");
       [
@@ -72,7 +80,7 @@ export function ReelTransferForm() {
         "productions",
       ].forEach((key) => window.dispatchEvent(new CustomEvent(`sync-data-${key}`)));
       alert(`Reel transfer ${result.transferNo} saved successfully.`);
-      setSelectedSlips([]); setTargetId(""); setRemarks("");
+      setSelectedSlips([]); setTargetId(""); setTotalTransferWeight(""); setRemarks("");
       if (returnTo) navigate(returnTo);
     } catch (error) { alert(error instanceof Error ? error.message : "Failed to transfer reels."); }
     finally { setSaving(false); }
@@ -93,6 +101,7 @@ export function ReelTransferForm() {
           <Select disabled={!sourceId} options={targetOptions} value={targetId} onChange={setTargetId} placeholder="Select job with no reel issue..." noOptionsMessage="No target: reel issue must be empty and Corrugation must not be started." />
           {sourceId && targetOptions.length === 0 ? <div className="mt-1 text-[11px] font-bold text-amber-700">No target job is available. The target must have no reel issue and Corrugation Liner must not be started.</div> : null}
         </Field>
+        <Field label="Total Transfer Weight (KG)"><input type="number" min="0.01" step="0.01" required value={totalTransferWeight} onChange={(e) => setTotalTransferWeight(e.target.value === "" ? "" : Number(e.target.value))} className="w-full rounded border-2 border-black p-2" /></Field>
         <Field label="Remarks"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
         <Field label={`Transfer Window (${windowHours} Hours)`}><input readOnly value={sourceContext?.expiresAt ? new Date(sourceContext.expiresAt).toLocaleString() : "Select source job"} className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>
       </div>
@@ -119,9 +128,9 @@ export function ReelTransferForm() {
         </section>
       ) : null}
       <div className="overflow-x-auto rounded border border-black"><table className="w-full border-collapse text-sm"><thead className="bg-slate-100"><tr>{["Select", "Reel No.", "Material / ERP", "Actual Balance", "Transfer KG", "Rate", "Amount"].map((h) => <th key={h} className="border border-black p-2 text-left uppercase">{h}</th>)}</tr></thead><tbody>
-        {!sourceContext?.reels.length ? <tr><td colSpan={7} className="p-5 text-center text-slate-500">Select an eligible source job.</td></tr> : sourceContext.reels.map((row) => <tr key={row.packingSlipId}><td className="border border-black p-2"><input type="checkbox" checked={selectedSlips.includes(row.packingSlipId)} onChange={() => toggleReel(row.packingSlipId)} /></td><td className="border border-black p-2 font-bold">{row.ourReelNo}</td><td className="border border-black p-2">{materialMap.get(row.materialId)?.name || row.materialId}<br/><span className="text-xs text-slate-500">{materialMap.get(row.materialId)?.erpCode || ""}</span></td><td className="border border-black p-2 text-right">{row.weightKg.toFixed(2)}</td><td className="border border-black p-2 text-right font-bold">{row.transferWeightKg.toFixed(2)}</td><td className="border border-black p-2 text-right">{row.rate.toFixed(2)}</td><td className="border border-black p-2 text-right">{row.amount.toFixed(2)}</td></tr>)}
+        {!sourceContext?.reels.length ? <tr><td colSpan={7} className="p-5 text-center text-slate-500">Select an eligible source job.</td></tr> : sourceContext.reels.map((row) => <tr key={row.packingSlipId}><td className="border border-black p-2"><input type="checkbox" checked={selectedSlips.includes(row.packingSlipId)} onChange={() => toggleReel(row.packingSlipId)} /></td><td className="border border-black p-2 font-bold">{row.ourReelNo}</td><td className="border border-black p-2">{materialMap.get(row.materialId)?.name || row.materialId}<br/><span className="text-xs text-slate-500">{materialMap.get(row.materialId)?.erpCode || ""}</span></td><td className="border border-black p-2 text-right">{row.weightKg.toFixed(2)}</td><td className="border border-black p-2 text-right font-bold">{(allocationBySlip.get(row.packingSlipId) || 0).toFixed(2)}</td><td className="border border-black p-2 text-right">{row.rate.toFixed(2)}</td><td className="border border-black p-2 text-right">{((allocationBySlip.get(row.packingSlipId) || 0) * row.rate).toFixed(2)}</td></tr>)}
       </tbody></table></div>
-      <div className="flex flex-col items-end justify-between gap-3 border-2 border-black bg-slate-950 p-4 text-white md:flex-row md:items-center"><div><div className="text-xs font-bold uppercase text-slate-300">Transfer Total</div><div className="text-xl font-black">{totalWeight.toFixed(2)} KG &nbsp; | &nbsp; {totalAmount.toFixed(2)}</div></div><button disabled={saving || !sourceId || !targetId || !selectedSlips.length} className="inline-flex items-center gap-2 rounded bg-indigo-600 px-6 py-3 font-black uppercase hover:bg-indigo-700 disabled:opacity-50"><ArrowRightLeft size={18}/>{saving ? "Saving..." : "Save Reel Transfer"}</button></div>
+      <div className="flex flex-col items-end justify-between gap-3 border-2 border-black bg-slate-950 p-4 text-white md:flex-row md:items-center"><div><div className="text-xs font-bold uppercase text-slate-300">Transfer Total</div><div className="text-xl font-black">{totalWeight.toFixed(2)} KG &nbsp; | &nbsp; {totalAmount.toFixed(2)}</div></div><button disabled={saving || !sourceId || !targetId || !selectedSlips.length || Number(totalTransferWeight) <= 0 || Math.abs(totalWeight - Number(totalTransferWeight)) > 0.001} className="inline-flex items-center gap-2 rounded bg-indigo-600 px-6 py-3 font-black uppercase hover:bg-indigo-700 disabled:opacity-50"><ArrowRightLeft size={18}/>{saving ? "Saving..." : "Save Reel Transfer"}</button></div>
     </form>
   </div>;
 }
