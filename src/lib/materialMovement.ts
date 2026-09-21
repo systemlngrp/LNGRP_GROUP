@@ -27,7 +27,17 @@ function reelBalanceKey(productionId: string, line: Pick<MaterialIssueReelLine, 
 }
 
 export function isOpeningReelPackingSlip(slip: Pick<MaterialInPackingSlip, "materialInId">) {
-  return String(slip.materialInId || "").trim() === OPENING_REEL_MATERIAL_IN_ID;
+  // Older opening entries were saved as "Opening" while newer entries use
+  // "OPENING".  Both are the same stock source and must remain issuable.
+  return normalizeReference(slip.materialInId) === normalizeReference(OPENING_REEL_MATERIAL_IN_ID);
+}
+
+export function isActiveReelMaterial(material: Pick<Material, "type" | "active"> | undefined) {
+  return Boolean(
+    material &&
+      normalizeReference(material.type) === "reel" &&
+      normalizeReference(material.active || "Yes") !== "no"
+  );
 }
 
 function buildProductionResolver(productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []) {
@@ -187,13 +197,15 @@ export function getAvailableReelPackingSlips(
   packingSlips: MaterialInPackingSlip[],
   issueReelLines: MaterialIssueReelLine[],
   returnReelLines: MaterialReturnReelLine[],
-  materials: Pick<Material, "id" | "type" | "openingQty">[] = [],
+  materials: Pick<Material, "id" | "type" | "active" | "openingQty">[] = [],
   ourReelNoStartNumber: unknown = 1
 ) {
   const netIssuedBySlip = buildSlipNetIssuedWeights(issueReelLines, returnReelLines);
+  const materialById = new Map(materials.map((material) => [material.id, material]));
   const allSlips = [...packingSlips, ...buildOpeningReelPackingSlips(materials, packingSlips, ourReelNoStartNumber)];
   return allSlips.flatMap((slip) => {
     if (slip.materialId !== materialId) return [];
+    if (!isActiveReelMaterial(materialById.get(slip.materialId))) return [];
     const baseWeight = Number(slip.weightKg || 0);
     if (baseWeight <= 0) return [];
     const availableWeight = Number((baseWeight - (netIssuedBySlip.get(slip.id) || 0)).toFixed(2));

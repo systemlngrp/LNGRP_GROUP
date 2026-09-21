@@ -8,7 +8,7 @@ import type {
   Supplier,
 } from "../types";
 import { formatOurReelNo, getNextNumber } from "./materialNumbering";
-import { isOpeningReelPackingSlip } from "./materialMovement";
+import { isActiveReelMaterial, isOpeningReelPackingSlip } from "./materialMovement";
 
 export type ReelStockCalculationRow = {
   slipId: string;
@@ -101,7 +101,7 @@ export function buildReelStockRows({
   );
 
   const openingRows: ReelStockCalculationRow[] = materials
-    .filter((material) => material.type === "Reel" && Number(material.openingQty || 0) > 0 && !explicitOpeningMaterialIds.has(material.id))
+    .filter((material) => isActiveReelMaterial(material) && Number(material.openingQty || 0) > 0 && !explicitOpeningMaterialIds.has(material.id))
     .map((material, index) => {
       const openingQty = round2(Number(material.openingQty || 0));
       const openingRate = round2(Number(material.openingRate || 0));
@@ -143,7 +143,10 @@ export function buildReelStockRows({
     });
 
   const mrrRows = packingSlips
-    .filter((slip) => materialInMap.has(slip.materialInId) || isOpeningReelPackingSlip(slip))
+    .filter((slip) => {
+      const material = materialMap.get(slip.materialId);
+      return isActiveReelMaterial(material) && (materialInMap.has(slip.materialInId) || isOpeningReelPackingSlip(slip));
+    })
     .map((slip) => {
       const material = materialMap.get(slip.materialId);
       const receipt = materialInMap.get(slip.materialInId);

@@ -11,6 +11,7 @@ import {
   MaterialReturnReelLine,
 } from "../types";
 import { buildReelStockRows } from "../lib/reelStock";
+import { isActiveReelMaterial } from "../lib/materialMovement";
 
 type ReelStockRow = {
   materialId: string;
@@ -69,7 +70,7 @@ export function ErpWiseReelStockReport() {
       : allReelRows;
 
     return materials
-      .filter((material) => material.type === "Reel")
+      .filter(isActiveReelMaterial)
       .map((material) => {
         const materialReelRows = sourceReelRows.filter((row) => row.materialId === material.id);
         const openingStock = materialReelRows.reduce((sum, row) => sum + Number(row.openingQty || 0), 0);
