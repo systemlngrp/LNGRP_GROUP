@@ -175,6 +175,8 @@ export function MaterialIssueForm() {
   const npdItems = useNpdItems();
 
   const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
+  const requestedFirmId = String(searchParams.get("firmId") || "").trim();
+  const requestedFirm = useMemo(() => firms.find((firm) => firm.id === requestedFirmId) || null, [firms, requestedFirmId]);
   const issuePackingSlips = useMemo(
     () => packingSlips.filter((slip) => String(slip.firmId || "") === String(unitTwoFirm?.id || "")),
     [packingSlips, unitTwoFirm?.id]
@@ -213,16 +215,17 @@ export function MaterialIssueForm() {
 
   const generalIssuesForDate = useMemo(() => {
     const selected = String(date || "").trim();
+    const dailyFirmId = requestedFirmId || String(unitTwoFirm?.id || "");
     if (!selected) return [];
     return materialIssues
-      .filter((issue) => isWithoutJobIssue(issue.issueType) && normalizeDate(issue.date) === selected)
+      .filter((issue) => isWithoutJobIssue(issue.issueType) && normalizeDate(issue.date) === selected && String(issue.firmId || "") === dailyFirmId)
       .slice()
       .sort((a, b) => {
         const timeA = new Date(a.updateTimestamp || a.date || 0).getTime();
         const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
         return timeB - timeA;
       });
-  }, [date, materialIssues]);
+  }, [date, materialIssues, requestedFirmId, unitTwoFirm?.id]);
 
   const jobOptions = useMemo(
     () =>
@@ -582,8 +585,12 @@ export function MaterialIssueForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!date || lines.length === 0) return;
-    if (!unitTwoFirm) {
+    if (!unitTwoFirm && lines.some((line) => line.isReel)) {
       alert("Unit-II is not configured in Firm Master. Reel operations cannot be saved.");
+      return;
+    }
+    if (isWithoutJobIssue(issueType) && requestedFirmId && !requestedFirm) {
+      alert("The selected firm was not found.");
       return;
     }
     if (issueType === "Job" && !productionId) return;
@@ -626,8 +633,8 @@ export function MaterialIssueForm() {
 
       const issue: MaterialIssue = {
         id: issueId,
-        firmId: unitTwoFirm.id,
-        firmName: unitTwoFirm.firmName,
+        firmId: isWithoutJobIssue(issueType) ? (requestedFirm?.id || unitTwoFirm?.id) : unitTwoFirm?.id,
+        firmName: isWithoutJobIssue(issueType) ? (requestedFirm?.firmName || unitTwoFirm?.firmName) : unitTwoFirm?.firmName,
         issueNo,
         consumptionTransactionNo,
         date,

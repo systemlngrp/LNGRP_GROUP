@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { formatDate } from "../lib/serial";
-import { Material, MaterialIssue, MaterialIssueLine } from "../types";
+import { Firm, Material, MaterialIssue, MaterialIssueLine } from "../types";
 
 function toDateOnly(value?: string) {
   return (value || "").split("T")[0];
@@ -10,11 +10,13 @@ function toDateOnly(value?: string) {
 
 export function DailyConsumptionMaster() {
   const [materials] = useData<Material>("materials", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const materialById = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
@@ -22,7 +24,7 @@ export function DailyConsumptionMaster() {
   const generalIssuesForDate = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return materialIssues
-      .filter((issue) => issue.issueType === "General" && toDateOnly(issue.date) === date)
+      .filter((issue) => issue.issueType === "General" && toDateOnly(issue.date) === date && (!firmFilter || issue.firmId === firmFilter))
       .filter((issue) => {
         if (!normalizedSearch) return true;
         return (
@@ -35,7 +37,7 @@ export function DailyConsumptionMaster() {
         const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
         return timeB - timeA;
       });
-  }, [materialIssues, date, searchTerm]);
+  }, [firmFilter, materialIssues, date, searchTerm]);
 
   const issueLinesByIssueId = useMemo(() => {
     const map = new Map<string, MaterialIssueLine[]>();
@@ -79,6 +81,10 @@ export function DailyConsumptionMaster() {
               className="w-full px-3 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
             />
           </div>
+          <select value={firmFilter} onChange={(e) => { setFirmFilter(e.target.value); setSelectedIssueId(null); }} className="w-full md:w-52 px-3 py-2 border border-black rounded text-sm font-bold bg-white">
+            <option value="">All firms</option>
+            {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+          </select>
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
@@ -114,6 +120,7 @@ export function DailyConsumptionMaster() {
                     <div className="text-xs font-bold text-slate-600">{count} line(s)</div>
                   </div>
                   <div className="text-xs text-slate-600 mt-1">{issue.remarks || "-"}</div>
+                  <div className="text-xs font-bold text-slate-600 mt-1">{issue.firmName || firms.find((firm) => firm.id === issue.firmId)?.firmName || "Legacy / Unassigned"}</div>
                 </button>
               );
             })
@@ -124,6 +131,7 @@ export function DailyConsumptionMaster() {
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-4 py-3 text-left text-xs font-black text-black uppercase tracking-wider border border-black">Issue No</th>
+              <th className="px-4 py-3 text-left text-xs font-black text-black uppercase tracking-wider border border-black">Firm</th>
               <th className="px-4 py-3 text-left text-xs font-black text-black uppercase tracking-wider border border-black">Remarks</th>
               <th className="px-4 py-3 text-left text-xs font-black text-black uppercase tracking-wider border border-black">Lines</th>
               <th className="px-4 py-3 text-left text-xs font-black text-black uppercase tracking-wider border border-black">Updated</th>
@@ -132,7 +140,7 @@ export function DailyConsumptionMaster() {
           <tbody className="bg-white divide-y divide-black">
             {generalIssuesForDate.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-600 border border-black">
+                <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-600 border border-black">
                   No issues found for this date.
                 </td>
               </tr>
@@ -147,6 +155,7 @@ export function DailyConsumptionMaster() {
                     onClick={() => setSelectedIssueId((prev) => (prev === issue.id ? null : issue.id))}
                   >
                     <td className="px-4 py-3 text-sm font-bold border border-black">{issue.issueNo}</td>
+                    <td className="px-4 py-3 text-sm border border-black">{issue.firmName || firms.find((firm) => firm.id === issue.firmId)?.firmName || "Legacy / Unassigned"}</td>
                     <td className="px-4 py-3 text-sm border border-black">{issue.remarks || "-"}</td>
                     <td className="px-4 py-3 text-sm border border-black">{count}</td>
                     <td className="px-4 py-3 text-sm border border-black">{formatDate(issue.updateTimestamp || issue.date)}</td>
@@ -169,6 +178,7 @@ export function DailyConsumptionMaster() {
           <div className="p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Detail label="Date" value={formatDate(selectedIssue.date)} />
+              <Detail label="Firm" value={selectedIssue.firmName || firms.find((firm) => firm.id === selectedIssue.firmId)?.firmName || "Legacy / Unassigned"} />
               <Detail label="Remarks" value={selectedIssue.remarks || "-"} />
               <Detail label="Total Lines" value={String(selectedLines.length)} />
             </div>

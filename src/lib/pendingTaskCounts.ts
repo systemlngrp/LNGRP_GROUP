@@ -1,6 +1,7 @@
 import type {
   Company,
   DispatchPlan,
+  Firm,
   GateEntry,
   GatePass,
   Indent,
@@ -25,6 +26,7 @@ import type {
   SampleRequest,
   Setting,
 } from "../types";
+import { getPendingDailyConsumables } from "./dailyConsumables";
 import { deriveGatePassState, hasSavedReturnableReceiptGateEntry, isReturnableGatePass } from "./gatePassState";
 import { canCreateMrrForGateEntry } from "./gateEntryState";
 import { parseMandatoryMachinesByType } from "./mandatoryMachines";
@@ -103,6 +105,7 @@ export const PENDING_TASK_DEFINITIONS = [
 
 const PENDING_TASK_SECTION_ORDER: PendingTaskSection[] = ["Purchase", "Orders", "Jobs", "Sales", "Gate Pass"];
 export type BuildPendingTaskCountsArgs = {
+  firms: Firm[];
   materialIn: MaterialIn[];
   productions: Production[];
   phpJobMaster: Production[];
@@ -196,25 +199,6 @@ function getScheduledQty(schedule: OrderSchedule) {
   return Math.max(Number(schedule.qty || 0) - Number(schedule.canceledQty || 0), 0);
 }
 
-function getPendingNonJobIssueCount(materialIssues: MaterialIssue[], productions: Production[]) {
-  const firstJobDate = productions.map((p) => normalizeDate(p.date)).filter(Boolean).sort()[0];
-  if (!firstJobDate) return 0;
-
-  const today = new Date().toISOString().slice(0, 10);
-  const issuesByDate = new Set(
-    materialIssues.filter((i) => isWithoutJobIssue(i.issueType)).map((i) => normalizeDate(i.date)).filter(Boolean)
-  );
-
-  let count = 0;
-  const cursor = new Date(`${firstJobDate}T00:00:00Z`);
-  const end = new Date(`${today}T00:00:00Z`);
-  while (cursor <= end) {
-    const d = cursor.toISOString().slice(0, 10);
-    if (!issuesByDate.has(d)) count += 1;
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-  }
-  return count;
-}
 
 function getPendingProductionPlanCount(schedules: OrderSchedule[], productions: Production[], phpJobs: Production[], plateJobs: Production[]) {
   const today = new Date();
@@ -491,7 +475,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/material-receipt/pending-mrr": args.gateEntries.filter(canCreateMrrForGateEntry).length,
     "/material-receipt/pending-debit-note": args.materialIn.filter((m) => m.debitNote && !m.tallyTimestamp).length,
     "/material-receipt/pending-credit-note": args.materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).length,
-    "/material-movement/pending-non-job-issue": getPendingNonJobIssueCount(args.materialIssues, args.productions),
+    "/material-movement/pending-non-job-issue": getPendingDailyConsumables(args.firms, args.productions, args.materialIssues).length,
     "/material-movement/pending-consumption-tally": pendingConsumptionTallyCount,
     "/loading/php/pending-tally": pendingPhpLoadingTallyCount,
     "/loading/plate/pending-tally": pendingPlateLoadingTallyCount,

@@ -56,6 +56,7 @@ import {
   Invoice,
   GatePass,
   Setting,
+  Firm,
 } from "../types";
 import { cn } from "../lib/utils";
 import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
@@ -426,6 +427,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     storageKey: "material-in-all-firms",
   });
   const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
   const [phpJobMaster] = useData<Production>("php_job_master", []);
   const [plateJobMaster] = useData<Production>("plate_job_master", []);
   const [materials] = useData<Material>("materials", []);
@@ -499,6 +501,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const firmScopedCounts = useMemo(
     () =>
       buildPendingTaskCounts({
+        firms,
         materialIn,
         productions,
         phpJobMaster,
@@ -537,6 +540,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
       }),
     [
       materialIn,
+      firms,
       productions,
       phpJobMaster,
       plateJobMaster,

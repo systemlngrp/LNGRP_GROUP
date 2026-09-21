@@ -4,7 +4,7 @@ import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { generateTransactionNo } from "../lib/serial";
-import { Material, MaterialIssue, MaterialIssueLine } from "../types";
+import { Firm, Material, MaterialIssue, MaterialIssueLine } from "../types";
 
 type ConsumptionLine = {
   id: string;
@@ -14,10 +14,12 @@ type ConsumptionLine = {
 
 export function DailyConsumptionIssueForm() {
   const [materials] = useData<Material>("materials", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [firmId, setFirmId] = useState("");
   const [remarks, setRemarks] = useState("");
   const [currentMaterialId, setCurrentMaterialId] = useState("");
   const [currentQty, setCurrentQty] = useState<number | "">("");
@@ -37,8 +39,8 @@ export function DailyConsumptionIssueForm() {
   );
 
   const generalIssuesForDate = useMemo(
-    () => materialIssues.filter((issue) => issue.issueType === "General" && (issue.date || "").split("T")[0] === date),
-    [materialIssues, date]
+    () => materialIssues.filter((issue) => issue.issueType === "General" && (issue.date || "").split("T")[0] === date && issue.firmId === firmId),
+    [materialIssues, date, firmId]
   );
 
   const getMaterial = (materialId: string) => materials.find((material) => material.id === materialId);
@@ -57,7 +59,7 @@ export function DailyConsumptionIssueForm() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!date || lines.length === 0) return;
+    if (!date || !firmId || lines.length === 0) return;
     if (generalIssuesForDate.length > 0) {
       alert("Daily Consumption (General) issue already exists for this date.");
       return;
@@ -82,6 +84,8 @@ export function DailyConsumptionIssueForm() {
 
       const issue: MaterialIssue = {
         id: issueId,
+        firmId,
+        firmName: firms.find((firm) => firm.id === firmId)?.firmName || "",
         issueNo,
         consumptionTransactionNo,
         date,
@@ -130,6 +134,12 @@ export function DailyConsumptionIssueForm() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Date" required>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className="w-full border-2 border-black rounded p-2" />
+          </Field>
+          <Field label="Firm" required>
+            <select value={firmId} onChange={(e) => setFirmId(e.target.value)} required className="w-full border-2 border-black rounded p-2 bg-white">
+              <option value="">Select firm...</option>
+              {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+            </select>
           </Field>
           <Field label="Issue No (Auto)">
             <input type="text" value="Generated on Submit" disabled className="w-full border-2 border-black rounded p-2 bg-slate-50 opacity-70" />
@@ -183,7 +193,7 @@ export function DailyConsumptionIssueForm() {
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={isSubmitting || lines.length === 0 || generalIssuesForDate.length > 0}
+            disabled={isSubmitting || !firmId || lines.length === 0 || generalIssuesForDate.length > 0}
             className="min-w-[180px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 disabled:opacity-50"
           >
             {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save Daily Consumption"}

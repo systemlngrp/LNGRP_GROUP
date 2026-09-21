@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
-import { Material, MaterialIn, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine } from "../types";
+import { Firm, Material, MaterialIn, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine } from "../types";
 import { TableControls } from "../components/TableControls";
 import { ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { formatDate } from "../lib/serial";
@@ -35,12 +35,14 @@ export function NonJobIssueMaster() {
   const { user } = useAuth();
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materials] = useData<Material>("materials", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
   const npdItems = useNpdItems();
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
 
@@ -86,7 +88,7 @@ export function NonJobIssueMaster() {
   }, [issueLines, materialNameMap]);
 
   const canCancelIssues = String(user?.email || "").trim().toLowerCase() === CANCEL_ALLOWED_EMAIL;
-  const mainTableColSpan = canCancelIssues ? 9 : 8;
+  const mainTableColSpan = canCancelIssues ? 10 : 9;
 
   const issueTotalsByIssueId = useMemo(() => {
     const totalsMap = new Map<string, { totalQty: number; totalValue: number }>();
@@ -115,7 +117,7 @@ export function NonJobIssueMaster() {
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return [...materialIssues]
-      .filter((row) => isWithoutJobIssue(row.issueType))
+      .filter((row) => isWithoutJobIssue(row.issueType) && (!firmFilter || row.firmId === firmFilter))
       .filter((row) => {
         if (!q) return true;
         const haystack = [row.issueNo, row.consumptionTransactionNo, row.date, row.remarks, row.tallyPostingStatus, itemNameByIssueId.get(row.id)]
@@ -125,7 +127,7 @@ export function NonJobIssueMaster() {
         return haystack.includes(q);
       })
       .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.issueNo || "").localeCompare(a.issueNo || ""));
-  }, [itemNameByIssueId, materialIssues, searchTerm]);
+  }, [firmFilter, itemNameByIssueId, materialIssues, searchTerm]);
 
   const handleCancel = (row: MaterialIssue) => {
     if (cancellingId !== row.id) {
@@ -304,7 +306,10 @@ export function NonJobIssueMaster() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Non-Job Issue Master</h2>
       </div>
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search issue no, consumption no, date, item, remarks..." />
+      <div className="flex flex-wrap gap-3">
+        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search issue no, consumption no, date, item, remarks..." />
+        <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="min-w-52 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold"><option value="">All firms</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}</select>
+      </div>
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         <div className="overflow-x-auto">
@@ -312,6 +317,7 @@ export function NonJobIssueMaster() {
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase">Issue No</th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase">Consumption No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase">Tally Status</th>
@@ -349,6 +355,7 @@ export function NonJobIssueMaster() {
                             <span>{row.issueNo}</span>
                           </button>
                         </td>
+                        <td className="px-4 py-3 text-sm">{row.firmName || firms.find((firm) => firm.id === row.firmId)?.firmName || "Legacy / Unassigned"}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-indigo-700">{row.consumptionTransactionNo || "-"}</td>
                         <td className="px-4 py-3 text-sm">{formatDate(row.date) || "-"}</td>
                         <td className="px-4 py-3 text-sm">{row.tallyPostingStatus || "-"}</td>

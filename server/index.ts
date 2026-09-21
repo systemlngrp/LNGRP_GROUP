@@ -8425,7 +8425,9 @@ const createHandlers = (tableName: string) => {
           delete data.firmName;
         }
         if (isFirmScopedTable(tableName)) await assertRequestFirm(db, requestFirmId);
-        if (isFirmScopedTable(tableName) && requestFirmId && !String(data.firmId || "").trim()) {
+        // Daily Consumables must choose their own firm; do not silently attach
+        // an active-firm header to a legacy unassigned history record.
+        if (isFirmScopedTable(tableName) && requestFirmId && !String(data.firmId || "").trim() && !(tableName === "material_issues" && isWithoutJobIssueType(data.issueType))) {
           data.firmId = requestFirmId;
         }
         if (["php_job_master", "plate_job_master"].includes(tableName)) {
@@ -9178,6 +9180,41 @@ const createHandlers = (tableName: string) => {
         if (tableName === "material_issues") {
           try {
             const issueDate = String(data.date || new Date().toISOString().slice(0, 10));
+            if (isWithoutJobIssueType(data.issueType)) {
+              const issueId = String(data.id || "").trim();
+              const [existingRows] = issueId
+                ? await db.query("SELECT firmId FROM `material_issues` WHERE id = ? LIMIT 1", [issueId])
+                : [[]];
+              const existingFirmId = String((existingRows as any[])?.[0]?.firmId || "").trim();
+              const firmId = String(data.firmId || "").trim();
+
+              // New Daily Consumables are always firm-owned. Old unassigned rows
+              // remain editable for history, but never satisfy a firm obligation.
+              if (!firmId && !existingFirmId) {
+                return res.status(400).json({ error: "Firm is required for Daily Consumables." });
+              }
+              if (firmId) {
+                const [firmRows] = await db.query("SELECT id, firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+                const firm = (firmRows as any[])[0];
+                if (!firm?.id) return res.status(400).json({ error: "Selected firm was not found." });
+                data.firmId = String(firm.id);
+                data.firmName = String(firm.firmName || "");
+              }
+
+              const duplicateFirmId = firmId || existingFirmId;
+              if (duplicateFirmId) {
+                const [duplicateRows] = await db.query(
+                  `SELECT id FROM \`material_issues\`
+                   WHERE firmId = ? AND date = ? AND id <> ?
+                     AND LOWER(TRIM(COALESCE(issueType, ''))) IN ('without job', 'withoutjob', 'without_job', 'general')
+                   LIMIT 1`,
+                  [duplicateFirmId, issueDate, issueId]
+                );
+                if ((duplicateRows as any[])[0]?.id) {
+                  return res.status(409).json({ error: "Daily Consumables already exists for this firm and date." });
+                }
+              }
+            }
             if (!data.issueNo) {
               data.issueNo = await generateSimpleTransactionNumber(db, "material_issues", "issueNo", "MIS", issueDate);
             }
