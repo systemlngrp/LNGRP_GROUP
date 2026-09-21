@@ -184,7 +184,9 @@ export function MaterialReturnForm() {
     const receipt = materialIn.find((row) => row.id === slip.materialInId);
     const receiptLine = receipt?.lines.find((row) => row.id === slip.materialLineId);
     const material = getMaterial(slip.materialId);
-    return Number(receiptLine?.invoiceRate || receiptLine?.poRate || receiptLine?.rate || material?.openingRate || 0);
+    return Number(
+      slip.openingRate ?? receiptLine?.invoiceRate ?? receiptLine?.poRate ?? receiptLine?.rate ?? material?.openingRate ?? 0
+    );
   };
 
   const resolveReturnLineValuation = (materialId: string, qty: number) => {

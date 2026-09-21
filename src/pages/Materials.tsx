@@ -1886,7 +1886,9 @@ export function Materials() {
               </>
             ) : (
               <div className="rounded border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-900">
-                This material can be saved without a firm. Select a firm later to enter opening quantity, value, or opening reels.
+                {formData.type === "Reel"
+                  ? "Select a firm before adding opening reels. Opening reel stock is maintained separately for each firm."
+                  : "This material can be saved without a firm. Select a firm later to enter opening quantity or value."}
               </div>
             )}
 
