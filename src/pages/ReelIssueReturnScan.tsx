@@ -106,18 +106,18 @@ function parseQrPayload(rawValue: string): ParsedQrPayload {
 export function ReelIssueReturnScan() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [materials] = useData<Material>("materials", []);
+  const [materials] = useData<Material>("materials", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [productions, setProductions] = useData<Production>("productions", []);
-  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturns] = useData<MaterialReturn>("material-returns", []);
-  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
+  const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
+  const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
+  const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
+  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all" });
+  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all" });
 
   const requestedDate = String(searchParams.get("date") || "").slice(0, 10);
   const [date] = useState(() => requestedDate || new Date().toISOString().split("T")[0]);

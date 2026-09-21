@@ -44,11 +44,14 @@ function formatQty(value: number) {
 }
 
 export function ErpWiseReelStockReport() {
-  const [materials] = useData<Material>("materials", [], { cacheToLocalStorage: false });
-  const [materialIn] = useData<MaterialIn>("material-in", [], { cacheToLocalStorage: false });
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { cacheToLocalStorage: false });
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false });
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false });
+  // Reel inventory is held in Unit-II but this is a company-wide report.
+  // Match the Reelwise Stock scope so opening reels are not hidden by the
+  // currently selected firm.
+  const [materials] = useData<Material>("materials", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
   const [searchTerm, setSearchTerm] = useState("");
   const [mrrFilter, setMrrFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
