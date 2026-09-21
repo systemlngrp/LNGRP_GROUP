@@ -10271,7 +10271,9 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       const size = Number(firstPopulatedValue(raw?.size, raw?.["Size"], raw?.["SIZE"]));
       const gsm = Number(firstPopulatedValue(raw?.gsm, raw?.["GSM"]));
       const bf = Number(firstPopulatedValue(raw?.bf, raw?.["BF"]));
-      const color = String(firstPopulatedValue(raw?.color, raw?.["Color"])).trim();
+      // Opening-reel spreadsheets have historically included a Color column,
+      // but blank or omitted values represent the standard LG grade.
+      const color = String(firstPopulatedValue(raw?.color, raw?.["Color"]) || "LG").trim();
       const ourReelNo = String(firstPopulatedValue(raw?.ourReelNo, raw?.["Our Reel No."])).trim();
       const supplierReelNo = String(firstPopulatedValue(raw?.supplierReelNo, raw?.["Supplier Reel No."], raw?.["SUPPLIER REEL"])).trim();
       const weightKg = Number(firstPopulatedValue(raw?.weightKg, raw?.["Opening Stock KG"], raw?.["Available Weight"]));
@@ -10285,7 +10287,6 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       if (!Number.isFinite(size) || size <= 0) fail(`Row ${rowNumber}: Size must be greater than 0.`);
       if (!Number.isFinite(gsm) || gsm <= 0) fail(`Row ${rowNumber}: GSM must be greater than 0.`);
       if (!Number.isFinite(bf) || bf <= 0) fail(`Row ${rowNumber}: BF must be greater than 0.`);
-      if (!color) fail(`Row ${rowNumber}: Color is required.`);
       if (!ourReelNo) fail(`Row ${rowNumber}: Our Reel No. is required.`);
       if (!Number.isFinite(weightKg) || weightKg <= 0) fail(`Row ${rowNumber}: Opening Stock KG must be greater than 0.`);
       if (!Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
