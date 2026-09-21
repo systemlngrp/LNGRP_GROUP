@@ -186,12 +186,6 @@ export function Materials() {
   const [bulkColor, setBulkColor] = useState("");
   const [isApplyingBulkColor, setIsApplyingBulkColor] = useState(false);
 
-  const displayFirms = useMemo(() => {
-    const knownFirmIds = new Set(firms.map((firm) => String(firm.id)));
-    const orphanFirmIds = materials.map((material) => String(material.firmId || "")).filter((id) => id && !knownFirmIds.has(id));
-    return [...firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)), ...Array.from(new Set(orphanFirmIds)).map((id) => ({ id, firmName: "Unknown Firm" } as Firm))];
-  }, [firms, materials]);
-
   const movementSummaryMap = useMemo(() => {
     const createEmptyMovement = (): MaterialMovementSummary => ({ receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
     const map = new Map<string, MaterialMovementSummary>();
@@ -877,6 +871,10 @@ export function Materials() {
     event.preventDefault();
     const normalizedType = formData.type;
     const firmId = String(formData.firmId || "").trim();
+    if (firmId && !firms.some((firm) => String(firm.id) === firmId)) {
+      alert("The selected firm no longer exists. Please select an active firm before saving.");
+      return;
+    }
     const uom = normalizedType === "Reel" ? "KGS" : String(formData.uom || "").trim() || "CM";
     const timestamp = new Date().toISOString();
     const size = parseNumericInput(formData.size);
@@ -1507,7 +1505,7 @@ export function Materials() {
                   className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                 >
                   <option value="">No firm (material only)</option>
-                  {displayFirms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                  {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
                 </select>
                 <p className="text-xs font-semibold text-slate-500">Select a firm to add or edit opening stock for that firm.</p>
               </div>

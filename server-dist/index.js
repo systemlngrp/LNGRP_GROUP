@@ -9549,7 +9549,12 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
         const user = await getRequestUser(req);
         if (!user || !hasPermission(user, "/masters/materials"))
             return res.status(403).json({ error: "Forbidden" });
-        const firmId = String(getRequestFirmId(req) || req.body?.firmId || "").trim();
+        // The Material Master loads every firm's opening balances through
+        // `?firmId=all`. That same endpoint is used by the generic client sync for
+        // writes, so `all` is a read scope only; a write must use the row's actual
+        // firm ID.
+        const requestedFirmId = getRequestFirmId(req);
+        const firmId = String(req.body?.firmId || (requestedFirmId === "all" ? "" : requestedFirmId) || "").trim();
         const materialId = String(req.body?.materialId || "").trim();
         if (!firmId || !materialId)
             return res.status(400).json({ error: "firmId and materialId are required." });
