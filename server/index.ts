@@ -10252,7 +10252,6 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       bf: number;
       color: string;
       ourReelNo: string;
-      hasOpeningReel: boolean;
       supplierReelNo: string;
       weightKg: number;
       openingRate: number;
@@ -10272,32 +10271,28 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       const size = Number(firstPopulatedValue(raw?.size, raw?.["Size"], raw?.["SIZE"]));
       const gsm = Number(firstPopulatedValue(raw?.gsm, raw?.["GSM"]));
       const bf = Number(firstPopulatedValue(raw?.bf, raw?.["BF"]));
-      // Opening-reel spreadsheets have historically included a Color column,
-      // but blank or omitted values represent the standard LG grade.
-      const color = String(firstPopulatedValue(raw?.color, raw?.["Color"]) || "LG").trim();
+      const color = String(firstPopulatedValue(raw?.color, raw?.["Color"])).trim();
       const ourReelNo = String(firstPopulatedValue(raw?.ourReelNo, raw?.["Our Reel No."])).trim();
       const supplierReelNo = String(firstPopulatedValue(raw?.supplierReelNo, raw?.["Supplier Reel No."], raw?.["SUPPLIER REEL"])).trim();
       const weightKg = Number(firstPopulatedValue(raw?.weightKg, raw?.["Opening Stock KG"], raw?.["Available Weight"]));
       const openingRate = Number(firstPopulatedValue(raw?.openingRate, raw?.["Opening Rate"], raw?.["Invoice Rate"]));
       const remarks = String(firstPopulatedValue(raw?.remarks, raw?.["Remarks"])).trim();
       const active = String(raw?.active ?? raw?.["Active"] ?? "Yes").trim().toLowerCase() === "no" ? "No" : "Yes";
-      const hasOpeningReel = Boolean(ourReelNo);
-
       if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
       const erpCode = String(Number(rawErp));
       if (!Number.isFinite(size) || size <= 0) fail(`Row ${rowNumber}: Size must be greater than 0.`);
       if (!Number.isFinite(gsm) || gsm <= 0) fail(`Row ${rowNumber}: GSM must be greater than 0.`);
       if (!Number.isFinite(bf) || bf <= 0) fail(`Row ${rowNumber}: BF must be greater than 0.`);
-      if (hasOpeningReel) {
-        if (!supplierName) fail(`Row ${rowNumber}: Supplier Name is required for opening-reel stock.`);
-        if (!Number.isFinite(weightKg) || weightKg <= 0) fail(`Row ${rowNumber}: Opening Stock KG must be greater than 0.`);
-        if (!Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
+      if (!color) fail(`Row ${rowNumber}: Color is required.`);
+      if (!supplierName) fail(`Row ${rowNumber}: Supplier Name is required.`);
+      if (!ourReelNo) fail(`Row ${rowNumber}: Our Reel No. is required.`);
+      if (!Number.isFinite(weightKg) || weightKg <= 0) fail(`Row ${rowNumber}: Opening Stock KG must be greater than 0.`);
+      if (!Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
 
-        const reelKey = normalizeKey(ourReelNo);
-        const firstUploadedRow = uploadedReelRows.get(reelKey);
-        if (firstUploadedRow) fail(`Rows ${firstUploadedRow} and ${rowNumber}: Our Reel No. ${ourReelNo} is duplicated in the upload.`, 409);
-        uploadedReelRows.set(reelKey, rowNumber);
-      }
+      const reelKey = normalizeKey(ourReelNo);
+      const firstUploadedRow = uploadedReelRows.get(reelKey);
+      if (firstUploadedRow) fail(`Rows ${firstUploadedRow} and ${rowNumber}: Our Reel No. ${ourReelNo} is duplicated in the upload.`, 409);
+      uploadedReelRows.set(reelKey, rowNumber);
 
       const signature = JSON.stringify({ size, gsm, bf, color: normalizeKey(color), remarks, active });
       const priorSignature = materialSignatureByErp.get(erpCode);
@@ -10315,10 +10310,9 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         bf,
         color,
         ourReelNo,
-        hasOpeningReel,
         supplierReelNo,
-        weightKg: hasOpeningReel ? Number(weightKg.toFixed(2)) : 0,
-        openingRate: hasOpeningReel ? Number(openingRate.toFixed(2)) : 0,
+        weightKg: Number(weightKg.toFixed(2)),
+        openingRate: Number(openingRate.toFixed(2)),
         remarks,
         active,
       });
@@ -10329,10 +10323,9 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
 
     // Suppliers are part of the same atomic import.  Names are normalized so
     // differently cased/spaced spellings do not create duplicate suppliers.
-    const openingReelRows = normalizedRows.filter((row) => row.hasOpeningReel);
-    for (const supplierName of Array.from(new Set(openingReelRows.map((row) => normalizeKey(row.supplierName))))) {
+    for (const supplierName of Array.from(new Set(normalizedRows.map((row) => normalizeKey(row.supplierName))))) {
       if (supplierByName.has(supplierName)) continue;
-      const sourceRow = openingReelRows.find((row) => normalizeKey(row.supplierName) === supplierName)!;
+      const sourceRow = normalizedRows.find((row) => normalizeKey(row.supplierName) === supplierName)!;
       const supplier = { id: crypto.randomUUID(), name: sourceRow.supplierName };
       await conn.query(
         "INSERT INTO `suppliers` (`id`, `name`, `firmId`, `gstSupplyType`, `active`, `updatedBy`, `updateTimestamp`) VALUES (?, ?, ?, 'INTRA_STATE', 'Yes', ?, ?)",
@@ -10340,7 +10333,7 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       );
       supplierByName.set(supplierName, supplier);
     }
-    openingReelRows.forEach((row) => {
+    normalizedRows.forEach((row) => {
       row.supplierId = String(supplierByName.get(normalizeKey(row.supplierName))?.id || "");
     });
 
@@ -10376,7 +10369,6 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         createdMaterials += 1;
       }
       for (const row of rowsForMaterial) {
-        if (!row.hasOpeningReel) continue;
         const existingSlip = existingReelByKey.get(normalizeKey(row.ourReelNo));
         affectedMaterialIds.add(materialId);
         if (existingSlip && normalizeKey(existingSlip.materialInId) !== "opening") {
@@ -10422,12 +10414,112 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
     }
 
     await conn.commit();
-    return res.json({ ok: true, processedRows: normalizedRows.length, materialOnlyRows: normalizedRows.length - openingReelRows.length, createdMaterials, updatedMaterials, insertedReels, updatedReels });
+    return res.json({ ok: true, processedRows: normalizedRows.length, createdMaterials, updatedMaterials, insertedReels, updatedReels });
   } catch (error) {
     await conn.rollback();
     const statusCode = Number((error as any)?.statusCode || ((error as any)?.code === "ER_DUP_ENTRY" ? 409 : 500));
     console.error("[OPENING_REEL_BULK] failed:", error);
     return res.status(statusCode).json({ error: (error as Error).message || "Opening-stock upload failed." });
+  } finally {
+    conn.release();
+  }
+});
+app.post("/api/materials/reel-materials/bulk", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!hasPermission(user, "/masters/materials")) return res.status(403).json({ error: "Forbidden" });
+
+  const inputRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (inputRows.length === 0) return res.status(400).json({ error: "No Reel material rows were provided." });
+
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  const fail = (message: string, statusCode = 400): never => {
+    const error = new Error(message);
+    (error as any).statusCode = statusCode;
+    throw error;
+  };
+
+  try {
+    await conn.beginTransaction();
+    const [materialRows] = await conn.query("SELECT * FROM `materials` FOR UPDATE");
+    const [groupRows] = await conn.query("SELECT id, name FROM `material_groups` FOR UPDATE");
+    const normalizeKey = (value: unknown) => String(value ?? "").trim().toLowerCase();
+    const firstPopulatedValue = (...values: unknown[]) =>
+      values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") ?? "";
+    const materialByErp = new Map(
+      (materialRows as any[])
+        .filter((row) => /^\d+$/.test(String(row.erpCode || "").trim()))
+        .map((row) => [String(Number(row.erpCode)), row])
+    );
+    let reelGroup = (groupRows as any[]).find((row) => normalizeKey(row.name) === "reel");
+    const actor = String(user.name || user.userId || "System").trim() || "System";
+    const timestamp = new Date().toISOString();
+    if (!reelGroup) {
+      reelGroup = { id: crypto.randomUUID(), name: "Reel" };
+      await conn.query(
+        "INSERT INTO `material_groups` (`id`, `name`, `updatedBy`, `updateTimestamp`) VALUES (?, 'Reel', ?, ?)",
+        [reelGroup.id, actor, timestamp]
+      );
+    }
+
+    type ReelMaterialBulkRow = { rowNumber: number; erpCode: string; size: number; gsm: number; bf: number; color: string };
+    const normalizedRows: ReelMaterialBulkRow[] = [];
+    const materialSignatureByErp = new Map<string, string>();
+    const materialRowByErp = new Map<string, ReelMaterialBulkRow>();
+    inputRows.forEach((raw: any, index: number) => {
+      const rowNumber = Number(raw?.rowNumber) || index + 2;
+      const allowedFields = new Set(["rowNumber", "erpCode", "size", "gsm", "bf", "color", "ERP Code", "Size", "GSM", "BF", "Color"]);
+      const unsupportedField = Object.entries(raw || {}).find(([field, value]) => !allowedFields.has(field) && String(value ?? "").trim() !== "");
+      if (unsupportedField) fail(`Row ${rowNumber}: ${unsupportedField[0]} is not supported in the Reel Material upload.`);
+      const rawErp = String(firstPopulatedValue(raw?.erpCode, raw?.["ERP Code"])).trim();
+      const size = Number(firstPopulatedValue(raw?.size, raw?.["Size"]));
+      const gsm = Number(firstPopulatedValue(raw?.gsm, raw?.["GSM"]));
+      const bf = Number(firstPopulatedValue(raw?.bf, raw?.["BF"]));
+      const color = String(firstPopulatedValue(raw?.color, raw?.["Color"]) || "LG").trim();
+      if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
+      if (!Number.isFinite(size) || size <= 0) fail(`Row ${rowNumber}: Size must be greater than 0.`);
+      if (!Number.isFinite(gsm) || gsm <= 0) fail(`Row ${rowNumber}: GSM must be greater than 0.`);
+      if (!Number.isFinite(bf) || bf <= 0) fail(`Row ${rowNumber}: BF must be greater than 0.`);
+      const erpCode = String(Number(rawErp));
+      const signature = JSON.stringify({ size, gsm, bf, color: normalizeKey(color) });
+      const priorSignature = materialSignatureByErp.get(erpCode);
+      if (priorSignature && priorSignature !== signature) fail(`Row ${rowNumber}: Repeated ERP Code ${erpCode} must use the same Size, GSM, BF, and Color values.`);
+      materialSignatureByErp.set(erpCode, signature);
+      const normalizedRow = { rowNumber, erpCode, size, gsm, bf, color };
+      normalizedRows.push(normalizedRow);
+      if (!materialRowByErp.has(erpCode)) materialRowByErp.set(erpCode, normalizedRow);
+    });
+
+    let createdMaterials = 0;
+    let updatedMaterials = 0;
+    for (const row of materialRowByErp.values()) {
+      const existingMaterial = materialByErp.get(row.erpCode);
+      const materialId = String(existingMaterial?.id || crypto.randomUUID());
+      const displayName = `${row.erpCode} - Size: ${row.size} CM X GSM: ${row.gsm} X BF: ${row.bf}   Color - ${row.color}`;
+      if (existingMaterial) {
+        await conn.query(
+          `UPDATE \`materials\` SET type = 'Reel', erpCode = ?, name = ?, uom = 'KGS', materialGroupId = ?, color = ?, size = ?, gsm = ?, bf = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`,
+          [row.erpCode, displayName, reelGroup.id, row.color, row.size, row.gsm, row.bf, actor, timestamp, materialId]
+        );
+        updatedMaterials += 1;
+      } else {
+        await conn.query(
+          `INSERT INTO \`materials\` (id, type, erpCode, name, uom, materialGroupId, color, size, gsm, bf, active, updatedBy, updateTimestamp) VALUES (?, 'Reel', ?, ?, 'KGS', ?, ?, ?, ?, ?, 'Yes', ?, ?)`,
+          [materialId, row.erpCode, displayName, reelGroup.id, row.color, row.size, row.gsm, row.bf, actor, timestamp]
+        );
+        createdMaterials += 1;
+      }
+    }
+
+    await conn.commit();
+    return res.json({ ok: true, processedRows: normalizedRows.length, createdMaterials, updatedMaterials });
+  } catch (error) {
+    await conn.rollback();
+    const statusCode = Number((error as any)?.statusCode || ((error as any)?.code === "ER_DUP_ENTRY" ? 409 : 500));
+    console.error("[REEL_MATERIAL_BULK] failed:", error);
+    return res.status(statusCode).json({ error: (error as Error).message || "Reel material upload failed." });
   } finally {
     conn.release();
   }
