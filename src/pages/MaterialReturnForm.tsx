@@ -13,6 +13,7 @@ import {
   MaterialReturnLine,
   MaterialReturnReelLine,
   Production,
+  Firm,
 } from "../types";
 import { generateTransactionNo } from "../lib/serial";
 import { Select } from "../components/Select";
@@ -26,6 +27,7 @@ import {
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { findUnitTwoFirm } from "../lib/unitTwoFirm";
 
 type ReturnMaterialOption = Material & { isNpdConsumableItem?: boolean; npdSourceId?: string; rate?: number };
 type ReturnLineDraft = { id: string; materialId: string; qty: number; uom: string; isReel: boolean; lastPurchaseRate?: number; openingRate?: number; rate?: number; amount?: number };
@@ -51,6 +53,7 @@ export function MaterialReturnForm() {
   }, [searchTerm]);
 
   const [materials] = useData<Material>("materials", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const npdItems = useNpdItems();
@@ -71,6 +74,7 @@ export function MaterialReturnForm() {
   const [lines, setLines] = useState<ReturnLineDraft[]>([]);
   const [returnQtyDrafts, setReturnQtyDrafts] = useState<Record<string, Record<string, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
 
   const jobOptions = useMemo(
     () =>
@@ -282,6 +286,10 @@ export function MaterialReturnForm() {
 
     setIsSubmitting(true);
     try {
+      if (lines.some((line) => line.isReel) && !unitTwoFirm) {
+        alert("Unit-II is not configured in Firm Master. Reel returns cannot be saved.");
+        return;
+      }
       const timestamp = new Date().toISOString();
       const returnId = crypto.randomUUID();
       const returnNo = generateTransactionNo(
@@ -292,6 +300,8 @@ export function MaterialReturnForm() {
 
       const entry: MaterialReturn = {
         id: returnId,
+        firmId: lines.some((line) => line.isReel) ? unitTwoFirm?.id : undefined,
+        firmName: lines.some((line) => line.isReel) ? unitTwoFirm?.firmName : undefined,
         returnNo,
         date,
         returnType,

@@ -140,6 +140,97 @@ async function assertRequestFirm(db: mysql.Pool, firmId: string) {
   }
 }
 
+async function getUnitTwoFirm(db: mysql.Pool | mysql.PoolConnection) {
+  const [rows] = await db.query("SELECT id, firmName FROM `firms` WHERE active <> 'No' OR active IS NULL ORDER BY firmName");
+  return (rows as any[]).find((row) => {
+    const name = String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+    return name.endsWith("unit2") || name.endsWith("unitii");
+  }) || null;
+}
+
+async function migrateReelInventoryToUnitTwo(db: mysql.Pool) {
+  const unitTwo = await getUnitTwoFirm(db);
+  if (!unitTwo?.id) {
+    console.warn("[REEL] Unit-II firm is not configured; reel ownership migration skipped.");
+    return;
+  }
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(`
+      UPDATE material_in_packing_slips ps
+      JOIN materials m ON m.id = ps.materialId
+      SET ps.firmId = ?
+      WHERE m.type = 'Reel' AND TRIM(COALESCE(ps.materialInId, '')) = 'OPENING'
+    `, [unitTwo.id]);
+    await conn.query(`
+      UPDATE material_issues mi
+      JOIN (SELECT DISTINCT materialIssueId FROM material_issue_reel_lines) reels ON reels.materialIssueId = mi.id
+      SET mi.firmId = ?
+    `, [unitTwo.id]);
+    await conn.query(`
+      UPDATE material_returns mr
+      JOIN (SELECT DISTINCT materialReturnId FROM material_return_reel_lines) reels ON reels.materialReturnId = mr.id
+      SET mr.firmId = ?
+    `, [unitTwo.id]);
+    const [reelRows] = await conn.query(`
+      SELECT m.id AS materialId,
+        COUNT(ps.id) AS reelCount,
+        COALESCE(SUM(ps.weightKg), 0) AS qty,
+        COALESCE(SUM(ps.weightKg * COALESCE(ps.openingRate, 0)), 0) AS value
+      FROM materials m
+      LEFT JOIN material_in_packing_slips ps
+        ON ps.materialId = m.id AND TRIM(COALESCE(ps.materialInId, '')) = 'OPENING'
+      WHERE m.type = 'Reel'
+      GROUP BY m.id
+    `);
+    for (const row of reelRows as any[]) {
+      const materialId = String(row.materialId || "");
+      const reelCount = Number(row.reelCount || 0);
+      if (!materialId || reelCount <= 0) continue;
+      const qty = Number(row.qty || 0);
+      const value = Number(row.value || 0);
+      const rate = qty > 0 ? Number((value / qty).toFixed(2)) : 0;
+      await conn.query("DELETE FROM material_firm_openings WHERE materialId = ?", [materialId]);
+      await conn.query(
+        `INSERT INTO material_firm_openings (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+         VALUES (UUID(), ?, ?, ?, ?, ?, 'System Migration', ?)
+         ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`,
+        [materialId, unitTwo.id, qty, rate, value, new Date().toISOString()]
+      );
+    }
+    const [legacyOpeningRows] = await conn.query(`
+      SELECT mfo.materialId, COALESCE(SUM(mfo.openingQty), 0) AS qty,
+        COALESCE(SUM(mfo.openingValue), 0) AS value
+      FROM material_firm_openings mfo
+      JOIN materials m ON m.id = mfo.materialId AND m.type = 'Reel'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM material_in_packing_slips ps
+        WHERE ps.materialId = mfo.materialId AND TRIM(COALESCE(ps.materialInId, '')) = 'OPENING'
+      )
+      GROUP BY mfo.materialId
+    `);
+    for (const row of legacyOpeningRows as any[]) {
+      const materialId = String(row.materialId || "");
+      const qty = Number(row.qty || 0);
+      const value = Number(row.value || 0);
+      const rate = qty > 0 ? Number((value / qty).toFixed(2)) : 0;
+      await conn.query("DELETE FROM material_firm_openings WHERE materialId = ?", [materialId]);
+      await conn.query(
+        `INSERT INTO material_firm_openings (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+         VALUES (UUID(), ?, ?, ?, ?, ?, 'System Migration', ?)` ,
+        [materialId, unitTwo.id, qty, rate, value, new Date().toISOString()]
+      );
+    }
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
 function resolveGeminiModel() {
   const configuredModel = String(process.env.GEMINI_MODEL || "").trim();
   if (!configuredModel || configuredModel === "gemini-2.5-flash") return DEFAULT_GEMINI_MODEL;
@@ -7733,6 +7824,7 @@ await db.query(`
       await ensureUniqueMaterialErpIndex(db, database);
       await ensureUniquePackingSlipReelNoIndex(db, database);
       await ensureUniqueMachineNameIndex(db, database);
+      await migrateReelInventoryToUnitTwo(db);
 
       for (const tableName of FIRM_SCOPED_TABLES) {
         try {
@@ -8468,6 +8560,38 @@ const createHandlers = (tableName: string) => {
           }
         }
 
+        if (tableName === "material_issues" || tableName === "material_returns") {
+          const lineTable = tableName === "material_issues" ? "material_issue_reel_lines" : "material_return_reel_lines";
+          const parentColumn = tableName === "material_issues" ? "materialIssueId" : "materialReturnId";
+          const recordId = String(data.id || "").trim();
+          if (recordId) {
+            const [reelRows] = await db.query(
+              `SELECT id FROM \`${lineTable}\` WHERE \`${parentColumn}\` = ? LIMIT 1`,
+              [recordId]
+            );
+            if ((reelRows as any[])[0]?.id) {
+              const unitTwo = await getUnitTwoFirm(db);
+              if (!unitTwo?.id) return res.status(400).json({ error: "Unit-II firm is not configured. Reel movements cannot be saved." });
+              data.firmId = String(unitTwo.id);
+            }
+          }
+        }
+
+        if (tableName === "material_issue_reel_lines" || tableName === "material_return_reel_lines") {
+          const materialId = String(data.materialId || "").trim();
+          const [materialRows] = await db.query("SELECT type FROM `materials` WHERE id = ? LIMIT 1", [materialId]);
+          if (String((materialRows as any[])[0]?.type || "").trim() === "Reel") {
+            const unitTwo = await getUnitTwoFirm(db);
+            if (!unitTwo?.id) return res.status(400).json({ error: "Unit-II firm is not configured. Reel movements cannot be saved." });
+            const parentTable = tableName === "material_issue_reel_lines" ? "material_issues" : "material_returns";
+            const parentColumn = tableName === "material_issue_reel_lines" ? "materialIssueId" : "materialReturnId";
+            const parentId = String(data[parentColumn] || "").trim();
+            if (parentId) {
+              await db.query(`UPDATE \`${parentTable}\` SET firmId = ? WHERE id = ?`, [unitTwo.id, parentId]);
+            }
+          }
+        }
+
         if (tableName === "material_in_packing_slips") {
           const normalizedReelNo = String(data.ourReelNo || "").trim();
           if (!normalizedReelNo) {
@@ -8484,6 +8608,14 @@ const createHandlers = (tableName: string) => {
             return res.status(409).json({ error: `Our Reel No. ${normalizedReelNo} already exists.` });
           }
           data.ourReelNo = normalizedReelNo;
+          if (String(data.materialInId || "").trim() === "OPENING") {
+            const [materialRows] = await db.query("SELECT type FROM `materials` WHERE id = ? LIMIT 1", [String(data.materialId || "")]);
+            if (String((materialRows as any[])[0]?.type || "").trim() === "Reel") {
+              const unitTwo = await getUnitTwoFirm(db);
+              if (!unitTwo?.id) return res.status(400).json({ error: "Unit-II firm is not configured. Reel opening stock must belong to Unit-II." });
+              data.firmId = String(unitTwo.id);
+            }
+          }
         }
 
         if (tableName === "settings") {
@@ -10078,14 +10210,14 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms`");
+    const unitTwo = await getUnitTwoFirm(conn);
+    if (!unitTwo?.id) fail("Unit-II firm is not configured. Reel opening stock must belong to Unit-II.");
     const [supplierRows] = await conn.query("SELECT id, name FROM `suppliers`");
     const [materialRows] = await conn.query("SELECT * FROM `materials` FOR UPDATE");
     const [packingSlipRows] = await conn.query("SELECT * FROM `material_in_packing_slips` FOR UPDATE");
     const [groupRows] = await conn.query("SELECT id, name FROM `material_groups` FOR UPDATE");
 
     const normalizeKey = (value: unknown) => String(value ?? "").trim().toLowerCase();
-    const firmByName = new Map((firmRows as any[]).map((row) => [normalizeKey(row.firmName), row]));
     const supplierByName = new Map((supplierRows as any[]).map((row) => [normalizeKey(row.name), row]));
     const materialByErp = new Map(
       (materialRows as any[])
@@ -10128,7 +10260,6 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
 
     inputRows.forEach((raw: any, index: number) => {
       const rowNumber = Number(raw?.rowNumber) || index + 2;
-      const firmName = String(raw?.firmName ?? raw?.["Firm Name"] ?? "").trim();
       const supplierName = String(raw?.supplierName ?? raw?.["Supplier Name"] ?? "").trim();
       const rawErp = String(raw?.erpCode ?? raw?.["ERP Code"] ?? "").trim();
       const size = Number(raw?.size ?? raw?.["Size"]);
@@ -10141,8 +10272,6 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       const remarks = String(raw?.remarks ?? raw?.["Remarks"] ?? "").trim();
       const active = String(raw?.active ?? raw?.["Active"] ?? "Yes").trim().toLowerCase() === "no" ? "No" : "Yes";
 
-      const firm = firmByName.get(normalizeKey(firmName));
-      if (!firm) fail(`Row ${rowNumber}: Firm Name "${firmName}" was not found.`);
       const supplier = supplierName ? supplierByName.get(normalizeKey(supplierName)) : null;
       if (supplierName && !supplier) fail(`Row ${rowNumber}: Supplier Name "${supplierName}" was not found.`);
       if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
@@ -10168,7 +10297,7 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
 
       normalizedRows.push({
         rowNumber,
-        firmId: String(firm.id),
+        firmId: String(unitTwo.id),
         supplierId: supplier ? String(supplier.id) : "",
         erpCode,
         size,
@@ -10289,12 +10418,18 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
     // writes, so `all` is a read scope only; a write must use the row's actual
     // firm ID.
     const requestedFirmId = getRequestFirmId(req);
-    const firmId = String(req.body?.firmId || (requestedFirmId === "all" ? "" : requestedFirmId) || "").trim();
+    let firmId = String(req.body?.firmId || (requestedFirmId === "all" ? "" : requestedFirmId) || "").trim();
     const materialId = String(req.body?.materialId || "").trim();
     if (!firmId || !materialId) return res.status(400).json({ error: "firmId and materialId are required." });
+    const [materialRows] = await db.query("SELECT id, type FROM `materials` WHERE id = ? LIMIT 1", [materialId]);
+    const material = (materialRows as any[])[0];
+    if (!material?.id) return res.status(404).json({ error: "Material was not found." });
+    if (String(material.type || "").trim() === "Reel") {
+      const unitTwo = await getUnitTwoFirm(db);
+      if (!unitTwo?.id) return res.status(400).json({ error: "Unit-II firm is not configured. Reel opening stock must belong to Unit-II." });
+      firmId = String(unitTwo.id);
+    }
     await assertRequestFirm(db, firmId);
-    const [materialRows] = await db.query("SELECT id FROM `materials` WHERE id = ? LIMIT 1", [materialId]);
-    if (!(materialRows as any[])[0]?.id) return res.status(404).json({ error: "Material was not found." });
     const qty = Number(req.body?.openingQty || 0);
     const rate = Number(req.body?.openingRate || 0);
     const value = req.body?.openingValue == null || req.body.openingValue === "" ? qty * rate : Number(req.body.openingValue);
@@ -12313,10 +12448,8 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const actor = String((user as any).name || (user as any).email || "System User");
     const note = [`Reel transfer ${transferNo}`, remarks].filter(Boolean).join(" - ");
 
-    const [unitTwoRows] = await conn.query(
-      "SELECT id FROM firms WHERE active <> 'No' AND (LOWER(firmName) LIKE '%unit ii%' OR LOWER(firmName) LIKE '%unit-ii%' OR LOWER(firmName) LIKE '%unit 2%') ORDER BY firmName LIMIT 1"
-    );
-    const unitTwoFirmId = String((unitTwoRows as any[])[0]?.id || "").trim();
+    const unitTwo = await getUnitTwoFirm(conn);
+    const unitTwoFirmId = String(unitTwo?.id || "").trim();
     if (!unitTwoFirmId) throw new Error("Unit II firm is not configured.");
 
     await conn.query("INSERT INTO material_returns (id, returnNo, date, returnType, productionId, jobNo, firmId, remarks, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'Job', ?, ?, ?, ?, ?, ?)", [returnId, returnNo, transferDate, sourceProductionId, sourceJobNo, unitTwoFirmId, note, actor, timestamp]);
