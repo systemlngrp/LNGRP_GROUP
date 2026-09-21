@@ -4220,80 +4220,31 @@ async function migrateItemMasterLinksToNpd(db: mysql.Pool, database: string) {
   await migrateMaterialInLinesToNpd(db, itemToNpdId);
 }
 
-function extractNamesFromSection(section: string) {
-  const names = new Set<string>();
-  for (const match of section.matchAll(/([A-Za-z][A-Za-z.&/\-'\s]+?)\s*\(/g)) {
-    const rawName = match[1].replace(/\s+/g, " ").trim();
-    if (!rawName || rawName.length < 3) continue;
-    if (/States and Capitals|Union Territories|About India/i.test(rawName)) continue;
-    names.add(rawName);
-  }
-  return [...names];
-}
-
-function extractOfficialIndiaStates(html: string) {
-  const normalizedText = normalizeOfficialIndiaText(html);
-  const statesSectionMatch = normalizedText.match(/States and Capitals\s+(.*?)\s+Union Territories/i);
-  const unionTerritoriesSectionMatch = normalizedText.match(/Union Territories\s+(.*?)\s+About India/i);
-  const states = statesSectionMatch ? extractNamesFromSection(statesSectionMatch[1]) : [];
-  const unionTerritories = unionTerritoriesSectionMatch ? extractNamesFromSection(unionTerritoriesSectionMatch[1]) : [];
-  return [...new Set([...states, ...unionTerritories])];
-}
+const INDIA_STATES_AND_UNION_TERRITORIES = [
+  "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Goa", "Gujarat", "Haryana",
+  "Himachal Pradesh", "Jharkhand", "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
+  "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+  "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+  "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu", "Delhi",
+  "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry",
+] as const;
 
 async function ensureIndianStatesSeed(db: mysql.Pool) {
-  const sourceUrls = [
-    "https://knowindia.india.gov.in/states-uts/",
-    "https://www.india.gov.in/explore-india/facts-of-india/states-ut-districts",
-  ];
-
-  let stateNames: string[] = [];
-  for (const url of sourceUrls) {
-    try {
-      const response = await fetch(url, {
-        headers: {
-          "User-Agent": "LNGRP-ERP/1.0",
-        },
-      });
-      if (!response.ok) continue;
-      const html = await response.text();
-      stateNames = extractOfficialIndiaStates(html);
-      if (stateNames.length >= 36) break;
-    } catch (error) {
-      console.warn(`[DB] Failed to fetch states from ${url}:`, (error as Error).message);
-    }
-  }
-
-  if (stateNames.length < 36) {
-    console.warn("[DB] Official state import skipped because the source could not be parsed reliably.");
-    return;
-  }
-
+  const [existingRows] = await db.query("SELECT id, name FROM `states`");
+  const existingNames = new Set((existingRows as any[]).map((row) => String(row.name || "").trim().toLowerCase()).filter(Boolean));
   const timestamp = new Date().toISOString();
-  for (const name of stateNames) {
-    const trimmedName = name.trim();
-    if (!trimmedName) continue;
-
-    const [existingRows] = await db.query(
-      "SELECT id FROM `states` WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 1",
-      [trimmedName]
-    );
-    const existing = (existingRows as any[])[0];
-
-    if (existing) {
-      await db.query(
-        "UPDATE `states` SET `name` = ?, `updateTimestamp` = ? WHERE `id` = ?",
-        [trimmedName, timestamp, existing.id]
-      );
-      continue;
-    }
-
+  let inserted = 0;
+  for (const name of INDIA_STATES_AND_UNION_TERRITORIES) {
+    const normalizedName = name.toLowerCase();
+    if (existingNames.has(normalizedName)) continue;
     await db.query(
       "INSERT INTO `states` (`id`, `name`, `active`, `updatedBy`, `updateTimestamp`) VALUES (?, ?, ?, ?, ?)",
-      [crypto.randomUUID(), trimmedName, "Yes", "System Seed", timestamp]
+      [crypto.randomUUID(), name, "Yes", "System Seed", timestamp]
     );
+    existingNames.add(normalizedName);
+    inserted += 1;
   }
-
-  console.log(`[DB] Seeded/verified ${stateNames.length} India states and union territories.`);
+  console.log(`[DB] Indian states/union territories seed: ${inserted} inserted, ${INDIA_STATES_AND_UNION_TERRITORIES.length} verified.`);
 }
 
 function normalizeWorkflowStatus(tableName: string, row: any) {
