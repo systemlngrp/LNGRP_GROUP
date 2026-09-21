@@ -710,7 +710,7 @@ export function Materials() {
       type: "Other" as MaterialType,
       uom: "CM",
       color: "",
-      erpCode: editingId ? current.erpCode : getNextOtherErpCode(materials, otherMaterialErpStartNumber),
+      erpCode: editingId ? current.erpCode : "",
     };
   }
 
@@ -916,15 +916,22 @@ export function Materials() {
       return;
     }
     const existing = editingId ? materials.find(m => m.id === editingId) : null;
-    const erpCode = normalizeMaterialErp(formData.erpCode);
-    if (!erpCode) {
+    const rawErpCode = String(formData.erpCode || "").trim();
+    const erpCode = normalizedType === "Other" ? rawErpCode : normalizeMaterialErp(rawErpCode);
+    if (normalizedType === "Other" && !/^\d{8}$/.test(erpCode)) {
+      alert("ERP Code for Other materials must be exactly 8 digits.");
+      return;
+    }
+    if (normalizedType !== "Other" && !erpCode) {
       alert("ERP Code is required and must be a positive whole number.");
       return;
     }
     const duplicateErp = materials.find(
       (material) =>
         material.id !== editingId &&
-        normalizeMaterialErp(material.erpCode) === erpCode
+        (normalizedType === "Other"
+          ? String(material.erpCode || "").trim() === erpCode
+          : normalizeMaterialErp(material.erpCode) === erpCode)
     );
     if (duplicateErp) {
       alert(`ERP Code ${erpCode} already exists for ${duplicateErp.name || "another material"}.`);
@@ -1702,15 +1709,20 @@ export function Materials() {
 
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">
-                  ERP Code <span className="text-red-500">*</span>
+                  ERP Code {formData.type === "Other" ? "(8 digits)" : ""} <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="number"
-                  min="1"
-                  step="1"
+                  type={formData.type === "Other" ? "text" : "number"}
+                  inputMode="numeric"
+                  min={formData.type === "Other" ? undefined : "1"}
+                  step={formData.type === "Other" ? undefined : "1"}
+                  maxLength={formData.type === "Other" ? 8 : undefined}
                   required
                   value={formData.erpCode}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, erpCode: e.target.value }))}
+                  onChange={(e) => setFormData((prev) => ({
+                    ...prev,
+                    erpCode: prev.type === "Other" ? e.target.value.replace(/\D/g, "").slice(0, 8) : e.target.value,
+                  }))}
                   className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                 />
               </div>

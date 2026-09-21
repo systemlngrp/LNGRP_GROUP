@@ -7996,19 +7996,31 @@ const createHandlers = (tableName) => {
                     delete data.openingValue;
                     const normalizedType = String(data.type || "").trim();
                     const rawErpCode = String(data.erpCode ?? "").trim();
-                    if (!/^\d+$/.test(rawErpCode)) {
-                        return res.status(400).json({ error: "ERP Code is required and must be a positive whole number." });
+                    let duplicateMaterialRows;
+                    if (normalizedType === "Other") {
+                        if (!/^\d{8}$/.test(rawErpCode)) {
+                            return res.status(400).json({ error: "ERP Code for Other materials must be exactly 8 digits." });
+                        }
+                        data.erpCode = rawErpCode;
+                        [duplicateMaterialRows] = await db.query(`SELECT id, name FROM \`materials\`
+               WHERE TRIM(COALESCE(erpCode, '')) = ? AND id <> ?
+               LIMIT 1`, [rawErpCode, String(data.id || "")]);
                     }
-                    const numericErpCode = Number(rawErpCode);
-                    if (!Number.isSafeInteger(numericErpCode) || numericErpCode <= 0) {
-                        return res.status(400).json({ error: "ERP Code is required and must be a positive whole number." });
+                    else {
+                        if (!/^\d+$/.test(rawErpCode)) {
+                            return res.status(400).json({ error: "ERP Code is required and must be a positive whole number." });
+                        }
+                        const numericErpCode = Number(rawErpCode);
+                        if (!Number.isSafeInteger(numericErpCode) || numericErpCode <= 0) {
+                            return res.status(400).json({ error: "ERP Code is required and must be a positive whole number." });
+                        }
+                        data.erpCode = String(numericErpCode);
+                        [duplicateMaterialRows] = await db.query(`SELECT id, name FROM \`materials\`
+               WHERE TRIM(COALESCE(erpCode, '')) REGEXP '^[0-9]+$'
+                 AND CAST(TRIM(erpCode) AS UNSIGNED) = ?
+                 AND id <> ?
+               LIMIT 1`, [numericErpCode, String(data.id || "")]);
                     }
-                    data.erpCode = String(numericErpCode);
-                    const [duplicateMaterialRows] = await db.query(`SELECT id, name FROM \`materials\`
-             WHERE TRIM(COALESCE(erpCode, '')) REGEXP '^[0-9]+$'
-               AND CAST(TRIM(erpCode) AS UNSIGNED) = ?
-               AND id <> ?
-             LIMIT 1`, [numericErpCode, String(data.id || "")]);
                     const duplicateMaterial = duplicateMaterialRows[0];
                     if (duplicateMaterial?.id) {
                         return res.status(409).json({
@@ -9798,7 +9810,7 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
                     firmByName.set(key, row);
             });
         });
-        const materialByErp = new Map(materialRows.filter((row) => String(row.erpCode || "").trim()).map((row) => [String(Number(row.erpCode)), row]));
+        const materialByErp = new Map(materialRows.filter((row) => String(row.erpCode || "").trim()).map((row) => [String(row.erpCode).trim(), row]));
         const materialByName = new Map(materialRows.filter((row) => String(row.name || "").trim()).map((row) => [normalizeKey(row.name), row]));
         const groupByName = new Map(groupRows.map((row) => [normalizeKey(row.name), row]));
         const normalizedRows = [];
@@ -9825,8 +9837,8 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
             const firm = firmByName.get(normalizeKey(firmName));
             if (!firm)
                 fail(`Row ${rowNumber}: Firm Name or Short Name ${firmName} was not found.`);
-            if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0)
-                fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
+            if (!/^\d{8}$/.test(rawErp))
+                fail(`Row ${rowNumber}: ERP Code must be exactly 8 digits for Other materials.`);
             if (!itemName)
                 fail(`Row ${rowNumber}: Item Name is required.`);
             if (!itemGroup)
@@ -9837,7 +9849,7 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
                 fail(`Row ${rowNumber}: Opening Stock must be zero or greater.`);
             if (!rawOpeningRate || !Number.isFinite(openingRate) || openingRate < 0)
                 fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
-            const erpCode = String(Number(rawErp));
+            const erpCode = rawErp;
             const nameKey = normalizeKey(itemName);
             const masterSignature = JSON.stringify({ erpCode, itemName: nameKey, itemGroup: normalizeKey(itemGroup), unit: normalizeKey(unit) });
             const priorErpSignature = masterSignatureByErp.get(erpCode);
