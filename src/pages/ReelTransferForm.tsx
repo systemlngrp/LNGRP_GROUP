@@ -81,7 +81,7 @@ export function ReelTransferForm() {
   if (productionsLoading || processingLoading || issuesLoading || returnsLoading) return <Spinner />;
   return <div className="rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
     <div className="mb-5 flex items-center justify-between gap-3 border-b border-black pb-2">
-      <div><h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer - Reel Balance</h2><p className="mt-1 text-xs font-bold text-indigo-700">Unit-II Reel Inventory · jobs from any firm</p></div>
+      <div><h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer - Reel Balance</h2><p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · jobs from any firm</p></div>
       {returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-slate-100">Back to Job Transfer</button> : null}
     </div>
     <form onSubmit={submit} className="space-y-5">

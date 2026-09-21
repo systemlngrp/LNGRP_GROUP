@@ -37,6 +37,7 @@ import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntry
 import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/materialInPoMandatory";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { formatOurReelNo as formatReelNo, getNextNumber } from "../lib/materialNumbering";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type PackingSlipDraft = {
   id: string;
@@ -177,6 +178,7 @@ export function MaterialInForm() {
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [settings] = useData<Setting>("settings", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
   const { activeFirm, setActiveFirm } = useAuth();
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
 
@@ -360,6 +362,10 @@ export function MaterialInForm() {
   useEffect(() => {
     setFirmId(editingEntry?.firmId || linkedGateEntry?.firmId || "");
   }, [activeFirm?.id, editingEntry?.firmId, firms, linkedGateEntry?.firmId]);
+
+  useEffect(() => {
+    if (mrrType === "Reel" && unitOneFirm?.id) setFirmId(unitOneFirm.id);
+  }, [mrrType, unitOneFirm?.id]);
 
   useEffect(() => {
     if (editingEntry) return;
@@ -1161,6 +1167,14 @@ export function MaterialInForm() {
 
   const handleMrrTypeChange = (value: any) => {
     setMrrType(value);
+    if (value === "Reel") {
+      if (!unitOneFirm) {
+        alert("Unit-I is not configured in Firm Master. Reel receipts cannot be saved.");
+      } else {
+        setFirmId(unitOneFirm.id);
+        setActiveFirm(unitOneFirm);
+      }
+    }
     setLines([]);
     setPackingSlipDrafts({});
     resetLineDrafts();
@@ -2795,7 +2809,7 @@ export function MaterialInForm() {
           <div className="flex flex-col space-y-1">
             <label className="font-bold text-black">
               Firm <span className="text-red-500">*</span>
-              <select value={firmId} disabled={firmLocked} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="mt-2 w-full rounded border-2 border-indigo-300 p-2 disabled:bg-slate-100">
+              <select value={firmId} disabled={firmLocked || mrrType === "Reel"} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="mt-2 w-full rounded border-2 border-indigo-300 p-2 disabled:bg-slate-100">
                 <option value="">Select Firm...</option>
                 {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
               </select>

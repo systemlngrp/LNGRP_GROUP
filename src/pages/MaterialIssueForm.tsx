@@ -29,6 +29,7 @@ import {
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { findUnitTwoFirm } from "../lib/unitTwoFirm";
 
 type IssueMaterialOption = Material & { isFgPurchaseItem?: boolean; isNpdConsumableItem?: boolean; npdSourceId?: string; rate?: number };
@@ -174,12 +175,13 @@ export function MaterialIssueForm() {
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const npdItems = useNpdItems();
 
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
   const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
   const requestedFirmId = String(searchParams.get("firmId") || "").trim();
   const requestedFirm = useMemo(() => firms.find((firm) => firm.id === requestedFirmId) || null, [firms, requestedFirmId]);
   const issuePackingSlips = useMemo(
-    () => packingSlips.filter((slip) => String(slip.firmId || "") === String(unitTwoFirm?.id || "")),
-    [packingSlips, unitTwoFirm?.id]
+    () => packingSlips.filter((slip) => String(slip.firmId || "") === String(unitOneFirm?.id || "")),
+    [packingSlips, unitOneFirm?.id]
   );
 
   const requestedDate = normalizeDate(searchParams.get("date"));
@@ -585,8 +587,8 @@ export function MaterialIssueForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!date || lines.length === 0) return;
-    if (!unitTwoFirm && lines.some((line) => line.isReel)) {
-      alert("Unit-II is not configured in Firm Master. Reel operations cannot be saved.");
+    if (!unitOneFirm && lines.some((line) => line.isReel)) {
+      alert("Unit-I is not configured in Firm Master. Reel operations cannot be saved.");
       return;
     }
     if (isWithoutJobIssue(issueType) && requestedFirmId && !requestedFirm) {
@@ -633,8 +635,12 @@ export function MaterialIssueForm() {
 
       const issue: MaterialIssue = {
         id: issueId,
-        firmId: isWithoutJobIssue(issueType) ? (requestedFirm?.id || unitTwoFirm?.id) : unitTwoFirm?.id,
-        firmName: isWithoutJobIssue(issueType) ? (requestedFirm?.firmName || unitTwoFirm?.firmName) : unitTwoFirm?.firmName,
+        firmId: isWithoutJobIssue(issueType)
+          ? (requestedFirm?.id || unitTwoFirm?.id)
+          : (lines.some((line) => line.isReel) ? unitOneFirm?.id : unitTwoFirm?.id),
+        firmName: isWithoutJobIssue(issueType)
+          ? (requestedFirm?.firmName || unitTwoFirm?.firmName)
+          : (lines.some((line) => line.isReel) ? unitOneFirm?.firmName : unitTwoFirm?.firmName),
         issueNo,
         consumptionTransactionNo,
         date,
@@ -781,7 +787,7 @@ export function MaterialIssueForm() {
       <div className="bg-white p-3 md:p-6 rounded shadow-sm border border-black text-black">
       <div className="mb-4 border-b border-black pb-2 md:mb-6">
         <h2 className="text-lg md:text-xl font-bold uppercase tracking-tight text-black">Material Issue Form</h2>
-        <p className="mt-1 text-xs font-bold text-indigo-700">Unit-II Reel Inventory · jobs from any firm</p>
+        <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · jobs from any firm</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

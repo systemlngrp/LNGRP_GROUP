@@ -27,7 +27,7 @@ import {
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
 import { useNpdItems } from "../hooks/useNpdItems";
-import { findUnitTwoFirm } from "../lib/unitTwoFirm";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type ReturnMaterialOption = Material & { isNpdConsumableItem?: boolean; npdSourceId?: string; rate?: number };
 type ReturnLineDraft = { id: string; materialId: string; qty: number; uom: string; isReel: boolean; lastPurchaseRate?: number; openingRate?: number; rate?: number; amount?: number };
@@ -74,7 +74,7 @@ export function MaterialReturnForm() {
   const [lines, setLines] = useState<ReturnLineDraft[]>([]);
   const [returnQtyDrafts, setReturnQtyDrafts] = useState<Record<string, Record<string, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
 
   const jobOptions = useMemo(
     () =>
@@ -286,8 +286,8 @@ export function MaterialReturnForm() {
 
     setIsSubmitting(true);
     try {
-      if (lines.some((line) => line.isReel) && !unitTwoFirm) {
-        alert("Unit-II is not configured in Firm Master. Reel returns cannot be saved.");
+      if (lines.some((line) => line.isReel) && !unitOneFirm) {
+        alert("Unit-I is not configured in Firm Master. Reel returns cannot be saved.");
         return;
       }
       const timestamp = new Date().toISOString();
@@ -300,8 +300,8 @@ export function MaterialReturnForm() {
 
       const entry: MaterialReturn = {
         id: returnId,
-        firmId: lines.some((line) => line.isReel) ? unitTwoFirm?.id : undefined,
-        firmName: lines.some((line) => line.isReel) ? unitTwoFirm?.firmName : undefined,
+        firmId: lines.some((line) => line.isReel) ? unitOneFirm?.id : undefined,
+        firmName: lines.some((line) => line.isReel) ? unitOneFirm?.firmName : undefined,
         returnNo,
         date,
         returnType,

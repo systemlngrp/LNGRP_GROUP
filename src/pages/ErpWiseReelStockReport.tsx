@@ -44,7 +44,7 @@ function formatQty(value: number) {
 }
 
 export function ErpWiseReelStockReport() {
-  // Reel inventory is held in Unit-II but this is a company-wide report.
+  // Reel inventory is held in Unit-I but this is a company-wide report.
   // Match the Reelwise Stock scope so opening reels are not hidden by the
   // currently selected firm.
   const [materials] = useData<Material>("materials", [], { firmScope: "all", cacheToLocalStorage: false });

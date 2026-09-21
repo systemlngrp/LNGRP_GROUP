@@ -12,7 +12,7 @@ import { fetchNpdItems } from "../lib/npdItems";
 import { getNextPlainNumber } from "../lib/materialNumbering";
 import { useConfirm } from "../components/ConfirmDialog";
 import { OPENING_REEL_MATERIAL_IN_ID, isOpeningReelPackingSlip } from "../lib/materialMovement";
-import { findUnitTwoFirm } from "../lib/unitTwoFirm";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type MaterialType = Material["type"];
 type ActiveValue = NonNullable<Material["active"]>;
@@ -154,7 +154,7 @@ export function Materials() {
   const [reelReturnLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [npdItems, setNpdItems] = useState<Item[]>([]);
-  const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
 
   useEffect(() => {
     fetchNpdItems().then(setNpdItems).catch(() => setNpdItems([]));
@@ -591,7 +591,7 @@ export function Materials() {
     if (!isFormOpen || !editingId) return;
     const material = materials.find((row) => row.id === editingId);
     if (!material) return;
-    const firmId = material.type === "Reel" ? String(unitTwoFirm?.id || "") : String(formData.firmId || "").trim();
+    const firmId = material.type === "Reel" ? String(unitOneFirm?.id || "") : String(formData.firmId || "").trim();
     if (!firmId) {
       setFormData((current) => ({ ...current, openingQty: "", openingRate: "", openingValue: "" }));
       setOpeningReels([]);
@@ -611,7 +611,7 @@ export function Materials() {
     setOpeningReelsAreFirmSpecific(packingSlips.some((slip) => slip.materialId === editingId && String(slip.firmId || "") === firmId && isOpeningReelPackingSlip(slip)));
     const supplierIds = Array.from(new Set(nextOpeningReels.map((row) => String(row.supplierId || "").trim()).filter(Boolean)));
     setOpeningReelSupplierId(supplierIds.length === 1 ? supplierIds[0] : "");
-  }, [editingId, formData.firmId, isFormOpen, materialFirmOpenings, materials, packingSlips, unitTwoFirm?.id]);
+  }, [editingId, formData.firmId, isFormOpen, materialFirmOpenings, materials, packingSlips, unitOneFirm?.id]);
 
   const connectedReelsForCurrentMaterial = useMemo<ConnectedReelRow[]>(() => {
     if (formData.type !== "Reel") return [];
@@ -880,9 +880,9 @@ export function Materials() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const normalizedType = formData.type;
-    const firmId = normalizedType === "Reel" ? String(unitTwoFirm?.id || "") : String(formData.firmId || "").trim();
+    const firmId = normalizedType === "Reel" ? String(unitOneFirm?.id || "") : String(formData.firmId || "").trim();
     if (normalizedType === "Reel" && !firmId) {
-      alert("Unit-II is not configured in Firm Master. Reel opening stock cannot be saved.");
+      alert("Unit-I is not configured in Firm Master. Reel opening stock cannot be saved.");
       return;
     }
     if (firmId && !firms.some((firm) => String(firm.id) === firmId)) {
@@ -1650,7 +1650,7 @@ export function Materials() {
                 <label className="text-blue-700 font-bold">Firm</label>
                 {formData.type === "Reel" ? (
                   <div className="w-full rounded border-2 border-indigo-400 bg-indigo-50 px-4 py-3 font-bold text-indigo-900">
-                    {unitTwoFirm?.firmName || "Unit-II firm is not configured"}
+                    {unitOneFirm?.firmName || "Unit-I firm is not configured"}
                   </div>
                 ) : (
                   <select
@@ -1662,7 +1662,7 @@ export function Materials() {
                     {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
                   </select>
                 )}
-                <p className="text-xs font-semibold text-slate-500">{formData.type === "Reel" ? "Reel opening stock is always posted to Unit-II." : "Select a firm to add or edit opening stock for that firm."}</p>
+                <p className="text-xs font-semibold text-slate-500">{formData.type === "Reel" ? "Reel opening stock is always posted to Unit-I." : "Select a firm to add or edit opening stock for that firm."}</p>
               </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">
@@ -1848,7 +1848,7 @@ export function Materials() {
               )}
             </div>
 
-            {(formData.type === "Reel" ? unitTwoFirm?.id : formData.firmId) ? (
+            {(formData.type === "Reel" ? unitOneFirm?.id : formData.firmId) ? (
               <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
@@ -2045,7 +2045,7 @@ export function Materials() {
             ) : (
               <div className="rounded border border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-900">
                 {formData.type === "Reel"
-                  ? "Opening reel stock is maintained by Unit-II and cannot be assigned to another firm."
+                  ? "Opening reel stock is maintained by Unit-I and cannot be assigned to another firm."
                   : "This material can be saved without a firm. Select a firm later to enter opening quantity or value."}
               </div>
             )}
