@@ -10542,13 +10542,19 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
 
   try {
     await conn.beginTransaction();
-    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms` FOR UPDATE");
+    const [firmRows] = await conn.query("SELECT id, firmName, shortName FROM `firms` FOR UPDATE");
     const [materialRows] = await conn.query("SELECT * FROM `materials` FOR UPDATE");
     const [groupRows] = await conn.query("SELECT id, name FROM `material_groups` FOR UPDATE");
     const normalizeKey = (value: unknown) => String(value ?? "").trim().toLowerCase();
     const actor = String(user.name || user.userId || "System").trim() || "System";
     const timestamp = new Date().toISOString();
-    const firmByName = new Map((firmRows as any[]).map((row) => [normalizeKey(row.firmName), row]));
+    const firmByName = new Map<string, any>();
+    (firmRows as any[]).forEach((row) => {
+      [row.firmName, row.shortName].forEach((name) => {
+        const key = normalizeKey(name);
+        if (key && !firmByName.has(key)) firmByName.set(key, row);
+      });
+    });
     const materialByErp = new Map(
       (materialRows as any[]).filter((row) => String(row.erpCode || "").trim()).map((row) => [String(Number(row.erpCode)), row])
     );
@@ -10560,13 +10566,13 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
     const masterSignatureByErp = new Map<string, string>();
     const masterSignatureByName = new Map<string, string>();
     const openingRowByKey = new Map<string, OtherMaterialBulkRow>();
-    const allowedFields = new Set(["rowNumber", "Firm Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"]);
+    const allowedFields = new Set(["rowNumber", "Firm Name", "Firm Name / Short Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"]);
 
     inputRows.forEach((raw: any, index: number) => {
       const rowNumber = Number(raw?.rowNumber) || index + 2;
       const unsupportedField = Object.entries(raw || {}).find(([field, value]) => !allowedFields.has(field) && String(value ?? "").trim() !== "");
       if (unsupportedField) fail(`Row ${rowNumber}: ${unsupportedField[0]} is not supported in the Other Material upload.`);
-      const firmName = String(raw?.["Firm Name"] ?? "").trim();
+      const firmName = String(raw?.["Firm Name / Short Name"] ?? raw?.["Firm Name"] ?? "").trim();
       const rawErp = String(raw?.["ERP Code"] ?? "").trim();
       const itemName = String(raw?.["Item Name"] ?? "").trim();
       const itemGroup = String(raw?.["Item Group"] ?? "").trim();
@@ -10575,9 +10581,9 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
       const rawOpeningRate = String(raw?.["Opening Rate"] ?? "").trim();
       const openingStock = Number(rawOpeningStock);
       const openingRate = Number(rawOpeningRate);
-      if (!firmName) fail(`Row ${rowNumber}: Firm Name is required.`);
+      if (!firmName) fail(`Row ${rowNumber}: Firm Name or Short Name is required.`);
       const firm = firmByName.get(normalizeKey(firmName));
-      if (!firm) fail(`Row ${rowNumber}: Firm Name ${firmName} was not found.`);
+      if (!firm) fail(`Row ${rowNumber}: Firm Name or Short Name ${firmName} was not found.`);
       if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
       if (!itemName) fail(`Row ${rowNumber}: Item Name is required.`);
       if (!itemGroup) fail(`Row ${rowNumber}: Item Group is required.`);

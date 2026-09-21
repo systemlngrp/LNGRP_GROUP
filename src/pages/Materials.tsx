@@ -1183,7 +1183,7 @@ export function Materials() {
 
   function downloadOtherMaterialTemplate() {
     const templateData = [{
-      "Firm Name": "",
+      "Firm Name / Short Name": "",
       "ERP Code": "",
       "Item Name": "",
       "Item Group": "",
@@ -1436,16 +1436,19 @@ export function Materials() {
         const workbook = XLSX.read(event.target?.result, { type: "binary" });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const headerRow = (XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" })[0] || []) as unknown[];
-        const expectedHeaders = ["Firm Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"];
+        const expectedHeaders = ["Firm Name / Short Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"];
+        const legacyFirmHeader = "Firm Name";
         const uploadedHeaders = headerRow.map((value) => String(value).trim()).filter(Boolean);
-        const unsupportedHeaders = uploadedHeaders.filter((header) => !expectedHeaders.includes(header));
-        const missingHeaders = expectedHeaders.filter((header) => !uploadedHeaders.includes(header));
+        const unsupportedHeaders = uploadedHeaders.filter((header) => !expectedHeaders.includes(header) && header !== legacyFirmHeader);
+        const missingHeaders = expectedHeaders.filter((header) => header === "Firm Name / Short Name"
+          ? !uploadedHeaders.includes(header) && !uploadedHeaders.includes(legacyFirmHeader)
+          : !uploadedHeaders.includes(header));
         if (unsupportedHeaders.length > 0 || missingHeaders.length > 0) {
           throw new Error(`Use the Other Material template only. ${unsupportedHeaders.length ? `Unsupported column(s): ${unsupportedHeaders.join(", ")}. ` : ""}${missingHeaders.length ? `Missing column(s): ${missingHeaders.join(", ")}.` : ""}`.trim());
         }
         const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" })
           .map((row, index) => ({ ...row, rowNumber: index + 2 }))
-          .filter((row) => expectedHeaders.some((header) => String(row[header] ?? "").trim() !== ""));
+          .filter((row) => expectedHeaders.some((header) => String(row[header] ?? "").trim() !== "") || String(row[legacyFirmHeader] ?? "").trim() !== "");
         if (parsedRows.length === 0) throw new Error("Enter at least one Other material row.");
 
         setIsUploading(true);
@@ -2139,7 +2142,7 @@ export function Materials() {
                     onChange={handleOpeningStockBulkUpload}
                   />
                 </label>
-                <span className="text-[10px] font-semibold text-slate-500">Reel Management imports opening-stock reels. Other Material Upload creates or updates a material and its selected firm opening stock.</span>
+                <span className="text-[10px] font-semibold text-slate-500">Reel Management imports opening-stock reels. Other Material Upload accepts a firm name or short name and updates that firm’s opening stock.</span>
                 <button
                   type="button"
                   onClick={openBulkColorModal}
