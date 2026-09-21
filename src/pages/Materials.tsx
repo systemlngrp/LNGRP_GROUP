@@ -1130,29 +1130,31 @@ export function Materials() {
       .slice()
       .sort((a, b) => Number(a.erpCode || 0) - Number(b.erpCode || 0))
       .map((material) => ({
-        "ERP Code": material.erpCode || "",
-        "Size": material.size ?? "",
+        "Our Reel No.": "",
+        "ERP": material.erpCode || "",
+        "Suppliers Name": "",
+        "SIZE": material.size ?? "",
         "GSM": material.gsm ?? "",
         "BF": material.bf ?? "",
         "Color": material.color || "",
-        "Supplier Name": "",
-        "Our Reel No.": "",
-        "Opening Stock KG": "",
-        "Opening Rate": material.openingRate ?? "",
+        "Available Weight": "",
+        "Invoice Rate": material.openingRate ?? "",
+        "SUPPLIER REEL": "",
         "Remarks": material.remarks || "",
         "Active": material.active || "Yes",
       }));
     if (templateData.length === 0) {
       templateData.push({
-        "ERP Code": "",
-        "Size": "",
+        "Our Reel No.": "",
+        "ERP": "",
+        "Suppliers Name": "",
+        "SIZE": "",
         "GSM": "",
         "BF": "",
         "Color": "",
-        "Supplier Name": "",
-        "Our Reel No.": "",
-        "Opening Stock KG": "",
-        "Opening Rate": "",
+        "Available Weight": "",
+        "Invoice Rate": "",
+        "SUPPLIER REEL": "",
         "Remarks": "",
         "Active": "Yes",
       });
@@ -1160,7 +1162,7 @@ export function Materials() {
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Opening Reels");
-    XLSX.writeFile(wb, "Opening_Reel_Stock_Bulk_Template.xlsx");
+    XLSX.writeFile(wb, "Reel_Management_Bulk_Template.xlsx");
   }
 
   function handleLegacyMaterialBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1313,8 +1315,8 @@ export function Materials() {
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" })
           .map((row, index) => ({ ...row, rowNumber: index + 2 }))
-          .filter((row) => String(row["Our Reel No."] || "").trim() !== "" || String(row["Opening Stock KG"] || "").trim() !== "");
-        if (parsedRows.length === 0) throw new Error("Enter Our Reel No. and Opening Stock KG for at least one row.");
+          .filter((row) => String(row["Our Reel No."] || "").trim() !== "" || String(row["Available Weight"] || row["Opening Stock KG"] || "").trim() !== "");
+        if (parsedRows.length === 0) throw new Error("Enter Our Reel No. and Available Weight for at least one row.");
 
         setIsUploading(true);
         const token = window.localStorage.getItem("authToken") || "";
@@ -1960,11 +1962,11 @@ export function Materials() {
                   onClick={downloadTemplate}
                   className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow"
                 >
-                  <Download size={14} /> Opening Template
+                  <Download size={14} /> Reel Management Template
                 </button>
                 <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
                   {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
-                  Opening Bulk Upload
+                  Upload Reel Management File
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1973,6 +1975,7 @@ export function Materials() {
                     onChange={handleOpeningStockBulkUpload}
                   />
                 </label>
+                <span className="text-[10px] font-semibold text-slate-500">Available Weight imports as opening stock.</span>
                 <button
                   type="button"
                   onClick={openBulkColorModal}

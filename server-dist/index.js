@@ -9523,18 +9523,20 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         const normalizedRows = [];
         const uploadedReelRows = new Map();
         const materialSignatureByErp = new Map();
+        const firstPopulatedValue = (...values) => values.find((value) => value !== undefined && value !== null && String(value).trim() !== "") ?? "";
         inputRows.forEach((raw, index) => {
             const rowNumber = Number(raw?.rowNumber) || index + 2;
-            const supplierName = String(raw?.supplierName ?? raw?.["Supplier Name"] ?? "").trim();
-            const rawErp = String(raw?.erpCode ?? raw?.["ERP Code"] ?? "").trim();
-            const size = Number(raw?.size ?? raw?.["Size"]);
-            const gsm = Number(raw?.gsm ?? raw?.["GSM"]);
-            const bf = Number(raw?.bf ?? raw?.["BF"]);
-            const color = String(raw?.color ?? raw?.["Color"] ?? "").trim();
-            const ourReelNo = String(raw?.ourReelNo ?? raw?.["Our Reel No."] ?? "").trim();
-            const weightKg = Number(raw?.weightKg ?? raw?.["Opening Stock KG"]);
-            const openingRate = Number(raw?.openingRate ?? raw?.["Opening Rate"]);
-            const remarks = String(raw?.remarks ?? raw?.["Remarks"] ?? "").trim();
+            const supplierName = String(firstPopulatedValue(raw?.supplierName, raw?.["Supplier Name"], raw?.["Suppliers Name"])).trim();
+            const rawErp = String(firstPopulatedValue(raw?.erpCode, raw?.["ERP Code"], raw?.["ERP"])).trim();
+            const size = Number(firstPopulatedValue(raw?.size, raw?.["Size"], raw?.["SIZE"]));
+            const gsm = Number(firstPopulatedValue(raw?.gsm, raw?.["GSM"]));
+            const bf = Number(firstPopulatedValue(raw?.bf, raw?.["BF"]));
+            const color = String(firstPopulatedValue(raw?.color, raw?.["Color"])).trim();
+            const ourReelNo = String(firstPopulatedValue(raw?.ourReelNo, raw?.["Our Reel No."])).trim();
+            const supplierReelNo = String(firstPopulatedValue(raw?.supplierReelNo, raw?.["Supplier Reel No."], raw?.["SUPPLIER REEL"])).trim();
+            const weightKg = Number(firstPopulatedValue(raw?.weightKg, raw?.["Opening Stock KG"], raw?.["Available Weight"]));
+            const openingRate = Number(firstPopulatedValue(raw?.openingRate, raw?.["Opening Rate"], raw?.["Invoice Rate"]));
+            const remarks = String(firstPopulatedValue(raw?.remarks, raw?.["Remarks"])).trim();
             const active = String(raw?.active ?? raw?.["Active"] ?? "Yes").trim().toLowerCase() === "no" ? "No" : "Yes";
             if (!supplierName)
                 fail(`Row ${rowNumber}: Supplier Name is required.`);
@@ -9576,6 +9578,7 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
                 bf,
                 color,
                 ourReelNo,
+                supplierReelNo,
                 weightKg: Number(weightKg.toFixed(2)),
                 openingRate: Number(openingRate.toFixed(2)),
                 remarks,
@@ -9629,12 +9632,12 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
                 }
                 if (existingSlip) {
                     affectedMaterialIds.add(String(existingSlip.materialId || ""));
-                    await conn.query(`UPDATE \`material_in_packing_slips\` SET firmId = ?, supplierId = ?, materialInId = 'OPENING', materialLineId = ?, materialId = ?, ourReelNo = ?, weightKg = ?, openingRate = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`, [row.firmId, row.supplierId, existingSlip.id, materialId, row.ourReelNo, row.weightKg, row.openingRate, actor, timestamp, existingSlip.id]);
+                    await conn.query(`UPDATE \`material_in_packing_slips\` SET firmId = ?, supplierId = ?, materialInId = 'OPENING', materialLineId = ?, materialId = ?, ourReelNo = ?, supplierReelNo = ?, weightKg = ?, openingRate = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`, [row.firmId, row.supplierId, existingSlip.id, materialId, row.ourReelNo, row.supplierReelNo || existingSlip.supplierReelNo || null, row.weightKg, row.openingRate, actor, timestamp, existingSlip.id]);
                     updatedReels += 1;
                 }
                 else {
                     const slipId = crypto.randomUUID();
-                    await conn.query(`INSERT INTO \`material_in_packing_slips\` (id, firmId, supplierId, materialInId, materialLineId, materialId, ourReelNo, weightKg, openingRate, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'OPENING', ?, ?, ?, ?, ?, ?, ?)`, [slipId, row.firmId, row.supplierId, slipId, materialId, row.ourReelNo, row.weightKg, row.openingRate, actor, timestamp]);
+                    await conn.query(`INSERT INTO \`material_in_packing_slips\` (id, firmId, supplierId, materialInId, materialLineId, materialId, ourReelNo, supplierReelNo, weightKg, openingRate, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'OPENING', ?, ?, ?, ?, ?, ?, ?, ?)`, [slipId, row.firmId, row.supplierId, slipId, materialId, row.ourReelNo, row.supplierReelNo || null, row.weightKg, row.openingRate, actor, timestamp]);
                     insertedReels += 1;
                 }
             }
