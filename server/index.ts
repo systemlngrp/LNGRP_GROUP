@@ -10524,6 +10524,146 @@ app.post("/api/materials/reel-materials/bulk", async (req, res) => {
     conn.release();
   }
 });
+app.post("/api/materials/other-materials/bulk", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!hasPermission(user, "/masters/materials")) return res.status(403).json({ error: "Forbidden" });
+
+  const inputRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (inputRows.length === 0) return res.status(400).json({ error: "No Other material rows were provided." });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  const fail = (message: string, statusCode = 400): never => {
+    const error = new Error(message);
+    (error as any).statusCode = statusCode;
+    throw error;
+  };
+
+  try {
+    await conn.beginTransaction();
+    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms` FOR UPDATE");
+    const [materialRows] = await conn.query("SELECT * FROM `materials` FOR UPDATE");
+    const [groupRows] = await conn.query("SELECT id, name FROM `material_groups` FOR UPDATE");
+    const normalizeKey = (value: unknown) => String(value ?? "").trim().toLowerCase();
+    const actor = String(user.name || user.userId || "System").trim() || "System";
+    const timestamp = new Date().toISOString();
+    const firmByName = new Map((firmRows as any[]).map((row) => [normalizeKey(row.firmName), row]));
+    const materialByErp = new Map(
+      (materialRows as any[]).filter((row) => String(row.erpCode || "").trim()).map((row) => [String(Number(row.erpCode)), row])
+    );
+    const materialByName = new Map((materialRows as any[]).filter((row) => String(row.name || "").trim()).map((row) => [normalizeKey(row.name), row]));
+    const groupByName = new Map((groupRows as any[]).map((row) => [normalizeKey(row.name), row]));
+
+    type OtherMaterialBulkRow = { rowNumber: number; firmId: string; firmName: string; erpCode: string; itemName: string; itemGroup: string; unit: string; openingStock: number; openingRate: number };
+    const normalizedRows: OtherMaterialBulkRow[] = [];
+    const masterSignatureByErp = new Map<string, string>();
+    const masterSignatureByName = new Map<string, string>();
+    const openingRowByKey = new Map<string, OtherMaterialBulkRow>();
+    const allowedFields = new Set(["rowNumber", "Firm Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"]);
+
+    inputRows.forEach((raw: any, index: number) => {
+      const rowNumber = Number(raw?.rowNumber) || index + 2;
+      const unsupportedField = Object.entries(raw || {}).find(([field, value]) => !allowedFields.has(field) && String(value ?? "").trim() !== "");
+      if (unsupportedField) fail(`Row ${rowNumber}: ${unsupportedField[0]} is not supported in the Other Material upload.`);
+      const firmName = String(raw?.["Firm Name"] ?? "").trim();
+      const rawErp = String(raw?.["ERP Code"] ?? "").trim();
+      const itemName = String(raw?.["Item Name"] ?? "").trim();
+      const itemGroup = String(raw?.["Item Group"] ?? "").trim();
+      const unit = String(raw?.["Unit"] ?? "").trim();
+      const rawOpeningStock = String(raw?.["Opening Stock"] ?? "").trim();
+      const rawOpeningRate = String(raw?.["Opening Rate"] ?? "").trim();
+      const openingStock = Number(rawOpeningStock);
+      const openingRate = Number(rawOpeningRate);
+      if (!firmName) fail(`Row ${rowNumber}: Firm Name is required.`);
+      const firm = firmByName.get(normalizeKey(firmName));
+      if (!firm) fail(`Row ${rowNumber}: Firm Name ${firmName} was not found.`);
+      if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
+      if (!itemName) fail(`Row ${rowNumber}: Item Name is required.`);
+      if (!itemGroup) fail(`Row ${rowNumber}: Item Group is required.`);
+      if (!unit) fail(`Row ${rowNumber}: Unit is required.`);
+      if (!rawOpeningStock || !Number.isFinite(openingStock) || openingStock < 0) fail(`Row ${rowNumber}: Opening Stock must be zero or greater.`);
+      if (!rawOpeningRate || !Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
+      const erpCode = String(Number(rawErp));
+      const nameKey = normalizeKey(itemName);
+      const masterSignature = JSON.stringify({ erpCode, itemName: nameKey, itemGroup: normalizeKey(itemGroup), unit: normalizeKey(unit) });
+      const priorErpSignature = masterSignatureByErp.get(erpCode);
+      const priorNameSignature = masterSignatureByName.get(nameKey);
+      if ((priorErpSignature && priorErpSignature !== masterSignature) || (priorNameSignature && priorNameSignature !== masterSignature)) {
+        fail(`Row ${rowNumber}: Repeated ERP Code or Item Name must use the same ERP Code, Item Name, Item Group, and Unit values.`);
+      }
+      masterSignatureByErp.set(erpCode, masterSignature);
+      masterSignatureByName.set(nameKey, masterSignature);
+      const normalizedRow = { rowNumber, firmId: String(firm.id), firmName, erpCode, itemName, itemGroup, unit, openingStock: Number(openingStock.toFixed(2)), openingRate: Number(openingRate.toFixed(2)) };
+      const openingKey = `${erpCode}::${normalizedRow.firmId}`;
+      const priorOpeningRow = openingRowByKey.get(openingKey);
+      if (priorOpeningRow && (priorOpeningRow.openingStock !== normalizedRow.openingStock || priorOpeningRow.openingRate !== normalizedRow.openingRate)) {
+        fail(`Row ${rowNumber}: Repeated material and firm must use the same Opening Stock and Opening Rate.`);
+      }
+      openingRowByKey.set(openingKey, normalizedRow);
+      normalizedRows.push(normalizedRow);
+    });
+
+    let createdGroups = 0;
+    let createdMaterials = 0;
+    let updatedMaterials = 0;
+    let updatedFirmOpenings = 0;
+    const materialIdByErp = new Map<string, string>();
+    for (const row of normalizedRows) {
+      if (materialIdByErp.has(row.erpCode)) continue;
+      const byErp = materialByErp.get(row.erpCode);
+      const byName = materialByName.get(normalizeKey(row.itemName));
+      if (byErp && byName && String(byErp.id) !== String(byName.id)) fail(`Row ${row.rowNumber}: ERP Code ${row.erpCode} and Item Name ${row.itemName} belong to different existing materials.`, 409);
+      const existingMaterial = byErp || byName;
+      if (existingMaterial && String(existingMaterial.type || "").trim() !== "Other") fail(`Row ${row.rowNumber}: ERP Code or Item Name already belongs to a non-Other material.`, 409);
+      const groupKey = normalizeKey(row.itemGroup);
+      let group = groupByName.get(groupKey);
+      if (!group) {
+        group = { id: crypto.randomUUID(), name: row.itemGroup };
+        await conn.query("INSERT INTO `material_groups` (`id`, `name`, `updatedBy`, `updateTimestamp`) VALUES (?, ?, ?, ?)", [group.id, group.name, actor, timestamp]);
+        groupByName.set(groupKey, group);
+        createdGroups += 1;
+      }
+      const materialId = String(existingMaterial?.id || crypto.randomUUID());
+      if (existingMaterial) {
+        await conn.query(
+          `UPDATE \`materials\` SET type = 'Other', erpCode = ?, name = ?, uom = ?, materialGroupId = ?, color = NULL, size = NULL, gsm = NULL, bf = NULL, updatedBy = ?, updateTimestamp = ? WHERE id = ?`,
+          [row.erpCode, row.itemName, row.unit, group.id, actor, timestamp, materialId]
+        );
+        updatedMaterials += 1;
+      } else {
+        await conn.query(
+          `INSERT INTO \`materials\` (id, type, erpCode, name, uom, materialGroupId, active, updatedBy, updateTimestamp) VALUES (?, 'Other', ?, ?, ?, ?, 'Yes', ?, ?)`,
+          [materialId, row.erpCode, row.itemName, row.unit, group.id, actor, timestamp]
+        );
+        createdMaterials += 1;
+      }
+      materialIdByErp.set(row.erpCode, materialId);
+    }
+
+    for (const row of openingRowByKey.values()) {
+      const materialId = materialIdByErp.get(row.erpCode)!;
+      const openingValue = Number((row.openingStock * row.openingRate).toFixed(2));
+      await conn.query(
+        `INSERT INTO \`material_firm_openings\` (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`,
+        [materialId, row.firmId, row.openingStock, row.openingRate, openingValue, actor, timestamp]
+      );
+      updatedFirmOpenings += 1;
+    }
+
+    await conn.commit();
+    return res.json({ ok: true, processedRows: normalizedRows.length, createdGroups, createdMaterials, updatedMaterials, updatedFirmOpenings });
+  } catch (error) {
+    await conn.rollback();
+    const statusCode = Number((error as any)?.statusCode || ((error as any)?.code === "ER_DUP_ENTRY" ? 409 : 500));
+    console.error("[OTHER_MATERIAL_BULK] failed:", error);
+    return res.status(statusCode).json({ error: (error as Error).message || "Other material upload failed." });
+  } finally {
+    conn.release();
+  }
+});
 app.get("/api/material-firm-openings", requireAuth, async (req, res) => {
   try {
     const db = await getPool();

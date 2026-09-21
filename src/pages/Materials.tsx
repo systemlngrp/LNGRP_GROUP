@@ -156,6 +156,7 @@ export function Materials() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reelMaterialFileInputRef = useRef<HTMLInputElement>(null);
+  const otherMaterialFileInputRef = useRef<HTMLInputElement>(null);
   const hasNormalizedExistingReelNamesRef = useRef(false);
 
   const reelGroup = useMemo(
@@ -1180,6 +1181,22 @@ export function Materials() {
     XLSX.writeFile(wb, "Reel_Material_Bulk_Template.xlsx");
   }
 
+  function downloadOtherMaterialTemplate() {
+    const templateData = [{
+      "Firm Name": "",
+      "ERP Code": "",
+      "Item Name": "",
+      "Item Group": "",
+      "Unit": "",
+      "Opening Stock": "",
+      "Opening Rate": "",
+    }];
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Other Materials");
+    XLSX.writeFile(wb, "Other_Material_Bulk_Template.xlsx");
+  }
+
   function handleLegacyMaterialBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1402,6 +1419,55 @@ export function Materials() {
       } catch (error) {
         console.error("Reel material bulk upload error:", error);
         alert(error instanceof Error ? error.message : "Failed to upload Reel materials.");
+      } finally {
+        setIsUploading(false);
+        e.target.value = "";
+      }
+    };
+    reader.readAsBinaryString(file);
+  }
+
+  function handleOtherMaterialBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const workbook = XLSX.read(event.target?.result, { type: "binary" });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const headerRow = (XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" })[0] || []) as unknown[];
+        const expectedHeaders = ["Firm Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"];
+        const uploadedHeaders = headerRow.map((value) => String(value).trim()).filter(Boolean);
+        const unsupportedHeaders = uploadedHeaders.filter((header) => !expectedHeaders.includes(header));
+        const missingHeaders = expectedHeaders.filter((header) => !uploadedHeaders.includes(header));
+        if (unsupportedHeaders.length > 0 || missingHeaders.length > 0) {
+          throw new Error(`Use the Other Material template only. ${unsupportedHeaders.length ? `Unsupported column(s): ${unsupportedHeaders.join(", ")}. ` : ""}${missingHeaders.length ? `Missing column(s): ${missingHeaders.join(", ")}.` : ""}`.trim());
+        }
+        const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" })
+          .map((row, index) => ({ ...row, rowNumber: index + 2 }))
+          .filter((row) => expectedHeaders.some((header) => String(row[header] ?? "").trim() !== ""));
+        if (parsedRows.length === 0) throw new Error("Enter at least one Other material row.");
+
+        setIsUploading(true);
+        const token = window.localStorage.getItem("authToken") || "";
+        const response = await fetch("/api/materials/other-materials/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ rows: parsedRows }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || "Other material upload failed.");
+
+        window.dispatchEvent(new CustomEvent("sync-data-materials"));
+        window.dispatchEvent(new CustomEvent("sync-data-material_groups"));
+        window.dispatchEvent(new CustomEvent("sync-data-material-firm-openings"));
+        alert(
+          `Other materials uploaded successfully. ${Number(result.createdMaterials || 0)} material(s) created, ` +
+          `${Number(result.updatedMaterials || 0)} material(s) updated, and ${Number(result.updatedFirmOpenings || 0)} firm opening(s) updated.`
+        );
+      } catch (error) {
+        console.error("Other material bulk upload error:", error);
+        alert(error instanceof Error ? error.message : "Failed to upload Other materials.");
       } finally {
         setIsUploading(false);
         e.target.value = "";
@@ -2044,6 +2110,24 @@ export function Materials() {
                     onChange={handleReelMaterialBulkUpload}
                   />
                 </label>
+                <button
+                  type="button"
+                  onClick={downloadOtherMaterialTemplate}
+                  className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow"
+                >
+                  <Download size={14} /> Other Material Template
+                </button>
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
+                  {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
+                  Upload Other Material File
+                  <input
+                    ref={otherMaterialFileInputRef}
+                    type="file"
+                    accept=".xlsx, .xls"
+                    className="hidden"
+                    onChange={handleOtherMaterialBulkUpload}
+                  />
+                </label>
                 <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
                   {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
                   Upload Reel Management File
@@ -2055,7 +2139,7 @@ export function Materials() {
                     onChange={handleOpeningStockBulkUpload}
                   />
                 </label>
-                <span className="text-[10px] font-semibold text-slate-500">Reel Management uploads import opening-stock reels; use Reel Material Upload for material masters without stock.</span>
+                <span className="text-[10px] font-semibold text-slate-500">Reel Management imports opening-stock reels. Other Material Upload creates or updates a material and its selected firm opening stock.</span>
                 <button
                   type="button"
                   onClick={openBulkColorModal}
