@@ -106,7 +106,9 @@ async function assertRequestFirm(db, firmId) {
     }
 }
 async function getUnitTwoFirm(db) {
-    const [rows] = await db.query("SELECT id, firmName FROM `firms` WHERE active <> 'No' OR active IS NULL ORDER BY firmName");
+    // Firm Master has no active/status field. Filtering on it prevents every
+    // reel issue/return save before the Unit-II owner can be resolved.
+    const [rows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName");
     return rows.find((row) => {
         const name = String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
         return name.endsWith("unit2") || name.endsWith("unitii");
