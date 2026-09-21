@@ -1332,8 +1332,8 @@ export function Materials() {
         window.dispatchEvent(new CustomEvent("sync-data-materials"));
         window.dispatchEvent(new CustomEvent("sync-data-material-in-packing-slips"));
         alert(
-          `Opening stock uploaded successfully. ${Number(result.insertedReels || 0)} reel(s), ` +
-          `${Number(result.createdMaterials || 0)} material(s) created, and ${Number(result.updatedMaterials || 0)} material(s) updated.`
+          `Opening stock uploaded successfully. ${Number(result.insertedReels || 0)} reel(s) added, ` +
+          `${Number(result.updatedReels || 0)} reel(s) updated, ${Number(result.createdMaterials || 0)} material(s) created, and ${Number(result.updatedMaterials || 0)} material(s) updated.`
         );
       } catch (error) {
         console.error("Opening-stock bulk upload error:", error);

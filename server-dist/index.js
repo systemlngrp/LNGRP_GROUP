@@ -9500,7 +9500,7 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         const unitTwo = await getUnitTwoFirm(conn);
         if (!unitTwo?.id)
             fail("Unit-II firm is not configured. Reel opening stock must belong to Unit-II.");
-        const [supplierRows] = await conn.query("SELECT id, name FROM `suppliers`");
+        const [supplierRows] = await conn.query("SELECT id, name, firmId FROM `suppliers` FOR UPDATE");
         const [materialRows] = await conn.query("SELECT * FROM `materials` FOR UPDATE");
         const [packingSlipRows] = await conn.query("SELECT * FROM `material_in_packing_slips` FOR UPDATE");
         const [groupRows] = await conn.query("SELECT id, name FROM `material_groups` FOR UPDATE");
@@ -9536,9 +9536,8 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
             const openingRate = Number(raw?.openingRate ?? raw?.["Opening Rate"]);
             const remarks = String(raw?.remarks ?? raw?.["Remarks"] ?? "").trim();
             const active = String(raw?.active ?? raw?.["Active"] ?? "Yes").trim().toLowerCase() === "no" ? "No" : "Yes";
-            const supplier = supplierName ? supplierByName.get(normalizeKey(supplierName)) : null;
-            if (supplierName && !supplier)
-                fail(`Row ${rowNumber}: Supplier Name "${supplierName}" was not found.`);
+            if (!supplierName)
+                fail(`Row ${rowNumber}: Supplier Name is required.`);
             if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0)
                 fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
             const erpCode = String(Number(rawErp));
@@ -9561,8 +9560,6 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
             if (firstUploadedRow)
                 fail(`Rows ${firstUploadedRow} and ${rowNumber}: Our Reel No. ${ourReelNo} is duplicated in the upload.`, 409);
             uploadedReelRows.set(reelKey, rowNumber);
-            if (existingReelByKey.has(reelKey))
-                fail(`Row ${rowNumber}: Our Reel No. ${ourReelNo} already exists.`, 409);
             const signature = JSON.stringify({ size, gsm, bf, color: normalizeKey(color), remarks, active });
             const priorSignature = materialSignatureByErp.get(erpCode);
             if (priorSignature && priorSignature !== signature)
@@ -9571,7 +9568,8 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
             normalizedRows.push({
                 rowNumber,
                 firmId: String(unitTwo.id),
-                supplierId: supplier ? String(supplier.id) : "",
+                supplierName,
+                supplierId: "",
                 erpCode,
                 size,
                 gsm,
@@ -9586,6 +9584,19 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         });
         const actor = String(user.name || user.userId || "System").trim() || "System";
         const timestamp = new Date().toISOString();
+        // Suppliers are part of the same atomic import.  Names are normalized so
+        // differently cased/spaced spellings do not create duplicate suppliers.
+        for (const supplierName of Array.from(new Set(normalizedRows.map((row) => normalizeKey(row.supplierName))))) {
+            if (supplierByName.has(supplierName))
+                continue;
+            const sourceRow = normalizedRows.find((row) => normalizeKey(row.supplierName) === supplierName);
+            const supplier = { id: crypto.randomUUID(), name: sourceRow.supplierName };
+            await conn.query("INSERT INTO `suppliers` (`id`, `name`, `firmId`, `gstSupplyType`, `active`, `updatedBy`, `updateTimestamp`) VALUES (?, ?, ?, 'INTRA_STATE', 'Yes', ?, ?)", [supplier.id, supplier.name, unitTwo.id, actor, timestamp]);
+            supplierByName.set(supplierName, supplier);
+        }
+        normalizedRows.forEach((row) => {
+            row.supplierId = String(supplierByName.get(normalizeKey(row.supplierName))?.id || "");
+        });
         const rowsByErp = new Map();
         normalizedRows.forEach((row) => {
             const current = rowsByErp.get(row.erpCode) || [];
@@ -9595,6 +9606,8 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         let createdMaterials = 0;
         let updatedMaterials = 0;
         let insertedReels = 0;
+        let updatedReels = 0;
+        const affectedMaterialIds = new Set();
         for (const [erpCode, rowsForMaterial] of rowsByErp.entries()) {
             const sample = rowsForMaterial[0];
             const existingMaterial = materialByErp.get(erpCode);
@@ -9608,32 +9621,40 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
                 await conn.query(`INSERT INTO \`materials\` (id, type, erpCode, name, uom, materialGroupId, color, size, gsm, bf, remarks, active, updatedBy, updateTimestamp) VALUES (?, 'Reel', ?, ?, 'KGS', ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [materialId, erpCode, displayName, reelGroup.id, sample.color, sample.size, sample.gsm, sample.bf, sample.remarks || null, sample.active, actor, timestamp]);
                 createdMaterials += 1;
             }
-            const rowsByFirm = new Map();
-            rowsForMaterial.forEach((row) => rowsByFirm.set(row.firmId, [...(rowsByFirm.get(row.firmId) || []), row]));
-            for (const [firmId, firmRows] of rowsByFirm) {
-                const existingOpeningSlips = packingSlipRows.filter((slip) => String(slip.materialId) === materialId && String(slip.firmId || "") === firmId && String(slip.materialInId || "").trim() === "OPENING");
-                const explicitQty = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0);
-                const explicitValue = existingOpeningSlips.reduce((sum, slip) => sum + Number(slip.weightKg || 0) * Number(slip.openingRate || 0), 0);
-                const legacyForFirm = existingOpeningSlips.length === 0 && String(existingMaterial?.firmId || "") === firmId;
-                const legacyQty = legacyForFirm ? Number(existingMaterial?.openingQty || 0) : 0;
-                const legacyValue = legacyForFirm ? Number(existingMaterial?.openingValue ?? legacyQty * Number(existingMaterial?.openingRate || 0)) : 0;
-                const addedQty = firmRows.reduce((sum, row) => sum + row.weightKg, 0);
-                const addedValue = firmRows.reduce((sum, row) => sum + row.weightKg * row.openingRate, 0);
-                const totalQty = Number((explicitQty + legacyQty + addedQty).toFixed(2));
-                const totalValue = Number((explicitValue + legacyValue + addedValue).toFixed(2));
-                const totalRate = totalQty > 0 ? Number((totalValue / totalQty).toFixed(2)) : 0;
-                await conn.query(`INSERT INTO \`material_firm_openings\` (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
-           VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`, [materialId, firmId, totalQty, totalRate, totalValue, actor, timestamp]);
-            }
+            affectedMaterialIds.add(materialId);
             for (const row of rowsForMaterial) {
-                const slipId = crypto.randomUUID();
-                await conn.query(`INSERT INTO \`material_in_packing_slips\` (id, firmId, supplierId, materialInId, materialLineId, materialId, ourReelNo, weightKg, openingRate, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'OPENING', ?, ?, ?, ?, ?, ?, ?)`, [slipId, row.firmId, row.supplierId || null, slipId, materialId, row.ourReelNo, row.weightKg, row.openingRate, actor, timestamp]);
-                insertedReels += 1;
+                const existingSlip = existingReelByKey.get(normalizeKey(row.ourReelNo));
+                if (existingSlip && normalizeKey(existingSlip.materialInId) !== "opening") {
+                    fail(`Row ${row.rowNumber}: Our Reel No. ${row.ourReelNo} belongs to an MRR reel and cannot be converted to opening stock.`, 409);
+                }
+                if (existingSlip) {
+                    affectedMaterialIds.add(String(existingSlip.materialId || ""));
+                    await conn.query(`UPDATE \`material_in_packing_slips\` SET firmId = ?, supplierId = ?, materialInId = 'OPENING', materialLineId = ?, materialId = ?, ourReelNo = ?, weightKg = ?, openingRate = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`, [row.firmId, row.supplierId, existingSlip.id, materialId, row.ourReelNo, row.weightKg, row.openingRate, actor, timestamp, existingSlip.id]);
+                    updatedReels += 1;
+                }
+                else {
+                    const slipId = crypto.randomUUID();
+                    await conn.query(`INSERT INTO \`material_in_packing_slips\` (id, firmId, supplierId, materialInId, materialLineId, materialId, ourReelNo, weightKg, openingRate, updatedBy, updateTimestamp) VALUES (?, ?, ?, 'OPENING', ?, ?, ?, ?, ?, ?, ?)`, [slipId, row.firmId, row.supplierId, slipId, materialId, row.ourReelNo, row.weightKg, row.openingRate, actor, timestamp]);
+                    insertedReels += 1;
+                }
             }
         }
+        // Opening balances are derived from the persisted opening reels after all
+        // inserts/updates, preventing re-imports from adding the same stock twice.
+        for (const materialId of Array.from(affectedMaterialIds).filter(Boolean)) {
+            const [openingRows] = await conn.query(`SELECT COALESCE(SUM(weightKg), 0) AS openingQty,
+                COALESCE(SUM(weightKg * COALESCE(openingRate, 0)), 0) AS openingValue
+         FROM \`material_in_packing_slips\`
+         WHERE materialId = ? AND firmId = ? AND UPPER(TRIM(materialInId)) = 'OPENING'`, [materialId, unitTwo.id]);
+            const openingQty = Number(openingRows[0]?.openingQty || 0);
+            const openingValue = Number(openingRows[0]?.openingValue || 0);
+            const openingRate = openingQty > 0 ? Number((openingValue / openingQty).toFixed(2)) : 0;
+            await conn.query(`INSERT INTO \`material_firm_openings\` (id, materialId, firmId, openingQty, openingRate, openingValue, updatedBy, updateTimestamp)
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`, [materialId, unitTwo.id, openingQty, openingRate, openingValue, actor, timestamp]);
+        }
         await conn.commit();
-        return res.json({ ok: true, processedRows: normalizedRows.length, createdMaterials, updatedMaterials, insertedReels });
+        return res.json({ ok: true, processedRows: normalizedRows.length, createdMaterials, updatedMaterials, insertedReels, updatedReels });
     }
     catch (error) {
         await conn.rollback();
