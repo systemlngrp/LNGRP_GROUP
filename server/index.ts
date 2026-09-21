@@ -10252,6 +10252,7 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       bf: number;
       color: string;
       ourReelNo: string;
+      hasOpeningReel: boolean;
       supplierReelNo: string;
       weightKg: number;
       openingRate: number;
@@ -10280,21 +10281,23 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       const openingRate = Number(firstPopulatedValue(raw?.openingRate, raw?.["Opening Rate"], raw?.["Invoice Rate"]));
       const remarks = String(firstPopulatedValue(raw?.remarks, raw?.["Remarks"])).trim();
       const active = String(raw?.active ?? raw?.["Active"] ?? "Yes").trim().toLowerCase() === "no" ? "No" : "Yes";
+      const hasOpeningReel = Boolean(ourReelNo);
 
-      if (!supplierName) fail(`Row ${rowNumber}: Supplier Name is required.`);
       if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
       const erpCode = String(Number(rawErp));
       if (!Number.isFinite(size) || size <= 0) fail(`Row ${rowNumber}: Size must be greater than 0.`);
       if (!Number.isFinite(gsm) || gsm <= 0) fail(`Row ${rowNumber}: GSM must be greater than 0.`);
       if (!Number.isFinite(bf) || bf <= 0) fail(`Row ${rowNumber}: BF must be greater than 0.`);
-      if (!ourReelNo) fail(`Row ${rowNumber}: Our Reel No. is required.`);
-      if (!Number.isFinite(weightKg) || weightKg <= 0) fail(`Row ${rowNumber}: Opening Stock KG must be greater than 0.`);
-      if (!Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
+      if (hasOpeningReel) {
+        if (!supplierName) fail(`Row ${rowNumber}: Supplier Name is required for opening-reel stock.`);
+        if (!Number.isFinite(weightKg) || weightKg <= 0) fail(`Row ${rowNumber}: Opening Stock KG must be greater than 0.`);
+        if (!Number.isFinite(openingRate) || openingRate < 0) fail(`Row ${rowNumber}: Opening Rate must be zero or greater.`);
 
-      const reelKey = normalizeKey(ourReelNo);
-      const firstUploadedRow = uploadedReelRows.get(reelKey);
-      if (firstUploadedRow) fail(`Rows ${firstUploadedRow} and ${rowNumber}: Our Reel No. ${ourReelNo} is duplicated in the upload.`, 409);
-      uploadedReelRows.set(reelKey, rowNumber);
+        const reelKey = normalizeKey(ourReelNo);
+        const firstUploadedRow = uploadedReelRows.get(reelKey);
+        if (firstUploadedRow) fail(`Rows ${firstUploadedRow} and ${rowNumber}: Our Reel No. ${ourReelNo} is duplicated in the upload.`, 409);
+        uploadedReelRows.set(reelKey, rowNumber);
+      }
 
       const signature = JSON.stringify({ size, gsm, bf, color: normalizeKey(color), remarks, active });
       const priorSignature = materialSignatureByErp.get(erpCode);
@@ -10312,9 +10315,10 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         bf,
         color,
         ourReelNo,
+        hasOpeningReel,
         supplierReelNo,
-        weightKg: Number(weightKg.toFixed(2)),
-        openingRate: Number(openingRate.toFixed(2)),
+        weightKg: hasOpeningReel ? Number(weightKg.toFixed(2)) : 0,
+        openingRate: hasOpeningReel ? Number(openingRate.toFixed(2)) : 0,
         remarks,
         active,
       });
@@ -10325,9 +10329,10 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
 
     // Suppliers are part of the same atomic import.  Names are normalized so
     // differently cased/spaced spellings do not create duplicate suppliers.
-    for (const supplierName of Array.from(new Set(normalizedRows.map((row) => normalizeKey(row.supplierName))))) {
+    const openingReelRows = normalizedRows.filter((row) => row.hasOpeningReel);
+    for (const supplierName of Array.from(new Set(openingReelRows.map((row) => normalizeKey(row.supplierName))))) {
       if (supplierByName.has(supplierName)) continue;
-      const sourceRow = normalizedRows.find((row) => normalizeKey(row.supplierName) === supplierName)!;
+      const sourceRow = openingReelRows.find((row) => normalizeKey(row.supplierName) === supplierName)!;
       const supplier = { id: crypto.randomUUID(), name: sourceRow.supplierName };
       await conn.query(
         "INSERT INTO `suppliers` (`id`, `name`, `firmId`, `gstSupplyType`, `active`, `updatedBy`, `updateTimestamp`) VALUES (?, ?, ?, 'INTRA_STATE', 'Yes', ?, ?)",
@@ -10335,7 +10340,7 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
       );
       supplierByName.set(supplierName, supplier);
     }
-    normalizedRows.forEach((row) => {
+    openingReelRows.forEach((row) => {
       row.supplierId = String(supplierByName.get(normalizeKey(row.supplierName))?.id || "");
     });
 
@@ -10370,10 +10375,10 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
         );
         createdMaterials += 1;
       }
-      affectedMaterialIds.add(materialId);
-
       for (const row of rowsForMaterial) {
+        if (!row.hasOpeningReel) continue;
         const existingSlip = existingReelByKey.get(normalizeKey(row.ourReelNo));
+        affectedMaterialIds.add(materialId);
         if (existingSlip && normalizeKey(existingSlip.materialInId) !== "opening") {
           fail(`Row ${row.rowNumber}: Our Reel No. ${row.ourReelNo} belongs to an MRR reel and cannot be converted to opening stock.`, 409);
         }
@@ -10417,7 +10422,7 @@ app.post("/api/materials/opening-reels/bulk", async (req, res) => {
     }
 
     await conn.commit();
-    return res.json({ ok: true, processedRows: normalizedRows.length, createdMaterials, updatedMaterials, insertedReels, updatedReels });
+    return res.json({ ok: true, processedRows: normalizedRows.length, materialOnlyRows: normalizedRows.length - openingReelRows.length, createdMaterials, updatedMaterials, insertedReels, updatedReels });
   } catch (error) {
     await conn.rollback();
     const statusCode = Number((error as any)?.statusCode || ((error as any)?.code === "ER_DUP_ENTRY" ? 409 : 500));

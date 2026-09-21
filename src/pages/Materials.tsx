@@ -1165,6 +1165,22 @@ export function Materials() {
     XLSX.writeFile(wb, "Reel_Management_Bulk_Template.xlsx");
   }
 
+  function downloadReelMaterialTemplate() {
+    const templateData = [{
+      "ERP": "",
+      "SIZE": "",
+      "GSM": "",
+      "BF": "",
+      "Color": "",
+      "Remarks": "",
+      "Active": "Yes",
+    }];
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Reel Materials");
+    XLSX.writeFile(wb, "Reel_Material_Bulk_Template.xlsx");
+  }
+
   function handleLegacyMaterialBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1315,8 +1331,8 @@ export function Materials() {
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const parsedRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, { defval: "" })
           .map((row, index) => ({ ...row, rowNumber: index + 2 }))
-          .filter((row) => String(row["Our Reel No."] || "").trim() !== "" || String(row["Available Weight"] || row["Opening Stock KG"] || "").trim() !== "");
-        if (parsedRows.length === 0) throw new Error("Enter Our Reel No. and Available Weight for at least one row.");
+          .filter((row) => String(row["ERP"] || row["ERP Code"] || "").trim() !== "" || String(row["Our Reel No."] || "").trim() !== "" || String(row["Available Weight"] || row["Opening Stock KG"] || "").trim() !== "");
+        if (parsedRows.length === 0) throw new Error("Enter an ERP Code for at least one Reel material row.");
 
         setIsUploading(true);
         const token = window.localStorage.getItem("authToken") || "";
@@ -1334,8 +1350,9 @@ export function Materials() {
         window.dispatchEvent(new CustomEvent("sync-data-materials"));
         window.dispatchEvent(new CustomEvent("sync-data-material-in-packing-slips"));
         alert(
-          `Opening stock uploaded successfully. ${Number(result.insertedReels || 0)} reel(s) added, ` +
-          `${Number(result.updatedReels || 0)} reel(s) updated, ${Number(result.createdMaterials || 0)} material(s) created, and ${Number(result.updatedMaterials || 0)} material(s) updated.`
+          `Reel materials uploaded successfully. ${Number(result.materialOnlyRows || 0)} material-only row(s) processed, ` +
+          `${Number(result.insertedReels || 0)} opening reel(s) added, ${Number(result.updatedReels || 0)} opening reel(s) updated, ` +
+          `${Number(result.createdMaterials || 0)} material(s) created, and ${Number(result.updatedMaterials || 0)} material(s) updated.`
         );
       } catch (error) {
         console.error("Opening-stock bulk upload error:", error);
@@ -1964,6 +1981,13 @@ export function Materials() {
                 >
                   <Download size={14} /> Reel Management Template
                 </button>
+                <button
+                  type="button"
+                  onClick={downloadReelMaterialTemplate}
+                  className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow"
+                >
+                  <Download size={14} /> Reel Material Template
+                </button>
                 <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
                   {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
                   Upload Reel Management File
@@ -1975,7 +1999,7 @@ export function Materials() {
                     onChange={handleOpeningStockBulkUpload}
                   />
                 </label>
-                <span className="text-[10px] font-semibold text-slate-500">Available Weight imports as opening stock.</span>
+                <span className="text-[10px] font-semibold text-slate-500">Rows without Our Reel No. create Reel materials only; Available Weight imports opening stock when a reel number is provided.</span>
                 <button
                   type="button"
                   onClick={openBulkColorModal}
