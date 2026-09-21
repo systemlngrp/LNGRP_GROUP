@@ -80,9 +80,9 @@ const GSM_FORMULA_OPTIONS = [
 const GLOBAL_ITEM_RENAME_ALLOWED_EMAIL = "pankaj@bizskilledu.com";
 const MATERIAL_NUMBERING_MAX = 2_147_483_647;
 const MATERIAL_NUMBERING_FIELDS = [
-  ["reelErpStartNumber", "Reel ERP Start Number"],
-  ["ourReelNoStartNumber", "Our Reel No. Start Number"],
-  ["otherMaterialErpStartNumber", "Other Material ERP Start Number"],
+  ["reelErpStartNumber", "Reel Material ERP Starting Series"],
+  ["ourReelNoStartNumber", "Our Reel No. Starting Series"],
+  ["otherMaterialErpStartNumber", "Other Material ERP Starting Series (8 Digits)"],
 ] as const;
 type MaterialNumberingKey = (typeof MATERIAL_NUMBERING_FIELDS)[number][0];
 const GLOBAL_ITEM_RENAME_SYNC_EVENTS = [
@@ -410,7 +410,7 @@ export function SettingsPage() {
   const [materialNumberingDraft, setMaterialNumberingDraft] = useState<Record<MaterialNumberingKey, string>>({
     reelErpStartNumber: "1",
     ourReelNoStartNumber: "1",
-    otherMaterialErpStartNumber: "1",
+    otherMaterialErpStartNumber: "00000001",
   });
   const [materialNumberingErrors, setMaterialNumberingErrors] = useState<Partial<Record<MaterialNumberingKey, string>>>({});
 
@@ -422,7 +422,7 @@ export function SettingsPage() {
     setMaterialNumberingDraft({
       reelErpStartNumber: String(currentSetting?.reelErpStartNumber || 1),
       ourReelNoStartNumber: String(currentSetting?.ourReelNoStartNumber || 1),
-      otherMaterialErpStartNumber: String(currentSetting?.otherMaterialErpStartNumber || 1),
+      otherMaterialErpStartNumber: String(currentSetting?.otherMaterialErpStartNumber || 1).padStart(8, "0"),
     });
   }, [
     currentSetting?.reelErpStartNumber,
@@ -779,10 +779,14 @@ export function SettingsPage() {
   const saveMaterialNumbering = async (key: MaterialNumberingKey) => {
     const rawValue = materialNumberingDraft[key].trim();
     const value = Number(rawValue);
-    if (!/^\d+$/.test(rawValue) || !Number.isSafeInteger(value) || value < 1 || value > MATERIAL_NUMBERING_MAX) {
+    const max = key === "otherMaterialErpStartNumber" ? 99_999_999 : MATERIAL_NUMBERING_MAX;
+    const validOtherMaterialSeries = key !== "otherMaterialErpStartNumber" || /^\d{1,8}$/.test(rawValue);
+    if (!validOtherMaterialSeries || !/^\d+$/.test(rawValue) || !Number.isSafeInteger(value) || value < 1 || value > max) {
       setMaterialNumberingErrors((current) => ({
         ...current,
-        [key]: `Enter a whole number from 1 to ${MATERIAL_NUMBERING_MAX.toLocaleString("en-IN")}.`,
+        [key]: key === "otherMaterialErpStartNumber"
+          ? "Enter an 8-digit series from 00000001 to 99999999."
+          : `Enter a whole number from 1 to ${MATERIAL_NUMBERING_MAX.toLocaleString("en-IN")}.`,
       }));
       return;
     }
@@ -1817,13 +1821,17 @@ export function SettingsPage() {
               <label key={key} className="space-y-2">
                 <span className="block text-xs font-black uppercase tracking-wide text-black">{label}</span>
                 <input
-                  type="number"
+                  type={key === "otherMaterialErpStartNumber" ? "text" : "number"}
+                  inputMode="numeric"
                   min="1"
-                  max={MATERIAL_NUMBERING_MAX}
+                  max={key === "otherMaterialErpStartNumber" ? 99_999_999 : MATERIAL_NUMBERING_MAX}
+                  maxLength={key === "otherMaterialErpStartNumber" ? 8 : undefined}
                   step="1"
                   value={materialNumberingDraft[key]}
                   onChange={(event) => {
-                    const value = event.target.value;
+                    const value = key === "otherMaterialErpStartNumber"
+                      ? event.target.value.replace(/\D/g, "").slice(0, 8)
+                      : event.target.value;
                     setMaterialNumberingDraft((current) => ({ ...current, [key]: value }));
                     setMaterialNumberingErrors((current) => ({ ...current, [key]: undefined }));
                   }}
@@ -1842,7 +1850,7 @@ export function SettingsPage() {
               </label>
             ))}
           </div>
-          <p className="mt-4 text-xs text-slate-700">Example: if Reel ERP Start Number is 77001290, the next available Reel ERP will start at 77001290 unless a higher ERP already exists.</p>
+          <p className="mt-4 text-xs text-slate-700">Reel Material ERP uses its configured minimum. Other Material ERP uses an 8-digit series (for example, 00123456) and skips existing ERP codes.</p>
         </div>
 
         <div className="flex flex-col space-y-2 border-t border-dashed border-black pt-4">

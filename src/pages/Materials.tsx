@@ -100,7 +100,13 @@ function getNextNumericErpCode(materials: Material[], startNumber: unknown = 1) 
 }
 
 function getNextOtherErpCode(materials: Material[], startNumber: unknown = 1) {
-  return String(getNextPlainNumber(materials.map((material) => material.erpCode), startNumber));
+  const start = Math.max(1, Number(startNumber) || 1);
+  const highest = materials.reduce((max, material) => {
+    const erpCode = String(material.erpCode || "").trim();
+    return /^\d{8}$/.test(erpCode) ? Math.max(max, Number(erpCode)) : max;
+  }, 0);
+  const next = Math.max(start, highest + 1);
+  return next <= 99_999_999 ? String(next).padStart(8, "0") : "";
 }
 
 function createInitialFormState(materials: Material[], reelGroupId = "", reelStartNumber: unknown = 1) {
@@ -710,7 +716,7 @@ export function Materials() {
       type: "Other" as MaterialType,
       uom: "CM",
       color: "",
-      erpCode: editingId ? current.erpCode : "",
+      erpCode: editingId ? current.erpCode : getNextOtherErpCode(materials, otherMaterialErpStartNumber),
     };
   }
 

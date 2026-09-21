@@ -8108,8 +8108,11 @@ const createHandlers = (tableName) => {
                             continue;
                         const rawValue = String(data[field]).trim();
                         const numericValue = Number(rawValue);
-                        if (!/^\d+$/.test(rawValue) || !Number.isSafeInteger(numericValue) || numericValue < 1 || numericValue > 2147483647) {
-                            return res.status(400).json({ error: `${field} must be a whole number from 1 to 2,147,483,647.` });
+                        const max = field === "otherMaterialErpStartNumber" ? 99_999_999 : 2_147_483_647;
+                        if (!/^\d+$/.test(rawValue) || !Number.isSafeInteger(numericValue) || numericValue < 1 || numericValue > max) {
+                            return res.status(400).json({ error: field === "otherMaterialErpStartNumber"
+                                    ? "Other Material ERP Starting Series must be from 00000001 to 99999999."
+                                    : `${field} must be a whole number from 1 to 2,147,483,647.` });
                         }
                         data[field] = numericValue;
                     }
