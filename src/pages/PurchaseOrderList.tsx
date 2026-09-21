@@ -110,12 +110,14 @@ const formatMoney = (value: number) =>
   Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
-  const [purchaseOrders, setPurchaseOrders] = useData<PurchaseOrder>("purchase-orders", []);
+  // Purchase approval is a company-wide control. Loading only the active
+  // firm made valid pending POs disappear before the firm filter could apply.
+  const [purchaseOrders, setPurchaseOrders] = useData<PurchaseOrder>("purchase-orders", [], { firmScope: "all" });
   const [orderLines, setPurchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
-  const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [materials] = useData<Material>("materials", []);
-  const [suppliers] = useData<Supplier>("suppliers", []);
-  const [indents, setIndents] = useData<Indent>("indents", []);
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  const [materials] = useData<Material>("materials", [], { firmScope: "all" });
+  const [suppliers] = useData<Supplier>("suppliers", [], { firmScope: "all" });
+  const [indents, setIndents] = useData<Indent>("indents", [], { firmScope: "all" });
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [settings] = useData<Setting>("settings", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
