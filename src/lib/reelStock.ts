@@ -4,6 +4,7 @@ import type {
   MaterialInPackingSlip,
   MaterialIssueReelLine,
   MaterialReturnReelLine,
+  Firm,
   Supplier,
 } from "../types";
 import { formatOurReelNo, getNextNumber } from "./materialNumbering";
@@ -17,6 +18,8 @@ export type ReelStockCalculationRow = {
   ourReelNo: string;
   erp: string;
   itemName: string;
+  firmId: string;
+  firmName: string;
   supplierName: string;
   gsm: number;
   size: number;
@@ -39,6 +42,7 @@ type BuildReelStockRowsArgs = {
   packingSlips: MaterialInPackingSlip[];
   issueReelLines: MaterialIssueReelLine[];
   returnReelLines: MaterialReturnReelLine[];
+  firms?: Firm[];
   suppliers?: Supplier[];
   includeMaterialIn?: (entry: MaterialIn) => boolean;
   includeIssueLine?: (line: MaterialIssueReelLine) => boolean;
@@ -75,6 +79,7 @@ export function buildReelStockRows({
   packingSlips,
   issueReelLines,
   returnReelLines,
+  firms = [],
   suppliers = [],
   includeMaterialIn = () => true,
   includeIssueLine = () => true,
@@ -84,6 +89,7 @@ export function buildReelStockRows({
   const materialMap = new Map(materials.map((material) => [material.id, material]));
   const materialInMap = new Map(materialIn.filter(includeMaterialIn).map((entry) => [entry.id, entry]));
   const supplierMap = new Map(suppliers.map((supplier) => [supplier.id, supplier]));
+  const firmMap = new Map(firms.map((firm) => [firm.id, firm]));
   const filteredIssueLines = issueReelLines.filter(includeIssueLine);
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
   const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
@@ -117,6 +123,8 @@ export function buildReelStockRows({
         ourReelNo: formatOurReelNo(firstOpeningReelNo + index),
         erp: String(material.erpCode || ""),
         itemName: String(material.name || ""),
+        firmId: String(material.firmId || ""),
+        firmName: firmMap.get(String(material.firmId || ""))?.firmName || "Unassigned",
         supplierName: "-",
         gsm: Number(material.gsm || 0),
         size: Number(material.size || 0),
@@ -139,6 +147,7 @@ export function buildReelStockRows({
     .map((slip) => {
       const material = materialMap.get(slip.materialId);
       const receipt = materialInMap.get(slip.materialInId);
+      const firmId = String(slip.firmId || receipt?.firmId || "").trim();
       const supplier = isOpeningReelPackingSlip(slip)
         ? supplierMap.get(String(slip.supplierId || ""))
         : receipt ? supplierMap.get(receipt.supplierId) : undefined;
@@ -164,6 +173,8 @@ export function buildReelStockRows({
         ourReelNo: slip.ourReelNo || "",
         erp: String(material?.erpCode || ""),
         itemName: String(material?.name || ""),
+        firmId,
+        firmName: firmMap.get(firmId)?.firmName || "Unassigned",
         supplierName: isOpeningReelPackingSlip(slip) ? supplier?.name || "-" : supplier?.name || "",
         gsm: Number(material?.gsm || 0),
         size: Number(material?.size || 0),

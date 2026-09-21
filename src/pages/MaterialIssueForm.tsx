@@ -12,6 +12,7 @@ import {
   MaterialReturnLine,
   MaterialReturn,
   MaterialReturnReelLine,
+  Firm,
   Production,
   Setting,
 } from "../types";
@@ -28,6 +29,7 @@ import {
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { findUnitTwoFirm } from "../lib/unitTwoFirm";
 
 type IssueMaterialOption = Material & { isFgPurchaseItem?: boolean; isNpdConsumableItem?: boolean; npdSourceId?: string; rate?: number };
 
@@ -157,41 +159,25 @@ export function MaterialIssueForm() {
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [materials] = useData<Material>("materials", []);
+  const [materials] = useData<Material>("materials", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
-  const [materialIn] = useData<MaterialIn>("material-in", []);
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
-  const [productions, setProductions] = useData<Production>("productions", []);
-  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturns] = useData<MaterialReturn>("material-returns", []);
+  const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
   const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const npdItems = useNpdItems();
 
-  const [activeFirmId, setActiveFirmId] = useState(() => {
-    try {
-      return String(JSON.parse(window.localStorage.getItem("activeFirm") || "{}").id || "").trim();
-    } catch {
-      return "";
-    }
-  });
-  useEffect(() => {
-    const refreshActiveFirm = () => {
-      try {
-        setActiveFirmId(String(JSON.parse(window.localStorage.getItem("activeFirm") || "{}").id || "").trim());
-      } catch {
-        setActiveFirmId("");
-      }
-    };
-    window.addEventListener("active-firm-changed", refreshActiveFirm);
-    return () => window.removeEventListener("active-firm-changed", refreshActiveFirm);
-  }, []);
+  const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
   const issuePackingSlips = useMemo(
-    () => packingSlips.filter((slip) => !activeFirmId || String(slip.firmId || "") === activeFirmId),
-    [activeFirmId, packingSlips]
+    () => packingSlips.filter((slip) => String(slip.firmId || "") === String(unitTwoFirm?.id || "")),
+    [packingSlips, unitTwoFirm?.id]
   );
 
   const requestedDate = normalizeDate(searchParams.get("date"));
@@ -596,6 +582,10 @@ export function MaterialIssueForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!date || lines.length === 0) return;
+    if (!unitTwoFirm) {
+      alert("Unit-II is not configured in Firm Master. Reel operations cannot be saved.");
+      return;
+    }
     if (issueType === "Job" && !productionId) return;
     if (isWithoutJobIssue(issueType) && !remarks.trim()) {
       alert("Remarks are mandatory for Without Job material issue.");
@@ -636,6 +626,8 @@ export function MaterialIssueForm() {
 
       const issue: MaterialIssue = {
         id: issueId,
+        firmId: unitTwoFirm.id,
+        firmName: unitTwoFirm.firmName,
         issueNo,
         consumptionTransactionNo,
         date,
@@ -780,7 +772,10 @@ export function MaterialIssueForm() {
       </div>
 
       <div className="bg-white p-3 md:p-6 rounded shadow-sm border border-black text-black">
-      <h2 className="text-lg md:text-xl font-bold text-black mb-4 md:mb-6 uppercase tracking-tight border-b border-black pb-2">Material Issue Form</h2>
+      <div className="mb-4 border-b border-black pb-2 md:mb-6">
+        <h2 className="text-lg md:text-xl font-bold uppercase tracking-tight text-black">Material Issue Form</h2>
+        <p className="mt-1 text-xs font-bold text-indigo-700">Unit-II Reel Inventory · jobs from any firm</p>
+      </div>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Date" required className={issueType === "Job" ? "hidden md:block" : ""}>

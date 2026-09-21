@@ -8,7 +8,8 @@ import { getAllReturnableReelLines } from "../lib/materialMovement";
 import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 import { buildProductionCorrugatedSheetUsageMap, buildProductionMaterialUsageMap, syncProductionWorkflowFromUsage } from "../lib/productionMaterialUsage";
 import { generateTransactionNo } from "../lib/serial";
-import type { Material, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
+import { findUnitTwoFirm } from "../lib/unitTwoFirm";
+import type { Firm, Material, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
 
 type ReturnableReel = ReturnType<typeof getAllReturnableReelLines>[number];
 type ReturnDraft = Record<string, string>;
@@ -37,15 +38,16 @@ function parseQrReelNo(rawValue: string) {
 export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [materials, , materialsLoading] = useData<Material>("materials", []);
-  const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [productions, setProductions, productionsLoading] = useData<Production>("productions", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
+  const [materials, , materialsLoading] = useData<Material>("materials", [], { firmScope: "all" });
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [productions, setProductions, productionsLoading] = useData<Production>("productions", [], { firmScope: "all" });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [issueReelLines, , issueReelsLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturns, setMaterialReturns] = useData<MaterialReturn>("material-returns", []);
+  const [materialReturns, setMaterialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
   const [materialReturnLines, setMaterialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [returnReelLines, setReturnReelLines, returnReelsLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const requestedProductionId = String(searchParams.get("productionId") || "").trim();
@@ -59,6 +61,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scannerError, setScannerError] = useState("");
   const [isProcessingScan, setIsProcessingScan] = useState(false);
+  const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<number | null>(null);
@@ -66,9 +69,14 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   const lastScannedAtRef = useRef(0);
   const linerComplete = isCorrugationLinerComplete(processing, productionId);
 
-  const returnableReels = useMemo(() => getAllReturnableReelLines(issueReelLines, returnReelLines, productions), [issueReelLines, productions, returnReelLines]);
   const materialMap = useMemo(() => new Map(materials.map((row) => [row.id, row])), [materials]);
   const slipMap = useMemo(() => new Map(packingSlips.map((row) => [row.id, row])), [packingSlips]);
+  const returnableReels = useMemo(
+    () => getAllReturnableReelLines(issueReelLines, returnReelLines, productions).filter(
+      (row) => String(slipMap.get(row.packingSlipId)?.firmId || "") === String(unitTwoFirm?.id || "")
+    ),
+    [issueReelLines, productions, returnReelLines, slipMap, unitTwoFirm?.id]
+  );
   const jobOptions = useMemo(() => {
     const eligibleIds = new Set(returnableReels.map((row) => row.productionId));
     return productions.filter((row) => eligibleIds.has(row.id) && row.status !== "Cancelled" && isCorrugationLinerComplete(processing, row.id)).sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((row) => ({ value: row.id, label: `${row.transactionNo}${row.date ? ` | ${row.date.slice(0, 10)}` : ""}` }));
@@ -146,9 +154,10 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (isSubmitting || !date || !productionId || !linerComplete || !allDraftsValid) return;
+    if (!unitTwoFirm) return setScannerError("Unit-II is not configured in Firm Master. Reel returns cannot be saved.");
     setIsSubmitting(true);
     try {
-      const latest = getAllReturnableReelLines(issueReelLines, returnReelLines, productions);
+      const latest = returnableReels;
       const validated = draftStatus.map((entry) => {
         const current = latest.find((row) => row.productionId === productionId && reelKey(row) === reelKey(entry.row));
         if (!current) throw new Error(`Reel ${entry.row.ourReelNo} no longer has an issued balance available.`);
@@ -162,7 +171,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
       const production = productions.find((row) => row.id === productionId);
       if (!production) throw new Error("Selected job was not found.");
       const returnId = crypto.randomUUID();
-      const returnEntry: MaterialReturn = { id: returnId, returnNo: generateTransactionNo("MR", materialReturns.map((row) => ({ transactionNo: row.returnNo, date: row.date })), date), date, returnType: "Job", productionId, jobNo: production.transactionNo, remarks: remarks.trim() || undefined, updatedBy: "System User", updateTimestamp: timestamp };
+      const returnEntry: MaterialReturn = { id: returnId, firmId: unitTwoFirm.id, firmName: unitTwoFirm.firmName, returnNo: generateTransactionNo("MR", materialReturns.map((row) => ({ transactionNo: row.returnNo, date: row.date })), date), date, returnType: "Job", productionId, jobNo: production.transactionNo, remarks: remarks.trim() || undefined, updatedBy: "System User", updateTimestamp: timestamp };
       const byMaterial = new Map<string, typeof validated>();
       validated.forEach((entry) => byMaterial.set(entry.row.materialId, [...(byMaterial.get(entry.row.materialId) || []), entry]));
       const createdLines: MaterialReturnLine[] = [];
@@ -199,7 +208,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   if (materialsLoading || productionsLoading || issueReelsLoading || returnReelsLoading) return <Spinner />;
   const displayedRows = mode === "manual" ? reelsForJob : selectedRows;
   return <div className="min-w-0 overflow-hidden rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
-    <div className="mb-4 flex flex-col items-start gap-3 border-b border-black pb-3 sm:flex-row sm:items-center md:mb-6">{returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="inline-flex w-full items-center justify-center gap-1 rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase hover:bg-slate-100 sm:w-auto"><ArrowLeft size={15} /> Pending Returns</button> : null}<h2 className="break-words text-lg font-bold uppercase tracking-tight md:text-xl">{mode === "qr" ? "QR Reel Return" : "Manual Reel Return"}</h2></div>
+    <div className="mb-4 flex flex-col items-start gap-3 border-b border-black pb-3 sm:flex-row sm:items-center md:mb-6">{returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="inline-flex w-full items-center justify-center gap-1 rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase hover:bg-slate-100 sm:w-auto"><ArrowLeft size={15} /> Pending Returns</button> : null}<div><h2 className="break-words text-lg font-bold uppercase tracking-tight md:text-xl">{mode === "qr" ? "QR Reel Return" : "Manual Reel Return"}</h2><p className="mt-1 text-xs font-bold text-indigo-700">Unit-II Reel Inventory · jobs from any firm</p></div></div>
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Field label="Date" required><input type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="w-full rounded border-2 border-black p-2" /></Field><Field label="Return No (Auto)"><input value="Generated on Submit" disabled className="w-full rounded border-2 border-black bg-slate-50 p-2 opacity-70" /></Field><Field label="Job No." required><Select required disabled={lockJob} options={jobOptions} value={productionId} onChange={handleJobChange} placeholder="Select Job..." /></Field><Field label="Remarks"><input value={remarks} onChange={(event) => setRemarks(event.target.value)} className="w-full rounded border-2 border-black p-2" /></Field></div>
       {productionId && !linerComplete ? <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">Complete Corrugation Liner as Full before returning reels.</div> : null}

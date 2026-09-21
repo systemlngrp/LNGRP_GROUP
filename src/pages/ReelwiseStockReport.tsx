@@ -8,6 +8,7 @@ import { useData } from "../hooks/useData";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import {
   Company,
+  Firm,
   Material,
   MaterialIn,
   MaterialInPackingSlip,
@@ -26,6 +27,7 @@ const tableColumns = [
   "MRR No.",
   "Our Reel No.",
   "ERP",
+  "Firm",
   "Suppliers Name",
   "GSM",
   "Size",
@@ -70,13 +72,14 @@ function safeFileName(value: string) {
 }
 
 export function ReelwiseStockReport() {
-  const [materials] = useData<Material>("materials", [], { cacheToLocalStorage: false });
-  const [materialIn] = useData<MaterialIn>("material-in", [], { cacheToLocalStorage: false });
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { cacheToLocalStorage: false });
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false });
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false });
-  const [suppliers] = useData<Supplier>("suppliers", [], { cacheToLocalStorage: false });
-  const [companies] = useData<Company>("companies", [], { cacheToLocalStorage: false });
+  const [materials] = useData<Material>("materials", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [suppliers] = useData<Supplier>("suppliers", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [companies] = useData<Company>("companies", [], { firmScope: "all", cacheToLocalStorage: false });
   const [settings] = useData<Setting>("settings", [], { cacheToLocalStorage: false });
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -100,9 +103,10 @@ export function ReelwiseStockReport() {
       packingSlips,
       issueReelLines,
       returnReelLines,
+      firms,
       suppliers,
     });
-  }, [issueReelLines, materialIn, materials, packingSlips, returnReelLines, suppliers]);
+  }, [firms, issueReelLines, materialIn, materials, packingSlips, returnReelLines, suppliers]);
 
   const mrrOptions = useMemo(() => makeOptions(allRows.map((row) => row.mrrNo)), [allRows]);
   const erpOptions = useMemo(() => makeOptions(allRows.map((row) => row.erp)), [allRows]);
@@ -123,6 +127,7 @@ export function ReelwiseStockReport() {
         ![
           row.ourReelNo,
           row.erp,
+          row.firmName,
           row.supplierName,
           row.mrrNo,
           row.gsm,
@@ -210,6 +215,7 @@ export function ReelwiseStockReport() {
       "MRR No.": row.mrrNo,
       "Our Reel No.": row.ourReelNo,
       ERP: row.erp,
+      Firm: row.firmName,
       "Suppliers Name": row.supplierName || "-",
       GSM: row.gsm || "",
       Size: row.size || "",
@@ -248,6 +254,7 @@ export function ReelwiseStockReport() {
         "MRR No.",
         "Our Reel No.",
         "ERP",
+        "Firm",
         "Supplier",
         "GSM",
         "Size",
@@ -267,6 +274,7 @@ export function ReelwiseStockReport() {
         row.mrrNo,
         row.ourReelNo,
         row.erp,
+        row.firmName,
         row.supplierName || "-",
         String(row.gsm || ""),
         String(row.size || ""),
@@ -488,7 +496,7 @@ export function ReelwiseStockReport() {
               </tr>
               {rows.length > 0 ? (
                 <tr className="bg-slate-100 text-black">
-                  <th className="px-3 py-3 text-left text-sm font-black border-2 border-black bg-slate-100" colSpan={8}>TOTAL ({rows.length})</th>
+                  <th className="px-3 py-3 text-left text-sm font-black border-2 border-black bg-slate-100" colSpan={9}>TOTAL ({rows.length})</th>
                   <th className="px-3 py-3 text-right text-sm font-black border-2 border-black bg-blue-100 text-blue-900">{formatQty(summary.totalOpeningQty)}</th>
                   <th className="px-3 py-3 text-right text-sm font-black border-2 border-black bg-purple-100 text-purple-900">{formatQty(summary.totalMrrQty)}</th>
                   <th className="px-3 py-3 text-right text-sm font-black border-2 border-black bg-red-100 text-red-900">-</th>
@@ -516,6 +524,7 @@ export function ReelwiseStockReport() {
                     <td className="px-3 py-3 text-black text-sm border-2 border-black font-bold">{row.mrrNo}</td>
                     <td className="px-3 py-3 text-black text-sm border-2 border-black font-bold">{row.ourReelNo}</td>
                     <td className="px-3 py-3 text-black text-sm border-2 border-black">{row.erp}</td>
+                    <td className="px-3 py-3 text-black text-sm border-2 border-black min-w-[180px]">{row.firmName}</td>
                     <td className="px-3 py-3 text-black text-sm border-2 border-black min-w-[220px]">{row.supplierName || "-"}</td>
                     <td className="px-3 py-3 text-black text-sm border-2 border-black">{row.gsm || ""}</td>
                     <td className="px-3 py-3 text-black text-sm border-2 border-black">{row.size || ""}</td>

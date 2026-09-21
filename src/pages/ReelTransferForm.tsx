@@ -13,10 +13,10 @@ const today = () => new Date().toISOString().slice(0, 10);
 export function ReelTransferForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [productions, , productionsLoading] = useData<Production>("productions", []);
-  const [processing, , processingLoading] = useData<ProductionProcessing>("production_processing", []);
-  const [issueReels, , issuesLoading] = useData<MaterialIssueReelLine>("material_issue_reel_lines", []);
-  const [returnReels, , returnsLoading] = useData<MaterialReturnReelLine>("material_return_reel_lines", []);
+  const [productions, , productionsLoading] = useData<Production>("productions", [], { firmScope: "all" });
+  const [processing, , processingLoading] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
+  const [issueReels, , issuesLoading] = useData<MaterialIssueReelLine>("material_issue_reel_lines", [], { firmScope: "all" });
+  const [returnReels, , returnsLoading] = useData<MaterialReturnReelLine>("material_return_reel_lines", [], { firmScope: "all" });
   const [issueLines] = useData<MaterialIssueLine>("material_issue_lines", []);
   const [materials] = useData<Material>("materials", []);
   const [settings] = useData<Setting>("settings", []);
@@ -81,7 +81,7 @@ export function ReelTransferForm() {
   if (productionsLoading || processingLoading || issuesLoading || returnsLoading) return <Spinner />;
   return <div className="rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
     <div className="mb-5 flex items-center justify-between gap-3 border-b border-black pb-2">
-      <h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer - Reel Balance</h2>
+      <div><h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer - Reel Balance</h2><p className="mt-1 text-xs font-bold text-indigo-700">Unit-II Reel Inventory · jobs from any firm</p></div>
       {returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-slate-100">Back to Job Transfer</button> : null}
     </div>
     <form onSubmit={submit} className="space-y-5">
