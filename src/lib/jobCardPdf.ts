@@ -276,9 +276,7 @@ function processingDateLabel(entry?: ProductionProcessing) {
   const timestamp = processingTimestamp(entry);
   if (!timestamp) return "";
   if (!entry.updateTimestamp) return formatDate(timestamp);
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return String(timestamp);
-  return date.toLocaleString();
+  return formatDate(timestamp);
 }
 
 

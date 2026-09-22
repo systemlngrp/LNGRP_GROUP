@@ -5,6 +5,7 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { TableControls } from "../components/TableControls";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, hasReelIssueHistory } from "../lib/reelTransfer";
+import { formatDate } from "../lib/utils";
 import type { MaterialIn, MaterialInPackingSlip, MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
 
 export function PendingJobTransfer() {
@@ -112,7 +113,7 @@ export function PendingJobTransfer() {
                 <td className="border border-black px-3 py-3 text-sm font-medium">{mrrNos.length ? mrrNos.join(", ") : "-"}</td>
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{context.reels.length}</td>
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{transferableWeight.toFixed(2)}</td>
-                <td className="border border-black px-3 py-3 text-sm">{new Date(context.expiresAt).toLocaleString()}</td>
+                <td className="border border-black px-3 py-3 text-sm">{formatDate(context.expiresAt)}</td>
                 <td className="border border-black px-3 py-3">
                   <span className={`inline-block rounded border px-2 py-1 text-xs font-bold uppercase ${context.eligible ? "border-emerald-700 bg-emerald-50 text-emerald-800" : "border-amber-700 bg-amber-50 text-amber-800"}`}>
                     {context.reason}

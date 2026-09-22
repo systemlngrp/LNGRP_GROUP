@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import type { Setting } from "../types";
 import { resolvePdfFirm } from "./pdfOrganizationHeader";
+import { formatDate } from "./utils";
 
 type RowRecord = Record<string, string | number | boolean | null | undefined>;
 
@@ -249,7 +250,7 @@ async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | nul
   cell(doc, SHEET_X, y2, 39, 8, "Sample No.-", { bold: true, align: "left", fontSize: FONT_BODY_12PX, padding: 0.8 });
   cell(doc, SHEET_X + 39, y2, 68, 8, `ERP-      ${formatValue(npdRow.erp)}`, { bold: true, fontSize: FONT_HEADING_14PX });
   cell(doc, SHEET_X + 107, y2, 24, 8, "ISSUE DATE :", { bold: true, fontSize: FONT_SMALL });
-  cell(doc, SHEET_X + 131, y2, 65, 8, new Date().toLocaleDateString("en-GB"), { bold: true, fontSize: FONT_BODY_12PX });
+  cell(doc, SHEET_X + 131, y2, 65, 8, formatDate(new Date()), { bold: true, fontSize: FONT_BODY_12PX });
 
   const y3 = y2 + 8;
   cell(doc, SHEET_X, y3, 55, 5, "Doc.No. L.N./NPD/", { align: "left", fontSize: FONT_MICRO, padding: 0.7 });

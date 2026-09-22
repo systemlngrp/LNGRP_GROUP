@@ -1,4 +1,5 @@
 import type { TruckLiveStatus } from "../types";
+import { formatDate } from "./utils";
 
 export const TRUCK_LIVE_STATUSES: TruckLiveStatus[] = [
   "EMPTY",
@@ -42,15 +43,5 @@ export function formatTruckDuration(iso?: string | null, nowMs = Date.now()) {
 }
 
 export function formatTruckDateTime(iso?: string | null) {
-  const date = iso ? new Date(iso) : null;
-  if (!date || Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+  return formatDate(iso);
 }

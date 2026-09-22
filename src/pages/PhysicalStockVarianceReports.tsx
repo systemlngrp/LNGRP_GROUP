@@ -18,15 +18,11 @@ import type {
   StockTakerLog,
   Supplier,
 } from "../types";
+import { formatDate } from "../lib/utils";
 
 type ReportMode = "excess" | "shortage";
 
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB");
-}
+const formatDateTime = formatDate;
 
 function PhysicalStockVarianceReport({ mode }: { mode: ReportMode }) {
   const [sessions] = useData<PhysicalStockSession>("physical_stock_sessions", [], { cacheToLocalStorage: false });

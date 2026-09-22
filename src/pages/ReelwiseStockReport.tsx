@@ -19,6 +19,7 @@ import {
 } from "../types";
 import { buildReelStockRows, type ReelStockCalculationRow } from "../lib/reelStock";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
+import { formatDate } from "../lib/utils";
 
 type AvailabilityFilter = "all" | "gt500" | "lt500";
 type ReelwiseStockRow = ReelStockCalculationRow;
@@ -45,16 +46,7 @@ const tableColumns = [
   "Download",
 ];
 
-function formatReportDate(dateStr?: string) {
-  if (!dateStr) return "";
-  const date = new Date(dateStr);
-  if (Number.isNaN(date.getTime())) return String(dateStr);
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "2-digit",
-  });
-}
+const formatReportDate = formatDate;
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -244,7 +236,7 @@ export function ReelwiseStockReport() {
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text(`Generated: ${new Date().toLocaleString("en-GB")}`, 14, 20);
+    doc.text(`Generated: ${formatDate(new Date())}`, 14, 20);
     doc.text(`Rows: ${rows.length}`, 270, 20, { align: "right" });
 
     autoTable(doc, {

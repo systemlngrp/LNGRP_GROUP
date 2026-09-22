@@ -42,12 +42,21 @@ export function formatNumber(value: number, abbreviate = true): string {
   }).format(val);
 }
 
+/** Formats display-only dates without converting date-only values across timezones. */
 export function formatDate(value?: string | Date | null): string {
-  if (!value) return "";
-  const d = new Date(value as any);
-  if (isNaN(d.getTime())) return String(value);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  if (!value) return "-";
+
+  if (typeof value === "string") {
+    const dateOnly = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+    if (dateOnly) {
+      const [, year, month, day] = dateOnly;
+      const localDate = new Date(Number(year), Number(month) - 1, Number(day));
+      if (localDate.getFullYear() === Number(year) && localDate.getMonth() === Number(month) - 1 && localDate.getDate() === Number(day)) return `${day}-${month}-${year}`;
+      return "-";
+    }
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return `${String(date.getDate()).padStart(2, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${date.getFullYear()}`;
 }

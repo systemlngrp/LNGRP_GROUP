@@ -6,6 +6,7 @@ import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { normalizeMachineName } from "../lib/productionMachineNames";
+import { formatDate } from "../lib/utils";
 
 export function Machines() {
   const [machines, setMachines, machinesLoading] = useData<Machine>("machines", []);
@@ -299,7 +300,7 @@ export function Machines() {
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm font-bold uppercase text-black">{machine.uom || "-"}</td>
                     <td className="border border-black px-6 py-4 text-sm text-black">{getAssignedOperatorNames(machine).length > 0 ? getAssignedOperatorNames(machine).join(", ") : "-"}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{machine.updatedBy || "-"}</td>
-                    <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{machine.updateTimestamp ? new Date(machine.updateTimestamp).toLocaleString() : "-"}</td>
+                    <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{formatDate(machine.updateTimestamp)}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                       <button onClick={() => { setName(normalizeMachineName(machine.name)); setMaxOutputPerHour(machine.maxOutputPerHour || ""); setUom(machine.uom || ""); setSelectedOperatorIds(Array.isArray(machine.assignedOperatorIds) ? machine.assignedOperatorIds : []); setEditingId(machine.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
                         <Edit size={16} className="mr-1" /> Edit

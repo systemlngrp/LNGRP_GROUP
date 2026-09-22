@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { BoardLineQcCheck, Production } from "../types";
+import { formatDate } from "../lib/utils";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
 
@@ -209,18 +210,7 @@ function uniqueOptions(values: Array<unknown>) {
   return [...new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 
-function formatTimestamp(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+const formatTimestamp = formatDate;
 
 function toOptionalNumber(...values: unknown[]) {
   for (const value of values) {

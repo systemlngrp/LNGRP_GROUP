@@ -2,17 +2,13 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import type { StockTakerLog } from "../types";
+import { formatDate } from "../lib/utils";
 
 function formatQty(value: number) {
   return Number(value || 0).toFixed(2);
 }
 
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB");
-}
+const formatDateTime = formatDate;
 
 export function PhysicalStockMaster() {
   const [stockTakerLogs] = useData<StockTakerLog>("reel_stock_taker_logs", [], { cacheToLocalStorage: false });

@@ -9,6 +9,7 @@ import { Company, Firm, GateEntry, GateEntryPhoto, Supplier } from "../types";
 import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
 import { useAuth } from "../auth/AuthContext";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { formatDate } from "../lib/utils";
 
 type GateEntryMasterProps = { cancelledOnly?: boolean };
 
@@ -262,7 +263,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
                         {cancelled ? (
                           <div className="max-w-[260px] space-y-1">
                             <div className="font-bold text-red-800">{entry.cancelReason || "No reason"}</div>
-                            <div>{entry.cancelledAt ? new Date(entry.cancelledAt).toLocaleString() : "-"}</div>
+                            <div>{formatDate(entry.cancelledAt)}</div>
                             <div>{entry.cancelledBy || "System User"}</div>
                           </div>
                         ) : "-"}
@@ -341,7 +342,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
               <InfoCard label="MRR Date" value={selectedEntry.mrrDate || "Pending"} />
               <InfoCard label="Cancel Reason" value={selectedEntry.cancelReason || "-"} />
               <InfoCard label="Cancelled By" value={selectedEntry.cancelledBy || "-"} />
-              <InfoCard label="Cancelled At" value={selectedEntry.cancelledAt ? new Date(selectedEntry.cancelledAt).toLocaleString() : "-"} />
+              <InfoCard label="Cancelled At" value={formatDate(selectedEntry.cancelledAt)} />
               <InfoCard label="Photos" value={`${selectedPhotos.length}`} />
             </div>
 

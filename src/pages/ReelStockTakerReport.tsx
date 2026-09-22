@@ -15,6 +15,7 @@ import type {
   Supplier,
   Firm,
 } from "../types";
+import { formatDate } from "../lib/utils";
 
 type ParsedQrPayload = {
   reelNo: string;
@@ -29,12 +30,7 @@ function formatQty(value: number) {
   return round2(value).toFixed(2);
 }
 
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB");
-}
+const formatDateTime = formatDate;
 
 function parsePositiveWeight(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;

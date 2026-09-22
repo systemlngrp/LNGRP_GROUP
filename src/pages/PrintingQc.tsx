@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ColorMaster, PrintingQcCheck, Production, User } from "../types";
+import { formatDate } from "../lib/utils";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
 
@@ -250,18 +251,7 @@ function normalizeText(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function formatTimestamp(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+const formatTimestamp = formatDate;
 
 function displayValue(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";

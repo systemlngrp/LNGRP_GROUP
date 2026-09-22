@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Play, Square, RefreshCw, RotateCcw, Trash2, AlertTriangle, XCircle } from "lucide-react";
 import { useData } from "../hooks/useData";
 import type { PhysicalStockSession, StockTakerLog } from "../types";
+import { formatDate } from "../lib/utils";
 
 type SessionModalAction = "close" | "restart" | "delete" | "message";
 
@@ -14,12 +15,7 @@ type SessionModalState = {
   tone?: "emerald" | "rose" | "slate";
 } | null;
 
-function formatDateTime(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("en-GB");
-}
+const formatDateTime = formatDate;
 
 async function sessionRequest(endpoint: string, options?: { method?: "POST" | "DELETE"; body?: Record<string, unknown> }) {
   const token = window.localStorage.getItem("authToken") || "";

@@ -2,6 +2,7 @@
 import QRCode from "qrcode";
 import type { Firm, Setting } from "../types";
 import { resolvePdfFirm } from "./pdfOrganizationHeader";
+import { formatDate as formatDisplayDate } from "./utils";
 
 type ReturnReelQrPdfArgs = {
   returnNo: string;
@@ -35,12 +36,7 @@ function toUpper(value: string | number | undefined | null) {
   return firstNonEmpty(value).toUpperCase();
 }
 
-function formatDate(value?: string) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-GB");
-}
+const formatDate = formatDisplayDate;
 
 function formatWeight(value: number) {
   return Number(value || 0).toFixed(2);

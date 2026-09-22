@@ -17,6 +17,7 @@ import {
   Setting,
 } from "../types";
 import { generateTransactionNo } from "../lib/serial";
+import { formatDate } from "../lib/utils";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
@@ -841,7 +842,7 @@ export function MaterialIssueForm() {
                       <div className="font-black text-black">{issue.issueNo}</div>
                       <div className="text-slate-600">{issue.remarks || "-"}</div>
                       <div className="mt-1 text-[10px] font-semibold text-slate-500">
-                        {issue.updatedBy || "-"} | {new Date(issue.updateTimestamp || issue.date || "").toLocaleString()}
+                        {issue.updatedBy || "-"} | {formatDate(issue.updateTimestamp || issue.date)}
                       </div>
                     </div>
                   ))}
