@@ -50,7 +50,9 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   const [materialReturns, setMaterialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
   const [materialReturnLines, setMaterialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [returnReelLines, setReturnReelLines, returnReelsLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const requestedProductionId = String(searchParams.get("productionId") || "").trim();
+  // `production` was used by earlier Pending Returns links. Keep accepting it so
+  // bookmarked or cached links still open the intended locked job.
+  const requestedProductionId = String(searchParams.get("productionId") || searchParams.get("production") || "").trim();
   const lockJob = searchParams.get("lockJob") === "1";
   const returnTo = String(searchParams.get("returnTo") || "").trim();
   const [date, setDate] = useState(today());

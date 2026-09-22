@@ -3961,6 +3961,22 @@ async function ensureReelTransferRuntimeSchema(db) {
     for (const [table, column, type] of columns)
         await ensureColumnExists(db, database, table, column, type);
 }
+// Reel lines deliberately remain firm-neutral. Their owning issue/return header
+// is Unit-I, so legacy databases need these header fields before any reel line
+// can force its parent document to Unit-I.
+async function ensureReelMovementOwnershipSchema(db, database) {
+    const columns = [
+        ["material_issues", "firmId", "VARCHAR(36)"],
+        ["material_issues", "firmName", "VARCHAR(255)"],
+        ["material_returns", "firmId", "VARCHAR(36)"],
+        ["material_returns", "firmName", "VARCHAR(255)"],
+        ["material_issue_reel_lines", "jobTransfer", "VARCHAR(10) NOT NULL DEFAULT 'No'"],
+        ["material_return_reel_lines", "jobTransfer", "VARCHAR(10) NOT NULL DEFAULT 'No'"],
+        ["material_return_reel_lines", "materialReturnLineId", "VARCHAR(36)"],
+    ];
+    for (const [table, column, type] of columns)
+        await ensureColumnExists(db, database, table, column, type);
+}
 function normalizeWorkflowStatus(tableName, row) {
     const normalized = { ...row };
     const currentStatus = typeof normalized.status === "string" ? normalized.status.trim() : normalized.status;
@@ -7551,6 +7567,7 @@ async function initDb(retries = 5) {
                 await ensureCompaniesSchemaColumns(db, database);
                 await ensureMaterialInCurrencySchemaColumns(db, database);
                 await ensureTruckStatusLogSchema(db, database);
+                await ensureReelMovementOwnershipSchema(db, database);
                 await ensureAuditColumnsForAllTables(db, database);
             }
             catch (err) {
