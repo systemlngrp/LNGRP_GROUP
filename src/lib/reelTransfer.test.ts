@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { buildReelTransferContext } from "./reelTransfer";
 
-const production = { id: "job-1", transactionNo: "JOB/1", qty: 100 } as any;
-const processing = [{ productionId: "job-1", machineName: "Corrugation Liner", completionStatus: "Full", date: "2026-09-22T10:00:00.000Z" }] as any;
+const production = { id: "job-1", transactionNo: "JOB/1", qty: 100, totalPaperWeight: 60 } as any;
+const processing = [{ productionId: "job-1", machineName: "Corrugation Liner", qty: 50, completionStatus: "Full", date: "2026-09-22T10:00:00.000Z" }] as any;
 const issueLines = [{ id: "issue-line-1", rate: 10 }] as any;
 
 describe("buildReelTransferContext", () => {
-  it("returns each reel's full actual balance after partial returns", () => {
+  it("calculates each reel's proportional notional transfer after partial returns and consumption", () => {
     const context = buildReelTransferContext(
       production, processing,
       [
@@ -17,9 +17,10 @@ describe("buildReelTransferContext", () => {
       issueLines, [production], 12, new Date("2026-09-22T11:00:00.000Z").getTime(),
     );
 
-    expect(context.reels.map((reel) => ({ id: reel.packingSlipId, available: reel.weightKg }))).toEqual([
-      { id: "R001", available: 75 },
-      { id: "R002", available: 200 },
+    expect(context.notionalLeftKg).toBe(245);
+    expect(context.reels.map((reel) => ({ id: reel.packingSlipId, available: reel.weightKg, transfer: reel.transferWeightKg }))).toEqual([
+      { id: "R001", available: 75, transfer: 75 },
+      { id: "R002", available: 200, transfer: 163.33 },
     ]);
   });
 
@@ -33,5 +34,22 @@ describe("buildReelTransferContext", () => {
 
     expect(context.reels).toEqual([]);
     expect(context.status).toBe("no_reel_balance");
+  });
+
+  it("matches the job-level notional-left calculation used by the transfer screen", () => {
+    const screenshotProduction = { id: "job-2", transactionNo: "JOB/2", qty: 196, totalPaperWeight: 114.41 } as any;
+    const context = buildReelTransferContext(
+      screenshotProduction,
+      [{ productionId: "job-2", machineName: "Corrugation Liner", qty: 196, completionStatus: "Full", date: "2026-09-22T10:00:00.000Z" }] as any,
+      [
+        { id: "issue-1", productionId: "job-2", jobNo: "JOB/2", packingSlipId: "R001", materialIssueLineId: "issue-line-1", weightKg: 2213 },
+        { id: "issue-2", productionId: "job-2", jobNo: "JOB/2", packingSlipId: "R002", materialIssueLineId: "issue-line-1", weightKg: 2122 },
+      ] as any,
+      [], issueLines, [screenshotProduction], 12, new Date("2026-09-22T11:00:00.000Z").getTime(),
+    );
+
+    expect(context.consumedKg).toBe(114.41);
+    expect(context.notionalLeftKg).toBe(4220.59);
+    expect(context.reels.reduce((sum, reel) => sum + reel.transferWeightKg, 0)).toBe(4220.59);
   });
 });

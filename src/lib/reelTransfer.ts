@@ -9,14 +9,25 @@ export type ReelTransferEligibilityStatus =
   | "eligible"
   | "corrugation_incomplete"
   | "window_expired"
-  | "no_reel_balance";
+  | "no_reel_balance"
+  | "plan_quantity_missing"
+  | "job_weight_missing"
+  | "no_unused_weight";
 
 const STATUS_REASONS: Record<ReelTransferEligibilityStatus, string> = {
   eligible: "Eligible",
   corrugation_incomplete: "Corrugation Liner is not Full",
   window_expired: "Transfer window expired",
   no_reel_balance: "No remaining issued reel balance",
+  plan_quantity_missing: "Plan quantity missing",
+  job_weight_missing: "Weight calculation unavailable",
+  no_unused_weight: "No unused reel weight remains after Corrugation",
 };
+
+function positiveFinite(value: unknown) {
+  const numberValue = Number(value || 0);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
+}
 
 function getValidTime(primary: unknown, fallback: unknown) {
   const primaryTime = new Date(String(primary || "")).getTime();
@@ -83,10 +94,28 @@ export function buildReelTransferContext(
   });
   const totalIssuedKg = sourceIssues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
   const totalReturnedKg = sourceReturns.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+  const planQty = positiveFinite(production.qty) || positiveFinite(production.plannedQty);
+  const requiredKg = positiveFinite(production.totalPaperWeight);
+  const corrugationQty = processing
+    .filter((row) => row.productionId === production.id && normalize(row.machineName) === "corrugation liner" && getValidTime(row.updateTimestamp, row.date) <= fullTime)
+    .reduce((sum, row) => sum + Number(row.qty || 0), 0);
+  const consumedKg = planQty > 0 ? corrugationQty * requiredKg / planQty : 0;
+  const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);
+  const outstandingOriginalIssuedKg = reels.reduce((sum, reel) => sum + Number(reel.originalIssuedWeightKg || 0), 0);
+  const reelsWithNotionalTransfer = reels.map((reel) => {
+    const proportionalNotionalWeight = outstandingOriginalIssuedKg > 0
+      ? notionalLeftKg * Number(reel.originalIssuedWeightKg || 0) / outstandingOriginalIssuedKg
+      : 0;
+    const transferWeightKg = round2(Math.min(reel.weightKg, proportionalNotionalWeight));
+    return { ...reel, transferWeightKg, amount: round2(transferWeightKg * reel.rate) };
+  });
   let status: ReelTransferEligibilityStatus = "eligible";
   if (!fullTime) status = "corrugation_incomplete";
   else if (now > expiresAt) status = "window_expired";
   else if (!reels.length) status = "no_reel_balance";
+  else if (planQty <= 0) status = "plan_quantity_missing";
+  else if (requiredKg <= 0) status = "job_weight_missing";
+  else if (notionalLeftKg <= 0.004) status = "no_unused_weight";
   return {
     fullTime,
     expiresAt,
@@ -95,7 +124,12 @@ export function buildReelTransferContext(
     reason: STATUS_REASONS[status],
     totalIssuedKg: round2(totalIssuedKg),
     totalReturnedKg: round2(totalReturnedKg),
+    planQty: round2(planQty),
+    requiredKg: round2(requiredKg),
+    corrugationQty: round2(corrugationQty),
+    consumedKg: round2(consumedKg),
+    notionalLeftKg: round2(notionalLeftKg),
     outstandingReelCount: reels.length,
-    reels,
+    reels: reelsWithNotionalTransfer,
   };
 }

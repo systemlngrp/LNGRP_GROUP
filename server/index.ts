@@ -12725,23 +12725,49 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const issues = issueRows as any[];
     const returns = returnRows as any[];
     const balanceBySlip = new Map<string, number>();
-    issues.forEach((row) => balanceBySlip.set(String(row.packingSlipId), (balanceBySlip.get(String(row.packingSlipId)) || 0) + Number(row.weightKg || 0)));
+    const originalIssuedBySlip = new Map<string, number>();
+    issues.forEach((row) => {
+      const packingSlipId = String(row.packingSlipId);
+      const weightKg = Number(row.weightKg || 0);
+      balanceBySlip.set(packingSlipId, (balanceBySlip.get(packingSlipId) || 0) + weightKg);
+      originalIssuedBySlip.set(packingSlipId, (originalIssuedBySlip.get(packingSlipId) || 0) + weightKg);
+    });
     returns.forEach((row) => balanceBySlip.set(String(row.packingSlipId), (balanceBySlip.get(String(row.packingSlipId)) || 0) - Number(row.weightKg || 0)));
     if (!Array.from(balanceBySlip.values()).some((value) => value > 0.004)) {
       throw new Error("No positive reel balance is available for transfer.");
     }
+    const positiveFinite = (value: unknown) => {
+      const numericValue = Number(value || 0);
+      return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
+    };
+    const planQty = positiveFinite(source.qty) || positiveFinite(source.plannedQty);
+    const requiredKg = positiveFinite(source.totalPaperWeight);
+    if (planQty <= 0) throw new Error("Source job plan quantity is required for notional transfer calculation.");
+    if (requiredKg <= 0) throw new Error("Source job weight calculation is unavailable for notional transfer.");
+    const corrugationQty = sourceCorrugation
+      .filter((row) => processingTime(row) <= sourceFull.time)
+      .reduce((sum, row) => sum + Number(row.qty || 0), 0);
+    const totalIssuedKg = issues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+    const totalReturnedKg = returns.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+    const consumedKg = corrugationQty * requiredKg / planQty;
+    const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);
+    if (notionalLeftKg <= 0.004) throw new Error("No unused reel weight remains after Corrugation.");
+    const outstandingOriginalIssuedKg = Array.from(balanceBySlip.entries())
+      .filter(([, balance]) => balance > 0.004)
+      .reduce((sum, [packingSlipId]) => sum + Number(originalIssuedBySlip.get(packingSlipId) || 0), 0);
+    if (outstandingOriginalIssuedKg <= 0) throw new Error("No valid original issued weight is available for transfer.");
 
     const selectedCandidates = packingSlipIds.map((packingSlipId) => {
       const balance = Number(balanceBySlip.get(packingSlipId) || 0);
       const reelIssues = issues.filter((row) => String(row.packingSlipId) === packingSlipId);
       const issue = reelIssues[reelIssues.length - 1];
-      const originalIssuedWeight = reelIssues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+      const originalIssuedWeight = Number(originalIssuedBySlip.get(packingSlipId) || 0);
       if (!issue || balance <= 0.004 || originalIssuedWeight <= 0) throw new Error("A selected reel has no valid original issue weight or available balance.");
       return { issue, balance, originalIssuedWeight };
     });
     const selected = selectedCandidates.map((row) => {
-      const weightKg = Number(row.balance.toFixed(2));
-      if (weightKg <= 0) throw new Error(`No available balance remains for reel ${row.issue.ourReelNo || row.issue.packingSlipId}.`);
+      const weightKg = Number(Math.min(row.balance, notionalLeftKg * row.originalIssuedWeight / outstandingOriginalIssuedKg).toFixed(2));
+      if (weightKg <= 0) throw new Error(`No notional transfer weight remains for reel ${row.issue.ourReelNo || row.issue.packingSlipId}.`);
       return { issue: row.issue, weightKg, rate: Number(row.issue.rate || 0), amount: Number((weightKg * Number(row.issue.rate || 0)).toFixed(2)) };
     });
     const [priorTransferReturns] = await conn.query(
