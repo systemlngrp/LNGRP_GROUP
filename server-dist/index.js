@@ -11636,11 +11636,10 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const sourceProductionId = String(req.body?.sourceProductionId || "").trim();
     const targetProductionId = String(req.body?.targetProductionId || "").trim();
     const packingSlipIds = Array.from(new Set((Array.isArray(req.body?.packingSlipIds) ? req.body.packingSlipIds : []).map((value) => String(value || "").trim()).filter(Boolean)));
-    const totalTransferWeight = Number(req.body?.totalTransferWeight || 0);
     const transferDate = String(req.body?.date || new Date().toISOString().slice(0, 10)).trim();
     const remarks = String(req.body?.remarks || "").trim();
-    if (!sourceProductionId || !targetProductionId || sourceProductionId === targetProductionId || !packingSlipIds.length || !Number.isFinite(totalTransferWeight) || !Number.isInteger(totalTransferWeight) || totalTransferWeight <= 0) {
-        return res.status(400).json({ error: "Select a source job, a different target job, reels, and a positive whole-KG Total Transfer Weight." });
+    if (!sourceProductionId || !targetProductionId || sourceProductionId === targetProductionId || !packingSlipIds.length) {
+        return res.status(400).json({ error: "Select a source job, a different target job, and at least one reel." });
     }
     const db = await getPool();
     if (!db)
@@ -11714,18 +11713,10 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
                 throw new Error("A selected reel has no valid original issue weight or available balance.");
             return { issue, balance, originalIssuedWeight };
         });
-        const selectedAvailableWeight = selectedCandidates.reduce((sum, row) => sum + row.balance, 0);
-        if (totalTransferWeight > selectedAvailableWeight + 0.004)
-            throw new Error("Total Transfer Weight exceeds the selected reels' available balance.");
-        const selectedOriginalIssuedWeight = selectedCandidates.reduce((sum, row) => sum + row.originalIssuedWeight, 0);
-        let distributedWeight = 0;
-        const selected = selectedCandidates.map((row, index) => {
-            const weightKg = index === selectedCandidates.length - 1
-                ? totalTransferWeight - distributedWeight
-                : Math.round(totalTransferWeight * row.originalIssuedWeight / selectedOriginalIssuedWeight);
-            distributedWeight += weightKg;
-            if (weightKg <= 0 || weightKg > row.balance + 0.004)
-                throw new Error(`Proportional transfer weight exceeds the available balance for reel ${row.issue.ourReelNo || row.issue.packingSlipId}.`);
+        const selected = selectedCandidates.map((row) => {
+            const weightKg = Number(row.balance.toFixed(2));
+            if (weightKg <= 0)
+                throw new Error(`No available balance remains for reel ${row.issue.ourReelNo || row.issue.packingSlipId}.`);
             return { issue: row.issue, weightKg, rate: Number(row.issue.rate || 0), amount: Number((weightKg * Number(row.issue.rate || 0)).toFixed(2)) };
         });
         const [priorTransferReturns] = await conn.query(`SELECT packingSlipId FROM material_return_reel_lines

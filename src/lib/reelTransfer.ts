@@ -3,24 +3,6 @@ import { round2 } from "./materialMovement";
 
 export const DEFAULT_REEL_TRANSFER_WINDOW_HOURS = 12;
 
-export type ProportionalReel = { id: string; issuedWeightKg: number; availableWeightKg: number };
-
-/** Allocates an entered transfer total by original source-job issue weight. */
-export function distributeProportionalTransferWeight(reels: ProportionalReel[], totalTransferWeight: number) {
-  const valid = reels.filter((reel) => Number(reel.issuedWeightKg) > 0 && Number(reel.availableWeightKg) > 0);
-  const total = Number(totalTransferWeight || 0);
-  const totalIssued = valid.reduce((sum, reel) => sum + Number(reel.issuedWeightKg), 0);
-  if (!Number.isInteger(total) || total <= 0 || !valid.length || totalIssued <= 0) return [];
-  let distributed = 0;
-  return valid.map((reel, index) => {
-    const weightKg = index === valid.length - 1
-      ? total - distributed
-      : Math.round(total * Number(reel.issuedWeightKg) / totalIssued);
-    distributed += weightKg;
-    return { ...reel, weightKg };
-  });
-}
-
 const normalize = (value: unknown) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 
 export type ReelTransferEligibilityStatus =
