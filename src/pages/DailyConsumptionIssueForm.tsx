@@ -5,6 +5,7 @@ import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { generateTransactionNo } from "../lib/serial";
 import { Firm, Material, MaterialIssue, MaterialIssueLine } from "../types";
+import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
 
 type ConsumptionLine = {
   id: string;
@@ -39,7 +40,7 @@ export function DailyConsumptionIssueForm() {
   );
 
   const generalIssuesForDate = useMemo(
-    () => materialIssues.filter((issue) => issue.issueType === "General" && (issue.date || "").split("T")[0] === date && issue.firmId === firmId),
+    () => materialIssues.filter((issue) => !isAutoProductionInterFirmIssue(issue) && issue.issueType === "General" && (issue.date || "").split("T")[0] === date && issue.firmId === firmId),
     [materialIssues, date, firmId]
   );
 

@@ -1,4 +1,5 @@
 import type { Firm, MaterialIssue, Production } from "../types";
+import { isAutoProductionInterFirmIssue } from "./materialIssueClassification";
 
 export type DailyConsumablePending = { firmId: string; firmName: string; date: string };
 
@@ -28,7 +29,7 @@ export function getPendingDailyConsumables(firms: Firm[], productions: Productio
 
   const completed = new Set(
     issues
-      .filter((issue) => isDailyConsumableIssue(issue.issueType))
+      .filter((issue) => isDailyConsumableIssue(issue.issueType) && !isAutoProductionInterFirmIssue(issue))
       .map((issue) => {
         const firmId = String(issue.firmId || "").trim();
         const date = dateOnly(issue.date);

@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { formatDate } from "../lib/serial";
 import { Firm, Material, MaterialIssue, MaterialIssueLine } from "../types";
+import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
 
 function toDateOnly(value?: string) {
   return (value || "").split("T")[0];
@@ -24,6 +25,7 @@ export function DailyConsumptionMaster() {
   const generalIssuesForDate = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return materialIssues
+      .filter((issue) => !isAutoProductionInterFirmIssue(issue))
       .filter((issue) => issue.issueType === "General" && toDateOnly(issue.date) === date && (!firmFilter || issue.firmId === firmFilter))
       .filter((issue) => {
         if (!normalizedSearch) return true;

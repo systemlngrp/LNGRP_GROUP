@@ -32,6 +32,7 @@ import {
 import { useNpdItems } from "../hooks/useNpdItems";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { findUnitTwoFirm } from "../lib/unitTwoFirm";
+import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
 
 type IssueMaterialOption = Material & { isFgPurchaseItem?: boolean; isNpdConsumableItem?: boolean; npdSourceId?: string; rate?: number };
 
@@ -221,7 +222,7 @@ export function MaterialIssueForm() {
     const dailyFirmId = requestedFirmId || String(unitTwoFirm?.id || "");
     if (!selected) return [];
     return materialIssues
-      .filter((issue) => isWithoutJobIssue(issue.issueType) && normalizeDate(issue.date) === selected && String(issue.firmId || "") === dailyFirmId)
+      .filter((issue) => !isAutoProductionInterFirmIssue(issue) && isWithoutJobIssue(issue.issueType) && normalizeDate(issue.date) === selected && String(issue.firmId || "") === dailyFirmId)
       .slice()
       .sort((a, b) => {
         const timeA = new Date(a.updateTimestamp || a.date || 0).getTime();

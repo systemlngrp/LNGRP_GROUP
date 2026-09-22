@@ -7,6 +7,7 @@ import { TableControls } from "../components/TableControls";
 import { ChevronDown, ChevronRight, XCircle } from "lucide-react";
 import { formatDate } from "../lib/serial";
 import { calculateMaterialIssueAmount, resolveMaterialIssueRate } from "../lib/materialMovement";
+import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
 
 function isWithoutJobIssue(issueType?: string) {
   const t = String(issueType || "").trim().toLowerCase();
@@ -117,7 +118,7 @@ export function NonJobIssueMaster() {
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return [...materialIssues]
-      .filter((row) => isWithoutJobIssue(row.issueType) && (!firmFilter || row.firmId === firmFilter))
+      .filter((row) => !isAutoProductionInterFirmIssue(row) && isWithoutJobIssue(row.issueType) && (!firmFilter || row.firmId === firmFilter))
       .filter((row) => {
         if (!q) return true;
         const haystack = [row.issueNo, row.consumptionTransactionNo, row.date, row.remarks, row.tallyPostingStatus, itemNameByIssueId.get(row.id)]

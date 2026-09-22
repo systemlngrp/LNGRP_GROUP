@@ -4,6 +4,7 @@ import { MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, Material, Prod
 import { Select } from "../components/Select";
 import { Trash2, Package, Layers, Disc, Search } from "lucide-react";
 import { formatDate } from "../lib/serial";
+import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
 
 function isWithoutJobIssue(issueType?: string) {
   const t = String(issueType || "").trim().toLowerCase();
@@ -52,10 +53,16 @@ export function MaterialIssueMaster() {
 
   const materialMap = useMemo(() => new Map(materials.map((m) => [m.id, m])), [materials]);
   const issueLineMap = useMemo(() => new Map(issueLines.map((line) => [line.id, line])), [issueLines]);
+  const operationalIssues = useMemo(
+    () => materialIssues.filter((issue) => !isAutoProductionInterFirmIssue(issue)),
+    [materialIssues]
+  );
+  const operationalIssueIds = useMemo(() => new Set(operationalIssues.map((issue) => issue.id)), [operationalIssues]);
 
   const materialOptions = useMemo(() => {
     const optionMap = new Map<string, string>();
     issueLines.forEach((line) => {
+      if (!operationalIssueIds.has(line.materialIssueId)) return;
       const material = materialMap.get(line.materialId);
       if (material) optionMap.set(material.id, material.name);
     });
@@ -66,18 +73,18 @@ export function MaterialIssueMaster() {
     return Array.from(optionMap.entries())
       .sort((a, b) => a[1].localeCompare(b[1]))
       .map(([value, label]) => ({ value, label }));
-  }, [issueLines, reelLines, materialMap]);
+  }, [issueLines, reelLines, materialMap, operationalIssueIds]);
 
   const jobOptions = useMemo(() => {
     const jobs = new Set<string>();
-    materialIssues.forEach((issue) => {
+    operationalIssues.forEach((issue) => {
       if (issue.jobNo) jobs.add(issue.jobNo);
     });
     reelLines.forEach((line) => {
       if (line.jobNo) jobs.add(line.jobNo);
     });
     return Array.from(jobs).sort().map((jobNo) => ({ value: jobNo, label: jobNo }));
-  }, [materialIssues, reelLines]);
+  }, [operationalIssues, reelLines]);
 
   const reelOptions = useMemo(() => {
     return Array.from(new Set(reelLines.map((line) => line.ourReelNo).filter(Boolean)))
@@ -116,6 +123,7 @@ export function MaterialIssueMaster() {
 
     const general = issueLines
       .filter((line) => issueIds.has(line.materialIssueId))
+      .filter((line) => operationalIssueIds.has(line.materialIssueId))
       // A reel stays a reel even when its detail-row save failed or the record
       // predates reel-detail tracking. Classifying only by the presence of a
       // child reel row caused these orphaned reel issues to appear as general
@@ -211,7 +219,7 @@ export function MaterialIssueMaster() {
       reelDetails: finalReelDetails,
       metrics,
     };
-  }, [materialIssues, issueLines, reelLines, materialMap, issueLineMap, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter]);
+  }, [materialIssues, operationalIssueIds, issueLines, reelLines, materialMap, issueLineMap, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter]);
 
   const handleDelete = (id: string) => {
     if (deletingId !== id) {
