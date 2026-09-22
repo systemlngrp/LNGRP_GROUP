@@ -6,7 +6,7 @@ const processing = [{ productionId: "job-1", machineName: "Corrugation Liner", q
 const issueLines = [{ id: "issue-line-1", rate: 10 }] as any;
 
 describe("buildReelTransferContext", () => {
-  it("calculates each reel's proportional notional transfer after partial returns and consumption", () => {
+  it("removes a physically returned reel even when its recorded return weight is partial", () => {
     const context = buildReelTransferContext(
       production, processing,
       [
@@ -19,8 +19,7 @@ describe("buildReelTransferContext", () => {
 
     expect(context.notionalLeftKg).toBe(245);
     expect(context.reels.map((reel) => ({ id: reel.packingSlipId, available: reel.weightKg, transfer: reel.transferWeightKg }))).toEqual([
-      { id: "R001", available: 75, transfer: 75 },
-      { id: "R002", available: 200, transfer: 163.33 },
+      { id: "R002", available: 200, transfer: 200 },
     ]);
   });
 
@@ -29,6 +28,18 @@ describe("buildReelTransferContext", () => {
       production, processing,
       [{ id: "issue-1", productionId: "job-1", jobNo: "JOB/1", packingSlipId: "R001", materialIssueLineId: "issue-line-1", weightKg: 100 }] as any,
       [{ id: "return-1", productionId: "job-1", jobNo: "JOB/1", packingSlipId: "R001", weightKg: 100 }] as any,
+      issueLines, [production], 12, new Date("2026-09-22T11:00:00.000Z").getTime(),
+    );
+
+    expect(context.reels).toEqual([]);
+    expect(context.status).toBe("no_reel_balance");
+  });
+
+  it("matches a legacy return by reel number when its packing-slip id differs", () => {
+    const context = buildReelTransferContext(
+      production, processing,
+      [{ id: "issue-1", productionId: "job-1", jobNo: "JOB/1", packingSlipId: "OLD-SLIP", ourReelNo: "11111166", materialIssueLineId: "issue-line-1", weightKg: 100 }] as any,
+      [{ id: "return-1", productionId: "job-1", jobNo: "JOB/1", packingSlipId: "NEW-SLIP", ourReelNo: " 11111166 ", weightKg: 80 }] as any,
       issueLines, [production], 12, new Date("2026-09-22T11:00:00.000Z").getTime(),
     );
 

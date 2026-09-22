@@ -12809,15 +12809,26 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     );
     const issues = issueRows as any[];
     const returns = returnRows as any[];
+    const normalizeReelIdentity = (value: unknown) => String(value || "").trim().toLowerCase();
+    const positiveReturns = returns.filter((row) => Number(row.weightKg || 0) > 0.004);
+    const returnedSlipIds = new Set(
+      positiveReturns.map((row) => String(row.packingSlipId || "").trim()).filter(Boolean)
+    );
+    const returnedReelNos = new Set(
+      positiveReturns.map((row) => normalizeReelIdentity(row.ourReelNo)).filter(Boolean)
+    );
+    const isReturnedReel = (row: any) =>
+      returnedSlipIds.has(String(row.packingSlipId || "").trim()) ||
+      returnedReelNos.has(normalizeReelIdentity(row.ourReelNo));
     const balanceBySlip = new Map<string, number>();
     const originalIssuedBySlip = new Map<string, number>();
     issues.forEach((row) => {
+      if (isReturnedReel(row)) return;
       const packingSlipId = String(row.packingSlipId);
       const weightKg = Number(row.weightKg || 0);
       balanceBySlip.set(packingSlipId, (balanceBySlip.get(packingSlipId) || 0) + weightKg);
       originalIssuedBySlip.set(packingSlipId, (originalIssuedBySlip.get(packingSlipId) || 0) + weightKg);
     });
-    returns.forEach((row) => balanceBySlip.set(String(row.packingSlipId), (balanceBySlip.get(String(row.packingSlipId)) || 0) - Number(row.weightKg || 0)));
     if (!Array.from(balanceBySlip.values()).some((value) => value > 0.004)) {
       throw new Error("No positive reel balance is available for transfer.");
     }
@@ -12844,10 +12855,12 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
 
     const selectedCandidates = packingSlipIds.map((packingSlipId) => {
       const balance = Number(balanceBySlip.get(packingSlipId) || 0);
-      const reelIssues = issues.filter((row) => String(row.packingSlipId) === packingSlipId);
+      const reelIssues = issues.filter((row) => String(row.packingSlipId) === packingSlipId && !isReturnedReel(row));
       const issue = reelIssues[reelIssues.length - 1];
       const originalIssuedWeight = Number(originalIssuedBySlip.get(packingSlipId) || 0);
-      if (!issue || balance <= 0.004 || originalIssuedWeight <= 0) throw new Error("A selected reel has no valid original issue weight or available balance.");
+      if (!issue || balance <= 0.004 || originalIssuedWeight <= 0) {
+        throw new Error("A selected reel was already returned or has no transferable issue balance.");
+      }
       return { issue, balance, originalIssuedWeight };
     });
     const selected = selectedCandidates.map((row) => {

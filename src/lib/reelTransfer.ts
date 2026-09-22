@@ -71,23 +71,31 @@ export function buildReelTransferContext(
   const sourceIssues = issueReels.filter(belongsToJob);
   const sourceReturns = returnReels.filter(belongsToJob);
   const issuedBySlip = new Map<string, number>();
-  const returnedBySlip = new Map<string, number>();
   const latestIssueBySlip = new Map<string, MaterialIssueReelLine>();
+  const returnedSlipIds = new Set(
+    sourceReturns
+      .filter((row) => Number(row.weightKg || 0) > 0.004)
+      .map((row) => String(row.packingSlipId || "").trim())
+      .filter(Boolean)
+  );
+  const returnedReelNos = new Set(
+    sourceReturns
+      .filter((row) => Number(row.weightKg || 0) > 0.004)
+      .map((row) => normalize(row.ourReelNo))
+      .filter(Boolean)
+  );
   sourceIssues.forEach((row) => {
     const slipId = String(row.packingSlipId || "").trim();
     if (!slipId) return;
     issuedBySlip.set(slipId, (issuedBySlip.get(slipId) || 0) + Number(row.weightKg || 0));
     latestIssueBySlip.set(slipId, row);
   });
-  sourceReturns.forEach((row) => {
-    const slipId = String(row.packingSlipId || "").trim();
-    if (slipId) returnedBySlip.set(slipId, (returnedBySlip.get(slipId) || 0) + Number(row.weightKg || 0));
-  });
   const lineById = new Map(issueLines.map((line) => [line.id, line]));
   const reels = Array.from(issuedBySlip.entries()).flatMap(([packingSlipId, issuedWeightKg]) => {
     const issue = latestIssueBySlip.get(packingSlipId);
-    const availableWeightKg = round2(issuedWeightKg - (returnedBySlip.get(packingSlipId) || 0));
-    if (!issue || issuedWeightKg <= 0 || availableWeightKg <= 0.004) return [];
+    if (!issue || issuedWeightKg <= 0) return [];
+    if (returnedSlipIds.has(packingSlipId) || returnedReelNos.has(normalize(issue.ourReelNo))) return [];
+    const availableWeightKg = round2(issuedWeightKg);
     const line = lineById.get(issue.materialIssueLineId);
     const rate = Number(line?.rate || line?.lastPurchaseRate || line?.openingRate || 0);
     return [{ ...issue, packingSlipId, weightKg: availableWeightKg, originalIssuedWeightKg: round2(issuedWeightKg), rate }];

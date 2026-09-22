@@ -26,6 +26,19 @@ function reelBalanceKey(productionId: string, line: Pick<MaterialIssueReelLine, 
   return productionId && reelIdentity ? `${productionId}::${reelIdentity}` : "";
 }
 
+function reelIdentityKeys(
+  productionId: string,
+  line: Pick<MaterialIssueReelLine, "packingSlipId" | "ourReelNo">
+) {
+  if (!productionId) return [];
+  const packingSlipId = normalizeReference(line.packingSlipId);
+  const reelNo = normalizeReference(line.ourReelNo);
+  return [
+    packingSlipId ? `${productionId}::slip::${packingSlipId}` : "",
+    reelNo ? `${productionId}::reel::${reelNo}` : "",
+  ].filter(Boolean);
+}
+
 export function isOpeningReelPackingSlip(slip: Pick<MaterialInPackingSlip, "materialInId">) {
   // Older opening entries were saved as "Opening" while newer entries use
   // "OPENING".  Both are the same stock source and must remain issuable.
@@ -129,8 +142,8 @@ function buildReturnedReelKeys(
 ) {
   const keys = new Set<string>();
   returnReelLines.forEach((line) => {
-    const key = reelBalanceKey(resolveProductionId(line), line);
-    if (key) keys.add(key);
+    if (Number(line.weightKg || 0) <= REEL_BALANCE_TOLERANCE_KG) return;
+    reelIdentityKeys(resolveProductionId(line), line).forEach((key) => keys.add(key));
   });
   return keys;
 }
@@ -220,14 +233,17 @@ export function getReturnableReelLinesForJob(
   issueReelLines: MaterialIssueReelLine[],
   returnReelLines: MaterialReturnReelLine[]
 ) {
-  const returnedReelKeys = buildReturnedReelKeys(returnReelLines, (line) => String(line.productionId || "").trim());
+  const returnedReelKeys = buildReturnedReelKeys(
+    returnReelLines,
+    (line) => String(line.productionId || "").trim()
+  );
   const latestIssueLineBySlip = new Map<string, MaterialIssueReelLine>();
 
   issueReelLines.forEach((line) => {
     if (line.materialId !== materialId) return;
     if (line.productionId !== productionId) return;
     const key = reelBalanceKey(productionId, line);
-    if (!key || returnedReelKeys.has(key)) return;
+    if (!key || reelIdentityKeys(productionId, line).some((identity) => returnedReelKeys.has(identity))) return;
     latestIssueLineBySlip.set(key, line);
   });
 
@@ -251,7 +267,7 @@ export function getAllReturnableReelLines(
   issueReelLines.forEach((line) => {
     const productionId = resolveProductionId(line);
     const key = reelBalanceKey(productionId, line);
-    if (!key || returnedReelKeys.has(key)) return;
+    if (!key || reelIdentityKeys(productionId, line).some((identity) => returnedReelKeys.has(identity))) return;
     latestIssueLineByJobAndSlip.set(key, { ...line, productionId });
   });
 
