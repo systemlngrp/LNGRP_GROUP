@@ -69,7 +69,7 @@ export function ReelTransferForm() {
     <form onSubmit={submit} className="space-y-4 rounded border border-black bg-white p-4 shadow-sm md:p-6">
       <div className="flex flex-col justify-between gap-3 border-b border-black pb-3 md:flex-row md:items-center">
         <h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer</h2>
-        {returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase hover:bg-slate-100">Back to Job Transfer</button> : null}
+        {returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded border border-blue-700 bg-blue-600 px-3 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-blue-700">Back to Job Transfer</button> : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -79,11 +79,11 @@ export function ReelTransferForm() {
         <Field label="Remarks" className="md:col-span-2 xl:col-span-3"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Remarks" className="w-full rounded border-2 border-black p-2 text-sm" /></Field>
       </div>
 
-      {sourceContext ? <section className="grid gap-3 border-y border-black py-4 sm:grid-cols-2 lg:grid-cols-5">
+      {sourceContext ? <section className="grid gap-3 border-y border-black bg-blue-50/40 py-4 sm:grid-cols-2 lg:grid-cols-5">
         <StatCard label="Total Issued" value={`${sourceContext.totalIssuedKg.toFixed(2)} KG`} />
         <StatCard label="Returned" value={`${sourceContext.totalReturnedKg.toFixed(2)} KG`} />
         <StatCard label="Consumed" value={`${sourceContext.consumedKg.toFixed(2)} KG`} />
-        <StatCard label="Notional Balance" value={`${sourceContext.notionalLeftKg.toFixed(2)} KG`} />
+        <StatCard label="Balance" value={`${sourceContext.notionalLeftKg.toFixed(2)} KG`} />
         <StatCard label="Actual Available" value={`${sourceAvailableWeight.toFixed(2)} KG`} />
       </section> : null}
 
@@ -96,7 +96,7 @@ export function ReelTransferForm() {
             const material = materialMap.get(row.materialId);
             return <tr key={row.packingSlipId} className={selected ? "bg-indigo-50" : "hover:bg-slate-50"}>
               <td className="border border-black px-3 py-2"><input aria-label={`Select reel ${row.ourReelNo}`} type="checkbox" checked={selected} onChange={() => toggleReel(row.packingSlipId)} className="h-4 w-4" /></td>
-              <td className="border border-black px-3 py-2 font-bold"><div>{row.ourReelNo}</div><div className="mt-0.5 max-w-40 truncate font-mono text-[10px] font-normal text-slate-500" title={row.packingSlipId}>{row.packingSlipId}</div></td>
+              <td className="border border-black px-3 py-2 font-bold">{row.ourReelNo}</td>
               <td className="border border-black px-3 py-2"><div className="max-w-72 truncate font-medium" title={material?.name || row.materialId}>{material?.name || row.materialId}</div><div className="mt-0.5 text-xs text-slate-500">{material?.erpCode || "-"}</div></td>
               <td className="border border-black px-3 py-2 text-right font-medium tabular-nums">{row.originalIssuedWeightKg.toFixed(2)}</td>
               <td className="border border-black px-3 py-2 text-right font-medium tabular-nums">{row.weightKg.toFixed(2)}</td>
@@ -112,4 +112,4 @@ export function ReelTransferForm() {
 }
 
 function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) { return <label className={`block space-y-1 ${className}`}><span className="block text-xs font-bold uppercase text-slate-700">{label}</span>{children}</label>; }
-function StatCard({ label, value }: { label: string; value: string }) { return <div className="rounded border border-black bg-white p-3"><div className="text-[10px] font-bold uppercase text-slate-600">{label}</div><div className="mt-1 text-lg font-bold tabular-nums">{value}</div></div>; }
+function StatCard({ label, value }: { label: string; value: string }) { return <div className="rounded border border-blue-300 bg-white p-3"><div className="text-[10px] font-bold uppercase text-blue-800">{label}</div><div className="mt-1 text-lg font-bold tabular-nums text-blue-950">{value}</div></div>; }
