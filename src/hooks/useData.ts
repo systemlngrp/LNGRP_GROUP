@@ -146,8 +146,16 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            setDataState(parsed);
-            dataRef.current = parsed;
+            // Cached payloads can outlive an API/schema change. Keep the hook's
+            // public contract as T[] even when an older cache contains an
+            // object or another unexpected JSON value.
+            const cachedData = Array.isArray(parsed)
+              ? parsed
+              : parsed && Array.isArray(parsed.rows)
+                ? parsed.rows
+                : [];
+            setDataState(cachedData);
+            dataRef.current = cachedData;
           } catch (parseError) {
             console.warn(
               `[useData] Invalid cached JSON for "${storageKey}". Clearing corrupted cache entry.`,
