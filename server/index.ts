@@ -2543,7 +2543,7 @@ function normalizeComparableName(value: any) {
   return stringOrEmpty(value).replace(/\s+/g, " ").toLowerCase();
 }
 
-async function ensureColumnExists(db: mysql.Pool, database: string, table: string, column: string, type: string) {
+async function ensureColumnExists(db: mysql.Pool | mysql.PoolConnection, database: string, table: string, column: string, type: string) {
   const [rows] = await db.query(
     "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
     [database, table, column]
@@ -4260,6 +4260,30 @@ async function ensureIndianStatesSeed(db: mysql.Pool) {
     inserted += 1;
   }
   console.log(`[DB] Indian states/union territories seed: ${inserted} inserted, ${INDIA_STATES_AND_UNION_TERRITORIES.length} verified.`);
+}
+
+async function ensureReelTransferRuntimeSchema(db: mysql.PoolConnection) {
+  const [databaseRows] = await db.query("SELECT DATABASE() AS `databaseName`");
+  const database = String((databaseRows as any[])[0]?.databaseName || "").trim();
+  if (!database) throw new Error("Could not identify the active database for reel transfer setup.");
+
+  const columns: Array<[string, string, string]> = [
+    ["productions", "reelTransferId", "VARCHAR(36)"],
+    ["productions", "reelTransferTimestamp", "VARCHAR(255)"],
+    ["material_issues", "firmId", "VARCHAR(36)"],
+    ["material_returns", "firmId", "VARCHAR(36)"],
+    ["material_issue_reel_lines", "jobTransfer", "VARCHAR(10) DEFAULT 'No'"],
+    ["material_return_reel_lines", "materialReturnLineId", "VARCHAR(36)"],
+    ["material_return_reel_lines", "jobTransfer", "VARCHAR(10) DEFAULT 'No'"],
+    ["reel_transfers", "materialReturnId", "VARCHAR(36)"],
+    ["reel_transfers", "materialIssueId", "VARCHAR(36)"],
+    ["reel_transfers", "totalWeightKg", "DECIMAL(15,2) NOT NULL DEFAULT 0"],
+    ["reel_transfers", "totalAmount", "DECIMAL(15,2) NOT NULL DEFAULT 0"],
+    ["reel_transfer_lines", "reelTransferId", "VARCHAR(36)"],
+    ["reel_transfer_lines", "materialReturnReelLineId", "VARCHAR(36)"],
+    ["reel_transfer_lines", "materialIssueReelLineId", "VARCHAR(36)"],
+  ];
+  for (const [table, column, type] of columns) await ensureColumnExists(db, database, table, column, type);
 }
 
 function normalizeWorkflowStatus(tableName: string, row: any) {
@@ -12685,6 +12709,8 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
   const conn = await db.getConnection();
   let transferStage = "starting reel transfer";
   try {
+    transferStage = "preparing reel transfer database fields";
+    await ensureReelTransferRuntimeSchema(conn);
     transferStage = "locking source and target jobs";
     await conn.beginTransaction();
     const [productionRows] = await conn.query(
