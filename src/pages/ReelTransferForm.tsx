@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, CircleAlert, PackageCheck, Scale } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Material, MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, distributeProportionalTransferWeight } from "../lib/reelTransfer";
@@ -51,9 +51,13 @@ export function ReelTransferForm() {
   const totalWeight = allocations.reduce((sum, row) => sum + row.weightKg, 0);
   const totalAmount = selectedRows.reduce((sum, row) => sum + (allocationBySlip.get(row.packingSlipId) || 0) * row.rate, 0);
   const allocationsFitBalances = allocations.length === selectedRows.length && allocations.every((row) => row.weightKg > 0 && row.weightKg <= row.availableWeightKg);
+  const selectedAvailableWeight = selectedRows.reduce((sum, row) => sum + row.weightKg, 0);
+  const sourceAvailableWeight = (sourceContext?.reels || []).reduce((sum, row) => sum + row.weightKg, 0);
+  const isReadyToSave = Boolean(sourceId && targetId && selectedSlips.length && Number.isInteger(Number(totalTransferWeight)) && Number(totalTransferWeight) > 0 && totalWeight === Number(totalTransferWeight) && allocationsFitBalances);
 
   const handleSource = (value: string) => { setSourceId(value); setTargetId(""); setSelectedSlips([]); setTotalTransferWeight(""); };
   const toggleReel = (id: string) => setSelectedSlips((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  const selectAllReels = () => setSelectedSlips((sourceContext?.reels || []).map((row) => row.packingSlipId));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (saving || !sourceId || !targetId || !selectedSlips.length || !Number.isInteger(Number(totalTransferWeight)) || Number(totalTransferWeight) <= 0 || !allocationsFitBalances || totalWeight !== Number(totalTransferWeight)) return;
@@ -82,41 +86,52 @@ export function ReelTransferForm() {
   };
 
   if (productionsLoading || processingLoading || issuesLoading || returnsLoading) return <Spinner />;
-  return <div className="rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
-    <div className="mb-5 flex items-center justify-between gap-3 border-b border-black pb-2">
-      <div><h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer - Reel Balance</h2><p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · jobs from any firm</p></div>
-      {returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase hover:bg-slate-100">Back to Job Transfer</button> : null}
+  return <div className="mx-auto max-w-7xl space-y-4 text-slate-950">
+    <div className="rounded-xl border border-slate-900 bg-slate-950 px-4 py-4 text-white shadow-sm md:px-6">
+      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center"><div><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-indigo-300"><ArrowRightLeft size={15} /> Production / Job Transfer</div><h2 className="mt-1 text-2xl font-black tracking-tight">Transfer Reel Balance</h2><p className="mt-1 text-sm text-slate-300">Move available Unit-I reels from a completed source job to an active target job.</p></div>{returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded-lg border border-slate-500 bg-white px-4 py-2 text-xs font-black uppercase text-slate-900 hover:bg-slate-100">Back to Job Transfer</button> : null}</div>
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4"><Step number="1" label="Source job" active={Boolean(sourceId)} /><Step number="2" label="Target job" active={Boolean(targetId)} /><Step number="3" label="Select reels" active={Boolean(selectedSlips.length)} /><Step number="4" label="Save transfer" active={isReadyToSave} /></div>
     </div>
-    <form onSubmit={submit} className="space-y-5">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Field label="Transfer Date"><input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
-        <Field label="Transfer No."><input value="Auto" readOnly className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>
-        <Field label="Source Job No."><Select disabled={lockSource} options={sourceOptions} value={sourceId} onChange={handleSource} placeholder="Select eligible source job..." /></Field>
-        <Field label="Target Job No.">
+    <form onSubmit={submit} className="space-y-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5"><div className="mb-4 flex items-center gap-2"><PackageCheck className="text-indigo-600" size={20} /><div><h3 className="font-black">1. Choose the jobs</h3><p className="text-xs text-slate-500">Source Corrugation Liner must be Full and within its transfer window. Target must be active with no reel issue or Corrugation Liner entry.</p></div></div><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <Field label="Transfer Date"><input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-semibold outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100" /></Field>
+        <Field label="Transfer No."><input value="Auto-generated" readOnly className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-500" /></Field>
+        <Field label="Original / Eligible Job"><Select disabled={lockSource} options={sourceOptions} value={sourceId} onChange={handleSource} placeholder="Select eligible source job..." /></Field>
+        <Field label="Transfer Job">
           <Select disabled={!sourceId} options={targetOptions} value={targetId} onChange={setTargetId} placeholder="Select active job with no reel issue..." noOptionsMessage="No active target: reel issue must be empty and Corrugation must not be started." />
           {sourceId && targetOptions.length === 0 ? <div className="mt-1 text-[11px] font-bold text-amber-700">No active target job is available. The target must have no reel issue and Corrugation Liner must not be started.</div> : null}
         </Field>
-        <Field label="Total Transfer Weight (KG)"><input type="number" min="1" step="1" required value={totalTransferWeight} onChange={(e) => setTotalTransferWeight(e.target.value === "" ? "" : Number(e.target.value))} className="w-full rounded border-2 border-black p-2" /><span className="block text-[11px] font-medium text-slate-500">Whole KG only</span></Field>
-        <Field label="Remarks"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full rounded border-2 border-black p-2" /></Field>
-        <Field label={`Transfer Window (${windowHours} Hours)`}><input readOnly value={sourceContext?.expiresAt ? new Date(sourceContext.expiresAt).toLocaleString() : "Select source job"} className="w-full rounded border-2 border-black bg-slate-100 p-2" /></Field>
-      </div>
+        <Field label="Transfer Window"><input readOnly value={sourceContext?.expiresAt ? new Date(sourceContext.expiresAt).toLocaleString() : "Select source job"} className="w-full rounded-lg border border-slate-300 bg-slate-100 px-3 py-2.5 text-sm font-semibold text-slate-600" /></Field>
+      </div></section>
+      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5"><div className="grid gap-4 lg:grid-cols-[1fr_360px]"><div><div className="flex items-center gap-2"><Scale className="text-indigo-600" size={20} /><div><h3 className="font-black">2. Set total transfer weight</h3><p className="text-xs text-slate-500">Allocation is proportional to original issued weight. The last selected reel receives the exact remainder.</p></div></div><Field label="Remarks" className="mt-4 max-w-2xl"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Optional transfer note" className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100" /></Field></div><div className="rounded-xl border-2 border-indigo-600 bg-indigo-50 p-4"><label className="block text-xs font-black uppercase tracking-wide text-indigo-950">Total Transfer Weight (KG)</label><input type="number" min="1" step="1" required value={totalTransferWeight} onChange={(e) => setTotalTransferWeight(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Enter whole KG" className="mt-2 w-full rounded-lg border-2 border-indigo-700 bg-white px-3 py-3 text-2xl font-black outline-none focus:ring-2 focus:ring-indigo-300" /><div className="mt-2 flex justify-between text-xs font-semibold text-indigo-900"><span>Whole KG only</span><span>Selected: {selectedAvailableWeight.toFixed(2)} KG</span></div></div></div></section>
       {sourceContext ? (
-        <section className="space-y-3 border border-black bg-slate-50 p-3">
-          <div className="text-xs font-black uppercase tracking-wide text-slate-700">Source Reel Balance</div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-            <Metric label="Total Issued KG" value={sourceContext.totalIssuedKg} />
-            <Metric label="Total Returned KG" value={sourceContext.totalReturnedKg} />
-            <Metric label="Outstanding Reel Count" value={sourceContext.outstandingReelCount} decimals={0} />
-          </div>
+        <section className="grid gap-3 md:grid-cols-4">
+          <StatCard label="Original issued" value={`${sourceContext.totalIssuedKg.toFixed(2)} KG`} />
+          <StatCard label="Already returned" value={`${sourceContext.totalReturnedKg.toFixed(2)} KG`} />
+          <StatCard label="Available balance" value={`${sourceAvailableWeight.toFixed(2)} KG`} accent />
+          <StatCard label="Available reels" value={String(sourceContext.outstandingReelCount)} />
         </section>
       ) : null}
-      <div className="overflow-x-auto rounded border border-black"><table className="w-full border-collapse text-sm"><thead className="bg-slate-100"><tr>{["Select", "Reel No. / QR", "Material / ERP", "Original Issued KG", "Available Balance", "Transfer KG", "Rate", "Amount"].map((h) => <th key={h} className="border border-black p-2 text-left uppercase">{h}</th>)}</tr></thead><tbody>
-        {!sourceContext?.reels.length ? <tr><td colSpan={8} className="p-5 text-center text-slate-500">Select an eligible source job.</td></tr> : sourceContext.reels.map((row) => <tr key={row.packingSlipId}><td className="border border-black p-2"><input type="checkbox" checked={selectedSlips.includes(row.packingSlipId)} onChange={() => toggleReel(row.packingSlipId)} /></td><td className="border border-black p-2 font-bold">{row.ourReelNo}<br/><span className="text-xs font-medium text-slate-500">{row.packingSlipId}</span></td><td className="border border-black p-2">{materialMap.get(row.materialId)?.name || row.materialId}<br/><span className="text-xs text-slate-500">{materialMap.get(row.materialId)?.erpCode || ""}</span></td><td className="border border-black p-2 text-right">{row.originalIssuedWeightKg.toFixed(2)}</td><td className="border border-black p-2 text-right">{row.weightKg.toFixed(2)}</td><td className="border border-black p-2 text-right font-bold">{(allocationBySlip.get(row.packingSlipId) || 0).toFixed(0)}</td><td className="border border-black p-2 text-right">{row.rate.toFixed(2)}</td><td className="border border-black p-2 text-right">{((allocationBySlip.get(row.packingSlipId) || 0) * row.rate).toFixed(2)}</td></tr>)}
-      </tbody></table></div>
-      <div className="flex flex-col items-end justify-between gap-3 border-2 border-black bg-slate-950 p-4 text-white md:flex-row md:items-center"><div><div className="text-xs font-bold uppercase text-slate-300">Transfer Total</div><div className="text-xl font-black">{totalWeight.toFixed(0)} KG &nbsp; | &nbsp; {totalAmount.toFixed(2)}</div>{selectedSlips.length > 0 && !allocationsFitBalances ? <div className="mt-1 text-xs font-bold text-amber-300">The proportional allocation exceeds a selected reel’s available balance.</div> : null}</div><button disabled={saving || !sourceId || !targetId || !selectedSlips.length || !Number.isInteger(Number(totalTransferWeight)) || Number(totalTransferWeight) <= 0 || totalWeight !== Number(totalTransferWeight) || !allocationsFitBalances} className="inline-flex items-center gap-2 rounded bg-indigo-600 px-6 py-3 font-black uppercase hover:bg-indigo-700 disabled:opacity-50"><ArrowRightLeft size={18}/>{saving ? "Saving..." : "Save Reel Transfer"}</button></div>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-4 md:flex-row md:items-center"><div><h3 className="font-black">3. Select reels to transfer</h3><p className="text-xs text-slate-500">Only reels with an original issue weight and positive available balance are shown.</p></div><div className="flex items-center gap-2"><button type="button" disabled={!sourceContext?.reels.length} onClick={selectAllReels} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold hover:bg-slate-50 disabled:opacity-40">Select all</button><button type="button" disabled={!selectedSlips.length} onClick={() => setSelectedSlips([])} className="rounded border border-slate-300 px-3 py-1.5 text-xs font-bold hover:bg-slate-50 disabled:opacity-40">Clear</button><span className="rounded-full bg-indigo-100 px-3 py-1.5 text-xs font-black text-indigo-800">{selectedSlips.length} selected</span></div></div><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-600"><tr>{["Select", "Reel / QR", "Material", "Original issued", "Available balance", "Transfer KG", "Rate", "Amount"].map((h) => <th key={h} className="whitespace-nowrap px-4 py-3 text-left font-black">{h}</th>)}</tr></thead><tbody>
+        {!sourceContext?.reels.length ? <tr><td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-500">Select an eligible source job to see its available reels.</td></tr> : sourceContext.reels.map((row) => {
+          const selected = selectedSlips.includes(row.packingSlipId);
+          const allocatedKg = allocationBySlip.get(row.packingSlipId) || 0;
+          return <tr key={row.packingSlipId} className={`border-t border-slate-100 transition-colors ${selected ? "bg-indigo-50/80" : "hover:bg-slate-50"}`}>
+            <td className="px-4 py-3"><input aria-label={`Select reel ${row.ourReelNo}`} type="checkbox" checked={selected} onChange={() => toggleReel(row.packingSlipId)} className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" /></td>
+            <td className="px-4 py-3 font-black text-slate-900"><div>{row.ourReelNo}</div><div className="mt-0.5 max-w-40 truncate font-mono text-[10px] font-medium text-slate-500" title={row.packingSlipId}>{row.packingSlipId}</div></td>
+            <td className="px-4 py-3"><div className="max-w-72 truncate font-semibold text-slate-800" title={materialMap.get(row.materialId)?.name || row.materialId}>{materialMap.get(row.materialId)?.name || row.materialId}</div><div className="mt-0.5 text-xs text-slate-500">{materialMap.get(row.materialId)?.erpCode || "—"}</div></td>
+            <td className="px-4 py-3 text-right font-semibold tabular-nums">{row.originalIssuedWeightKg.toFixed(2)}</td>
+            <td className="px-4 py-3 text-right font-semibold tabular-nums text-slate-800">{row.weightKg.toFixed(2)}</td>
+            <td className="px-4 py-3 text-right"><span className={`inline-flex min-w-16 justify-end rounded-md px-2 py-1 font-black tabular-nums ${selected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"}`}>{allocatedKg.toFixed(0)}</span></td>
+            <td className="px-4 py-3 text-right tabular-nums text-slate-600">{row.rate.toFixed(2)}</td>
+            <td className="px-4 py-3 text-right font-bold tabular-nums text-slate-800">{(allocatedKg * row.rate).toFixed(2)}</td>
+          </tr>;
+        })}
+      </tbody></table></div></section>
+      <div className="sticky bottom-3 z-10 flex flex-col justify-between gap-4 rounded-xl border border-slate-900 bg-slate-950 p-4 text-white shadow-xl md:flex-row md:items-center"><div className="flex items-start gap-3"><div className={`mt-0.5 rounded-full p-1 ${isReadyToSave ? "bg-emerald-400 text-emerald-950" : "bg-amber-300 text-amber-950"}`}>{isReadyToSave ? <CheckCircle2 size={18} /> : <CircleAlert size={18} />}</div><div><div className="text-xs font-bold uppercase tracking-wide text-slate-300">Transfer summary</div><div className="mt-1 text-2xl font-black tabular-nums">{totalWeight.toFixed(0)} KG <span className="text-sm font-semibold text-slate-400">/ {selectedSlips.length} reel{selectedSlips.length === 1 ? "" : "s"}</span></div><div className={`mt-1 text-xs font-semibold ${isReadyToSave ? "text-emerald-300" : "text-amber-300"}`}>{selectedSlips.length > 0 && !allocationsFitBalances ? "A proportional allocation exceeds a selected reel balance." : isReadyToSave ? "Allocation is ready to save." : "Choose jobs, reels, and a valid whole-KG total."}</div></div></div><button disabled={saving || !isReadyToSave} className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-500 px-6 py-3 text-sm font-black uppercase tracking-wide text-white hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-slate-600"><ArrowRightLeft size={18}/>{saving ? "Saving transfer..." : "Save Reel Transfer"}</button></div>
     </form>
   </div>;
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="space-y-1"><span className="block text-xs font-black uppercase">{label}</span>{children}</label>; }
-function Metric({ label, value, decimals = 2 }: { label: string; value: number; decimals?: number }) { return <div className="rounded border border-slate-300 bg-white p-2"><div className="font-black uppercase text-slate-500">{label}</div><div className="mt-1 text-base font-bold">{Number(value || 0).toFixed(decimals)}</div></div>; }
+function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) { return <label className={`block space-y-1.5 ${className}`}><span className="block text-xs font-black uppercase tracking-wide text-slate-700">{label}</span>{children}</label>; }
+function Step({ number, label, active }: { number: string; label: string; active: boolean }) { return <div className={`flex items-center gap-2 rounded-lg px-2 py-2 ${active ? "bg-indigo-500 text-white" : "bg-white/10 text-slate-300"}`}><span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black ${active ? "bg-white text-indigo-700" : "bg-white/20"}`}>{number}</span><span className="truncate font-bold">{label}</span></div>; }
+function StatCard({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) { return <div className={`rounded-xl border bg-white p-4 shadow-sm ${accent ? "border-indigo-300" : "border-slate-200"}`}><div className="text-[11px] font-black uppercase tracking-wide text-slate-500">{label}</div><div className={`mt-1 text-xl font-black tabular-nums ${accent ? "text-indigo-700" : "text-slate-950"}`}>{value}</div></div>; }
