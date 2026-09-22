@@ -32,11 +32,11 @@ const returnTypeOptions = [
 ];
 
 export function MaterialReturnMaster() {
-  const [materialReturns, setMaterialReturns] = useData<MaterialReturn>("material-returns", []);
-  const [returnLines] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [reelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const [materials] = useData<Material>("materials", []);
-  const [productions] = useData<Production>("productions", []);
+  const [materialReturns, setMaterialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
+  const [returnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all" });
+  const [reelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all" });
+  const [materials] = useData<Material>("materials", [], { firmScope: "all" });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -115,6 +115,8 @@ export function MaterialReturnMaster() {
 
     const general = returnLines
       .filter((line) => returnIds.has(line.materialReturnId))
+      .filter((line) => !reelLines.some((reel) => reel.materialReturnLineId === line.id))
+      .filter((line) => String(materialMap.get(line.materialId)?.type || "").trim().toLowerCase() !== "reel")
       .map((line) => {
         const parent = returnMap.get(line.materialReturnId);
         if (!parent) return null;

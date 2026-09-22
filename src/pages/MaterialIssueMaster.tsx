@@ -120,6 +120,7 @@ export function MaterialIssueMaster() {
       // predates reel-detail tracking. Classifying only by the presence of a
       // child reel row caused these orphaned reel issues to appear as general
       // material movements.
+      .filter((line) => !reelLines.some((reel) => reel.materialIssueLineId === line.id))
       .filter((line) => String(materialMap.get(line.materialId)?.type || "").trim().toLowerCase() !== "reel")
       .map((line) => {
         const parent = issueMap.get(line.materialIssueId);

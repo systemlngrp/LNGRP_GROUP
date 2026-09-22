@@ -641,7 +641,7 @@ export function MaterialIssueForm() {
           : (lines.some((line) => line.isReel) ? unitOneFirm?.id : unitTwoFirm?.id),
         firmName: isWithoutJobIssue(issueType)
           ? (requestedFirm?.firmName || unitTwoFirm?.firmName)
-          : (lines.some((line) => line.isReel) ? unitOneFirm?.firmName : unitTwoFirm?.firmName),
+          : (lines.some((line) => line.isReel) ? undefined : unitTwoFirm?.firmName),
         issueNo,
         consumptionTransactionNo,
         date,

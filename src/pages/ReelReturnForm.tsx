@@ -175,7 +175,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
       const production = productions.find((row) => row.id === productionId);
       if (!production) throw new Error("Selected job was not found.");
       const returnId = crypto.randomUUID();
-      const returnEntry: MaterialReturn = { id: returnId, firmId: unitOneFirm.id, firmName: unitOneFirm.firmName, returnNo: generateTransactionNo("MR", materialReturns.map((row) => ({ transactionNo: row.returnNo, date: row.date })), date), date, returnType: "Job", productionId, jobNo: production.transactionNo, remarks: remarks.trim() || undefined, updatedBy: "System User", updateTimestamp: timestamp };
+      const returnEntry: MaterialReturn = { id: returnId, firmId: unitOneFirm.id, returnNo: generateTransactionNo("MR", materialReturns.map((row) => ({ transactionNo: row.returnNo, date: row.date })), date), date, returnType: "Job", productionId, jobNo: production.transactionNo, remarks: remarks.trim() || undefined, updatedBy: "System User", updateTimestamp: timestamp };
       const byMaterial = new Map<string, typeof validated>();
       validated.forEach((entry) => byMaterial.set(entry.row.materialId, [...(byMaterial.get(entry.row.materialId) || []), entry]));
       const createdLines: MaterialReturnLine[] = [];

@@ -15,6 +15,7 @@ import {
   MaterialReturnReelLine,
   Production,
   Setting,
+  Firm,
 } from "../types";
 import { generateTransactionNo } from "../lib/serial";
 import { Select } from "../components/Select";
@@ -27,6 +28,7 @@ import {
   buildProductionMaterialUsageMap,
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type ReelLineDraft = {
   id: string;
@@ -68,6 +70,8 @@ export function ReelIssueReturnForm() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [materials] = useData<Material>("materials", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [materialGroups] = useData<MaterialGroup>("material-groups", [], { firmScope: "all" });
@@ -231,6 +235,10 @@ export function ReelIssueReturnForm() {
       alert("Select at least one reel to issue.");
       return;
     }
+    if (!unitOneFirm?.id) {
+      alert("Unit-I is not configured in Firm Master. Reel issues cannot be saved.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -251,6 +259,7 @@ export function ReelIssueReturnForm() {
         );
         const issue: MaterialIssue = {
           id: issueId,
+          firmId: unitOneFirm.id,
           issueNo,
           date,
           issueType: "Job",

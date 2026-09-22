@@ -301,7 +301,7 @@ export function MaterialReturnForm() {
       const entry: MaterialReturn = {
         id: returnId,
         firmId: lines.some((line) => line.isReel) ? unitOneFirm?.id : undefined,
-        firmName: lines.some((line) => line.isReel) ? unitOneFirm?.firmName : undefined,
+        firmName: undefined,
         returnNo,
         date,
         returnType,

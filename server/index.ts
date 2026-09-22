@@ -177,19 +177,13 @@ async function migrateReelInventoryToUnitOne(db: mysql.Pool) {
     await conn.query(`
       UPDATE material_issues mi
       JOIN (SELECT DISTINCT materialIssueId FROM material_issue_reel_lines) reels ON reels.materialIssueId = mi.id
-      SET mi.firmId = ?, mi.firmName = ?, mi.remarks = CASE
-        WHEN INSTR(COALESCE(mi.remarks, ''), 'Reel ownership migrated to Unit-I') > 0 THEN mi.remarks
-        ELSE CONCAT_WS(' | ', NULLIF(TRIM(mi.remarks), ''), 'Reel ownership migrated to Unit-I')
-      END
-    `, [unitOne.id, unitOne.firmName]);
+      SET mi.firmId = ?
+    `, [unitOne.id]);
     await conn.query(`
       UPDATE material_returns mr
       JOIN (SELECT DISTINCT materialReturnId FROM material_return_reel_lines) reels ON reels.materialReturnId = mr.id
-      SET mr.firmId = ?, mr.firmName = ?, mr.remarks = CASE
-        WHEN INSTR(COALESCE(mr.remarks, ''), 'Reel ownership migrated to Unit-I') > 0 THEN mr.remarks
-        ELSE CONCAT_WS(' | ', NULLIF(TRIM(mr.remarks), ''), 'Reel ownership migrated to Unit-I')
-      END
-    `, [unitOne.id, unitOne.firmName]);
+      SET mr.firmId = ?
+    `, [unitOne.id]);
     const [reelRows] = await conn.query(`
       SELECT m.id AS materialId,
         COUNT(ps.id) AS reelCount,
@@ -8630,7 +8624,7 @@ const createHandlers = (tableName: string) => {
               const unitOne = await getUnitOneFirm(db);
               if (!unitOne?.id) return res.status(400).json({ error: "Unit-I firm is not configured. Reel movements cannot be saved." });
               data.firmId = String(unitOne.id);
-              data.firmName = String(unitOne.firmName || "");
+              delete data.firmName;
             }
           }
         }

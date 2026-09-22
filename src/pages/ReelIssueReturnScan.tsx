@@ -22,8 +22,10 @@ import type {
   MaterialReturnReelLine,
   Production,
   Setting,
+  Firm,
 } from "../types";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type ParsedQrPayload = {
   reelNo: string;
@@ -107,6 +109,8 @@ export function ReelIssueReturnScan() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [materials] = useData<Material>("materials", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
@@ -348,6 +352,10 @@ export function ReelIssueReturnScan() {
       alert("Scan at least one reel before submit.");
       return;
     }
+    if (!unitOneFirm?.id) {
+      alert("Unit-I is not configured in Firm Master. Reel issues cannot be saved.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -360,6 +368,7 @@ export function ReelIssueReturnScan() {
       );
       const issue: MaterialIssue = {
         id: issueId,
+        firmId: unitOneFirm.id,
         issueNo,
         date,
         issueType: "Job",
