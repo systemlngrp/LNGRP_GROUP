@@ -8981,6 +8981,15 @@ const createHandlers = (tableName) => {
                     const schemaName = process.env.DB_NAME || "u380633007_Inpidata";
                     await ensureColumnExists(db, schemaName, tableName, "itemSource", "VARCHAR(20) NOT NULL DEFAULT 'FG'");
                 }
+                // Reel/detail rows inherit ownership from their parent document. Keep
+                // firm display fields off these tables even if an earlier normalizer or
+                // future automation adds them after the initial payload sanitization.
+                // This second guard sits immediately before SQL generation so a stale
+                // or partially migrated schema can never produce `firmName` in SET.
+                if (REMOVED_FIRM_SCOPE_TABLES.includes(tableName)) {
+                    delete data.firmId;
+                    delete data.firmName;
+                }
                 const [currentDatabaseRows] = await db.query("SELECT DATABASE() AS db");
                 const schemaName = String(currentDatabaseRows[0]?.db || process.env.DB_NAME || "u380633007_Inpidata");
                 const existingColumns = await getExistingColumnNames(db, schemaName, tableName);
