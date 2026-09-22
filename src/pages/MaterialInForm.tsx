@@ -2808,11 +2808,12 @@ export function MaterialInForm() {
           </div>
           <div className="flex flex-col space-y-1">
             <label className="font-bold text-black">
-              Firm <span className="text-red-500">*</span>
+              {mrrType === "Reel" ? "Inventory Owner" : "Firm"} <span className="text-red-500">*</span>
               <select value={firmId} disabled={firmLocked || mrrType === "Reel"} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="mt-2 w-full rounded border-2 border-indigo-300 p-2 disabled:bg-slate-100">
                 <option value="">Select Firm...</option>
-                {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                {(mrrType === "Reel" ? firms.filter((firm) => firm.id === unitOneFirm?.id) : firms).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
               </select>
+              {mrrType === "Reel" ? <span className="mt-1 block text-xs font-semibold text-indigo-700">Reel receipts are permanently owned by Unit-I.</span> : null}
             </label>
             <label className="font-bold text-black">
               MRR Type <span className="text-red-500">*</span>

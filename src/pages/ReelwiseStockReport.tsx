@@ -18,6 +18,7 @@ import {
   Supplier,
 } from "../types";
 import { buildReelStockRows, type ReelStockCalculationRow } from "../lib/reelStock";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type AvailabilityFilter = "all" | "gt500" | "lt500";
 type ReelwiseStockRow = ReelStockCalculationRow;
@@ -27,7 +28,7 @@ const tableColumns = [
   "MRR No.",
   "Our Reel No.",
   "ERP",
-  "Firm",
+  "Inventory Owner",
   "Suppliers Name",
   "GSM",
   "Size",
@@ -81,6 +82,7 @@ export function ReelwiseStockReport() {
   const [suppliers] = useData<Supplier>("suppliers", [], { firmScope: "all", cacheToLocalStorage: false });
   const [companies] = useData<Company>("companies", [], { firmScope: "all", cacheToLocalStorage: false });
   const [settings] = useData<Setting>("settings", [], { cacheToLocalStorage: false });
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
@@ -104,9 +106,10 @@ export function ReelwiseStockReport() {
       issueReelLines,
       returnReelLines,
       firms,
+      unitOneFirm,
       suppliers,
     });
-  }, [firms, issueReelLines, materialIn, materials, packingSlips, returnReelLines, suppliers]);
+  }, [firms, issueReelLines, materialIn, materials, packingSlips, returnReelLines, suppliers, unitOneFirm]);
 
   const mrrOptions = useMemo(() => makeOptions(allRows.map((row) => row.mrrNo)), [allRows]);
   const erpOptions = useMemo(() => makeOptions(allRows.map((row) => row.erp)), [allRows]);
@@ -357,6 +360,7 @@ export function ReelwiseStockReport() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-black pb-3">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Reelwise Stock Report</h2>
+          <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · all jobs and firms</p>
         </div>
       </div>
 

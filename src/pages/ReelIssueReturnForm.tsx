@@ -368,6 +368,7 @@ export function ReelIssueReturnForm() {
             </div>
             <div>
               <h2 className="text-xl font-black tracking-tight">Manual Reel Issue</h2>
+              <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · jobs from any firm</p>
               <p className="text-sm font-medium text-white/75">Select available reels and issue them against the chosen job.</p>
             </div>
           </div>

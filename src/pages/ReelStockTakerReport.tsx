@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, Save, Search, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { buildReelStockRows } from "../lib/reelStock";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { shouldBlockDuplicateReelScan } from "../lib/reelStockTakerDuplicate";
 import type {
   Material,
@@ -12,6 +13,7 @@ import type {
   PhysicalStockSession,
   StockTakerLog,
   Supplier,
+  Firm,
 } from "../types";
 
 type ParsedQrPayload = {
@@ -116,14 +118,16 @@ async function postStockTakerLog(payload: StockTakerLog) {
 }
 
 export function ReelStockTakerReport() {
-  const [materials] = useData<Material>("materials", [], { cacheToLocalStorage: false });
-  const [materialIn] = useData<MaterialIn>("material-in", [], { cacheToLocalStorage: false });
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { cacheToLocalStorage: false });
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false });
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false });
-  const [suppliers] = useData<Supplier>("suppliers", [], { cacheToLocalStorage: false });
-  const [sessions] = useData<PhysicalStockSession>("physical_stock_sessions", [], { cacheToLocalStorage: false });
-  const [logs, , , logsApi] = useData<StockTakerLog>("reel_stock_taker_logs", [], { cacheToLocalStorage: false });
+  const [materials] = useData<Material>("materials", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [suppliers] = useData<Supplier>("suppliers", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [sessions] = useData<PhysicalStockSession>("physical_stock_sessions", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [logs, , , logsApi] = useData<StockTakerLog>("reel_stock_taker_logs", [], { firmScope: "all", cacheToLocalStorage: false });
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
 
   const [manualReelNo, setManualReelNo] = useState("");
   const [manualPhysicalWeight, setManualPhysicalWeight] = useState("");
@@ -152,8 +156,9 @@ export function ReelStockTakerReport() {
       issueReelLines,
       returnReelLines,
       suppliers,
+      unitOneFirm,
     }).filter((row) => row.availableWeight > 0);
-  }, [issueReelLines, materialIn, materials, packingSlips, returnReelLines, suppliers]);
+  }, [issueReelLines, materialIn, materials, packingSlips, returnReelLines, suppliers, unitOneFirm]);
 
   const rowByReelNo = useMemo(() => {
     const map = new Map<string, (typeof availableRows)[number]>();
@@ -337,6 +342,7 @@ export function ReelStockTakerReport() {
       <div className="flex flex-col gap-3 border-b border-black pb-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-xl font-bold uppercase tracking-tight text-black">Physical Stock Entry</h2>
+          <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · all jobs and firms</p>
           <div className="mt-1 text-xs font-bold text-slate-700">
             {activeSession ? `${activeSession.sessionNo} | ${logs.filter((log) => log.sessionId === activeSession.id).length} scanned | Started ${formatDateTime(activeSession.startedAt)}` : "No active session"}
           </div>

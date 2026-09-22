@@ -129,29 +129,31 @@ async function migrateReelInventoryToUnitOne(db) {
       WHERE m.type = 'Reel'
     `, [unitOne.id]);
         await conn.query(`
-      UPDATE material_in
-      SET firmId = ?, remarks = CASE
+      UPDATE material_in mi
+      LEFT JOIN material_in_packing_slips ps ON ps.materialInId = mi.id
+      LEFT JOIN materials m ON m.id = ps.materialId
+      SET mi.firmId = ?, mi.firmName = ?, remarks = CASE
         WHEN INSTR(COALESCE(remarks, ''), 'Reel ownership migrated to Unit-I') > 0 THEN remarks
         ELSE CONCAT_WS(' | ', NULLIF(TRIM(remarks), ''), 'Reel ownership migrated to Unit-I')
       END
-      WHERE LOWER(TRIM(COALESCE(mrrType, ''))) = 'reel'
-    `, [unitOne.id]);
+      WHERE LOWER(TRIM(COALESCE(mi.mrrType, ''))) = 'reel' OR m.type = 'Reel'
+    `, [unitOne.id, unitOne.firmName]);
         await conn.query(`
       UPDATE material_issues mi
       JOIN (SELECT DISTINCT materialIssueId FROM material_issue_reel_lines) reels ON reels.materialIssueId = mi.id
-      SET mi.firmId = ?, mi.remarks = CASE
+      SET mi.firmId = ?, mi.firmName = ?, mi.remarks = CASE
         WHEN INSTR(COALESCE(mi.remarks, ''), 'Reel ownership migrated to Unit-I') > 0 THEN mi.remarks
         ELSE CONCAT_WS(' | ', NULLIF(TRIM(mi.remarks), ''), 'Reel ownership migrated to Unit-I')
       END
-    `, [unitOne.id]);
+    `, [unitOne.id, unitOne.firmName]);
         await conn.query(`
       UPDATE material_returns mr
       JOIN (SELECT DISTINCT materialReturnId FROM material_return_reel_lines) reels ON reels.materialReturnId = mr.id
-      SET mr.firmId = ?, mr.remarks = CASE
+      SET mr.firmId = ?, mr.firmName = ?, mr.remarks = CASE
         WHEN INSTR(COALESCE(mr.remarks, ''), 'Reel ownership migrated to Unit-I') > 0 THEN mr.remarks
         ELSE CONCAT_WS(' | ', NULLIF(TRIM(mr.remarks), ''), 'Reel ownership migrated to Unit-I')
       END
-    `, [unitOne.id]);
+    `, [unitOne.id, unitOne.firmName]);
         const [reelRows] = await conn.query(`
       SELECT m.id AS materialId,
         COUNT(ps.id) AS reelCount,
@@ -8043,7 +8045,7 @@ const createHandlers = (tableName) => {
                         const parentColumn = tableName === "material_issue_reel_lines" ? "materialIssueId" : "materialReturnId";
                         const parentId = String(data[parentColumn] || "").trim();
                         if (parentId) {
-                            await db.query(`UPDATE \`${parentTable}\` SET firmId = ? WHERE id = ?`, [unitOne.id, parentId]);
+                            await db.query(`UPDATE \`${parentTable}\` SET firmId = ?, firmName = ? WHERE id = ?`, [unitOne.id, unitOne.firmName, parentId]);
                         }
                     }
                 }
@@ -8060,13 +8062,15 @@ const createHandlers = (tableName) => {
                         return res.status(409).json({ error: `Our Reel No. ${normalizedReelNo} already exists.` });
                     }
                     data.ourReelNo = normalizedReelNo;
-                    if (String(data.materialInId || "").trim() === "OPENING") {
-                        const [materialRows] = await db.query("SELECT type FROM `materials` WHERE id = ? LIMIT 1", [String(data.materialId || "")]);
-                        if (String(materialRows[0]?.type || "").trim() === "Reel") {
-                            const unitOne = await getUnitOneFirm(db);
-                            if (!unitOne?.id)
-                                return res.status(400).json({ error: "Unit-I firm is not configured. Reel opening stock must belong to Unit-I." });
-                            data.firmId = String(unitOne.id);
+                    const [materialRows] = await db.query("SELECT type FROM `materials` WHERE id = ? LIMIT 1", [String(data.materialId || "")]);
+                    if (String(materialRows[0]?.type || "").trim() === "Reel") {
+                        const unitOne = await getUnitOneFirm(db);
+                        if (!unitOne?.id)
+                            return res.status(400).json({ error: "Unit-I firm is not configured. Reel packing slips must belong to Unit-I." });
+                        data.firmId = String(unitOne.id);
+                        const materialInId = String(data.materialInId || "").trim();
+                        if (materialInId && materialInId !== "OPENING") {
+                            await db.query("UPDATE `material_in` SET firmId = ?, firmName = ? WHERE id = ?", [unitOne.id, unitOne.firmName, materialInId]);
                         }
                     }
                 }
@@ -8358,6 +8362,9 @@ const createHandlers = (tableName) => {
                     }
                 }
                 if (tableName === "reel_stock_taker_logs") {
+                    const unitOne = await getUnitOneFirm(db);
+                    if (!unitOne?.id)
+                        return res.status(400).json({ error: "Unit-I firm is not configured. Reel stock taking must belong to Unit-I." });
                     const reelNo = String(data.reelNo || "").trim();
                     if (!reelNo) {
                         return res.status(400).json({ error: "Reel number is required." });
@@ -8376,6 +8383,8 @@ const createHandlers = (tableName) => {
                     data.sessionId = openSession.id;
                     data.sessionNo = openSession.sessionNo;
                     data.sessionName = openSession.sessionName;
+                    data.firmId = String(unitOne.id);
+                    data.firmName = String(unitOne.firmName || "");
                     data.timestamp = String(data.timestamp || new Date().toISOString());
                     data.systemAvailableWeight = Number.isFinite(systemAvailableWeight) ? Number(systemAvailableWeight.toFixed(2)) : 0;
                     data.physicalWeight = Number.isFinite(physicalWeight) ? Number(physicalWeight.toFixed(2)) : 0;

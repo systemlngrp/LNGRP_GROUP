@@ -456,6 +456,7 @@ export function ReelIssueReturnScan() {
             <ArrowLeft size={15} /> Jobs
           </button>
           <h2 className="break-words text-xl font-bold uppercase tracking-tight text-black">Reel Issue QR Scan</h2>
+          <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · jobs from any firm</p>
         </div>
       </div>
 

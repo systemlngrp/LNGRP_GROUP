@@ -9,9 +9,11 @@ import {
   MaterialInPackingSlip,
   MaterialIssueReelLine,
   MaterialReturnReelLine,
+  Firm,
 } from "../types";
 import { buildReelStockRows } from "../lib/reelStock";
 import { isActiveReelMaterial } from "../lib/materialMovement";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type ReelStockRow = {
   materialId: string;
@@ -52,6 +54,8 @@ export function ErpWiseReelStockReport() {
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
   const [searchTerm, setSearchTerm] = useState("");
   const [mrrFilter, setMrrFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
@@ -65,7 +69,8 @@ export function ErpWiseReelStockReport() {
     packingSlips,
     issueReelLines,
     returnReelLines,
-  }), [issueReelLines, materialIn, materials, packingSlips, returnReelLines]);
+    unitOneFirm,
+  }), [issueReelLines, materialIn, materials, packingSlips, returnReelLines, unitOneFirm]);
 
   const allRows = useMemo<ReelStockRow[]>(() => {
     const sourceReelRows = mrrFilter
@@ -219,6 +224,7 @@ export function ErpWiseReelStockReport() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-black pb-3">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">ERP Wise Reel Stock</h2>
+          <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · all jobs and firms</p>
         </div>
       </div>
 

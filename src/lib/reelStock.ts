@@ -43,6 +43,7 @@ type BuildReelStockRowsArgs = {
   issueReelLines: MaterialIssueReelLine[];
   returnReelLines: MaterialReturnReelLine[];
   firms?: Firm[];
+  unitOneFirm?: Pick<Firm, "id" | "firmName"> | null;
   suppliers?: Supplier[];
   includeMaterialIn?: (entry: MaterialIn) => boolean;
   includeIssueLine?: (line: MaterialIssueReelLine) => boolean;
@@ -80,6 +81,7 @@ export function buildReelStockRows({
   issueReelLines,
   returnReelLines,
   firms = [],
+  unitOneFirm = null,
   suppliers = [],
   includeMaterialIn = () => true,
   includeIssueLine = () => true,
@@ -123,8 +125,8 @@ export function buildReelStockRows({
         ourReelNo: formatOurReelNo(firstOpeningReelNo + index),
         erp: String(material.erpCode || ""),
         itemName: String(material.name || ""),
-        firmId: String(material.firmId || ""),
-        firmName: firmMap.get(String(material.firmId || ""))?.firmName || "Unassigned",
+        firmId: String(unitOneFirm?.id || material.firmId || ""),
+        firmName: String(unitOneFirm?.firmName || firmMap.get(String(material.firmId || ""))?.firmName || "Unassigned"),
         supplierName: "-",
         gsm: Number(material.gsm || 0),
         size: Number(material.size || 0),
@@ -150,7 +152,7 @@ export function buildReelStockRows({
     .map((slip) => {
       const material = materialMap.get(slip.materialId);
       const receipt = materialInMap.get(slip.materialInId);
-      const firmId = String(slip.firmId || receipt?.firmId || "").trim();
+      const firmId = String(unitOneFirm?.id || slip.firmId || receipt?.firmId || "").trim();
       const supplier = isOpeningReelPackingSlip(slip)
         ? supplierMap.get(String(slip.supplierId || ""))
         : receipt ? supplierMap.get(receipt.supplierId) : undefined;
@@ -177,7 +179,7 @@ export function buildReelStockRows({
         erp: String(material?.erpCode || ""),
         itemName: String(material?.name || ""),
         firmId,
-        firmName: firmMap.get(firmId)?.firmName || "Unassigned",
+        firmName: String(unitOneFirm?.firmName || firmMap.get(firmId)?.firmName || "Unassigned"),
         supplierName: isOpeningReelPackingSlip(slip) ? supplier?.name || "-" : supplier?.name || "",
         gsm: Number(material?.gsm || 0),
         size: Number(material?.size || 0),
