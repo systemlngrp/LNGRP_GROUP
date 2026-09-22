@@ -88,14 +88,14 @@ export function PendingJobTransfer() {
         <table className="min-w-full border-collapse">
           <thead className="bg-slate-800 text-white">
             <tr>
-              {["Source Job", "Date", "Company", "Item", "Reels", "Transferable KG", "Window Expires", "Status", "Action"].map((heading) => (
+              {["Source Job", "Date", "Company", "Item", "Reels", "Transferable KG", "Status", "Action"].map((heading) => (
                 <th key={heading} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase">{heading}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={9} className="px-6 py-10 text-center font-medium text-slate-500">{rows.length ? "No jobs match the current search." : "No jobs are currently eligible for reel balance transfer."}</td></tr>
+              <tr><td colSpan={8} className="px-6 py-10 text-center font-medium text-slate-500">{rows.length ? "No jobs match the current search." : "No jobs are currently eligible for reel balance transfer."}</td></tr>
             ) : filteredRows.map(({ production, context, company, item, transferableWeight }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
                 <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>
@@ -104,7 +104,6 @@ export function PendingJobTransfer() {
                 <td className="border border-black px-3 py-3 text-sm">{item}</td>
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{context.reels.length}</td>
                 <td className="border border-black px-3 py-3 text-right text-sm font-bold">{transferableWeight.toFixed(2)}</td>
-                <td className="border border-black px-3 py-3 text-sm">{formatDate(context.expiresAt)}</td>
                 <td className="border border-black px-3 py-3">
                   <span title={context.reason} className={`inline-block cursor-help rounded border px-2 py-1 text-xs font-bold uppercase ${context.eligible ? "border-emerald-700 bg-emerald-50 text-emerald-800" : "border-amber-700 bg-amber-50 text-amber-800"}`}>
                     {context.eligible ? "Eligible" : "Weight Calculation Unavailable"}
