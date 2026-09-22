@@ -12641,8 +12641,8 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
   const totalTransferWeight = Number(req.body?.totalTransferWeight || 0);
   const transferDate = String(req.body?.date || new Date().toISOString().slice(0, 10)).trim();
   const remarks = String(req.body?.remarks || "").trim();
-  if (!sourceProductionId || !targetProductionId || sourceProductionId === targetProductionId || !packingSlipIds.length || !Number.isFinite(totalTransferWeight) || totalTransferWeight <= 0) {
-    return res.status(400).json({ error: "Select a source job, a different target job, reels, and a positive Total Transfer Weight." });
+  if (!sourceProductionId || !targetProductionId || sourceProductionId === targetProductionId || !packingSlipIds.length || !Number.isFinite(totalTransferWeight) || !Number.isInteger(totalTransferWeight) || totalTransferWeight <= 0) {
+    return res.status(400).json({ error: "Select a source job, a different target job, reels, and a positive whole-KG Total Transfer Weight." });
   }
 
   const db = await getPool();
@@ -12659,7 +12659,7 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const target = productions.find((row) => String(row.id) === targetProductionId);
     if (!source || !target) throw new Error("Source or target job was not found.");
     if (String(source.status || "") === "Cancelled" || source.cancelTimestamp) throw new Error("The source job is cancelled.");
-    if (["Cancelled", "Completed"].includes(String(target.status || "")) || target.cancelTimestamp || target.tallyTimestamp) {
+    if (!["Pending PH", "Pending Consumption", "Pending FFG", "Pending Tally"].includes(String(target.status || "")) || target.cancelTimestamp) {
       throw new Error("The target job is cancelled or unavailable.");
     }
 
@@ -12720,24 +12720,9 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     const balanceBySlip = new Map<string, number>();
     issues.forEach((row) => balanceBySlip.set(String(row.packingSlipId), (balanceBySlip.get(String(row.packingSlipId)) || 0) + Number(row.weightKg || 0)));
     returns.forEach((row) => balanceBySlip.set(String(row.packingSlipId), (balanceBySlip.get(String(row.packingSlipId)) || 0) - Number(row.weightKg || 0)));
-    const outstanding = Array.from(balanceBySlip.values()).filter((value) => value > 0.004);
-    const totalIssuedKg = issues.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
-    const totalReturnedKg = returns.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
-    const positiveFinite = (value: unknown) => {
-      const numericValue = Number(value || 0);
-      return Number.isFinite(numericValue) && numericValue > 0 ? numericValue : 0;
-    };
-    const planQty = positiveFinite(source.qty) || positiveFinite(source.plannedQty);
-    const requiredKg = positiveFinite(source.totalPaperWeight);
-    if (planQty <= 0) throw new Error("Source job plan quantity is required for transfer calculation.");
-    if (requiredKg <= 0) throw new Error("Source job weight calculation is unavailable.");
-    const corrugationQty = sourceCorrugation
-      .filter((row) => processingTime(row) <= sourceFull.time)
-      .reduce((sum, row) => sum + Number(row.qty || 0), 0);
-    const consumedKg = corrugationQty * requiredKg / planQty;
-    const notionalLeftKg = Math.max(0, totalIssuedKg - totalReturnedKg - consumedKg);
-    const averageNotionalKg = outstanding.length ? notionalLeftKg / outstanding.length : 0;
-    if (averageNotionalKg <= 0.004) throw new Error("No positive notional reel balance is available for transfer.");
+    if (!Array.from(balanceBySlip.values()).some((value) => value > 0.004)) {
+      throw new Error("No positive reel balance is available for transfer.");
+    }
 
     const selectedCandidates = packingSlipIds.map((packingSlipId) => {
       const balance = Number(balanceBySlip.get(packingSlipId) || 0);
@@ -12753,9 +12738,9 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
     let distributedWeight = 0;
     const selected = selectedCandidates.map((row, index) => {
       const weightKg = index === selectedCandidates.length - 1
-        ? Number((totalTransferWeight - distributedWeight).toFixed(2))
-        : Number((totalTransferWeight * row.originalIssuedWeight / selectedOriginalIssuedWeight).toFixed(2));
-      distributedWeight = Number((distributedWeight + weightKg).toFixed(2));
+        ? totalTransferWeight - distributedWeight
+        : Math.round(totalTransferWeight * row.originalIssuedWeight / selectedOriginalIssuedWeight);
+      distributedWeight += weightKg;
       if (weightKg <= 0 || weightKg > row.balance + 0.004) throw new Error(`Proportional transfer weight exceeds the available balance for reel ${row.issue.ourReelNo || row.issue.packingSlipId}.`);
       return { issue: row.issue, weightKg, rate: Number(row.issue.rate || 0), amount: Number((weightKg * Number(row.issue.rate || 0)).toFixed(2)) };
     });

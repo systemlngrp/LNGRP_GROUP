@@ -42,7 +42,7 @@ export function PendingJobTransfer() {
         mrrNos: Array.from(new Set(context.reels
           .map((reel) => receiptNoById.get(receiptIdByPackingSlipId.get(reel.packingSlipId) || ""))
           .filter((mrrNo): mrrNo is string => Boolean(mrrNo)))),
-        transferableWeight: context.reels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0),
+        transferableWeight: context.reels.reduce((sum, reel) => sum + Number(reel.weightKg || 0), 0),
       };
     })
     .filter((row) => row.context.fullTime > 0 && row.context.status !== "window_expired" && hasReelIssueHistory(row.production, issueReels))
