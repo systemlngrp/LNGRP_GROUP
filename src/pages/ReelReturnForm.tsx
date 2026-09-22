@@ -73,16 +73,18 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
 
   const materialMap = useMemo(() => new Map(materials.map((row) => [row.id, row])), [materials]);
   const slipMap = useMemo(() => new Map(packingSlips.map((row) => [row.id, row])), [packingSlips]);
+  // The issue/return reel ledgers are the source of truth for returnability.
+  // Older packing slips may not have firmId populated even though their reel
+  // movement belongs to Unit-I; filtering on that optional snapshot hid valid
+  // jobs that were already visible on Pending Material Return.
   const returnableReels = useMemo(
-    () => getAllReturnableReelLines(issueReelLines, returnReelLines, productions).filter(
-      (row) => String(slipMap.get(row.packingSlipId)?.firmId || "") === String(unitOneFirm?.id || "")
-    ),
-    [issueReelLines, productions, returnReelLines, slipMap, unitOneFirm?.id]
+    () => getAllReturnableReelLines(issueReelLines, returnReelLines, productions),
+    [issueReelLines, productions, returnReelLines]
   );
   const jobOptions = useMemo(() => {
     const eligibleIds = new Set(returnableReels.map((row) => row.productionId));
-    return productions.filter((row) => eligibleIds.has(row.id) && row.status !== "Cancelled" && isCorrugationLinerComplete(processing, row.id)).sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((row) => ({ value: row.id, label: `${row.transactionNo}${row.date ? ` | ${row.date.slice(0, 10)}` : ""}` }));
-  }, [processing, productions, returnableReels]);
+    return productions.filter((row) => eligibleIds.has(row.id) && row.status !== "Cancelled" && !row.cancelTimestamp).sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((row) => ({ value: row.id, label: `${row.transactionNo}${row.date ? ` | ${row.date.slice(0, 10)}` : ""}` }));
+  }, [productions, returnableReels]);
   const reelsForJob = useMemo(() => linerComplete ? returnableReels.filter((row) => row.productionId === productionId).sort((a, b) => String(a.ourReelNo).localeCompare(String(b.ourReelNo), undefined, { numeric: true })) : [], [linerComplete, productionId, returnableReels]);
 
   const getInvoiceRate = (packingSlipId: string) => {
@@ -173,7 +175,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
       const production = productions.find((row) => row.id === productionId);
       if (!production) throw new Error("Selected job was not found.");
       const returnId = crypto.randomUUID();
-      const returnEntry: MaterialReturn = { id: returnId, firmId: unitOneFirm.id, firmName: unitOneFirm.firmName, returnNo: generateTransactionNo("MR", materialReturns.map((row) => ({ transactionNo: row.returnNo, date: row.date })), date), returnType: "Job", productionId, jobNo: production.transactionNo, remarks: remarks.trim() || undefined, updatedBy: "System User", updateTimestamp: timestamp };
+      const returnEntry: MaterialReturn = { id: returnId, firmId: unitOneFirm.id, firmName: unitOneFirm.firmName, returnNo: generateTransactionNo("MR", materialReturns.map((row) => ({ transactionNo: row.returnNo, date: row.date })), date), date, returnType: "Job", productionId, jobNo: production.transactionNo, remarks: remarks.trim() || undefined, updatedBy: "System User", updateTimestamp: timestamp };
       const byMaterial = new Map<string, typeof validated>();
       validated.forEach((entry) => byMaterial.set(entry.row.materialId, [...(byMaterial.get(entry.row.materialId) || []), entry]));
       const createdLines: MaterialReturnLine[] = [];

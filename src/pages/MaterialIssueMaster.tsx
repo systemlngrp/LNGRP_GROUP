@@ -34,11 +34,11 @@ const issueTypeOptions = [
 ];
 
 export function MaterialIssueMaster() {
-  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [reelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materials] = useData<Material>("materials", []);
-  const [productions] = useData<Production>("productions", []);
+  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
+  const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
+  const [reelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
+  const [materials] = useData<Material>("materials", [], { firmScope: "all" });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -116,6 +116,11 @@ export function MaterialIssueMaster() {
 
     const general = issueLines
       .filter((line) => issueIds.has(line.materialIssueId))
+      // A reel stays a reel even when its detail-row save failed or the record
+      // predates reel-detail tracking. Classifying only by the presence of a
+      // child reel row caused these orphaned reel issues to appear as general
+      // material movements.
+      .filter((line) => String(materialMap.get(line.materialId)?.type || "").trim().toLowerCase() !== "reel")
       .map((line) => {
         const parent = issueMap.get(line.materialIssueId);
         if (!parent) return null;

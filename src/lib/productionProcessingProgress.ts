@@ -32,7 +32,7 @@ export function isCorrugationLinerComplete(
     (entry) =>
       entry.productionId === productionId &&
       normalizeMachineName(entry.machineName) === "Corrugation Liner" &&
-      entry.completionStatus === "Full"
+      isProcessingStepFull(entry)
   );
 }
 
