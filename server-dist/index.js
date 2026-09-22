@@ -8114,7 +8114,10 @@ const createHandlers = (tableName) => {
                         const parentColumn = tableName === "material_issue_reel_lines" ? "materialIssueId" : "materialReturnId";
                         const parentId = String(data[parentColumn] || "").trim();
                         if (parentId) {
-                            await db.query(`UPDATE \`${parentTable}\` SET firmId = ?, firmName = ? WHERE id = ?`, [unitOne.id, unitOne.firmName, parentId]);
+                            // Reel detail tables are firm-neutral. Their parent document is
+                            // owned by Unit-I through firmId; do not require the optional
+                            // firmName snapshot column on legacy production schemas.
+                            await db.query(`UPDATE \`${parentTable}\` SET firmId = ? WHERE id = ?`, [unitOne.id, parentId]);
                         }
                     }
                 }
