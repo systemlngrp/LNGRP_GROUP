@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
-import { User } from "../types";
+import { Invoice, InvoiceLineItem, Production, User } from "../types";
 import { useData } from "../hooks/useData";
 import { Order } from "../types";
 import { formatDate } from "../lib/utils";
@@ -24,6 +24,9 @@ export function OrdersPendingPH() {
   const [companies] = useData("companies", []);
   const [users] = useData<User>("users", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [invoices] = useData<Invoice>("invoices", [], { firmScope: "all" });
+  const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all" });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const { resolveOrderItem } = useOrderItemCatalog();
   const navigate = useNavigate();
 
@@ -66,6 +69,39 @@ export function OrdersPendingPH() {
     return String(raw || "").trim();
   };
 
+  const commercialHistoryByItem = useMemo(() => {
+    const invoiceDateById = new Map(invoices.map((invoice) => [invoice.id, invoice.date || ""]));
+    const invoiceRatesByItem = new Map<string, Array<{ value: number; date: string; id: string }>>();
+    invoiceLines.forEach((line) => {
+      const key = String(line.npdId || line.itemId || "").trim();
+      const rate = Number(line.rate);
+      if (!key || !Number.isFinite(rate)) return;
+      const rows = invoiceRatesByItem.get(key) || [];
+      rows.push({ value: rate, date: String(invoiceDateById.get(line.invoiceId) || ""), id: line.invoiceId });
+      invoiceRatesByItem.set(key, rows);
+    });
+    const productionRapcByItem = new Map<string, Array<{ value: number; date: string }>>();
+    productions.forEach((production) => {
+      const key = String(production.npdId || production.itemId || "").trim();
+      const value = Number(production.realizationPerKg);
+      if (!key || !Number.isFinite(value)) return;
+      const rows = productionRapcByItem.get(key) || [];
+      rows.push({ value, date: production.date || "" });
+      productionRapcByItem.set(key, rows);
+    });
+    const result = new Map<string, { billing1?: number; billing2?: number; rapc1?: number; rapc2?: number }>();
+    invoiceRatesByItem.forEach((rates, key) => {
+      rates.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
+      result.set(key, { billing1: rates[0]?.value, billing2: rates[1]?.value });
+    });
+    productionRapcByItem.forEach((rows, key) => {
+      rows.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      const current = result.get(key) || {};
+      result.set(key, { ...current, rapc1: rows[0]?.value, rapc2: rows[1]?.value });
+    });
+    return result;
+  }, [invoiceLines, invoices, productions]);
+
   const filtered = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return pending
@@ -78,6 +114,7 @@ export function OrdersPendingPH() {
           companyName,
           firmName: getFirmDisplayNameById(order.firmId, firms),
           orderByLabel: getOrderByLabel(order.orderBy),
+          commercialHistory: commercialHistoryByItem.get(String(order.npdId || order.itemId || "").trim()) || {},
         };
       })
       .filter(({ order, item, companyName, firmName, orderByLabel }) => {
@@ -104,7 +141,7 @@ export function OrdersPendingPH() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return sortOrder === "asc" ? cmp : -cmp;
       });
-  }, [companies, firmFilter, firms, orderByFilter, pending, resolveOrderItem, searchTerm, sortOrder]);
+  }, [commercialHistoryByItem, companies, firmFilter, firms, orderByFilter, pending, resolveOrderItem, searchTerm, sortOrder]);
 
   const presentOrderByValues = Array.from(new Set(pending.map(o => String(o.orderBy || "").trim()).filter(Boolean)));
   const unmappedOrderBys = presentOrderByValues.filter(v => !resolveOrderByUser(v));
@@ -203,11 +240,15 @@ export function OrdersPendingPH() {
               <th className="px-4 py-2 border border-black">Item ERP</th>
               <th className="px-4 py-2 border border-black">Order By</th>
               <th className="px-4 py-2 border border-black">Qty</th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap">Billing 1</th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap">Billing 2</th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap">Realization 1</th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap">Realization 2</th>
               <th className="px-4 py-2 border border-black">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map(({ order: o, item, companyName, firmName, orderByLabel }) => (
+            {filtered.map(({ order: o, item, companyName, firmName, orderByLabel, commercialHistory }) => (
               <tr key={o.id} className="hover:bg-slate-50">
                 <td className="px-4 py-2 border border-black">{o.orderNo}</td>
                 <td className="px-4 py-2 border border-black">{formatDate(o.orderDate)}</td>
@@ -217,6 +258,10 @@ export function OrdersPendingPH() {
                 <td className="px-4 py-2 border border-black">{item?.erp || "-"}</td>
                 <td className="px-4 py-2 border border-black whitespace-nowrap">{orderByLabel || '-'}</td>
                 <td className="px-4 py-2 border border-black">{o.qty}</td>
+                <td className="px-4 py-2 border border-black text-right">{commercialHistory.billing1 === undefined ? "-" : commercialHistory.billing1.toFixed(2)}</td>
+                <td className="px-4 py-2 border border-black text-right">{commercialHistory.billing2 === undefined ? "-" : commercialHistory.billing2.toFixed(2)}</td>
+                <td className="px-4 py-2 border border-black text-right">{commercialHistory.rapc1 === undefined ? "-" : commercialHistory.rapc1.toFixed(2)}</td>
+                <td className="px-4 py-2 border border-black text-right">{commercialHistory.rapc2 === undefined ? "-" : commercialHistory.rapc2.toFixed(2)}</td>
                 <td className="px-4 py-2 border border-black">
                   <TableActionCell align="center">
                     <button
