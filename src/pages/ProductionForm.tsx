@@ -498,7 +498,7 @@ export function ProductionForm() {
       return;
     }
     if (!selectedSchedule) return;
-    setFormData((prev) => ({ ...prev, date: selectedSchedule.scheduledDate || todayStr }));
+    setFormData((prev) => ({ ...prev, date: todayStr }));
   }, [selectedScheduleId, selectedSchedule?.id, todayStr]);
 
   useEffect(() => {
@@ -758,6 +758,10 @@ export function ProductionForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedSchedule || !selectedOrder || !selectedItem || !formData.date) return;
+    if (formData.date < todayStr) {
+      alert("Production Date cannot be earlier than today.");
+      return;
+    }
     const selectedOrderFirmId = String((selectedOrder as any).firmId || (selectedOrder as any).orderFirmId || selectedSchedule.firmId || "").trim();
     if (hasMissingMandatoryLayerFields) {
       alert(`Please fill mandatory layer fields: ${missingMandatoryLayerFields.join(", ")}.`);
@@ -846,7 +850,7 @@ export function ProductionForm() {
         )
       );
 
-      setFormData(createInitialFormData(selectedSchedule.scheduledDate || todayStr));
+      setFormData(createInitialFormData(todayStr));
 
       if (nextPendingQty <= 0) {
         setSelectedScheduleId("");
@@ -893,6 +897,7 @@ export function ProductionForm() {
         <form onSubmit={handleSubmit} className="space-y-5">
           {selectedSchedule && selectedOrder && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-black p-4 rounded">
+              <InfoTile label="Schedule No" value={selectedSchedule.scheduleNo || "-"} />
               <InfoTile label="Order No" value={selectedOrder.orderNo || "-"} />
               <InfoTile label="Company" value={selectedCompany?.name || "-"} />
               <InfoTile label="Item" value={selectedItem?.name || "-"} />
@@ -906,11 +911,12 @@ export function ProductionForm() {
               <LabelWithHelp
                 label="Production Date"
                 required
-                helpText="This defaults from the selected schedule date. Back-dated production entries are allowed and you can change it if needed."
+                helpText="Production date defaults to today. Only today or a future date is allowed; earlier dates are not permitted."
               />
               <input
                 type="date"
                 value={formData.date}
+                min={todayStr}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 required
                 className="border-2 border-black rounded p-2 text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
@@ -942,7 +948,7 @@ export function ProductionForm() {
               label="Maximum Allowed Production"
               value={maximumAllowedProduction}
               suffix={selectedItem?.uom || ""}
-              helpText="Formula: Pending Order Quantity - Current Balance - Production In Progress. It is never shown below zero."
+              helpText={`Maximum allowed production is calculated as Pending Order Quantity (${pendingOrderQtyForItem.toLocaleString()} ${selectedItem?.uom || "units"}) - Current Balance (${Number(selectedItem?.balance || 0).toLocaleString()} ${selectedItem?.uom || "units"}) - Production In Progress (${productionInProgress.toLocaleString()} ${selectedItem?.uom || "units"}) = ${maximumAllowedProduction.toLocaleString()} ${selectedItem?.uom || "units"}. The result is never shown below zero.`}
             />}
 
             {showField("Sample Item") && <ReadOnlyTextField
