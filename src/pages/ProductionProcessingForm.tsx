@@ -263,7 +263,7 @@ function LockedReportForm() {
               disabled={isSubmitting || materialIssueBlocked}
               className="bg-emerald-600 text-white px-8 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all min-w-[120px] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
             >
-              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit Report"}
+              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit"}
             </button>
             <button
               type="button"
@@ -573,7 +573,7 @@ function FullReportForm() {
               disabled={isSubmitting || materialIssueBlocked}
               className="bg-emerald-600 text-white px-8 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all min-w-[120px] disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
             >
-              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit Report"}
+              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit"}
             </button>
             <button 
               type="button" 

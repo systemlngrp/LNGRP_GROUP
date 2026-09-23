@@ -6,6 +6,7 @@ import { Spinner } from "../components/Spinner";
 
 import { TableControls } from "../components/TableControls";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 
 export function OrdersPendingScheduling() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,10 +19,11 @@ export function OrdersPendingScheduling() {
   const { resolveOrderItem } = useOrderItemCatalog();
 
   const getFirmName = (order?: Order | null, schedule?: OrderSchedule | null) => {
-    const directName = String(schedule?.firmName || order?.firmName || "").trim();
-    if (directName) return directName;
     const directFirmId = String(schedule?.firmId || order?.firmId || "").trim();
-    return firms.find((firm) => firm.id === directFirmId)?.firmName || "Unassigned";
+    const firm = firms.find((entry) => entry.id === directFirmId);
+    if (firm) return getFirmDisplayName(firm);
+    const directName = String(schedule?.firmName || order?.firmName || "").trim();
+    return directName ? getFirmDisplayName({ firmName: directName }) : "Unassigned";
   };
 
   const rowsFor = (orderId: string) => schedules.filter(s => s.orderId === orderId);
@@ -285,8 +287,6 @@ export function OrdersPendingScheduling() {
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3">
-                <div className="text-sm mb-3"><strong>Firm:</strong> {getFirmName(orders.find(o=>o.id===modalOrderId))} | <strong>Company:</strong> {(companies as any[]).find(c=>c.id===orders.find(o=>o.id===modalOrderId)?.companyId)?.name} | <strong>Item:</strong> {resolveOrderItem(orders.find(o => o.id === modalOrderId))?.name || "-"}</div>
-
               <div className="grid grid-cols-3 gap-4 mb-3">
                 <div className="bg-slate-50 p-2 border border-black rounded">
                   <div className="text-xs text-slate-600">Total Order Qty</div>
@@ -345,8 +345,6 @@ export function OrdersPendingScheduling() {
               </div>
 
               {modalError && <div className="text-sm text-red-600 mt-2">{modalError}</div>}
-
-              <div className="mt-3 text-sm">Total Scheduled: {displayedTotalScheduled(modalOrderId)} / {orders.find(o=>o.id===modalOrderId)?.qty}</div>
               </div>
             </div>
           </div>
