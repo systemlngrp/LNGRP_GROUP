@@ -22,7 +22,7 @@ export function PendingTallyEntry() {
   const [mrrFilter, setMrrFilter] = useState('');
 
   const navigate = useNavigate();
-  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
+  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);

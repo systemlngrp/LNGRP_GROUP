@@ -587,6 +587,9 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
       "/material-receipt/pending-ph-approval": approvalMaterialIn.filter((m) => m.status === "Pending PH").length,
       "/material-receipt/pending-accounts-approval": approvalMaterialIn.filter((m) => m.status === "Pending Accounts").length,
       "/material-receipt/pending-md-approval": approvalMaterialIn.filter((m) => m.status === "Pending MD").length,
+      "/material-receipt/pending-tally": approvalMaterialIn.filter(
+        (m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in"
+      ).length,
     }),
     [approvalMaterialIn, firmScopedCounts]
   );
