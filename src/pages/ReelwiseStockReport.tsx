@@ -308,6 +308,15 @@ export function ReelwiseStockReport() {
     let qrPayload: string;
 
     if (row.isOpening) {
+      const availableWeight = Number(row.availableWeight || 0);
+      if (!row.ourReelNo.trim()) {
+        alert("Opening reel QR cannot be generated because the reel number is missing.");
+        return;
+      }
+      if (!Number.isFinite(availableWeight) || availableWeight <= 0) {
+        alert("Opening reel QR cannot be generated because available weight is zero.");
+        return;
+      }
       const openingId = `opening-${row.slipId}`;
       slip = {
         id: row.slipId,
@@ -316,7 +325,7 @@ export function ReelwiseStockReport() {
         materialLineId: `opening-line-${row.materialId}`,
         materialId: row.materialId,
         ourReelNo: row.ourReelNo,
-        weightKg: Number(row.availableWeight || 0),
+        weightKg: availableWeight,
       };
       mrr = {
         id: openingId,
@@ -335,8 +344,8 @@ export function ReelwiseStockReport() {
         source: "Opening",
         reelNo: row.ourReelNo,
         ourReelNo: row.ourReelNo,
-        weight: Number(row.availableWeight || 0).toFixed(2),
-        weightKg: Number(row.availableWeight || 0),
+        weight: availableWeight.toFixed(2),
+        weightKg: availableWeight,
         mrrNo: "Opening",
         date: mrr.date,
         materialCode: row.erp,

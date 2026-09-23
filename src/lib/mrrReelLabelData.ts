@@ -65,7 +65,10 @@ export function buildMrrReelLabelData({
   const warnings: string[] = [];
   const supplierName = findSupplierName(mrr.supplierId, suppliers, companies);
   const materialById = new Map(materials.map((material) => [material.id, material]));
-  const slipsForMrr = packingSlips.filter((slip) => slip.materialInId === mrr.id);
+  const isOpeningMrr = toText(mrr.transactionNo).toLowerCase() === "opening";
+  const slipsForMrr = isOpeningMrr
+    ? packingSlips
+    : packingSlips.filter((slip) => slip.materialInId === mrr.id);
 
   if (slipsForMrr.length === 0) {
     warnings.push(`No packing slips found for ${mrr.transactionNo}.`);
