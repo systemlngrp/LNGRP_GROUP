@@ -1,27 +1,6 @@
 import type jsPDF from "jspdf";
 import type { Firm, Setting } from "../types";
-
-async function getImageDataUrl(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Failed to load logo image.");
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Failed to read logo image."));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function getOrganizationLogoUrl(setting?: Setting | null) {
-  if (!setting?.organizationLogo) {
-    console.warn("[PDF] Organization logo is missing from settings.organizationLogo.");
-    return "";
-  }
-  const encoded = setting.organizationLogo.split("/").map(encodeURIComponent).join("/");
-  if (typeof window === "undefined") return `/uploads/${encoded}`;
-  return new URL(`/uploads/${encoded}`, window.location.origin).toString();
-}
+import { getOrganizationLogoUrl, loadPdfLogo } from "./pdfLogo";
 
 export type OrganizationHeaderOptions = {
   startY?: number;
@@ -83,7 +62,7 @@ export async function renderOrganizationHeader(
 
   if (organizationLogoUrl) {
     try {
-      const imageDataUrl = await getImageDataUrl(organizationLogoUrl);
+      const imageDataUrl = await loadPdfLogo(setting);
       const props = doc.getImageProperties(imageDataUrl);
       const imageFormat = imageDataUrl.match(/^data:image\/([^;]+)/i)?.[1]?.toUpperCase() || "PNG";
       

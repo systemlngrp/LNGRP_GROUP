@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import type { Setting } from "../types";
 import { resolvePdfFirm } from "./pdfOrganizationHeader";
+import { loadPdfLogo } from "./pdfLogo";
 import { formatDate } from "./utils";
 
 type RowRecord = Record<string, string | number | boolean | null | undefined>;
@@ -118,30 +119,10 @@ function safeHeaderName(itemName: unknown, erp: unknown) {
   return name || erpCode || "NPD Item";
 }
 
-async function getImageDataUrl(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Failed to load logo image.");
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Failed to read logo image."));
-    reader.readAsDataURL(blob);
-  });
-}
-
-function getOrganizationLogoUrl(setting?: Setting | null) {
-  if (!setting?.organizationLogo) return "";
-  const encoded = setting.organizationLogo.split("/").map(encodeURIComponent).join("/");
-  if (typeof window === "undefined") return `/uploads/${encoded}`;
-  return new URL(`/uploads/${encoded}`, window.location.origin).toString();
-}
-
 async function drawOrganizationLogo(doc: jsPDF, setting: Setting | null | undefined, x: number, y: number, w: number, h: number) {
-  const logoUrl = getOrganizationLogoUrl(setting);
-  if (!logoUrl) return false;
+  if (!setting?.organizationLogo) return false;
   try {
-    const imageDataUrl = await getImageDataUrl(logoUrl);
+    const imageDataUrl = await loadPdfLogo(setting);
     const props = doc.getImageProperties(imageDataUrl);
     const ratio = Math.min(w / props.width, h / props.height);
     const imageW = props.width * ratio;

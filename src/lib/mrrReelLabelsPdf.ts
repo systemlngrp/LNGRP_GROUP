@@ -3,6 +3,7 @@ import QRCode from "qrcode";
 import type { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Setting, Supplier } from "../types";
 import { buildMrrReelLabelData } from "./mrrReelLabelData";
 import { resolvePdfFirm } from "./pdfOrganizationHeader";
+import { loadPdfLogo } from "./pdfLogo";
 
 type DownloadMrrReelLabelsPdfArgs = {
   mrr: MaterialIn;
@@ -55,25 +56,6 @@ function clipSingleLine(doc: jsPDF, value: string, maxWidth: number) {
   return `${out}${ellipsis}`;
 }
 
-function getLogoUrl(setting?: Setting | null) {
-  const fileName = String(setting?.organizationLogo || "").trim();
-  if (!fileName) return "";
-  const encoded = fileName.split("/").map(encodeURIComponent).join("/");
-  return new URL(`/uploads/${encoded}`, window.location.origin).toString();
-}
-
-async function imageUrlToDataUrl(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Failed to load logo image.");
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Failed to read logo image."));
-    reader.readAsDataURL(blob);
-  });
-}
-
 function drawMetaPair(doc: jsPDF, label: string, value: string, x: number, y: number) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.8);
@@ -119,10 +101,9 @@ export async function downloadMrrReelLabelsPdf({
   const slotsPerPage = 1;
 
   let logoDataUrl = "";
-  const logoUrl = getLogoUrl(setting);
-  if (logoUrl) {
+  if (setting?.organizationLogo) {
     try {
-      logoDataUrl = await imageUrlToDataUrl(logoUrl);
+      logoDataUrl = await loadPdfLogo(setting);
     } catch (error) {
       console.warn("Unable to load logo for reel label PDF", error);
     }

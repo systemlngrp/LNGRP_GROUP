@@ -2,6 +2,7 @@
 import QRCode from "qrcode";
 import type { Firm, Setting } from "../types";
 import { resolvePdfFirm } from "./pdfOrganizationHeader";
+import { loadPdfLogo } from "./pdfLogo";
 import { formatDate as formatDisplayDate } from "./utils";
 
 type ReturnReelQrPdfArgs = {
@@ -53,25 +54,6 @@ function clipSingleLine(doc: jsPDF, value: string | number | undefined | null, m
   return `${out}${ellipsis}`;
 }
 
-function getLogoUrl(setting?: Setting | null) {
-  const fileName = String(setting?.organizationLogo || "").trim();
-  if (!fileName) return "";
-  const encoded = fileName.split("/").map(encodeURIComponent).join("/");
-  return new URL(`/uploads/${encoded}`, window.location.origin).toString();
-}
-
-async function imageUrlToDataUrl(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error("Failed to load logo image.");
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Failed to read logo image."));
-    reader.readAsDataURL(blob);
-  });
-}
-
 export async function downloadReturnReelQrPdf({
   returnNo,
   date,
@@ -98,10 +80,9 @@ export async function downloadReturnReelQrPdf({
   const lowerH = cardH - upperH;
 
   let logoDataUrl = "";
-  const logoUrl = getLogoUrl(setting);
-  if (logoUrl) {
+  if (setting?.organizationLogo) {
     try {
-      logoDataUrl = await imageUrlToDataUrl(logoUrl);
+      logoDataUrl = await loadPdfLogo(setting);
     } catch (error) {
       console.warn("Unable to load logo for return reel QR PDF", error);
     }
