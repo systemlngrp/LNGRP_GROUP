@@ -68,8 +68,6 @@ export function OrdersMaster() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [orderNoSort, setOrderNoSort] = useState<SortDirection>("desc");
-  const [valueGreaterThan, setValueGreaterThan] = useState<number | "">("");
-  const [quantityGreaterThan, setQuantityGreaterThan] = useState<number | "">("");
 
   const companyMap = useMemo(
     () => {
@@ -169,8 +167,6 @@ export function OrdersMaster() {
         if (itemFilter && row.itemKey !== itemFilter) return false;
         if (orderByFilter && row.orderByName !== orderByFilter) return false;
         if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return false;
-        if (valueGreaterThan !== "" && toNumber(row.orderAmount) <= toNumber(valueGreaterThan)) return false;
-        if (quantityGreaterThan !== "" && toNumber(row.order.qty) <= toNumber(quantityGreaterThan)) return false;
 
         if (!normalizedSearch) return true;
 
@@ -195,7 +191,7 @@ export function OrdersMaster() {
         const orderNoCompare = String(left.order.orderNo || "").localeCompare(String(right.order.orderNo || ""));
         return orderNoSort === "asc" ? orderNoCompare : -orderNoCompare;
       });
-  }, [companyFilter, dateFrom, dateTo, firmFilter, itemFilter, orderByFilter, orderNoSort, rows, searchTerm, valueGreaterThan, quantityGreaterThan]);
+  }, [companyFilter, dateFrom, dateTo, firmFilter, itemFilter, orderByFilter, orderNoSort, rows, searchTerm]);
 
   const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)), [firms]);
 
@@ -206,8 +202,6 @@ export function OrdersMaster() {
       if (itemFilter && row.itemKey !== itemFilter) return;
       if (orderByFilter && row.orderByName !== orderByFilter) return;
       if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return;
-      if (valueGreaterThan !== "" && toNumber(row.orderAmount) <= toNumber(valueGreaterThan)) return;
-      if (quantityGreaterThan !== "" && toNumber(row.order.qty) <= toNumber(quantityGreaterThan)) return;
       if (ns) {
         const anyMatch = [row.order.orderNo, row.companyName, row.itemName, row.itemErp, row.order.erpCode, row.order.poNumber, row.orderByName]
           .some((v) => String(v || "").toLowerCase().includes(ns));
@@ -216,7 +210,7 @@ export function OrdersMaster() {
       if (row.companyName) set.add(row.companyName);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows, itemFilter, orderByFilter, dateFrom, dateTo, valueGreaterThan, quantityGreaterThan, searchTerm]);
+  }, [rows, itemFilter, orderByFilter, dateFrom, dateTo, searchTerm]);
 
   const availableItems = useMemo(() => {
     const ns = searchTerm.trim().toLowerCase();
@@ -225,8 +219,6 @@ export function OrdersMaster() {
       if (companyFilter && row.companyName !== companyFilter) return;
       if (orderByFilter && row.orderByName !== orderByFilter) return;
       if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return;
-      if (valueGreaterThan !== "" && toNumber(row.orderAmount) <= toNumber(valueGreaterThan)) return;
-      if (quantityGreaterThan !== "" && toNumber(row.order.qty) <= toNumber(quantityGreaterThan)) return;
       if (ns) {
         const anyMatch = [row.order.orderNo, row.companyName, row.itemName, row.itemErp, row.order.erpCode, row.order.poNumber, row.orderByName]
           .some((v) => String(v || "").toLowerCase().includes(ns));
@@ -241,7 +233,7 @@ export function OrdersMaster() {
         return { value: key, label, searchText: `${name} ${erp}` };
       })
       .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
-  }, [rows, companyFilter, orderByFilter, dateFrom, dateTo, valueGreaterThan, quantityGreaterThan, searchTerm]);
+  }, [rows, companyFilter, orderByFilter, dateFrom, dateTo, searchTerm]);
 
   const availableUsers = useMemo(() => {
     const ns = searchTerm.trim().toLowerCase();
@@ -250,8 +242,6 @@ export function OrdersMaster() {
       if (companyFilter && row.companyName !== companyFilter) return;
       if (itemFilter && row.itemKey !== itemFilter) return;
       if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return;
-      if (valueGreaterThan !== "" && toNumber(row.orderAmount) <= toNumber(valueGreaterThan)) return;
-      if (quantityGreaterThan !== "" && toNumber(row.order.qty) <= toNumber(quantityGreaterThan)) return;
       if (ns) {
         const anyMatch = [row.order.orderNo, row.companyName, row.itemName, row.itemErp, row.order.erpCode, row.order.poNumber, row.orderByName]
           .some((v) => String(v || "").toLowerCase().includes(ns));
@@ -260,7 +250,7 @@ export function OrdersMaster() {
       if (row.orderByName) set.add(row.orderByName);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows, companyFilter, itemFilter, dateFrom, dateTo, valueGreaterThan, quantityGreaterThan, searchTerm]);
+  }, [rows, companyFilter, itemFilter, dateFrom, dateTo, searchTerm]);
 
   const {
     page,
@@ -272,16 +262,11 @@ export function OrdersMaster() {
   } = useClientPagination(filteredRows, 25);
 
   const summary = useMemo(() => {
-    const uniqueCompanies = new Set(
-      filteredRows.map((row) => String(row.order.companyId || "")).filter(Boolean)
-    );
-
     return {
       totalOrders: filteredRows.length,
       orderValue: filteredRows.reduce((sum, row) => sum + toNumber(row.orderAmount), 0),
       pendingQuantity: filteredRows.reduce((sum, row) => sum + toNumber(row.pendingQty), 0),
       pendingValue: filteredRows.reduce((sum, row) => sum + toNumber(row.pendingQty) * toNumber(row.order.rate), 0),
-      companies: uniqueCompanies.size,
     };
   }, [filteredRows]);
 
@@ -291,17 +276,17 @@ export function OrdersMaster() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-black pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-b border-black pb-4">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Orders Master</h2>
         <button
           onClick={() => navigate("/orders/form")}
-          className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 font-bold text-white shadow transition hover:bg-indigo-700"
+          className="flex items-center gap-2 justify-self-end rounded bg-indigo-600 px-3 py-2 text-sm font-bold whitespace-nowrap text-white shadow transition hover:bg-indigo-700"
         >
           <Plus size={18} /> New Order
         </button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded p-4 bg-gradient-to-r from-indigo-50 to-indigo-100 border border-indigo-200">
           <div className="text-xs font-bold uppercase tracking-wide text-indigo-600">Total Orders</div>
           <div className="mt-2 text-2xl font-bold text-indigo-800">{summary.totalOrders}</div>
@@ -309,10 +294,6 @@ export function OrdersMaster() {
         <div className="rounded p-4 bg-gradient-to-r from-emerald-50 to-emerald-100 border border-emerald-200">
           <div className="text-xs font-bold uppercase tracking-wide text-emerald-600">Order Value</div>
           <div className="mt-2 text-2xl font-bold text-emerald-800">{formatAmount(summary.orderValue)}</div>
-        </div>
-        <div className="rounded p-4 bg-gradient-to-r from-yellow-50 to-yellow-100 border border-yellow-200">
-          <div className="text-xs font-bold uppercase tracking-wide text-yellow-700">Companies</div>
-          <div className="mt-2 text-2xl font-bold text-yellow-800">{summary.companies}</div>
         </div>
         <div className="rounded p-4 bg-gradient-to-r from-rose-50 to-rose-100 border border-rose-200">
           <div className="text-xs font-bold uppercase tracking-wide text-rose-600">Pending Order Quantity</div>
@@ -325,7 +306,7 @@ export function OrdersMaster() {
       </div>
 
       <div className="rounded border border-black bg-white p-4">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <label className="flex flex-col gap-1 text-sm font-bold text-black xl:col-span-2">
             <span>Search</span>
             <div className="relative">
@@ -337,7 +318,13 @@ export function OrdersMaster() {
                 className="w-full rounded border border-black py-2 pl-10 pr-3 font-normal"
               />
             </div>
-            <Select options={firmOptions} value={firmFilter ? { value: firmFilter, label: firmOptions.find((f) => f.value === firmFilter)?.label || firmFilter } : null} onChange={(option) => setFirmFilter(option?.value || "")} placeholder="Firms" isClearable />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm font-bold text-black">
+            <span>Firm</span>
+            <Select options={firmOptions} value={firmFilter ? { value: firmFilter, label: firmOptions.find((f) => f.value === firmFilter)?.label || firmFilter } : null} onChange={(option) => setFirmFilter(option?.value || "")} placeholder="Firms" isClearable
+              menuPortalTarget={typeof document !== "undefined" ? document.body : null} menuPosition="fixed"
+              styles={{ control: (provided) => ({ ...provided, minHeight: 40 }), menu: (provided) => ({ ...provided, zIndex: 9999 }), menuPortal: (provided) => ({ ...provided, zIndex: 9999 }) }} />
           </label>
 
           <label className="flex flex-col gap-1 text-sm font-bold text-black">
@@ -398,7 +385,7 @@ export function OrdersMaster() {
           </label>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6 items-end">
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6 items-end">
           <label className="flex flex-col gap-1 text-sm font-bold text-black xl:col-span-1">
             <span>Order Date From</span>
             <div className="relative">
@@ -425,39 +412,16 @@ export function OrdersMaster() {
             </div>
           </label>
 
-          <label className="flex flex-col gap-1 text-sm font-bold text-black">
-            <span>Value Greater Than</span>
-            <input
-              type="number"
-              value={valueGreaterThan === "" ? "" : String(valueGreaterThan)}
-              onChange={(e) => setValueGreaterThan(e.target.value === "" ? "" : Number(e.target.value))}
-              placeholder="Value Greater Than"
-              className="rounded border border-black px-3 py-2 font-normal"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm font-bold text-black">
-            <span>Quantity Greater Than</span>
-            <input
-              type="number"
-              value={quantityGreaterThan === "" ? "" : String(quantityGreaterThan)}
-              onChange={(e) => setQuantityGreaterThan(e.target.value === "" ? "" : Number(e.target.value))}
-              placeholder="Quantity Greater than"
-              className="rounded border border-black px-3 py-2 font-normal"
-            />
-          </label>
-
-          <div className="flex items-center gap-2 xl:col-span-1">
+          <div className="flex items-center gap-2 sm:col-span-2 xl:col-span-2 xl:justify-end">
             <button
               type="button"
               onClick={() => {
+                setFirmFilter("");
                 setCompanyFilter("");
                 setItemFilter("");
                 setOrderByFilter("");
                 setDateFrom("");
                 setDateTo("");
-                setValueGreaterThan("");
-                setQuantityGreaterThan("");
                 setSearchTerm("");
               }}
               className="ml-auto rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
