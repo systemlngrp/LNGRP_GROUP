@@ -35,10 +35,10 @@ export function PendingJobTransfer() {
         context,
         company: String(production.companyName || "-").trim() || "-",
         item: String(item?.name || production.erpCode || production.masterErp || "-").trim() || "-",
-        transferableWeight: context.reels.reduce((sum, reel) => sum + Number(reel.weightKg || 0), 0),
+        transferableReels: context.reels.filter((reel) => Number(reel.transferWeightKg || 0) > 0),
       };
     })
-    .filter((row) => row.context.fullTime > 0 && row.context.status !== "window_expired" && hasReelIssueHistory(row.production, issueReels))
+    .filter((row) => row.context.fullTime > 0 && row.context.status !== "window_expired" && hasReelIssueHistory(row.production, issueReels) && row.transferableReels.length > 0)
       .sort((a, b) => Number(b.context.eligible) - Number(a.context.eligible) || b.context.fullTime - a.context.fullTime);
   }, [findItemAcrossSources, issueLines, issueReels, processing, productions, returnReels, windowHours]);
 
@@ -65,18 +65,8 @@ export function PendingJobTransfer() {
 
   return (
     <div className="space-y-5 text-black">
-      <div className="border-b border-black pb-3">
+      <div className="flex flex-col gap-3 border-b border-black pb-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer</h2>
-        <p className="mt-1 text-sm font-medium text-slate-600">Eligible FG jobs with reel balance available to transfer to another job.</p>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Metric label="Eligible Source Jobs" value={String(filteredRows.filter((row) => row.context.eligible).length)} />
-        <Metric label="Eligible Reels" value={String(filteredRows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.context.reels.length, 0))} />
-        <Metric label="Transferable Weight" value={`${filteredRows.filter((row) => row.context.eligible).reduce((sum, row) => sum + row.transferableWeight, 0).toFixed(2)} KG`} />
-      </div>
-
-      <div className="max-w-md">
         <TableControls
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
@@ -88,27 +78,22 @@ export function PendingJobTransfer() {
         <table className="min-w-full border-collapse">
           <thead className="bg-slate-800 text-white">
             <tr>
-              {["Source Job", "Date", "Company", "Item", "Reels", "Transferable KG", "Status", "Action"].map((heading) => (
+              {["Source Job", "Date", "Company", "Item", "Reels", "Transferable KG", "Action"].map((heading) => (
                 <th key={heading} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase">{heading}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={8} className="px-6 py-10 text-center font-medium text-slate-500">{rows.length ? "No jobs match the current search." : "No jobs are currently eligible for reel balance transfer."}</td></tr>
-            ) : filteredRows.map(({ production, context, company, item, transferableWeight }, index) => (
+              <tr><td colSpan={7} className="px-6 py-10 text-center font-medium text-slate-500">{rows.length ? "No jobs match the current search." : "No jobs are currently eligible for reel balance transfer."}</td></tr>
+            ) : filteredRows.map(({ production, context, company, item, transferableReels }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
                 <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>
-                <td className="border border-black px-3 py-3 text-sm">{formatDate(production.date)}</td>
+                <td className="border border-black px-3 py-3 text-sm whitespace-nowrap">{formatDate(production.date)}</td>
                 <td className="border border-black px-3 py-3 text-sm">{company}</td>
                 <td className="border border-black px-3 py-3 text-sm">{item}</td>
-                <td className="border border-black px-3 py-3 text-right text-sm font-bold">{context.reels.length}</td>
-                <td className="border border-black px-3 py-3 text-right text-sm font-bold">{transferableWeight.toFixed(2)}</td>
-                <td className="border border-black px-3 py-3">
-                  <span title={context.reason} className={`inline-block cursor-help rounded border px-2 py-1 text-xs font-bold uppercase ${context.eligible ? "border-emerald-700 bg-emerald-50 text-emerald-800" : "border-amber-700 bg-amber-50 text-amber-800"}`}>
-                    {context.eligible ? "Eligible" : "Weight Calculation Unavailable"}
-                  </span>
-                </td>
+                <td className="border border-black px-3 py-3 text-right text-sm font-bold">{transferableReels.length}</td>
+                <td className="border border-black px-3 py-3 text-right text-sm font-bold">{transferableReels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0).toFixed(2)}</td>
                 <td className="border border-black px-3 py-3">
                   <span className="inline-block" title={context.eligible ? "Transfer reel balance" : context.reason}>
                     <button type="button" disabled={!context.eligible} onClick={() => openTransfer(production.id)} className="inline-flex items-center gap-2 whitespace-nowrap rounded border border-black bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400">
@@ -123,8 +108,4 @@ export function PendingJobTransfer() {
       </div>
     </div>
   );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="rounded border border-black bg-white p-4 shadow-sm"><div className="text-xs font-bold uppercase text-slate-500">{label}</div><div className="mt-1 text-2xl font-black">{value}</div></div>;
 }
