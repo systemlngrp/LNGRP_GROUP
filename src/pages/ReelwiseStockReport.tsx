@@ -303,29 +303,63 @@ export function ReelwiseStockReport() {
   };
 
   const handleExportRowPdf = async (row: ReelwiseStockRow) => {
+    let slip: MaterialInPackingSlip | undefined;
+    let mrr: MaterialIn | undefined;
+    let qrPayload: string;
+
     if (row.isOpening) {
-      alert("QR label PDF is available only for MRR reel rows.");
-      return;
-    }
+      const openingId = `opening-${row.slipId}`;
+      slip = {
+        id: row.slipId,
+        firmId: row.firmId,
+        materialInId: openingId,
+        materialLineId: `opening-line-${row.materialId}`,
+        materialId: row.materialId,
+        ourReelNo: row.ourReelNo,
+        weightKg: Number(row.availableWeight || 0),
+      };
+      mrr = {
+        id: openingId,
+        firmId: row.firmId,
+        transactionNo: "Opening",
+        mrrType: "Reel",
+        timestamp: new Date().toISOString(),
+        entryEmailId: "",
+        date: row.mrrDate || new Date().toISOString().slice(0, 10),
+        invoiceNo: "",
+        invDate: "",
+        supplierId: "",
+        lines: [],
+      };
+      qrPayload = JSON.stringify({
+        source: "Opening",
+        reelNo: row.ourReelNo,
+        ourReelNo: row.ourReelNo,
+        weight: Number(row.availableWeight || 0).toFixed(2),
+        weightKg: Number(row.availableWeight || 0),
+        mrrNo: "Opening",
+        date: mrr.date,
+        materialCode: row.erp,
+      });
+    } else {
+      slip = packingSlips.find((entry) => entry.id === row.slipId);
+      if (!slip) {
+        alert("Packing slip not found for this reel.");
+        return;
+      }
 
-    const slip = packingSlips.find((entry) => entry.id === row.slipId);
-    if (!slip) {
-      alert("Packing slip not found for this reel.");
-      return;
-    }
-
-    const mrr = materialIn.find((entry) => entry.id === slip.materialInId);
-    if (!mrr) {
-      alert("MRR not found for this reel.");
-      return;
-    }
-
-    try {
-      const qrPayload = JSON.stringify({
+      mrr = materialIn.find((entry) => entry.id === slip.materialInId);
+      if (!mrr) {
+        alert("MRR not found for this reel.");
+        return;
+      }
+      qrPayload = JSON.stringify({
         reelNo: row.ourReelNo,
         weight: Number(row.availableWeight || 0).toFixed(2),
       });
+    }
 
+    try {
       await downloadMrrReelLabelsPdf({
         mrr,
         packingSlips: [slip],
@@ -333,6 +367,7 @@ export function ReelwiseStockReport() {
         suppliers,
         companies,
         setting: settings[0] || null,
+        firms,
         paperSize: "A4",
         qrPayloadByPackingSlipId: {
           [slip.id]: qrPayload,
