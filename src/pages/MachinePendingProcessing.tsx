@@ -251,8 +251,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-black pb-4">
-        <div className="flex items-center gap-3">
+      <div className="border-b border-black pb-4">
+        <div className="flex min-h-[32px] items-center gap-3">
           {filterMachineId && (
             <button 
               onClick={() => navigate("/production/pending-machine-processing")}
@@ -265,7 +265,9 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             {title || (filterMachineId ? `${selectedMachineName} - Pending Jobs` : "Pending Processing")}
           </h2>
         </div>
-        <div className="grid w-full min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(220px,1.2fr)_minmax(160px,0.8fr)_minmax(200px,1fr)_minmax(240px,1.2fr)_auto] xl:items-end">
+      </div>
+
+      <div className="grid w-full min-w-0 gap-3 rounded border border-black bg-white p-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(220px,1.2fr)_minmax(160px,0.8fr)_minmax(200px,1fr)_minmax(240px,1.2fr)_auto] xl:items-end">
           <div className="min-w-0">
             <label htmlFor="pending-processing-search" className="mb-1 block text-[10px] font-black uppercase">Search</label>
             <div className="relative">
@@ -298,7 +300,6 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             <RotateCcw size={14} />
             Clear
           </button>
-        </div>
       </div>
 
       <div className="space-y-4">
