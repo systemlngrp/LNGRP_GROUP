@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
-import { FirmFilter } from "../components/FirmFilter";
 import { 
   OrderSchedule, 
   Order, 
@@ -21,6 +20,7 @@ import { useClientPagination } from "../hooks/useClientPagination";
 type SelectOption = {
   value: string;
   label: string;
+  searchText?: string;
 };
 
 type SortDirection = "asc" | "desc";
@@ -76,6 +76,19 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         .filter((option) => option.value && option.label)
         .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" })),
     [companies]
+  );
+
+  const firmOptions = useMemo<SelectOption[]>(
+    () =>
+      firms
+        .map((firm) => ({
+          value: String(firm.id || ""),
+          label: getFirmDisplayName(firm),
+          searchText: `${getFirmDisplayName(firm)} ${String(firm.firmName || "")}`.trim(),
+        }))
+        .filter((option) => option.value && option.label)
+        .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" })),
+    [firms]
   );
 
   const itemOptions = useMemo<SelectOption[]>(
@@ -308,7 +321,31 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
           />
         </div>
 
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} label="Firm" className="min-w-0" />
+        {/* Firm Filter */}
+        <div className="relative">
+          <Building2 className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
+          <Select
+            options={firmOptions}
+            value={firmOptions.find((option) => option.value === firmFilter) || null}
+            onChange={(option) => setFirmFilter(option ? (option as SelectOption).value : "")}
+            filterOption={(candidate, inputValue) => {
+              const query = inputValue.trim().toLowerCase();
+              if (!query) return true;
+              const option = candidate.data as SelectOption;
+              return String(option.searchText || option.label).toLowerCase().includes(query);
+            }}
+            isClearable
+            placeholder="Firms"
+            menuPlacement="bottom"
+            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+            menuPosition="fixed"
+            styles={{
+              control: (provided) => ({ ...provided, minHeight: 40, borderColor: "black", borderRadius: 4, paddingLeft: 28 }),
+              menu: (provided) => ({ ...provided, zIndex: 9999 }),
+              menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
+            }}
+          />
+        </div>
 
         {/* Company Filter */}
         <div className="relative">
