@@ -187,13 +187,14 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4 border-b border-black pb-4">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">{pageTitle}</h2>
+      <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 border-b border-black pb-4">
+        <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">{pageTitle}</h2>
         {!cancelledOnly ? (
           <button
             type="button"
             onClick={() => navigate("/gate-entry/form")}
-            className="inline-flex items-center gap-1.5 rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700"
+            className="inline-flex w-auto max-w-max items-center justify-self-end gap-1.5 whitespace-nowrap rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700"
+            style={{ width: "max-content" }}
           >
             <Plus size={14} /> Add New GE Entry
           </button>
