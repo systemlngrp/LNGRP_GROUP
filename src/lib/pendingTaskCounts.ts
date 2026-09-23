@@ -330,6 +330,7 @@ function getPendingReturnableGatePassCount(gatePasses: GatePass[] = [], gateEntr
 }
 
 export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record<string, number> {
+  const firms = Array.isArray(args.firms) ? args.firms : [];
   const purchaseOrderLines = args.purchaseOrderLines || [];
   const receivedQtyByPoLineId = new Map<string, number>();
   args.materialIn.forEach((entry) => {
@@ -475,7 +476,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/material-receipt/pending-mrr": args.gateEntries.filter(canCreateMrrForGateEntry).length,
     "/material-receipt/pending-debit-note": args.materialIn.filter((m) => m.debitNote && !m.tallyTimestamp).length,
     "/material-receipt/pending-credit-note": args.materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).length,
-    "/material-movement/pending-non-job-issue": getPendingDailyConsumables(args.firms, args.productions, args.materialIssues).length,
+    "/material-movement/pending-non-job-issue": getPendingDailyConsumables(firms, args.productions, args.materialIssues).length,
     "/material-movement/pending-consumption-tally": pendingConsumptionTallyCount,
     "/loading/php/pending-tally": pendingPhpLoadingTallyCount,
     "/loading/plate/pending-tally": pendingPlateLoadingTallyCount,

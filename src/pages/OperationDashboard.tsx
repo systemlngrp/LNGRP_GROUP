@@ -7,6 +7,7 @@ import type {
   Company,
   Consumption,
   DispatchPlan,
+  Firm,
   GateEntry,
   GatePass,
   Invoice,
@@ -167,6 +168,7 @@ function getSummaryCard(summary: OperationDashboardSummary, cardId: string) {
 export function OperationDashboard() {
   const navigate = useNavigate();
   const [productions] = useData<Production>("productions", []);
+  const [firms] = useData<Firm>("firms", []);
   const [phpJobMaster] = useData<Production>("php_job_master", []);
   const [plateJobMaster] = useData<Production>("plate_job_master", []);
   const npdItems = useNpdItems();
@@ -415,6 +417,7 @@ export function OperationDashboard() {
 
   const pendingTaskSummary = useMemo(() => {
     const counts = buildPendingTaskCounts({
+      firms,
       materialIn,
       productions,
       phpJobMaster,
@@ -451,6 +454,7 @@ export function OperationDashboard() {
     });
     return getPendingTaskGroups(counts);
   }, [
+    firms,
     materialIn,
     productions,
     phpJobMaster,
