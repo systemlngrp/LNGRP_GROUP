@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Layers, Disc, ArrowUpDown } from "lucide-react";
+import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Material, MaterialFirmOpening, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm, GstRateMaster } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -191,10 +191,7 @@ export function Materials() {
   const [newUnitName, setNewUnitName] = useState("");
   const [savingUnit, setSavingUnit] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [selectedMaterialIds, setSelectedMaterialIds] = useState<string[]>([]);
-  const [showBulkColorModal, setShowBulkColorModal] = useState(false);
-  const [bulkColor, setBulkColor] = useState("");
-  const [isApplyingBulkColor, setIsApplyingBulkColor] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   const movementSummaryMap = useMemo(() => {
     const createEmptyMovement = (): MaterialMovementSummary => ({ receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
@@ -1536,91 +1533,6 @@ export function Materials() {
     setToDate("");
   }
 
-  function toggleMaterialSelection(materialId: string) {
-    setSelectedMaterialIds((prev) =>
-      prev.includes(materialId) ? prev.filter((id) => id !== materialId) : [...prev, materialId]
-    );
-  }
-
-  function togglePageSelection() {
-    const currentPageReelIds = paginatedMaterials.filter((material) => material.type === "Reel").map((material) => material.id);
-    if (currentPageReelIds.length === 0) return;
-    const allSelected = currentPageReelIds.every((id) => selectedMaterialIds.includes(id));
-    setSelectedMaterialIds((prev) =>
-      allSelected
-        ? prev.filter((id) => !currentPageReelIds.includes(id))
-        : Array.from(new Set([...prev, ...currentPageReelIds]))
-    );
-  }
-
-  function openBulkColorModal() {
-    if (selectedMaterialIds.length === 0) {
-      alert("Select at least one reel material to update color.");
-      return;
-    }
-    setBulkColor("");
-    setShowBulkColorModal(true);
-  }
-
-  async function applyBulkColorUpdate() {
-    const normalizedColor = String(bulkColor || "").trim();
-    if (!normalizedColor) {
-      alert("Select a color to apply.");
-      return;
-    }
-
-    const selectedMaterials = materials.filter((material) => selectedMaterialIds.includes(material.id));
-    const nonReelSelected = selectedMaterials.filter((material) => material.type !== "Reel");
-    if (nonReelSelected.length > 0) {
-      alert("Bulk color update is allowed only for reel materials.");
-      return;
-    }
-
-    if (selectedMaterials.length === 0) {
-      alert("No valid reel materials selected.");
-      return;
-    }
-
-    setIsApplyingBulkColor(true);
-    try {
-      const timestamp = new Date().toISOString();
-      const nextMaterials = materials.map((material) =>
-        selectedMaterialIds.includes(material.id)
-          ? (() => {
-              const erpCode = String(material.erpCode || "").trim();
-              const size = Number(material.size);
-              const gsm = Number(material.gsm);
-              const bf = Number(material.bf);
-              const hasValidReelIdentity =
-                erpCode &&
-                Number.isFinite(size) &&
-                Number.isFinite(gsm) &&
-                Number.isFinite(bf);
-
-              return {
-                ...material,
-                color: normalizedColor,
-                name: hasValidReelIdentity
-                  ? getReelDisplayName(erpCode, size, gsm, bf, normalizedColor)
-                  : material.name,
-                updatedBy: "System User",
-                updateTimestamp: timestamp,
-              };
-            })()
-          : material
-      );
-      await setMaterials(nextMaterials);
-      setSelectedMaterialIds([]);
-      setShowBulkColorModal(false);
-      setBulkColor("");
-    } catch (error) {
-      console.error("Failed to apply bulk color update:", error);
-      alert("Failed to update selected material colors.");
-    } finally {
-      setIsApplyingBulkColor(false);
-    }
-  }
-
   const groupOptions = materialGroups
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -2101,73 +2013,10 @@ export function Materials() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <h2 className="text-2xl font-black text-black tracking-tight uppercase">Material Master</h2>
-                <p className="text-sm font-medium text-slate-600 uppercase">
-                  Inventory Overview & Tracking
-                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={downloadTemplate}
-                  className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow"
-                >
-                  <Download size={14} /> Reel Management Template
-                </button>
-                <button
-                  type="button"
-                  onClick={downloadReelMaterialTemplate}
-                  className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow"
-                >
-                  <Download size={14} /> Reel Material Template
-                </button>
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
-                  {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
-                  Upload Reel Material File
-                  <input
-                    ref={reelMaterialFileInputRef}
-                    type="file"
-                    accept=".xlsx, .xls"
-                    className="hidden"
-                    onChange={handleReelMaterialBulkUpload}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={downloadOtherMaterialTemplate}
-                  className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow"
-                >
-                  <Download size={14} /> Other Material Template
-                </button>
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
-                  {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
-                  Upload Other Material File
-                  <input
-                    ref={otherMaterialFileInputRef}
-                    type="file"
-                    accept=".xlsx, .xls"
-                    className="hidden"
-                    onChange={handleOtherMaterialBulkUpload}
-                  />
-                </label>
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
-                  {isUploading ? <Spinner size={14} /> : <Upload size={14} />}
-                  Upload Reel Management File
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".xlsx, .xls"
-                    className="hidden"
-                    onChange={handleOpeningStockBulkUpload}
-                  />
-                </label>
-                <span className="text-[10px] font-semibold text-slate-500">Reel Management imports opening-stock reels. Other Material Upload accepts a firm name or short name and updates that firm’s opening stock.</span>
-                <button
-                  type="button"
-                  onClick={openBulkColorModal}
-                  className="inline-flex items-center justify-center gap-2 rounded border border-black bg-violet-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-violet-700 whitespace-nowrap shadow"
-                >
-                  <Layers size={14} /> Bulk Color Update
-                  {selectedMaterialIds.length > 0 ? ` (${selectedMaterialIds.length})` : ""}
+                <button type="button" onClick={() => setShowTemplateModal(true)} className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
+                  <Download size={14} /> Template
                 </button>
                 <button
                   type="button"
@@ -2278,15 +2127,6 @@ export function Materials() {
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-indigo-700 text-white divide-x divide-indigo-800">
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={paginatedMaterials.filter((material) => material.type === "Reel").length > 0 && paginatedMaterials.filter((material) => material.type === "Reel").every((material) => selectedMaterialIds.includes(material.id))}
-                        onChange={togglePageSelection}
-                        className="h-4 w-4 accent-white"
-                        title="Select reel materials on this page"
-                      />
-                    </th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">SL</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Type</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">ERP Code</th>
@@ -2317,7 +2157,7 @@ export function Materials() {
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={22} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={21} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2327,16 +2167,6 @@ export function Materials() {
                       const values = getMaterialStockValues(material);
                       return (
                         <tr key={material.id} className={`hover:bg-indigo-50/30 transition-colors divide-x divide-black ${material.active === "No" ? "opacity-50 grayscale" : ""}`}>
-                          <td className="px-4 py-3 text-center">
-                            <input
-                              type="checkbox"
-                              checked={selectedMaterialIds.includes(material.id)}
-                              disabled={material.type !== "Reel"}
-                              onChange={() => toggleMaterialSelection(material.id)}
-                              className="h-4 w-4 accent-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
-                              title={material.type === "Reel" ? "Select reel material" : "Bulk color update is only for reel materials"}
-                            />
-                          </td>
                           <td className="px-4 py-3 text-black font-bold text-xs">{(page - 1) * pageSize + index + 1}</td>
                           <td className="px-4 py-3 text-black text-[10px] font-bold uppercase">{isVirtualReceiptItem ? "FG" : material.type}</td>
                           <td className="px-4 py-3 text-black text-xs font-black tracking-tight">{material.erpCode || ""}</td>
@@ -2430,44 +2260,14 @@ export function Materials() {
         </div>
       ) : null}
 
-      {showBulkColorModal ? (
+      {showTemplateModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-xl border-2 border-black bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-black text-black uppercase">Bulk Color Update</h3>
-            <p className="mt-2 text-sm font-medium text-slate-600">
-              Apply one color to {selectedMaterialIds.length} selected reel material{selectedMaterialIds.length === 1 ? "" : "s"}.
-            </p>
-            <div className="mt-5 space-y-2">
-              <label className="text-blue-700 font-bold">
-                Color <span className="text-red-500">*</span>
-              </label>
-              <Select
-                value={bulkColor}
-                onChange={setBulkColor}
-                options={colorOptions}
-                placeholder="Select color"
-                disabled={isApplyingBulkColor}
-              />
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowBulkColorModal(false);
-                  setBulkColor("");
-                }}
-                className="rounded border border-black px-4 py-2 text-sm font-bold text-black transition hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={applyBulkColorUpdate}
-                disabled={isApplyingBulkColor}
-                className="rounded border border-black bg-violet-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-violet-700 disabled:opacity-50"
-              >
-                {isApplyingBulkColor ? <Spinner size={18} className="text-white" /> : "Apply Color"}
-              </button>
+            <div className="flex items-center justify-between border-b border-black pb-3"><h3 className="text-lg font-black uppercase">Templates</h3><button type="button" onClick={() => setShowTemplateModal(false)} className="rounded border border-black px-3 py-1 text-sm font-bold">Close</button></div>
+            <div className="mt-4 space-y-3">
+              <TemplateChoice label="Reel Management" onDownload={downloadTemplate} inputRef={fileInputRef} onUpload={handleOpeningStockBulkUpload} isUploading={isUploading} />
+              <TemplateChoice label="Reel Material" onDownload={downloadReelMaterialTemplate} inputRef={reelMaterialFileInputRef} onUpload={handleReelMaterialBulkUpload} isUploading={isUploading} />
+              <TemplateChoice label="Other Material" onDownload={downloadOtherMaterialTemplate} inputRef={otherMaterialFileInputRef} onUpload={handleOtherMaterialBulkUpload} isUploading={isUploading} />
             </div>
           </div>
         </div>
@@ -2492,6 +2292,30 @@ export function Materials() {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function TemplateChoice({
+  label,
+  onDownload,
+  inputRef,
+  onUpload,
+  isUploading,
+}: {
+  label: string;
+  onDownload: () => void;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onUpload: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  isUploading: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded border border-slate-300 p-3">
+      <span className="text-sm font-black uppercase">{label}</span>
+      <div className="flex gap-2">
+        <button type="button" onClick={onDownload} className="inline-flex items-center gap-1 rounded border border-black bg-white px-3 py-1.5 text-xs font-bold hover:bg-slate-50"><Download size={13} /> Download</button>
+        <label className="inline-flex cursor-pointer items-center gap-1 rounded border border-black bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700">{isUploading ? <Spinner size={13} /> : <Upload size={13} />} Upload<input ref={inputRef} type="file" accept=".xlsx, .xls" className="hidden" onChange={onUpload} /></label>
+      </div>
     </div>
   );
 }
