@@ -282,12 +282,13 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3 border-b border-black pb-4">
+      <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 border-b border-black pb-4">
         <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">{pendingOnly ? "Scheduled But Not Dispatched" : "Scheduled Orders Master"}</h2>
         <button 
           type="button"
           onClick={clearFilters}
-          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded border border-black px-3 py-1.5 text-xs font-bold uppercase transition-colors hover:bg-slate-50"
+          className="inline-flex w-auto max-w-max items-center justify-self-end gap-2 whitespace-nowrap rounded border border-black px-3 py-1.5 text-xs font-bold uppercase transition-colors hover:bg-slate-50"
+          style={{ width: "max-content" }}
         >
           <X size={14} /> Clear Filters
         </button>
