@@ -5,7 +5,7 @@ import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { normalizeMachineName } from "../lib/productionMachineNames";
-import { MandatoryLabel, MandatoryLegend } from "../components/Mandatory";
+import { MandatoryLabel } from "../components/Mandatory";
 import { isMandatoryField } from "../lib/mandatoryFields";
 import { useAuth } from "../auth/AuthContext";
 import { usesPartFullProgress } from "../lib/productionProcessingProgress";
@@ -159,17 +159,14 @@ function LockedReportForm() {
       </div>
 
       <div className="bg-white p-6 rounded shadow-sm border border-black">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <MandatoryLegend />
+        <form onSubmit={handleSubmit} className="space-y-4">
           {materialIssueBlocked ? (
             <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
               {materialUsageLoading ? "Checking issued material..." : PRINTING_MATERIAL_MESSAGE}
             </div>
           ) : null}
-          <div className="space-y-4">
-            <h4 className="font-black text-xs uppercase text-indigo-600 border-b border-indigo-100 pb-1">Reporting Details</h4>
-
-            <div className="flex flex-col space-y-1">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="order-1 flex flex-col space-y-1">
               <MandatoryLabel label="Date" required className="font-bold text-black text-sm" />
               <input
                 type="date"
@@ -180,7 +177,7 @@ function LockedReportForm() {
               />
             </div>
 
-            <div className="flex flex-col space-y-1">
+            <div className="order-3 flex flex-col space-y-1 md:col-span-2">
               <MandatoryLabel label="Job No" required className="font-bold text-black text-sm" />
               <div className="border-2 border-black rounded bg-slate-100 p-2 text-sm font-bold text-black">{jobNo || "-"}</div>
               {erp || itemName ? (
@@ -190,12 +187,12 @@ function LockedReportForm() {
               ) : null}
             </div>
 
-            <div className="flex flex-col space-y-1">
+            <div className={`order-4 flex flex-col space-y-1 ${requiresCompletionStatus ? "" : "md:col-span-2"}`}>
               <MandatoryLabel label="Machine" required className="font-bold text-black text-sm" />
               <div className="border-2 border-black rounded bg-slate-100 p-2 text-sm font-bold text-black">{normalizeMachineName(machineName) || "-"}</div>
             </div>
 
-            <div className="flex flex-col space-y-1">
+            <div className="order-2 flex flex-col space-y-1">
               <MandatoryLabel label="Shift" required className="font-bold text-black text-sm" />
               <select
                 value={shift}
@@ -212,7 +209,7 @@ function LockedReportForm() {
             </div>
 
             {requiresCompletionStatus ? (
-              <div className="flex flex-col space-y-1">
+              <div className="order-5 flex flex-col space-y-1">
                 <MandatoryLabel label="Completion" required className="font-bold text-black text-sm" />
                 <select
                   value={completionStatus}
@@ -227,7 +224,7 @@ function LockedReportForm() {
               </div>
             ) : null}
 
-            <div className="flex flex-col space-y-1">
+            <div className="order-6 flex flex-col space-y-1 md:col-span-2">
               <MandatoryLabel label="Quantity" required className="font-bold text-black text-sm" />
               <input
                 type="number"
@@ -240,7 +237,7 @@ function LockedReportForm() {
               />
             </div>
             {showCorrugationWastage ? (
-              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+              <div className="order-7 space-y-2 rounded border-2 border-black bg-slate-50 p-3 md:col-span-2">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
                 <CorrugationWastageFields
                   draft={wastageDraft}
@@ -250,7 +247,7 @@ function LockedReportForm() {
               </div>
             ) : null}
             {showPrintingWastage ? (
-              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+              <div className="order-7 space-y-2 rounded border-2 border-black bg-slate-50 p-3 md:col-span-2">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Printing Wastage</h4>
                 <PrintingWastageFields
                   draft={printingWastageDraft}
@@ -452,17 +449,14 @@ function FullReportForm() {
       </div>
 
       <div className="bg-white p-6 rounded shadow-sm border border-black">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <MandatoryLegend />
+        <form onSubmit={handleSubmit} className="space-y-4">
           {materialIssueBlocked ? (
             <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
               {materialUsageLoading ? "Checking issued material..." : PRINTING_MATERIAL_MESSAGE}
             </div>
           ) : null}
-          <div className="space-y-4">
-            <h4 className="font-black text-xs uppercase text-indigo-600 border-b border-indigo-100 pb-1">Reporting Details</h4>
-            
-            <div className="flex flex-col space-y-1">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="order-1 flex flex-col space-y-1">
               <MandatoryLabel label="Date" required className="font-bold text-black text-sm" />
               <input 
                 type="date" 
@@ -473,7 +467,7 @@ function FullReportForm() {
               />
             </div>
 
-            <div className="flex flex-col space-y-1">
+            <div className="order-3 flex flex-col space-y-1 md:col-span-2">
               <MandatoryLabel label="Job No" required className="font-bold text-black text-sm" />
               <Select 
                 value={productionId} 
@@ -488,7 +482,7 @@ function FullReportForm() {
               ) : null}
             </div>
 
-            <div className="flex flex-col space-y-1">
+            <div className={`order-4 flex flex-col space-y-1 ${requiresCompletionStatus ? "" : "md:col-span-2"}`}>
               <MandatoryLabel label="Machine" required className="font-bold text-black text-sm" />
               <Select 
                 value={machineId} 
@@ -503,7 +497,7 @@ function FullReportForm() {
               ) : null}
             </div>
 
-            <div className="flex flex-col space-y-1">
+            <div className="order-2 flex flex-col space-y-1">
               <MandatoryLabel label="Shift" required className="font-bold text-black text-sm" />
               <select
                 value={shift}
@@ -520,7 +514,7 @@ function FullReportForm() {
             </div>
 
             {requiresCompletionStatus ? (
-              <div className="flex flex-col space-y-1">
+              <div className="order-5 flex flex-col space-y-1">
                 <MandatoryLabel label="Completion" required className="font-bold text-black text-sm" />
                 <select
                   value={completionStatus}
@@ -535,7 +529,7 @@ function FullReportForm() {
               </div>
             ) : null}
 
-            <div className="flex flex-col space-y-1">
+            <div className="order-6 flex flex-col space-y-1 md:col-span-2">
               <MandatoryLabel label="Quantity" required className="font-bold text-black text-sm" />
               <input 
                 type="number" 
@@ -553,7 +547,7 @@ function FullReportForm() {
               ) : null}
             </div>
             {showCorrugationWastage ? (
-              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+              <div className="order-7 space-y-2 rounded border-2 border-black bg-slate-50 p-3 md:col-span-2">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
                 <CorrugationWastageFields
                   draft={wastageDraft}
@@ -563,7 +557,7 @@ function FullReportForm() {
               </div>
             ) : null}
             {showPrintingWastage ? (
-              <div className="space-y-2 rounded border-2 border-black bg-slate-50 p-3">
+              <div className="order-7 space-y-2 rounded border-2 border-black bg-slate-50 p-3 md:col-span-2">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Printing Wastage</h4>
                 <PrintingWastageFields
                   draft={printingWastageDraft}

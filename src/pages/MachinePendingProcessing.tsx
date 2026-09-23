@@ -251,8 +251,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-black pb-4 xl:flex-row xl:items-end xl:justify-between">
-        <div className="flex shrink-0 items-center gap-3 xl:pb-1">
+      <div className="flex flex-col gap-4 border-b border-black pb-4">
+        <div className="flex items-center gap-3">
           {filterMachineId && (
             <button 
               onClick={() => navigate("/production/pending-machine-processing")}
@@ -265,7 +265,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             {title || (filterMachineId ? `${selectedMachineName} - Pending Jobs` : "Pending Processing")}
           </h2>
         </div>
-        <div className="grid w-full min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:max-w-[880px] xl:flex-1 xl:grid-cols-[minmax(190px,1.15fr)_minmax(140px,0.75fr)_minmax(160px,0.95fr)_minmax(190px,1.15fr)_auto] xl:items-end">
+        <div className="grid w-full min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(220px,1.2fr)_minmax(160px,0.8fr)_minmax(200px,1fr)_minmax(240px,1.2fr)_auto] xl:items-end">
           <div className="min-w-0">
             <label htmlFor="pending-processing-search" className="mb-1 block text-[10px] font-black uppercase">Search</label>
             <div className="relative">
