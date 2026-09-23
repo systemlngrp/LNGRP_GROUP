@@ -190,47 +190,39 @@ export function ProductionProcessingMaster() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production Reporting Master</h2>
         <button 
           onClick={() => navigate("/production-processing/form")} 
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition shadow"
+          className="inline-flex w-auto max-w-max items-center gap-1.5 whitespace-nowrap rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700"
+          style={{ width: "max-content" }}
         >
-          <Plus size={18} /> New Report
+          <Plus size={15} /> New Report
         </button>
       </div>
 
-      <div className="flex flex-nowrap items-center gap-3 overflow-x-auto">
-        <div className="min-w-0 flex-1">
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.5fr)_minmax(180px,0.9fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)_auto] xl:items-end">
+        <div className="min-w-0">
           <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search by Job No, Machine, Item, or ERP..." />
         </div>
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
-        <div className="flex shrink-0 items-end gap-3 rounded border border-black bg-white px-3 py-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-600">From</label>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="rounded border border-black bg-white px-2 py-1.5 text-sm font-semibold outline-none"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-bold uppercase tracking-widest text-slate-600">To</label>
-            <input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="rounded border border-black bg-white px-2 py-1.5 text-sm font-semibold outline-none"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setFromDate("");
-              setToDate("");
-            }}
-            className="rounded border border-black bg-slate-100 px-3 py-1.5 text-xs font-bold uppercase hover:bg-slate-200"
-          >
-            Clear
-          </button>
-        </div>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} compact={false} className="min-w-0" />
+        <label className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-600">
+          From
+          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="mt-1 h-[42px] w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+        </label>
+        <label className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-600">
+          To
+          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="mt-1 h-[42px] w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+        </label>
+        <button
+          type="button"
+          onClick={() => {
+            setSearchTerm("");
+            setFirmFilter("");
+            setFromDate("");
+            setToDate("");
+          }}
+          disabled={!searchTerm && !firmFilter && !fromDate && !toDate}
+          className="h-[42px] whitespace-nowrap rounded border-2 border-black bg-white px-3 text-xs font-black uppercase text-black hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
+        >
+          Clear Filters
+        </button>
       </div>
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
