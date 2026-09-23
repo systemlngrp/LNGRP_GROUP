@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
-import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft } from "lucide-react";
+import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft, RotateCcw } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
@@ -229,6 +229,15 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     return machines.find(m => m.id === filterMachineId)?.name || "";
   }, [filterMachineId, machines]);
 
+  const hasActiveFilters = Boolean(searchTerm || firmFilter || companyFilter || itemFilter);
+
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFirmFilter("");
+    setCompanyFilter("");
+    setItemFilter("");
+  };
+
   useEffect(() => {
     if (filterMachineId || fixedNormalizedMachineName) return;
     const machineIds = machineGroups.map((group) => group.machineId);
@@ -242,8 +251,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 border-b border-black pb-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex shrink-0 items-center gap-3 xl:pb-1">
           {filterMachineId && (
             <button 
               onClick={() => navigate("/production/pending-machine-processing")}
@@ -256,23 +265,39 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             {title || (filterMachineId ? `${selectedMachineName} - Pending Jobs` : "Pending Processing")}
           </h2>
         </div>
-        <div className="grid w-full gap-3 md:grid-cols-[minmax(240px,1.4fr)_minmax(170px,0.8fr)_minmax(200px,1fr)_minmax(240px,1.1fr)_auto] md:items-center">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search job, item, company..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
-            />
+        <div className="grid w-full min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:max-w-[880px] xl:flex-1 xl:grid-cols-[minmax(190px,1.15fr)_minmax(140px,0.75fr)_minmax(160px,0.95fr)_minmax(190px,1.15fr)_auto] xl:items-end">
+          <div className="min-w-0">
+            <label htmlFor="pending-processing-search" className="mb-1 block text-[10px] font-black uppercase">Search</label>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                id="pending-processing-search"
+                type="text"
+                placeholder="Job, item, company..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-[34px] w-full rounded border-2 border-black bg-white py-1.5 pl-9 pr-3 text-xs font-semibold text-black outline-none transition placeholder:text-slate-500 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+              />
+            </div>
           </div>
-          <FirmFilter value={firmFilter} onChange={setFirmFilter} />
-          <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-          <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-          {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
-            <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-          ) : null}
+          <FirmFilter value={firmFilter} onChange={setFirmFilter} className="min-w-0" />
+          <div className="min-w-0">
+            <label className="mb-1 block text-[10px] font-black uppercase">Company</label>
+            <Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
+          </div>
+          <div className="min-w-0">
+            <label className="mb-1 block text-[10px] font-black uppercase">Item</label>
+            <Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
+          </div>
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!hasActiveFilters}
+            className="inline-flex h-[34px] items-center justify-center gap-1.5 self-end rounded border-2 border-black bg-white px-3 text-xs font-black uppercase text-black transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400 sm:col-span-2 lg:col-span-4 xl:col-span-1"
+          >
+            <RotateCcw size={14} />
+            Clear
+          </button>
         </div>
       </div>
 
@@ -326,14 +351,18 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                           const materialIssueBlocked = requiresMaterialIssue &&
                             (materialUsageLoading || !hasProductionMaterialUsage(job.production, materialUsageMap));
                           return (
-                          <tr key={`${job.production.id}-${idx}`} className="divide-x divide-black hover:bg-slate-50">
+                          <tr key={`${job.production.id}-${idx}`} className="divide-x divide-black align-middle hover:bg-slate-50">
                             <td className="px-3 py-2 whitespace-nowrap">{job.production.transactionNo}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.source}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{formatDate(job.production.date)}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.erpCode || "-"}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.firmName}</td>
-                            <td className="px-3 py-2 max-w-[220px] truncate" title={job.companyName}>{job.companyName || "-"}</td>
-                            <td className="px-3 py-2 max-w-[280px] truncate text-slate-600" title={job.itemName}>{job.itemName || "-"}</td>
+                            <td className="w-[220px] min-w-[180px] max-w-[220px] px-3 py-2" title={job.companyName}>
+                              <span className="line-clamp-2 break-words leading-4">{job.companyName || "-"}</span>
+                            </td>
+                            <td className="w-[280px] min-w-[220px] max-w-[280px] px-3 py-2 text-slate-600" title={job.itemName}>
+                              <span className="line-clamp-2 break-words leading-4">{job.itemName || "-"}</span>
+                            </td>
                             <td className="px-3 py-2 text-right">{job.requiredQty.toLocaleString()}</td>
                             <td className="px-3 py-2 text-right">{job.ffgQty.toLocaleString()}</td>
                             <td className="px-3 py-2 text-right text-emerald-700">{job.reportedQty.toLocaleString()}</td>
