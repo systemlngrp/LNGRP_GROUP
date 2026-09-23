@@ -14,16 +14,6 @@ export type ReelTransferEligibilityStatus =
   | "job_weight_missing"
   | "no_unused_weight";
 
-const STATUS_REASONS: Record<ReelTransferEligibilityStatus, string> = {
-  eligible: "Eligible",
-  corrugation_incomplete: "Corrugation Liner is not Full",
-  window_expired: "Transfer window expired",
-  no_reel_balance: "No remaining issued reel balance",
-  plan_quantity_missing: "Plan quantity missing",
-  job_weight_missing: "Weight calculation unavailable",
-  no_unused_weight: "No unused reel weight remains after Corrugation",
-};
-
 function positiveFinite(value: unknown) {
   const numberValue = Number(value || 0);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : 0;
@@ -124,12 +114,22 @@ export function buildReelTransferContext(
   else if (planQty <= 0) status = "plan_quantity_missing";
   else if (requiredKg <= 0) status = "job_weight_missing";
   else if (notionalLeftKg <= 0.004) status = "no_unused_weight";
+  const formatKg = (value: number) => `${round2(value).toFixed(2)} KG`;
+  const reasonByStatus: Record<ReelTransferEligibilityStatus, string> = {
+    eligible: "Eligible",
+    corrugation_incomplete: "Transfer unavailable: Corrugation Liner must be completed as Full before reel balance can be transferred.",
+    window_expired: `Transfer unavailable: the ${windowHours}-hour transfer window has expired since Corrugation Liner was completed.`,
+    no_reel_balance: `Transfer unavailable: no remaining issued reel balance is available after returns (issued ${formatKg(totalIssuedKg)}, returned ${formatKg(totalReturnedKg)}).`,
+    plan_quantity_missing: `Transfer unavailable: production/planned quantity is missing or zero (current value ${round2(planQty)}).`,
+    job_weight_missing: `Transfer unavailable: required paper weight (totalPaperWeight) is missing or zero (current value ${formatKg(requiredKg)}).`,
+    no_unused_weight: `Transfer unavailable: no unused reel weight remains after Corrugation (issued ${formatKg(totalIssuedKg)}, returned ${formatKg(totalReturnedKg)}, Corrugation consumed ${formatKg(consumedKg)}, remaining ${formatKg(notionalLeftKg)}).`,
+  };
   return {
     fullTime,
     expiresAt,
     eligible: status === "eligible",
     status,
-    reason: STATUS_REASONS[status],
+    reason: reasonByStatus[status],
     totalIssuedKg: round2(totalIssuedKg),
     totalReturnedKg: round2(totalReturnedKg),
     planQty: round2(planQty),
