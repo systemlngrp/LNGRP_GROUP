@@ -7819,6 +7819,9 @@ const createHandlers = (tableName) => {
                 return res.status(500).json({ error: "DB connection not available" });
             try {
                 console.log(`[DB] Fetching all from ${tableName}`);
+                if (tableName === "states") {
+                    await ensureIndianStatesSeed(db);
+                }
                 const requestFirmId = getRequestFirmId(req);
                 if (isFirmScopedTable(tableName))
                     await assertRequestFirm(db, requestFirmId);
