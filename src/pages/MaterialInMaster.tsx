@@ -17,7 +17,7 @@ function makeOptions(values: Array<string | number>) {
     .map((value) => ({ value, label: value }));
 }
 export function MaterialInMaster() {
-  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
+  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);

@@ -23,12 +23,12 @@ function isOpeningMrrNo(value?: string | number | null) {
 
 export function MaterialInItemMaster() {
   const navigate = useNavigate();
-  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
+  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false });
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false });
-  const [gateEntries] = useData<GateEntry>("gate-entries", []);
+  const [gateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
