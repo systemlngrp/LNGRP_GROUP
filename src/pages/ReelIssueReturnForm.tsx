@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Trash2, BarChart3, Package2 } from "lucide-react";
+import { Plus, Trash2, Package2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
@@ -45,13 +45,6 @@ function normalizeDate(value?: string | null) {
 
 function normalizeText(value?: string | null) {
   return String(value || "").trim().toLowerCase();
-}
-
-function formatCurrencyDisplay(value: number) {
-  return `${Number(value || 0).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
 }
 
 export function ReelIssueReturnForm() {
@@ -113,29 +106,6 @@ export function ReelIssueReturnForm() {
     const material = materials.find((row) => row.id === slip.materialId);
     return Number(line?.invoiceRate || line?.poRate || line?.rate || material?.openingRate || 0);
   };
-
-  const consumptionSummary = useMemo(() => {
-    let totalIssueWt = 0;
-    let totalIssueVal = 0;
-
-    Object.values(selectedIssueReels)
-      .flat()
-      .forEach((slipId) => {
-        const slip = packingSlips.find((row) => row.id === slipId) ||
-          getAvailableReelPackingSlips(slipId, packingSlips, materialIssueReelLines, materialReturnReelLines, materials, ourReelNoStartNumber)
-            .find((row) => row.id === slipId);
-        if (!slip) return;
-        const weight = Number(slip.weightKg || 0);
-        const rate = getReelInvoiceRate(slipId);
-        totalIssueWt += weight;
-        totalIssueVal += weight * rate;
-      });
-
-    return {
-      issueWt: totalIssueWt,
-      issueVal: totalIssueVal,
-    };
-  }, [selectedIssueReels, packingSlips, materialIn]);
 
   const jobOptions = useMemo(
     () =>
@@ -377,8 +347,6 @@ export function ReelIssueReturnForm() {
             </div>
             <div>
               <h2 className="text-xl font-black tracking-tight">Manual Reel Issue</h2>
-              <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · jobs from any firm</p>
-              <p className="text-sm font-medium text-white/75">Select available reels and issue them against the chosen job.</p>
             </div>
           </div>
         </div>
@@ -447,14 +415,6 @@ export function ReelIssueReturnForm() {
                         placeholder="Select reel material..."
                       />
                     </div>
-                    {line.materialId && (
-                        <div className="w-full space-y-1 sm:w-32">
-                        <label className="text-sm font-black uppercase tracking-wide text-indigo-700">Invoice Rate</label>
-                        <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-3 text-center font-black text-indigo-700 shadow-sm">
-                          {formatCurrencyDisplay(selectedIds[0] ? getReelInvoiceRate(selectedIds[0]) : 0)}
-                        </div>
-                      </div>
-                    )}
                     <button type="button" onClick={() => removeIssueLine(line.id)} className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 text-rose-600 transition hover:bg-rose-100 hover:text-rose-700 sm:mt-6 sm:w-10 sm:px-0" title="Remove line">
                       <Trash2 size={18} /><span className="text-xs font-bold uppercase sm:hidden">Remove Material</span>
                     </button>
@@ -470,7 +430,7 @@ export function ReelIssueReturnForm() {
                           const selected = selectedIds.includes(slip.id);
                           return <label key={slip.id} className={`block rounded border-2 bg-white p-3 shadow-sm ${selected ? "border-indigo-700" : "border-black"}`}>
                             <div className="flex items-start justify-between gap-3 border-b border-black pb-2"><div className="min-w-0"><div className="text-[10px] font-black uppercase text-slate-500">Our Reel No.</div><div className="break-all text-xl font-black">{slip.ourReelNo}</div></div><input type="checkbox" checked={selected} onChange={(e) => updateSelectedIssueReels(line.id, line.materialId, slip.id, e.target.checked)} className="h-6 w-6 shrink-0 rounded border-slate-300 text-indigo-600" /></div>
-                            <div className="mt-3 grid grid-cols-2 gap-2"><div className="min-w-0 rounded border border-slate-300 p-2"><div className="text-[10px] font-black uppercase text-slate-500">Supplier Reel</div><div className="break-words text-sm font-black">{slip.supplierReelNo || "-"}</div></div><div className="rounded border border-indigo-200 bg-indigo-50 p-2"><div className="text-[10px] font-black uppercase text-indigo-700">Invoice Rate</div><div className="text-sm font-black">{formatCurrencyDisplay(getReelInvoiceRate(slip.id))}</div></div><div className="col-span-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-right"><div className="text-[10px] font-black uppercase text-emerald-700">Available Weight</div><div className="text-lg font-black text-emerald-900">{Number(slip.weightKg || 0).toFixed(2)} KG</div></div></div>
+                            <div className="mt-3 rounded border border-emerald-300 bg-emerald-50 p-2 text-right"><div className="text-[10px] font-black uppercase text-emerald-700">Available Weight</div><div className="text-lg font-black text-emerald-900">{Number(slip.weightKg || 0).toFixed(2)} KG</div></div>
                           </label>;
                         })}
                       </div>
@@ -482,7 +442,7 @@ export function ReelIssueReturnForm() {
       <table className="min-w-full border-collapse">
                             <thead className="sticky top-0 z-30 bg-slate-800 text-white">
                               <tr>
-                                {["Select", "Our Reel No.", "Supplier Reel No.", "Invoice Rate", "Available Weight KG"].map((heading) => (
+                                {["Select", "Our Reel No.", "Available Weight KG"].map((heading) => (
                                   <th key={heading} className="px-4 py-3 text-left text-[11px] font-black uppercase tracking-[0.16em]">
                                     {heading}
                                   </th>
@@ -492,7 +452,7 @@ export function ReelIssueReturnForm() {
                             <tbody>
                               {availableReels.length === 0 ? (
                                 <tr>
-                                  <td colSpan={5} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
+                                  <td colSpan={3} className="px-4 py-8 text-center text-sm font-medium text-slate-500">
                                     No available reels for this material.
                                   </td>
                                 </tr>
@@ -510,8 +470,6 @@ export function ReelIssueReturnForm() {
                                       />
                                     </td>
                                     <td className="border-t border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 align-top">{slip.ourReelNo}</td>
-                                    <td className="border-t border-slate-200 px-4 py-3 text-sm text-slate-600 align-top">{slip.supplierReelNo || "-"}</td>
-                                    <td className="border-t border-slate-200 px-4 py-3 text-sm font-bold text-indigo-700 align-top">{formatCurrencyDisplay(getReelInvoiceRate(slip.id))}</td>
                                     <td className="border-t border-slate-200 px-4 py-3 text-sm font-semibold text-emerald-700">{availableQty.toFixed(2)}</td>
                                   </tr>
                                 )})
@@ -525,28 +483,6 @@ export function ReelIssueReturnForm() {
                 </div>
               );
             })}
-          </div>
-
-          <div className="overflow-hidden rounded-[24px] border border-slate-200 shadow-sm">
-            <div className="bg-[linear-gradient(135deg,rgba(15,23,42,1),rgba(49,46,129,0.95))] p-6 text-white">
-              <h3 className="mb-5 flex items-center gap-2 border-b border-white/15 pb-3 text-lg font-black uppercase tracking-tighter">
-                <BarChart3 size={20} />
-                Issue Summary
-              </h3>
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div className="space-y-4">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Issue Weight</div>
-                    <div className="text-xl font-black">{Number(consumptionSummary.issueWt || 0).toFixed(2)} <span className="text-xs text-slate-400">KG</span></div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Total Issue Value</div>
-                    <div className="text-xl font-black">{formatCurrencyDisplay(consumptionSummary.issueVal)}</div>
-                  </div>
-                </div>
-
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-end">

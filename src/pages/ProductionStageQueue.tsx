@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpDown, CheckCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowUpDown, CheckCircle, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction } from "../lib/productionType";
@@ -69,6 +69,7 @@ export function ProductionStageQueue({
   enableCloseAction = false,
   hideStatusColumn = false,
   hideProdFfgColumn = false,
+  hideActualPaperUsedColumn = false,
   issuePrereqMachineName,
   issueActionPath = "/material-movement/reel-issue-return",
   issueActionLabel = "Issue Material",
@@ -84,6 +85,7 @@ export function ProductionStageQueue({
   enableCloseAction?: boolean;
   hideStatusColumn?: boolean;
   hideProdFfgColumn?: boolean;
+  hideActualPaperUsedColumn?: boolean;
   issuePrereqMachineName?: string;
   issueActionPath?: string;
   issueActionLabel?: string;
@@ -401,13 +403,13 @@ export function ProductionStageQueue({
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{title}</h2>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search jobs..." />
-        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        {(searchTerm || companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
+      <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 shadow-sm">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.2fr)_minmax(220px,1fr)_minmax(240px,1fr)_auto] xl:items-end">
+          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Search</div><TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search jobs..." /></div>
+          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Company</div><Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All companies" /></div>
+          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Item</div><Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All items" /></div>
+          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} disabled={!searchTerm && !companyFilter && !itemFilter} className="inline-flex h-[42px] items-center justify-center gap-2 rounded border border-black bg-white px-4 text-sm font-bold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"><RotateCcw size={15} /> Clear</button>
+        </div>
       </div>
 
       <DataSummaryTiles
@@ -465,12 +467,14 @@ export function ProductionStageQueue({
                     Qty <SortIcon column="qty" />
                   </button>
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("actualPaperUsed")} className="inline-flex items-center gap-1">
-                    Actual Paper Used <SortIcon column="actualPaperUsed" />
-                  </button>
-                </th>
-                                {!hideProdFfgColumn ? (
+                {!hideActualPaperUsedColumn ? (
+                  <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
+                    <button type="button" onClick={() => toggleSort("actualPaperUsed")} className="inline-flex items-center gap-1">
+                      Actual Paper Used <SortIcon column="actualPaperUsed" />
+                    </button>
+                  </th>
+                ) : null}
+                {!hideProdFfgColumn ? (
                   <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
                     <button type="button" onClick={() => toggleSort("prodFfg")} className="inline-flex items-center gap-1">
                       Prod (FG) <SortIcon column="prodFfg" />
@@ -496,7 +500,7 @@ export function ProductionStageQueue({
                 <tr>
                   <td
                     colSpan={
-                      (11 - (hideStatusColumn ? 1 : 0) - (hideProdFfgColumn ? 1 : 0)) +
+                      (11 - (hideStatusColumn ? 1 : 0) - (hideProdFfgColumn ? 1 : 0) - (hideActualPaperUsedColumn ? 1 : 0)) +
                       (issuePrereqMachineName ? 1 : 0) +
                       (enableCloseAction ? 1 : 0) +
                       (enableFfgEditing ? 1 : 0) +
@@ -515,8 +519,8 @@ export function ProductionStageQueue({
                     <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{formatDate(production.date)}</td>
                     <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
                     <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{production.erpCode || "-"}</td>
-                    <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{company?.name || "-"}</td>
-                    <td className="px-4 py-4 text-xs text-black border border-black">
+                    <td className="min-w-[150px] max-w-[220px] whitespace-normal break-words px-4 py-4 text-xs leading-5 text-black border border-black">{company?.name || "-"}</td>
+                    <td className="min-w-[220px] max-w-[360px] whitespace-normal break-words px-4 py-4 text-xs leading-5 text-black border border-black">
                       <div className="space-y-1">
                         <div>{item?.name || "Unknown"}</div>
 
@@ -528,7 +532,9 @@ export function ProductionStageQueue({
                       </td>
                     ) : null}
                     <td className="px-4 py-4 text-right text-xs font-medium text-emerald-700 border border-black whitespace-nowrap">{production.qty} {production.uom}</td>
-                    <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{actualPaperUsed > 0 ? actualPaperUsed : "-"}</td>
+                    {!hideActualPaperUsedColumn ? (
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{actualPaperUsed > 0 ? actualPaperUsed : "-"}</td>
+                    ) : null}
                     {!hideProdFfgColumn ? (
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{production.prodFromFFG || "-"}</td>
                     ) : null}
@@ -716,13 +722,15 @@ export function ProductionStageQueue({
         </div>
       </div>
 
-      <ClientPagination
-        page={page}
-        pageSize={pageSize}
-        totalItems={totalItems}
-        onPageChange={setPage}
-        onPageSizeChange={setPageSize}
-      />
+      <div className="overflow-hidden rounded-lg shadow-sm">
+        <ClientPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
+      </div>
     </div>
   );
 }
@@ -735,6 +743,8 @@ export function ProductionPendingConsumption() {
       predicate={isProductionPendingConsumption}
       enableIssueAction
       hideStatusColumn
+      hideActualPaperUsedColumn
+      hideProdFfgColumn
       issueActionPath="/material-movement/reel-issue-return-scan/form"
       issueActionLabel="QR Issue"
       secondaryIssueActionPath="/material-movement/reel-issue-return"
