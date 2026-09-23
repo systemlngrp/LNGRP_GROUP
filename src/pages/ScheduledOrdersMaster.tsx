@@ -282,11 +282,12 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">{pendingOnly ? "Scheduled But Not Dispatched" : "Scheduled Orders Master"}</h2>
+      <div className="flex items-start justify-between gap-3 border-b border-black pb-4">
+        <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">{pendingOnly ? "Scheduled But Not Dispatched" : "Scheduled Orders Master"}</h2>
         <button 
+          type="button"
           onClick={clearFilters}
-          className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold border border-black rounded hover:bg-slate-50 transition-colors uppercase"
+          className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded border border-black px-3 py-1.5 text-xs font-bold uppercase transition-colors hover:bg-slate-50"
         >
           <X size={14} /> Clear Filters
         </button>
