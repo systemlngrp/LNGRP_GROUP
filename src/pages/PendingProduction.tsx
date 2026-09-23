@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Search, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
@@ -7,7 +8,6 @@ import { Company, Firm, Order, OrderSchedule, Production } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 
-import { TableControls } from "../components/TableControls";
 import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -237,14 +237,17 @@ export function PendingProduction() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Production Plan</h2>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] xl:items-end">
+        <div className="relative min-w-0">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search..." className="h-[42px] w-full rounded border-2 border-black py-2 pl-10 pr-3 text-sm font-medium focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+        </div>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} compact={false} className="min-w-0" />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
+        <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} disabled={!searchTerm && !firmFilter && !companyFilter && !itemFilter} className="inline-flex h-[42px] items-center justify-center gap-1.5 whitespace-nowrap rounded border-2 border-black bg-white px-3 text-xs font-black uppercase text-black hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400">
+          <X size={14} /> Clear Filters
+        </button>
       </div>
 
       <DataSummaryTiles totalRecords={schedules.length} filteredRecords={pendingRows.length} showingRecords={paginatedRows.length} pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`} />
@@ -290,10 +293,10 @@ export function PendingProduction() {
                   <td className="px-3 py-2 border border-black">{order?.orderNo || "-"}</td>
                   <td className="px-3 py-2 border border-black font-bold text-indigo-700 whitespace-nowrap">{schedule.scheduleNo || "-"}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{formatDate(schedule.scheduledDate)}</td>
-                  <td className="px-3 py-2 border border-black">{company?.name || "-"}</td>
+                  <td className="w-[220px] max-w-[220px] px-3 py-2 align-top border border-black" title={company?.name || "-"}><div className="line-clamp-2 break-words leading-5">{company?.name || "-"}</div></td>
                   <td className="px-3 py-2 border border-black">{firm}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{erpCode}</td>
-                  <td className="px-3 py-2 border border-black">{item?.name || "-"}</td>
+                  <td className="w-[240px] max-w-[240px] px-3 py-2 align-top border border-black" title={item?.name || "-"}><div className="line-clamp-2 break-words leading-5">{item?.name || "-"}</div></td>
                   <td className={`px-3 py-2 border border-black font-bold ${hasBoxType ? "text-black" : "bg-red-100 text-red-700"}`}>{boxType || "Missing"}</td>
                   <td className="px-3 py-2 border border-black">{schedule.qty || 0}</td>
                   <td className="px-3 py-2 border border-black">{plannedQty}</td>

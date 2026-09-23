@@ -16,7 +16,6 @@ import {
 } from "../types";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { generateTransactionNo, formatDate, getProductionJobPrefix } from "../lib/serial";
 import { CheckCircle2, CircleHelp, X } from "lucide-react";
@@ -235,18 +234,6 @@ function createInitialFormData(initialDate: string) {
 }
 
 export function ProductionForm() {
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
-
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
@@ -335,18 +322,6 @@ export function ProductionForm() {
     ? Number(consumptionByScheduleId.get(selectedSchedule.id)?.effectiveConsumedQty || 0)
     : 0;
   const pendingQty = selectedSchedule ? getPendingProductionQty(selectedSchedule, selectedScheduleConsumedQty) : 0;
-  const selectedScheduleInvoicedQty = selectedSchedule
-    ? getScheduleInvoicedQty(selectedSchedule.id, plans, loadingSlips)
-    : 0;
-  const selectedOrderQty = Number(selectedOrder?.qty || 0);
-  const balanceOrderQty = selectedSchedule
-    ? Math.max(
-        (Number(selectedSchedule.qty) || 0) -
-          (Number(selectedSchedule.canceledQty) || 0) -
-          selectedScheduleInvoicedQty,
-        0
-      )
-    : 0;
   const reelFormulaMode = settings[0]?.reelAsPerCalculation || REEL_FORMULA_MODE.breadthHeightBased;
   const cuttingSizeFormulaMode = settings[0]?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_MODE.currentLogic;
   const gsmFormulaMode = settings[0]?.gsmAsPerCalculation || GSM_FORMULA_MODE.currentLogic;
@@ -929,8 +904,6 @@ export function ProductionForm() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production Form</h2>
       </div>
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-
       <div className="bg-white p-4 rounded shadow-sm border border-black w-full">
         <form onSubmit={handleSubmit} className="space-y-5">
           {showField("Scheduled Order") && <div className="flex flex-col space-y-1">
@@ -961,8 +934,7 @@ export function ProductionForm() {
               <InfoTile label="Item" value={selectedItem?.name || "-"} />
               <InfoTile label="Type" value={String((selectedItem as any)?.boxType || "-")} />
               <InfoTile label="ERP Code" value={selectedOrder.erpCode || "-"} />
-              <InfoTile label="Order Qty" value={`${selectedOrderQty}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}`} />
-              <InfoTile label="Balance Order Qty" value={`${balanceOrderQty}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}`} />
+              <InfoTile label="Schedule Qty" value={`${selectedSchedule.qty || 0}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}`} />
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
