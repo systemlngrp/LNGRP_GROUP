@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Eye, XCircle } from "lucide-react";
+import { Eye, Search, X, XCircle } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Company, Firm, GateEntry, GateEntryPhoto, Supplier } from "../types";
 import { useNavigate } from "react-router-dom";
 import { canCreateMrrForGateEntry, hasGateEntryMrr } from "../lib/gateEntryState";
 import { useAuth } from "../auth/AuthContext";
-import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { Select } from "../components/Select";
 
 export function PendingMrr() {
   const navigate = useNavigate();
@@ -25,10 +26,29 @@ export function PendingMrr() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  const eligibleEntries = useMemo(
+    () => gateEntries.filter((entry) => canCreateMrrForGateEntry(entry)),
+    [gateEntries]
+  );
+
+  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
+  const supplierOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          eligibleEntries
+            .map((entry) => getSupplierName(entry.supplierId))
+            .filter(Boolean)
+        )
+      )
+        .sort((a, b) => a.localeCompare(b))
+        .map((name) => ({ value: name, label: name })),
+    [eligibleEntries, suppliers, companies]
+  );
+
   const pendingEntries = useMemo(
     () =>
-      [...gateEntries]
-        .filter((entry) => canCreateMrrForGateEntry(entry))
+      [...eligibleEntries]
         .filter((entry) => {
           const s = suppliers.find((supplier) => supplier.id === entry.supplierId);
           const c = companies.find((company) => company.id === entry.supplierId);
@@ -50,21 +70,30 @@ export function PendingMrr() {
           const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
           return timeB - timeA;
         }),
-    [gateEntries, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, fromDate, toDate]
+    [eligibleEntries, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, fromDate, toDate]
   );
+
+  const hasActiveFilters = Boolean(searchTerm || firmFilter || supplierFilter || fromDate || toDate);
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFirmFilter("");
+    setSupplierFilter("");
+    setFromDate("");
+    setToDate("");
+  };
 
   const selectedEntry = pendingEntries.find((entry) => entry.id === selectedEntryId) || null;
   const selectedPhotos = selectedEntry
     ? gateEntryPhotos.filter((photo) => photo.gateEntryId === selectedEntry.id).sort((a, b) => a.slotNo - b.slotNo)
     : [];
 
-  const getSupplierName = (supplierId: string) => {
+  function getSupplierName(supplierId: string) {
     const s = suppliers.find((supplier) => supplier.id === supplierId);
     if (s) return s.name;
     const c = companies.find((company) => company.id === supplierId);
     if (c) return c.name;
     return "";
-  };
+  }
   const getPhotoCount = (gateEntryId: string) => gateEntryPhotos.filter((photo) => photo.gateEntryId === gateEntryId).length;
   function getFirmName(entry: GateEntry) {
     return getFirmDisplayNameById(entry.firmId || entry.destinationFirmId, firms, "Unassigned");
@@ -110,33 +139,33 @@ export function PendingMrr() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4 border-b border-black pb-4">
-        <div>
-          <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Material Receipt</h2>
-          <p className="mt-1 text-sm text-slate-500">Gate entries where material receipt has not yet been created.</p>
-        </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 border-b border-black pb-4">
+        <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">Pending Material Receipt</h2>
+        <button
+          type="button"
+          onClick={clearFilters}
+          disabled={!hasActiveFilters}
+          className="inline-flex w-auto max-w-max items-center justify-self-end gap-1.5 whitespace-nowrap rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase text-black transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
+          style={{ width: "max-content" }}
+        >
+          <X size={14} /> Clear Filters
+        </button>
       </div>
 
-      <div className="rounded border border-black bg-white p-4 shadow-sm space-y-3">
-        <input
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search gate entry no, supplier/customer, invoice no, truck no..."
-          className="w-full max-w-xl rounded-xl border-2 border-black px-4 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-        />
-        <div className="flex flex-wrap gap-3">
-          <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="rounded border border-black px-3 py-2 text-sm">
-            <option value="">Firms</option>
-            {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
-          </select>
-          <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} className="rounded border border-black px-3 py-2 text-sm">
-            <option value="">Suppliers / Customers</option>
-            {Array.from(new Set(pendingEntries.map((entry) => getSupplierName(entry.supplierId)).filter(Boolean))).sort().map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded border border-black px-3 py-2 text-sm" />
-          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="rounded border border-black px-3 py-2 text-sm" />
-          {(firmFilter || supplierFilter || fromDate || toDate) ? <button type="button" onClick={() => { setFirmFilter(""); setSupplierFilter(""); setFromDate(""); setToDate(""); }} className="text-sm font-bold text-red-700 underline">Reset filters</button> : null}
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(260px,1.6fr)_minmax(150px,1fr)_minmax(200px,1.2fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)] xl:items-center">
+        <div className="relative w-full">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search gate entry, supplier, invoice, truck..."
+            className="h-[42px] w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+          />
         </div>
+        <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
+        <Select value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers / Customers" />
+        <input type="date" aria-label="From date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+        <input type="date" aria-label="To date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
       </div>
 
       <div className="overflow-hidden rounded-lg border border-black bg-white shadow-sm">
