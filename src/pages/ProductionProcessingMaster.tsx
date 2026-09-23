@@ -186,8 +186,8 @@ export function ProductionProcessingMaster() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production Reporting Master</h2>
+      <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-3 border-b border-black pb-4">
+        <h2 className="min-w-0 text-xl font-bold text-black uppercase tracking-tight">Production Reporting Master</h2>
         <button 
           onClick={() => navigate("/production-processing/form")} 
           className="inline-flex w-auto max-w-max items-center gap-1.5 whitespace-nowrap rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700"
