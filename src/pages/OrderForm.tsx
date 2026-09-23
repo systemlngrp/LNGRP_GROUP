@@ -629,9 +629,9 @@ export function OrderForm() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
+      <div className="grid grid-cols-1 items-start gap-3 pb-4 border-b border-black sm:grid-cols-[minmax(0,1fr)_auto]">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Order Form</h2>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex max-w-full flex-wrap justify-start gap-2 sm:justify-end">
           <button
             onClick={downloadTemplate}
             className="bg-white text-black border-2 border-black px-3 py-2 rounded font-bold hover:bg-slate-100 transition flex items-center text-sm"
