@@ -16,8 +16,7 @@ import {
 } from "../types";
 import { Spinner } from "../components/Spinner";
 
-import { Select } from "../components/Select";
-import { generateTransactionNo, formatDate, getProductionJobPrefix } from "../lib/serial";
+import { generateTransactionNo, getProductionJobPrefix } from "../lib/serial";
 import { CheckCircle2, CircleHelp, X } from "lucide-react";
 import { parseProductionFormVisibleColumns } from "../lib/productionFormColumns";
 import { fetchNpdItems } from "../lib/npdItems";
@@ -254,7 +253,6 @@ export function ProductionForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveNotice, setSaveNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const urlScheduleId = searchParams.get("scheduleId") || searchParams.get("scheduledId") || "";
-  const isScheduleLocked = Boolean(urlScheduleId);
   const [selectedScheduleId, setSelectedScheduleId] = useState(urlScheduleId);
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -752,23 +750,10 @@ export function ProductionForm() {
   ]);
 
   useEffect(() => {
-    const queryScheduleId = searchParams.get("scheduleId") || "";
-    if (queryScheduleId && queryScheduleId !== selectedScheduleId) {
-      setSelectedScheduleId(queryScheduleId);
+    if (urlScheduleId && urlScheduleId !== selectedScheduleId) {
+      setSelectedScheduleId(urlScheduleId);
     }
-  }, [searchParams, selectedScheduleId]);
-
-  const scheduleOptions = pendingSchedules.map((schedule) => {
-    const order = orders.find((row) => row.id === schedule.orderId);
-    const item = resolveOrderItem(order);
-    const company = companies.find((row) => row.id === order?.companyId);
-    const pending = getPendingProductionQty(schedule, Number(consumptionByScheduleId.get(schedule.id)?.effectiveConsumedQty || 0));
-
-    return {
-      value: schedule.id,
-      label: `${schedule.scheduleNo || "Schedule"} | ${order?.orderNo || "Order"} | ${company?.name || "Company"} | ${item?.name || "Item"} | ${formatDate(schedule.scheduledDate)} | Pending ${pending}`,
-    };
-  });
+  }, [selectedScheduleId, urlScheduleId]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -906,27 +891,6 @@ export function ProductionForm() {
 
       <div className="bg-white p-4 rounded shadow-sm border border-black w-full">
         <form onSubmit={handleSubmit} className="space-y-5">
-          {showField("Scheduled Order") && <div className="flex flex-col space-y-1">
-            <LabelWithHelp
-              label="Scheduled Order"
-              required
-              helpText="Choose the pending scheduled order you want to plan production for. Item, ERP code, company, and default specs are auto-filled from this selection."
-            />
-            <Select
-              id="schedule"
-              value={selectedScheduleId}
-              onChange={(value) => {
-                if (isScheduleLocked) return;
-                setSelectedScheduleId(value);
-                setSearchParams(value ? { scheduleId: value } : {});
-              }}
-              options={scheduleOptions}
-              placeholder="Select pending production schedule..."
-              required
-              disabled={isScheduleLocked}
-            />
-          </div>}
-
           {selectedSchedule && selectedOrder && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-black p-4 rounded">
               <InfoTile label="Order No" value={selectedOrder.orderNo || "-"} />

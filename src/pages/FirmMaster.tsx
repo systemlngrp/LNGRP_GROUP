@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Edit, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { Firm } from "../types";
@@ -9,7 +9,6 @@ const inputClass = "border-2 border-black rounded p-2 text-black focus:outline-n
 
 export function FirmMaster() {
   const [firms, setFirms, isLoading] = useData<Firm>("firms", []);
-  const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [firmName, setFirmName] = useState("");
@@ -22,25 +21,16 @@ export function FirmMaster() {
   const [routeSequence, setRouteSequence] = useState("1");
   const [routeActive, setRouteActive] = useState<"Yes" | "No">("No");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const sortedFirms = useMemo(
     () =>
       [...firms]
-        .filter((firm) => {
-          const q = searchTerm.trim().toLowerCase();
-          if (!q) return true;
-          return (
-            String(firm.firmName || "").toLowerCase().includes(q) || String(firm.shortName || generateFirmShortName(firm.firmName)).toLowerCase().includes(q) ||
-            String(firm.tallyPortNo || "").toLowerCase().includes(q)
-          );
-        })
         .sort((a, b) => {
           const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
           const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
           return timeB - timeA || String(a.firmName || "").localeCompare(String(b.firmName || ""));
         }),
-    [firms, searchTerm]
+    [firms]
   );
 
   const resetForm = () => {
@@ -134,27 +124,14 @@ export function FirmMaster() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (deletingId !== id) {
-      setDeletingId(id);
-      setTimeout(() => setDeletingId(null), 3000);
-      return;
-    }
-    try {
-      await setFirms(firms.filter((firm) => firm.id !== id));
-    } catch (error) {
-      console.error("Failed to delete firm:", error);
-      alert("Failed to delete firm.");
-    } finally {
-      setDeletingId(null);
-    }
-  };
-
   return (
     <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-black pb-4 gap-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Firm Master</h2>
-        <button type="button" onClick={openCreate} className="flex items-center gap-2 bg-indigo-700 text-white px-4 py-2 rounded font-bold hover:bg-indigo-800 transition">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-black pb-4">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Firm Master</h2>
+          <div className="text-sm font-bold text-slate-700">{firms.length} {firms.length === 1 ? "firm" : "firms"}</div>
+        </div>
+        <button type="button" onClick={openCreate} className="flex w-auto items-center justify-self-end gap-2 whitespace-nowrap rounded bg-indigo-700 px-4 py-2 font-bold text-white transition hover:bg-indigo-800">
           <Plus size={18} /> Firm
         </button>
       </div>
@@ -215,11 +192,6 @@ export function FirmMaster() {
         </form>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search firms..." className="w-[320px] max-w-full rounded border-2 border-black px-4 py-2 text-black focus:outline-none focus:border-indigo-600" />
-        <div className="text-sm font-bold text-slate-700">Showing {sortedFirms.length} / {firms.length}</div>
-      </div>
-
       <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-black">
         <div className="table-sticky-scroll">
           <table className="min-w-full border-collapse border border-black">
@@ -231,13 +203,12 @@ export function FirmMaster() {
                 <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Address</th>
                 <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">GST</th>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Tally Port No</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {sortedFirms.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-8 text-center font-medium text-black border border-black">
+                  <td colSpan={6} className="px-6 py-8 text-center font-medium text-black border border-black">
                     {isLoading ? <div className="flex justify-center"><Spinner /></div> : "No firms found."}
                   </td>
                 </tr>
@@ -250,14 +221,6 @@ export function FirmMaster() {
                     <td className="px-4 py-3 text-sm text-black border border-black">{firm.address || "-"}</td>
                     <td className="px-4 py-3 text-sm text-black border border-black">{firm.gstDetails || "-"}</td>
                     <td className="px-4 py-3 text-right text-sm text-black border border-black">{firm.tallyPortNo || "-"}</td>
-                    <td className="px-4 py-3 text-right text-sm border border-black">
-                      <button type="button" title="Edit" aria-label="Edit" onClick={(event) => { event.stopPropagation(); openEdit(firm); }} className="mr-4 text-indigo-600 hover:text-indigo-900">
-                        <Edit size={16} />
-                      </button>
-                      <button type="button" title={deletingId === firm.id ? "Confirm delete" : "Delete"} aria-label={deletingId === firm.id ? "Confirm delete" : "Delete"} onClick={(event) => { event.stopPropagation(); handleDelete(firm.id); }} className={deletingId === firm.id ? "text-amber-600" : "text-red-600 hover:text-red-900"}>
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
                   </tr>
                 ))
               )}

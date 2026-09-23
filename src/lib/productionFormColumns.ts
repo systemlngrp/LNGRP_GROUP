@@ -1,5 +1,4 @@
 export const PRODUCTION_FORM_COLUMN_OPTIONS = [
-  "Scheduled Order",
   "Production Date",
   "Pending Order Quantity",
   "Current Balance",
