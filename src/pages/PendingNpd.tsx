@@ -70,30 +70,36 @@ export function PendingNpd() {
   }, [companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
 
   return (
-    <div className="bg-white p-6 rounded shadow-sm border border-black flex flex-col gap-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending NPD</h2>
-          <p className="text-sm text-slate-700 font-medium">
-            Scheduled NPD items where both Box Type and RAPC are still blank.
-          </p>
-        </div>
-        <div className="flex w-full flex-wrap items-end gap-3 lg:w-auto">
-        <label className="relative min-w-[280px] flex-1 lg:w-[360px]">
+    <div className="w-full rounded border border-black bg-white p-4 shadow-sm sm:p-6">
+      <div className="grid items-end gap-4 border-b border-black pb-4 lg:grid-cols-[minmax(0,1fr)_minmax(520px,auto)]">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending NPD</h2>
+        <div className="grid w-full gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto]">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase text-slate-700">
+          <span>Search</span>
+          <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
           <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search order, company, item, ERP..."
-            className="w-full border border-black rounded pl-10 pr-3 py-2 text-sm"
+            className="h-10 w-full rounded border border-black pl-10 pr-3 text-sm font-normal"
           />
+          </div>
         </label>
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase text-slate-700">
+          <span>Firm</span>
+          <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+        </label>
+        {(searchTerm || firmFilter) ? (
+          <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); }} className="h-10 rounded border border-black bg-white px-3 text-sm font-bold text-black hover:bg-slate-50">
+            Clear Filters
+          </button>
+        ) : <div className="hidden sm:block" />}
         </div>
       </div>
 
       <DataSummaryTiles
-        totalRecords={0}
+        totalRecords={pendingRows.length}
         filteredRecords={pendingRows.length}
         showingRecords={pendingRows.length}
         pageLabel="1 / 1"
@@ -101,21 +107,13 @@ export function PendingNpd() {
         filteredRecordsLabel="Total Records"
       />
 
-      <div className="table-sticky-scroll border border-black">
-        <table className="min-w-full text-sm">
+      <div className="table-sticky-scroll w-full border border-black">
+        <table className="w-full min-w-[1180px] table-fixed text-sm">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              <th className="px-3 py-2 border border-black">SL No</th>
-              <th className="px-3 py-2 border border-black">Order No</th>
-              <th className="px-3 py-2 border border-black">Order Date</th>
-              <th className="px-3 py-2 border border-black">Schedule No</th>
-              <th className="px-3 py-2 border border-black">Schedule Date</th>
-              <th className="px-3 py-2 border border-black">Firm</th>
-              <th className="px-3 py-2 border border-black">Company</th>
-              <th className="px-3 py-2 border border-black">ERP</th>
-              <th className="px-3 py-2 border border-black">Item</th>
-              <th className="px-3 py-2 border border-black">Box Type</th>
-              <th className="px-3 py-2 border border-black">RAPC</th>
+              {['SL No', 'Order No', 'Order Date', 'Schedule No', 'Schedule Date', 'Firm', 'Company', 'ERP', 'Item', 'Box Type', 'RAPC'].map((heading) => (
+                <th key={heading} className="border border-black px-3 py-2 text-left align-middle whitespace-nowrap">{heading}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
