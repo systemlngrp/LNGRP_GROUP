@@ -2814,15 +2814,7 @@ async function generateFirmDocumentNo(db, firmId, documentCode, dateStr) {
     if (!fy)
         throw new Error("Could not generate document number because date is invalid.");
     const normalizedFirmId = String(firmId || "").trim();
-    let firmPrefix = "LNGRP";
-    if (normalizedFirmId) {
-        const [firmRows] = await db.query("SELECT shortName, firmName FROM firms WHERE id = ? LIMIT 1", [normalizedFirmId]);
-        const firm = firmRows[0];
-        const source = String(firm?.shortName || firm?.firmName || "").trim().toUpperCase();
-        const sanitized = source.replace(/[^A-Z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-        if (sanitized)
-            firmPrefix = sanitized;
-    }
+    const firmPrefix = await getFirmDocumentPrefix(db, normalizedFirmId);
     const code = String(documentCode || "DOC").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "") || "DOC";
     const key = `${firmPrefix}/${code}/${fy}`;
     await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
@@ -2831,6 +2823,16 @@ async function generateFirmDocumentNo(db, firmId, documentCode, dateStr) {
     await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [key]);
     const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
     return `${key}/${String(Number(rows[0]?.nextValue || 0)).padStart(5, "0")}`;
+}
+async function getFirmDocumentPrefix(db, firmId) {
+    const normalizedFirmId = String(firmId || "").trim();
+    if (!normalizedFirmId)
+        return "LNGRP";
+    const [firmRows] = await db.query("SELECT shortName, firmName FROM firms WHERE id = ? LIMIT 1", [normalizedFirmId]);
+    const firm = firmRows[0];
+    const source = String(firm?.shortName || firm?.firmName || "").trim().toUpperCase();
+    const sanitized = source.replace(/[^A-Z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+    return sanitized || "LNGRP";
 }
 async function generateLockedMrrNo(db, dateStr, firmId) {
     return generateFirmDocumentNo(db, firmId, "MRR", dateStr);
@@ -4499,18 +4501,24 @@ async function backfillFirmSupplierAttribution(db, database) {
     return firmByName;
 }
 async function backfillProductionJobNumbers(db) {
-    const [rows] = await db.query("SELECT id, transactionNo, jobCardNo, date FROM `productions` ORDER BY date ASC, id ASC");
+    const [rows] = await db.query("SELECT id, transactionNo, jobCardNo, date, firmId, sourceFirmId, orderFirmId FROM `productions` ORDER BY date ASC, id ASC");
     const used = new Set();
     let changed = 0;
     for (const row of rows) {
+        const firmId = String(row.firmId || row.sourceFirmId || row.orderFirmId || "").trim();
+        if (!firmId) {
+            console.warn(`[DB] Preserving production job number without resolvable firm: ${row.transactionNo || row.jobCardNo || row.id}`);
+            continue;
+        }
+        const firmPrefix = await getFirmDocumentPrefix(db, firmId);
         const parsed = normalizeProductionJobNumber(row.transactionNo || row.jobCardNo, row.date);
         let next = parsed.number;
         if (!next)
             next = 1;
-        let candidate = `JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
+        let candidate = `${firmPrefix}/JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
         while (used.has(candidate)) {
             next += 1;
-            candidate = `JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
+            candidate = `${firmPrefix}/JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
         }
         used.add(candidate);
         if (String(row.transactionNo || "").trim() !== candidate) {
@@ -8764,17 +8772,11 @@ const createHandlers = (tableName) => {
                             const [existingRows] = await db.query("SELECT transactionNo FROM `productions` WHERE id = ? LIMIT 1", [productionId]);
                             data.transactionNo = String(existingRows[0]?.transactionNo || "").trim();
                         }
-                        const jobTableName = tableName;
-                        const acceptedPrefix = jobTableName === "php_job_master" ? "PHP/" : jobTableName === "plate_job_master" ? "PLATE/" : "JOB/";
-                        if (!String(data.transactionNo || "").trim() || !String(data.transactionNo).startsWith(acceptedPrefix)) {
-                            data.transactionNo = jobTableName === "php_job_master"
-                                ? await generateStandaloneProductionJobNumber(db, "php_job_master", "PHP", data.date)
-                                : jobTableName === "plate_job_master"
-                                    ? await generateStandaloneProductionJobNumber(db, "plate_job_master", "PLATE", data.date)
-                                    : await generateProductionJobNumber(db, data.date);
+                        if (tableName !== "productions" && !String(data.transactionNo || "").trim()) {
+                            const sourceCode = tableName === "php_job_master" ? "PHP" : "PLATE";
+                            const firmId = String(data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || "").trim();
+                            data.transactionNo = await generateFirmDocumentNo(db, firmId, sourceCode, String(data.date || new Date().toISOString().slice(0, 10)));
                         }
-                        if (String(data.jobCardNo || "").trim())
-                            data.jobCardNo = data.transactionNo;
                     }
                     catch (err) {
                         return res.status(400).json({ error: `Could not generate unique production job number: ${err.message}` });
@@ -8806,6 +8808,9 @@ const createHandlers = (tableName) => {
                         const firmId = String(data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || "").trim();
                         data[firmDocument.field] = await generateFirmDocumentNo(db, firmId, firmDocument.code, String(data[firmDocument.dateField] || new Date().toISOString().slice(0, 10)));
                     }
+                }
+                if (tableName === "productions" && String(data.transactionNo || "").trim()) {
+                    data.jobCardNo = data.transactionNo;
                 }
                 console.log(`[DB] Upserting to ${tableName}`, {
                     id: data.id,
