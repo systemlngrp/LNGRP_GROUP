@@ -770,7 +770,9 @@ export function ProductionMaster() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Type</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Mandatory</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Planned Qty</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Remarks</th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">UPS</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">No. of Parts</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap bg-amber-50">Loaded Qty</th>
 
                 <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Paper</th>
@@ -798,6 +800,8 @@ export function ProductionMaster() {
                 
                 <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Ply</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Flute</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">ID to OD</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Take-up Factor</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L1</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">F1</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L2</th>
@@ -810,6 +814,7 @@ export function ProductionMaster() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Color 1</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Color 2</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Printing Color</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">ERP Code Reel</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Paper Required (Nos)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Top Paper Wt (KG)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Liner Wt (KG)</th>
@@ -821,15 +826,20 @@ export function ProductionMaster() {
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Wastage</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Real/KG</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Reel (Calc)</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Cutting UPS (Plates)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Reel Trim</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Cutting Trim</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Planned Prod (M)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Sheet Wt</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Plate/PHP Wt</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Total Wt of Set</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Flute Batch</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Rate</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Value</th>
                 
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap bg-indigo-50/50">Production Sheet Plant</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap bg-indigo-50/50">Production FFG</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Production (M)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-emerald-900 uppercase border border-black whitespace-nowrap bg-emerald-50">Actual Paper (KG)</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Job Closer</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Close Date</th>
@@ -839,7 +849,7 @@ export function ProductionMaster() {
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={74} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
+                  <td colSpan={91} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
                 </tr>
               ) : (
                 paginatedList.map((p, idx) => {
@@ -915,7 +925,9 @@ export function ProductionMaster() {
                         )}
                       </td>
                       <td className="px-4 py-4 text-right text-xs font-medium text-emerald-700 border border-black whitespace-nowrap">{formatDecimal(p.qty)} {p.uom}</td>
+                      <td className="px-4 py-4 text-xs text-black border border-black min-w-[180px]">{p.remarks || "-"}</td>
                       <td className="px-4 py-4 text-center text-xs font-medium text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank(p.ups, getItemValue(item, "ups")))}</td>
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.noOfParts)}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-amber-700 border border-black whitespace-nowrap bg-amber-50/40">
                         {formatDecimal(loadedQtyByProductionId.get(p.id) || 0)}
                       </td>
@@ -969,6 +981,8 @@ export function ProductionMaster() {
 
                       <td className="px-4 py-4 text-center text-xs text-black border border-black whitespace-nowrap">{formatDecimal(displayRow.ply)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{displayRow.flute || displayRow.fluteType || "-"}</td>
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.idToOd)}</td>
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.takeUpFactor)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank(displayRow.l1, (item as any)?.l1))}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank(displayRow.f1, (item as any)?.f1))}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank(displayRow.l2, (item as any)?.l2))}</td>
@@ -981,6 +995,7 @@ export function ProductionMaster() {
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.color1 || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.color2 || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{displayRow.printingColor || "-"}</td>
+                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.erpCodeReel || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.paperRequiredNos)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.topPaperWeightKg)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.linerWeightKg)}</td>
@@ -994,15 +1009,20 @@ export function ProductionMaster() {
                         {formatDecimal(p.realizationPerKg)}
                       </td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal((p as any).reelAsPerCalc)}</td>
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.noOfUpsInCuttingForPlates)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal((p as any).reelActualWithTrimming)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank((p as any).cuttingWithTrimming, getItemValue(item, "cuttingSize")))}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.plannedProductionInMeter)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.sheetWeight)}</td>
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.plateWeight)}</td>
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.totalWeightOfSet)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.fluteBatches || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.rate)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(Number(p.qty || 0) * Number(p.rate || 0))}</td>
 
+                      <td className="px-4 py-4 text-right text-xs font-bold text-black border border-black whitespace-nowrap bg-indigo-50/20">{formatDecimal(p.prodFromSheetPlant)}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-black border border-black whitespace-nowrap bg-indigo-50/20">{formatDecimal(p.prodFromFFG || 0)}</td>
+                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.productionInMeter)}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-emerald-700 border border-black whitespace-nowrap bg-emerald-50/30">{formatDecimal(p.actualPaperUsed || 0)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">
                         <select
