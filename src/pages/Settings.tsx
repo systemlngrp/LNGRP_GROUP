@@ -17,21 +17,6 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel, OrderCatalogItem } from "../lib/orderItems";
 import { GripVertical, X } from "lucide-react";
 
-const REEL_FORMULA_OPTIONS = [
-  {
-    value: "breadth-height-based",
-    label: "Breadth/Height Based Formula",
-    description:
-      "If Breadth is blank or 0, use Height x UPS. Otherwise use ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).",
-  },
-  {
-    value: "type-based",
-    label: "TYPE Based Formula",
-    description:
-      "If TYPE = ROTARY TRAY: ((Length (OD) + Height (OD)) x UPS + 20) / 25.4. If TYPE = 2 PLY LINER, U/C PLATE, HORIZONTAL PLATE, or TRAY: ((Width (OD) x UPS) + 20) / 25.4. If TYPE = DIE CUT SHEET: ((Open Width x UPS) + 20) / 25.4. If TYPE = RSC: ((FLAP + Height (OD) + FLAP) x UPS + 20) / 25.4. For any other non-blank TYPE: ((Height (OD) x UPS) + 20) / 25.4.",
-  },
-];
-
 const FLAP_FORMULA_OPTIONS = [
   {
     value: "current-logic",
@@ -59,21 +44,6 @@ const CUTTING_SIZE_FORMULA_OPTIONS = [
     label: "TYPE Based Logic",
     description:
       "If TYPE is 2 PLY ROLL, keep Cutting Size blank. If TYPE is DIE CUT SHEET, use ((Open Length x No. of ups in Cutting (For Plates)) + 20) / 25.4. If TYPE is RSC and PART is 1, use ((2 x (Length (OD) + Width (OD))) + 50) / 25.4. If TYPE is RSC and PART is 2, use ((Length (OD) + Width (OD)) + 50) / 25.4. In other filled cases, use ((Length (OD) x No. of ups in Cutting (For Plates)) + 20) / 25.4.",
-  },
-];
-
-const GSM_FORMULA_OPTIONS = [
-  {
-    value: "current-logic",
-    label: "Current Logic",
-    description:
-      "L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3.",
-  },
-  {
-    value: "ply-based",
-    label: "Ply Based Logic",
-    description:
-      "For 3 Ply: add Top, F1, B1, F2, and B2, then add 50% of F1 and 36% of F2. For 5 Ply: add Top, F1, B1, F2, and B2, then add 36% of F1 and 36% of F2. For 2 Ply: use the same 5 Ply weighting. For 7 Ply: add Top, F1, B1, F2, B2, F3, and B3, then add 36% each of F1, F2, and F3.",
   },
 ];
 
@@ -537,11 +507,6 @@ export function SettingsPage() {
 
   useEffect(() => setInterFirmPairRatesDraft(parseInterFirmPairRates(currentSetting?.interFirmPairRates)), [currentSetting?.interFirmPairRates]);
 
-  const selectedReelFormula = currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value;
-  const selectedReelOption = useMemo(
-    () => REEL_FORMULA_OPTIONS.find((option) => option.value === selectedReelFormula) || REEL_FORMULA_OPTIONS[0],
-    [selectedReelFormula]
-  );
   const selectedFlapFormula = currentSetting?.flapAsPerCalculation || FLAP_FORMULA_OPTIONS[0].value;
   const selectedFlapOption = useMemo(
     () => FLAP_FORMULA_OPTIONS.find((option) => option.value === selectedFlapFormula) || FLAP_FORMULA_OPTIONS[0],
@@ -551,11 +516,6 @@ export function SettingsPage() {
   const selectedCuttingOption = useMemo(
     () => CUTTING_SIZE_FORMULA_OPTIONS.find((option) => option.value === selectedCuttingFormula) || CUTTING_SIZE_FORMULA_OPTIONS[0],
     [selectedCuttingFormula]
-  );
-  const selectedGsmFormula = currentSetting?.gsmAsPerCalculation || GSM_FORMULA_OPTIONS[0].value;
-  const selectedGsmOption = useMemo(
-    () => GSM_FORMULA_OPTIONS.find((option) => option.value === selectedGsmFormula) || GSM_FORMULA_OPTIONS[0],
-    [selectedGsmFormula]
   );
   const selectedProductionFormColumns = useMemo(
     () => parseProductionFormVisibleColumns(currentSetting?.productionFormVisibleColumns),
@@ -744,7 +704,6 @@ export function SettingsPage() {
       const timestamp = new Date().toISOString();
       const nextRow: Setting = {
         id: currentSetting?.id || crypto.randomUUID(),
-        reelAsPerCalculation: currentSetting?.reelAsPerCalculation || REEL_FORMULA_OPTIONS[0].value,
         reelTransferWindowHours: Number(currentSetting?.reelTransferWindowHours || 12),
         interFirmRatePercent: Number(currentSetting?.interFirmRatePercent ?? 100),
         interFirmPairRates: currentSetting?.interFirmPairRates || JSON.stringify([]),
@@ -753,7 +712,6 @@ export function SettingsPage() {
         otherMaterialErpStartNumber: Number(currentSetting?.otherMaterialErpStartNumber || 1),
         flapAsPerCalculation: currentSetting?.flapAsPerCalculation || FLAP_FORMULA_OPTIONS[0].value,
         cuttingSizeAsPerCalculation: currentSetting?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_OPTIONS[0].value,
-        gsmAsPerCalculation: currentSetting?.gsmAsPerCalculation || GSM_FORMULA_OPTIONS[0].value,
         allowInvoiceTallyEdit: currentSetting?.allowInvoiceTallyEdit || "No",
         allowInvoiceTallyEditUsers: currentSetting?.allowInvoiceTallyEditUsers || JSON.stringify([]),
         productionFormVisibleColumns: currentSetting?.productionFormVisibleColumns || JSON.stringify(PRODUCTION_FORM_COLUMN_OPTIONS),
@@ -1924,28 +1882,6 @@ export function SettingsPage() {
         </div>
 
         <div className="flex flex-col space-y-2">
-          <label htmlFor="reelAsPerCalculation" className="text-xs font-black uppercase tracking-wide text-black">
-            Reel As per Calculation
-          </label>
-          <select
-            id="reelAsPerCalculation"
-            value={selectedReelFormula}
-            onChange={(e) => void handleChange({ reelAsPerCalculation: e.target.value })}
-            disabled={loading || saving}
-            className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white"
-          >
-            {REEL_FORMULA_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
-            {selectedReelOption.description}
-          </div>
-        </div>
-
-        <div className="flex flex-col space-y-2">
           <label htmlFor="flapAsPerCalculation" className="text-xs font-black uppercase tracking-wide text-black">
             Flap
           </label>
@@ -1989,28 +1925,6 @@ export function SettingsPage() {
           </select>
           <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
             {selectedCuttingOption.description}
-          </div>
-        </div>
-
-        <div className="flex flex-col space-y-2">
-          <label htmlFor="gsmAsPerCalculation" className="text-xs font-black uppercase tracking-wide text-black">
-            GSM
-          </label>
-          <select
-            id="gsmAsPerCalculation"
-            value={selectedGsmFormula}
-            onChange={(e) => void handleChange({ gsmAsPerCalculation: e.target.value })}
-            disabled={loading || saving}
-            className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white"
-          >
-            {GSM_FORMULA_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
-            {selectedGsmOption.description}
           </div>
         </div>
 

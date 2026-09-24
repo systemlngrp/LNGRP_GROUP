@@ -807,7 +807,6 @@ export function ProductionMaster() {
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L2</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">F2</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L3</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Top</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">GSM</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Least GSM</th>
 
@@ -816,7 +815,7 @@ export function ProductionMaster() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Printing Color</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">ERP Code Reel</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Paper Required (Nos)</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Top Paper Wt (KG)</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L1 Paper Wt (KG)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Liner Wt (KG)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Total Job Wt</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Liner Required (Nos)</th>
@@ -849,7 +848,7 @@ export function ProductionMaster() {
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={91} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
+                  <td colSpan={90} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
                 </tr>
               ) : (
                 paginatedList.map((p, idx) => {
@@ -988,7 +987,6 @@ export function ProductionMaster() {
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank(displayRow.l2, (item as any)?.l2))}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank(displayRow.f2, (item as any)?.f2))}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(firstNonBlank(displayRow.l3, (item as any)?.l3))}</td>
-                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{formatDecimal(p.top)}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap font-medium text-indigo-700">{formatDecimal(firstNonBlank(displayRow.gsm, displayRow.boardGsmReq))}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap font-black text-emerald-700">{formatDecimal(erpLeastGsmMap.get(erp))}</td>
 

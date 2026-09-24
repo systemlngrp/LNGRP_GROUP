@@ -198,11 +198,10 @@ function inferTfb(production: Production, raw: any, material?: Material) {
   if (!materialGsm) return "";
 
   const candidates = [
-    { label: "T", gsm: production.top, bf: raw.psL1Bf || raw.rsl1Bf },
+    { label: "L1", gsm: production.l1, bf: raw.psL1Bf || raw.rsl1Bf },
     { label: "F", gsm: production.f1, bf: raw.psF1Bf || raw.rsf2Bf },
-    { label: "B", gsm: production.l1, bf: raw.psL1Bf || raw.rsl1Bf },
-    { label: "F", gsm: production.f2, bf: raw.psF2Bf || raw.rsf4Bf },
     { label: "B", gsm: production.l2, bf: raw.psL2Bf },
+    { label: "F", gsm: production.f2, bf: raw.psF2Bf || raw.rsf4Bf },
     { label: "B", gsm: production.l3, bf: raw.psL3Bf || raw.rsl3Bf },
   ].filter((row) => {
     const rowGsm = normalizedNumber(row.gsm);
@@ -538,15 +537,15 @@ export async function downloadJobCardPdf({ production, schedule, order, company,
   cell(doc, x + 90, y, 28, 6, "SIZE", { fill: LIGHT_ORANGE, bold: true });
   cell(doc, x + 118, y, 78, 6, "CUTTER SIZE", { fill: LIGHT_ORANGE, bold: true });
   y += 6;
-  layerRow(doc, x, y, "Top", production.top, raw.psL1Bf || raw.rsl1Bf, production.reelAsPerCalc || raw.deckleSize, "A");
+  layerRow(doc, x, y, "L1", production.l1, raw.psL1Bf || raw.rsl1Bf, production.reelAsPerCalc || raw.deckleSize, "A");
   y += 6;
   layerRow(doc, x, y, "Fluting 1", production.f1, raw.psF1Bf || raw.rsf2Bf, production.reelAsPerCalc || raw.deckleSize, "B");
   y += 6;
-  layerRow(doc, x, y, "Backing 1", production.l1, raw.psL1Bf || raw.rsl1Bf, production.reelAsPerCalc || raw.deckleSize, "C");
+  layerRow(doc, x, y, "L2", production.l2, raw.psL2Bf, production.reelAsPerCalc || raw.deckleSize, "C");
   y += 6;
   layerRow(doc, x, y, "Fluting 2", production.f2, raw.psF2Bf || raw.rsf4Bf, "", "D");
   y += 6;
-  layerRow(doc, x, y, "Backing 2", production.l2, raw.psL2Bf, "");
+  layerRow(doc, x, y, "L3", production.l3, raw.psL3Bf || raw.rsl3Bf, "");
   y += 6;
   layerRow(doc, x, y, "Fluting 3", "", "", "");
   cell(doc, x + 118, y - 6, 45, 6, "Overall GSM Target", { fill: LIGHT_ORANGE, bold: true, align: "left" });

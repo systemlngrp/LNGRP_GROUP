@@ -19,7 +19,6 @@ export const PRODUCTION_FORM_COLUMN_OPTIONS = [
   "PLY",
   "Flute",
   "ID to OD",
-  "Top",
   "Take up Factor",
   "GSM",
   "Color 1",
@@ -36,7 +35,7 @@ export const PRODUCTION_FORM_COLUMN_OPTIONS = [
   "Reel Actual Trim",
   "Cutting Trim",
   "Paper Required (Nos)",
-  "Top Paper Weight (KG)",
+  "L1 Paper Weight (KG)",
   "Liner Weight (KG)",
   "Total Job Weight",
   "Liner Required (Nos)",
@@ -63,9 +62,13 @@ export function parseProductionFormVisibleColumns(raw?: string | null) {
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      const normalized = parsed.map((value) =>
-        value === "Line Required (Nos)" ? "Liner Required (Nos)" : value
-      );
+      const normalized = parsed
+        .filter((value) => value !== "Top")
+        .map((value) => {
+          if (value === "Line Required (Nos)") return "Liner Required (Nos)";
+          if (value === "Top Paper Weight (KG)") return "L1 Paper Weight (KG)";
+          return value;
+        });
       const valid = normalized.filter((value): value is string =>
         typeof value === "string" && PRODUCTION_FORM_COLUMN_OPTIONS.includes(value as (typeof PRODUCTION_FORM_COLUMN_OPTIONS)[number])
       );

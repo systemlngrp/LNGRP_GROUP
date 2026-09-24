@@ -566,7 +566,6 @@ export function PendingJobClosure() {
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L2</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">F2</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L3</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Top</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">GSM</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Least GSM</th>
 
@@ -574,7 +573,7 @@ export function PendingJobClosure() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Color 2</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Printing Color</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Paper Req.</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Top Paper Wt (KG)</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L1 Paper Wt (KG)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Liner Wt (KG)</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Total Job Wt</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Liner Required (Nos)</th>
@@ -602,7 +601,7 @@ export function PendingJobClosure() {
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={57} className="px-6 py-8 text-center text-black font-medium">No pending closures found.</td>
+                  <td colSpan={56} className="px-6 py-8 text-center text-black font-medium">No pending closures found.</td>
                 </tr>
               ) : (
                 paginatedList.map((p, idx) => {
@@ -679,7 +678,6 @@ export function PendingJobClosure() {
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{p.l2 || (item as any)?.l2 || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{p.f2 || (item as any)?.f2 || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{p.l3 || (item as any)?.l3 || "-"}</td>
-                      <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{p.top || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap font-medium text-indigo-700">{p.gsm || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap font-black text-emerald-700">{erpLeastGsmMap.get(erp) || "-"}</td>
 

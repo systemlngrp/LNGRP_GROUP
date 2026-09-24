@@ -140,9 +140,9 @@ const PROCESSING_MACHINE_CARD_ORDER = [
 function getPlanPaper(p: Production) {
   const total = Number(p.totalJobWeight || 0);
   if (total > 0) return total;
-  const top = Number(p.topPaperWeightKg || 0);
+  const l1Paper = Number(p.topPaperWeightKg || 0);
   const liner = Number(p.linerWeightKg || 0);
-  const sum = top + liner;
+  const sum = l1Paper + liner;
   return sum > 0 ? sum : 0;
 }
 
@@ -564,14 +564,14 @@ export function OperationDashboard() {
       L2: r.production.l2 || (r.item as any)?.l2 || "-",
       F2: r.production.f2 || (r.item as any)?.f2 || "-",
       L3: r.production.l3 || (r.item as any)?.l3 || "-",
-      Top: r.production.top ?? "-",
+      "L1 Paper": r.production.l1 ?? "-",
       GSM: r.production.gsm ?? "-",
       "Least GSM": r.leastGsm === null ? "-" : r.leastGsm,
       "Color 1": r.production.color1 ?? "-",
       "Color 2": r.production.color2 ?? "-",
       "Printing Color": r.production.printingColor ?? "-",
       "Paper Req.": r.production.paperRequiredNos ?? "-",
-      "Top Paper Wt (KG)": r.production.topPaperWeightKg ?? "-",
+      "L1 Paper Wt (KG)": r.production.topPaperWeightKg ?? "-",
       "Liner Wt (KG)": r.production.linerWeightKg ?? "-",
       "Total Job Wt": r.production.totalJobWeight ?? "-",
       "Liner Req.": r.production.lineRequiredNos ?? "-",

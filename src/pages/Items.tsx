@@ -8,6 +8,7 @@ import { TableControls } from "../components/TableControls";
 import CreatableSelect from "react-select/creatable";
 import * as XLSX from "xlsx";
 import { resolveRapcRange } from "../lib/rapcRanges";
+import { calculateTakeUpFactor } from "../lib/utils";
 
 export function Items() {
   const [items, setItems] = useData<Item>("items", []);
@@ -130,9 +131,8 @@ export function Items() {
     const openWidth = Number(item.openWidth || 0);
     const flapFormulaMode = settings[0]?.flapAsPerCalculation || "current-logic";
     
-    const flute = (item.flute || "").toUpperCase().trim().replace(/\s+/g, "");
-    const takeUpFactorMap: Record<string, number> = { A: 1.5, B: 1.35, C: 1.42, E: 1.26, "B+C": 1.38, "B+E": 1.3 };
-    const takeUpFactor = takeUpFactorMap[flute] || undefined;
+    const calculatedTakeUpFactor = calculateTakeUpFactor(item.flute);
+    const takeUpFactor = calculatedTakeUpFactor === "" ? undefined : calculatedTakeUpFactor;
 
     const lOd = length > 0 ? round2(typeName === "RSC" && ply > 0 ? length + ply : length) : undefined;
     const wOd = breadth > 0 ? round2(typeName === "RSC" && ply > 0 ? breadth + ply : breadth) : undefined;
@@ -465,9 +465,7 @@ export function Items() {
   const upsNumber = Number(ups);
   const openWidthNumber = Number(openWidth);
   const flapFormulaMode = settings[0]?.flapAsPerCalculation || "current-logic";
-  const normalizedFlute = flute.toUpperCase().trim().replace(/\s+/g, "");
-  const takeUpFactorMap: Record<string, number> = { A: 1.5, B: 1.35, C: 1.42, E: 1.26, "B+C": 1.38, "B+E": 1.3 };
-  const takeUpFactorCalculated = takeUpFactorMap[normalizedFlute] ?? "";
+  const takeUpFactorCalculated = calculateTakeUpFactor(flute);
 
   const calculatedItemFields = useMemo(() => {
     const round2 = (value: number) => Math.round(value * 100) / 100;

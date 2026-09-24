@@ -856,7 +856,6 @@ export interface Production {
   idToOd?: string;
   flute?: string;
   takeUpFactor?: number;
-  top?: number;
   l1?: number;
   f1?: number;
   l2?: number;
@@ -1420,7 +1419,6 @@ export interface InterFirmPendingInvoice {
 }
 export interface Setting {
   id: string;
-  reelAsPerCalculation?: string;
   reelTransferWindowHours?: number;
   interFirmRatePercent?: number;
   interFirmPairRates?: string;
@@ -1429,7 +1427,6 @@ export interface Setting {
   otherMaterialErpStartNumber?: number;
   flapAsPerCalculation?: string;
   cuttingSizeAsPerCalculation?: string;
-  gsmAsPerCalculation?: string;
   allowInvoiceTallyEdit?: string;
   allowInvoiceTallyEditUsers?: string;
   productionFormVisibleColumns?: string;

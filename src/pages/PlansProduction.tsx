@@ -11,9 +11,9 @@ const overviewRules = [
   "If the selected item has a pending sample request, Planned Quantity is auto-filled from Sample Item Qty and becomes read-only.",
   "If the selected item is same as the latest relevant produced item, Planned Quantity cannot exceed Last Plan Qty x Deviation Allowed%.",
   "If the selected item is different from the latest relevant produced item, GSM cannot exceed Least GSM.",
-  "Reel As per Calculation now follows the formula selected in Settings.",
+  "Reel As per Calculation always uses the fixed Breadth/Height formula.",
   "Cutting Trim now follows the Cutting Size formula selected in Settings.",
-  "GSM now follows the GSM formula selected in Settings for Production Form.",
+  "GSM always uses L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3.",
 ];
 
 const formulaCards = [
@@ -45,12 +45,7 @@ const formulaCards = [
   {
     title: "GSM",
     formula: "L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3",
-    description: "This is the Current Logic option available in Settings for Production Form.",
-  },
-  {
-    title: "GSM - Ply Based Logic",
-    formula: "For 3 Ply: add Top, F1, B1, F2, and B2, then add 50% of F1 and 36% of F2. For 5 Ply: add Top, F1, B1, F2, and B2, then add 36% of F1 and 36% of F2. For 2 Ply: use the same 5 Ply weighting. For 7 Ply: add Top, F1, B1, F2, B2, F3, and B3, then add 36% each of F1, F2, and F3.",
-    description: "This is the Ply Based Logic option available in Settings. In Production Form, B1 uses L2, B2 uses L3, and 7 Ply uses F3 and B3 from Item Master.",
+    description: "This is the only GSM formula used by Production.",
   },
   {
     title: "Printing Color",
@@ -60,12 +55,7 @@ const formulaCards = [
   {
     title: "Reel Per Calc",
     formula: "If Breadth is blank or 0, use Height x UPS. Otherwise use ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).",
-    description: "This is the Breadth/Height Based Formula option available in Settings.",
-  },
-  {
-    title: "Reel Per Calc - TYPE Based Formula",
-    formula: "If TYPE = ROTARY TRAY: ((Length (OD) + Height (OD)) x UPS + 20) / 25.4. If TYPE = 2 PLY LINER, U/C PLATE, HORIZONTAL PLATE, or TRAY: ((Width (OD) x UPS) + 20) / 25.4. If TYPE = DIE CUT SHEET: ((Open Width x UPS) + 20) / 25.4. If TYPE = RSC: ((FLAP + Height (OD) + FLAP) x UPS + 20) / 25.4. For any other non-blank TYPE: ((Height (OD) x UPS) + 20) / 25.4.",
-    description: "This is the TYPE Based Formula option available in Settings. In this logic, UPS is used in place of No. of Outs.",
+    description: "This is the only Reel As per Calculation formula used by Production.",
   },
   {
     title: "Cutting Trim",
@@ -88,19 +78,19 @@ const formulaCards = [
     description: "This field is auto-calculated in Production Form using the selected Item Master TYPE, PART, UPS, Die Cut Ups, and No. of ups in Cutting (For Plates).",
   },
   {
-    title: "Top Paper Weight (KG)",
-    formula: "(Reel As per Calculation x Cutting Trim x Top x Paper Required (Nos)) / 1,000,000,000",
-    description: "This field is auto-calculated in Production Form using the current Reel As per Calculation, Cutting Trim, Top, and Paper Required (Nos).",
+    title: "L1 Paper Weight (KG)",
+    formula: "(Reel As per Calculation x Cutting Trim x L1 x Paper Required (Nos)) / 1,000,000,000",
+    description: "This field is auto-calculated in Production Form using the current Reel As per Calculation, Cutting Trim, L1, and Paper Required (Nos).",
   },
   {
     title: "Liner Weight (KG)",
-    formula: "(Reel As per Calculation x Cutting Trim x (GSM minus Top) x Paper Required (Nos)) / 1,000,000,000",
-    description: "This field is auto-calculated in Production Form using the current Reel As per Calculation, Cutting Trim, GSM, Top, and Paper Required (Nos).",
+    formula: "(Reel As per Calculation x Cutting Trim x (GSM minus L1) x Paper Required (Nos)) / 1,000,000,000",
+    description: "This field is auto-calculated in Production Form using the current Reel As per Calculation, Cutting Trim, GSM, L1, and Paper Required (Nos).",
   },
   {
     title: "Total Job Weight",
-    formula: "Top Paper Weight (KG) + Liner Weight (KG)",
-    description: "This field is auto-calculated in Production Form by adding the top paper weight and liner weight.",
+    formula: "L1 Paper Weight (KG) + Liner Weight (KG)",
+    description: "This field is auto-calculated in Production Form by adding the L1 paper weight and liner weight.",
   },
   {
     title: "Sheet Weight",
@@ -212,8 +202,8 @@ const fieldRules = [
   },
   {
     field: "Take up Factor",
-    source: "Auto-filled from Item Master",
-    formula: "Direct copy from the selected item.",
+    source: "Auto-calculated from Flute",
+    formula: "A=1.5, B=1.35, C=1.42, E=1.26, B+C=1.38, B+E=1.3; any other value becomes 0.",
     validation: "Read-only in Production Form.",
   },
   {
@@ -237,7 +227,7 @@ const fieldRules = [
   {
     field: "GSM",
     source: "Auto-calculated",
-    formula: "This field follows the formula selected in Settings. Option 1 is Current Logic: L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3. Option 2 is Ply Based Logic: for 3 Ply add Top, F1, B1, F2, and B2, then add 50% of F1 and 36% of F2; for 5 Ply add Top, F1, B1, F2, and B2, then add 36% of F1 and 36% of F2; for 2 Ply use the same 5 Ply weighting; for 7 Ply add Top, F1, B1, F2, B2, F3, and B3, then add 36% each of F1, F2, and F3. In Production Form, B1 uses L2 and B2 uses L3.",
+    formula: "L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3.",
     validation: "Read-only. If current item is different from the last produced item and this is not a sample item, GSM must not exceed Least GSM.",
   },
   {
@@ -249,8 +239,8 @@ const fieldRules = [
   {
     field: "Reel Per Calc",
     source: "Auto-calculated",
-    formula: "This field follows the formula selected in Settings. Option 1 is Breadth/Height Based Formula. Option 2 is TYPE Based Formula.",
-    validation: "Read-only in Production Form. A tooltip on the field shows the active formula logic.",
+    formula: "If Breadth is blank or 0, Height x UPS. Otherwise ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).",
+    validation: "Read-only in Production Form.",
   },
   {
     field: "Reel Actual Trim",
@@ -271,21 +261,21 @@ const fieldRules = [
     validation: "Read-only in Production Form.",
   },
   {
-    field: "Top Paper Weight (KG)",
+    field: "L1 Paper Weight (KG)",
     source: "Auto-calculated",
-    formula: "(Reel As per Calculation x Cutting Trim x Top x Paper Required (Nos)) / 1,000,000,000",
+    formula: "(Reel As per Calculation x Cutting Trim x L1 x Paper Required (Nos)) / 1,000,000,000",
     validation: "Read-only in Production Form.",
   },
   {
     field: "Liner Weight (KG)",
     source: "Auto-calculated",
-    formula: "(Reel As per Calculation x Cutting Trim x (GSM minus Top) x Paper Required (Nos)) / 1,000,000,000",
+    formula: "(Reel As per Calculation x Cutting Trim x (GSM minus L1) x Paper Required (Nos)) / 1,000,000,000",
     validation: "Read-only in Production Form.",
   },
   {
     field: "Total Job Weight",
     source: "Auto-calculated",
-    formula: "Top Paper Weight (KG) + Liner Weight (KG)",
+    formula: "L1 Paper Weight (KG) + Liner Weight (KG)",
     validation: "Read-only in Production Form.",
   },
   {
@@ -479,28 +469,6 @@ const virtualColumns = [
   },
 ];
 
-const settingsDrivenRules = [
-  {
-    setting: "Breadth/Height Based Formula",
-    logic: "If Breadth is blank or 0, use Height x UPS. Otherwise use ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).",
-  },
-  {
-    setting: "TYPE Based Formula",
-    logic: "If TYPE = ROTARY TRAY: ((Length (OD) + Height (OD)) x UPS + 20) / 25.4. If TYPE = 2 PLY LINER, U/C PLATE, HORIZONTAL PLATE, or TRAY: ((Width (OD) x UPS) + 20) / 25.4. If TYPE = DIE CUT SHEET: ((Open Width x UPS) + 20) / 25.4. If TYPE = RSC: ((FLAP + Height (OD) + FLAP) x UPS + 20) / 25.4. For any other non-blank TYPE: ((Height (OD) x UPS) + 20) / 25.4.",
-  },
-];
-
-const gsmSettingsDrivenRules = [
-  {
-    setting: "Current Logic",
-    logic: "L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3.",
-  },
-  {
-    setting: "Ply Based Logic",
-    logic: "For 3 Ply: add Top, F1, B1, F2, and B2, then add 50% of F1 and 36% of F2. For 5 Ply: add Top, F1, B1, F2, and B2, then add 36% of F1 and 36% of F2. For 2 Ply: use the same 5 Ply weighting. For 7 Ply: add Top, F1, B1, F2, B2, F3, and B3, then add 36% each of F1, F2, and F3. In Production Form, B1 uses L2, B2 uses L3, and 7 Ply uses F3 and B3 from Item Master.",
-  },
-];
-
 export function PlansProduction() {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -573,18 +541,6 @@ export function PlansProduction() {
       y += 5;
       addLabelValue("Formula", card.formula);
       addText(card.description, { indent: 16, width: 176 });
-      y += 1;
-    });
-
-    addSectionTitle("Settings Driven Reel Formula");
-    settingsDrivenRules.forEach((row) => {
-      addLabelValue(row.setting, row.logic);
-      y += 1;
-    });
-
-    addSectionTitle("Settings Driven GSM Formula");
-    gsmSettingsDrivenRules.forEach((row) => {
-      addLabelValue(row.setting, row.logic);
       y += 1;
     });
 
@@ -677,44 +633,6 @@ export function PlansProduction() {
                 {card.formula}
               </div>
               <p className="text-sm text-black leading-6">{card.description}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white border border-black rounded shadow-sm overflow-hidden">
-        <div className="bg-slate-100 border-b border-black px-5 py-3">
-          <h3 className="text-sm font-black uppercase tracking-wide text-black">Settings Driven Reel Formula</h3>
-        </div>
-        <div className="p-5 space-y-4">
-          <p className="text-sm text-black leading-6">
-            The <span className="font-bold">Reel As per Calculation</span> field in Production Form is now controlled by the Settings page. Users can choose one of the short dropdown values below.
-          </p>
-          {settingsDrivenRules.map((row) => (
-            <div key={row.setting} className="border border-black rounded bg-slate-50 p-4 space-y-2">
-              <h4 className="text-sm font-black uppercase tracking-wide text-black">{row.setting}</h4>
-              <div className="rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-slate-800">
-                {row.logic}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white border border-black rounded shadow-sm overflow-hidden">
-        <div className="bg-slate-100 border-b border-black px-5 py-3">
-          <h3 className="text-sm font-black uppercase tracking-wide text-black">Settings Driven GSM Formula</h3>
-        </div>
-        <div className="p-5 space-y-4">
-          <p className="text-sm text-black leading-6">
-            The <span className="font-bold">GSM</span> field in Production Form is also controlled by the Settings page. Users can choose one of the short dropdown values below.
-          </p>
-          {gsmSettingsDrivenRules.map((row) => (
-            <div key={row.setting} className="border border-black rounded bg-slate-50 p-4 space-y-2">
-              <h4 className="text-sm font-black uppercase tracking-wide text-black">{row.setting}</h4>
-              <div className="rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-slate-800">
-                {row.logic}
-              </div>
             </div>
           ))}
         </div>

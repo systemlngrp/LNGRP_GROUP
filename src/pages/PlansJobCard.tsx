@@ -162,10 +162,10 @@ const jobCardMappings: JobCardMapping[] = [
     notes: "Production UPS is preferred, then NPD UPS fields.",
   },
   {
-    field: "Combination Row - Top",
+    field: "Combination Row - L1",
     source: "productions, npd",
-    key: "productions.top, npd.psL1Bf, npd.rsl1Bf, productions.reelAsPerCalc, npd.deckleSize",
-    notes: "GSM uses productions.top. BF uses psL1Bf or rsl1Bf. Size uses reelAsPerCalc or deckleSize, sourced in mm and printed in inches with 2 decimals. Cutter label is A.",
+    key: "productions.l1, npd.psL1Bf, npd.rsl1Bf, productions.reelAsPerCalc, npd.deckleSize",
+    notes: "GSM uses productions.l1. BF uses psL1Bf or rsl1Bf. Size uses reelAsPerCalc or deckleSize, sourced in mm and printed in inches with 2 decimals. Cutter label is A.",
   },
   {
     field: "Combination Row - Fluting 1",
@@ -302,7 +302,7 @@ const jobCardMappings: JobCardMapping[] = [
   {
     field: "Reel T/F/B",
     source: "productions, npd, materials",
-    key: "productions.top, productions.f1, productions.l1, productions.f2, productions.l2, productions.l3, npd.psL1Bf, npd.rsl1Bf, npd.psF1Bf, npd.rsf2Bf, npd.psF2Bf, npd.rsf4Bf, npd.psL2Bf, npd.psL3Bf, npd.rsl3Bf, materials.gsm, materials.bf",
+    key: "productions.l1, productions.f1, productions.l2, productions.f2, productions.l3, npd.psL1Bf, npd.rsl1Bf, npd.psF1Bf, npd.rsf2Bf, npd.psF2Bf, npd.rsf4Bf, npd.psL2Bf, npd.psL3Bf, npd.rsl3Bf, materials.gsm, materials.bf",
     notes: "Inferred by matching issued material GSM/BF against production/NPD paper layer values.",
   },
   {
