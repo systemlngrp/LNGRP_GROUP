@@ -194,10 +194,8 @@ function createInitialFormData(initialDate: string) {
     realizationPerKg: "" as number | "",
     companyName: "",
     actualPaperUsed: "" as number | "",
-    avgWeight: "" as number | "",
     prodFromSheetPlant: "" as number | "",
     prodFromFFG: "" as number | "",
-    wastage: "" as number | "",
     productionInMeter: "" as number | "",
     plannedProductionInMeter: "" as number | "",
     leastGsm: "" as number | "",
@@ -514,10 +512,6 @@ export function ProductionForm() {
     const productionInMeter = ups > 0 ? ((cutting * qty) / 1000) / ups : 0;
     const plannedProductionInMeter =
       cutting > 0 && qty > 0 && ups > 0 ? parseFloat((((cutting * qty) / 1000) / ups).toFixed(2)) : "";
-    const actualPaperUsed = Number(formData.actualPaperUsed);
-    const prodFromFFG = Number(formData.prodFromFFG);
-    const avgWeight =
-      actualPaperUsed > 0 && prodFromFFG > 0 ? round2(actualPaperUsed / prodFromFFG) : "";
     const normalizedFlute = formData.flute.toUpperCase().trim().replace(/\s+/g, "");
     const fluteBatchMap: Record<string, string> = {
       A: "1",
@@ -548,10 +542,6 @@ export function ProductionForm() {
     const totalWeightOfSet = derived.totalWeightOfSet;
     const realizationPerKg = derived.realizationPerKg;
 
-    const wastage =
-      prodFromFFG > 0 && sheetWeightValue > 0 && actualPaperUsed > 0
-        ? parseFloat((100 - ((prodFromFFG * sheetWeightValue) / actualPaperUsed) * 100).toFixed(2))
-        : "";
 
     setFormData((prev) => ({
       ...prev,
@@ -567,8 +557,6 @@ export function ProductionForm() {
       realizationPerKg: realizationPerKg === null ? "" : round2(realizationPerKg),
       productionInMeter: round2(productionInMeter),
       plannedProductionInMeter: plannedProductionInMeter === "" ? "" : round2(Number(plannedProductionInMeter)),
-      avgWeight,
-      wastage,
       fluteBatches,
       leastGsm: leastGsmValue,
       printingColor,
@@ -593,8 +581,6 @@ export function ProductionForm() {
     formData.rate,
     formData.plateWeight,
     formData.reelActualWithTrimming,
-    formData.actualPaperUsed,
-    formData.prodFromFFG,
     erpLeastGsmMap,
     selectedErp,
   ]);
@@ -946,8 +932,7 @@ export function ProductionForm() {
               {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Formula: Sheet Weight x Planned Qty." /> : null}
 
               {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Formula: Sheet Weight + Plate/PHP Weight." /> : null}
-              {showField("Avg Weight") ? <FormInput label="Avg Weight" value={formData.avgWeight} readOnly type="number" step="0.00001" helpText="Formula: Actual Paper Used / Production from FFG." /> : null}
-              {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field. It is derived from Material Issue minus Material Return against the job, and then used in Avg Weight and Wastage calculations." /> : null}
+              {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field derived from Material Issue minus Material Return against the job." /> : null}
 
               {showField("Rate") ? <FormInput label="Rate" value={formData.rate} readOnly type="number" helpText="Auto-fetched from the selected order." /> : null}
               {showField("Realization/KG") ? <FormInput
@@ -961,8 +946,7 @@ export function ProductionForm() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
               {showField("Prod (Sheet Plant)") ? <FormInput label="Prod (Sheet Plant)" value={formData.prodFromSheetPlant} onChange={(v) => setFormData({ ...formData, prodFromSheetPlant: v })} type="number" helpText="Temporarily editable for formula testing." /> : null}
-              {showField("Prod (FFG)") ? <FormInput label="Prod (FFG)" value={formData.prodFromFFG} readOnly type="number" helpText="Workflow-managed field. It is updated from the Pending FFG view and then used in Avg Weight and Wastage calculations." /> : null}
-              {showField("Wastage") ? <FormInput label="Wastage" value={formData.wastage} readOnly type="number" helpText="Formula: 100 - (((Production from FFG x Sheet Weight) / Actual Paper Used) x 100)." /> : null}
+              {showField("Prod (FFG)") ? <FormInput label="Prod (FFG)" value={formData.prodFromFFG} readOnly type="number" helpText="Workflow-managed field updated from the Pending FFG view." /> : null}
 
               {showField("Prod (Meter)") ? <FormInput label="Prod (Meter)" value={formData.productionInMeter} readOnly helpText="Formula: ((Cutting Trim x Quantity) / 1000) / UPS." /> : null}
               {showField("Planned Prod (Mtr)") ? <FormInput label="Planned Prod (Mtr)" value={formData.plannedProductionInMeter} readOnly type="number" helpText="Formula: ((Cutting Trim x Plan Qty) / 1000) / UPS. If Cutting Trim or Plan Qty is blank, this stays blank." /> : null}

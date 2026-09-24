@@ -878,12 +878,10 @@ export interface Production {
   actualPaperUsed?: number;
   paperNotRequired?: boolean;
   paperNotRequiredReason?: string;
-  avgWeight?: number;
   prodFromSheetPlant?: number;
   prodFromFFG?: number;
   phpScheduledJobId?: string;
   plateScheduledJobId?: string;
-  wastage?: number;
   productionInMeter?: number;
   plannedProductionInMeter?: number;
   leastGsm?: number;

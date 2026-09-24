@@ -69,15 +69,9 @@ async function main() {
       const totalPaperWeight = derived.totalPaperWeight === null ? null : round2(derived.totalPaperWeight);
       const totalWeightOfSet = derived.totalWeightOfSet === null ? null : round2(derived.totalWeightOfSet);
       const realizationPerKg = derived.realizationPerKg === null ? null : round2(derived.realizationPerKg);
-      const actualPaperUsed = positive(row.actualPaperUsed);
-      const prodFromFFG = positive(row.prodFromFFG);
-      const wastage = sheetWeight !== null && actualPaperUsed > 0 && prodFromFFG > 0
-        ? round2(100 - ((prodFromFFG * sheetWeight) / actualPaperUsed) * 100)
-        : null;
-
       const idToOd2 = calculateProductionIdToOd2(row.ply);
       const values = [takeUpFactor, gsm, idToOd2, reelAsPerCalc,
-        sheetWeight, totalPaperWeight, totalWeightOfSet, realizationPerKg, wastage]
+        sheetWeight, totalPaperWeight, totalWeightOfSet, realizationPerKg]
         .filter((value): value is number => value !== null);
       if (values.some((value) => !Number.isFinite(value))) {
         throw new Error(`Invalid calculated value for production ${row.transactionNo || row.id}`);
@@ -88,10 +82,10 @@ async function main() {
           \`takeUpFactor\` = ?, \`gsm\` = ?, \`boardGsmReq\` = ?, \`reelAsPerCalc\` = ?,
           \`idToOd2\` = ?, \`top\` = NULL,
           \`sheetWeight\` = ?, \`totalPaperWeight\` = ?, \`totalWeightOfSet\` = ?,
-          \`realizationPerKg\` = ?, \`wastage\` = ?, \`updatedBy\` = ?, \`updateTimestamp\` = ?
+          \`realizationPerKg\` = ?, \`updatedBy\` = ?, \`updateTimestamp\` = ?
         WHERE \`id\` = ?`,
         [takeUpFactor, gsm, gsm, reelAsPerCalc, idToOd2,
-          sheetWeight, totalPaperWeight, totalWeightOfSet, realizationPerKg, wastage,
+          sheetWeight, totalPaperWeight, totalWeightOfSet, realizationPerKg,
           "System Admin - formula migration", timestamp, row.id]
       );
       if (result.affectedRows !== 1) {

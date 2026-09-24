@@ -306,12 +306,6 @@ const jobCardMappings: JobCardMapping[] = [
     notes: "Printed on the second Job Card page when available.",
   },
   {
-    field: "Reports - Wastage %",
-    source: "productions, material-issue-reel-lines, material-return-reel-lines",
-    key: "productions.prodFromFFG, productions.sheetWeight, productions.actualPaperUsed, material-issue-reel-lines.weightKg, material-return-reel-lines.weightKg",
-    notes: "Calculated as 100 - ((Prod FFG x Sheet Weight) / Actual Paper Used) x 100 when all required values exist.",
-  },
-  {
     field: "Organization Name",
     source: "settings",
     key: "firms.firmName",

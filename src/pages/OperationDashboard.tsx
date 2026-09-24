@@ -566,8 +566,6 @@ export function OperationDashboard() {
       "Color 2": r.production.color2 ?? "-",
       "Printing Color": r.production.printingColor ?? "-",
       "Total Wt": r.production.totalPaperWeight ?? "-",
-      "Avg Wt": r.production.avgWeight ?? "-",
-      Wastage: r.production.wastage ?? "-",
       "Real/KG": Number(r.production.realizationPerKg || 0) ? Number(r.production.realizationPerKg || 0).toFixed(2) : "-",
       "Reel (Calc)": (r.production as any).reelAsPerCalc || "-",
       "Reel Trim": (r.production as any).reelActualWithTrimming || "-",

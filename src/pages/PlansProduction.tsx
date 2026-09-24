@@ -93,16 +93,6 @@ const formulaCards = [
     description: "This is the rounded planning display value shown to users.",
   },
   {
-    title: "Avg Weight",
-    formula: "Actual Paper Used / Prod (FFG), rounded to 3 decimals. If either value is missing or 0, keep blank.",
-    description: "Average weight is calculated only when both Actual Paper Used and Prod (FFG) are available.",
-  },
-  {
-    title: "Wastage",
-    formula: "100 - (((Prod (FFG) x Sheet Weight) / Actual Paper Used) x 100), rounded to 2 decimals. If required values are missing or 0, keep blank.",
-    description: "This shows the estimated wastage percentage based on actual usage and finished production.",
-  },
-  {
     title: "Flute Batches",
     formula: "Flute mapping: A=1, B=2, B+C=3, C=4, E=5. Any other value stays blank.",
     description: "This is a fixed mapping derived from the flute type.",
@@ -251,7 +241,7 @@ const fieldRules = [
   {
     field: "Actual Paper Used",
     source: "Manual input",
-    formula: "Used later by Avg Weight and Wastage.",
+    formula: "Workflow-managed actual usage value.",
     validation: "Editable numeric field.",
   },
   {
@@ -275,14 +265,8 @@ const fieldRules = [
   {
     field: "Prod (FFG)",
     source: "Manual input",
-    formula: "Used later by Avg Weight and Wastage.",
+    formula: "Workflow-managed finished production value.",
     validation: "Editable numeric field.",
-  },
-  {
-    field: "Wastage",
-    source: "Auto-calculated",
-    formula: "100 - (((Prod (FFG) x Sheet Weight) / Actual Paper Used) x 100)",
-    validation: "Read-only. Remains blank until Prod (FFG), Sheet Weight, and Actual Paper Used are all available.",
   },
   {
     field: "Prod (Meter)",
