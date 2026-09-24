@@ -191,12 +191,6 @@ const fieldRules = [
     validation: "Read-only. If current item is different from the last produced item and this is not a sample item, GSM must not exceed Least GSM.",
   },
   {
-    field: "ERP Code Reel",
-    source: "Reference field",
-    formula: "No calculation in current form logic.",
-    validation: "Read-only display field.",
-  },
-  {
     field: "Reel Per Calc",
     source: "Auto-calculated",
     formula: "If Breadth is blank or 0, Height x UPS. Otherwise ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).",
@@ -223,7 +217,7 @@ const fieldRules = [
   {
     field: "Plate/PHP Weight",
     source: "Auto-filled from NPD Master",
-    formula: "Selected item's stored Plate/PHP Weight value / 1000.",
+    formula: "Selected item's stored Plate/PHP Weight value, used directly as KG.",
     validation: "Read-only in Production Form.",
   },
   {

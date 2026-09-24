@@ -886,7 +886,6 @@ export interface Production {
   plannedProductionInMeter?: number;
   leastGsm?: number;
   fluteBatches?: string;
-  erpCodeReel?: string;
   year?: number;
   month?: string;
   idToOd2?: number;

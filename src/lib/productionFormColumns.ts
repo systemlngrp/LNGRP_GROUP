@@ -24,7 +24,6 @@ export const PRODUCTION_FORM_COLUMN_OPTIONS = [
   "Color 1",
   "Color 2",
   "Printing Color",
-  "ERP Code Reel",
   "L1",
   "F1",
   "L2",
