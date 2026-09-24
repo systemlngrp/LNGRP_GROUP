@@ -158,12 +158,7 @@ function getRangeSpanDays(dateRange: OperationDashboardDateRange) {
 }
 
 function getPlanPaper(production: Production) {
-  const total = Number(production.totalJobWeight || 0);
-  if (total > 0) return total;
-  const l1Paper = Number(production.topPaperWeightKg || 0);
-  const liner = Number(production.linerWeightKg || 0);
-  const sum = l1Paper + liner;
-  return sum > 0 ? sum : 0;
+  return Number(production.totalPaperWeight || 0);
 }
 
 function sumProductionQty(rows: Production[]) {

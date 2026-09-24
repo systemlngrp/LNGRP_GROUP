@@ -20,7 +20,7 @@ const ruleSections = [
   },
   {
     title: "Production Calculations",
-    body: "Planned Production (Meter) is calculated from Cutting Trim, Planned Quantity, and UPS. Sheet Weight is Total Job Weight divided by Planned Quantity. Total Paper Weight equals Total Job Weight. Realization per KG is Rate divided by Total Weight of Set.",
+    body: "Planned Production (Meter) is calculated from Cutting Trim, Planned Quantity, and UPS. Sheet Weight is calculated from reel, cutting trim, GSM, and UPS. Total Paper Weight is Sheet Weight multiplied by Planned Quantity. Realization per KG is Rate divided by Total Weight of Set.",
   },
   {
     title: "Production Plan Sorting",

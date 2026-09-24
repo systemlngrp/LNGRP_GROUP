@@ -48,7 +48,7 @@ function getCuttingSizeHelpText(formulaMode: string) {
     return "Current setting: TYPE Based Logic. If TYPE is 2 PLY ROLL, keep Cutting Size blank. If TYPE is DIE CUT SHEET, use ((Open Length x No. of ups in Cutting (For Plates)) + 20) / 25.4. If TYPE is RSC and PART is 1, use ((2 x (Length (OD) + Width (OD))) + 50) / 25.4. If TYPE is RSC and PART is 2, use ((Length (OD) + Width (OD)) + 50) / 25.4. In other filled cases, use ((Length (OD) x No. of ups in Cutting (For Plates)) + 20) / 25.4.";
   }
 
-  return "Current setting: Current Logic. If Breadth is blank or 0, use Length. If Number of Parts = 1, use ((Length + Breadth) x 2) + (ID to OD 17 x Number of Parts). If Number of Parts = 2, use Length + Breadth + ID to OD 17.";
+  return "Fixed cutting trim logic uses ID to OD and Number of Parts.";
 }
 
 function getGsmHelpText() {
@@ -180,7 +180,7 @@ function createInitialFormData(initialDate: string) {
     cuttingWithTrimming: "" as number | "",
     ply: "" as number | "",
     idToOd: "" as number | "",
-    idToOd17: "" as number | "",
+    idToOd2: "" as number | "",
     flute: "",
     takeUpFactor: "" as number | "",
     l1: "" as number | "",
@@ -192,10 +192,6 @@ function createInitialFormData(initialDate: string) {
     color1: "",
     color2: "",
     printingColor: "",
-    paperRequiredNos: "" as number | "",
-    topPaperWeightKg: "" as number | "",
-    linerWeightKg: "" as number | "",
-    totalJobWeight: "" as number | "",
     sheetWeight: "" as number | "",
     plateWeight: "" as number | "",
     totalPaperWeight: "" as number | "",
@@ -213,7 +209,6 @@ function createInitialFormData(initialDate: string) {
     leastGsm: "" as number | "",
     fluteBatches: "",
     erpCodeReel: "",
-    lineRequiredNos: "" as number | "",
     erpCode: "",
   };
 }
@@ -510,7 +505,7 @@ export function ProductionForm() {
     const dieCutUps = Number(selectedItem?.dieCutUps || 0);
 
     const idToOd = ply === 3 ? 6 : ply === 5 ? 10 : 0;
-    const idToOd17 = ply === 3 ? 40 : ply === 5 ? 50 : 0;
+    const idToOd2 = ply === 3 ? 40 : ply === 5 ? 50 : 0;
 
     const takeUpFactor = calculateProductionTakeUpFactor(formData.flute);
     const l1 = Number(formData.l1 || 0);
@@ -538,9 +533,9 @@ export function ProductionForm() {
     } else if (!breadth) {
       cutting = length;
     } else if (noOfParts === 1) {
-      cutting = (length + breadth) * 2 + idToOd17 * noOfParts;
+      cutting = (length + breadth) * 2 + idToOd2 * noOfParts;
     } else if (noOfParts === 2) {
-      cutting = length + breadth + idToOd17;
+      cutting = length + breadth + idToOd2;
     }
 
     const productionInMeter = ups > 0 ? ((cutting * qty) / 1000) / ups : 0;
@@ -550,7 +545,6 @@ export function ProductionForm() {
     const prodFromFFG = Number(formData.prodFromFFG);
     const avgWeight =
       actualPaperUsed > 0 && prodFromFFG > 0 ? round2(actualPaperUsed / prodFromFFG) : "";
-    // Total job weight based on paperRequiredNos (not including plate weight).
     const normalizedFlute = formData.flute.toUpperCase().trim().replace(/\s+/g, "");
     const fluteBatchMap: Record<string, string> = {
       A: "1",
@@ -562,42 +556,6 @@ export function ProductionForm() {
     const fluteBatches = fluteBatchMap[normalizedFlute] || "";
     const leastGsmValue = erpLeastGsmMap.get(selectedErp) ?? "";
     const printingColor = joinPrintingColors(formData.color1, formData.color2);
-
-    let paperRequiredNos: number | "" = "";
-    if (String(formData.erpCode || "").trim()) {
-      if (
-        ["VERTICAL PLATE", "HORIZONTAL PLATE", "U/C PLATE", "ROTARY TRAY"].includes(normalizedType) &&
-        ups > 0 &&
-        noOfUpsInCuttingForPlates > 0
-      ) {
-        paperRequiredNos = qty / (ups * noOfUpsInCuttingForPlates);
-      } else if (normalizedType === "2 PLY LINER") {
-        paperRequiredNos = "";
-      } else if (
-        normalizedType === "DIE CUT SHEET" &&
-        ups > 0 &&
-        noOfUpsInCuttingForPlates > 0 &&
-        dieCutUps > 0
-      ) {
-        paperRequiredNos = qty / (ups * noOfUpsInCuttingForPlates) / dieCutUps;
-      } else if (normalizedType === "RSC" && ups > 0) {
-        if (normalizedPart === 1) {
-          paperRequiredNos = qty / ups;
-        } else if (normalizedPart === 2) {
-          paperRequiredNos = (qty / ups) * 2;
-        }
-      }
-    }
-
-    const topPaperWeightKg =
-      paperRequiredNos !== ""
-        ? (reelAsPerCalc * cutting * l1 * paperRequiredNos) / 1000000000
-        : "";
-    const linerWeightKg =
-      paperRequiredNos !== ""
-        ? (reelAsPerCalc * cutting * (gsm - l1) * paperRequiredNos) / 1000000000
-        : "";
-    const totalJobWeight = topPaperWeightKg !== "" && linerWeightKg !== "" ? topPaperWeightKg + linerWeightKg : "";
 
     const plannedQty = qty;
     const reelActualWithTrimming = Number(formData.reelActualWithTrimming || 0);
@@ -618,21 +576,10 @@ export function ProductionForm() {
         ? parseFloat((100 - ((prodFromFFG * sheetWeightValue) / actualPaperUsed) * 100).toFixed(2))
         : "";
 
-    let lineRequiredNos: number | "" = "";
-    if (!String(formData.erpCode || "").trim()) {
-      lineRequiredNos = "";
-    } else if (ply === 3 && paperRequiredNos !== "") {
-      lineRequiredNos = paperRequiredNos;
-    } else if (ply === 5 && paperRequiredNos !== "") {
-      lineRequiredNos = paperRequiredNos * 2;
-    } else if (ply === 2 && normalizedType === "2 PLY LINER" && ups > 0 && noOfUpsInCuttingForPlates > 0) {
-      lineRequiredNos = qty / (ups * noOfUpsInCuttingForPlates);
-    }
-
     setFormData((prev) => ({
       ...prev,
       idToOd,
-      idToOd17,
+      idToOd2,
       takeUpFactor,
       gsm: round2(gsm),
       reelAsPerCalc: round2(reelAsPerCalc),
@@ -648,11 +595,6 @@ export function ProductionForm() {
       fluteBatches,
       leastGsm: leastGsmValue,
       printingColor,
-      paperRequiredNos: paperRequiredNos === "" ? "" : roundUpWhole(paperRequiredNos),
-      topPaperWeightKg: topPaperWeightKg === "" ? "" : round2(topPaperWeightKg),
-      linerWeightKg: linerWeightKg === "" ? "" : round2(linerWeightKg),
-      totalJobWeight: totalJobWeight === "" ? "" : round2(totalJobWeight),
-      lineRequiredNos: lineRequiredNos === "" ? "" : roundUpWhole(lineRequiredNos),
     }));
   }, [
     formData.color1,
@@ -989,7 +931,7 @@ export function ProductionForm() {
               {showField("Breadth") ? <FormInput label="Breadth" value={formData.breadth} readOnly type="number" helpText="Auto-fetched from Item Master for the selected item." /> : null}
               {showField("Height") ? <FormInput label="Height" value={formData.height} readOnly type="number" helpText="Auto-fetched from Item Master for the selected item." /> : null}
 
-              {showField("PLY") ? <FormInput label="PLY" value={formData.ply} readOnly helpText="Auto-fetched from Item Master for the selected item. It also drives ID to OD and ID to OD 17 calculations." /> : null}
+              {showField("PLY") ? <FormInput label="PLY" value={formData.ply} readOnly helpText="Auto-fetched from Item Master; it drives ID to OD and ID to OD 2." /> : null}
               {showField("Flute") ? <FormInput label="Flute" value={formData.flute} readOnly helpText="Auto-fetched from Item Master for the selected item. It also determines the Take up Factor used in GSM calculation." /> : null}
               {showField("ID to OD") ? <FormInput label="ID to OD" value={formData.idToOd} readOnly helpText="Auto-calculated from PLY. Current logic: 3 PLY = 6, 5 PLY = 10." /> : null}
 
@@ -1030,48 +972,9 @@ export function ProductionForm() {
               /> : null}
               {showField("Reel Actual Trim") ? <FormInput label="Reel Actual Width Trimming (RAWT)" value={formData.reelActualWithTrimming} onChange={(v) => setFormData({ ...formData, reelActualWithTrimming: v })} type="number" required helpText="Mandatory. Enter the actual reel width trimming." /> : null}
               {showField("Cutting Trim") ? <FormInput label="Cutting with Trimming" value={formData.cuttingWithTrimming} readOnly helpText={getCuttingSizeHelpText(cuttingSizeFormulaMode)} /> : null}
-              {showField("Paper Required (Nos)") ? <FormInput
-                label="Paper Required (Nos)"
-                value={formData.paperRequiredNos}
-                readOnly
-                type="number"
-                helpText="Calculated from TYPE. For VERTICAL PLATE, HORIZONTAL PLATE, U/C PLATE, and ROTARY TRAY: Planned Quantity / (UPS x No. of ups in Cutting (For Plates)). For 2 PLY LINER: blank. For DIE CUT SHEET: Planned Quantity / (UPS x No. of ups in Cutting (For Plates)) / Die Cut Ups. For RSC with PART = 1: Planned Quantity / UPS. For RSC with PART = 2: (Planned Quantity / UPS) x 2."
-              /> : null}
-              {showField("L1 Paper Weight (KG)") ? <FormInput
-                label="L1 Paper Weight (KG)"
-                value={formData.topPaperWeightKg}
-                readOnly
-                type="number"
-                step="0.00001"
-                helpText="Formula: (Reel As per Calculation x Cutting Trim x L1 x Paper Required (Nos)) / 1,000,000,000."
-              /> : null}
-              {showField("Liner Weight (KG)") ? <FormInput
-                label="Liner Weight (KG)"
-                value={formData.linerWeightKg}
-                readOnly
-                type="number"
-                step="0.00001"
-                helpText="Formula: (Reel As per Calculation x Cutting Trim x (GSM minus L1) x Paper Required (Nos)) / 1,000,000,000."
-              /> : null}
-              {showField("Total Job Weight") ? <FormInput
-                label="Total Job Weight"
-                value={formData.totalJobWeight}
-                readOnly
-                type="number"
-                step="0.00001"
-                helpText="Formula: L1 Paper Weight (KG) + Liner Weight (KG)."
-              /> : null}
-              {(showField("Liner Required (Nos)") || showField("Line Required (Nos)")) ? <FormInput
-                label="Liner Required (Nos)"
-                value={formData.lineRequiredNos}
-                readOnly
-                type="number"
-                helpText="If ERP Code is blank, keep blank. If PLY is 3, use the same value as Paper Required (Nos). If PLY is 5, use Paper Required (Nos) x 2. If PLY is 2 and TYPE is 2 PLY LINER, use Planned Quantity divided by (UPS x No. of ups in Cutting (For Plates))."
-              /> : null}
-
               {showField("Sheet Weight") ? <FormInput label="Sheet Weight" value={formData.sheetWeight} readOnly helpText="Formula: ((Reel Actual with Trimming x Cutting with Trimming x GSM) / 1,000,000,000) / UPS. If UPS is 0 or blank, this stays blank." /> : null}
               {showField("Plate/PHP Weight") ? <FormInput label="Plate/PHP Weight" value={formData.plateWeight} readOnly type="number" step="0.00001" helpText="Auto-fetched from NPD Master for the selected item and divided by 1000." /> : null}
-              {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Formula: Sheet Weight x Planned Qty (equals Total Job Weight)." /> : null}
+              {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Formula: Sheet Weight x Planned Qty." /> : null}
 
               {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Formula: Sheet Weight + Plate/PHP Weight." /> : null}
               {showField("Avg Weight") ? <FormInput label="Avg Weight" value={formData.avgWeight} readOnly type="number" step="0.00001" helpText="Formula: Actual Paper Used / Production from FFG." /> : null}

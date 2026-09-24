@@ -172,8 +172,6 @@ export function ProductionPlan() {
         "Sheet Weight": format2(p.sheetWeight),
         "Total Paper Weight": format2(p.totalPaperWeight),
         "Flute Batch": p.fluteBatches || "-",
-        "Paper Required (Nos)": format2(p.paperRequiredNos),
-        "Liner Required (Nos)": format2(p.lineRequiredNos),
       } as Record<string, string | number>;
     });
   };
@@ -292,8 +290,6 @@ export function ProductionPlan() {
                 <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Flute Batch</th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Rate</th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Value</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Paper Required (Nos)</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Liner Required (Nos)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
@@ -345,8 +341,6 @@ export function ProductionPlan() {
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{p.fluteBatches || "-"}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.rate)}</td>
                       <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{format2(value)}</td>
-                      <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.paperRequiredNos)}</td>
-                      <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.lineRequiredNos)}</td>
                     </tr>
                   );
                 })

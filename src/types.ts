@@ -868,10 +868,6 @@ export interface Production {
   color2?: string;
   printingColor?: string;
   weightPerPcSetReq?: number;
-  paperRequiredNos?: number;
-  topPaperWeightKg?: number;
-  linerWeightKg?: number;
-  totalJobWeight?: number;
   sheetWeight?: number;
   plateWeight?: number;
   totalPaperWeight?: number;
@@ -893,10 +889,9 @@ export interface Production {
   leastGsm?: number;
   fluteBatches?: string;
   erpCodeReel?: string;
-  lineRequiredNos?: number;
   year?: number;
   month?: string;
-  idToOd17?: number;
+  idToOd2?: number;
 
 	  phTimestamp?: string;
 	  phEmailId?: string;

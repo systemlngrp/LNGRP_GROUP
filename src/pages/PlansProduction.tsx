@@ -33,7 +33,7 @@ const formulaCards = [
     description: "The app derives this helper value directly from PLY.",
   },
   {
-    title: "ID to OD 17",
+    title: "ID to OD 2",
     formula: "If PLY = 3, value is 40. If PLY = 5, value is 50. Otherwise value is 0.",
     description: "This helper value is used inside the Cutting Trim calculation.",
   },
@@ -59,38 +59,13 @@ const formulaCards = [
   },
   {
     title: "Cutting Trim",
-    formula: "If Breadth is blank or 0, use Length. If Number of Parts = 1, use ((Length + Breadth) x 2) + (ID to OD 17 x Number of Parts). If Number of Parts = 2, use Length + Breadth + ID to OD 17.",
+    formula: "If Breadth is blank or 0, use Length. If Number of Parts = 1, use ((Length + Breadth) x 2) + (ID to OD x Number of Parts). If Number of Parts = 2, use Length + Breadth + ID to OD.",
     description: "This is the Current Logic option for Cutting Size in Settings.",
   },
   {
     title: "Cutting Trim - TYPE Based Logic",
     formula: "If TYPE is 2 PLY ROLL, keep Cutting Size blank. If TYPE is DIE CUT SHEET, use ((Open Length x No. of ups in Cutting (For Plates)) + 20) / 25.4. If TYPE is RSC and PART is 1, use ((2 x (Length (OD) + Width (OD))) + 50) / 25.4. If TYPE is RSC and PART is 2, use ((Length (OD) + Width (OD)) + 50) / 25.4. In other filled cases, use ((Length (OD) x No. of ups in Cutting (For Plates)) + 20) / 25.4.",
     description: "This is the TYPE Based Logic option for Cutting Size in Settings.",
-  },
-  {
-    title: "Liner Required (Nos)",
-    formula: "If ERP Code is blank, keep blank. If PLY is 3, use the same value as Paper Required (Nos). If PLY is 5, use Paper Required (Nos) x 2. If PLY is 2 and TYPE is 2 PLY LINER, use Planned Quantity divided by (UPS x No. of ups in Cutting (For Plates)).",
-    description: "This field is auto-calculated in Production Form from the selected item type, ply, planned quantity, UPS, and No. of ups in Cutting (For Plates).",
-  },
-  {
-    title: "Paper Required (Nos)",
-    formula: "For VERTICAL PLATE, HORIZONTAL PLATE, U/C PLATE, and ROTARY TRAY: Planned Quantity / (UPS x No. of ups in Cutting (For Plates)). For 2 PLY LINER: blank. For DIE CUT SHEET: Planned Quantity / (UPS x No. of ups in Cutting (For Plates)) / Die Cut Ups. For RSC with PART = 1: Planned Quantity / UPS. For RSC with PART = 2: (Planned Quantity / UPS) x 2.",
-    description: "This field is auto-calculated in Production Form using the selected Item Master TYPE, PART, UPS, Die Cut Ups, and No. of ups in Cutting (For Plates).",
-  },
-  {
-    title: "L1 Paper Weight (KG)",
-    formula: "(Reel As per Calculation x Cutting Trim x L1 x Paper Required (Nos)) / 1,000,000,000",
-    description: "This field is auto-calculated in Production Form using the current Reel As per Calculation, Cutting Trim, L1, and Paper Required (Nos).",
-  },
-  {
-    title: "Liner Weight (KG)",
-    formula: "(Reel As per Calculation x Cutting Trim x (GSM minus L1) x Paper Required (Nos)) / 1,000,000,000",
-    description: "This field is auto-calculated in Production Form using the current Reel As per Calculation, Cutting Trim, GSM, L1, and Paper Required (Nos).",
-  },
-  {
-    title: "Total Job Weight",
-    formula: "L1 Paper Weight (KG) + Liner Weight (KG)",
-    description: "This field is auto-calculated in Production Form by adding the L1 paper weight and liner weight.",
   },
   {
     title: "Sheet Weight",
@@ -185,7 +160,7 @@ const fieldRules = [
   {
     field: "PLY",
     source: "Auto-filled from Item Master",
-    formula: "Direct copy from the selected item, then used for ID to OD and ID to OD 17.",
+    formula: "Direct copy from the selected item, then used for ID to OD and ID to OD 2.",
     validation: "Read-only in Production Form.",
   },
   {
@@ -253,36 +228,6 @@ const fieldRules = [
     source: "Auto-calculated",
     formula: "This field follows the Cutting Size formula selected in Settings. Option 1 is Current Logic. Option 2 is TYPE Based Logic.",
     validation: "Read-only in Production Form. A tooltip on the field shows the active formula logic.",
-  },
-  {
-    field: "Paper Required (Nos)",
-    source: "Auto-calculated",
-    formula: "For VERTICAL PLATE, HORIZONTAL PLATE, U/C PLATE, and ROTARY TRAY: Planned Quantity / (UPS x No. of ups in Cutting (For Plates)). For 2 PLY LINER: blank. For DIE CUT SHEET: Planned Quantity / (UPS x No. of ups in Cutting (For Plates)) / Die Cut Ups. For RSC with PART = 1: Planned Quantity / UPS. For RSC with PART = 2: (Planned Quantity / UPS) x 2.",
-    validation: "Read-only in Production Form.",
-  },
-  {
-    field: "L1 Paper Weight (KG)",
-    source: "Auto-calculated",
-    formula: "(Reel As per Calculation x Cutting Trim x L1 x Paper Required (Nos)) / 1,000,000,000",
-    validation: "Read-only in Production Form.",
-  },
-  {
-    field: "Liner Weight (KG)",
-    source: "Auto-calculated",
-    formula: "(Reel As per Calculation x Cutting Trim x (GSM minus L1) x Paper Required (Nos)) / 1,000,000,000",
-    validation: "Read-only in Production Form.",
-  },
-  {
-    field: "Total Job Weight",
-    source: "Auto-calculated",
-    formula: "L1 Paper Weight (KG) + Liner Weight (KG)",
-    validation: "Read-only in Production Form.",
-  },
-  {
-    field: "Liner Required (Nos)",
-    source: "Auto-calculated",
-    formula: "If ERP Code is blank, keep blank. If PLY is 3, use the same value as Paper Required (Nos). If PLY is 5, use Paper Required (Nos) x 2. If PLY is 2 and TYPE is 2 PLY LINER, use Planned Quantity divided by (UPS x No. of ups in Cutting (For Plates)).",
-    validation: "Read-only in Production Form.",
   },
   {
     field: "Sheet Weight",

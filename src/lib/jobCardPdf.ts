@@ -443,9 +443,6 @@ export async function downloadJobCardPdf({ production, schedule, order, company,
   const lOd = valueOf(production, item, "lengthOd", "lOd", "length");
   const wOd = valueOf(production, item, "breadthOd", "wOd", "breadth");
   const hOd = valueOf(production, item, "heightOd", "hOd", "height");
-  const targetPaper = Number(production.topPaperWeightKg || production.totalPaperWeight || 0);
-  const targetLiner = Number(production.linerWeightKg || 0);
-  const totalTarget = Number(production.totalJobWeight || 0) || targetPaper + targetLiner;
   const hasPlateData = hasValue(plateErp);
   const hasPhpData = hasValue(phpErp);
 
@@ -521,13 +518,8 @@ export async function downloadJobCardPdf({ production, schedule, order, company,
   y += 6;
   cell(doc, x, y, 42, 6, "Flute %", { fill: LIGHT_ORANGE, bold: true, align: "left" });
   cell(doc, x + 42, y, 50, 6, fixedNum(firstValue(production.takeUpFactor, raw.takeUpFactor, raw.takeUp), 2), { bold: true });
-  cell(doc, x + 111, y, 45, 6, "Papers", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 156, y, 40, 6, num(firstValue(production.paperRequiredNos, production.lineRequiredNos)), { bold: true });
-  y += 6;
   cell(doc, x, y, 42, 6, "No. of Outs", { fill: LIGHT_ORANGE, bold: true, align: "left" });
   cell(doc, x + 42, y, 50, 6, firstValue(production.ups, raw.ups, raw.noOfUps), { bold: true });
-  cell(doc, x + 111, y, 45, 6, "Liners", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 156, y, 40, 6, num(firstValue(production.lineRequiredNos, production.paperRequiredNos)), { bold: true });
   y += 6;
 
   y = section(doc, x, y, w, "COMBINATION AND CUTTER SIZE");
@@ -598,20 +590,8 @@ export async function downloadJobCardPdf({ production, schedule, order, company,
   y += 30;
 
   y = section(doc, x, y, w, "OFFICIAL DATA");
-  cell(doc, x, y, 66, 7, "Target Paper Weight", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 66, y, 38, 7, "", { bold: true });
-  cell(doc, x + 104, y, 45, 7, "Actual Paper weight", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 149, y, 47, 7, production.actualPaperUsed ? num(production.actualPaperUsed, 2) : "");
-  y += 7;
-  cell(doc, x, y, 66, 7, "Target Liner Weight", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 66, y, 38, 7, "", { bold: true });
-  cell(doc, x + 104, y, 45, 7, "Actual Liner weight", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 149, y, 47, 7, "");
-  y += 7;
-  cell(doc, x, y, 66, 12, "Total Target weight", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 66, y, 38, 12, "", { bold: true });
-  cell(doc, x + 104, y, 45, 12, "Actual Consumed\nweight", { fill: LIGHT_ORANGE, bold: true });
-  cell(doc, x + 149, y, 47, 12, production.actualPaperUsed ? num(production.actualPaperUsed, 2) : "");
+  cell(doc, x, y, 104, 12, "Actual Paper weight", { fill: LIGHT_ORANGE, bold: true });
+  cell(doc, x + 104, y, 92, 12, production.actualPaperUsed ? num(production.actualPaperUsed, 2) : "");
   y += 17;
 
   const signatureY = Math.min(y + 8, 292);

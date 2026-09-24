@@ -34,11 +34,6 @@ export const PRODUCTION_FORM_COLUMN_OPTIONS = [
   "No. of ups in Cutting (For Plates)",
   "Reel Actual Trim",
   "Cutting Trim",
-  "Paper Required (Nos)",
-  "L1 Paper Weight (KG)",
-  "Liner Weight (KG)",
-  "Total Job Weight",
-  "Liner Required (Nos)",
   "Sheet Weight",
   "Plate/PHP Weight",
   "Total Paper Wt",
@@ -65,8 +60,6 @@ export function parseProductionFormVisibleColumns(raw?: string | null) {
       const normalized = parsed
         .filter((value) => value !== "Top")
         .map((value) => {
-          if (value === "Line Required (Nos)") return "Liner Required (Nos)";
-          if (value === "Top Paper Weight (KG)") return "L1 Paper Weight (KG)";
           return value;
         });
       const valid = normalized.filter((value): value is string =>

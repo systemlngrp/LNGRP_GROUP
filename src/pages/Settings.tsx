@@ -37,7 +37,7 @@ const CUTTING_SIZE_FORMULA_OPTIONS = [
     value: "current-logic",
     label: "Current Logic",
     description:
-      "If Breadth is blank or 0, use Length. If Number of Parts = 1, use ((Length + Breadth) x 2) + (ID to OD 17 x Number of Parts). If Number of Parts = 2, use Length + Breadth + ID to OD 17.",
+      "Fixed cutting trim logic uses ID to OD and Number of Parts.",
   },
   {
     value: "type-based",

@@ -138,12 +138,7 @@ const PROCESSING_MACHINE_CARD_ORDER = [
 ] as const;
 
 function getPlanPaper(p: Production) {
-  const total = Number(p.totalJobWeight || 0);
-  if (total > 0) return total;
-  const l1Paper = Number(p.topPaperWeightKg || 0);
-  const liner = Number(p.linerWeightKg || 0);
-  const sum = l1Paper + liner;
-  return sum > 0 ? sum : 0;
+  return Number(p.totalPaperWeight || 0);
 }
 
 function formatMetricValue(card: OperationDashboardMetricCard) {
@@ -570,11 +565,6 @@ export function OperationDashboard() {
       "Color 1": r.production.color1 ?? "-",
       "Color 2": r.production.color2 ?? "-",
       "Printing Color": r.production.printingColor ?? "-",
-      "Paper Req.": r.production.paperRequiredNos ?? "-",
-      "L1 Paper Wt (KG)": r.production.topPaperWeightKg ?? "-",
-      "Liner Wt (KG)": r.production.linerWeightKg ?? "-",
-      "Total Job Wt": r.production.totalJobWeight ?? "-",
-      "Liner Req.": r.production.lineRequiredNos ?? "-",
       "Total Wt": r.production.totalPaperWeight ?? "-",
       "Avg Wt": r.production.avgWeight ?? "-",
       Wastage: r.production.wastage ?? "-",
