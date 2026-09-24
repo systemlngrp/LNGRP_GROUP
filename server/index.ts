@@ -2240,7 +2240,7 @@ function normalizeNpdRowForItemConsumers(row: any) {
       row?.plateWeight ??
       (() => {
         const platePhpWeight = toFiniteNumber(row?.platePhpWeight);
-        return platePhpWeight === undefined ? undefined : platePhpWeight / 1000;
+        return platePhpWeight === undefined ? undefined : platePhpWeight;
       })(),
     artwork: row?.artwork ?? row?.artworkUpload ?? "",
     opening,
