@@ -2834,6 +2834,19 @@ async function getFirmDocumentPrefix(db, firmId) {
     const sanitized = source.replace(/[^A-Z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
     return sanitized || "LNGRP";
 }
+async function generateProductionFirmNo(db, firmId, documentCode, dateStr) {
+    const fy = getShortFinancialYear(dateStr);
+    if (!fy)
+        throw new Error("Could not generate production job number because date is invalid.");
+    const firmPrefix = await getFirmDocumentPrefix(db, firmId);
+    const counterKey = `${documentCode}/${fy}`;
+    await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
+     VALUES (?, 0)
+     ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [counterKey]);
+    await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [counterKey]);
+    const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
+    return `${firmPrefix}/${counterKey}/${String(Number(rows[0]?.nextValue || 0)).padStart(5, "0")}`;
+}
 async function generateLockedMrrNo(db, dateStr, firmId) {
     return generateFirmDocumentNo(db, firmId, "MRR", dateStr);
 }
@@ -4503,6 +4516,7 @@ async function backfillFirmSupplierAttribution(db, database) {
 async function backfillProductionJobNumbers(db) {
     const [rows] = await db.query("SELECT id, transactionNo, jobCardNo, date, firmId, sourceFirmId, orderFirmId FROM `productions` ORDER BY date ASC, id ASC");
     const used = new Set();
+    const maxByCounter = new Map();
     let changed = 0;
     for (const row of rows) {
         const firmId = String(row.firmId || row.sourceFirmId || row.orderFirmId || "").trim();
@@ -4521,6 +4535,8 @@ async function backfillProductionJobNumbers(db) {
             candidate = `${firmPrefix}/JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
         }
         used.add(candidate);
+        const counterKey = `JOB/${parsed.fy}`;
+        maxByCounter.set(counterKey, Math.max(maxByCounter.get(counterKey) || 0, next));
         if (String(row.transactionNo || "").trim() !== candidate) {
             await db.query("UPDATE `productions` SET `transactionNo` = ? WHERE `id` = ?", [candidate, row.id]);
             changed += 1;
@@ -4528,6 +4544,11 @@ async function backfillProductionJobNumbers(db) {
         if (String(row.jobCardNo || "").trim() && String(row.jobCardNo).trim() !== candidate) {
             await db.query("UPDATE `productions` SET `jobCardNo` = ? WHERE `id` = ?", [candidate, row.id]);
         }
+    }
+    for (const [counterKey, lastValue] of maxByCounter) {
+        await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [counterKey, lastValue]);
     }
     try {
         await db.query("ALTER TABLE `productions` ADD UNIQUE KEY `uq_productions_transactionNo` (`transactionNo`)");
@@ -8775,7 +8796,7 @@ const createHandlers = (tableName) => {
                         if (tableName !== "productions" && !String(data.transactionNo || "").trim()) {
                             const sourceCode = tableName === "php_job_master" ? "PHP" : "PLATE";
                             const firmId = String(data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || "").trim();
-                            data.transactionNo = await generateFirmDocumentNo(db, firmId, sourceCode, String(data.date || new Date().toISOString().slice(0, 10)));
+                            data.transactionNo = await generateProductionFirmNo(db, firmId, sourceCode, String(data.date || new Date().toISOString().slice(0, 10)));
                         }
                     }
                     catch (err) {
@@ -8806,7 +8827,9 @@ const createHandlers = (tableName) => {
                     const [existingDocumentRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [data.id]);
                     if (!existingDocumentRows[0]) {
                         const firmId = String(data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || "").trim();
-                        data[firmDocument.field] = await generateFirmDocumentNo(db, firmId, firmDocument.code, String(data[firmDocument.dateField] || new Date().toISOString().slice(0, 10)));
+                        data[firmDocument.field] = tableName === "productions"
+                            ? await generateProductionFirmNo(db, firmId, "JOB", String(data[firmDocument.dateField] || new Date().toISOString().slice(0, 10)))
+                            : await generateFirmDocumentNo(db, firmId, firmDocument.code, String(data[firmDocument.dateField] || new Date().toISOString().slice(0, 10)));
                     }
                 }
                 if (tableName === "productions" && String(data.transactionNo || "").trim()) {
