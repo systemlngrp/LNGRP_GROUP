@@ -40,3 +40,40 @@ export function calculateProductionReel(input: {
     ? height * ups
     : (breadth + height) * ups + (idToOd * ups + 16);
 }
+
+export function calculateProductionIdToOd(ply: unknown): number {
+  const value = numberValue(ply);
+  return value === 3 ? 6 : value === 5 ? 10 : 0;
+}
+
+export function calculateProductionIdToOd2(ply: unknown): number {
+  const value = numberValue(ply);
+  return value === 3 ? 40 : value === 5 ? 50 : 0;
+}
+
+export function calculateProductionDerivedValues(input: {
+  reelActualWithTrimming?: unknown;
+  cuttingWithTrimming?: unknown;
+  gsm?: unknown;
+  ups?: unknown;
+  planQty?: unknown;
+  plateWeight?: unknown;
+  rate?: unknown;
+  noOfParts?: unknown;
+}) {
+  const reel = numberValue(input.reelActualWithTrimming);
+  const cutting = numberValue(input.cuttingWithTrimming);
+  const gsm = numberValue(input.gsm);
+  const ups = numberValue(input.ups);
+  const planQty = numberValue(input.planQty);
+  const plateWeight = numberValue(input.plateWeight);
+  const rate = numberValue(input.rate);
+  const noOfParts = numberValue(input.noOfParts);
+  const sheetWeight = ups > 0 ? (reel * cutting * gsm) / 1_000_000_000 / ups : null;
+  const totalPaperWeight = sheetWeight === null ? null : sheetWeight * planQty;
+  const totalWeightOfSet = sheetWeight === null ? null : sheetWeight + plateWeight;
+  const realizationPerKg = totalWeightOfSet && totalWeightOfSet > 0
+    ? (rate / totalWeightOfSet) * noOfParts
+    : null;
+  return { sheetWeight, totalPaperWeight, totalWeightOfSet, realizationPerKg };
+}

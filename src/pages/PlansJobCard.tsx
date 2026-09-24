@@ -144,18 +144,6 @@ const jobCardMappings: JobCardMapping[] = [
     notes: "Uses the first available take-up/flute factor and prints with exactly 2 decimals.",
   },
   {
-    field: "Papers",
-    source: "productions",
-    key: "productions.paperRequiredNos, productions.lineRequiredNos",
-    notes: "Paper required quantity is preferred; liner required is fallback.",
-  },
-  {
-    field: "Liners",
-    source: "productions",
-    key: "productions.lineRequiredNos, productions.paperRequiredNos",
-    notes: "Liner required quantity is preferred; paper required is fallback.",
-  },
-  {
     field: "No. of Outs",
     source: "productions, npd",
     key: "productions.ups, npd.ups, npd.noOfUps",
@@ -262,24 +250,6 @@ const jobCardMappings: JobCardMapping[] = [
     source: "php_item_master",
     key: "php_item_master.raw.holesOrientationL, php_item_master.raw.holesOrientationW, php_item_master.raw.noOfPly, php_item_master.raw.fluteType, php_item_master.raw.boardGsmReq",
     notes: "Printed in the PHP specification rows and diagram area.",
-  },
-  {
-    field: "Target Paper Weight",
-    source: "productions",
-    key: "productions.topPaperWeightKg, productions.totalPaperWeight",
-    notes: "Source remains topPaperWeightKg first, with totalPaperWeight as fallback, but the Job Card PDF intentionally prints this value blank.",
-  },
-  {
-    field: "Target Liner Weight",
-    source: "productions",
-    key: "productions.linerWeightKg",
-    notes: "Source remains saved production liner weight, but the Job Card PDF intentionally prints this value blank.",
-  },
-  {
-    field: "Total Target weight",
-    source: "productions",
-    key: "productions.totalJobWeight, productions.topPaperWeightKg + productions.linerWeightKg",
-    notes: "Source remains totalJobWeight, falling back to target paper plus liner weights, but the Job Card PDF intentionally prints this value blank.",
   },
   {
     field: "Actual Paper weight",

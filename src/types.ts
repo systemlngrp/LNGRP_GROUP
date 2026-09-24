@@ -1421,7 +1421,6 @@ export interface Setting {
   ourReelNoStartNumber?: number;
   otherMaterialErpStartNumber?: number;
   flapAsPerCalculation?: string;
-  cuttingSizeAsPerCalculation?: string;
   allowInvoiceTallyEdit?: string;
   allowInvoiceTallyEditUsers?: string;
   productionFormVisibleColumns?: string;

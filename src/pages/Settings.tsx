@@ -32,21 +32,6 @@ const FLAP_FORMULA_OPTIONS = [
   },
 ];
 
-const CUTTING_SIZE_FORMULA_OPTIONS = [
-  {
-    value: "current-logic",
-    label: "Current Logic",
-    description:
-      "Fixed cutting trim logic uses ID to OD and Number of Parts.",
-  },
-  {
-    value: "type-based",
-    label: "TYPE Based Logic",
-    description:
-      "If TYPE is 2 PLY ROLL, keep Cutting Size blank. If TYPE is DIE CUT SHEET, use ((Open Length x No. of ups in Cutting (For Plates)) + 20) / 25.4. If TYPE is RSC and PART is 1, use ((2 x (Length (OD) + Width (OD))) + 50) / 25.4. If TYPE is RSC and PART is 2, use ((Length (OD) + Width (OD)) + 50) / 25.4. In other filled cases, use ((Length (OD) x No. of ups in Cutting (For Plates)) + 20) / 25.4.",
-  },
-];
-
 const GLOBAL_ITEM_RENAME_ALLOWED_EMAIL = "pankaj@bizskilledu.com";
 const MATERIAL_NUMBERING_MAX = 2_147_483_647;
 const MATERIAL_NUMBERING_FIELDS = [
@@ -512,11 +497,6 @@ export function SettingsPage() {
     () => FLAP_FORMULA_OPTIONS.find((option) => option.value === selectedFlapFormula) || FLAP_FORMULA_OPTIONS[0],
     [selectedFlapFormula]
   );
-  const selectedCuttingFormula = currentSetting?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_OPTIONS[0].value;
-  const selectedCuttingOption = useMemo(
-    () => CUTTING_SIZE_FORMULA_OPTIONS.find((option) => option.value === selectedCuttingFormula) || CUTTING_SIZE_FORMULA_OPTIONS[0],
-    [selectedCuttingFormula]
-  );
   const selectedProductionFormColumns = useMemo(
     () => parseProductionFormVisibleColumns(currentSetting?.productionFormVisibleColumns),
     [currentSetting?.productionFormVisibleColumns]
@@ -711,7 +691,6 @@ export function SettingsPage() {
         ourReelNoStartNumber: Number(currentSetting?.ourReelNoStartNumber || 1),
         otherMaterialErpStartNumber: Number(currentSetting?.otherMaterialErpStartNumber || 1),
         flapAsPerCalculation: currentSetting?.flapAsPerCalculation || FLAP_FORMULA_OPTIONS[0].value,
-        cuttingSizeAsPerCalculation: currentSetting?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_OPTIONS[0].value,
         allowInvoiceTallyEdit: currentSetting?.allowInvoiceTallyEdit || "No",
         allowInvoiceTallyEditUsers: currentSetting?.allowInvoiceTallyEditUsers || JSON.stringify([]),
         productionFormVisibleColumns: currentSetting?.productionFormVisibleColumns || JSON.stringify(PRODUCTION_FORM_COLUMN_OPTIONS),
@@ -1764,13 +1743,6 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <div>
-          <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Production Formula Control</h3>
-          <p className="text-sm text-black leading-6">
-            Choose which formula the Production Form should use to calculate <span className="font-bold">Reel As per Calculation</span>.
-          </p>
-        </div>
-
         <div className="rounded border-2 border-black bg-slate-50 p-4 md:p-5">
           <h3 className="mb-1 text-sm font-black uppercase text-black">Material Numbering</h3>
           <p className="mb-4 text-sm text-slate-700">Start values are minimums. Existing higher numbers always continue with the next number.</p>
@@ -1903,28 +1875,6 @@ export function SettingsPage() {
           </div>
           <div className="text-xs font-bold text-slate-500">
             {saving ? "Saving setting..." : "These selections are used by NPD-driven forms and Production Form for new calculations."}
-          </div>
-        </div>
-
-        <div className="flex flex-col space-y-2">
-          <label htmlFor="cuttingSizeAsPerCalculation" className="text-xs font-black uppercase tracking-wide text-black">
-            Cutting Size
-          </label>
-          <select
-            id="cuttingSizeAsPerCalculation"
-            value={selectedCuttingFormula}
-            onChange={(e) => void handleChange({ cuttingSizeAsPerCalculation: e.target.value })}
-            disabled={loading || saving}
-            className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white"
-          >
-            {CUTTING_SIZE_FORMULA_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
-            {selectedCuttingOption.description}
           </div>
         </div>
 

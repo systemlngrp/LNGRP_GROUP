@@ -4,6 +4,8 @@ import {
   calculateProductionGsm,
   calculateProductionReel,
   calculateProductionTakeUpFactor,
+  calculateProductionDerivedValues,
+  calculateProductionIdToOd2,
 } from "../src/lib/productionCalculations";
 
 const round2 = (value: number) => Number(value.toFixed(2));
@@ -51,39 +53,30 @@ async function main() {
           }))
         : null;
       const cutting = positive(row.cuttingWithTrimming);
-      const paperRequired = positive(row.paperRequiredNos);
-      const l1 = finite(row.l1);
-      const canCalculatePaperWeight = reelAsPerCalc !== null && reelAsPerCalc > 0 && cutting > 0 && paperRequired > 0;
-      const l1PaperWeight = canCalculatePaperWeight
-        ? round2((reelAsPerCalc * cutting * l1 * paperRequired) / 1_000_000_000)
-        : null;
-      const linerWeight = canCalculatePaperWeight
-        ? round2((reelAsPerCalc * cutting * (gsm - l1) * paperRequired) / 1_000_000_000)
-        : null;
-      const totalJobWeight = l1PaperWeight !== null && linerWeight !== null
-        ? round2(l1PaperWeight + linerWeight)
-        : null;
       const actualReel = positive(row.reelActualWithTrimming);
-      const sheetWeightRaw = ups > 0 && actualReel > 0 && cutting > 0 && gsm > 0
-        ? ((actualReel * cutting * gsm) / 1_000_000_000) / ups
-        : null;
-      const sheetWeight = sheetWeightRaw === null ? null : round2(sheetWeightRaw);
       const qty = positive(row.qty);
-      const totalPaperWeight = sheetWeightRaw !== null && qty > 0 ? round2(sheetWeightRaw * qty) : null;
-      const plateWeight = finite(row.plateWeight);
-      const totalWeightOfSetRaw = sheetWeightRaw === null ? null : sheetWeightRaw + plateWeight;
-      const totalWeightOfSet = totalWeightOfSetRaw === null ? null : round2(totalWeightOfSetRaw);
-      const rate = positive(row.rate);
-      const realizationPerKg = totalWeightOfSetRaw !== null && totalWeightOfSetRaw > 0 && rate > 0
-        ? round2(rate / totalWeightOfSetRaw)
-        : null;
+      const derived = calculateProductionDerivedValues({
+        reelActualWithTrimming: actualReel,
+        cuttingWithTrimming: cutting,
+        gsm,
+        ups,
+        planQty: qty,
+        plateWeight: row.plateWeight,
+        rate: row.rate,
+        noOfParts: row.noOfParts,
+      });
+      const sheetWeight = derived.sheetWeight === null ? null : round2(derived.sheetWeight);
+      const totalPaperWeight = derived.totalPaperWeight === null ? null : round2(derived.totalPaperWeight);
+      const totalWeightOfSet = derived.totalWeightOfSet === null ? null : round2(derived.totalWeightOfSet);
+      const realizationPerKg = derived.realizationPerKg === null ? null : round2(derived.realizationPerKg);
       const actualPaperUsed = positive(row.actualPaperUsed);
       const prodFromFFG = positive(row.prodFromFFG);
-      const wastage = sheetWeightRaw !== null && actualPaperUsed > 0 && prodFromFFG > 0
-        ? round2(100 - ((prodFromFFG * sheetWeightRaw) / actualPaperUsed) * 100)
+      const wastage = sheetWeight !== null && actualPaperUsed > 0 && prodFromFFG > 0
+        ? round2(100 - ((prodFromFFG * sheetWeight) / actualPaperUsed) * 100)
         : null;
 
-      const values = [takeUpFactor, gsm, reelAsPerCalc, l1PaperWeight, linerWeight, totalJobWeight,
+      const idToOd2 = calculateProductionIdToOd2(row.ply);
+      const values = [takeUpFactor, gsm, idToOd2, reelAsPerCalc,
         sheetWeight, totalPaperWeight, totalWeightOfSet, realizationPerKg, wastage]
         .filter((value): value is number => value !== null);
       if (values.some((value) => !Number.isFinite(value))) {
@@ -93,11 +86,11 @@ async function main() {
       const [result] = await db.query<mysql.ResultSetHeader>(
         `UPDATE \`productions\` SET
           \`takeUpFactor\` = ?, \`gsm\` = ?, \`boardGsmReq\` = ?, \`reelAsPerCalc\` = ?,
-          \`top\` = NULL, \`topPaperWeightKg\` = ?, \`linerWeightKg\` = ?, \`totalJobWeight\` = ?,
+          \`idToOd2\` = ?, \`top\` = NULL,
           \`sheetWeight\` = ?, \`totalPaperWeight\` = ?, \`totalWeightOfSet\` = ?,
           \`realizationPerKg\` = ?, \`wastage\` = ?, \`updatedBy\` = ?, \`updateTimestamp\` = ?
         WHERE \`id\` = ?`,
-        [takeUpFactor, gsm, gsm, reelAsPerCalc, l1PaperWeight, linerWeight, totalJobWeight,
+        [takeUpFactor, gsm, gsm, reelAsPerCalc, idToOd2,
           sheetWeight, totalPaperWeight, totalWeightOfSet, realizationPerKg, wastage,
           "System Admin - formula migration", timestamp, row.id]
       );

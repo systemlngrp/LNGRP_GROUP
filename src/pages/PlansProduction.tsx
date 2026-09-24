@@ -63,11 +63,6 @@ const formulaCards = [
     description: "This is the Current Logic option for Cutting Size in Settings.",
   },
   {
-    title: "Cutting Trim - TYPE Based Logic",
-    formula: "If TYPE is 2 PLY ROLL, keep Cutting Size blank. If TYPE is DIE CUT SHEET, use ((Open Length x No. of ups in Cutting (For Plates)) + 20) / 25.4. If TYPE is RSC and PART is 1, use ((2 x (Length (OD) + Width (OD))) + 50) / 25.4. If TYPE is RSC and PART is 2, use ((Length (OD) + Width (OD)) + 50) / 25.4. In other filled cases, use ((Length (OD) x No. of ups in Cutting (For Plates)) + 20) / 25.4.",
-    description: "This is the TYPE Based Logic option for Cutting Size in Settings.",
-  },
-  {
     title: "Sheet Weight",
     formula: "((Reel Actual Trim or Reel Per Calc) x Cutting Trim x GSM) / 1,000,000,000, then divide by UPS.",
     description: "If Reel Actual Trim is blank, the app falls back to Reel Per Calc before calculating Sheet Weight.",
@@ -226,8 +221,8 @@ const fieldRules = [
   {
     field: "Cutting Trim",
     source: "Auto-calculated",
-    formula: "This field follows the Cutting Size formula selected in Settings. Option 1 is Current Logic. Option 2 is TYPE Based Logic.",
-    validation: "Read-only in Production Form. A tooltip on the field shows the active formula logic.",
+    formula: "Fixed cutting trim logic uses Length, Breadth, Number of Parts, and ID to OD 2.",
+    validation: "Read-only in Production Form.",
   },
   {
     field: "Sheet Weight",

@@ -29,30 +29,24 @@ import {
   calculateProductionGsm,
   calculateProductionReel,
   calculateProductionTakeUpFactor,
+  calculateProductionDerivedValues,
+  calculateProductionIdToOd,
+  calculateProductionIdToOd2,
 } from "../lib/productionCalculations";
 
 const getJobMasterEntityName = (source: "PHP" | "PLATE") =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
 
-const CUTTING_SIZE_FORMULA_MODE = {
-  currentLogic: "current-logic",
-  typeBased: "type-based",
-} as const;
-
 function getReelAsPerCalculationHelpText() {
-  return "Current setting: Breadth/Height Based Formula. If Breadth is blank or 0, use Height x UPS. Otherwise use ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).";
+  return "Fixed formula: if Breadth is blank/0, use Height x UPS; otherwise use ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).";
 }
 
-function getCuttingSizeHelpText(formulaMode: string) {
-  if (formulaMode === CUTTING_SIZE_FORMULA_MODE.typeBased) {
-    return "Current setting: TYPE Based Logic. If TYPE is 2 PLY ROLL, keep Cutting Size blank. If TYPE is DIE CUT SHEET, use ((Open Length x No. of ups in Cutting (For Plates)) + 20) / 25.4. If TYPE is RSC and PART is 1, use ((2 x (Length (OD) + Width (OD))) + 50) / 25.4. If TYPE is RSC and PART is 2, use ((Length (OD) + Width (OD)) + 50) / 25.4. In other filled cases, use ((Length (OD) x No. of ups in Cutting (For Plates)) + 20) / 25.4.";
-  }
-
-  return "Fixed cutting trim logic uses ID to OD and Number of Parts.";
+function getCuttingSizeHelpText() {
+  return "Fixed formula: if Breadth is blank/0, use Length; otherwise use ((Length + Breadth) x 2) + (ID to OD 2 x Number of Parts) for one-part jobs, or Length + Breadth + ID to OD 2 for two-part jobs.";
 }
 
 function getGsmHelpText() {
-  return "Current setting: Current Logic. L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3.";
+  return "Fixed formula: L1 + (F1 x Take up Factor) + L2 + (F2 x Take up Factor) + L3.";
 }
 
 function joinPrintingColors(color1?: string, color2?: string) {
@@ -301,7 +295,6 @@ export function ProductionForm() {
     ? Number(consumptionByScheduleId.get(selectedSchedule.id)?.effectiveConsumedQty || 0)
     : 0;
   const pendingQty = selectedSchedule ? getPendingProductionQty(selectedSchedule, selectedScheduleConsumedQty) : 0;
-  const cuttingSizeFormulaMode = settings[0]?.cuttingSizeAsPerCalculation || CUTTING_SIZE_FORMULA_MODE.currentLogic;
   const realizationTargets = useMemo(
     () => parseRealizationTargets(settings[0]?.realizationPerKgTargets),
     [settings]
@@ -496,16 +489,8 @@ export function ProductionForm() {
     const qty = Number(formData.qty);
     const rate = Number(formData.rate);
     const plateWeight = Number(formData.plateWeight);
-    const noOfUpsInCuttingForPlates = Number(formData.noOfUpsInCuttingForPlates);
-    const lOd = Number(selectedItem?.lOd || 0);
-    const wOd = Number(selectedItem?.wOd || 0);
-    const openLength = Number(selectedItem?.openLength || 0);
-    const normalizedType = String((selectedItem as any)?.boxType || "").trim().toUpperCase();
-    const normalizedPart = normalizeNumericPart(selectedItem?.part ?? selectedItem?.noOfParts);
-    const dieCutUps = Number(selectedItem?.dieCutUps || 0);
-
-    const idToOd = ply === 3 ? 6 : ply === 5 ? 10 : 0;
-    const idToOd2 = ply === 3 ? 40 : ply === 5 ? 50 : 0;
+    const idToOd = calculateProductionIdToOd(ply);
+    const idToOd2 = calculateProductionIdToOd2(ply);
 
     const takeUpFactor = calculateProductionTakeUpFactor(formData.flute);
     const l1 = Number(formData.l1 || 0);
@@ -518,19 +503,7 @@ export function ProductionForm() {
     const reelAsPerCalc = calculateProductionReel({ breadth, height, ups, idToOd });
 
     let cutting = 0;
-    if (cuttingSizeFormulaMode === CUTTING_SIZE_FORMULA_MODE.typeBased) {
-      if (normalizedType === "2 PLY ROLL") {
-        cutting = 0;
-      } else if (normalizedType === "DIE CUT SHEET" && openLength > 0 && noOfUpsInCuttingForPlates > 0) {
-        cutting = ((openLength * noOfUpsInCuttingForPlates) + 20) / 25.4;
-      } else if (normalizedType === "RSC" && normalizedPart === 1) {
-        cutting = ((2 * (lOd + wOd)) + 50) / 25.4;
-      } else if (normalizedType === "RSC" && normalizedPart === 2) {
-        cutting = ((lOd + wOd) + 50) / 25.4;
-      } else if (normalizedType && lOd > 0 && noOfUpsInCuttingForPlates > 0) {
-        cutting = ((lOd * noOfUpsInCuttingForPlates) + 20) / 25.4;
-      }
-    } else if (!breadth) {
+    if (!breadth) {
       cutting = length;
     } else if (noOfParts === 1) {
       cutting = (length + breadth) * 2 + idToOd2 * noOfParts;
@@ -559,17 +532,21 @@ export function ProductionForm() {
 
     const plannedQty = qty;
     const reelActualWithTrimming = Number(formData.reelActualWithTrimming || 0);
-    const sheetWeight =
-      ups > 0
-        ? ((reelActualWithTrimming * cutting * gsm) / 1000000000) / ups
-        : "";
-    const sheetWeightValue = sheetWeight === "" ? 0 : Number(sheetWeight || 0);
-    const totalPaperWeight = sheetWeight === "" ? "" : sheetWeightValue * plannedQty;
-    const totalWeightOfSet = sheetWeight === "" ? "" : sheetWeightValue + plateWeight;
-    const totalWeightOfSetValue = totalWeightOfSet === "" ? 0 : Number(totalWeightOfSet || 0);
-
-    const realizationPerKg =
-      totalWeightOfSetValue > 0 ? rate / totalWeightOfSetValue : "";
+    const derived = calculateProductionDerivedValues({
+      reelActualWithTrimming,
+      cuttingWithTrimming: cutting,
+      gsm,
+      ups,
+      planQty: plannedQty,
+      plateWeight,
+      rate,
+      noOfParts,
+    });
+    const sheetWeight = derived.sheetWeight;
+    const sheetWeightValue = sheetWeight ?? 0;
+    const totalPaperWeight = derived.totalPaperWeight;
+    const totalWeightOfSet = derived.totalWeightOfSet;
+    const realizationPerKg = derived.realizationPerKg;
 
     const wastage =
       prodFromFFG > 0 && sheetWeightValue > 0 && actualPaperUsed > 0
@@ -584,10 +561,10 @@ export function ProductionForm() {
       gsm: round2(gsm),
       reelAsPerCalc: round2(reelAsPerCalc),
       cuttingWithTrimming: round2(cutting),
-      sheetWeight: sheetWeight === "" ? "" : round2(sheetWeight),
-      totalPaperWeight: totalPaperWeight === "" ? "" : round2(totalPaperWeight),
-      totalWeightOfSet: totalWeightOfSet === "" ? "" : round2(totalWeightOfSet),
-      realizationPerKg: realizationPerKg === "" ? "" : round2(realizationPerKg),
+      sheetWeight: sheetWeight === null ? "" : round2(sheetWeight),
+      totalPaperWeight: totalPaperWeight === null ? "" : round2(totalPaperWeight),
+      totalWeightOfSet: totalWeightOfSet === null ? "" : round2(totalWeightOfSet),
+      realizationPerKg: realizationPerKg === null ? "" : round2(realizationPerKg),
       productionInMeter: round2(productionInMeter),
       plannedProductionInMeter: plannedProductionInMeter === "" ? "" : round2(Number(plannedProductionInMeter)),
       avgWeight,
@@ -615,19 +592,11 @@ export function ProductionForm() {
     formData.qty,
     formData.rate,
     formData.plateWeight,
-    formData.noOfUpsInCuttingForPlates,
     formData.reelActualWithTrimming,
     formData.actualPaperUsed,
     formData.prodFromFFG,
     erpLeastGsmMap,
-    cuttingSizeFormulaMode,
     selectedErp,
-    selectedItem?.lOd,
-    selectedItem?.openLength,
-    selectedItem?.part,
-    selectedItem?.dieCutUps,
-    (selectedItem as any)?.boxType,
-    selectedItem?.wOd,
   ]);
 
   useEffect(() => {
@@ -971,7 +940,7 @@ export function ProductionForm() {
                 helpText="Editable field for plate-related cutting ups. It is saved with the production entry."
               /> : null}
               {showField("Reel Actual Trim") ? <FormInput label="Reel Actual Width Trimming (RAWT)" value={formData.reelActualWithTrimming} onChange={(v) => setFormData({ ...formData, reelActualWithTrimming: v })} type="number" required helpText="Mandatory. Enter the actual reel width trimming." /> : null}
-              {showField("Cutting Trim") ? <FormInput label="Cutting with Trimming" value={formData.cuttingWithTrimming} readOnly helpText={getCuttingSizeHelpText(cuttingSizeFormulaMode)} /> : null}
+              {showField("Cutting Trim") ? <FormInput label="Cutting with Trimming" value={formData.cuttingWithTrimming} readOnly helpText={getCuttingSizeHelpText()} /> : null}
               {showField("Sheet Weight") ? <FormInput label="Sheet Weight" value={formData.sheetWeight} readOnly helpText="Formula: ((Reel Actual with Trimming x Cutting with Trimming x GSM) / 1,000,000,000) / UPS. If UPS is 0 or blank, this stays blank." /> : null}
               {showField("Plate/PHP Weight") ? <FormInput label="Plate/PHP Weight" value={formData.plateWeight} readOnly type="number" step="0.00001" helpText="Auto-fetched from NPD Master for the selected item and divided by 1000." /> : null}
               {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Formula: Sheet Weight x Planned Qty." /> : null}
