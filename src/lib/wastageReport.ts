@@ -25,8 +25,9 @@ export function buildProductionWastageRows(processing: ProductionProcessing[], p
     const printingQty = printRows.reduce((sum, row) => sum + num(row.qty), 0);
     const productionQty = fullCorrugationQty + printingQty;
     const actualPaperUsedKg = num(production?.actualPaperUsed);
-    const requiredReelKg = num(production?.totalPaperWeight);
     const planQuantity = num(production?.qty || production?.plannedQty);
+    const displayedSheetWeight = Number(num(production?.sheetWeight).toFixed(3));
+    const requiredReelKg = displayedSheetWeight > 0 && planQuantity > 0 ? displayedSheetWeight * planQuantity : num(production?.totalPaperWeight);
     const paperKgPerBox = planQuantity > 0 ? requiredReelKg / planQuantity : 0;
     const sheetPlantWastageKg = corrRows.reduce((sum, row) => sum + num(row.warpageKg) + num(row.delaminationKg) + num(row.misalignmentKg) + num(row.twoPlyPaperKg) + num(row.sheerCutterKg), 0);
     const pWastageBoxes = printRows.reduce((sum, row) => sum + num(row.slotting) + num(row.misprinting) + num(row.jobSetting), 0);
