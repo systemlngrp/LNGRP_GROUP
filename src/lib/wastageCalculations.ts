@@ -49,11 +49,15 @@ export function getProductionWastageTotals(
       }
     });
 
-  const automaticNoHisab = Math.max(
+  const calculatedNoHisab = Math.max(
     nonNegative(production.actualPaperUsed) - (kgPerBox * fullCorrugationQty + corrugationKg),
     0
   );
-  const noHisabKg = Number.isFinite(automaticNoHisab) ? automaticNoHisab : 0;
+  const storedNoHisab = processingRows
+    .filter((row) => normalizeMachineName(row.machineName) === "corrugation liner" && row.noHisabKg !== undefined && row.noHisabKg !== null)
+    .reduce((sum, row) => sum + nonNegative(row.noHisabKg), 0);
+  const hasStoredNoHisab = processingRows.some((row) => normalizeMachineName(row.machineName) === "corrugation liner" && row.noHisabKg !== undefined && row.noHisabKg !== null);
+  const noHisabKg = hasStoredNoHisab ? storedNoHisab : (Number.isFinite(calculatedNoHisab) ? calculatedNoHisab : 0);
   printingKg = printingBoxes * kgPerBox;
 
   return {

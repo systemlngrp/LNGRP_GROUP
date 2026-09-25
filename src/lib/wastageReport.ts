@@ -31,7 +31,9 @@ export function buildProductionWastageRows(processing: ProductionProcessing[], p
     const sheetPlantWastageKg = corrRows.reduce((sum, row) => sum + num(row.warpageKg) + num(row.delaminationKg) + num(row.misalignmentKg) + num(row.twoPlyPaperKg) + num(row.sheerCutterKg), 0);
     const pWastageBoxes = printRows.reduce((sum, row) => sum + num(row.slotting) + num(row.misprinting) + num(row.jobSetting), 0);
     const pWastageKg = pWastageBoxes * paperKgPerBox;
-    const noHisabKg = getAutomaticNoHisabKg({ actualPaperUsedKg, requiredReelKg, planQuantity, fullCorrugationQty, warpageKg: corrRows.reduce((s, r) => s + num(r.warpageKg), 0), delaminationKg: corrRows.reduce((s, r) => s + num(r.delaminationKg), 0), misalignmentKg: corrRows.reduce((s, r) => s + num(r.misalignmentKg), 0), twoPlyPaperKg: corrRows.reduce((s, r) => s + num(r.twoPlyPaperKg), 0), sheerCutterKg: corrRows.reduce((s, r) => s + num(r.sheerCutterKg), 0) }).noHisabKg;
+    const calculatedNoHisabKg = getAutomaticNoHisabKg({ actualPaperUsedKg, requiredReelKg, planQuantity, fullCorrugationQty, warpageKg: corrRows.reduce((s, r) => s + num(r.warpageKg), 0), delaminationKg: corrRows.reduce((s, r) => s + num(r.delaminationKg), 0), misalignmentKg: corrRows.reduce((s, r) => s + num(r.misalignmentKg), 0), twoPlyPaperKg: corrRows.reduce((s, r) => s + num(r.twoPlyPaperKg), 0), sheerCutterKg: corrRows.reduce((s, r) => s + num(r.sheerCutterKg), 0) }).noHisabKg;
+    const storedNoHisab = corrRows.filter((r) => r.noHisabKg !== undefined && r.noHisabKg !== null);
+    const noHisabKg = storedNoHisab.length ? storedNoHisab.reduce((s, r) => s + Math.max(num(r.noHisabKg), 0), 0) : calculatedNoHisabKg;
     const totalCWastageKg = sheetPlantWastageKg + noHisabKg + pWastageKg;
     const itemName = String(entry.itemName || production?.itemName || "-"); const erp = String(entry.erp ?? production?.erpCode ?? production?.masterErp ?? "");
     const corrugationKg = corrRows.reduce((s, r) => s + num(r.warpageKg) + num(r.delaminationKg) + num(r.misalignmentKg) + num(r.sheerCutterKg) + num(r.twoPlyPaperKg) + num(r.deckelWastageKg), 0);
