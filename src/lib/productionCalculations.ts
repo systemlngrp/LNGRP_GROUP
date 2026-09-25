@@ -5,6 +5,11 @@ const numberValue = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const roundTo = (value: number, decimals: number) => {
+  const factor = 10 ** decimals;
+  return Math.round((value + Number.EPSILON) * factor) / factor;
+};
+
 export function calculateProductionTakeUpFactor(flute: unknown): number {
   const factor = calculateTakeUpFactor(String(flute ?? ""));
   return factor === "" ? 0 : factor;
@@ -69,9 +74,13 @@ export function calculateProductionDerivedValues(input: {
   const plateWeight = numberValue(input.plateWeight);
   const rate = numberValue(input.rate);
   const noOfParts = numberValue(input.noOfParts);
-  const sheetWeight = ups > 0 ? (reel * cutting * gsm) / 1_000_000_000 / ups : null;
-  const totalPaperWeight = sheetWeight === null ? null : sheetWeight * planQty;
-  const totalWeightOfSet = sheetWeight === null ? null : sheetWeight + plateWeight;
+  const rawSheetWeight = ups > 0 ? (reel * cutting * gsm) / 1_000_000_000 / ups : null;
+  // The spreadsheet displays sheet weight to three decimals, but uses a
+  // two-decimal staged weight for set weight and realization calculations.
+  const sheetWeight = rawSheetWeight === null ? null : roundTo(rawSheetWeight, 3);
+  const stagedSheetWeight = rawSheetWeight === null ? null : roundTo(rawSheetWeight, 2);
+  const totalPaperWeight = rawSheetWeight === null ? null : Math.floor(rawSheetWeight * planQty);
+  const totalWeightOfSet = stagedSheetWeight === null ? null : roundTo(stagedSheetWeight + plateWeight, 3);
   const realizationPerKg = totalWeightOfSet && totalWeightOfSet > 0
     ? (rate / totalWeightOfSet) * noOfParts
     : null;

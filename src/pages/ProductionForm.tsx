@@ -64,6 +64,10 @@ function round2(value: number) {
   return parseFloat(value.toFixed(2));
 }
 
+function round3(value: number) {
+  return parseFloat(value.toFixed(3));
+}
+
 function roundUpWhole(value: number) {
   return Math.ceil(value);
 }
@@ -550,9 +554,9 @@ export function ProductionForm() {
       gsm: round2(gsm),
       reelAsPerCalc: round2(reelAsPerCalc),
       cuttingWithTrimming: round2(cutting),
-      sheetWeight: sheetWeight === null ? "" : round2(sheetWeight),
-      totalPaperWeight: totalPaperWeight === null ? "" : round2(totalPaperWeight),
-      totalWeightOfSet: totalWeightOfSet === null ? "" : round2(totalWeightOfSet),
+      sheetWeight: sheetWeight === null ? "" : round3(sheetWeight),
+      totalPaperWeight: totalPaperWeight === null ? "" : Math.floor(totalPaperWeight),
+      totalWeightOfSet: totalWeightOfSet === null ? "" : round3(totalWeightOfSet),
       realizationPerKg: realizationPerKg === null ? "" : round2(realizationPerKg),
       productionInMeter: round2(productionInMeter),
       plannedProductionInMeter: plannedProductionInMeter === "" ? "" : round2(Number(plannedProductionInMeter)),
@@ -925,11 +929,11 @@ export function ProductionForm() {
               /> : null}
               {showField("Reel Actual Trim") ? <FormInput label="Reel Actual Width Trimming (RAWT)" value={formData.reelActualWithTrimming} onChange={(v) => setFormData({ ...formData, reelActualWithTrimming: v })} type="number" required helpText="Mandatory. Enter the actual reel width trimming." /> : null}
               {showField("Cutting Trim") ? <FormInput label="Cutting with Trimming" value={formData.cuttingWithTrimming} readOnly helpText={getCuttingSizeHelpText()} /> : null}
-              {showField("Sheet Weight") ? <FormInput label="Sheet Weight" value={formData.sheetWeight} readOnly helpText="Formula: ((Reel Actual with Trimming x Cutting with Trimming x GSM) / 1,000,000,000) / UPS. If UPS is 0 or blank, this stays blank." /> : null}
-              {showField("Plate/PHP Weight") ? <FormInput label="Plate/PHP Weight" value={formData.plateWeight} readOnly type="number" step="0.00001" helpText="Auto-fetched directly from NPD Master for the selected item. Value is treated as KG." /> : null}
-              {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Formula: Sheet Weight x Planned Qty." /> : null}
+              {showField("Sheet Weight") ? <FormInput label="Sheet Weight" value={formData.sheetWeight} readOnly helpText="Spreadsheet format: raw sheet weight is calculated from RAWT x Cutting x GSM / 1,000,000,000 / UPS and displayed to 3 decimals." /> : null}
+              {showField("Plate/PHP Weight") ? <FormInput label="Plate/PHP Weight" value={formData.plateWeight} readOnly type="number" step="0.001" helpText="Auto-fetched directly from NPD Master for the selected item. Value is treated as KG and displayed to 3 decimals." /> : null}
+              {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Spreadsheet format: raw sheet weight x planned quantity, displayed as a whole KG value." /> : null}
 
-              {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Formula: Sheet Weight + Plate/PHP Weight." /> : null}
+              {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Spreadsheet format: the staged 2-decimal sheet weight plus Plate/PHP Weight, displayed to 3 decimals." /> : null}
               {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field derived from Material Issue minus Material Return against the job." /> : null}
 
               {showField("Rate") ? <FormInput label="Rate" value={formData.rate} readOnly type="number" helpText="Auto-fetched from the selected order." /> : null}
@@ -938,7 +942,7 @@ export function ProductionForm() {
                 value={formData.realizationPerKg}
                 readOnly
                 inputClassName={realizationBelowTarget ? "border-red-600 bg-red-50 text-red-800 font-bold" : undefined}
-                helpText="Formula: Rate / Total Wt of Set. Turns red when below the configured realization target for this production date."
+                helpText="Spreadsheet format: Rate / displayed Total Wt of Set x No. of Parts. Turns red when below the configured realization target for this production date."
               /> : null}
             </div>
 
