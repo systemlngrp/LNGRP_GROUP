@@ -18,11 +18,13 @@ export function CorrugationWastageFields({
   production,
   onChange,
   compact = false,
+  automaticNoHisabKg,
 }: {
   draft: CorrugationWastageDraft;
   production?: Production | null;
   onChange: (key: CorrugationWastageInputKey, value: string) => void;
   compact?: boolean;
+  automaticNoHisabKg?: number;
 }) {
   const calculated = buildCorrugationWastageValues(draft, production);
   const inputClass = "w-full rounded border border-black bg-white px-2 py-1.5 text-right text-sm font-semibold outline-none";
@@ -38,6 +40,11 @@ export function CorrugationWastageFields({
       <label className="space-y-1 text-xs font-bold text-black">
         <span className="block uppercase">2PLY &amp; Paper (KG)</span>
         <input type="number" min="0" step="0.01" value={draft.twoPlyPaperKg} onChange={(event) => onChange("twoPlyPaperKg", event.target.value)} className={inputClass} />
+      </label>
+      <label className="space-y-1 text-xs font-bold text-black">
+        <span className="block uppercase">No Hisab (KG) - Automatic</span>
+        <input type="number" readOnly value={Number(automaticNoHisabKg ?? 0).toFixed(2)} className={inputClass + " bg-slate-100"} />
+        <span className="block text-[11px] text-slate-600">Actual paper less accounted production and wastage.</span>
       </label>
       <label className="space-y-1 text-xs font-bold text-black">
         <span className="block uppercase">Deckel Wastage (KG)</span>

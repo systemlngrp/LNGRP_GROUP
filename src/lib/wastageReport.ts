@@ -1,7 +1,8 @@
 import type { Company, Invoice, InvoiceLineItem, OrderItemSource, Production, ProductionProcessing } from "../types";
 import { normalizeOrderItemSource, type OrderCatalogItem } from "./orderItems";
+import { getAutomaticNoHisabKg } from "./corrugationWastage";
 
-export type ProductionWastageRow = ProductionProcessing & { source: "Corrugation Liner" | "Printing"; itemName: string; erp: string; totalCorrugationKg: number; totalCorrugationBoxes: number; totalPrintingBoxes: number };
+export type ProductionWastageRow = ProductionProcessing & { source: "Corrugation Liner" | "Printing"; itemName: string; erp: string; actualPaperUsedKg: number; fullCorrugationQty: number; paperKgPerBox: number; noHisabKg: number; sheetPlantWastageKg: number; pWastageBoxes: number; pWastageKg: number; totalCWastageKg: number; totalWastagePercent: number; totalCorrugationKg: number; totalCorrugationBoxes: number; totalPrintingBoxes: number };
 export type ProductionWastageFilters = { fromDate?: string; toDate?: string; machine?: string; searchTerm?: string };
 const num = (v: unknown) => Number.isFinite(Number(v || 0)) ? Number(v || 0) : 0;
 const machineName = (v: unknown) => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -11,23 +12,36 @@ export function buildProductionWastageRows(processing: ProductionProcessing[], p
   const productionMap = new Map(productions.map((p) => [String(p.id), p]));
   const from = filters.fromDate ? dateTime(filters.fromDate) : null; const to = filters.toDate ? dateTime(filters.toDate) : null;
   const sourceFilter = machineName(filters.machine); const needle = String(filters.searchTerm || "").trim().toLowerCase();
+  const fullRows = processing.filter((entry) => entry.completionStatus === "Full" && ["corrugation liner", "printing"].includes(machineName(entry.machineName)));
+  const grouped = new Map<string, ProductionProcessing[]>();
+  fullRows.forEach((entry) => grouped.set(String(entry.productionId), [...(grouped.get(String(entry.productionId)) || []), entry]));
   return processing.map((entry) => {
     const normalized = machineName(entry.machineName); const production = productionMap.get(String(entry.productionId));
     if (entry.completionStatus !== "Full" || (normalized !== "corrugation liner" && normalized !== "printing")) return null;
     const source = normalized === "printing" ? "Printing" : "Corrugation Liner";
-    const itemName = String(entry.itemName || production?.itemName || "-"); const erp = String(entry.erp ?? production?.erpCode ?? production?.masterErp ?? "");
+    const group = grouped.get(String(entry.productionId)) || [];
+    const corrRows = group.filter((row) => machineName(row.machineName) === "corrugation liner");
+    const printRows = group.filter((row) => machineName(row.machineName) === "printing");
+    const fullCorrugationQty = corrRows.reduce((sum, row) => sum + num(row.qty), 0);
+    const actualPaperUsedKg = num(production?.actualPaperUsed);
     const paperKgPerBox = num(production?.totalPaperWeight) / (num(production?.qty) || num(production?.plannedQty) || 1);
+    const sheetPlantWastageKg = corrRows.reduce((sum, row) => sum + num(row.warpageKg) + num(row.delaminationKg) + num(row.misalignmentKg) + num(row.twoPlyPaperKg) + num(row.sheerCutterKg), 0);
+    const pWastageBoxes = printRows.reduce((sum, row) => sum + num(row.slotting) + num(row.misprinting) + num(row.jobSetting), 0);
+    const pWastageKg = pWastageBoxes * paperKgPerBox;
+    const noHisabKg = getAutomaticNoHisabKg({ actualPaperUsedKg, requiredReelKg: production?.totalPaperWeight, planQuantity: production?.qty || production?.plannedQty, fullCorrugationQty, warpageKg: sheetPlantWastageKg, twoPlyPaperKg: 0, sheerCutterKg: 0 }).noHisabKg;
+    const totalCWastageKg = sheetPlantWastageKg + noHisabKg + pWastageKg;
+    const itemName = String(entry.itemName || production?.itemName || "-"); const erp = String(entry.erp ?? production?.erpCode ?? production?.masterErp ?? "");
     const corrugationKg = source === "Corrugation Liner" ? num(entry.warpageKg) + num(entry.delaminationKg) + num(entry.misalignmentKg) + num(entry.sheerCutterKg) + num(entry.twoPlyPaperKg) + num(entry.deckelWastageKg) + num(entry.noHisabBoxes) * paperKgPerBox : 0;
     const corrugationBoxes = source === "Corrugation Liner" ? num(entry.warpageBoxes) + num(entry.delaminationBoxes) + num(entry.misalignmentBoxes) + num(entry.sheerCutterBoxes) + num(entry.noHisabBoxes) : 0;
     const printingBoxes = source === "Printing" ? num(entry.slotting) + num(entry.delaminationPrinting) + num(entry.misalignmentPrinting) + num(entry.drySheets) + num(entry.warp) + num(entry.misprinting) + num(entry.jobSetting) : 0;
-    const row = { ...entry, source, itemName, erp, totalCorrugationKg: corrugationKg, totalCorrugationBoxes: corrugationBoxes, totalPrintingBoxes: printingBoxes } as ProductionWastageRow;
+    const row = { ...entry, source, itemName, erp, actualPaperUsedKg, fullCorrugationQty, paperKgPerBox, noHisabKg, sheetPlantWastageKg, pWastageBoxes, pWastageKg, totalCWastageKg, totalWastagePercent: actualPaperUsedKg > 0 ? totalCWastageKg / actualPaperUsedKg * 100 : 0, totalCorrugationKg: corrugationKg, totalCorrugationBoxes: corrugationBoxes, totalPrintingBoxes: printingBoxes } as ProductionWastageRow;
     const time = dateTime(row.date); const haystack = `${row.jobNo} ${itemName} ${erp} ${row.operatorName} ${row.machineName}`.toLowerCase();
     if (from !== null && (time === null || time < from) || to !== null && (time === null || time > to) || sourceFilter && machineName(source) !== sourceFilter || needle && !haystack.includes(needle)) return null;
     return row;
   }).filter((row): row is ProductionWastageRow => Boolean(row)).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.jobNo).localeCompare(String(b.jobNo)));
 }
 
-export function summarizeProductionWastageRows(rows: ProductionWastageRow[]) { return { corrugationKg: rows.reduce((s, r) => s + r.totalCorrugationKg, 0), corrugationBoxes: rows.reduce((s, r) => s + r.totalCorrugationBoxes, 0), printingBoxes: rows.reduce((s, r) => s + r.totalPrintingBoxes, 0), productionQty: rows.reduce((s, r) => s + num(r.qty), 0), recordCount: rows.length }; }
+export function summarizeProductionWastageRows(rows: ProductionWastageRow[]) { const byProduction = new Map<string, ProductionWastageRow>(); rows.forEach((row) => byProduction.set(String(row.productionId), row)); const unique = [...byProduction.values()]; const actual = unique.reduce((s, r) => s + r.actualPaperUsedKg, 0); const total = unique.reduce((s, r) => s + r.totalCWastageKg, 0); return { corrugationKg: rows.reduce((s, r) => s + r.totalCorrugationKg, 0), corrugationBoxes: rows.reduce((s, r) => s + r.totalCorrugationBoxes, 0), printingBoxes: rows.reduce((s, r) => s + r.totalPrintingBoxes, 0), productionQty: rows.reduce((s, r) => s + num(r.qty), 0), recordCount: rows.length, totalCWastageKg: total, pWastageBoxes: unique.reduce((s, r) => s + r.pWastageBoxes, 0), pWastageKg: unique.reduce((s, r) => s + r.pWastageKg, 0), totalWastagePercent: actual > 0 ? total / actual * 100 : 0 }; }
 
 export type ScrapInvoiceRow = { invoiceId: string; invoiceNo: string; invoiceDate: string; companyId: string; companyName: string; erp: string; itemName: string; qty: number; rate: number; taxableAmount: number; cgst: number; sgst: number; igst: number; totalAmount: number };
 export type ScrapInvoiceFilters = { fromDate?: string; toDate?: string; companyId?: string; searchTerm?: string };

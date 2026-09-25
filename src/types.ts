@@ -637,6 +637,7 @@ export interface ProductionProcessing {
   sheerCutterBoxes?: number;
   sheerCutterKg?: number;
   noHisabBoxes?: number;
+  noHisabKg?: number;
   slotting?: number;
   delaminationPrinting?: number;
   misalignmentPrinting?: number;

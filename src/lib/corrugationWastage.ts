@@ -44,6 +44,35 @@ export function getPaperKgPerBox(production?: Pick<Production, "totalPaperWeight
   return totalPaperWeight > 0 && plannedQty > 0 ? totalPaperWeight / plannedQty : 0;
 }
 
+export function getAutomaticNoHisabKg(args: {
+  actualPaperUsedKg?: unknown;
+  requiredReelKg?: unknown;
+  planQuantity?: unknown;
+  fullCorrugationQty?: unknown;
+  warpageKg?: unknown;
+  delaminationKg?: unknown;
+  misalignmentKg?: unknown;
+  twoPlyPaperKg?: unknown;
+  sheerCutterKg?: unknown;
+}) {
+  const actual = nonNegative(args.actualPaperUsedKg);
+  const plan = nonNegative(args.planQuantity);
+  const reel = nonNegative(args.requiredReelKg);
+  const paperPerBox = reel > 0 && plan > 0 ? reel / plan : 0;
+  const accounted =
+    paperPerBox * nonNegative(args.fullCorrugationQty) +
+    nonNegative(args.warpageKg) +
+    nonNegative(args.delaminationKg) +
+    nonNegative(args.misalignmentKg) +
+    nonNegative(args.twoPlyPaperKg) +
+    nonNegative(args.sheerCutterKg);
+  return {
+    paperKgPerBox: paperPerBox,
+    totalAccountedPaperUsageKg: accounted,
+    noHisabKg: Math.max(0, actual - accounted),
+  };
+}
+
 export function buildCorrugationWastageValues(draft: CorrugationWastageDraft, production?: Production | null) {
   const kgPerBox = getPaperKgPerBox(production);
   const warpageBoxes = nonNegative(draft.warpageBoxes);
@@ -62,7 +91,7 @@ export function buildCorrugationWastageValues(draft: CorrugationWastageDraft, pr
     sheerCutterBoxes,
     sheerCutterKg: sheerCutterBoxes * kgPerBox,
     noHisabBoxes: nonNegative(draft.noHisabBoxes),
-    noHisabKg: nonNegative(draft.noHisabBoxes) * kgPerBox,
+    noHisabKg: 0,
   };
 }
 

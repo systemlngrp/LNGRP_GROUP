@@ -12,7 +12,7 @@ import { usesPartFullProgress } from "../lib/productionProcessingProgress";
 import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { CorrugationWastageFields } from "../components/CorrugationWastageFields";
-import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, type CorrugationWastageDraft } from "../lib/corrugationWastage";
+import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, getAutomaticNoHisabKg, type CorrugationWastageDraft } from "../lib/corrugationWastage";
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, type PrintingWastageDraft } from "../lib/printingWastage";
 
@@ -66,6 +66,20 @@ function LockedReportForm() {
   const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
   const materialIssueBlocked = isPrinting &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
+  const fullCorrugationQty = processing
+    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && (entry.completionStatus || "Full") === "Full")
+    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0) + (isCorrugationLiner && isFullReport ? Number(qty || 0) : 0);
+  const automaticNoHisab = useMemo(() => {
+    if (!showCorrugationWastage || !selectedProduction) return 0;
+    const values = buildCorrugationWastageValues(wastageDraft, selectedProduction);
+    return getAutomaticNoHisabKg({
+      actualPaperUsedKg: materialUsageMap.get(selectedProduction.id) ?? selectedProduction.actualPaperUsed,
+      requiredReelKg: selectedProduction.totalPaperWeight,
+      planQuantity: selectedProduction.qty || selectedProduction.plannedQty,
+      fullCorrugationQty,
+      ...values,
+    }).noHisabKg;
+  }, [fullCorrugationQty, materialUsageMap, selectedProduction, showCorrugationWastage, wastageDraft]);
 
   useEffect(() => {
     if (completionStatus !== "Full") {
@@ -142,6 +156,8 @@ function LockedReportForm() {
         throw new Error(errorData.error || "Failed to submit report");
       }
 
+      const result = await response.json().catch(() => ({}));
+      if (result.warning) alert(result.warning);
       window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
       navigate(returnTo || getProcessingBackUrl(machineId));
     } catch (error) {
@@ -427,7 +443,7 @@ function FullReportForm() {
         sourceFirmId: selectedProduction.sourceFirmId,
         destinationFirmId: selectedProduction.destinationFirmId,
         interFirmFlow: selectedProduction.interFirmFlow,
-        ...(showCorrugationWastage ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
+        ...(showCorrugationWastage ? { ...buildCorrugationWastageValues(wastageDraft, selectedProduction), noHisabKg: automaticNoHisab } : {}),
         ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
       };
 
@@ -553,6 +569,7 @@ function FullReportForm() {
                   draft={wastageDraft}
                   production={selectedProduction}
                   onChange={(key, value) => setWastageDraft((current) => ({ ...current, [key]: value }))}
+                  automaticNoHisabKg={automaticNoHisab}
                 />
               </div>
             ) : null}

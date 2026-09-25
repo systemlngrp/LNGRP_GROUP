@@ -3294,6 +3294,42 @@ async function validateLnkiPrintingComponents(db, processing) {
             throw new Error(`${component.source} Sets/Pcs per box is missing for ERP ${mainErp}.`);
     }
 }
+async function getSafeLnkiPrintingValidation(db, processing) {
+    try {
+        await validateLnkiPrintingComponents(db, processing);
+        return { ready: true, warning: "" };
+    }
+    catch (error) {
+        return { ready: false, warning: "Printing report saved. " + error.message + " PHP/Plate billing was skipped." };
+    }
+}
+async function syncLnkiPrintingMasterOutputs(db, processing) {
+    if (normalizeMachineName(String(processing.machineName || "")) !== "Printing" ||
+        String(processing.completionStatus || "").trim().toLowerCase() !== "full")
+        return;
+    const productionId = String(processing.productionId || "").trim();
+    if (!productionId)
+        return;
+    const [rows] = await db.query("SELECT p.*, o.firmId orderFirmIdResolved, o.erpCode orderErp FROM productions p LEFT JOIN orders_schedule os ON os.id = p.scheduleId LEFT JOIN orders o ON o.id = os.orderId WHERE p.id = ? LIMIT 1", [productionId]);
+    const production = rows[0];
+    if (!production)
+        return;
+    const [firmRows] = await db.query("SELECT id, firmName FROM firms");
+    const lnki = firmRows.find((row) => String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "") === "laxminarayankraftindustries");
+    const orderFirmId = String(production.orderFirmId || production.orderFirmIdResolved || "").trim();
+    if (!lnki?.id || orderFirmId !== String(lnki.id))
+        return;
+    const mainErp = String(production.orderErp || production.masterErp || production.erpCode || "").trim();
+    if (!mainErp)
+        return;
+    for (const component of [{ table: "php_item_master" }, { table: "plate_item_master" }]) {
+        const [componentRows] = await db.query("SELECT id FROM " + component.table + " WHERE LOWER(TRIM(COALESCE(masterItemNameErpCode, ''))) = LOWER(TRIM(?)) OR LOWER(TRIM(COALESCE(erpItemCode, ''))) = LOWER(TRIM(?)) LIMIT 1", [mainErp, mainErp]);
+        const master = componentRows[0];
+        if (master?.id) {
+            await db.query("UPDATE " + component.table + " SET productionOutputQty = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [Number(processing.qty || 0), processing.updatedBy || null, processing.updateTimestamp || new Date().toISOString(), master.id]);
+        }
+    }
+}
 function getDispatchPlanFinancialYear(dateValue) {
     const parsed = dateValue ? new Date(dateValue) : null;
     if (!parsed || Number.isNaN(parsed.getTime()))
@@ -5755,6 +5791,7 @@ async function initDb(retries = 5) {
           \`sheerCutterBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`sheerCutterKg\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`noHisabBoxes\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`noHisabKg\` DECIMAL(15,2) DEFAULT NULL,
           \`slotting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`delaminationPrinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`misalignmentPrinting\` DECIMAL(15,2) NOT NULL DEFAULT 0,
@@ -6974,6 +7011,7 @@ async function initDb(retries = 5) {
                 { table: "production_processing", column: "sheerCutterBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
                 { table: "production_processing", column: "sheerCutterKg", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
                 { table: "production_processing", column: "noHisabBoxes", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
+                { table: "production_processing", column: "noHisabKg", type: "DECIMAL(15,2) DEFAULT NULL" },
                 { table: "production_processing", column: "slotting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
                 { table: "production_processing", column: "delaminationPrinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
                 { table: "production_processing", column: "misalignmentPrinting", type: "DECIMAL(15,2) NOT NULL DEFAULT 0" },
@@ -8371,10 +8409,17 @@ const createHandlers = (tableName) => {
                         data.delaminationKg = Number((data.delaminationBoxes * kgPerBox).toFixed(2));
                         data.misalignmentKg = Number((data.misalignmentBoxes * kgPerBox).toFixed(2));
                         data.sheerCutterKg = Number((data.sheerCutterBoxes * kgPerBox).toFixed(2));
+                        const [corrugationRows] = await db.query("SELECT COALESCE(SUM(qty), 0) AS fullQty FROM production_processing WHERE productionId = ? AND LOWER(TRIM(machineName)) = 'corrugation liner' AND LOWER(TRIM(COALESCE(completionStatus, 'Full'))) = 'full' AND id <> ?", [data.productionId, data.id]);
+                        const fullCorrugationQty = Number(corrugationRows[0]?.fullQty || 0) + Number(data.qty || 0);
+                        const [actualRows] = await db.query("SELECT actualPaperUsed FROM productions WHERE id = ? LIMIT 1", [data.productionId]);
+                        const actualPaperUsed = Number(actualRows[0]?.actualPaperUsed || 0);
+                        const accounted = kgPerBox * fullCorrugationQty + data.warpageKg + data.delaminationKg + data.misalignmentKg + Number(data.twoPlyPaperKg || 0) + data.sheerCutterKg;
+                        data.noHisabKg = Number(Math.max(0, actualPaperUsed - accounted).toFixed(2));
                     }
                     else {
                         ["warpageBoxes", "warpageKg", "delaminationBoxes", "delaminationKg", "misalignmentBoxes", "misalignmentKg", "twoPlyPaperKg", "deckelWastageKg", "sheerCutterBoxes", "sheerCutterKg", "noHisabBoxes"]
                             .forEach((field) => { data[field] = 0; });
+                        data.noHisabKg = 0;
                     }
                     const printingWastageFields = ["slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
                     if (data.machineName === "Printing" && completionStatus === "Full") {
@@ -9109,13 +9154,18 @@ const createHandlers = (tableName) => {
                     (processingMachineName === "Corrugation Liner" || processingMachineName === "Printing");
                 if (isAtomicInterFirmProcessing) {
                     await ensureInterFirmAutomationSchema(db, schemaName);
-                    await validateLnkiPrintingComponents(db, data);
+                    const printingValidation = await getSafeLnkiPrintingValidation(db, data);
+                    if (!printingValidation.ready) {
+                        await db.query(query, values);
+                        return res.json({ success: true, warning: printingValidation.warning });
+                    }
                     const conn = await db.getConnection();
                     try {
                         await conn.beginTransaction();
                         console.log(`[DB] Atomically upserting ${tableName} with inter-firm automation`, { id: data.id });
                         await conn.query(query, values);
                         await syncCorrugationLinerOutput(conn, String(data.id || ""));
+                        await syncLnkiPrintingMasterOutputs(conn, data);
                         await automateInterFirmProduction(db, String(data.id || ""), "Production Processing", conn);
                         await conn.commit();
                         return res.json({ success: true });
@@ -9179,8 +9229,11 @@ const createHandlers = (tableName) => {
                     // Corrugation is the Unit-I -> Unit-II handoff for non-Unit-I orders.
                     // Printing is the Unit-II -> LNKI handoff for LNKI orders.
                     if (machineName === "Corrugation Liner" || machineName === "Printing") {
-                        await validateLnkiPrintingComponents(db, data);
-                        await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
+                        const printingValidation = await getSafeLnkiPrintingValidation(db, data);
+                        if (printingValidation.ready) {
+                            await syncLnkiPrintingMasterOutputs(db, data);
+                            await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
+                        }
                     }
                 }
                 res.json({ success: true });
