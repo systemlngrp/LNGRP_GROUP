@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -31,8 +31,18 @@ try {
     renameSync(tempPath, distPath);
     rmSync(backupPath, { recursive: true, force: true });
   } catch (swapError) {
-    if (!existsSync(distPath) && previousMoved) renameSync(backupPath, distPath);
-    throw swapError;
+    // Windows can keep the existing dist directory open (Explorer, antivirus,
+    // hosting sync tools, etc.). Preserve the successful build by falling back
+    // to an in-place copy when the atomic directory rename is unavailable.
+    if (previousMoved && !existsSync(distPath)) renameSync(backupPath, distPath);
+    if (existsSync(tempPath)) {
+      mkdirSync(distPath, { recursive: true });
+      cpSync(tempPath, distPath, { recursive: true, force: true });
+      rmSync(tempPath, { recursive: true, force: true });
+      if (existsSync(backupPath)) rmSync(backupPath, { recursive: true, force: true });
+    } else {
+      throw swapError;
+    }
   }
 } catch (error) {
   rmSync(tempPath, { recursive: true, force: true });
