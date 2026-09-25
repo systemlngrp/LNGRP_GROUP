@@ -10,8 +10,14 @@ const normalizeMachineName = (value?: string | null) =>
 
 export type WastageTotals = {
   corrugationKg: number;
+  sheetPlantWastageKg: number;
   printingKg: number;
+  pWastageBoxes: number;
+  pWastageKg: number;
   noHisabKg: number;
+  cWastagePercent: number;
+  totalWastagePercent: number;
+  totalCWastageKg: number;
   totalWastageKg: number;
 };
 
@@ -62,8 +68,14 @@ export function getProductionWastageTotals(
 
   return {
     corrugationKg,
+    sheetPlantWastageKg: corrugationKg,
     printingKg,
+    pWastageBoxes: printingBoxes,
+    pWastageKg: printingKg,
     noHisabKg,
+    cWastagePercent: getWastagePercent(corrugationKg + noHisabKg, nonNegative(production.actualPaperUsed)),
+    totalWastagePercent: getWastagePercent(corrugationKg + noHisabKg + printingKg, nonNegative(production.actualPaperUsed)),
+    totalCWastageKg: corrugationKg + noHisabKg + printingKg,
     totalWastageKg: corrugationKg + printingKg + noHisabKg,
   };
 }
