@@ -79,7 +79,7 @@ export function calculateProductionDerivedValues(input: {
   // two-decimal staged weight for set weight and realization calculations.
   const sheetWeight = rawSheetWeight === null ? null : roundTo(rawSheetWeight, 3);
   const stagedSheetWeight = rawSheetWeight === null ? null : roundTo(rawSheetWeight, 2);
-  const totalPaperWeight = rawSheetWeight === null ? null : Math.floor(rawSheetWeight * planQty);
+  const totalPaperWeight = sheetWeight === null ? null : roundTo(sheetWeight * planQty, 2);
   const totalWeightOfSet = stagedSheetWeight === null ? null : roundTo(stagedSheetWeight + plateWeight, 3);
   const realizationPerKg = totalWeightOfSet && totalWeightOfSet > 0
     ? (rate / totalWeightOfSet) * noOfParts

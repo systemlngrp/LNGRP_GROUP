@@ -554,10 +554,10 @@ export function ProductionForm() {
       gsm: round2(gsm),
       reelAsPerCalc: round2(reelAsPerCalc),
       cuttingWithTrimming: round2(cutting),
-      sheetWeight: sheetWeight === null ? "" : round3(sheetWeight),
-      totalPaperWeight: totalPaperWeight === null ? "" : Math.floor(totalPaperWeight),
-      totalWeightOfSet: totalWeightOfSet === null ? "" : round3(totalWeightOfSet),
-      realizationPerKg: realizationPerKg === null ? "" : round2(realizationPerKg),
+      sheetWeight: sheetWeight === null ? "" : sheetWeight.toFixed(3),
+      totalPaperWeight: totalPaperWeight === null ? "" : totalPaperWeight.toFixed(2),
+      totalWeightOfSet: totalWeightOfSet === null ? "" : totalWeightOfSet.toFixed(3),
+      realizationPerKg: realizationPerKg === null ? "" : realizationPerKg.toFixed(2),
       productionInMeter: round2(productionInMeter),
       plannedProductionInMeter: plannedProductionInMeter === "" ? "" : round2(Number(plannedProductionInMeter)),
       fluteBatches,
@@ -930,8 +930,8 @@ export function ProductionForm() {
               {showField("Reel Actual Trim") ? <FormInput label="Reel Actual Width Trimming (RAWT)" value={formData.reelActualWithTrimming} onChange={(v) => setFormData({ ...formData, reelActualWithTrimming: v })} type="number" required helpText="Mandatory. Enter the actual reel width trimming." /> : null}
               {showField("Cutting Trim") ? <FormInput label="Cutting with Trimming" value={formData.cuttingWithTrimming} readOnly helpText={getCuttingSizeHelpText()} /> : null}
               {showField("Sheet Weight") ? <FormInput label="Sheet Weight" value={formData.sheetWeight} readOnly helpText="Spreadsheet format: raw sheet weight is calculated from RAWT x Cutting x GSM / 1,000,000,000 / UPS and displayed to 3 decimals." /> : null}
-              {showField("Plate/PHP Weight") ? <FormInput label="Plate/PHP Weight" value={formData.plateWeight} readOnly type="number" step="0.001" helpText="Auto-fetched directly from NPD Master for the selected item. Value is treated as KG and displayed to 3 decimals." /> : null}
-              {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Spreadsheet format: raw sheet weight x planned quantity, displayed as a whole KG value." /> : null}
+              {showField("Plate/PHP Weight") ? <FormInput label="Plate/PHP Weight" value={Number(formData.plateWeight || 0).toFixed(3)} readOnly type="number" step="0.001" helpText="Auto-fetched directly from NPD Master for the selected item. Value is treated as KG and displayed to 3 decimals." /> : null}
+              {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Spreadsheet format: displayed 3-decimal Sheet Weight x Planned Quantity, displayed to 2 decimals." /> : null}
 
               {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Spreadsheet format: the staged 2-decimal sheet weight plus Plate/PHP Weight, displayed to 3 decimals." /> : null}
               {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field derived from Material Issue minus Material Return against the job." /> : null}
