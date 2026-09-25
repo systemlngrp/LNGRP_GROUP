@@ -28,34 +28,33 @@ export function getProductionWastageTotals(
   const kgPerBox = getKgPerBox(production);
   let corrugationKg = 0;
   let printingKg = 0;
-  let noHisabKg = 0;
+  let printingBoxes = 0;
+  let fullCorrugationQty = 0;
 
   processingRows
     .filter((row) => row.productionId === production.id && (row.completionStatus || "Full") === "Full")
     .forEach((row) => {
       const machine = normalizeMachineName(row.machineName);
       if (machine === "corrugation liner") {
-        const categoryKg =
-          nonNegative(row.warpageBoxes) * kgPerBox +
-          nonNegative(row.delaminationBoxes) * kgPerBox +
-          nonNegative(row.misalignmentBoxes) * kgPerBox +
-          nonNegative(row.sheerCutterBoxes) * kgPerBox +
+        fullCorrugationQty += nonNegative(row.qty);
+        corrugationKg +=
+          nonNegative(row.warpageKg) +
+          nonNegative(row.delaminationKg) +
+          nonNegative(row.misalignmentKg) +
           nonNegative(row.twoPlyPaperKg) +
-          nonNegative(row.deckelWastageKg);
-        corrugationKg += categoryKg;
-        noHisabKg += nonNegative(row.noHisabBoxes) * kgPerBox;
+          nonNegative(row.sheerCutterKg);
       }
       if (machine === "printing") {
-        printingKg +=
-          nonNegative(row.slotting) +
-          nonNegative(row.delaminationPrinting) +
-          nonNegative(row.misalignmentPrinting) +
-          nonNegative(row.drySheets) +
-          nonNegative(row.warp) +
-          nonNegative(row.misprinting) +
-          nonNegative(row.jobSetting);
+        printingBoxes += nonNegative(row.slotting) + nonNegative(row.misprinting) + nonNegative(row.jobSetting);
       }
     });
+
+  const automaticNoHisab = Math.max(
+    nonNegative(production.actualPaperUsed) - (kgPerBox * fullCorrugationQty + corrugationKg),
+    0
+  );
+  const noHisabKg = Number.isFinite(automaticNoHisab) ? automaticNoHisab : 0;
+  printingKg = printingBoxes * kgPerBox;
 
   return {
     corrugationKg,
