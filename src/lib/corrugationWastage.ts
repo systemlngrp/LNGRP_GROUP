@@ -62,6 +62,7 @@ export function buildCorrugationWastageValues(draft: CorrugationWastageDraft, pr
     sheerCutterBoxes,
     sheerCutterKg: sheerCutterBoxes * kgPerBox,
     noHisabBoxes: nonNegative(draft.noHisabBoxes),
+    noHisabKg: nonNegative(draft.noHisabBoxes) * kgPerBox,
   };
 }
 

@@ -29,6 +29,7 @@ import {
 import { PROCESSING_MACHINE_COLUMNS } from "./productionProcessingSummary";
 import { isProductionReadyForTally } from "./productionStageFilters";
 import { buildReelStockRows } from "./reelStock";
+import { getProductionWastageTotals, getWastagePercent as calculateWastagePercent } from "./wastageCalculations";
 
 export type OperationDashboardDateRange = {
   from: string;
@@ -238,21 +239,6 @@ function sumDispatchLoadedQty(rows: DispatchPlan[]) {
   return rows.reduce((sum, plan) => sum + Number(plan.loadedQty || 0), 0);
 }
 
-function getWastagePercent(rows: Production[], usageMap: Map<string, number>) {
-  const validRows = rows.filter((entry) => entry.status !== "Cancelled" && !entry.cancelTimestamp);
-  const totalActualPaperUsed = validRows.reduce(
-    (sum, entry) => sum + Number(getProductionActualPaperUsed(entry, usageMap) || 0),
-    0
-  );
-  const totalUsefulWeight = validRows.reduce(
-    (sum, entry) => sum + Number(entry.prodFromFFG || 0) * Number(entry.sheetWeight || 0),
-    0
-  );
-  return totalActualPaperUsed > 0
-    ? Math.max(0, 100 - (totalUsefulWeight / totalActualPaperUsed) * 100)
-    : 0;
-}
-
 function getActualPaperUsed(rows: Production[], usageMap: Map<string, number>) {
   return rows
     .filter((entry) => entry.status !== "Cancelled" && !entry.cancelTimestamp)
@@ -410,7 +396,11 @@ export function buildOperationDashboardSummary(args: BuildOperationDashboardSumm
   const nextPlanValue = sumPlanValue(nextSchedules, args.orders);
   const totalActualPaperUsed = getActualPaperUsed(filteredProductions, usageMap);
   const totalScrapSoldQty = Number(args.scrapSoldQty || 0);
-  const totalWastage = totalActualPaperUsed > 0 ? (totalScrapSoldQty / totalActualPaperUsed) * 100 : 0;
+  const totalWastageKg = filteredProductions.reduce(
+    (sum, production) => sum + getProductionWastageTotals(production, filteredProcessing).totalWastageKg,
+    0
+  );
+  const totalWastage = calculateWastagePercent(totalWastageKg, totalActualPaperUsed);
   const totalPlanPaper = getPlanPaperTotal(filteredProductions);
   const totalSale = filteredInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAfterGst || 0), 0);
   const todaySalesValue = todayInvoices.reduce((sum, invoice) => sum + Number(invoice.totalAfterGst || 0), 0);

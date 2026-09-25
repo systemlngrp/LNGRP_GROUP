@@ -14,9 +14,11 @@ import type {
   MaterialIssueReelLine,
   MaterialReturnReelLine,
   Production,
+  ProductionProcessing,
 } from "../types";
 import { getCurrentFinancialYear } from "../lib/financialYear";
 import { resolveMaterialIssueRate } from "../lib/materialMovement";
+import { getProductionWastageTotals, getWastagePercent } from "../lib/wastageCalculations";
 
 type FactoryBucket = {
   key: string;
@@ -220,6 +222,7 @@ export function ConversionCostDetailsReport() {
   const [fixedExpenses] = useData<FixedMonthlyExpense>("fixed_monthly_expenses", []);
   const [fixedDailyExpenses] = useData<FixedDailyExpense>("fixed_daily_expenses", []);
   const [productions] = useData<Production>("productions", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [invoices] = useData<Invoice>("invoices", []);
   const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", []);
 
@@ -282,7 +285,9 @@ export function ConversionCostDetailsReport() {
       productionRows.reduce((sum, production) => sum + getProductionFfg(production), 0)
     );
     const totalActualPaperUsed = round2(productionRows.reduce((sum, production) => sum + Number(production.actualPaperUsed || 0), 0));
-    const totalUsefulWeight = round2(productionRows.reduce((sum, production) => sum + getProductionUsefulWeight(production), 0));
+    const totalWastageKg = round2(
+      productionRows.reduce((sum, production) => sum + getProductionWastageTotals(production, processing).totalWastageKg, 0)
+    );
     const issuedPaperCost = issueReelLines.reduce((sum, line) => {
       if (!productionIds.has(line.productionId)) return sum;
       const slip = packingSlipMap.get(line.packingSlipId);
@@ -338,7 +343,7 @@ export function ConversionCostDetailsReport() {
       totalProduction,
       totalActualPaperUsed,
       totalSold,
-      wastagePercent: totalActualPaperUsed > 0 && totalUsefulWeight > 0 ? round2(100 - (totalUsefulWeight / totalActualPaperUsed) * 100) : 0,
+      wastagePercent: round2(getWastagePercent(totalWastageKg, totalActualPaperUsed)),
       totalSaleBasic,
       adjustedSales,
       actualPaperUsedCost,
@@ -372,6 +377,7 @@ export function ConversionCostDetailsReport() {
     materialIssues,
     materials,
     productions,
+    processing,
     toDate,
   ]);
 

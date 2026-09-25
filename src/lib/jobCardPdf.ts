@@ -3,6 +3,7 @@ import type { Company, Firm, Material, MaterialInPackingSlip, MaterialIssueReelL
 import type { OrderCatalogItem } from "./orderItems";
 import { formatDate } from "./serial";
 import { resolvePdfFirm } from "./pdfOrganizationHeader";
+import { getProductionWastageTotals, getWastagePercent } from "./wastageCalculations";
 
 type PdfArgs = {
   production: Production;
@@ -298,13 +299,12 @@ function actualPaperUsedForJob(
 function calculatedWastagePercent(
   production: Production,
   issueReelLines: MaterialIssueReelLine[] = [],
-  returnReelLines: MaterialReturnReelLine[] = []
+  returnReelLines: MaterialReturnReelLine[] = [],
+  processingEntries: ProductionProcessing[] = []
 ) {
-  const prodFromFFG = Number(production.prodFromFFG || 0);
-  const sheetWeight = Number(production.sheetWeight || 0);
   const actualPaperUsed = actualPaperUsedForJob(production, issueReelLines, returnReelLines);
-  if (!(prodFromFFG > 0 && sheetWeight > 0 && actualPaperUsed > 0)) return "";
-  return round2(100 - ((prodFromFFG * sheetWeight) / actualPaperUsed) * 100);
+  if (!(actualPaperUsed > 0)) return "";
+  return round2(getWastagePercent(getProductionWastageTotals(production, processingEntries).totalWastageKg, actualPaperUsed));
 }
 function normalizeProcessMachineName(value: unknown) {
   return String(value || "").trim().toLowerCase();
@@ -394,7 +394,7 @@ function drawJobCardOperationsPage(doc: jsPDF, args: {
 
   y = ensureSecondPageSpace(doc, y + 8, 28, x, w);
   y = pageSection(doc, x, y, w, "REPORTS");
-  const calculatedWastage = calculatedWastagePercent(args.production, args.issueReelLines, args.returnReelLines);
+  const calculatedWastage = calculatedWastagePercent(args.production, args.issueReelLines, args.returnReelLines, args.processingEntries);
   const reportRows: Array<[string, unknown]> = [
     ["Final FG Produced", args.production.prodFromFFG ? num(args.production.prodFromFFG, 2) : ""],
     ["Corrugation Wastage %", calculatedWastage === "" ? "" : num(calculatedWastage, 2)],

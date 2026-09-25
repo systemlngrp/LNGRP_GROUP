@@ -31,6 +31,7 @@ import {
   Order,
   OrderSchedule,
   Production,
+  ProductionProcessing,
 } from "../types";
 import { cn, formatDate, formatNumber } from "../lib/utils";
 import { isProductionPendingPH, isProductionReadyForTally } from "../lib/productionStageFilters";
@@ -40,6 +41,7 @@ import {
   getProductionActualPaperUsed,
   hasProductionCorrugatedSheetUsage,
 } from "../lib/productionMaterialUsage";
+import { getProductionWastageTotals, getWastagePercent } from "../lib/wastageCalculations";
 
 type Range = {
   from: string;
@@ -61,6 +63,7 @@ export function Dashboard() {
 
   const [materialIn] = useData<MaterialIn>("material-in", []);
   const [productions] = useData<Production>("productions", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
   const [materialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
@@ -245,13 +248,11 @@ export function Dashboard() {
     (sum, entry) => sum + Number(getProductionActualPaperUsed(entry, productionUsageMap) || 0),
     0
   );
-  const totalUsefulWeight = filteredProductions.reduce(
-    (sum, entry) => sum + Number(entry.prodFromFFG || 0) * Number(entry.sheetWeight || 0),
+  const totalWastageKg = filteredProductions.reduce(
+    (sum, entry) => sum + getProductionWastageTotals(entry, processing).totalWastageKg,
     0
   );
-  const totalWastage = totalActualPaperUsed > 0
-    ? Math.max(0, 100 - (totalUsefulWeight / totalActualPaperUsed) * 100)
-    : 0;
+  const totalWastage = getWastagePercent(totalWastageKg, totalActualPaperUsed);
 
   const getInvoiceTotalForDate = (dateValue: string) =>
     invoices
