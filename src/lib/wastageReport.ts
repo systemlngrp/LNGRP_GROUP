@@ -45,15 +45,7 @@ export function buildProductionWastageRows(processing: ProductionProcessing[], p
     const hasSource = sourceFilter === "corrugation liner" ? corrRows.length > 0 : sourceFilter === "printing" ? printRows.length > 0 : true;
     if (from !== null && (time === null || time < from) || to !== null && (time === null || time > to) || !hasSource || needle && !haystack.includes(needle)) return null;
     return row;
-  }).filter((row): row is ProductionWastageRow => Boolean(row)).reduce((map, row) => {
-    const existing = map.get(String(row.productionId));
-    if (!existing) { map.set(String(row.productionId), { ...row }); return map; }
-    const sumKeys: Array<keyof ProductionWastageRow> = ["qty", "corrugationQty", "printingQty", "warpageBoxes", "warpageKg", "delaminationBoxes", "delaminationKg", "misalignmentBoxes", "misalignmentKg", "sheerCutterBoxes", "sheerCutterKg", "twoPlyPaperKg", "deckelWastageKg", "noHisabBoxes", "slotting", "delaminationPrinting", "misalignmentPrinting", "drySheets", "warp", "misprinting", "jobSetting"];
-    sumKeys.forEach((key) => { (existing as any)[key] = num((existing as any)[key]) + num((row as any)[key]); });
-    existing.source = "Combined"; existing.date = String(row.date || existing.date) > String(existing.date || "") ? row.date : existing.date;
-    existing.noHisabKg = row.noHisabKg; existing.sheetPlantWastageKg = row.sheetPlantWastageKg; existing.cWastageKg = row.cWastageKg; existing.pWastageBoxes = row.pWastageBoxes; existing.pWastageKg = row.pWastageKg; existing.totalCWastageKg = row.totalCWastageKg; existing.totalWastagePercent = row.totalWastagePercent; existing.printingWastagePercent = row.printingWastagePercent; existing.combinedTotalWastagePercent = row.combinedTotalWastagePercent;
-    return map;
-  }, new Map<string, ProductionWastageRow>()).values().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.jobNo).localeCompare(String(b.jobNo)));
+  }).filter((row): row is ProductionWastageRow => Boolean(row)).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.jobNo).localeCompare(String(b.jobNo)));
 }
 
 export function summarizeProductionWastageRows(rows: ProductionWastageRow[]) { const actual = rows.reduce((s, r) => s + r.actualPaperUsedKg, 0); const total = rows.reduce((s, r) => s + r.totalCWastageKg, 0); return { corrugationKg: rows.reduce((s, r) => s + r.totalCorrugationKg, 0), corrugationBoxes: rows.reduce((s, r) => s + r.totalCorrugationBoxes, 0), printingBoxes: rows.reduce((s, r) => s + r.totalPrintingBoxes, 0), productionQty: rows.reduce((s, r) => s + num(r.qty), 0), recordCount: rows.length, actualPaperUsedKg: actual, sheetPlantWastageKg: rows.reduce((s, r) => s + r.sheetPlantWastageKg, 0), totalCWastageKg: total, pWastageBoxes: rows.reduce((s, r) => s + r.pWastageBoxes, 0), pWastageKg: rows.reduce((s, r) => s + r.pWastageKg, 0), totalWastagePercent: actual > 0 ? total / actual * 100 : 0 }; }
