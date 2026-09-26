@@ -10,7 +10,7 @@ const production = {
 } as any;
 
 describe("buildProductionWastageRows", () => {
-  it("ignores a persisted No Hisab KG value and calculates it automatically", () => {
+  it("ignores a persisted No Hisab value and calculates it automatically", () => {
     const [row] = buildProductionWastageRows(
       [{
         productionId: "job-1",
@@ -28,7 +28,7 @@ describe("buildProductionWastageRows", () => {
     expect(row.totalWastagePercent).toBe(50);
   });
 
-  it("clamps a negative automatic No Hisab KG result to zero", () => {
+  it("clamps a negative automatic No Hisab result to zero", () => {
     const [row] = buildProductionWastageRows(
       [{
         productionId: "job-1",

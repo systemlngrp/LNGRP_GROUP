@@ -42,7 +42,7 @@ export function CorrugationWastageFields({
         <input type="number" min="0" step="0.01" value={draft.twoPlyPaperKg} onChange={(event) => onChange("twoPlyPaperKg", event.target.value)} className={inputClass} />
       </label>
       <label className="space-y-1 text-xs font-bold text-black">
-        <span className="block uppercase">No Hisab (KG) - Automatic</span>
+        <span className="block uppercase">No Hisab - Automatic</span>
         <input type="number" readOnly value={Number(automaticNoHisabKg ?? 0).toFixed(2)} className={inputClass + " bg-slate-100"} />
         <span className="block text-[11px] text-slate-600">Actual paper less accounted production and wastage.</span>
       </label>
