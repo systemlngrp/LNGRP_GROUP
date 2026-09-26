@@ -253,7 +253,7 @@ export function ProductionMaster() {
       const totals = map.get(entry.productionId) || {
         warpageBoxes: 0, warpageKg: 0, delaminationBoxes: 0, delaminationKg: 0,
         misalignmentBoxes: 0, misalignmentKg: 0, twoPlyPaperKg: 0, deckelWastageKg: 0,
-        sheerCutterBoxes: 0, sheerCutterKg: 0, noHisabBoxes: 0,
+        sheerCutterBoxes: 0, sheerCutterKg: 0,
       };
       Object.keys(totals).forEach((key) => { totals[key] += Number(entry[key as keyof ProductionProcessing] || 0); });
       map.set(entry.productionId, totals);
@@ -780,7 +780,7 @@ export function ProductionMaster() {
                 {[
                   "Warpage (Boxes)", "Warpage (Kgs)", "Delamination (Boxes)", "Delamination (Kgs)",
                   "Misalignment (Boxes)", "Misalignment (Kgs)", "2PLY & Paper (Kgs)", "Deckel Wastage",
-                  "Sheer Cutter (Boxes)", "Sheer Cutter (Kgs)", "No Hisab",
+                  "Sheer Cutter (Boxes)", "Sheer Cutter (Kgs)",
                 ].map((label) => <th key={label} className="px-4 py-3 text-right text-xs font-bold text-rose-900 uppercase border border-black whitespace-nowrap bg-rose-50">{label}</th>)}
                 <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Print</th>
                 {["Slotting", "Delamination Printing", "Misalignment Printing", "Dry Sheets", "Warp", "Misprinting", "Job Setting"].map((label) => (
@@ -860,7 +860,7 @@ export function ProductionMaster() {
                   const wastageTotals = corrugationWastageTotalsMap.get(p.id) || {
                     warpageBoxes: 0, warpageKg: 0, delaminationBoxes: 0, delaminationKg: 0,
                     misalignmentBoxes: 0, misalignmentKg: 0, twoPlyPaperKg: 0, deckelWastageKg: 0,
-                    sheerCutterBoxes: 0, sheerCutterKg: 0, noHisabBoxes: 0,
+                    sheerCutterBoxes: 0, sheerCutterKg: 0,
                   };
                   const printingWastageTotals = printingWastageTotalsMap.get(p.id) || {
                     slotting: 0, delaminationPrinting: 0, misalignmentPrinting: 0,
@@ -934,7 +934,6 @@ export function ProductionMaster() {
                         wastageTotals.misalignmentBoxes, wastageTotals.misalignmentKg,
                         wastageTotals.twoPlyPaperKg, wastageTotals.deckelWastageKg,
                         wastageTotals.sheerCutterBoxes, wastageTotals.sheerCutterKg,
-                        wastageTotals.noHisabBoxes,
                       ].map((value, wastageIndex) => (
                         <td key={wastageIndex} className="px-4 py-4 text-right text-xs font-bold text-rose-800 border border-black whitespace-nowrap bg-rose-50/40">{formatDecimal(value)}</td>
                       ))}

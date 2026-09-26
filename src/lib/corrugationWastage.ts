@@ -5,7 +5,6 @@ export const CORRUGATION_WASTAGE_BOX_FIELDS = [
   "delaminationBoxes",
   "misalignmentBoxes",
   "sheerCutterBoxes",
-  "noHisabBoxes",
 ] as const;
 
 export const CORRUGATION_WASTAGE_MANUAL_KG_FIELDS = ["twoPlyPaperKg", "deckelWastageKg"] as const;
@@ -28,7 +27,6 @@ export const EMPTY_CORRUGATION_WASTAGE_DRAFT: CorrugationWastageDraft = {
   delaminationBoxes: "",
   misalignmentBoxes: "",
   sheerCutterBoxes: "",
-  noHisabBoxes: "",
   twoPlyPaperKg: "",
   deckelWastageKg: "",
 };
@@ -90,7 +88,6 @@ export function buildCorrugationWastageValues(draft: CorrugationWastageDraft, pr
     deckelWastageKg: nonNegative(draft.deckelWastageKg),
     sheerCutterBoxes,
     sheerCutterKg: sheerCutterBoxes * kgPerBox,
-    noHisabBoxes: nonNegative(draft.noHisabBoxes),
     noHisabKg: 0,
   };
 }
@@ -101,7 +98,6 @@ export function wastageDraftFromEntry(entry: ProductionProcessing): CorrugationW
     delaminationBoxes: String(entry.delaminationBoxes || ""),
     misalignmentBoxes: String(entry.misalignmentBoxes || ""),
     sheerCutterBoxes: String(entry.sheerCutterBoxes || ""),
-    noHisabBoxes: String(entry.noHisabBoxes || ""),
     twoPlyPaperKg: String(entry.twoPlyPaperKg || ""),
     deckelWastageKg: String(entry.deckelWastageKg || ""),
   };
