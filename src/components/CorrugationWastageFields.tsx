@@ -10,7 +10,6 @@ const BOX_FIELDS: Array<{ key: CorrugationWastageInputKey; label: string; kgKey?
   { key: "delaminationBoxes", label: "Delamination (Boxes)", kgKey: "delaminationKg" },
   { key: "misalignmentBoxes", label: "Misalignment (Boxes)", kgKey: "misalignmentKg" },
   { key: "sheerCutterBoxes", label: "Sheer Cutter (Boxes)", kgKey: "sheerCutterKg" },
-  { key: "noHisabBoxes", label: "No Hisab (Boxes)" },
 ];
 
 export function CorrugationWastageFields({
