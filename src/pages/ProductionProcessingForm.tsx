@@ -54,6 +54,7 @@ function LockedReportForm() {
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
   const [productions] = useData<Production>("productions", []);
+  const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const selectedProduction = productions.find((production) => production.id === productionId);
