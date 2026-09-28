@@ -644,6 +644,7 @@ const PHP_ITEM_MASTER_SCHEMA_COLUMNS: Array<{ column: string; type: string }> = 
   { column: "syncSource", type: "VARCHAR(50) NULL" },
   { column: "syncStatus", type: "VARCHAR(20) DEFAULT 'active'" },
   { column: "openingQty", type: "DECIMAL(15,2) DEFAULT 0" },
+  { column: "productionOutputQty", type: "DECIMAL(15,2) DEFAULT 0" },
 ];
 
 const PLATE_ITEM_MASTER_SCHEMA_COLUMNS: Array<{ column: string; type: string }> = [
@@ -654,6 +655,7 @@ const PLATE_ITEM_MASTER_SCHEMA_COLUMNS: Array<{ column: string; type: string }> 
   { column: "syncSource", type: "VARCHAR(50) NULL" },
   { column: "syncStatus", type: "VARCHAR(20) DEFAULT 'active'" },
   { column: "openingQty", type: "DECIMAL(15,2) DEFAULT 0" },
+  { column: "productionOutputQty", type: "DECIMAL(15,2) DEFAULT 0" },
 ];
 
 const COMPANY_SCHEMA_COLUMNS: Array<{ column: string; type: string }> = [

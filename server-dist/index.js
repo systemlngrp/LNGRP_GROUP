@@ -595,6 +595,7 @@ const PHP_ITEM_MASTER_SCHEMA_COLUMNS = [
     { column: "syncSource", type: "VARCHAR(50) NULL" },
     { column: "syncStatus", type: "VARCHAR(20) DEFAULT 'active'" },
     { column: "openingQty", type: "DECIMAL(15,2) DEFAULT 0" },
+    { column: "productionOutputQty", type: "DECIMAL(15,2) DEFAULT 0" },
 ];
 const PLATE_ITEM_MASTER_SCHEMA_COLUMNS = [
     ...[...new Set(Object.values(PLATE_ITEM_MASTER_HEADER_MAP))].map((column) => ({
@@ -604,6 +605,7 @@ const PLATE_ITEM_MASTER_SCHEMA_COLUMNS = [
     { column: "syncSource", type: "VARCHAR(50) NULL" },
     { column: "syncStatus", type: "VARCHAR(20) DEFAULT 'active'" },
     { column: "openingQty", type: "DECIMAL(15,2) DEFAULT 0" },
+    { column: "productionOutputQty", type: "DECIMAL(15,2) DEFAULT 0" },
 ];
 const COMPANY_SCHEMA_COLUMNS = [
     { column: "pin", type: "VARCHAR(50)" },
