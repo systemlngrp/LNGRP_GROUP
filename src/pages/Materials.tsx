@@ -19,7 +19,7 @@ type ActiveValue = NonNullable<Material["active"]>;
 type MaterialSortKey = "updated" | "size" | "gsm";
 type SortDirection = "asc" | "desc";
 type MaterialDisplayRow = Material & { isVirtualReceiptItem?: boolean; receiptQty?: number; receiptValue?: number };
-type MaterialMovementSummary = { receipts: number; receiptValue: number; issues: number; issueValue: number; returns: number; returnValue: number };
+type MaterialFirmStock = { openingQty: number; openingValue: number; receipts: number; receiptValue: number; issues: number; issueValue: number; returns: number; returnValue: number };
 type OpeningReelDraft = {
   id: string;
   existingSlipId?: string;
@@ -194,14 +194,18 @@ export function Materials() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   const movementSummaryMap = useMemo(() => {
-    const createEmptyMovement = (): MaterialMovementSummary => ({ receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
-    const map = new Map<string, MaterialMovementSummary>();
+    const createEmptyMovement = (): MaterialFirmStock => ({ openingQty: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
+    const map = new Map<string, MaterialFirmStock>();
     const materialTypeMap = new Map(materials.map(m => [m.id, m.type]));
-    materials.forEach(m => map.set(m.id, createEmptyMovement()));
+    materialFirmOpenings.forEach((row) => {
+      const key = `${row.materialId}::${row.firmId}`;
+      map.set(key, { openingQty: Number(row.openingQty || 0), openingValue: Number(row.openingValue ?? Number(row.openingQty || 0) * Number(row.openingRate || 0)), receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
+    });
 
-    const getMovement = (materialId: string) => {
-      const current = map.get(materialId) || createEmptyMovement();
-      map.set(materialId, current);
+    const getMovement = (materialId: string, firmId?: string) => {
+      const key = `${materialId}::${String(firmId || "")}`;
+      const current = map.get(key) || createEmptyMovement();
+      map.set(key, current);
       return current;
     };
 
@@ -262,7 +266,7 @@ export function Materials() {
       const lineQty = getLineQty(line || {});
       const lineValue = getLineValue(line || {}, lineQty || qty);
       const rate = lineQty > 0 ? lineValue / lineQty : Number((line as any)?.invoiceRate ?? (line as any)?.poRate ?? (line as any)?.rate ?? 0);
-      const current = getMovement(slip.materialId);
+      const current = getMovement(slip.materialId, receipt?.firmId);
       current.receipts += qty;
       current.receiptValue += qty * rate;
     });
@@ -274,7 +278,7 @@ export function Materials() {
           const materialId = String(line.itemId || (line as any).npdId || "").trim();
           if (!materialId) return;
           const qty = getLineQty(line);
-          const current = getMovement(materialId);
+          const current = getMovement(materialId, receipt.firmId);
           current.receipts += qty;
           current.receiptValue += getLineValue(line, qty);
         });
@@ -285,7 +289,8 @@ export function Materials() {
     const issueLineById = new Map(issueLines.map((line) => [line.id, line]));
     reelIssueLines.forEach(l => {
       if (!filteredIssueIds.has(l.materialIssueId)) return;
-      const current = getMovement(l.materialId);
+      const issue = materialIssues.find((entry) => entry.id === l.materialIssueId);
+      const current = getMovement(l.materialId, issue?.firmId);
       const qty = Number(l.weightKg || 0);
       const parentLine = issueLineById.get(l.materialIssueLineId);
       const rate = Number(parentLine?.rate || parentLine?.lastPurchaseRate || parentLine?.openingRate || 0);
@@ -297,7 +302,8 @@ export function Materials() {
       if (!filteredIssueIds.has(l.materialIssueId)) return;
       // SKIP REELS to avoid double counting from reelIssueLines
       if (materialTypeMap.get(l.materialId) === "Reel") return;
-      const current = getMovement(l.materialId);
+      const issue = materialIssues.find((entry) => entry.id === l.materialIssueId);
+      const current = getMovement(l.materialId, issue?.firmId);
       const qty = Number(l.qty || 0);
       current.issues += qty;
       current.issueValue += Number(l.amount ?? qty * Number(l.rate || l.lastPurchaseRate || l.openingRate || 0));
@@ -307,7 +313,8 @@ export function Materials() {
     const returnLineById = new Map(returnLines.map((line) => [line.id, line]));
     reelReturnLines.forEach(l => {
       if (!filteredReturnIds.has(l.materialReturnId)) return;
-      const current = getMovement(l.materialId);
+      const header = materialReturnsHeader.find((entry) => entry.id === l.materialReturnId);
+      const current = getMovement(l.materialId, header?.firmId);
       const qty = Number(l.weightKg || 0);
       const parentLine = returnLineById.get(l.materialReturnLineId);
       const rate = Number(parentLine?.rate || parentLine?.lastPurchaseRate || parentLine?.openingRate || 0);
@@ -319,14 +326,15 @@ export function Materials() {
       if (!filteredReturnIds.has(l.materialReturnId)) return;
       // SKIP REELS to avoid double counting from reelReturnLines
       if (materialTypeMap.get(l.materialId) === "Reel") return;
-      const current = getMovement(l.materialId);
+      const header = materialReturnsHeader.find((entry) => entry.id === l.materialReturnId);
+      const current = getMovement(l.materialId, header?.firmId);
       const qty = Number(l.qty || 0);
       current.returns += qty;
       current.returnValue += Number(l.amount ?? qty * Number(l.rate || l.lastPurchaseRate || l.openingRate || 0));
     });
 
     return map;
-  }, [materials, packingSlips, materialIn, materialIssues, issueLines, reelIssueLines, materialReturnsHeader, returnLines, reelReturnLines, fromDate, toDate, selectedFirmId]);
+  }, [materials, materialFirmOpenings, packingSlips, materialIn, materialIssues, issueLines, reelIssueLines, materialReturnsHeader, returnLines, reelReturnLines, fromDate, toDate, selectedFirmId]);
   const materialDisplayRows = useMemo<MaterialDisplayRow[]>(() => {
     const existingMaterialIds = new Set(materials.map((material) => String(material.id)));
     const virtualRows = new Map<string, MaterialDisplayRow>();
@@ -408,11 +416,11 @@ export function Materials() {
       });
   }, [colorFilter, gsmFilter, materialDisplayRows, searchTerm, sizeFilter, sortDirection, sortKey, typeFilter]);
 
-  const getMaterialStockValues = (material: MaterialDisplayRow) => {
-    const movement = movementSummaryMap.get(material.id) || { receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 };
-    const openingQty = Number(material.openingQty || 0);
-    const openingRate = Number(material.openingRate || 0);
-    const openingValue = Number(material.openingValue ?? (openingQty * openingRate));
+  const getMaterialStockValues = (material: MaterialDisplayRow, firmId?: string) => {
+    const movement = movementSummaryMap.get(`${material.id}::${String(firmId || "")}`) || { openingQty: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 };
+    const openingQty = Number(movement.openingQty || (firmId ? 0 : material.openingQty || 0));
+    const openingRate = openingQty !== 0 ? Number(movement.openingValue || 0) / openingQty : Number(material.openingRate || 0);
+    const openingValue = Number(movement.openingValue || (firmId ? 0 : material.openingValue ?? (openingQty * openingRate)));
     const receiptQty = Number(movement.receipts || 0);
     const receiptValue = Number(movement.receiptValue || (receiptQty * openingRate));
     const issueQty = Number(movement.issues || 0);
@@ -437,6 +445,16 @@ export function Materials() {
     };
   };
 
+  const visibleFirms = useMemo(() => firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)), [firms]);
+  const getMaterialFirmStocks = (material: MaterialDisplayRow) => {
+    return visibleFirms.map((firm) => ({
+      firm,
+      values: material.type === "Reel" && String(firm.id) !== String(unitOneFirm?.id || "")
+        ? getMaterialStockValues(material, "__reel-hidden-firm__")
+        : getMaterialStockValues(material, String(firm.id)),
+    }));
+  };
+
   const metrics = useMemo(() => {
     let openingQtyTotal = 0;
     let openingValueTotal = 0;
@@ -449,17 +467,17 @@ export function Materials() {
     let closingValueTotal = 0;
 
     filteredMaterials.forEach((material) => {
-      const values = getMaterialStockValues(material);
-
-      openingQtyTotal += values.openingQty;
-      openingValueTotal += values.openingValue;
-      receiptQtyTotal += values.receiptQty;
-      receiptValueTotal += values.receiptValue;
-      issueQtyTotal += values.issueQty;
-      issueValueTotal += values.issueValue;
-      returnQtyTotal += values.returnQty;
-      closingQtyTotal += values.balance;
-      closingValueTotal += values.closingValue;
+      getMaterialFirmStocks(material).forEach(({ values }) => {
+        openingQtyTotal += values.openingQty;
+        openingValueTotal += values.openingValue;
+        receiptQtyTotal += values.receiptQty;
+        receiptValueTotal += values.receiptValue;
+        issueQtyTotal += values.issueQty;
+        issueValueTotal += values.issueValue;
+        returnQtyTotal += values.returnQty;
+        closingQtyTotal += values.balance;
+        closingValueTotal += values.closingValue;
+      });
     });
 
     return {
@@ -475,7 +493,7 @@ export function Materials() {
       closingQtyTotal,
       closingValueTotal,
     };
-  }, [filteredMaterials, movementSummaryMap]);
+  }, [filteredMaterials, movementSummaryMap, unitOneFirm, visibleFirms]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: paginatedMaterials } = useClientPagination(filteredMaterials, 25);
 
   const [formData, setFormData] = useState(() => createInitialFormState(materials, reelGroup?.id || ""));
@@ -1492,9 +1510,8 @@ export function Materials() {
 
   function downloadMaterialMasterExcel() {
     const exportRows = filteredMaterials.map((material, index) => {
-      const values = getMaterialStockValues(material);
       const isVirtualReceiptItem = Boolean((material as MaterialDisplayRow).isVirtualReceiptItem);
-      return {
+      const row: Record<string, unknown> = {
         SL: index + 1,
         Type: isVirtualReceiptItem ? "FG" : material.type,
         "ERP Code": material.erpCode || "",
@@ -1503,19 +1520,20 @@ export function Materials() {
         GSM: material.gsm ?? "-",
         BF: material.bf ?? "-",
         Color: material.type === "Reel" ? material.color || "-" : "-",
-        Opening: Number(values.openingQty || 0),
-        "Opening Value": Number(values.openingValue || 0),
-        Receipts: Number(values.receiptQty || 0),
-        "Receipt Value": Number(values.receiptValue || 0),
-        Issues: Number(values.issueQty || 0),
-        "Issue Value": Number(values.issueValue || 0),
-        Returns: Number(values.returnQty || 0),
-        Balance: Number(values.balance || 0),
-        "Closing Value": Number(values.closingValue || 0),
         "GST Rate (%)": Number(material.gstRate ?? 0),
         UOM: material.uom || "-",
         Active: material.active || "Yes",
       };
+      getMaterialFirmStocks(material).forEach(({ firm, values }) => {
+        const prefix = firm.firmName;
+        row[`${prefix} - Opening`] = Number(values.openingQty || 0);
+        row[`${prefix} - Receipts`] = Number(values.receiptQty || 0);
+        row[`${prefix} - Issues`] = Number(values.issueQty || 0);
+        row[`${prefix} - Returns`] = Number(values.returnQty || 0);
+        row[`${prefix} - Closing Stock`] = Number(values.balance || 0);
+        row[`${prefix} - Closing Value`] = Number(values.closingValue || 0);
+      });
+      return row;
     });
 
     const ws = XLSX.utils.json_to_sheet(exportRows);
@@ -2140,24 +2158,20 @@ export function Materials() {
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">BF</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">GST Rate (%)</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Color</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Opening</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Opening Value</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Receipts</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Receipt Value</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Issues</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Issue Value</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Returns</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Balance</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Closing Value</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Weighted Rate</th>
+                    {visibleFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={6} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">UOM</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
+                  </tr>
+                  <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
+                    {Array.from({ length: 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
+                    {visibleFirms.map((firm) => ["Opening", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
+                    <th /><th />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={21} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={12 + visibleFirms.length * 6} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2176,22 +2190,9 @@ export function Materials() {
                           <td className="px-4 py-3 text-black text-xs">{material.bf ?? "-"}</td>
                           <td className="px-4 py-3 text-black text-xs font-semibold">{Number(material.gstRate ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                           <td className="px-4 py-3 text-black text-xs font-bold">{material.type === "Reel" ? material.color || "-" : "-"}</td>
-                          <td className="px-4 py-3 text-black text-xs font-medium bg-slate-50">{values.openingQty.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-indigo-700 text-xs font-bold bg-indigo-50/30">{values.openingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td className="px-4 py-3 text-emerald-700 text-xs font-bold bg-emerald-50/30">{values.receiptQty.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-emerald-700 text-xs font-bold bg-emerald-50/20">{values.receiptValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td className="px-4 py-3 text-rose-700 text-xs font-bold bg-rose-50/30">{values.issueQty.toLocaleString()}</td>
-                          <td className="px-4 py-3 text-rose-700 text-xs font-bold bg-rose-50/20">{values.issueValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                          <td className="px-4 py-3 text-indigo-700 text-xs font-bold bg-indigo-50/30">{values.returnQty.toLocaleString()}</td>
-                          <td className={`px-4 py-3 text-xs font-black ${values.balance < 0 ? "text-red-600 bg-red-50" : "text-slate-900 bg-amber-50/50"}`}>
-                            {values.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className={`px-4 py-3 text-xs font-black border-r-2 border-black ${values.closingValue < 0 ? "text-red-600 bg-red-50" : "text-violet-700 bg-violet-50/30"}`}>
-                            {values.closingValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-4 py-3 text-cyan-800 text-xs font-black bg-cyan-50/30">
-                            {Number.isFinite(values.effectiveRate) ? values.effectiveRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"}
-                          </td>
+                          {getMaterialFirmStocks(material).map(({ firm, values: firmValues }) => <React.Fragment key={`${material.id}-${firm.id}`}>
+                            {[firmValues.openingQty, firmValues.receiptQty, firmValues.issueQty, firmValues.returnQty, firmValues.balance, firmValues.closingValue].map((value, fieldIndex) => <td key={fieldIndex} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${fieldIndex === 0 ? "bg-slate-50" : fieldIndex === 1 ? "text-emerald-700 bg-emerald-50/30" : fieldIndex === 2 ? "text-rose-700 bg-rose-50/30" : fieldIndex === 3 ? "text-indigo-700 bg-indigo-50/30" : fieldIndex === 4 ? "text-slate-900 bg-amber-50/50" : "text-violet-700 bg-violet-50/30"}`}>{Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: fieldIndex >= 4 ? 2 : 0, maximumFractionDigits: 2 })}</td>)}
+                          </React.Fragment>)}
                           <td className="px-4 py-3 text-black text-[10px] font-black uppercase">{material.uom || "-"}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             {isVirtualReceiptItem ? (
