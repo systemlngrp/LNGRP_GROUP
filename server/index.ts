@@ -3191,8 +3191,14 @@ async function automateInterFirmProduction(
         );
         const master = (componentRows as any[])[0];
         const setsPerBox = Number(master?.numberOfSetsPerBox || 0);
-        if (!master?.id) throw new Error(`No ${component.source} master item matches ERP ${mainErp}.`);
-        if (!Number.isFinite(setsPerBox) || setsPerBox <= 0) throw new Error(`${component.source} Sets/Pcs per box is missing for ERP ${mainErp}.`);
+        if (!master?.id) {
+          console.warn(`[INTER-FIRM] Optional ${component.source} master not found; continuing with FG billing only`, { sourceId, productionId, mainErp });
+          continue;
+        }
+        if (!Number.isFinite(setsPerBox) || setsPerBox <= 0) {
+          console.warn(`[INTER-FIRM] Optional ${component.source} Sets/Pcs per box missing; skipping component billing`, { sourceId, productionId, mainErp, itemId: master.id });
+          continue;
+        }
         componentLines.push({
           itemId: String(master.id), itemSource: component.source, npdId: String(master.id),
           qty: Number((Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0) * setsPerBox).toFixed(2)),
@@ -3497,15 +3503,6 @@ async function validateLnkiPrintingComponents(db: mysql.Pool | mysql.PoolConnect
   if (!lnki?.id || orderFirmId !== String(lnki.id)) return;
   const mainErp = String(production.orderErp || production.masterErp || production.erpCode || "").trim();
   if (!mainErp) throw new Error("LNKI PHP/Plate billing requires the customer order ERP code.");
-  for (const component of [{ source: "PHP", table: "php_item_master" }, { source: "PLATE", table: "plate_item_master" }] as const) {
-    const [componentRows] = await db.query(
-      `SELECT id, numberOfSetsPerBox FROM \`${component.table}\` WHERE LOWER(TRIM(COALESCE(masterItemNameErpCode, ''))) = LOWER(TRIM(?)) OR LOWER(TRIM(COALESCE(erpItemCode, ''))) = LOWER(TRIM(?)) LIMIT 1`,
-      [mainErp, mainErp]
-    );
-    const master = (componentRows as any[])[0];
-    if (!master?.id) throw new Error(`No ${component.source} master item matches ERP ${mainErp}.`);
-    if (!(Number(master.numberOfSetsPerBox) > 0)) throw new Error(`${component.source} Sets/Pcs per box is missing for ERP ${mainErp}.`);
-  }
 }
 
 async function getSafeLnkiPrintingValidation(db: mysql.Pool | mysql.PoolConnection, processing: any) {
