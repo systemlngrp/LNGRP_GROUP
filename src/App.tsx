@@ -82,6 +82,7 @@ import { PendingJobClosure } from "./pages/PendingJobClosure";
 import { MachinePendingProcessing, PendingPrinting } from "./pages/MachinePendingProcessing";
 import { ProductionProcessingForm } from "./pages/ProductionProcessingForm";
 import { ProductionProcessingMaster } from "./pages/ProductionProcessingMaster";
+import { ManufacturingJournal } from "./pages/ManufacturingJournal";
 import { ItemwiseLeastCost } from "./pages/ItemwiseLeastCost";
 import { CanceledProductions } from "./pages/CanceledProductions";
 import { SampleForm } from "./pages/SampleForm";
@@ -324,6 +325,7 @@ export default function App() {
           <Route path="audit-dashboard" element={<AuditDashboard />} />
           <Route path="production-processing/form" element={<ProductionProcessingForm />} />
           <Route path="production-processing/master" element={<ProductionProcessingMaster />} />
+          <Route path="production-processing/manufacturing-journal" element={<ManufacturingJournal />} />
           <Route path="production/least-cost" element={<ItemwiseLeastCost />} />
           <Route path="production/canceled" element={<CanceledProductions />} />
 

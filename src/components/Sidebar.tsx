@@ -182,6 +182,7 @@ const phpPlateProcessItems: NavItem[] = [
 const productionProcessingItems: NavItem[] = [
   { name: "Pending Production Processing", href: "/production/pending-machine-processing", icon: Hammer, countKey: "/production/pending-machine-processing" },
   { name: "Production Processing Master", href: "/production-processing/master", icon: Database },
+  { name: "Manufacturing Journal", href: "/production-processing/manufacturing-journal", icon: BookOpenText },
 ];
 
 const sampleItems: NavItem[] = [

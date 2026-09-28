@@ -615,6 +615,12 @@ export interface ProductionProcessing {
   operatorName: string;
   date: string;
   completionStatus?: "Part" | "Full";
+  tallyPostingStatus?: string;
+  tallyTimestamp?: string;
+  tallyPostingError?: string;
+  tallyVoucherNo?: string;
+  tallyVoucherDate?: string;
+  tallyPostingRemark?: string;
   updatedBy?: string;
   updateTimestamp?: string;
   orderFirmId?: string;
