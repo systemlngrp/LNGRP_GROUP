@@ -3183,15 +3183,17 @@ async function automateInterFirmProduction(
       await skip(); return;
     }
     const componentLines: any[] = [];
+    const componentWarnings: string[] = [];
     if (sourceType === "Production Processing" && normalizedMachine === "Printing" && orderFirmId === String(lnki.id)) {
       const mainErp = String(order?.erpCode || production.masterErp || production.erpCode || "").trim();
-      if (!mainErp) throw new Error("LNKI PHP/Plate billing requires the customer order ERP code.");
+      if (!mainErp) componentWarnings.push("Customer order ERP code is missing");
       const normalizeComponentErp = (value: unknown) => String(value || "")
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "");
       const normalizedMainErp = normalizeComponentErp(mainErp);
       for (const component of [{ source: "PHP", table: "php_item_master" }, { source: "PLATE", table: "plate_item_master" }] as const) {
+        if (!normalizedMainErp) break;
         const [componentRows] = await conn.query(
           `SELECT * FROM \`${component.table}\` WHERE COALESCE(TRIM(masterItemNameErpCode), '') <> '' OR COALESCE(TRIM(erpItemCode), '') <> ''`,
         );
@@ -3202,10 +3204,12 @@ async function automateInterFirmProduction(
         const setsPerBox = Number(master?.numberOfSetsPerBox || 0);
         if (!master?.id) {
           console.warn(`[INTER-FIRM] Optional ${component.source} master not found; continuing with FG billing only`, { sourceId, productionId, mainErp, normalizedMainErp });
+          componentWarnings.push(`${component.source} master not found for ERP ${mainErp}`);
           continue;
         }
         if (!Number.isFinite(setsPerBox) || setsPerBox <= 0) {
           console.warn(`[INTER-FIRM] Optional ${component.source} Sets/Pcs per box missing; skipping component billing`, { sourceId, productionId, mainErp, itemId: master.id });
+          componentWarnings.push(`${component.source} Sets/Pcs per box is missing for ERP ${mainErp}`);
           continue;
         }
         componentLines.push({
@@ -3350,6 +3354,7 @@ async function automateInterFirmProduction(
     }
     console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing" });
     if (ownsConnection) await conn.commit();
+    return { warnings: componentWarnings };
   } catch (error) {
     if (ownsConnection) await conn.rollback();
     throw error;
@@ -3519,7 +3524,7 @@ async function getSafeLnkiPrintingValidation(db: mysql.Pool | mysql.PoolConnecti
     await validateLnkiPrintingComponents(db, processing);
     return { ready: true, warning: "" };
   } catch (error) {
-    return { ready: false, warning: "Printing report saved. " + (error as Error).message + " PHP/Plate billing was skipped." };
+    return { ready: true, warning: "FG automation continued. " + (error as Error).message + " PHP/Plate component billing was skipped." };
   }
 }
 
@@ -9868,9 +9873,10 @@ const createHandlers = (tableName: string) => {
             await conn.query(query, values);
             await syncCorrugationLinerOutput(conn, String(data.id || ""));
             await syncLnkiPrintingMasterOutputs(conn, data);
-            await automateInterFirmProduction(db, String(data.id || ""), "Production Processing", conn);
+            const automationResult = await automateInterFirmProduction(db, String(data.id || ""), "Production Processing", conn);
             await conn.commit();
-            return res.json({ success: true });
+            const warnings = [printingValidation.warning, ...(automationResult?.warnings || [])].filter(Boolean);
+            return res.json({ success: true, ...(warnings.length ? { warning: warnings.join(" ") } : {}) });
           } catch (error) {
             try { await conn.rollback(); } catch {}
             throw error;
@@ -9928,7 +9934,10 @@ const createHandlers = (tableName: string) => {
             const printingValidation = await getSafeLnkiPrintingValidation(db, data);
             if (printingValidation.ready) {
               await syncLnkiPrintingMasterOutputs(db, data);
-              await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
+              const automationResult = await automateInterFirmProduction(db, String(data.id || ""), "Production Processing");
+              if (automationResult?.warnings?.length) {
+                return res.json({ success: true, warning: automationResult.warnings.join(" ") });
+              }
             }
           }
         }
