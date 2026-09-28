@@ -9114,6 +9114,14 @@ const createHandlers = (tableName) => {
                 }
                 const [currentDatabaseRows] = await db.query("SELECT DATABASE() AS db");
                 const schemaName = String(currentDatabaseRows[0]?.db || process.env.DB_NAME || "u380633007_Inpidata");
+                if (tableName === "production_processing") {
+                    // Some legacy deployments have production_processing without the
+                    // audit columns even though the current base schema declares them.
+                    // Ensure them immediately before reading columns/building the INSERT
+                    // so Full Printing cannot fail with an unknown updateTimestamp.
+                    await ensureColumnExists(db, schemaName, tableName, "updatedBy", "VARCHAR(255)");
+                    await ensureColumnExists(db, schemaName, tableName, "updateTimestamp", "VARCHAR(255)");
+                }
                 const existingColumns = await getExistingColumnNames(db, schemaName, tableName);
                 Object.keys(data).forEach((key) => {
                     if (!existingColumns.has(key)) {
