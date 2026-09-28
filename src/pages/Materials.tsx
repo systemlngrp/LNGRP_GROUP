@@ -446,6 +446,7 @@ export function Materials() {
   };
 
   const visibleFirms = useMemo(() => firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)), [firms]);
+  const displayFirms = useMemo(() => typeFilter === "Reel" ? visibleFirms.filter((firm) => String(firm.id) === String(unitOneFirm?.id || "")) : visibleFirms, [typeFilter, unitOneFirm?.id, visibleFirms]);
   const getMaterialFirmStocks = (material: MaterialDisplayRow) => {
     return visibleFirms.map((firm) => ({
       firm,
@@ -1516,14 +1517,16 @@ export function Materials() {
         Type: isVirtualReceiptItem ? "FG" : material.type,
         "ERP Code": material.erpCode || "",
         "Item Name": material.name || "",
-        Size: material.size ?? "-",
-        GSM: material.gsm ?? "-",
-        BF: material.bf ?? "-",
         Color: material.type === "Reel" ? material.color || "-" : "-",
         "GST Rate (%)": Number(material.gstRate ?? 0),
         UOM: material.uom || "-",
         Active: material.active || "Yes",
       };
+      if (material.type === "Reel") {
+        row.Size = material.size ?? "-";
+        row.GSM = material.gsm ?? "-";
+        row.BF = material.bf ?? "-";
+      }
       getMaterialFirmStocks(material).forEach(({ firm, values }) => {
         const prefix = firm.firmName;
         row[`${prefix} - Opening`] = Number(values.openingQty || 0);
@@ -2109,8 +2112,8 @@ export function Materials() {
 
               <div className="flex flex-wrap items-end gap-4 pt-2 border-t border-slate-100">
                 <FilterSelect compact label="Material Type" value={typeFilter} onChange={setTypeFilter} options={["All", ...TYPE_OPTIONS.map((option) => option.value)]} />
-                <FilterSelect compact label="Size Filter" value={sizeFilter} onChange={setSizeFilter} options={["All", ...sizeOptions]} />
-                <FilterSelect compact label="GSM Filter" value={gsmFilter} onChange={setGsmFilter} options={["All", ...gsmOptions]} />
+                {typeFilter !== "Other" && <FilterSelect compact label="Size Filter" value={sizeFilter} onChange={setSizeFilter} options={["All", ...sizeOptions]} />}
+                {typeFilter !== "Other" && <FilterSelect compact label="GSM Filter" value={gsmFilter} onChange={setGsmFilter} options={["All", ...gsmOptions]} />}
                 <FilterSelect compact label="Color Filter" value={colorFilter} onChange={setColorFilter} options={["All", ...colorFilterOptions]} />
 
                 <div className="flex items-center gap-2 ml-auto">
@@ -2149,29 +2152,29 @@ export function Materials() {
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Type</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">ERP Code</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Item Name</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
+                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
                       {renderSortableHeader("Size", "size")}
-                    </th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
+                    </th>}
+                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
                       {renderSortableHeader("GSM", "gsm")}
-                    </th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">BF</th>
+                    </th>}
+                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">BF</th>}
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">GST Rate (%)</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Color</th>
-                    {visibleFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={6} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
+                    {displayFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={6} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">UOM</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
                   </tr>
                   <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
-                    {Array.from({ length: 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
-                    {visibleFirms.map((firm) => ["Opening", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
+                    {Array.from({ length: typeFilter === "Other" ? 7 : 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
+                    {displayFirms.map((firm) => ["Opening", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
                     <th /><th />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={12 + visibleFirms.length * 6} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={(typeFilter === "Other" ? 9 : 12) + displayFirms.length * 6} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2185,12 +2188,12 @@ export function Materials() {
                           <td className="px-4 py-3 text-black text-[10px] font-bold uppercase">{isVirtualReceiptItem ? "FG" : material.type}</td>
                           <td className="px-4 py-3 text-black text-xs font-black tracking-tight">{material.erpCode || ""}</td>
                           <td className="px-4 py-3 text-black text-xs font-bold min-w-[300px]">{material.name}</td>
-                          <td className="px-4 py-3 text-black text-xs">{material.size ?? "-"}</td>
-                          <td className="px-4 py-3 text-black text-xs">{material.gsm ?? "-"}</td>
-                          <td className="px-4 py-3 text-black text-xs">{material.bf ?? "-"}</td>
+                          {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.size ?? "-"}</td>}
+                          {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.gsm ?? "-"}</td>}
+                          {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.bf ?? "-"}</td>}
                           <td className="px-4 py-3 text-black text-xs font-semibold">{Number(material.gstRate ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                           <td className="px-4 py-3 text-black text-xs font-bold">{material.type === "Reel" ? material.color || "-" : "-"}</td>
-                          {getMaterialFirmStocks(material).map(({ firm, values: firmValues }) => <React.Fragment key={`${material.id}-${firm.id}`}>
+                          {getMaterialFirmStocks(material).filter(({ firm }) => displayFirms.some((displayFirm) => String(displayFirm.id) === String(firm.id))).map(({ firm, values: firmValues }) => <React.Fragment key={`${material.id}-${firm.id}`}>
                             {[firmValues.openingQty, firmValues.receiptQty, firmValues.issueQty, firmValues.returnQty, firmValues.balance, firmValues.closingValue].map((value, fieldIndex) => <td key={fieldIndex} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${fieldIndex === 0 ? "bg-slate-50" : fieldIndex === 1 ? "text-emerald-700 bg-emerald-50/30" : fieldIndex === 2 ? "text-rose-700 bg-rose-50/30" : fieldIndex === 3 ? "text-indigo-700 bg-indigo-50/30" : fieldIndex === 4 ? "text-slate-900 bg-amber-50/50" : "text-violet-700 bg-violet-50/30"}`}>{Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: fieldIndex >= 4 ? 2 : 0, maximumFractionDigits: 2 })}</td>)}
                           </React.Fragment>)}
                           <td className="px-4 py-3 text-black text-[10px] font-black uppercase">{material.uom || "-"}</td>
