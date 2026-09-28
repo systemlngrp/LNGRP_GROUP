@@ -1,0 +1,99 @@
+================================================================================
+Timestamp      : 2026-09-28 16:29:52
+Stage          : RUNTIME
+Invoice ID     : 
+Invoice No     : 
+Company Name   : 
+Message        : Database connection failed. Could not connect to MySQL at 193.203.184.152:3306. Connector message: 1146 (42S02): Table 'u380633007_lnpidata.firms' doesn't exist
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : D:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 16:31:17
+Stage          : PRECHECK
+Invoice ID     : ea20464f-7ef2-4f25-9ec3-acc6c8972bce
+Invoice No     : LNCB-1/INV/26-27/00003
+Company Name   : Laxmi Narayan Corrugated Boards LLP (Unit-II)
+Message        : Could not read Stock Item details for 'CFB PIXIE LIQUID BLUE 100 ML-71000120' from Tally
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : D:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 16:33:22
+Stage          : PRECHECK
+Invoice ID     : ea20464f-7ef2-4f25-9ec3-acc6c8972bce
+Invoice No     : LNCB-1/INV/26-27/00003
+Company Name   : Laxmi Narayan Corrugated Boards LLP (Unit-II)
+Message        : Could not read Stock Item details for 'CFB PIXIE LIQUID BLUE 100 ML-71000120' from Tally
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 16:39:40
+Stage          : PRECHECK
+Invoice ID     : ea20464f-7ef2-4f25-9ec3-acc6c8972bce
+Invoice No     : LNCB-1/INV/26-27/00003
+Company Name   : Laxmi Narayan Corrugated Boards LLP (Unit-II)
+Message        : Could not read Stock Item details for 'CFB PIXIE LIQUID BLUE 100 ML-71000120' from Tally
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : D:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 16:42:48
+Stage          : PRECHECK
+Invoice ID     : ea20464f-7ef2-4f25-9ec3-acc6c8972bce
+Invoice No     : LNCB-1/INV/26-27/00003
+Company Name   : Laxmi Narayan Corrugated Boards LLP (Unit-II)
+Message        : Could not read Stock Item details for 'CFB PIXIE LIQUID BLUE 100 ML-71000120' from Tally: syntax error: line 1, column 0. Debug XML: D:\LNGRP\TallyCodes\invoice\Log\tally_debug\stock_item_parse_error_20260928_164248_CFB_PIXIE_LIQUID_BLUE_100_ML-71000120.xml
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : D:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 17:09:30
+Stage          : PRECHECK
+Invoice ID     : ea20464f-7ef2-4f25-9ec3-acc6c8972bce
+Invoice No     : LNCB-1/INV/26-27/00003
+Company Name   : Laxmi Narayan Corrugated Boards LLP (Unit-II)
+Message        : Tally did not respond on http://127.0.0.1:9001 within 10 seconds
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 17:19:24
+Stage          : PRECHECK
+Invoice ID     : ea20464f-7ef2-4f25-9ec3-acc6c8972bce
+Invoice No     : LNCB-1/INV/26-27/00003
+Company Name   : Laxmi Narayan Corrugated Boards LLP (Unit-II)
+Message        : Tally is unavailable on http://127.0.0.1:9001: HTTPConnectionPool(host='127.0.0.1', port=9001): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9001): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : D:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 17:21:18
+Stage          : PRECHECK
+Invoice ID     : ea20464f-7ef2-4f25-9ec3-acc6c8972bce
+Invoice No     : LNCB-1/INV/26-27/00003
+Company Name   : Laxmi Narayan Corrugated Boards LLP (Unit-II)
+Message        : Stock Item 'CFB PIXIE LIQUID BLUE 100 ML-71000120' has no Base Unit in Tally (or parser could not read it). Debug XML: D:\LNGRP\TallyCodes\invoice\Log\tally_debug\stock_item_no_unit_20260928_172117_CFB_PIXIE_LIQUID_BLUE_100_ML-71000120.xml
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : D:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-09-28 17:47:16
+Stage          : PRECHECK
+Invoice ID     : 478d11ba-9a44-43f3-afac-d14862c02cee
+Invoice No     : LNCB-2/INV/26-27/00001
+Company Name   : LAXMI NARAYAN KRAFT INDUSTRIES
+Message        : CFB PIXIE LIQUID BLUE 100 ML-71000120 - V PLATE: rate missing or zero | CFB PIXIE LIQUID BLUE 100 ML-71000120 - V PLATE: amount missing or zero
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py

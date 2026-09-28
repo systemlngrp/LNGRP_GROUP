@@ -35,11 +35,11 @@ load_runtime_env()
 
 
 DB_CONFIG = {
-    "host": "193.203.184.152",
-    "user": "u380633007_lnpidata",
-    "password": "!Office1@",
-    "database": "u380633007_lnpidata",
-    "port": 3306,
+    "host": os.getenv("DB_HOST", "193.203.184.152"),
+    "user": os.getenv("DB_USER", "u380633007_lnpidata"),
+    "password": os.getenv("DB_PASSWORD", "!Office1@"),
+    "database": os.getenv("DB_NAME", "u380633007_lnpidata"),
+    "port": int(os.getenv("DB_PORT", "3306")),
     "use_pure": True,
 }
 
@@ -76,8 +76,8 @@ TALLY_VOUCHER_DATE_CACHE = {}
 TALLY_VOUCHER_REFERENCE_CACHE = {}
 COLUMN_EXISTS_CACHE = {}
 TALLY_CONNECT_TIMEOUT = float(os.getenv("TALLY_CONNECT_TIMEOUT", "5"))
-TALLY_READ_TIMEOUT = float(os.getenv("TALLY_READ_TIMEOUT", "120"))
-TALLY_READ_RETRIES = int(os.getenv("TALLY_READ_RETRIES", "1"))
+TALLY_READ_TIMEOUT = float(os.getenv("TALLY_READ_TIMEOUT", "10"))
+TALLY_READ_RETRIES = int(os.getenv("TALLY_READ_RETRIES", "0"))
 TALLY_RETRY_DELAY = float(os.getenv("TALLY_RETRY_DELAY", "2"))
 TALLY_SLOW_REQUEST_SECONDS = float(os.getenv("TALLY_SLOW_REQUEST_SECONDS", "5"))
 TALLY_HTTP_SESSION = requests.Session()
@@ -85,6 +85,7 @@ TALLY_HTTP_SESSION.headers.update({
     "Content-Type": "text/xml; charset=utf-8",
     "Connection": "keep-alive",
 })
+TALLY_UNAVAILABLE_ERROR = ""
 LOG_FOLDER_NAME = "Log"
 LOG_WORKBOOK_NAME = "invoice_sync_logs.xlsx"
 FAILURE_TEXT_LOG_NAME = "invoice sync log.txt"
@@ -139,12 +140,13 @@ def mask_secret(secret):
 
 def print_tally_sync_config_summary():
     print("==========================================")
-    print("Tally Sync API Configuration")
+    print("Direct MySQL Invoice Sync Configuration")
     print("==========================================")
-    print(f"URL: {TALLY_SYNC_API_URL or '<empty>'}")
-    print(f"Secret source: {get_tally_sync_secret_source()}")
-    print(f"Secret length: {len(TALLY_SYNC_API_SECRET)}")
-    print(f"Secret preview: {mask_secret(TALLY_SYNC_API_SECRET)}")
+    print(f"DB Host: {DB_CONFIG['host']}")
+    print(f"DB User: {DB_CONFIG['user']}")
+    print(f"DB Name: {DB_CONFIG['database']}")
+    print(f"DB Port: {DB_CONFIG['port']}")
+    print("Data source: MySQL (.env DB_* settings)")
     print("==========================================")
 
 
@@ -468,8 +470,10 @@ def join_unique_values(values):
 def sanitize_tally_xml(xml_text):
     if not xml_text:
         return xml_text
-    cleaned = re.sub(r"&#x0*([0-8BCEF]|1[0-9A-F]);", "", xml_text, flags=re.IGNORECASE)
+    cleaned = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]", "", str(xml_text))
+    cleaned = re.sub(r"&#x0*([0-8BCEF]|1[0-9A-F]);", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"&#([0-8]|1[0-9]|2[0-9]|30|31);", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9A-Fa-f]+;)", "&amp;", cleaned)
     return cleaned
 
 
@@ -697,6 +701,11 @@ def fetch_tally_voucher_reference(
             result = exact_matches[-1]
             TALLY_VOUCHER_REFERENCE_CACHE[cache_key] = dict(result)
             return result
+
+        # The dated voucher register is the reliable duplicate check for this
+        # Tally setup. Avoid the slower ACTION="Get" fallback, which can hang
+        # indefinitely for a voucher number that does not exist.
+        return {}
 
     voucher_type_attr = f' VOUCHERTYPENAME="{esc(voucher_type)}"' if voucher_type else ""
     xml = f"""
@@ -1077,16 +1086,18 @@ def ensure_pending_invoice_numbers_are_parseable(rows):
     )
 
 
-def resolve_unit1_firm(conn):
-    """Resolve Unit-1's database firm and local Tally endpoint."""
+def resolve_firm(conn, unit_label, firm_name_tokens, short_names):
+    """Resolve a firm by normalized name/short name."""
+    normalized_names = ", ".join(f"'{token}'" for token in firm_name_tokens)
+    normalized_shorts = ", ".join(f"'{token.upper()}'" for token in short_names)
     cursor = get_db_cursor(conn, dictionary=True)
     try:
         cursor.execute(
-            """
+            f"""
             SELECT id, firmName, shortName, tallyPortNo
             FROM firms
-            WHERE LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(firmName, '')), '-', ''), ' ', ''), '_', '')) IN ('uniti', 'unit1')
-               OR UPPER(TRIM(COALESCE(shortName, ''))) IN ('LNCB-1', 'UNIT-1', 'UNIT1')
+            WHERE LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(firmName, '')), '-', ''), ' ', ''), '_', '')) IN ({normalized_names})
+               OR UPPER(TRIM(COALESCE(shortName, ''))) IN ({normalized_shorts})
             ORDER BY id
             LIMIT 1
             """
@@ -1096,46 +1107,109 @@ def resolve_unit1_firm(conn):
         cursor.close()
 
     if not firm:
-        raise RuntimeError("Unit-1 was not found in the firms table")
+        raise RuntimeError(f"{unit_label} was not found in the firms table")
 
     firm_id = str(firm.get("id") or "").strip()
     firm_name = str(firm.get("firmName") or "").strip()
     port = str(firm.get("tallyPortNo") or "").strip()
     if not firm_id or not firm_name:
-        raise RuntimeError("Unit-1 firm configuration is incomplete: id and firmName are required")
+        raise RuntimeError(f"{unit_label} firm configuration is incomplete: id and firmName are required")
     if not port:
-        raise RuntimeError(f"Unit-1 firm '{firm_name}' has no tallyPortNo configured")
+        raise RuntimeError(f"{unit_label} firm '{firm_name}' has no tallyPortNo configured")
     try:
         port_number = int(port)
     except ValueError as exc:
-        raise RuntimeError(f"Unit-1 firm '{firm_name}' has an invalid tallyPortNo: {port}") from exc
+        raise RuntimeError(f"{unit_label} firm '{firm_name}' has an invalid tallyPortNo: {port}") from exc
     if not 1 <= port_number <= 65535:
-        raise RuntimeError(f"Unit-1 firm '{firm_name}' has an invalid tallyPortNo: {port}")
+        raise RuntimeError(f"{unit_label} firm '{firm_name}' has an invalid tallyPortNo: {port}")
+
+    return {"id": firm_id, "firmName": firm_name, "shortName": firm.get("shortName") or "", "tallyPortNo": port_number}
+
+
+def resolve_unit1_firm(conn):
+    """Resolve Unit-1's database firm and local Tally endpoint."""
+    firm = resolve_firm(conn, "Unit-1", ("uniti", "unit1"), ("LNCB-1", "UNIT-1", "UNIT1"))
 
     global TALLY_URL, TALLY_COMPANY_NAME, UNIT1_FIRM_ID, UNIT1_FIRM_NAME
-    UNIT1_FIRM_ID = firm_id
-    UNIT1_FIRM_NAME = firm_name
-    TALLY_COMPANY_NAME = firm_name
-    TALLY_URL = f"http://127.0.0.1:{port_number}"
+    UNIT1_FIRM_ID = firm["id"]
+    UNIT1_FIRM_NAME = firm["firmName"]
+    TALLY_COMPANY_NAME = firm["firmName"]
+    TALLY_URL = f"http://127.0.0.1:{firm['tallyPortNo']}"
     return firm
 
 
-def get_pending_invoice_rows(conn, firm_id):
-    sql = """
+def resolve_unit2_firm(conn):
+    return resolve_firm(conn, "Unit-2", ("unitii", "unit2"), ("LNCB-2", "UNIT-2", "UNIT2"))
+
+
+def get_pending_invoice_rows(conn, source_firm_id, destination_firm_id):
+    has_source = column_exists(conn, "invoices", "sourceFirmId")
+    has_destination = column_exists(conn, "invoices", "destinationFirmId")
+    if has_source and has_destination:
+        firm_filter = """
+            (
+                (sourceFirmId = %s AND destinationFirmId = %s)
+                OR (
+                    COALESCE(TRIM(sourceFirmId), '') = ''
+                    AND COALESCE(TRIM(destinationFirmId), '') = ''
+                    AND firmId = %s
+                )
+            )
+        """
+        params = (source_firm_id, destination_firm_id, source_firm_id)
+    else:
+        firm_filter = "firmId = %s"
+        params = (source_firm_id,)
+
+    sql = f"""
         SELECT *
         FROM invoices
-        WHERE firmId = %s
+        WHERE {firm_filter}
           AND (tallyTimestamp IS NULL
            OR tallyTimestamp = ''
           )
     """
 
     cursor = get_db_cursor(conn, dictionary=True)
-    cursor.execute(sql, (firm_id,))
+    cursor.execute(sql, params)
     rows = cursor.fetchall()
     cursor.close()
     ensure_pending_invoice_numbers_are_parseable(rows)
     return sorted(rows, key=cmp_to_key(compare_pending_invoice_rows))
+
+
+def validate_invoice_firm_route(invoice_row, source_firm_id, destination_firm_id):
+    source_value = str(invoice_row.get("sourceFirmId") or "").strip()
+    destination_value = str(invoice_row.get("destinationFirmId") or "").strip()
+    if source_value or destination_value:
+        if source_value != str(source_firm_id) or destination_value != str(destination_firm_id):
+            return (
+                f"Wrong inter-firm route: sourceFirmId={source_value or '<empty>'}, "
+                f"destinationFirmId={destination_value or '<empty>'}"
+            )
+    elif str(invoice_row.get("firmId") or "").strip() != str(source_firm_id):
+        return f"Wrong legacy invoice firmId: {invoice_row.get('firmId') or '<empty>'}"
+    return ""
+
+
+def map_unit1_to_unit2_invoice_lines(item_lines, source_firm_id, destination_firm_id):
+    """Map inter-firm Unit-1 sales lines to the shared Tally stock item."""
+    mapped_lines = []
+    is_unit1_to_unit2 = (
+        str(source_firm_id or "").strip() == str(UNIT1_FIRM_ID or "").strip()
+        and str(destination_firm_id or "").strip()
+    )
+    for line in item_lines or []:
+        mapped = dict(line)
+        original_name = str(mapped.get("itemName") or "").strip()
+        if is_unit1_to_unit2:
+            mapped["originalItemName"] = original_name
+            mapped["itemName"] = "Corrugated Board"
+            mapped["skipTallyPartNoCheck"] = True
+            if original_name and original_name.upper() != "CORRUGATED BOARD":
+                log_terminal("MAPPING", f"Item mapping: {original_name} -> Corrugated Board")
+        mapped_lines.append(mapped)
+    return mapped_lines
 
 
 def detect_tally_request_stage(xml_data):
@@ -1157,7 +1231,23 @@ def detect_tally_request_stage(xml_data):
 
 
 def tally_request(xml_data, stage=None, retry_on_timeout=True):
+    global TALLY_UNAVAILABLE_ERROR
+    if TALLY_UNAVAILABLE_ERROR and "Post Sales Voucher" not in (stage or ""):
+        return f"Connection error: {TALLY_UNAVAILABLE_ERROR}"
     stage = stage or detect_tally_request_stage(xml_data)
+    # Every Firm-1 request must use the database-resolved Unit-1 company.
+    # Import requests already contain this tag; add it to export/object reads
+    # that otherwise depend on whichever company is currently open in Tally.
+    if TALLY_COMPANY_NAME and not re.search(
+        r"<SVCURRENTCOMPANY\b[^>]*>", xml_data or "", flags=re.IGNORECASE
+    ):
+        xml_data = re.sub(
+            r"(<STATICVARIABLES\b[^>]*>)",
+            rf"\1<SVCURRENTCOMPANY>{esc(TALLY_COMPANY_NAME)}</SVCURRENTCOMPANY>",
+            xml_data,
+            count=1,
+            flags=re.IGNORECASE,
+        )
     payload = xml_data.encode("utf-8")
     max_attempts = 1 + (TALLY_READ_RETRIES if retry_on_timeout else 0)
     last_error = ""
@@ -1189,23 +1279,31 @@ def tally_request(xml_data, stage=None, retry_on_timeout=True):
                 f"after {elapsed:.2f} seconds while waiting for response"
             )
             log_terminal("TIMEOUT", last_error)
+            TALLY_UNAVAILABLE_ERROR = (
+                f"Tally did not respond on {TALLY_URL} within {TALLY_READ_TIMEOUT:g} seconds"
+            )
         except requests.exceptions.ConnectTimeout:
             elapsed = time.perf_counter() - started
-            return (
-                f"Connection error: Could not connect to Tally during '{stage}' "
-                f"within {elapsed:.2f} seconds"
-            )
+            TALLY_UNAVAILABLE_ERROR = f"Tally did not respond on {TALLY_URL} within {elapsed:.2f} seconds"
+            return f"Connection error: {TALLY_UNAVAILABLE_ERROR}"
         except requests.exceptions.ConnectionError as error:
             elapsed = time.perf_counter() - started
-            return f"Connection error during '{stage}' after {elapsed:.2f} seconds: {error}"
+            TALLY_UNAVAILABLE_ERROR = f"Tally is unavailable on {TALLY_URL}: {error}"
+            return f"Connection error: {TALLY_UNAVAILABLE_ERROR}"
         except Exception as error:
             elapsed = time.perf_counter() - started
-            return f"Connection error during '{stage}' after {elapsed:.2f} seconds: {error}"
+            TALLY_UNAVAILABLE_ERROR = f"Tally request failed on {TALLY_URL}: {error}"
+            return f"Connection error: {TALLY_UNAVAILABLE_ERROR}"
 
         if attempt < max_attempts:
             time.sleep(TALLY_RETRY_DELAY * attempt)
 
     return last_error or f"Connection error: Tally request failed during '{stage}'"
+
+
+def raise_if_tally_unavailable():
+    if TALLY_UNAVAILABLE_ERROR:
+        raise RuntimeError(TALLY_UNAVAILABLE_ERROR)
 
 
 def check_tally_object_exists(object_type, object_name):
@@ -1283,7 +1381,7 @@ def extract_first_matching_tag(xml_block, tag_names):
 def extract_recursive_tag_text(element, tag_names):
     normalized_tags = {str(tag or "").upper() for tag in tag_names}
     for node in element.iter():
-        tag_name = str(node.tag or "").upper()
+        tag_name = str(node.tag or "").rsplit("}", 1)[-1].upper()
         if tag_name in normalized_tags:
             text_value = re.sub(r"\s+", " ", "".join(node.itertext()).strip())
             if text_value:
@@ -1344,20 +1442,40 @@ def fetch_tally_stock_item_details(item_name):
     cleaned_xml = sanitize_tally_xml(response_text)
     try:
         root = ET.fromstring(cleaned_xml)
-    except Exception:
-        result = ({}, f"Could not read Stock Item details for '{item_name}' from Tally")
+    except ET.ParseError as exc:
+        debug_path = write_tally_debug_dump("stock_item_parse_error", item_name, response_text)
+        debug_suffix = f" Debug XML: {debug_path}" if debug_path else ""
+        result = ({}, f"Could not read Stock Item details for '{item_name}' from Tally: {exc}.{debug_suffix}")
         TALLY_MASTER_CACHE[cache_key] = result
         return result
 
     stock_item = None
-    for candidate in root.findall(".//STOCKITEM"):
-        if candidate.attrib.get("NAME") or candidate.attrib.get("REQNAME") or candidate.attrib.get("ID"):
+    for candidate in root.iter():
+        tag_name = str(candidate.tag or "").rsplit("}", 1)[-1].upper()
+        if tag_name == "STOCKITEM" and (
+            candidate.attrib.get("NAME")
+            or candidate.attrib.get("REQNAME")
+            or candidate.attrib.get("ID")
+            or extract_recursive_tag_text(
+                candidate,
+                ["BASEUNITS", "BASEUNIT", "BASEUNAME", "UNITS", "UNIT"],
+            )
+        ):
             stock_item = candidate
             break
     if stock_item is None:
-        result = ({}, f"Stock Item '{item_name}' not found in Tally")
-        TALLY_MASTER_CACHE[cache_key] = result
-        return result
+        response_upper = cleaned_xml.upper()
+        fallback_units = extract_first_matching_tag(
+            cleaned_xml, ["BASEUNITS", "BASEUNIT", "BASEUNAME", "UNITS", "UNIT"]
+        )
+        if str(item_name).strip().upper() in response_upper and fallback_units:
+            stock_item = root
+        else:
+            debug_path = write_tally_debug_dump("stock_item_missing_node", item_name, response_text)
+            debug_suffix = f" Debug XML: {debug_path}" if debug_path else ""
+            result = ({}, f"Stock Item '{item_name}' not found in Tally response.{debug_suffix}")
+            TALLY_MASTER_CACHE[cache_key] = result
+            return result
 
     try:
         stock_item_block = ET.tostring(stock_item, encoding="unicode")
@@ -2478,6 +2596,7 @@ def validate_tally_masters(customer_name, sales_ledger_name, item_lines, invoice
             continue
         checked.add(key)
         exists, message = check_tally_object_exists(object_type, object_name)
+        raise_if_tally_unavailable()
         if not exists:
             errors.append(message)
 
@@ -2495,7 +2614,7 @@ def validate_tally_masters(customer_name, sales_ledger_name, item_lines, invoice
         if tally_uom != erp_uom:
             errors.append(f"{item_name}: UOM mismatch. ERP={erp_uom}, Tally={tally_uom}")
 
-        if line.get("npdId"):
+        if line.get("npdId") and not line.get("skipTallyPartNoCheck"):
             erp_part_no = normalize_part_no(line.get("npdPartNo"))
             if erp_part_no:
                 tally_part_no = normalize_part_no(tally_stock_item.get("part_no"))
@@ -2515,7 +2634,7 @@ def validate_tally_masters(customer_name, sales_ledger_name, item_lines, invoice
     return errors
 
 
-def prevalidate_pending_invoices(conn, pending_invoice_rows):
+def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, destination_firm_id):
     valid_contexts = []
     precheck_summary = {
         "customers_ok": set(),
@@ -2540,6 +2659,15 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows):
         print(f"Precheck Invoice ID: {invoice_id} | Invoice No: {invoice_no}")
 
         try:
+            route_error = validate_invoice_firm_route(
+                invoice_row, source_firm_id, destination_firm_id
+            )
+            if route_error:
+                raise RuntimeError(route_error)
+            print(
+                f"Route: sourceFirmId={invoice_row.get('sourceFirmId') or source_firm_id} "
+                f"-> destinationFirmId={invoice_row.get('destinationFirmId') or destination_firm_id}"
+            )
             if conn is None and use_tally_sync_api():
                 invoice_context = get_invoice_context_api(invoice_id)
                 invoice_row = invoice_context.get("invoiceRow") or invoice_row
@@ -2550,6 +2678,10 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows):
                 company_row = get_company_details(conn, invoice_row.get("companyId"))
                 item_lines = get_invoice_lines(conn, invoice_id)
                 dispatch_details = None
+
+            item_lines = map_unit1_to_unit2_invoice_lines(
+                item_lines, source_firm_id, destination_firm_id
+            )
 
             company_name = (company_row or {}).get("name") or ""
             if not company_name:
@@ -2653,6 +2785,7 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows):
                 invoice_row.get("date"),
                 company_name,
             )
+            raise_if_tally_unavailable()
             if voucher_by_number:
                 remark = "This Invoice already exists in tally."
                 update_invoice_tally_status(
@@ -2679,6 +2812,7 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows):
                 item_lines,
                 invoice_row,
             )
+            raise_if_tally_unavailable()
             if tally_master_errors:
                 remark = " | ".join(tally_master_errors[:10])
                 update_invoice_tally_status(
@@ -2884,6 +3018,8 @@ def update_invoice_tally_status(
 
 
 def sync_invoices_to_tally():
+    global TALLY_UNAVAILABLE_ERROR
+    TALLY_UNAVAILABLE_ERROR = ""
     conn = None
     run_had_issue = False
     final_issue_message = ""
@@ -2891,18 +3027,23 @@ def sync_invoices_to_tally():
     conn = get_db_connection()
     ensure_invoice_sync_columns(conn)
     unit1_firm = resolve_unit1_firm(conn)
-    pending_invoice_rows = get_pending_invoice_rows(conn, unit1_firm["id"])
+    unit2_firm = resolve_unit2_firm(conn)
+    pending_invoice_rows = get_pending_invoice_rows(conn, unit1_firm["id"], unit2_firm["id"])
 
     try:
         print("==========================================")
         print(f"Pending invoices found: {len(pending_invoice_rows)}")
+        print(
+            f"Tally target: {unit1_firm['firmName']} ({TALLY_URL}) | "
+            f"Inter-firm route: {unit1_firm['id']} -> {unit2_firm['id']}"
+        )
         print("==========================================")
         if not pending_invoice_rows:
             print(f"No pending invoices found for Unit-1 ({unit1_firm['firmName']}).")
             return False, ""
 
         valid_contexts, precheck_halted_invoice_no, precheck_halted_remark = prevalidate_pending_invoices(
-            conn, pending_invoice_rows
+            conn, pending_invoice_rows, unit1_firm["id"], unit2_firm["id"]
         )
         run_had_issue = bool(precheck_halted_invoice_no)
         final_issue_message = (

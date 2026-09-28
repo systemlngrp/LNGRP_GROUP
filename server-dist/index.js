@@ -2974,12 +2974,18 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             const mainErp = String(order?.erpCode || production.masterErp || production.erpCode || "").trim();
             if (!mainErp)
                 throw new Error("LNKI PHP/Plate billing requires the customer order ERP code.");
+            const normalizeComponentErp = (value) => String(value || "")
+                .trim()
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "");
+            const normalizedMainErp = normalizeComponentErp(mainErp);
             for (const component of [{ source: "PHP", table: "php_item_master" }, { source: "PLATE", table: "plate_item_master" }]) {
-                const [componentRows] = await conn.query(`SELECT * FROM \`${component.table}\` WHERE LOWER(TRIM(COALESCE(masterItemNameErpCode, ''))) = LOWER(TRIM(?)) OR LOWER(TRIM(COALESCE(erpItemCode, ''))) = LOWER(TRIM(?)) LIMIT 1`, [mainErp, mainErp]);
-                const master = componentRows[0];
+                const [componentRows] = await conn.query(`SELECT * FROM \`${component.table}\` WHERE COALESCE(TRIM(masterItemNameErpCode), '') <> '' OR COALESCE(TRIM(erpItemCode), '') <> ''`);
+                const master = componentRows.find((row) => normalizeComponentErp(row.masterItemNameErpCode) === normalizedMainErp ||
+                    normalizeComponentErp(row.erpItemCode) === normalizedMainErp);
                 const setsPerBox = Number(master?.numberOfSetsPerBox || 0);
                 if (!master?.id) {
-                    console.warn(`[INTER-FIRM] Optional ${component.source} master not found; continuing with FG billing only`, { sourceId, productionId, mainErp });
+                    console.warn(`[INTER-FIRM] Optional ${component.source} master not found; continuing with FG billing only`, { sourceId, productionId, mainErp, normalizedMainErp });
                     continue;
                 }
                 if (!Number.isFinite(setsPerBox) || setsPerBox <= 0) {
@@ -2989,7 +2995,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
                 componentLines.push({
                     itemId: String(master.id), itemSource: component.source, npdId: String(master.id),
                     qty: Number((Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0) * setsPerBox).toFixed(2)),
-                    uom: String(master.uom || ""), baseRate: Number(master.rate || 0), gstRate: 18,
+                    uom: String(master.uom || "PCS"), rate: Number(master.rate || 0), gstRate: 18,
                     scheduleId: String(production.scheduleId || ""),
                 });
             }
@@ -3019,8 +3025,8 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         const gstRate = 18;
         const invoiceLines = [
             { itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG", npdId: sourceRecord.npdId || production.npdId || itemId, qty, uom: sourceRecord.uom || production.uom || "", rate, gstRate },
-            ...componentLines.map((line) => ({ ...line, rate: Number((line.baseRate * interFirmRatePercent / 100).toFixed(2)) })),
-        ].map(({ baseRate: _baseRate, scheduleId: _scheduleId, ...line }) => line);
+            ...componentLines.map((line) => ({ ...line, rate: Number((Number(line.rate || 0) * interFirmRatePercent / 100).toFixed(2)) })),
+        ].map(({ scheduleId: _scheduleId, ...line }) => line);
         const [orphanPendingRows] = await conn.query(`SELECT ip.* FROM inter_firm_pending_invoices ip
        LEFT JOIN production_processing oldpp ON oldpp.id = ip.sourceTransactionId
        WHERE ip.sourceTransactionType = ? AND ip.jobId = ? AND ip.sourceFirmId = ? AND ip.destinationFirmId = ?
@@ -3050,7 +3056,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             const slipId = String(existing?.id || crypto.randomUUID());
             const slipNo = String(existing?.slipNo || await generateLoadingSlipNo(conn, table, String(sourceRecord.date || production.date || now.slice(0, 10))));
             const consumptionNo = String(existing?.transactionNo || await generateSimpleTransactionNumber(conn, table, transactionColumn, component.itemSource === "PHP" ? "PHPCON" : "PLCON", String(sourceRecord.date || production.date || now.slice(0, 10))));
-            const componentSlipLines = JSON.stringify([{ dispatchPlanId: "", loadedQty: component.qty, itemId: component.itemId, itemSource: component.itemSource, uom: component.uom, rate: Number((component.baseRate * interFirmRatePercent / 100).toFixed(2)), scheduleId: component.scheduleId }]);
+            const componentSlipLines = JSON.stringify([{ dispatchPlanId: "", loadedQty: component.qty, itemId: component.itemId, itemSource: component.itemSource, uom: component.uom, rate: Number((Number(component.rate || 0) * interFirmRatePercent / 100).toFixed(2)), scheduleId: component.scheduleId }]);
             if (existing) {
                 await conn.query(`UPDATE \`${table}\` SET \`lines\` = ?, firmId = ?, sourceFirmId = ?, destinationFirmId = ?, orderFirmId = ?, interFirmFlow = 'Yes', autoGenerated = 'Yes', updateTimestamp = ? WHERE id = ?`, [componentSlipLines, sourceFirmId, sourceFirmId, destinationFirmId, orderFirmId, now, slipId]);
             }
