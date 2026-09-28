@@ -3028,7 +3028,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         // Inter-firm transfers use the fixed internal GST rate, independent of
         // the customer order/item GST configuration. Manual MRRs are unaffected.
         const gstRate = 18;
-        const invoiceLines = [
+        const pendingInvoiceLines = [
             { itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG", npdId: sourceRecord.npdId || production.npdId || itemId, qty, uom: sourceRecord.uom || production.uom || "", rate, gstRate },
             ...componentLines.map((line) => ({ ...line, rate: Number((Number(line.rate || 0) * interFirmRatePercent / 100).toFixed(2)) })),
         ].map(({ scheduleId: _scheduleId, ...line }) => line);
@@ -3050,7 +3050,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             await conn.query("UPDATE inter_firm_pending_invoices SET sourceTransactionId = ?, updateTimestamp = ? WHERE id = ?", [sourceId, now, orphanPending.id]);
         }
         const pendingId = String(orphanPending?.id || crypto.randomUUID());
-        await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, \`lines\`, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), \`lines\`=VALUES(\`lines\`), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, JSON.stringify(invoiceLines), now]);
+        await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, \`lines\`, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), \`lines\`=VALUES(\`lines\`), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, JSON.stringify(pendingInvoiceLines), now]);
         const [pendingRows] = await conn.query("SELECT * FROM `inter_firm_pending_invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
         const pending = pendingRows[0];
         for (const component of componentLines) {
@@ -3118,12 +3118,37 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             await conn.query("UPDATE material_in SET gateEntryNo = ? WHERE id = ?", [gateEntryNo, mrr.id]);
             gate = { id: gateId, gateEntryNo };
         }
-        await conn.query("UPDATE `inter_firm_pending_invoices` SET linkedGateEntryId = ?, linkedMrrId = ?, updateTimestamp = ? WHERE id = ?", [gate.id, mrr.id, now, pending.id]);
+        const invoiceDate = String(sourceRecord.date || production.date || now.slice(0, 10));
+        const invoiceLines = [
+            { itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG", npdId: sourceRecord.npdId || production.npdId || itemId, qty, rate, gstRate },
+            ...componentLines.map((line) => ({ itemId: line.itemId, itemSource: line.itemSource, npdId: line.npdId || line.itemId, qty: Number(line.qty || 0), rate: Number((Number(line.rate || 0) * interFirmRatePercent / 100).toFixed(2)), gstRate: Number(line.gstRate || gstRate) })),
+        ];
+        const invoiceTotalBeforeGst = Number(invoiceLines.reduce((sum, line) => sum + (Number(line.qty || 0) * Number(line.rate || 0)), 0).toFixed(2));
+        const invoiceTax = Number(invoiceLines.reduce((sum, line) => sum + (Number(line.qty || 0) * Number(line.rate || 0) * Number(line.gstRate || 0) / 100), 0).toFixed(2));
+        const invoiceId = crypto.randomUUID();
+        const [existingInvoiceRows] = await conn.query("SELECT id, invoiceNo FROM `invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND interFirmFlow = 'Yes' LIMIT 1", [sourceTransactionType, pending.id]);
+        const existingInvoice = existingInvoiceRows[0];
+        const createdInvoiceId = String(existingInvoice?.id || invoiceId);
+        const invoiceNo = String(existingInvoice?.invoiceNo || await generateDynamicInvoiceNo(conn, invoiceDate, sourceFirmId));
+        const companyId = await resolveInvoiceCompanyId(conn, database, destinationFirmId);
+        if (!existingInvoice) {
+            await conn.query(`INSERT INTO \`invoices\` (id, invoiceNo, date, companyId, gstRate, totalBeforeGst, cgst, sgst, igst, totalAfterGst, otherCharges, otherChargesCgst, otherChargesSgst, otherChargesIgst, roundOff, interFirmFlow, autoGenerated, firmId, sourceFirmId, destinationFirmId, orderFirmId, sourceTransactionType, sourceTransactionId, linkedGateEntryId, linkedMrrId, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 0, 0, 0, 0, 'Yes', 'Yes', ?, ?, ?, ?, ?, ?, ?, ?, 'System', ?)`, [createdInvoiceId, invoiceNo, invoiceDate, companyId, gstRate, invoiceTotalBeforeGst, Number((invoiceTax / 2).toFixed(2)), Number((invoiceTax / 2).toFixed(2)), Number((invoiceTotalBeforeGst + invoiceTax).toFixed(2)), sourceFirmId, sourceFirmId, destinationFirmId, orderFirmId, sourceTransactionType, pending.id, gate.id, mrr.id, now]);
+            for (const line of invoiceLines) {
+                const amount = Number((Number(line.qty || 0) * Number(line.rate || 0)).toFixed(2));
+                const lineTax = Number((amount * Number(line.gstRate || 0) / 100).toFixed(2));
+                await conn.query(`INSERT INTO \`invoice_line_items\` (id, invoiceId, loadingSlipId, itemId, itemSource, npdId, qty, rate, amount, gstRate, cgst, sgst, igst, sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, linkedGateEntryId, linkedMrrId, linkedInvoiceId, updateTimestamp)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`, [crypto.randomUUID(), createdInvoiceId, pending.id, line.itemId, line.itemSource, line.npdId, line.qty, line.rate, amount, line.gstRate, Number((lineTax / 2).toFixed(2)), Number((lineTax / 2).toFixed(2)), sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, line.itemSource === "FG" ? gate.id : null, line.itemSource === "FG" ? mrr.id : null, createdInvoiceId, now]);
+            }
+        }
+        await conn.query("UPDATE `inter_firm_pending_invoices` SET linkedGateEntryId = ?, linkedMrrId = ?, linkedInvoiceId = ?, status = 'Invoiced', updateTimestamp = ? WHERE id = ?", [gate.id, mrr.id, createdInvoiceId, now, pending.id]);
+        await conn.query("UPDATE material_in SET invoiceNo = ?, invDate = ?, linkedInvoiceId = ? WHERE id = ?", [invoiceNo, invoiceDate, createdInvoiceId, mrr.id]);
+        await conn.query("UPDATE gate_entries SET invoiceNo = ?, invoiceValue = ? WHERE id = ?", [invoiceNo, Number((invoiceTotalBeforeGst + invoiceTax).toFixed(2)), gate.id]);
         await conn.query("UPDATE `productions` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, productionId]);
         if (sourceType === "Production Processing") {
             await conn.query("UPDATE `production_processing` SET orderFirmId = ?, sourceFirmId = ?, destinationFirmId = ?, interFirmFlow = 'Yes', sourceTransactionType = ?, sourceTransactionId = ?, linkedGateEntryId = ?, linkedMrrId = ? WHERE id = ?", [orderFirmId, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, gate.id, mrr.id, sourceId]);
         }
-        console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing" });
+        console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing", invoiceId: createdInvoiceId, invoiceNo });
         if (ownsConnection)
             await conn.commit();
         return { warnings: componentWarnings };
