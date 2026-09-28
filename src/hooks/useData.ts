@@ -251,7 +251,26 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         });
         if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
-          const msg = errData.error || response.statusText;
+          let msg = errData.error || response.statusText;
+
+          // A few legacy deployments do not yet have the standard audit
+          // columns on production_processing. Retry only that entity without
+          // audit fields so a schema migration outage does not block reporting.
+          if (
+            entity === "production_processing" &&
+            /unknown column ['\"`]?updateTimestamp/i.test(String(msg))
+          ) {
+            const { updatedBy, updateTimestamp, ...legacyItem } = item as any;
+            const retryResponse = await fetch(endpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...authHeaders },
+              body: JSON.stringify(legacyItem),
+            });
+            if (retryResponse.ok) continue;
+            const retryError = await retryResponse.json().catch(() => ({}));
+            msg = retryError.error || retryResponse.statusText;
+          }
+
           hasError = true;
           lastErrorMessage = msg;
           console.error(`[useData:${entity}] Save failed for ${item.id}:`, msg);
