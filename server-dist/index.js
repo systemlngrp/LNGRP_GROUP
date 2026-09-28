@@ -3776,6 +3776,21 @@ async function ensureAuditColumnsForAllTables(db, database) {
         }
     }
 }
+async function ensureProductionProcessingAuditColumns(db) {
+    try {
+        const [databaseRows] = await db.query("SELECT DATABASE() AS db");
+        const database = String(databaseRows[0]?.db || process.env.DB_NAME || "").trim();
+        if (!database)
+            throw new Error("No active database selected");
+        await ensureColumnExists(db, database, "production_processing", "updatedBy", "VARCHAR(255) NULL");
+        await ensureColumnExists(db, database, "production_processing", "updateTimestamp", "VARCHAR(255) NULL");
+        console.log("[DB] production_processing audit columns verified.");
+    }
+    catch (error) {
+        console.error("[DB] Could not ensure production_processing audit columns:", error);
+        throw error;
+    }
+}
 function resolveAuditActorName(user, fallback = DEFAULT_SYSTEM_AUDIT_USER) {
     const userId = String(user?.userId || "").trim();
     if (userId)
@@ -12171,7 +12186,8 @@ entities.forEach(entity => {
 // mysql2 handles objects/arrays as JSON if specified in the query.
 async function startServer() {
     await initDb();
-    await getPool();
+    const db = await getPool();
+    await ensureProductionProcessingAuditColumns(db);
     if (process.env.NODE_ENV !== "production") {
         const vite = await createViteServer({
             server: { middlewareMode: true },
