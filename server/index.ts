@@ -3081,6 +3081,13 @@ async function generateLockedGateEntryNo(db: mysql.Pool | mysql.PoolConnection, 
 
 async function ensureInterFirmAutomationSchema(db: mysql.Pool, database: string) {
   await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
+  const [loadingSlipColumns] = await db.query(
+    "SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'invoice_line_items' AND COLUMN_NAME = 'loadingSlipId'",
+    [database]
+  );
+  if (String((loadingSlipColumns as any[])[0]?.IS_NULLABLE || "").toUpperCase() === "NO") {
+    await db.query("ALTER TABLE `invoice_line_items` MODIFY COLUMN `loadingSlipId` VARCHAR(36) NULL");
+  }
   // A completed report inserts into all of these tables in one transaction.
   // Repair legacy audit schemas before opening it, including issue lines
   // (which are not covered by the inter-firm column migration).
@@ -3362,7 +3369,7 @@ async function automateInterFirmProduction(
         await conn.query(
           `INSERT INTO \`invoice_line_items\` (id, invoiceId, loadingSlipId, itemId, itemSource, npdId, qty, rate, amount, gstRate, cgst, sgst, igst, sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, linkedGateEntryId, linkedMrrId, linkedInvoiceId, updateTimestamp)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [crypto.randomUUID(), createdInvoiceId, pending.id, line.itemId, line.itemSource, line.npdId, line.qty, line.rate, amount, line.gstRate, Number((lineTax / 2).toFixed(2)), Number((lineTax / 2).toFixed(2)), sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, line.itemSource === "FG" ? gate.id : null, line.itemSource === "FG" ? mrr.id : null, createdInvoiceId, now]
+          [crypto.randomUUID(), createdInvoiceId, null, line.itemId, line.itemSource, line.npdId, line.qty, line.rate, amount, line.gstRate, Number((lineTax / 2).toFixed(2)), Number((lineTax / 2).toFixed(2)), sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, line.itemSource === "FG" ? gate.id : null, line.itemSource === "FG" ? mrr.id : null, createdInvoiceId, now]
         );
       }
     }
@@ -6712,7 +6719,7 @@ await db.query(`
         CREATE TABLE IF NOT EXISTS \`invoice_line_items\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`invoiceId\` VARCHAR(36) NOT NULL,
-          \`loadingSlipId\` VARCHAR(36) NOT NULL,
+          \`loadingSlipId\` VARCHAR(36) NULL,
           \`itemId\` VARCHAR(36) NOT NULL,
           \`itemSource\` VARCHAR(20) NOT NULL DEFAULT 'FG',
           \`npdId\` VARCHAR(36),
