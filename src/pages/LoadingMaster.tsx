@@ -111,15 +111,19 @@ export function LoadingMaster() {
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
   }, [loadingSlips, plans, orders, companies, resolveOrderItem]);
   const processedSlips = useMemo(() => {
+    const orderById = new Map(orders.map((order) => [order.id, order]));
+    const planById = new Map(plans.map((plan) => [plan.id, plan]));
     return loadingSlips.map((slip) => {
       const totalQty = slip.lines.reduce((sum, line) => sum + Number(line.loadedQty || 0), 0);
       const summary = summarizeLoadingSlip({ slip, plans, orders, companies, resolveOrderItem });
+      const linkedPlan = slip.lines.map((line) => planById.get(String(line.dispatchPlanId || ""))).find(Boolean);
+      const orderFirmId = linkedPlan ? String(orderById.get(linkedPlan.orderId)?.firmId || "").trim() : "";
       return {
         ...slip,
         totalQty,
         itemNames: summary.itemNames.join(", "),
         companyNames: summary.companyNames.join(", "),
-        firmId: String(slip.orderFirmId || slip.firmId || plans.find((plan) => plan.id === slip.lines[0]?.dispatchPlanId)?.orderFirmId || plans.find((plan) => plan.id === slip.lines[0]?.dispatchPlanId)?.firmId || ""),
+        firmId: String(orderFirmId || slip.orderFirmId || slip.firmId || linkedPlan?.orderFirmId || linkedPlan?.firmId || ""),
         erpCodes: summary.erpCodes.join(", "),
         itemKeys: summary.lineContexts.map((ctx) => `${ctx.itemName || ""}::${ctx.erpCode || ""}`),
         loadingSourceLabel: isDirectLoadingSlip(slip) ? "Direct" : "Dispatch Plan",

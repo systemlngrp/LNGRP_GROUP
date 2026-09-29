@@ -3040,6 +3040,26 @@ async function generateFirmDocumentNo(
   return `${key}/${String(Number((rows as any[])[0]?.nextValue || 0)).padStart(5, "0")}`;
 }
 
+async function resolveDispatchOrderFirmId(db: mysql.Pool | mysql.PoolConnection, orderId: string) {
+  const [rows] = await db.query("SELECT firmId FROM `orders` WHERE id = ? LIMIT 1", [orderId]);
+  return String((rows as any[])[0]?.firmId || "").trim();
+}
+
+async function resolveLoadingOrderFirmId(db: mysql.Pool | mysql.PoolConnection, lines: unknown) {
+  const parsed = typeof lines === "string" ? JSON.parse(lines) : lines;
+  const planIds = [...new Set((Array.isArray(parsed) ? parsed : []).map((line: any) => String(line?.dispatchPlanId || "").trim()).filter(Boolean))];
+  if (!planIds.length) throw Object.assign(new Error("Dispatch-linked loading slip requires a dispatch plan."), { statusCode: 400 });
+  const [rows] = await db.query(
+    `SELECT dp.id, o.firmId AS orderFirmId FROM \`dispatch_plans\` dp LEFT JOIN \`orders\` o ON o.id = dp.orderId WHERE dp.id IN (${planIds.map(() => "?").join(",")})`,
+    planIds
+  );
+  const byId = new Map((rows as any[]).map((row) => [String(row.id), String(row.orderFirmId || "").trim()]));
+  const firmIds = planIds.map((id) => byId.get(id) || "");
+  if (firmIds.some((id) => !id)) throw Object.assign(new Error("Original order firm is missing for a referenced dispatch plan."), { statusCode: 400 });
+  if (new Set(firmIds).size !== 1) throw Object.assign(new Error("Loading slip cannot combine dispatch plans from different firms."), { statusCode: 400 });
+  return firmIds[0];
+}
+
 async function getFirmDocumentPrefix(db: mysql.Pool | mysql.PoolConnection, firmId?: string) {
   const normalizedFirmId = String(firmId || "").trim();
   if (!normalizedFirmId) return "LNGRP";
@@ -3628,6 +3648,109 @@ async function migrateLegacyDispatchPlanNos(db: mysql.Pool) {
 
   if (migrated > 0 || skipped > 0) {
     console.log(`[DB] Dispatch planNo migration complete. Migrated: ${migrated}, skipped: ${skipped}.`);
+  }
+}
+
+async function migrateFirmDispatchDocumentNos(db: mysql.Pool) {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [migrationRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", ["migration/firm-dispatch-numbering-v1"]);
+    if ((migrationRows as any[]).length) {
+      await conn.commit();
+      return;
+    }
+    const [firmRows] = await conn.query("SELECT id, shortName, firmName FROM `firms`");
+    const prefixes = new Map((firmRows as any[]).map((row) => [String(row.id), String(row.shortName || row.firmName || "").trim().toUpperCase().replace(/[^A-Z0-9-]+/g, "-").replace(/^-+|-+$/g, "")]));
+    const [orderRows] = await conn.query("SELECT id, firmId FROM `orders`");
+    const orderFirms = new Map((orderRows as any[]).map((row) => [String(row.id), String(row.firmId || "").trim()]));
+    const [planRows] = await conn.query("SELECT id, orderId, orderFirmId, planNo, date FROM `dispatch_plans` ORDER BY date, id");
+    const planFirms = new Map<string, string>();
+    const skippedPlans: string[] = [];
+    const skippedSlips: string[] = [];
+    const plans: Array<{ id: string; oldNo: string; date: string; firmId: string }> = [];
+    for (const row of planRows as any[]) {
+      const firmId = orderFirms.get(String(row.orderId || "")) || "";
+      if (firmId && prefixes.get(firmId)) {
+        planFirms.set(String(row.id), firmId);
+        plans.push({ id: String(row.id), oldNo: String(row.planNo || ""), date: String(row.date || ""), firmId });
+        if (String(row.orderFirmId || "") !== firmId) await conn.query("UPDATE `dispatch_plans` SET orderFirmId = ? WHERE id = ?", [firmId, row.id]);
+      } else skippedPlans.push(String(row.id));
+    }
+    const [slipRows] = await conn.query("SELECT id, loadingSource, orderFirmId, slipNo, date, `lines` FROM `loading_slips` ORDER BY date, id");
+    const slips: Array<{ id: string; oldNo: string; date: string; firmId: string }> = [];
+    for (const row of slipRows as any[]) {
+      if (String(row.loadingSource || "").toUpperCase() === "DIRECT") continue;
+      let lines: any[] = [];
+      try {
+        const value = typeof row.lines === "string" ? JSON.parse(row.lines) : row.lines;
+        lines = Array.isArray(value) ? value : [];
+      } catch { /* An invalid legacy slip cannot establish an order firm. */ }
+      const ids = [...new Set(lines.map((line) => String(line?.dispatchPlanId || "").trim()).filter(Boolean))];
+      const firmIds = ids.map((id) => planFirms.get(id) || "");
+      if (!firmIds.length || firmIds.some((id) => !id) || new Set(firmIds).size !== 1) {
+        skippedSlips.push(String(row.id));
+        continue;
+      }
+      const firmId = firmIds[0];
+      slips.push({ id: String(row.id), oldNo: String(row.slipNo || ""), date: String(row.date || ""), firmId });
+      if (String(row.orderFirmId || "") !== firmId) await conn.query("UPDATE `loading_slips` SET orderFirmId = ? WHERE id = ?", [firmId, row.id]);
+    }
+
+    const counters = new Map<string, number>();
+    const renamedSlips = new Map<string, { oldNo: string; newNo: string }>();
+    const renumber = async (table: "dispatch_plans" | "loading_slips", code: "DP" | "LS", rows: typeof plans) => {
+      const assignments: Array<{ id: string; oldNo: string; newNo: string }> = [];
+      for (const row of rows) {
+        const fy = getShortFinancialYear(row.date);
+        const prefix = prefixes.get(row.firmId);
+        if (!fy || !prefix) {
+          (code === "DP" ? skippedPlans : skippedSlips).push(row.id);
+          continue;
+        }
+        const key = `${prefix}/${code}/${fy}`;
+        const sequence = (counters.get(key) || 0) + 1;
+        counters.set(key, sequence);
+        const nextNo = `${key}/${String(sequence).padStart(5, "0")}`;
+        assignments.push({ id: row.id, oldNo: row.oldNo, newNo: nextNo });
+        if (nextNo === row.oldNo) continue;
+        const column = code === "DP" ? "planNo" : "slipNo";
+        // Temporary values avoid a collision while two historical numbers swap.
+        await conn.query(`UPDATE \`${table}\` SET \`${column}\` = ? WHERE id = ?`, [`MIGRATING/${row.id}`, row.id]);
+        if (code === "LS") renamedSlips.set(row.id, { oldNo: row.oldNo, newNo: nextNo });
+      }
+      for (const assignment of assignments) {
+        if (assignment.newNo !== assignment.oldNo) await conn.query(`UPDATE \`${table}\` SET \`${code === "DP" ? "planNo" : "slipNo"}\` = ? WHERE id = ?`, [assignment.newNo, assignment.id]);
+      }
+    };
+    await renumber("dispatch_plans", "DP", plans);
+    await renumber("loading_slips", "LS", slips);
+    for (const [key, lastValue] of counters) {
+      await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?) ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))", [key, lastValue]);
+    }
+    if (renamedSlips.size) {
+      const [gateRows] = await conn.query("SELECT id, loadingSlipIds, loadingSlipNos FROM `gate_passes`");
+      for (const row of gateRows as any[]) {
+        try {
+          const ids = typeof row.loadingSlipIds === "string" ? JSON.parse(row.loadingSlipIds) : row.loadingSlipIds;
+          const nos = typeof row.loadingSlipNos === "string" ? JSON.parse(row.loadingSlipNos) : row.loadingSlipNos;
+          if (!Array.isArray(ids) || !Array.isArray(nos)) continue;
+          const updated = nos.map((no, index) => {
+            const change = renamedSlips.get(String(ids[index] || ""));
+            return change && String(no) === change.oldNo ? change.newNo : no;
+          });
+          if (JSON.stringify(updated) !== JSON.stringify(nos)) await conn.query("UPDATE `gate_passes` SET loadingSlipNos = ? WHERE id = ?", [JSON.stringify(updated), row.id]);
+        } catch { console.warn(`[DB] Could not read gate pass slip numbers for ${row.id}`); }
+      }
+    }
+    await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, 1)", ["migration/firm-dispatch-numbering-v1"]);
+    await conn.commit();
+    console.log(`[DB] Firm dispatch numbering: ${plans.length} plans, ${slips.length} slips; unresolved plan IDs: ${skippedPlans.join(", ") || "none"}; unresolved slip IDs: ${skippedSlips.join(", ") || "none"}`);
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
   }
 }
 async function ensureTruckStatusLogSchema(db: mysql.Pool, database: string) {
@@ -8235,6 +8358,11 @@ await db.query(`
         console.warn("[DB] Could not migrate legacy dispatch plan numbers:", (err as Error).message);
       }
       try {
+        await migrateFirmDispatchDocumentNos(db);
+      } catch (err) {
+        console.warn("[DB] Could not migrate firm dispatch document numbers:", (err as Error).message);
+      }
+      try {
         await ensureIndianStatesSeed(db);
       } catch (err) {
         console.warn("[DB] Could not seed official India states:", (err as Error).message);
@@ -9345,6 +9473,23 @@ const createHandlers = (tableName: string) => {
           }
         }
 
+        // Use the original order firm for dispatch-owned documents. These
+        // tables deliberately have no firmId column.
+        if (tableName === "dispatch_plans") {
+          const [existingRows] = await db.query("SELECT id FROM `dispatch_plans` WHERE id = ? LIMIT 1", [String(data.id || "")]);
+          const orderFirmId = await resolveDispatchOrderFirmId(db, String(data.orderId || "").trim());
+          if (!orderFirmId && !(existingRows as any[]).length) return res.status(400).json({ error: "Original order firm is required for a dispatch plan." });
+          if (orderFirmId) data.orderFirmId = orderFirmId;
+        }
+        if (tableName === "loading_slips" && String(data.loadingSource || "").toUpperCase() !== "DIRECT") {
+          const [existingRows] = await db.query("SELECT id FROM `loading_slips` WHERE id = ? LIMIT 1", [String(data.id || "")]);
+          try {
+            data.orderFirmId = await resolveLoadingOrderFirmId(db, data.lines);
+          } catch (error) {
+            if (!(existingRows as any[]).length) throw error;
+          }
+        }
+
         // Auto-generate slipNo for loading tables when not provided
         if (['loading_slips', 'php_loading_slips', 'plate_loading_slips'].includes(tableName)) {
           try {
@@ -9579,7 +9724,11 @@ const createHandlers = (tableName: string) => {
         if (firmDocument && String(data.id || "").trim()) {
           const [existingDocumentRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [data.id]);
           if (!(existingDocumentRows as any[])[0]) {
-            const firmId = String(data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || "").trim();
+            const firmId = String(
+              ["dispatch_plans", "loading_slips"].includes(tableName) && String(data.loadingSource || "").toUpperCase() !== "DIRECT"
+                ? data.orderFirmId
+                : data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || ""
+            ).trim();
             data[firmDocument.field] = tableName === "productions"
               ? await generateProductionFirmNo(db, firmId, "JOB", String(data[firmDocument.dateField] || new Date().toISOString().slice(0, 10)))
               : await generateFirmDocumentNo(db, firmId, firmDocument.code, String(data[firmDocument.dateField] || new Date().toISOString().slice(0, 10)));

@@ -11,7 +11,6 @@ import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { normalizeOrderItemSource } from "../lib/orderItems";
-import { formatDispatchPlanNo, getNextDispatchPlanNo } from "../lib/dispatchPlanNo";
 import { ArrowUpDown, Save } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -424,9 +423,6 @@ export function PendingDispatchPlanning() {
     setIsSubmitting(true);
     try {
       const timestamp = new Date().toISOString();
-      const nextPlan = getNextDispatchPlanNo(dispatchPlans, timestamp);
-      let nextPlanNo = nextPlan.sequence;
-
       const newPlans: DispatchPlan[] = Array.from(selectedIds).map(id => {
         const schedule = schedules.find(s => s.id === id)!;
         const order = orders.find((row) => row.id === schedule.orderId);
@@ -440,7 +436,7 @@ export function PendingDispatchPlanning() {
         
         return {
           id: crypto.randomUUID(),
-          planNo: formatDispatchPlanNo(nextPlan.fy, nextPlanNo++),
+          planNo: "",
           scheduleId: id,
           orderId: schedule.orderId,
           firmId: orderFirmId,
