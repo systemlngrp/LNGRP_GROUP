@@ -285,10 +285,21 @@ export function PendingLoading() {
   const getAlreadyLoadedForJob = (jobId: string) => existingLoadedByJobId.get(jobId) || 0;
 
   const getFirmStockBalance = (itemId: string, firmId: string) => {
-    const item = npdItems.find((row) => String(row.id || "") === String(itemId));
+    const catalogItem = itemsBySource.FG.find((row) => row.id === itemId);
+    const lookupKeys = [
+      itemId,
+      catalogItem?.raw?.id,
+      catalogItem?.raw?.npdId,
+      catalogItem?.raw?.itemId,
+      catalogItem?.erp,
+    ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+    const item = npdItems.find((row) =>
+      [row.id, row.npdId, row.itemId, row.erp]
+        .map((value) => String(value || "").trim().toLowerCase())
+        .some((key) => key && lookupKeys.includes(key))
+    );
     const firmStock = (item as any)?.firmStocks?.[firmId];
     if (firmStock && Number.isFinite(Number(firmStock.balance))) return Math.max(0, Number(firmStock.balance));
-    if (String((item as any)?.firmId || "") === firmId) return Math.max(0, Number(item?.balance || 0));
     return 0;
   };
 
@@ -363,7 +374,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, firms]);
+  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, itemsBySource.FG, firms]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);
@@ -1019,7 +1030,7 @@ export function PendingLoading() {
                                 <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock — ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
-                                <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
+                                <td className="px-4 py-4 text-right text-xs font-black text-emerald-700">{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId).toLocaleString() : "-"}</td>
                                 <td className="px-4 py-2 text-right">
                                   <input
                                     type="number"
