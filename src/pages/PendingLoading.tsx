@@ -13,7 +13,11 @@ import {
   PackingDetail,
   LinkedLoadingDetail,
   OrderItemSource,
+  OrderSchedule,
+  Firm,
 } from "../types";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import {
   Truck as TruckIcon,
   Package,
@@ -37,6 +41,8 @@ import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../li
 import { normalizeTruckStatus } from "../lib/truckStatus";
 
 interface PendingPlan extends DispatchPlan {
+  firmId: string;
+  firmName: string;
   companyName: string;
   itemSource: OrderItemSource;
   orderNo: string;
@@ -44,6 +50,10 @@ interface PendingPlan extends DispatchPlan {
 }
 
 interface GroupedPlan {
+  firmId: string;
+  firmName: string;
+  loadable: boolean;
+  unavailableReason?: string;
   companyId: string;
   companyName: string;
   itemSource: OrderItemSource;
@@ -53,6 +63,7 @@ interface GroupedPlan {
 }
 
 interface LoadingModalState {
+  firmId: string;
   companyId: string;
   itemSource: OrderItemSource;
   itemId: string;
@@ -87,22 +98,25 @@ function getLoadingSlipJobAllocations(line: LoadingSlipLine): Array<{ jobId: str
 }
 
 export function PendingLoading() {
-  const [plans, updatePlans, plansLoading] = useData<DispatchPlan>("dispatch_plans", []);
+  const [plans, updatePlans, plansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
   const npdItems = useNpdItems();
   const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();
-  const [orders] = useData<Order>("orders", []);
-  const [companies] = useData<Company>("companies", []);
-  const [productions] = useData<Production>("productions", []);
-  const [phpJobs] = useData<Production>("php_job_master", []);
-  const [plateJobs] = useData<Production>("plate_job_master", []);
+  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
+  const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
+  const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [phpItemMaster] = useData<any>("php_item_master", []);
   const [plateItemMaster] = useData<any>("plate_item_master", []);
-  const [loadingSlips, updateLoadingSlips] = useData<LoadingSlip>("loading_slips", []);
+  const [loadingSlips, updateLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [phpLoadingSlips, updatePhpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
   const [plateLoadingSlips, updatePlateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const didInitExpand = useRef(false);
   const [loadingModal, setLoadingModal] = useState<LoadingModalState | null>(null);
@@ -171,35 +185,49 @@ export function PendingLoading() {
   }, [loadingSlips]);
 
   const groupedData = useMemo(() => {
+    const orderById = new Map(orders.map((order) => [order.id, order]));
+    const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
     const filtered = plans.filter((plan) => {
       const pending = Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
       if (pending <= 0) return false;
 
-      const order = orders.find((row) => row.id === plan.orderId);
+      const order = orderById.get(plan.orderId);
+      const firmId = String(scheduleById.get(plan.scheduleId)?.firmId || order?.firmId || "");
+      if (firmFilter && firmId !== firmFilter) return false;
       const item = resolveOrderItem(order);
       const company = companies.find((row) => row.id === order?.companyId);
 
-      const searchBlob = `${item?.name || ""} ${company?.name || ""} ${order?.orderNo || ""}`.toLowerCase();
+      const firm = firms.find((row) => row.id === firmId);
+      const searchBlob = `${item?.name || ""} ${company?.name || ""} ${order?.orderNo || ""} ${plan.planNo || ""} ${getFirmDisplayNameById(firmId, firms)} ${firm?.firmName || ""}`.toLowerCase();
       return searchBlob.includes(searchTerm.toLowerCase());
     });
 
     const map = new Map<string, GroupedPlan>();
 
     filtered.forEach((plan) => {
-      const order = orders.find((row) => row.id === plan.orderId);
+      const order = orderById.get(plan.orderId);
+      const firmId = String(scheduleById.get(plan.scheduleId)?.firmId || order?.firmId || "");
+      const firmName = getFirmDisplayNameById(firmId, firms);
       const item = resolveOrderItem(order);
       const company = companies.find((row) => row.id === order?.companyId);
-      if (!item || !company) return;
 
-      const itemSource = normalizeOrderItemSource(order?.itemSource || item.source);
-      const key = `${company.id}::${itemSource}::${item.id}`;
+      const itemSource = normalizeOrderItemSource(order?.itemSource || item?.source);
+      const loadable = Boolean(order && item && company);
+      const unavailableReason = !order ? "Order record unavailable" : !item ? "Item record unavailable" : !company ? "Company record unavailable" : undefined;
+      const companyId = company?.id || `missing-company-${plan.id}`;
+      const itemId = item?.id || `missing-item-${plan.id}`;
+      const key = `${firmId}::${companyId}::${itemSource}::${itemId}`;
       if (!map.has(key)) {
         map.set(key, {
-          companyId: company.id,
-          companyName: company.name,
+          firmId,
+          firmName,
+          loadable,
+          unavailableReason,
+          companyId,
+          companyName: company?.name || "Company unavailable",
           itemSource,
-          itemId: item.id,
-          itemName: item.name,
+          itemId,
+          itemName: item?.name || "Item unavailable",
           plans: [],
         });
       }
@@ -207,7 +235,9 @@ export function PendingLoading() {
       const group = map.get(key)!;
       group.plans.push({
         ...plan,
-        companyName: company.name,
+        firmId,
+        firmName,
+        companyName: company?.name || "Company unavailable",
         itemSource,
         orderNo: order?.orderNo || "N/A",
         pendingQty: Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0),
@@ -217,24 +247,25 @@ export function PendingLoading() {
     const result = Array.from(map.values()).sort((a, b) => a.companyName.localeCompare(b.companyName));
     
     // Group results by company for the UI
-    const final: Array<{ companyId: string; companyName: string; items: GroupedPlan[] }> = [];
+    const final: Array<{ groupKey: string; companyId: string; companyName: string; firmName: string; items: GroupedPlan[] }> = [];
     result.forEach(group => {
-      let companyGroup = final.find(f => f.companyId === group.companyId);
+      const groupKey = `${group.firmId}::${group.companyId}`;
+      let companyGroup = final.find(f => f.groupKey === groupKey);
       if (!companyGroup) {
-        companyGroup = { companyId: group.companyId, companyName: group.companyName, items: [] };
+        companyGroup = { groupKey, companyId: group.companyId, companyName: group.companyName, firmName: group.firmName, items: [] };
         final.push(companyGroup);
       }
       companyGroup.items.push(group);
     });
 
     return final;
-  }, [companies, orders, plans, resolveOrderItem, searchTerm]);
+  }, [companies, firms, firmFilter, orders, plans, resolveOrderItem, schedules, searchTerm]);
 
   useEffect(() => {
     if (didInitExpand.current) return;
     if (groupedData.length === 0) return;
     didInitExpand.current = true;
-    setExpandedCompanies(new Set(groupedData.map((group) => group.companyId)));
+    setExpandedCompanies(new Set(groupedData.map((group) => group.groupKey)));
   }, [groupedData]);
 
   const currentAdjustmentByJobId = useMemo(() => {
@@ -320,8 +351,8 @@ export function PendingLoading() {
     return !getModalValidation(loadingModal).isValid;
   }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty]);
 
-  const handleOpenLoad = (companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
-    setLoadingModal({ companyId, itemSource, itemId, itemName, plans: itemPlans });
+  const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
+    setLoadingModal({ firmId, companyId, itemSource, itemId, itemName, plans: itemPlans });
     const modalKey = getModalKey(companyId, itemSource, itemId);
     const totalPending = itemPlans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
 
@@ -329,6 +360,7 @@ export function PendingLoading() {
     const eligibleJobs = sourceJobs
       .filter((p) => 
         p.itemId === itemId && 
+        (!firmId || !String(p.orderFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.firmId) === firmId) &&
         isOpenJob(p) &&
         Number(itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0) > 0
       )
@@ -666,15 +698,18 @@ export function PendingLoading() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Loading</h2>
+        <div className="flex w-full flex-wrap items-end gap-3 md:w-auto">
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} label="Firm" className="min-w-[180px]" />
         <div className="relative w-full md:w-64">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Search company, item, order..."
+            placeholder="Search firm, company, item, order, plan..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
           />
+        </div>
         </div>
       </div>
 
@@ -690,12 +725,12 @@ export function PendingLoading() {
       ) : (
         <div className="space-y-4">
           {groupedData.map((company) => (
-            <div key={company.companyId} className="bg-white border border-black rounded shadow-sm overflow-hidden">
+            <div key={company.groupKey} className="bg-white border border-black rounded shadow-sm overflow-hidden">
               <button
                 onClick={() => {
                   const next = new Set(expandedCompanies);
-                  if (next.has(company.companyId)) next.delete(company.companyId);
-                  else next.add(company.companyId);
+                  if (next.has(company.groupKey)) next.delete(company.groupKey);
+                  else next.add(company.groupKey);
                   setExpandedCompanies(next);
                 }}
                 className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 hover:bg-slate-200 transition-colors border-b border-black"
@@ -705,35 +740,40 @@ export function PendingLoading() {
                     <TruckIcon size={18} />
                   </div>
                   <span className="font-bold text-lg text-black uppercase">{company.companyName}</span>
+                  <span className="text-xs font-bold text-indigo-800">{company.firmName}</span>
                   <span className="text-xs font-black bg-black text-white px-2 py-0.5 rounded-full uppercase">
                     {company.items.length} {company.items.length === 1 ? "Item" : "Items"}
                   </span>
                 </div>
-                {expandedCompanies.has(company.companyId) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                {expandedCompanies.has(company.groupKey) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
               </button>
 
-              {expandedCompanies.has(company.companyId) ? (
+              {expandedCompanies.has(company.groupKey) ? (
                 <div className="p-4 space-y-8">
                   {company.items.map((itemGroup) => (
-                    <div key={itemGroup.itemId} className="space-y-3">
+                    <div key={`${itemGroup.itemSource}::${itemGroup.itemId}`} className="space-y-3">
                       <div className="flex items-center justify-between px-2 py-1 bg-indigo-50 border-l-4 border-indigo-600">
                         <div className="flex items-center gap-2">
                           <Package size={18} className="text-indigo-600" />
                           <span className="font-bold text-sm text-black uppercase tracking-wider">{itemGroup.itemName}</span>
                         </div>
                         <button
-                          onClick={() => handleOpenLoad(company.companyId, itemGroup.itemSource, itemGroup.itemId, itemGroup.itemName, itemGroup.plans)}
-                          className="bg-black text-white px-5 py-2 rounded text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition shadow-[4px_4px_0px_0px_rgba(79,70,229,1)] active:shadow-none active:translate-y-[2px]"
+                          onClick={() => handleOpenLoad(itemGroup.firmId, company.companyId, itemGroup.itemSource, itemGroup.itemId, itemGroup.itemName, itemGroup.plans)}
+                          disabled={!itemGroup.loadable}
+                          title={itemGroup.unavailableReason}
+                          className="bg-black text-white px-5 py-2 rounded text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition shadow-[4px_4px_0px_0px_rgba(79,70,229,1)] active:shadow-none active:translate-y-[2px] disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           LOAD ITEM
                         </button>
                       </div>
+                      {itemGroup.unavailableReason ? <p className="px-2 text-xs font-bold text-red-700">{itemGroup.unavailableReason}. Loading is unavailable until this link is repaired.</p> : null}
 
                       <div className="table-frozen-scroll border border-black">
                         <table className="min-w-full divide-y divide-black border-collapse">
                           <thead className="sticky top-0 z-30 bg-slate-50">
                             <tr className="divide-x divide-black">
                               <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Order No</th>
+                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Firm</th>
                               <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Plan No</th>
                               <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600">Planned</th>
                               <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600">Loaded</th>
@@ -745,6 +785,7 @@ export function PendingLoading() {
                             {itemGroup.plans.map((plan) => (
                               <tr key={plan.id} className="divide-x divide-black hover:bg-slate-50 transition-colors">
                                 <td className="px-3 py-2 text-xs font-medium text-black">{plan.orderNo}</td>
+                                <td className="px-3 py-2 text-xs font-medium text-black">{plan.firmName}</td>
                                 <td className="px-3 py-2 text-xs font-bold text-slate-500">{plan.planNo || "-"}</td>
                                 <td className="px-3 py-2 text-xs text-right text-black">{Number(plan.plannedQty || 0).toLocaleString()}</td>
                                 <td className="px-3 py-2 text-xs text-right text-emerald-700 font-bold">{Number(plan.loadedQty || 0).toLocaleString()}</td>
@@ -859,6 +900,7 @@ export function PendingLoading() {
                   const jobs = modalSourceJobs
                     .filter((p) => 
                       p.itemId === loadingModal.itemId && 
+                      (!loadingModal.firmId || !String(p.orderFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.firmId) === loadingModal.firmId) &&
                       isOpenJob(p) &&
                       Number(loadingModal.itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0) > 0
                     )
