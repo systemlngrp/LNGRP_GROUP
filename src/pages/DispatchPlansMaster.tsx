@@ -10,21 +10,27 @@ import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { useAuth } from "../auth/AuthContext";
 
 export function DispatchPlansMaster() {
+  const { setActiveFirm } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
 
 
-  const [plans, setPlans] = useData<DispatchPlan>("dispatch_plans", []);
+  const [plans, setPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
-  const [orders] = useData<Order>("orders", []);
-  const [companies] = useData<Company>("companies", []);
+  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
+  const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
   const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
+  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
+  const [firms] = useData<any>("firms", [], { firmScope: "all", storageKey: "firms-all" });
+  const [firmFilter, setFirmFilter] = useState("");
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -58,6 +64,11 @@ export function DispatchPlansMaster() {
   }, [loadingSlips]);
 
   const openEditModal = (plan: DispatchPlan) => {
+    const order = orders.find((row) => row.id === plan.orderId);
+    const firmId = String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || "");
+    const firm = firms.find((row: any) => row.id === firmId);
+    if (!firm) { alert("Original order firm could not be resolved."); return; }
+    setActiveFirm(firm);
     setEditingPlanId(plan.id);
     setEditForm({
       date: String(plan.date || "").slice(0, 10),
@@ -159,6 +170,8 @@ export function DispatchPlansMaster() {
         itemErp,
         itemKey,
         pending,
+        firmId: String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""),
+        firmName: getFirmDisplayNameById(String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""), firms),
         searchText: [
           plan.planNo,
           formatDate(plan.date),
@@ -172,10 +185,11 @@ export function DispatchPlansMaster() {
           String(plan.canceledQty || ""),
           String(pending),
           plan.status,
+          getFirmDisplayNameById(String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""), firms),
         ].join(" ").toLowerCase(),
       };
     });
-  }, [plans, orders, companies, resolveOrderItem]);
+  }, [plans, orders, companies, firms, schedules, resolveOrderItem]);
 
   const companyOptions = useMemo(() => {
     const names = Array.from(new Set(dispatchFilterRows.map((row) => row.companyName).filter(Boolean)));
@@ -198,11 +212,12 @@ export function DispatchPlansMaster() {
       .filter((row) => {
         if (companyFilter && row.companyName !== companyFilter) return false;
         if (itemFilter && row.itemKey !== itemFilter) return false;
+        if (firmFilter && row.firmId !== firmFilter) return false;
         return !normalizedSearch || row.searchText.includes(normalizedSearch);
       })
       .map((row) => row.plan)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [companyFilter, dispatchFilterRows, itemFilter, searchTerm]);
+  }, [companyFilter, dispatchFilterRows, firmFilter, itemFilter, searchTerm]);
   const {
     page,
     setPage,
@@ -218,12 +233,13 @@ export function DispatchPlansMaster() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Dispatch Plans Master</h2>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search plan, order, ERP, company, item..." />
+      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_minmax(180px,1fr)_auto] md:items-center">
+        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search plan, firm, order, ERP, company, item..." />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        {(searchTerm || companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+        {(searchTerm || companyFilter || itemFilter || firmFilter) ? (
+          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setFirmFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
         ) : null}
       </div>
 
@@ -234,6 +250,7 @@ export function DispatchPlansMaster() {
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Plan No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Plan Date</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Company</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Order / Item</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Planned</th>
@@ -247,7 +264,7 @@ export function DispatchPlansMaster() {
             <tbody className="divide-y divide-black bg-white">
               {paginatedPlans.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-6 py-8 text-center text-black font-medium">No dispatch plans found.</td>
+                  <td colSpan={11} className="px-6 py-8 text-center text-black font-medium">No dispatch plans found.</td>
                 </tr>
               ) : (
                 paginatedPlans.map((p) => {
@@ -261,6 +278,7 @@ export function DispatchPlansMaster() {
                     <tr key={p.id} className="hover:bg-slate-50 divide-x divide-black">
                       <td className="px-4 py-4 text-xs font-bold text-slate-500 border border-black">{p.planNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
+                      <td className="px-4 py-4 text-xs text-black border border-black">{getFirmDisplayNameById(String(order?.firmId || p.orderFirmId || p.firmId || schedules.find((row) => row.id === p.scheduleId)?.firmId || ""), firms)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black">{company?.name || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black">
                         <div className="font-bold">{order?.orderNo || "-"}</div>

@@ -1121,6 +1121,8 @@ export interface TruckStatusLog {
 
 export interface DispatchPlan {
   id: string;
+  firmId?: string;
+  orderFirmId?: string;
   planNo?: string;
   scheduleId: string;
   orderId: string;

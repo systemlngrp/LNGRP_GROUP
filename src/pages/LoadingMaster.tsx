@@ -33,6 +33,8 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
 import { isDirectLoadingSlip, resolveLoadingSlipLineContext, summarizeLoadingSlip } from "../lib/loadingSlipContext";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 function getSlipNoSortValue(slipNo: string) {
   const value = String(slipNo || "").trim();
@@ -42,15 +44,16 @@ function getSlipNoSortValue(slipNo: string) {
 
 export function LoadingMaster() {
   const confirm = useConfirm();
-  const [loadingSlips, setLoadingSlips] = useData<LoadingSlip>("loading_slips", []);
+  const [loadingSlips, setLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
-  const [plans, setPlans] = useData<DispatchPlan>("dispatch_plans", []);
-  const [orders] = useData<Order>("orders", []);
+  const [plans, setPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const npdItems = useNpdItems();
   const { resolveOrderItem, itemsBySource, allItems } = useOrderItemCatalog();
-  const [companies] = useData<Company>("companies", []);
-  const [invoices, setInvoices] = useData<Invoice>("invoices", []);
-  const [invoiceLineItems, setInvoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
+  const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
+  const [firms] = useData<any>("firms", [], { firmScope: "all", storageKey: "firms-all" });
+  const [invoices, setInvoices] = useData<Invoice>("invoices", [], { firmScope: "all", storageKey: "invoices-all-firms" });
+  const [invoiceLineItems, setInvoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-lines-all-firms" });
   const [phpJobs] = useData<any>("php_job_master", []);
   const [plateJobs] = useData<any>("plate_job_master", []);
   const [phpItemMaster] = useData<any>("php_item_master", []);
@@ -63,6 +66,7 @@ export function LoadingMaster() {
   const [companyFilter, setCompanyFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [expandedSlipIds, setExpandedSlipIds] = useState<Set<string>>(new Set());
   const [editingSlipIds, setEditingSlipIds] = useState<Set<string>>(new Set());
   const [draftBySlipId, setDraftBySlipId] = useState<Record<string, LoadingSlip>>({});
@@ -115,6 +119,7 @@ export function LoadingMaster() {
         totalQty,
         itemNames: summary.itemNames.join(", "),
         companyNames: summary.companyNames.join(", "),
+        firmId: String(slip.orderFirmId || slip.firmId || plans.find((plan) => plan.id === slip.lines[0]?.dispatchPlanId)?.orderFirmId || plans.find((plan) => plan.id === slip.lines[0]?.dispatchPlanId)?.firmId || ""),
         erpCodes: summary.erpCodes.join(", "),
         itemKeys: summary.lineContexts.map((ctx) => `${ctx.itemName || ""}::${ctx.erpCode || ""}`),
         loadingSourceLabel: isDirectLoadingSlip(slip) ? "Direct" : "Dispatch Plan",
@@ -122,12 +127,14 @@ export function LoadingMaster() {
       };
     }).filter(slip => {
       const q = searchTerm.toLowerCase().trim();
-      const matchesSearch = !q || slip.slipNo.toLowerCase().includes(q) || slip.truckNo.toLowerCase().includes(q) || slip.itemNames.toLowerCase().includes(q) || slip.companyNames.toLowerCase().includes(q) || slip.erpCodes.toLowerCase().includes(q);
+      const firmName = getFirmDisplayNameById(slip.firmId, firms);
+      const matchesSearch = !q || slip.slipNo.toLowerCase().includes(q) || slip.truckNo.toLowerCase().includes(q) || slip.itemNames.toLowerCase().includes(q) || slip.companyNames.toLowerCase().includes(q) || slip.erpCodes.toLowerCase().includes(q) || firmName.toLowerCase().includes(q);
       const matchesCompany = !companyFilter || slip.companyNames.includes(companyFilter);
       const matchesErp = !erpFilter || slip.erpCodes.includes(erpFilter);
       const matchesItem = !itemFilter || slip.itemKeys.includes(itemFilter);
+      const matchesFirm = !firmFilter || slip.firmId === firmFilter;
       
-      return matchesSearch && matchesCompany && matchesErp && matchesItem;
+      return matchesSearch && matchesCompany && matchesErp && matchesItem && matchesFirm;
     }).sort((a, b) => {
       const slipNoDiff = getSlipNoSortValue(b.slipNo) - getSlipNoSortValue(a.slipNo);
       if (slipNoDiff !== 0) return slipNoDiff;
@@ -140,7 +147,7 @@ export function LoadingMaster() {
 
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-  }, [loadingSlips, plans, orders, companies, resolveOrderItem, searchTerm, companyFilter, erpFilter, itemFilter, trucks]);
+  }, [loadingSlips, plans, orders, companies, firms, resolveOrderItem, searchTerm, companyFilter, erpFilter, itemFilter, firmFilter, trucks]);
 
   const {
     page,
@@ -538,6 +545,9 @@ export function LoadingMaster() {
             <label className="text-[10px] font-black uppercase text-slate-500">ERP Filter</label>
             <Select value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="ERP" />
           </div>
+          <div className="space-y-1">
+            <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+          </div>
         </div>
       </div>
 
@@ -550,6 +560,7 @@ export function LoadingMaster() {
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Status</th>
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Date</th>
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Truck</th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Firm</th>
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Company</th>
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Item</th>
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">ERP</th>
@@ -560,7 +571,7 @@ export function LoadingMaster() {
           <tbody className="bg-white divide-y divide-black">
             {paginatedSlips.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-6 py-12 text-center text-slate-500 italic">No loading slips found.</td>
+                <td colSpan={11} className="px-6 py-12 text-center text-slate-500 italic">No loading slips found.</td>
               </tr>
 ) : paginatedSlips.map((slip) => (
               <tr key={slip.id} className="hover:bg-slate-50 transition-colors divide-x divide-black">
@@ -596,6 +607,7 @@ export function LoadingMaster() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-bold uppercase text-black">
                   {slip.truckNo || "-"}
                 </td>
+                <td className="px-6 py-4 text-sm text-black align-top">{getFirmDisplayNameById(slip.firmId, firms) || "-"}</td>
                 <td className="px-6 py-4 text-sm text-black align-top">
                   <div className="max-w-[240px] whitespace-normal break-words font-medium leading-5" title={slip.companyNames}>
                     {slip.companyNames || "-"}

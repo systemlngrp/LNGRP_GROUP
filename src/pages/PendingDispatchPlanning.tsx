@@ -15,23 +15,25 @@ import { formatDispatchPlanNo, getNextDispatchPlanNo } from "../lib/dispatchPlan
 import { ArrowUpDown, Save } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { useAuth } from "../auth/AuthContext";
 
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "companyName" | "itemName" | "pendingQty";
 
 export function PendingDispatchPlanning() {
   const navigate = useNavigate();
+  const { setActiveFirm } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
 
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
-  const [companies] = useData<Company>("companies", []);
+  const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
   const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
-  const [dispatchPlans, setDispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
-  const [productions] = useData<Production>("productions", []);
+  const [dispatchPlans, setDispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
+  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [selectedFirmId, setSelectedFirmId] = useState<string>("");
@@ -427,6 +429,12 @@ export function PendingDispatchPlanning() {
 
       const newPlans: DispatchPlan[] = Array.from(selectedIds).map(id => {
         const schedule = schedules.find(s => s.id === id)!;
+        const order = orders.find((row) => row.id === schedule.orderId);
+        const orderFirmId = String(order?.firmId || schedule.firmId || "").trim();
+        if (!orderFirmId) throw new Error(`Original order firm is missing for schedule ${schedule.scheduleNo || id}.`);
+        const orderFirm = firms.find((firm) => firm.id === orderFirmId);
+        if (!orderFirm) throw new Error(`Original order firm could not be resolved for schedule ${schedule.scheduleNo || id}.`);
+        setActiveFirm(orderFirm);
         const effectivePlanned = getEffectivePlannedForSchedule(id);
         const balance = Number(schedule.qty || 0) - Number(schedule.canceledQty || 0) - effectivePlanned;
         
@@ -435,6 +443,8 @@ export function PendingDispatchPlanning() {
           planNo: formatDispatchPlanNo(nextPlan.fy, nextPlanNo++),
           scheduleId: id,
           orderId: schedule.orderId,
+          firmId: orderFirmId,
+          orderFirmId,
           truckId: "",
           plannedQty: Number(rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : Math.max(0, balance)),
           status: "Planned",

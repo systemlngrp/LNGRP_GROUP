@@ -8211,6 +8211,16 @@ await db.query(`
 
       try {
         await ensureCompaniesSchemaColumns(db, database);
+        await ensureColumnExists(db, database, "dispatch_plans", "firmId", "VARCHAR(36) NULL");
+        await ensureColumnExists(db, database, "dispatch_plans", "orderFirmId", "VARCHAR(36) NULL");
+        await ensureColumnExists(db, database, "loading_slips", "firmId", "VARCHAR(36) NULL");
+        await ensureColumnExists(db, database, "loading_slips", "orderFirmId", "VARCHAR(36) NULL");
+        try {
+          await db.query("UPDATE `dispatch_plans` p LEFT JOIN `orders` o ON o.id = p.orderId LEFT JOIN `orders_schedule` os ON os.id = p.scheduleId SET p.firmId = COALESCE(NULLIF(o.firmId, ''), NULLIF(os.firmId, '')), p.orderFirmId = COALESCE(NULLIF(o.firmId, ''), NULLIF(os.firmId, '')) WHERE COALESCE(p.firmId, '') = '' OR COALESCE(p.orderFirmId, '') = ''");
+        } catch (err) { console.warn("[DB] Could not backfill dispatch plan firms:", (err as Error).message); }
+        try {
+          await db.query("UPDATE `loading_slips` ls JOIN JSON_TABLE(COALESCE(ls.lines, '[]'), '$[*]' COLUMNS(dispatchPlanId VARCHAR(36) PATH '$.dispatchPlanId')) line ON 1 = 1 JOIN `dispatch_plans` p ON p.id = line.dispatchPlanId SET ls.firmId = COALESCE(NULLIF(ls.firmId, ''), NULLIF(p.orderFirmId, ''), NULLIF(p.firmId, '')), ls.orderFirmId = COALESCE(NULLIF(ls.orderFirmId, ''), NULLIF(p.orderFirmId, ''), NULLIF(p.firmId, '')) WHERE COALESCE(ls.firmId, '') = '' OR COALESCE(ls.orderFirmId, '') = ''");
+        } catch (err) { console.warn("[DB] Could not backfill loading slip firms:", (err as Error).message); }
         await ensureMaterialInCurrencySchemaColumns(db, database);
         await ensureTruckStatusLogSchema(db, database);
         await ensureReelMovementOwnershipSchema(db, database);

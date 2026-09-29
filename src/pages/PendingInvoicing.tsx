@@ -37,10 +37,15 @@ import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildGatePassFromInvoice } from "../lib/gatePasses";
 import { useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { useAuth } from "../auth/AuthContext";
+import { FirmFilter } from "../components/FirmFilter";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 interface GroupedLoading {
+  groupKey: string;
   companyId: string;
   companyName: string;
+  firmId: string;
+  firmName: string;
   slips: (LoadingSlip & {
     totalQty: number;
     items: string[];
@@ -96,20 +101,20 @@ function toPersistableLoadingSlip(slip: LoadingSlip & { totalQty?: number; items
 
 export function PendingInvoicing() {
   const navigate = useNavigate();
-  const { user, activeFirmId } = useAuth();
+  const { user, activeFirmId, setActiveFirm } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [loadingSlips, , , loadingSlipApi] = useData<LoadingSlip>("loading_slips", []);
-  const [companies] = useData<Company>("companies", []);
+  const [loadingSlips, , , loadingSlipApi] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
+  const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
   const npdItems = useNpdItems();
   const { resolveOrderItem, findItemAcrossSources } = useOrderItemCatalog();
-  const [plans] = useData<DispatchPlan>("dispatch_plans", []);
-  const [orders] = useData<Order>("orders", []);
-  const [invoices, , , invoiceApi] = useData<Invoice>("invoices", []);
-  const [invoiceLineItems, , , invoiceLineItemApi] = useData<InvoiceLineItem>("invoice_line_items", []);
-  const [gatePasses, , , gatePassApi] = useData<GatePass>("gate_passes", []);
+  const [plans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
+  const [invoices, , , invoiceApi] = useData<Invoice>("invoices", [], { firmScope: "all", storageKey: "invoices-all-firms" });
+  const [invoiceLineItems, , , invoiceLineItemApi] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-lines-all-firms" });
+  const [gatePasses, , , gatePassApi] = useData<GatePass>("gate_passes", [], { firmScope: "all", storageKey: "gate-passes-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [interFirmPending, , , interFirmApi] = useData<InterFirmPendingInvoice>("inter_firm_pending_invoices", []);
+  const [interFirmPending, , , interFirmApi] = useData<InterFirmPendingInvoice>("inter_firm_pending_invoices", [], { firmScope: "all", storageKey: "inter-firm-pending-all-firms" });
   const [materialIns] = useData<MaterialIn>("material_in", [], { firmScope: "all" });
 
   const mrrNumberById = useMemo(() => {
@@ -121,6 +126,7 @@ export function PendingInvoicing() {
   }, [materialIns]);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
@@ -199,6 +205,12 @@ export function PendingInvoicing() {
 
   const submitInterFirmInvoice = async (pending: InterFirmPendingInvoice) => {
     if (pending.status !== "Pending") return;
+    const sourceFirm = firms.find((firm) => firm.id === pending.sourceFirmId);
+    if (!sourceFirm) {
+      alert("Source firm could not be resolved for this invoice.");
+      return;
+    }
+    setActiveFirm(sourceFirm);
     setInterFirmSubmittingId(pending.id);
     try {
       const pendingLines = Array.isArray(pending.lines) && pending.lines.length > 0
@@ -483,16 +495,22 @@ export function PendingInvoicing() {
       if (!firstLine) return;
       const plan = plans.find(p => p.id === firstLine.dispatchPlanId);
       const order = orders.find(o => o.id === plan?.orderId);
+      const firmId = String(order?.firmId || plan?.orderFirmId || plan?.firmId || s.orderFirmId || s.firmId || "");
+      const firmName = getFirmDisplayNameById(firmId, firms);
       const company = companies.find(c => c.id === (order?.companyId || s.companyId || firstLine.companyId));
       const companyName = company?.name || s.companyName || firstLine.companyName || "";
 
       if (!company && !companyName) return;
 
-      const groupId = company?.id || s.companyId || `direct-${companyName}`;
+      const companyId = company?.id || s.companyId || `direct-${companyName}`;
+      const groupId = `${firmId}::${companyId}`;
       if (!companyMap.has(groupId)) {
         companyMap.set(groupId, {
-          companyId: groupId,
+          groupKey: groupId,
+          companyId,
           companyName: company?.name || companyName,
+          firmId,
+          firmName,
           slips: []
         });
       }
@@ -524,14 +542,15 @@ export function PendingInvoicing() {
       .map((group) => ({ ...group, slips: group.slips.filter((slip) => !itemFilter || slip.itemKeys.includes(itemFilter)) }))
       .filter((group) => group.slips.length > 0)
       .filter((group) => !companyFilter || group.companyId === companyFilter)
+      .filter((group) => !firmFilter || group.firmId === firmFilter)
       .filter((group) => {
         const needle = searchTerm.trim().toLowerCase();
         if (!needle) return true;
         const slipText = group.slips.map((slip) => `${slip.slipNo || ""} ${slip.items.join(" ")}`).join(" ");
-        return `${group.companyName} ${slipText}`.toLowerCase().includes(needle);
+        return `${group.firmName} ${group.companyName} ${slipText}`.toLowerCase().includes(needle);
       })
       .sort((a, b) => a.companyName.localeCompare(b.companyName));
-  }, [loadingSlips, invoiceLineItems, companies, plans, orders, npdItems, searchTerm, companyFilter, itemFilter, findItemAcrossSources, resolveOrderItem]);
+  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, findItemAcrossSources, resolveOrderItem]);
 
   const companyOptions = useMemo(() => Array.from(new Map(groupedData.map((group) => [group.companyId, { value: group.companyId, label: group.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); groupedData.forEach((group) => group.slips.forEach((slip) => slip.items.forEach((name, index) => { const key = slip.itemKeys[index] || name; if (!key || map.has(key)) return; map.set(key, { value: key, label: name, searchText: name }); }))); return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label)); }, [groupedData]);
@@ -540,11 +559,17 @@ export function PendingInvoicing() {
     if (didInitExpand.current) return;
     if (groupedData.length === 0) return;
     didInitExpand.current = true;
-    setExpandedCompanies(new Set(groupedData.map((group) => group.companyId)));
+    setExpandedCompanies(new Set(groupedData.map((group) => group.groupKey)));
   }, [groupedData]);
 
   const handleStartBilling = (companyId: string, slips: any[]) => {
-    setBillingMode(companyId);
+    const firstPlan = plans.find((plan) => plan.id === slips[0]?.lines?.[0]?.dispatchPlanId);
+    const firstOrder = orders.find((order) => order.id === firstPlan?.orderId);
+    const firmId = String(firstOrder?.firmId || firstPlan?.orderFirmId || firstPlan?.firmId || slips[0]?.orderFirmId || slips[0]?.firmId || "");
+    const firm = firms.find((row) => row.id === firmId);
+    if (!firm) { alert("Original order firm could not be resolved."); return; }
+    setActiveFirm(firm);
+    setBillingMode(`${plans.find((plan) => plan.id === slips[0]?.lines?.[0]?.dispatchPlanId)?.orderFirmId || plans.find((plan) => plan.id === slips[0]?.lines?.[0]?.dispatchPlanId)?.firmId || slips[0]?.firmId || ""}::${companyId}`);
     setSelectedSlips(new Set(slips.map(s => s.id)));
   };
 
@@ -577,11 +602,11 @@ export function PendingInvoicing() {
 
   const handleOpenInvoiceForm = () => {
     if (!billingMode) return;
-    const companyGroup = groupedData.find(g => g.companyId === billingMode);
+    const companyGroup = groupedData.find(g => g.groupKey === billingMode);
     if (!companyGroup) return;
     
     const selected = companyGroup.slips.filter(s => selectedSlips.has(s.id));
-    setInvoiceModal({ companyId: billingMode, slips: selected });
+    setInvoiceModal({ companyId: companyGroup.companyId, slips: selected });
     setOtherCharges("");
     setOtherChargesGstRate("");
     setRoundOff("");
@@ -590,7 +615,7 @@ export function PendingInvoicing() {
     setTransporter("");
     setInvoiceRows(buildInvoiceRowsFromSlips(selected));
 
-    const company = companies.find(c => c.id === billingMode);
+    const company = companies.find(c => c.id === companyGroup.companyId);
     setGstSupplyType((company?.gstSupplyType as any) || "INTRA_STATE");
   };
 
@@ -1097,12 +1122,12 @@ export function PendingInvoicing() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Invoicing</h2>
-        <div className="grid w-full gap-3 md:grid-cols-[minmax(240px,1.4fr)_minmax(200px,1fr)_minmax(240px,1.1fr)_auto] md:items-center md:max-w-4xl">
+        <div className="grid w-full gap-3 md:grid-cols-[minmax(240px,1.4fr)_minmax(200px,1fr)_minmax(240px,1.1fr)_minmax(180px,1fr)_auto] md:items-center md:max-w-5xl">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search company, slip, item..."
+              placeholder="Search firm, company, slip, item..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
@@ -1110,8 +1135,9 @@ export function PendingInvoicing() {
           </div>
           <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
           <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-          {(searchTerm || companyFilter || itemFilter) ? (
-            <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
+          <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+          {(searchTerm || companyFilter || firmFilter || itemFilter) ? (
+            <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setFirmFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
           ) : null}
         </div>
       </div>
@@ -1137,17 +1163,18 @@ export function PendingInvoicing() {
             <p className="text-slate-500 font-medium">No pending loading slips for invoicing.</p>
           </div>
         ) : groupedData.map((group) => (
-          <div key={group.companyId} className="bg-white border border-black rounded shadow-sm overflow-hidden">
+          <div key={group.groupKey} className="bg-white border border-black rounded shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 bg-slate-100 border-b border-black">
               <div className="flex items-center gap-3">
                 <Building2 size={20} className="text-indigo-600" />
                 <span className="font-bold text-lg">{group.companyName}</span>
+                <span className="text-xs font-black text-indigo-700">{group.firmName}</span>
                 <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full uppercase">
                   {group.slips.length} Loading Slips
                 </span>
               </div>
               <div className="flex items-center gap-3">
-                {billingMode === group.companyId ? (
+                {billingMode === group.groupKey ? (
                   <button 
                     onClick={handleOpenInvoiceForm}
                     disabled={selectedSlips.size === 0}
@@ -1164,22 +1191,22 @@ export function PendingInvoicing() {
                   </button>
                 )}
                 <button 
-                  onClick={() => toggleCompany(group.companyId)}
+                  onClick={() => toggleCompany(group.groupKey)}
                   className="p-1 hover:bg-slate-200 rounded"
                 >
-                  {expandedCompanies.has(group.companyId) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                  {expandedCompanies.has(group.groupKey) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                 </button>
               </div>
             </div>
 
-            {expandedCompanies.has(group.companyId) && (
+            {expandedCompanies.has(group.groupKey) && (
               <div className="p-4">
                 <div className="overflow-hidden rounded border border-black bg-white">
                   <div className="w-full overflow-x-auto">
                     <table className="w-full min-w-[760px] border-collapse">
                       <thead className="sticky top-0 z-30 bg-slate-50">
                     <tr className="divide-x divide-black border-b border-black">
-                      {billingMode === group.companyId && <th className="w-10 px-2 py-2"></th>}
+                      {billingMode === group.groupKey && <th className="w-10 px-2 py-2"></th>}
                       <th className="w-[150px] px-3 py-2 text-left text-[10px] font-bold uppercase">Loading Slip No</th>
                       <th className="w-[110px] px-3 py-2 text-left text-[10px] font-bold uppercase">Date</th>
                       <th className="w-[130px] px-3 py-2 text-left text-[10px] font-bold uppercase">Truck No</th>
@@ -1190,7 +1217,7 @@ export function PendingInvoicing() {
                       <tbody className="divide-y divide-black">
                     {group.slips.map((s) => (
                       <tr key={s.id} className="divide-x divide-black hover:bg-slate-50">
-                        {billingMode === group.companyId && (
+                        {billingMode === group.groupKey && (
                           <td className="px-2 py-2 text-center">
                             <input 
                               type="checkbox"

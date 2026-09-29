@@ -39,6 +39,7 @@ import { buildLinkedLoadingDetailsFromSlip, findLinkedItemByMasterErp, getLinked
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
 import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
 import { normalizeTruckStatus } from "../lib/truckStatus";
+import { useAuth } from "../auth/AuthContext";
 
 interface PendingPlan extends DispatchPlan {
   firmId: string;
@@ -98,6 +99,7 @@ function getLoadingSlipJobAllocations(line: LoadingSlipLine): Array<{ jobId: str
 }
 
 export function PendingLoading() {
+  const { setActiveFirm } = useAuth();
   const [plans, updatePlans, plansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
   const npdItems = useNpdItems();
@@ -352,6 +354,9 @@ export function PendingLoading() {
   }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
+    const firm = firms.find((row) => row.id === firmId);
+    if (!firm) { alert("Original order firm could not be resolved."); return; }
+    setActiveFirm(firm);
     setLoadingModal({ firmId, companyId, itemSource, itemId, itemName, plans: itemPlans });
     const modalKey = getModalKey(companyId, itemSource, itemId);
     const totalPending = itemPlans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
@@ -588,6 +593,8 @@ export function PendingLoading() {
         truckId: modalTruckId,
         truckNo: modalManualTruckNo.trim() || trucks.find((truck) => truck.id === modalTruckId)?.truckNo || undefined,
         lines,
+        firmId: loadingModal.firmId,
+        orderFirmId: loadingModal.firmId,
         packingDetails: packingDetails.filter(d => d.bundles > 0 && d.packSize > 0),
         extraItemsQty: Number(extraItemsQty || 0) || undefined,
       };
