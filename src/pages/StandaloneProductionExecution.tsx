@@ -44,7 +44,7 @@ function getFgCellClasses(isBlocked: boolean, requiresFgGate: boolean) {
 export function StandaloneProductionExecution({ source }: Props) {
   const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
-  const [fgProductions, setFgProductions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
+  const [fgProductions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
@@ -144,7 +144,8 @@ export function StandaloneProductionExecution({ source }: Props) {
   const openModal = (job: JobRow) => {
     setSelectedJobKey(`${job.jobSource}:${job.id}`);
     setCompletionTime(String(job.jobCompletionTimeOutput || ""));
-    setOutputQty(job.productionOutputQty === undefined || job.productionOutputQty === null ? "0" : String(job.productionOutputQty));
+    const fgState = resolvePhpPlateFgLink(job, fgProductions, job.jobSource);
+    setOutputQty(fgState.requiresFgGate ? String(fgState.fgValue) : job.productionOutputQty === undefined || job.productionOutputQty === null ? "0" : String(job.productionOutputQty));
   };
 
   const saveProduction = async () => {
@@ -153,20 +154,22 @@ export function StandaloneProductionExecution({ source }: Props) {
       window.alert("Job completion time is required.");
       return;
     }
-    const nextOutput = Number(outputQty || 0);
+    const nextOutput = selectedJobFgState?.requiresFgGate ? selectedJobFgState.fgValue : Number(outputQty || 0);
     if (!Number.isFinite(nextOutput) || nextOutput < 0) {
       window.alert("Output must be zero or more.");
       return;
     }
     if (selectedJobFgState?.requiresFgGate && selectedJobFgState.isBlocked) {
-      window.alert("Fill FG value in main Production Master first. PHP/Plate output is blocked for Corrugation jobs until FG is filled.");
+      window.alert("Report Printing output first. PHP/Plate production unlocks when Printing quantity is available.");
       return;
     }
     const timestamp = new Date().toISOString();
     const updateJobs = (prev: Production[]) =>
       prev.map((job) =>
         job.id === selectedJob.id
-          ? { ...job, jobCompletionTimeOutput: completionTime, productionOutputQty: nextOutput, updatedBy: "System User", updateTimestamp: timestamp }
+          ? { ...job, jobCompletionTimeOutput: completionTime,
+              ...(!selectedJobFgState?.requiresFgGate ? { productionOutputQty: nextOutput } : {}),
+              updatedBy: "System User", updateTimestamp: timestamp }
           : job
       );
     if (selectedJob.jobSource === "PHP") {
@@ -174,10 +177,6 @@ export function StandaloneProductionExecution({ source }: Props) {
     } else {
       await setPlateJobs(updateJobs);
     }
-    const linkedField = selectedJob.jobSource === "PHP" ? "phpScheduledJobId" : "plateScheduledJobId";
-    await setFgProductions((previous) => previous.map((production) => String((production as any)[linkedField] || "") === selectedJob.id
-      ? { ...production, prodFromFFG: nextOutput, productionOutputQty: nextOutput, updatedBy: "System User", updateTimestamp: timestamp }
-      : production));
     window.alert("Production saved successfully.");
     closeModal();
   };
@@ -276,12 +275,12 @@ export function StandaloneProductionExecution({ source }: Props) {
               </div>
               <div>
                 <label className="text-xs font-black uppercase text-slate-500">Output</label>
-                <input type="number" min={0} step="any" value={outputQty} disabled={!!selectedJobFgState?.requiresFgGate && !!selectedJobFgState?.isBlocked} onChange={(e) => setOutputQty(e.target.value)} className="mt-1 w-full border-2 border-black rounded p-2 text-black disabled:bg-red-50 disabled:text-red-700 disabled:cursor-not-allowed focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+                <input type="number" min={0} step="any" value={selectedJobFgState?.requiresFgGate ? selectedJobFgState.fgValue : outputQty} disabled={!!selectedJobFgState?.requiresFgGate} onChange={(e) => setOutputQty(e.target.value)} className="mt-1 w-full border-2 border-black rounded p-2 text-black disabled:bg-slate-100 disabled:cursor-not-allowed focus:outline-none focus:border-indigo-600 focus:ring-1 focus:border-indigo-600" />
               </div>
             </div>
             {selectedJobFgState?.requiresFgGate && selectedJobFgState.isBlocked ? (
               <div className="mt-4 rounded border border-red-400 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                FG value is still 0 in main Production Master. Fill FG first, then PHP/Plate output will unlock.
+                Printing output is still 0. Report Printing quantity to unlock PHP/Plate production.
               </div>
             ) : null}
             <div className="mt-5 flex gap-3">

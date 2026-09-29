@@ -3267,6 +3267,9 @@ async function syncCorrugationLinerOutput(db, processingId) {
     if (["cancelled", "canceled"].includes(String(row.productionStatus || "").trim().toLowerCase()))
         return { updated: false, reason: "cancelled" };
     const source = row.phpScheduledJobId ? { table: "php_job_master", id: row.phpScheduledJobId, kind: "PHP" } : { table: "plate_job_master", id: row.plateScheduledJobId, kind: "Plate" };
+    const [printingRows] = await db.query("SELECT id FROM production_processing WHERE productionId = ? AND LOWER(TRIM(machineName)) = 'printing' LIMIT 1", [row.productionId]);
+    if (printingRows.length)
+        return { updated: false, reason: "printing-authoritative" };
     const qty = Number(row.qty);
     if (!Number.isFinite(qty))
         return { updated: false, reason: "invalid-qty" };
@@ -3303,6 +3306,34 @@ async function backfillCorrugationLinerOutput(db) {
     if (updated || skipped)
         console.log(`[CORRUGATION-OUTPUT] Backfill complete: ${updated} updated, ${skipped} skipped.`);
     return { updated, skipped };
+}
+/** Printing reports are the finished output for linked PHP/Plate Corrugation jobs. */
+async function syncLinkedPrintingOutput(db, productionId) {
+    if (!productionId)
+        return;
+    const [rows] = await db.query(`SELECT p.id, p.status, p.phpScheduledJobId, p.plateScheduledJobId,
+            COALESCE(php.methodology, plate.methodology, p.methodology) AS sourceMethodology
+       FROM productions p
+       LEFT JOIN php_job_master php ON php.id = p.phpScheduledJobId
+       LEFT JOIN plate_job_master plate ON plate.id = p.plateScheduledJobId
+      WHERE p.id = ? LIMIT 1`, [productionId]);
+    const production = rows[0];
+    if (!production || (!production.phpScheduledJobId && !production.plateScheduledJobId) ||
+        String(production.sourceMethodology || "").trim().toUpperCase() !== "CORRUGATION" ||
+        ["cancelled", "canceled"].includes(String(production.status || "").trim().toLowerCase()))
+        return;
+    const [totals] = await db.query(`SELECT COALESCE(SUM(qty), 0) AS output FROM production_processing
+      WHERE productionId = ? AND LOWER(TRIM(machineName)) = 'printing'`, [productionId]);
+    const output = Number(totals[0]?.output || 0);
+    const sourceTable = production.phpScheduledJobId ? "php_job_master" : "plate_job_master";
+    const sourceId = production.phpScheduledJobId || production.plateScheduledJobId;
+    await db.query("UPDATE productions SET prodFromFFG = ?, productionOutputQty = ? WHERE id = ?", [output, output, productionId]);
+    await db.query(`UPDATE \`${sourceTable}\` SET productionOutputQty = ? WHERE id = ?`, [output, sourceId]);
+}
+async function backfillLinkedPrintingOutput(db) {
+    const [rows] = await db.query(`SELECT DISTINCT productionId FROM production_processing WHERE LOWER(TRIM(machineName)) = 'printing'`);
+    for (const row of rows)
+        await syncLinkedPrintingOutput(db, String(row.productionId || ""));
 }
 async function backfillLinkedProductionSources(db) {
     const [result] = await db.query(`
@@ -7673,6 +7704,7 @@ async function initDb(retries = 5) {
             await backfillLinkedProductionSources(db);
             await backfillScrapScheduledProductions(db);
             await backfillCorrugationLinerOutput(db);
+            await backfillLinkedPrintingOutput(db);
             await dropRemovedFirmScopeColumns(db, database);
             await ensureUniqueMaterialErpIndex(db, database);
             await ensureUniquePackingSlipReelNoIndex(db, database);
@@ -8619,7 +8651,10 @@ const createHandlers = (tableName) => {
                         }
                     });
                 }
+                let previousProcessing;
                 if (tableName === "production_processing") {
+                    const [previousRows] = await db.query("SELECT productionId, machineName FROM production_processing WHERE id = ? LIMIT 1", [data.id]);
+                    previousProcessing = previousRows[0];
                     // Processing reports are flat records. Never let a stale client/cache or
                     // shared form payload turn collection-only fields into SQL columns.
                     delete data.lines;
@@ -9467,6 +9502,13 @@ const createHandlers = (tableName) => {
                         console.log(`[DB] Atomically upserting ${tableName} with inter-firm automation`, { id: data.id });
                         await conn.query(query, values);
                         await syncCorrugationLinerOutput(conn, String(data.id || ""));
+                        if (normalizeMachineName(String(data.machineName || "")) === "Printing" ||
+                            normalizeMachineName(String(previousProcessing?.machineName || "")) === "Printing") {
+                            await syncLinkedPrintingOutput(conn, String(data.productionId || ""));
+                            if (previousProcessing?.productionId && previousProcessing.productionId !== data.productionId) {
+                                await syncLinkedPrintingOutput(conn, String(previousProcessing.productionId));
+                            }
+                        }
                         await syncLnkiPrintingMasterOutputs(conn, data);
                         const automationResult = await automateInterFirmProduction(db, String(data.id || ""), "Production Processing", conn);
                         await conn.commit();
@@ -9514,6 +9556,13 @@ const createHandlers = (tableName) => {
                 }
                 if (tableName === "production_processing") {
                     await syncCorrugationLinerOutput(db, String(data.id || ""));
+                    if (normalizeMachineName(String(data.machineName || "")) === "Printing" ||
+                        normalizeMachineName(String(previousProcessing?.machineName || "")) === "Printing") {
+                        await syncLinkedPrintingOutput(db, String(data.productionId || ""));
+                        if (previousProcessing?.productionId && previousProcessing.productionId !== data.productionId) {
+                            await syncLinkedPrintingOutput(db, String(previousProcessing.productionId));
+                        }
+                    }
                 }
                 if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
                     const pendingId = String(data.sourceTransactionId || "").trim();
@@ -9570,7 +9619,14 @@ const createHandlers = (tableName) => {
                 if (tableName === "materials") {
                     await db.query("DELETE FROM `material_firm_openings` WHERE materialId = ?", [id]);
                 }
+                const [deletedProcessingRows] = tableName === "production_processing"
+                    ? await db.query("SELECT productionId, machineName FROM production_processing WHERE id = ? LIMIT 1", [id])
+                    : [[]];
                 await db.query(`DELETE FROM \`${tableName}\` WHERE id = ?`, [id]);
+                const deletedProcessing = deletedProcessingRows[0];
+                if (normalizeMachineName(String(deletedProcessing?.machineName || "")) === "Printing") {
+                    await syncLinkedPrintingOutput(db, String(deletedProcessing.productionId || ""));
+                }
                 res.json({ success: true });
             }
             catch (error) {
