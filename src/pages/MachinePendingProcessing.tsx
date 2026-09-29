@@ -58,7 +58,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
+  const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -351,6 +351,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                           const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Printing";
                           const materialIssueBlocked = requiresMaterialIssue &&
                             (materialUsageLoading || !hasProductionMaterialUsage(job.production, materialUsageMap));
+                          const materialIssueMessage = materialUsageLoading
+                            ? "Checking issued material..."
+                            : issuedProductionIds.has(job.production.id)
+                              ? "No issued material remains after returns."
+                              : "Issue material or sheet first.";
                           return (
                           <tr key={`${job.production.id}-${idx}`} className="divide-x divide-black align-middle hover:bg-slate-50">
                             <td className="px-3 py-2 whitespace-nowrap">{job.production.transactionNo}</td>
@@ -371,7 +376,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                             <td className="px-3 py-2 text-center">
                               <button
                                 disabled={materialIssueBlocked}
-                                title={materialIssueBlocked ? "Issue material or sheet first." : "Report production"}
+                                title={materialIssueBlocked ? materialIssueMessage : "Report production"}
                                 onClick={() => {
                                   const now = new Date();
                                   const hour = now.getHours();
@@ -397,7 +402,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                                 Report
                               </button>
                               {materialIssueBlocked ? (
-                                <div className="mt-1 text-[9px] font-black text-amber-700">Issue material or sheet first.</div>
+                                <div className="mt-1 text-[9px] font-black text-amber-700">{materialIssueMessage}</div>
                               ) : null}
                             </td>
                           </tr>

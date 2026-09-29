@@ -17,6 +17,7 @@ import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, type PrintingWastageDraft } from "../lib/printingWastage";
 
 const PRINTING_MATERIAL_MESSAGE = "Issue material or sheet against this job before reporting Printing.";
+const PRINTING_RETURNED_MESSAGE = "No issued material remains after returns for this job. Issue material before reporting Printing.";
 
 type ShiftValue = "" | "Day" | "Night";
 
@@ -64,9 +65,10 @@ function LockedReportForm() {
   const isFullReport = completionStatus === "Full";
   const showCorrugationWastage = isCorrugationLiner && isFullReport;
   const showPrintingWastage = isPrinting && isFullReport;
-  const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
+  const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage();
   const materialIssueBlocked = isPrinting &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
+  const materialIssueMessage = issuedProductionIds.has(productionId) ? PRINTING_RETURNED_MESSAGE : PRINTING_MATERIAL_MESSAGE;
   const fullCorrugationQty = processing
     .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && (entry.completionStatus || "Full") === "Full")
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0) + (isCorrugationLiner && isFullReport ? Number(qty || 0) : 0);
@@ -93,7 +95,7 @@ function LockedReportForm() {
     e.preventDefault();
 
     if (materialIssueBlocked) {
-      alert(materialUsageLoading ? "Checking issued material. Please wait." : PRINTING_MATERIAL_MESSAGE);
+      alert(materialUsageLoading ? "Checking issued material. Please wait." : materialIssueMessage);
       return;
     }
 
@@ -179,7 +181,7 @@ function LockedReportForm() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {materialIssueBlocked ? (
             <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
-              {materialUsageLoading ? "Checking issued material..." : PRINTING_MATERIAL_MESSAGE}
+              {materialUsageLoading ? "Checking issued material..." : materialIssueMessage}
             </div>
           ) : null}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -310,7 +312,7 @@ function FullReportForm() {
   const [productions] = useData<Production>("productions", []);
   const [machines] = useData<Machine>("machines", []);
   const [processing, setProcessing] = useData<ProductionProcessing>("production_processing", []);
-  const { usageMap: materialUsageMap, loading: materialUsageLoading } = useProductionMaterialUsage();
+  const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
@@ -354,6 +356,7 @@ function FullReportForm() {
   const showPrintingWastage = isPrinting && isFullReport;
   const materialIssueBlocked = isPrinting &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
+  const materialIssueMessage = issuedProductionIds.has(productionId) ? PRINTING_RETURNED_MESSAGE : PRINTING_MATERIAL_MESSAGE;
 
   const qtyContext = useMemo(() => {
     if (!selectedProduction || !selectedMachine) {
@@ -397,7 +400,7 @@ function FullReportForm() {
     e.preventDefault();
 
     if (materialIssueBlocked) {
-      alert(materialUsageLoading ? "Checking issued material. Please wait." : PRINTING_MATERIAL_MESSAGE);
+      alert(materialUsageLoading ? "Checking issued material. Please wait." : materialIssueMessage);
       return;
     }
 
@@ -469,7 +472,7 @@ function FullReportForm() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {materialIssueBlocked ? (
             <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">
-              {materialUsageLoading ? "Checking issued material..." : PRINTING_MATERIAL_MESSAGE}
+              {materialUsageLoading ? "Checking issued material..." : materialIssueMessage}
             </div>
           ) : null}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

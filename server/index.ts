@@ -9222,7 +9222,8 @@ const createHandlers = (tableName: string) => {
 
           if (data.machineName === "Printing") {
             const [usageRows] = await db.query(
-              `SELECT COALESCE(SUM(usagePart.qty), 0) AS netQty
+              `SELECT COALESCE(SUM(usagePart.qty), 0) AS netQty,
+                      COALESCE(SUM(CASE WHEN usagePart.qty > 0 THEN usagePart.qty ELSE 0 END), 0) AS issuedQty
                FROM (
                  SELECT COALESCE(SUM(mil.qty), 0) AS qty
                  FROM material_issues mi
@@ -9250,8 +9251,11 @@ const createHandlers = (tableName: string) => {
             );
             const netMaterialUsage = Math.max(0, Number((usageRows as any[])[0]?.netQty || 0));
             if (netMaterialUsage <= 0) {
+              const wasIssued = Number((usageRows as any[])[0]?.issuedQty || 0) > 0;
               return res.status(409).json({
-                error: "Issue material or sheet against this job before reporting Printing.",
+                error: wasIssued
+                  ? "No issued material remains after returns for this job. Issue material before reporting Printing."
+                  : "Issue material or sheet against this job before reporting Printing.",
               });
             }
           }
