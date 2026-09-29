@@ -43,7 +43,7 @@ function getFgCellClasses(isBlocked: boolean, requiresFgGate: boolean) {
 export function StandaloneProductionExecution({ source }: Props) {
   const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
-  const [fgProductions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
+  const [fgProductions, setFgProductions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
@@ -58,12 +58,39 @@ export function StandaloneProductionExecution({ source }: Props) {
   const [outputQty, setOutputQty] = useState("");
 
   const jobs = useMemo<JobRow[]>(() => {
-    const merged = [
+    const sourceJobs = [
       ...phpJobs.map((job) => ({ ...job, jobSource: "PHP" as const })),
       ...plateJobs.map((job) => ({ ...job, jobSource: "PLATE" as const })),
-    ];
+    ].map((job) => {
+      const linkField = job.jobSource === "PHP" ? "phpScheduledJobId" : "plateScheduledJobId";
+      const linked = fgProductions.find((production) => String((production as any)[linkField] || "") === job.id);
+      return linked && String(linked.methodology || "").trim().toUpperCase() === "SCRAP"
+        ? { ...job, methodology: linked.methodology, scheduledDate: linked.scheduledDate || job.scheduledDate, plannedQty: linked.plannedQty || job.plannedQty, productionOutputQty: linked.prodFromFFG || linked.productionOutputQty || job.productionOutputQty }
+        : job;
+    });
+    const sourceIds = new Set(sourceJobs.map((job) => `${job.jobSource}:${job.id}`));
+    const scrapProductions = fgProductions
+      .filter((production) => String(production.methodology || "").trim().toUpperCase() === "SCRAP")
+      .flatMap((production) => {
+        const phpId = String(production.phpScheduledJobId || "").trim();
+        const plateId = String(production.plateScheduledJobId || "").trim();
+        const jobSource = phpId ? "PHP" : plateId ? "PLATE" : "";
+        const jobId = phpId || plateId;
+        if (!jobSource || !jobId || sourceIds.has(`${jobSource}:${jobId}`)) return [];
+        return [{
+          ...production,
+          id: jobId,
+          transactionNo: production.transactionNo,
+          jobSource: jobSource as "PHP" | "PLATE",
+          scheduledDate: production.scheduledDate || production.date,
+          shift: production.shift || "Day",
+          sequence: production.sequence || "-",
+          productionOutputQty: production.prodFromFFG || production.productionOutputQty || 0,
+        }];
+      });
+    const merged = [...sourceJobs, ...scrapProductions];
     return source === "ALL" ? merged : merged.filter((job) => job.jobSource === source);
-  }, [phpJobs, plateJobs, source]);
+  }, [fgProductions, phpJobs, plateJobs, source]);
 
   const activeSourceFilter = source === "ALL" ? sourceFilter : source;
   const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
@@ -135,6 +162,10 @@ export function StandaloneProductionExecution({ source }: Props) {
     } else {
       await setPlateJobs(updateJobs);
     }
+    const linkedField = selectedJob.jobSource === "PHP" ? "phpScheduledJobId" : "plateScheduledJobId";
+    await setFgProductions((previous) => previous.map((production) => String((production as any)[linkedField] || "") === selectedJob.id
+      ? { ...production, prodFromFFG: nextOutput, productionOutputQty: nextOutput, updatedBy: "System User", updateTimestamp: timestamp }
+      : production));
     window.alert("Production saved successfully.");
     closeModal();
   };

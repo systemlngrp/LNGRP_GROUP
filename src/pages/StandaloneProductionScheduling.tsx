@@ -202,12 +202,27 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
     }
 
     let fgCreationMessage = "";
-    if (String(methodology || "").trim().toUpperCase() === "CORRUGATION") {
+    {
       const sourceItem = selectedItem;
       const linkField = selectedJob.jobSource === "PHP" ? "phpScheduledJobId" : "plateScheduledJobId";
       const existingLinkedProduction = productions.find((production) => String((production as any)[linkField] || "").trim() === selectedJob.id);
+      const linkedSchedule = schedules.find((schedule) => String(schedule.id) === String(selectedJob.scheduleId || ""));
+      const resolvedPlanningId = firstOptionalString(linkedSchedule?.scheduleNo, selectedJob.planningId, selectedJob.scheduleId);
       if (existingLinkedProduction) {
-        fgCreationMessage = ` Linked production job ${existingLinkedProduction.transactionNo} already exists.`;
+        await setProductions((previous) => previous.map((production) => production.id === existingLinkedProduction.id
+          ? {
+              ...production,
+              scheduleId: selectedJob.scheduleId,
+              planningId: resolvedPlanningId,
+              scheduledDate: scheduleDate,
+              methodology,
+              plannedQty: nextPlannedQty,
+              qty: nextPlannedQty,
+              updatedBy: "System User",
+              updateTimestamp: timestamp,
+            }
+          : production));
+        fgCreationMessage = ` Linked production job ${existingLinkedProduction.transactionNo} updated.`;
       } else if (!sourceItem) {
         fgCreationMessage = ` Production job skipped: ${selectedJob.jobSource} item not found in item master.`;
       } else {
@@ -218,7 +233,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
           transactionNo: fgTxnNo,
           date: scheduleDate,
           scheduleId: selectedJob.scheduleId,
-          planningId: selectedJob.planningId || selectedJob.scheduleId,
+          planningId: resolvedPlanningId,
           scheduledDate: selectedJob.scheduledDate || scheduleDate,
           itemId: sourceItem.id,
           itemSource: "FG",

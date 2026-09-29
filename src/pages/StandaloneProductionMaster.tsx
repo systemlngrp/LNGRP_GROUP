@@ -252,7 +252,11 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.weightPerPcSetReq || row.plateWeight)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.printingColor)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.requiredQty || row.qty)}</td>
-                    <td className="px-3 py-2 text-sm">{formatCell(row.planningId || row.scheduleId)}</td>
+                    <td className="px-3 py-2 text-sm">{formatCell(
+                      schedules.find((schedule) => String(schedule.id) === String(row.scheduleId || ""))?.scheduleNo
+                      || row.planningId
+                      || row.scheduleId
+                    )}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.scheduledDate)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.plannedQty || row.qty)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.methodology)}</td>
