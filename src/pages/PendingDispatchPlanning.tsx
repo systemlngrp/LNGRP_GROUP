@@ -21,8 +21,8 @@ export function PendingDispatchPlanning() {
   const [searchTerm, setSearchTerm] = useState('');
 
 
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const [companies] = useData<Company>("companies", []);
   const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
