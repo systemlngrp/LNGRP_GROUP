@@ -1635,6 +1635,14 @@ const DELETE_REFERENCES = {
         { table: "consumptions", column: "productionId", label: "Consumptions" },
         { table: "inter_firm_pending_invoices", column: "sourceTransactionId", label: "Inter-Firm Pending Invoices" },
     ],
+    php_job_master: [
+        { table: "productions", column: "phpScheduledJobId", label: "Linked Productions" },
+        { table: "production_processing", column: "productionId", label: "Production Processing" },
+    ],
+    plate_job_master: [
+        { table: "productions", column: "plateScheduledJobId", label: "Linked Productions" },
+        { table: "production_processing", column: "productionId", label: "Production Processing" },
+    ],
     production_processing: [{ table: "inter_firm_pending_invoices", column: "sourceTransactionId", label: "Inter-Firm Pending Invoices" }],
     machines: [{ table: "production_processing", column: "machineId", label: "Production Processing" }],
     trucks: [
@@ -1828,18 +1836,22 @@ async function ensureBestEffortForeignKeys(db, database) {
             constraintName: "fk_material_return_lines_materialReturnId_material_returns",
             indexName: "idx_material_return_lines_materialReturnId",
         },
-        {
-            table: "production_processing",
-            column: "productionId",
-            refTable: "productions",
-            refColumn: "id",
-            constraintName: "fk_production_processing_productionId_productions",
-            indexName: "idx_production_processing_productionId",
-        },
     ];
     for (const def of defs) {
         await ensureForeignKey(db, database, def);
     }
+}
+async function allowDirectJobProcessing(db, database) {
+    const [rows] = await db.query(`SELECT DISTINCT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'production_processing'
+        AND COLUMN_NAME = 'productionId' AND REFERENCED_TABLE_NAME IS NOT NULL`, [database]);
+    for (const row of rows) {
+        const name = String(row.CONSTRAINT_NAME || "");
+        if (!/^[a-zA-Z0-9_]+$/.test(name))
+            throw new Error("Invalid processing foreign key name");
+        await db.query(`ALTER TABLE \`production_processing\` DROP FOREIGN KEY \`${name}\``);
+    }
+    await ensureIndex(db, database, "production_processing", "productionId", "idx_production_processing_productionId");
 }
 function hasWorkflowValue(value) {
     if (value === null || value === undefined)
@@ -7945,6 +7957,7 @@ async function initDb(retries = 5) {
             }
             try {
                 await ensureBestEffortForeignKeys(db, database);
+                await allowDirectJobProcessing(db, database);
             }
             catch (err) {
                 console.warn("[DB] Could not ensure foreign keys:", err.message);
@@ -8676,6 +8689,12 @@ const createHandlers = (tableName) => {
                     if (missing.length) {
                         return res.status(400).json({ error: `Mandatory fields missing/invalid: ${missing.join(", ")}` });
                     }
+                    const [jobRows] = await db.query(`SELECT id FROM productions WHERE id = ?
+             UNION ALL SELECT id FROM php_job_master WHERE id = ?
+             UNION ALL SELECT id FROM plate_job_master WHERE id = ? LIMIT 1`, [data.productionId, data.productionId, data.productionId]);
+                    if (!jobRows.length) {
+                        return res.status(400).json({ error: "Job was not found in Production, PHP, or Plate Job Master." });
+                    }
                     const completionStatus = String(data.completionStatus || "").trim();
                     if (completionStatus !== "Part" && completionStatus !== "Full") {
                         return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
@@ -8781,9 +8800,15 @@ const createHandlers = (tableName) => {
                LEFT JOIN \`plate_job_master\` plate ON plate.id = p.plateScheduledJobId
                WHERE p.id = ? LIMIT 1`, [data.productionId]);
                         const productionRow = productionRows[0];
+                        let routeJob = productionRow;
+                        if (!routeJob) {
+                            const [directRows] = await db.query(`SELECT 'PHP' AS itemSource, methodology FROM php_job_master WHERE id = ?
+                 UNION ALL SELECT 'PLATE' AS itemSource, methodology FROM plate_job_master WHERE id = ? LIMIT 1`, [data.productionId, data.productionId]);
+                            routeJob = directRows[0];
+                        }
                         const [settingRows] = await db.query("SELECT `mandatoryMachinesByType` FROM `settings` ORDER BY `updateTimestamp` DESC LIMIT 1");
                         const mandatoryMapping = parseMandatoryMachinesByType(settingRows[0]);
-                        const { source, requiredMachines } = getProcessingMachineRoute(productionRow || {}, mandatoryMapping, normalizeMachineName);
+                        const { source, requiredMachines } = getProcessingMachineRoute(routeJob || {}, mandatoryMapping, normalizeMachineName);
                         if ((source === "PHP" || source === "PLATE") && !requiredMachines.includes(data.machineName)) {
                             return res.status(409).json({ error: `${source} job does not require ${data.machineName}.` });
                         }

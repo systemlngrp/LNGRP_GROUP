@@ -58,7 +58,13 @@ function LockedReportForm() {
   const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
-  const allProductions = useMemo(() => [...productions, ...phpJobs.map((job) => ({ ...job, itemSource: "PHP" as const })), ...plateJobs.map((job) => ({ ...job, itemSource: "PLATE" as const }))], [plateJobs, phpJobs, productions]);
+  const allProductions = useMemo(() => {
+    const linkedPhpIds = new Set(productions.map((row) => String(row.phpScheduledJobId || "")).filter(Boolean));
+    const linkedPlateIds = new Set(productions.map((row) => String(row.plateScheduledJobId || "")).filter(Boolean));
+    return [...productions,
+      ...phpJobs.filter((job) => !linkedPhpIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PHP" as const })),
+      ...plateJobs.filter((job) => !linkedPlateIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PLATE" as const }))];
+  }, [plateJobs, phpJobs, productions]);
   const selectedProduction = allProductions.find((production) => production.id === productionId);
   const requiresCompletionStatus = usesPartFullProgress(machineName);
   const isCorrugationLiner = normalizeMachineName(machineName) === "Corrugation Liner";
@@ -326,11 +332,13 @@ function FullReportForm() {
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
-  const allProductions = useMemo(() => [
-    ...productions,
-    ...phpJobs.map((job) => ({ ...job, itemSource: "PHP" as const })),
-    ...plateJobs.map((job) => ({ ...job, itemSource: "PLATE" as const })),
-  ], [plateJobs, phpJobs, productions]);
+  const allProductions = useMemo(() => {
+    const linkedPhpIds = new Set(productions.map((row) => String(row.phpScheduledJobId || "")).filter(Boolean));
+    const linkedPlateIds = new Set(productions.map((row) => String(row.plateScheduledJobId || "")).filter(Boolean));
+    return [...productions,
+      ...phpJobs.filter((job) => !linkedPhpIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PHP" as const })),
+      ...plateJobs.filter((job) => !linkedPlateIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PLATE" as const }))];
+  }, [plateJobs, phpJobs, productions]);
 
   const jobOptions = useMemo(() => {
     return allProductions
