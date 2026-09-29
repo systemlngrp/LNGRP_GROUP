@@ -562,15 +562,17 @@ export function PendingInvoicing() {
     setExpandedCompanies(new Set(groupedData.map((group) => group.groupKey)));
   }, [groupedData]);
 
-  const handleStartBilling = (companyId: string, slips: any[]) => {
+  const handleStartBilling = (group: GroupedLoading) => {
+    const { companyId, groupKey, firmId, slips } = group;
     const firstPlan = plans.find((plan) => plan.id === slips[0]?.lines?.[0]?.dispatchPlanId);
     const firstOrder = orders.find((order) => order.id === firstPlan?.orderId);
-    const firmId = String(firstOrder?.firmId || firstPlan?.orderFirmId || firstPlan?.firmId || slips[0]?.orderFirmId || slips[0]?.firmId || "");
-    const firm = firms.find((row) => row.id === firmId);
+    const resolvedFirmId = String(firmId || firstOrder?.firmId || firstPlan?.orderFirmId || firstPlan?.firmId || slips[0]?.orderFirmId || slips[0]?.firmId || "");
+    const firm = firms.find((row) => row.id === resolvedFirmId);
     if (!firm) { alert("Original order firm could not be resolved."); return; }
     setActiveFirm(firm);
-    setBillingMode(`${plans.find((plan) => plan.id === slips[0]?.lines?.[0]?.dispatchPlanId)?.orderFirmId || plans.find((plan) => plan.id === slips[0]?.lines?.[0]?.dispatchPlanId)?.firmId || slips[0]?.firmId || ""}::${companyId}`);
+    setBillingMode(groupKey);
     setSelectedSlips(new Set(slips.map(s => s.id)));
+    setExpandedCompanies((previous) => new Set(previous).add(groupKey));
   };
 
   const handleToggleSlip = (id: string) => {
@@ -1184,7 +1186,7 @@ export function PendingInvoicing() {
                   </button>
                 ) : (
                   <button 
-                    onClick={() => handleStartBilling(group.companyId, group.slips)}
+                    onClick={() => handleStartBilling(group)}
                     className="bg-indigo-600 text-white px-4 py-1.5 rounded text-xs font-bold hover:bg-indigo-700 transition shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-[2px]"
                   >
                     SELECT FOR INVOICING
