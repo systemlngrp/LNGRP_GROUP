@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { ClientPagination } from "../components/ClientPagination";
 import { TableControls } from "../components/TableControls";
@@ -84,7 +85,7 @@ export function StandaloneProductionExecution({ source }: Props) {
           jobSource: jobSource as "PHP" | "PLATE",
           scheduledDate: production.scheduledDate || production.date,
           shift: production.shift || "Day",
-          sequence: production.sequence || "-",
+          sequence: production.sequence,
           productionOutputQty: production.prodFromFFG || production.productionOutputQty || 0,
         }];
       });
@@ -95,10 +96,21 @@ export function StandaloneProductionExecution({ source }: Props) {
   const activeSourceFilter = source === "ALL" ? sourceFilter : source;
   const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
 
+  const unsequencedJobs = useMemo(() => jobs.filter((job) =>
+    job.status !== "Cancelled" && job.status !== "Completed" &&
+    (activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter) &&
+    (!firmFilter || resolvePhpPlateFirmId(job, schedules, orders) === firmFilter) &&
+    (!fromDate || workflowDate(job) >= fromDate) && (!toDate || workflowDate(job) <= toDate) &&
+    String(job.scheduledDate || "").trim() && String(job.shift || "").trim() &&
+    !String(job.sequence || "").trim() &&
+    (!String(job.jobCompletionTimeOutput || "").trim() || !(Number(job.productionOutputQty || 0) > 0)) &&
+    (!searchTerm.trim() || [job.transactionNo, job.erpCode, job.methodology, job.jobSource].join(" ").toLowerCase().includes(searchTerm.trim().toLowerCase()))
+  ), [activeSourceFilter, firmFilter, fromDate, jobs, orders, schedules, searchTerm, toDate]);
+
   const pendingJobs = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return jobs
-      .filter((job) => job.status !== "Cancelled")
+      .filter((job) => job.status !== "Cancelled" && job.status !== "Completed")
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
       .filter((job) => !firmFilter || resolvePhpPlateFirmId(job, schedules, orders) === firmFilter)
       .filter((job) => { const date = workflowDate(job); return (!fromDate || date >= fromDate) && (!toDate || date <= toDate); })
@@ -189,6 +201,7 @@ export function StandaloneProductionExecution({ source }: Props) {
         <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => { setToDate(e.target.value); closeModal(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
         {(searchTerm || firmFilter || fromDate || toDate || (source === "ALL" && sourceFilter !== "ALL")) && <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); setSourceFilter("ALL"); closeModal(); }} className="rounded border border-black px-3 py-2 text-sm font-bold">Clear Filters</button>}
       </div>
+      {unsequencedJobs.length > 0 && <div className="rounded border border-amber-600 bg-amber-50 px-4 py-3 text-sm text-black" role="status">{unsequencedJobs.length} scheduled {unsequencedJobs.length === 1 ? "job is" : "jobs are"} waiting for a sequence and excluded from Pending Production. <Link to="/production/php-plate/sequencing" className="font-bold text-amber-800 underline">Set sequence</Link></div>}
       <div className="bg-white border border-black rounded shadow-sm overflow-auto">
         <table className="min-w-[1560px] w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">

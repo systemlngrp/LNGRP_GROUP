@@ -27,8 +27,8 @@ function formatCell(value: unknown) {
 }
 
 export function StandaloneProductionSequencing({ source }: Props) {
-  const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), []);
-  const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), []);
+  const [phpJobs, setPhpJobs] = useData<Production>(getJobMasterEntityName("PHP"), [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs, setPlateJobs] = useData<Production>(getJobMasterEntityName("PLATE"), [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const { itemsBySource } = useOrderItemCatalog();
   const [searchTerm, setSearchTerm] = useState("");
   const [sourceFilter, setSourceFilter] = useState<WorkflowSource>(source === "ALL" ? "ALL" : source);
@@ -48,7 +48,7 @@ export function StandaloneProductionSequencing({ source }: Props) {
   const pendingJobs = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
     return jobs
-      .filter((job) => job.status !== "Cancelled")
+      .filter((job) => job.status !== "Cancelled" && job.status !== "Completed")
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
       .filter((job) => String(job.scheduledDate || "").trim() && String(job.shift || "").trim() && String(job.methodology || "").trim())
       .filter((job) => !String(job.sequence || "").trim())

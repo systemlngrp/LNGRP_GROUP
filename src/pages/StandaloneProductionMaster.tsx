@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { ClientPagination } from "../components/ClientPagination";
@@ -262,7 +263,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
                     <td className="px-3 py-2 text-sm">{formatCell(row.methodology)}</td>
                     <td className={`px-3 py-2 text-sm text-right ${getFgCellClasses(fgState.isBlocked, fgState.requiresFgGate)}`}>{formatFgNumber(fgState.fgValue)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.jobType)}</td>
-                    <td className="px-3 py-2 text-sm">{formatCell(row.sequence)}</td>
+                    <td className="px-3 py-2 text-sm">{row.scheduledDate && row.shift && row.methodology && !String(row.sequence || "").trim() && row.status !== "Cancelled" && row.status !== "Completed" && !String(row.jobCompletionTimeOutput || "").trim() ? <Link to="/production/php-plate/sequencing" className="font-bold text-amber-700 underline">Needs sequencing</Link> : formatCell(row.sequence)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.jobCompletionTimeOutput)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.productionOutputQty)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.qty)}</td>

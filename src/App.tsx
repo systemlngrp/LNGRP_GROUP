@@ -70,6 +70,7 @@ import { PhpProductionScheduling } from "./pages/PhpProductionScheduling";
 import { PhpProductionExecution } from "./pages/PhpProductionExecution";
 import { PhpPlateProductionScheduling } from "./pages/PhpPlateProductionScheduling";
 import { PhpPlateProductionExecution } from "./pages/PhpPlateProductionExecution";
+import { PhpPlateProductionSequencing } from "./pages/PhpPlateProductionSequencing";
 import { PlateProductionMaster } from "./pages/PlateProductionMaster";
 import { PlateProductionScheduling } from "./pages/PlateProductionScheduling";
 import { PlateProductionExecution } from "./pages/PlateProductionExecution";
@@ -315,6 +316,7 @@ export default function App() {
           <Route path="production/php/scheduling" element={<PhpProductionScheduling />} />
           <Route path="production/php/pending-production" element={<PhpProductionExecution />} />
           <Route path="production/php-plate/scheduling" element={<PhpPlateProductionScheduling />} />
+          <Route path="production/php-plate/sequencing" element={<PhpPlateProductionSequencing />} />
           <Route path="production/php-plate/pending-production" element={<PhpPlateProductionExecution />} />
           <Route path="production/plate/master" element={<PlateProductionMaster />} />
           <Route path="production/plate/pending-planning" element={<PendingPlatePlanning />} />

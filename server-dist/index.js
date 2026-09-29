@@ -3316,6 +3316,58 @@ async function backfillLinkedProductionSources(db) {
         console.log(`[DB] Backfilled ${repaired} linked production row(s) to FG.`);
     return repaired;
 }
+async function backfillScrapScheduledProductions(db) {
+    const [rows] = await db.query(`
+    SELECT j.*, os.scheduleNo
+    FROM (
+      SELECT id, 'PHP' AS source, transactionNo, date, scheduleId, itemId, qty, uom, remarks, status,
+             firmId, firmName, companyName, erpCode, plannedQty, scheduledDate, shift,
+             methodology, jobType, sequence, id AS phpScheduledJobId, NULL AS plateScheduledJobId
+      FROM php_job_master
+      UNION ALL
+      SELECT id, 'PLATE' AS source, transactionNo, date, scheduleId, itemId, qty, uom, remarks, status,
+             firmId, firmName, companyName, erpCode, plannedQty, scheduledDate, shift,
+             methodology, jobType, sequence, NULL AS phpScheduledJobId, id AS plateScheduledJobId
+      FROM plate_job_master
+    ) j
+    LEFT JOIN orders_schedule os ON os.id = j.scheduleId
+    LEFT JOIN productions p ON (j.source = 'PHP' AND p.phpScheduledJobId = j.id)
+                            OR (j.source = 'PLATE' AND p.plateScheduledJobId = j.id)
+    WHERE UPPER(TRIM(COALESCE(j.methodology, ''))) = 'SCRAP'
+      AND COALESCE(TRIM(j.scheduledDate), '') <> ''
+      AND COALESCE(j.plannedQty, 0) > 0
+      AND LOWER(TRIM(COALESCE(j.status, ''))) NOT IN ('cancelled', 'canceled')
+      AND p.id IS NULL
+    ORDER BY j.scheduledDate, j.id
+  `);
+    const skipped = [];
+    let created = 0;
+    for (const row of rows) {
+        if (!row.itemId || !row.scheduleId) {
+            skipped.push(String(row.id));
+            continue;
+        }
+        const id = crypto.randomUUID();
+        const transactionNo = await generateProductionJobNumber(db, row.scheduledDate || row.date);
+        await db.query(`INSERT INTO productions
+      (id, transactionNo, date, scheduleId, planningId, itemId, itemSource, qty, plannedQty, uom,
+       remarks, status, firmId, firmName, companyName, erpCode, scheduledDate, shift, methodology,
+       jobType, sequence, phpScheduledJobId, plateScheduledJobId, updatedBy, updateTimestamp)
+      VALUES (?, ?, ?, ?, ?, ?, 'FG', ?, ?, ?, ?, 'Pending Consumption', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+            id, transactionNo, row.scheduledDate || row.date, row.scheduleId,
+            row.scheduleNo || row.planningId || row.scheduleId, row.itemId,
+            Number(row.plannedQty || row.qty || 0), Number(row.plannedQty || row.qty || 0), row.uom || '',
+            row.remarks || '', row.firmId || null, row.firmName || null, row.companyName || null,
+            row.erpCode || null, row.scheduledDate, row.shift || null, row.methodology,
+            row.jobType || null, row.sequence || null, row.phpScheduledJobId || null,
+            row.plateScheduledJobId || null, 'System User', new Date().toISOString(),
+        ]);
+        created++;
+    }
+    if (created || skipped.length)
+        console.log(`[DB] SCRAP production backfill: ${created} created; skipped ${skipped.length}: ${skipped.join(', ')}`);
+    return { created, skipped };
+}
 async function validateLnkiPrintingComponents(db, processing) {
     if (String(processing.completionStatus || "").trim().toLowerCase() !== "full")
         return;
@@ -7618,6 +7670,7 @@ async function initDb(retries = 5) {
             await backfillInterFirmProductionProcessing(db);
             await backfillIndentRequisitionNumbers(db);
             await backfillLinkedProductionSources(db);
+            await backfillScrapScheduledProductions(db);
             await backfillCorrugationLinerOutput(db);
             await dropRemovedFirmScopeColumns(db, database);
             await ensureUniqueMaterialErpIndex(db, database);
