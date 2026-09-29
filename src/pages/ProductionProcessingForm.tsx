@@ -58,7 +58,8 @@ function LockedReportForm() {
   const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
-  const selectedProduction = productions.find((production) => production.id === productionId);
+  const allProductions = useMemo(() => [...productions, ...phpJobs.map((job) => ({ ...job, itemSource: "PHP" as const })), ...plateJobs.map((job) => ({ ...job, itemSource: "PLATE" as const }))], [plateJobs, phpJobs, productions]);
+  const selectedProduction = allProductions.find((production) => production.id === productionId);
   const requiresCompletionStatus = usesPartFullProgress(machineName);
   const isCorrugationLiner = normalizeMachineName(machineName) === "Corrugation Liner";
   const isPrinting = normalizeMachineName(machineName) === "Printing";
@@ -310,6 +311,8 @@ function FullReportForm() {
   const lockJob = searchParams.get("lockJob") === "1";
   
   const [productions] = useData<Production>("productions", []);
+  const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
+  const [plateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
   const [processing, setProcessing] = useData<ProductionProcessing>("production_processing", []);
   const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage();
@@ -323,15 +326,20 @@ function FullReportForm() {
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
+  const allProductions = useMemo(() => [
+    ...productions,
+    ...phpJobs.map((job) => ({ ...job, itemSource: "PHP" as const })),
+    ...plateJobs.map((job) => ({ ...job, itemSource: "PLATE" as const })),
+  ], [plateJobs, phpJobs, productions]);
 
   const jobOptions = useMemo(() => {
-    return productions
+    return allProductions
       .filter(p => p.status !== "Cancelled")
       .map(p => ({
         value: p.id,
         label: `Job: ${String(p.jobCardNo || "").trim() || p.transactionNo} (Qty: ${p.qty})`
       }));
-  }, [productions]);
+  }, [allProductions]);
 
   const machineOptions = useMemo(() => {
     return [...machines]
@@ -339,10 +347,7 @@ function FullReportForm() {
       .map(m => ({ value: m.id, label: normalizeMachineName(m.name) }));
   }, [machines]);
 
-  const selectedProduction = useMemo(
-    () => productions.find((production) => production.id === productionId),
-    [productions, productionId]
-  );
+  const selectedProduction = useMemo(() => allProductions.find((production) => production.id === productionId), [allProductions, productionId]);
 
   const selectedMachine = useMemo(
     () => machines.find((machine) => machine.id === machineId),

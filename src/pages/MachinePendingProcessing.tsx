@@ -117,7 +117,15 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     });
 
     // Filter productions that are active and not completed
-    const activeProductions = productions.filter(p => 
+    const linkedPhpIds = new Set(productions.map((row) => String(row.phpScheduledJobId || "").trim()).filter(Boolean));
+    const linkedPlateIds = new Set(productions.map((row) => String(row.plateScheduledJobId || "").trim()).filter(Boolean));
+    const directPhpJobs = phpJobs
+      .filter((job) => !linkedPhpIds.has(String(job.id)) && job.status !== "Completed" && job.status !== "Cancelled")
+      .map((job) => ({ ...job, itemSource: "PHP" as const }));
+    const directPlateJobs = plateJobs
+      .filter((job) => !linkedPlateIds.has(String(job.id)) && job.status !== "Completed" && job.status !== "Cancelled")
+      .map((job) => ({ ...job, itemSource: "PLATE" as const }));
+    const activeProductions = [...productions, ...directPhpJobs, ...directPlateJobs].filter(p =>
       p.status !== "Completed" && 
       p.status !== "Cancelled" && 
       !p.cancelTimestamp &&
