@@ -31,7 +31,7 @@ import { deriveGatePassState, hasSavedReturnableReceiptGateEntry, isReturnableGa
 import { canCreateMrrForGateEntry } from "./gateEntryState";
 import { parseMandatoryMachinesByType } from "./mandatoryMachines";
 import { buildProductionCorrugatedSheetUsageMap, buildProductionMaterialUsageMap, getProductionActualPaperUsed, hasProductionCorrugatedSheetUsage } from "./productionMaterialUsage";
-import { getRequiredMachinesForProduction } from "./productionType";
+import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "./productionType";
 import { normalizeMachineName } from "./productionMachineNames";
 import { getCurrentProcessingMachine, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
@@ -381,6 +381,13 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       String(slip.tallyTimestamp || "").trim() === "" &&
       String(slip.status || "Active").trim().toLowerCase() !== "cancelled"
   ).length;
+  const linkedPhpIds = new Set(args.productions.map((production) => String(production.phpScheduledJobId || "").trim()).filter(Boolean));
+  const linkedPlateIds = new Set(args.productions.map((production) => String(production.plateScheduledJobId || "").trim()).filter(Boolean));
+  const processingCandidates = [
+    ...args.productions.map((production) => resolveProductionProcessingRoute(production, args.phpJobMaster, args.plateJobMaster)),
+    ...args.phpJobMaster.filter((job) => !linkedPhpIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PHP" as const })),
+    ...args.plateJobMaster.filter((job) => !linkedPlateIds.has(String(job.id))).map((job) => ({ ...job, itemSource: "PLATE" as const })),
+  ];
 
   return {
     "/material-receipt/approvals": args.materialIn.filter((m) => ["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status)).length,
@@ -428,7 +435,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     ).length,
     "/production/pending-job-closure": args.pendingJobClosureCount || 0,
     "/production/pending-machine-processing": getPendingMachineProcessingCount(
-      args.productions,
+      processingCandidates,
       args.machines,
       args.processing,
       args.settings,
@@ -436,7 +443,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       args.user
     ),
     "/production/pending-printing": getPendingMachineProcessingCount(
-      args.productions,
+      processingCandidates,
       args.machines,
       args.processing,
       args.settings,

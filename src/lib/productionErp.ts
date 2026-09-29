@@ -38,6 +38,8 @@ export function resolveProductionSource(
   order: Partial<Order> | null | undefined,
   catalogs: ProductionCatalogs
 ): ProductionItemSource {
+  if (String(production.phpScheduledJobId || "").trim()) return "PHP";
+  if (String(production.plateScheduledJobId || "").trim()) return "PLATE";
   const explicit = explicitSource(production.itemSource) || explicitSource(order?.itemSource);
   if (explicit) return explicit;
 

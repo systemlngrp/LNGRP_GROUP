@@ -9,7 +9,7 @@ import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { getRequiredMachinesForProduction } from "../lib/productionType";
+import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { getCurrentProcessingMachine, isMachineStepFull } from "../lib/productionProcessingProgress";
 import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage";
@@ -136,7 +136,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       const schedule = scheduleById.get(String(p.scheduleId || ""));
       const order = schedule ? orderById.get(String(schedule.orderId || "")) : undefined;
       const source = getProductionOriginSource(p, phpJobIds, plateJobIds);
-      const sourceProduction = { ...p, itemSource: source } as Production;
+      const sourceProduction = resolveProductionProcessingRoute({ ...p, itemSource: source }, phpJobs, plateJobs);
       const item = resolveProductionItem(p, order, itemsBySource, source);
       const erpCode = resolveProductionErp(p, order, item);
       const requiredMachines = Array.from(
@@ -207,7 +207,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
         return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
       });
-  }, [productions, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, firmFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
+  }, [productions, phpJobs, plateJobs, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, firmFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
 
   const companyOptions = useMemo(() => {
     const names = new Set<string>();

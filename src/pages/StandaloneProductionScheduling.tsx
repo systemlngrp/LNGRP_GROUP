@@ -237,6 +237,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
           scheduledDate: selectedJob.scheduledDate || scheduleDate,
           itemId: sourceItem.id,
           itemSource: "FG",
+          methodology,
           qty: nextPlannedQty,
           plannedQty: nextPlannedQty,
           uom: sourceItem.uom || String(sourceRaw.uom || ""),

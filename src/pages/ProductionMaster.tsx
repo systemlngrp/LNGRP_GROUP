@@ -14,7 +14,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { cn } from "../lib/utils";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { getProductionEffectiveType, getRequiredMachinesForProduction } from "../lib/productionType";
+import { getProductionEffectiveType, getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/jobClosureValidation";
 import { getProductionMatchingFields, hasProductionMatchingFieldChanges } from "../lib/productionMatching";
 import { downloadJobCardPdf } from "../lib/jobCardPdf";
@@ -228,7 +228,7 @@ export function ProductionMaster() {
       const item = resolveProductionItem(production);
       const machineName = normalizeMachineName(entry.machineName);
       const requiredMachines = production
-        ? getRequiredMachinesForProduction(production, item, mandatoryMachinesByType, machines).map((name) => normalizeMachineName(name))
+        ? getRequiredMachinesForProduction(resolveProductionProcessingRoute(production, phpJobs, plateJobs), item, mandatoryMachinesByType, machines).map((name) => normalizeMachineName(name))
         : [];
 
       if ((machineName === "Rotary" || machineName === "Slotting") && !requiredMachines.includes(machineName)) {
@@ -243,7 +243,7 @@ export function ProductionMaster() {
       map.set(entry.productionId, totals);
     });
     return map;
-  }, [processing, productions, mandatoryMachinesByType, machines]);
+  }, [processing, productions, phpJobs, plateJobs, mandatoryMachinesByType, machines]);
 
   const corrugationWastageTotalsMap = useMemo(() => {
     const map = new Map<string, Record<string, number>>();
@@ -288,13 +288,13 @@ export function ProductionMaster() {
 
   const jobClosureStatusMap = useMemo(() => {
     return buildJobClosureStatusMap({
-      productions,
+      productions: productions.map((production) => resolveProductionProcessingRoute(production, phpJobs, plateJobs)),
       processing,
       mandatoryMachinesByType,
       machines,
       resolveProductionItem,
     });
-  }, [productions, processing, mandatoryMachinesByType, machines, itemsBySource]);
+  }, [productions, phpJobs, plateJobs, processing, mandatoryMachinesByType, machines, itemsBySource]);
   const erpLeastGsmMap = useMemo(() => {
     const map = new Map<string, number>();
     productions.forEach(p => {

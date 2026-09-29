@@ -14,7 +14,7 @@ import { normalizeMachineName } from "../lib/productionMachineNames";
 import { getProductionDisplayStatus } from "../lib/productionStageFilters";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { getProductionEffectiveType, getRequiredMachinesForProduction } from "../lib/productionType";
+import { getProductionEffectiveType, getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/jobClosureValidation";
 import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
@@ -23,6 +23,8 @@ export function PendingJobClosure() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all" });
+  const [plateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all" });
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
@@ -170,13 +172,13 @@ export function PendingJobClosure() {
 
   const jobClosureStatusMap = useMemo(() => {
     return buildJobClosureStatusMap({
-      productions,
+      productions: productions.map((production) => resolveProductionProcessingRoute(production, phpJobs, plateJobs)),
       processing,
       mandatoryMachinesByType,
       machines,
       resolveProductionItem,
     });
-  }, [productions, processing, mandatoryMachinesByType, machines, findItemAcrossSources]);
+  }, [productions, phpJobs, plateJobs, processing, mandatoryMachinesByType, machines, findItemAcrossSources]);
   const erpLeastGsmMap = useMemo(() => {
     const map = new Map<string, number>();
     productions.forEach(p => {
