@@ -8480,9 +8480,13 @@ await db.query(`
 
       try {
         await ensureBestEffortForeignKeys(db, database);
-        await allowDirectJobProcessing(db, database);
       } catch (err) {
         console.warn("[DB] Could not ensure foreign keys:", (err as Error).message);
+      }
+      try {
+        await allowDirectJobProcessing(db, database);
+      } catch (err) {
+        console.error("[DB] Could not enable direct PHP/Plate processing:", err);
       }
 
       try {
@@ -9268,13 +9272,23 @@ const createHandlers = (tableName: string) => {
           }
 
           const [jobRows] = await db.query(
-            `SELECT id FROM productions WHERE id = ?
-             UNION ALL SELECT id FROM php_job_master WHERE id = ?
-             UNION ALL SELECT id FROM plate_job_master WHERE id = ? LIMIT 1`,
+            `SELECT id, 'FG' AS source FROM productions WHERE id = ?
+             UNION ALL SELECT id, 'PHP' AS source FROM php_job_master WHERE id = ?
+             UNION ALL SELECT id, 'PLATE' AS source FROM plate_job_master WHERE id = ? LIMIT 1`,
             [data.productionId, data.productionId, data.productionId]
           );
           if (!(jobRows as any[]).length) {
             return res.status(400).json({ error: "Job was not found in Production, PHP, or Plate Job Master." });
+          }
+          if ((jobRows as any[])[0].source !== "FG") {
+            const [databaseRows] = await db.query("SELECT DATABASE() AS db");
+            const databaseName = String((databaseRows as any[])[0]?.db || "");
+            try {
+              await allowDirectJobProcessing(db, databaseName);
+            } catch (error) {
+              console.error("[PROCESSING] Could not remove production-only foreign key:", error);
+              return res.status(503).json({ error: "Direct PHP/Plate reporting is unavailable because the database constraint could not be updated. Contact the administrator." });
+            }
           }
 
           const completionStatus = String(data.completionStatus || "").trim();
