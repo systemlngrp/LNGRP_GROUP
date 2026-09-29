@@ -8931,6 +8931,18 @@ const createHandlers = (tableName) => {
                     if (orderFirmId)
                         data.orderFirmId = orderFirmId;
                 }
+                if (tableName === "loading_slips" && String(data.loadingSource || "").toUpperCase() === "DIRECT") {
+                    const [existingRows] = await db.query("SELECT id FROM `loading_slips` WHERE id = ? LIMIT 1", [String(data.id || "")]);
+                    if (!existingRows.length) {
+                        const firmId = String(data.firmId || "").trim();
+                        if (!firmId || String(data.orderFirmId || "").trim() !== firmId) {
+                            return res.status(400).json({ error: "Select one firm for direct loading and billing." });
+                        }
+                        const [firmRows] = await db.query("SELECT id FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+                        if (!firmRows.length)
+                            return res.status(400).json({ error: "Selected firm does not exist." });
+                    }
+                }
                 if (tableName === "loading_slips" && String(data.loadingSource || "").toUpperCase() !== "DIRECT") {
                     const [existingRows] = await db.query("SELECT id FROM `loading_slips` WHERE id = ? LIMIT 1", [String(data.id || "")]);
                     try {

@@ -96,6 +96,8 @@ export function upsertFgLinkedChildSlip({
     loadingSource: parentSlip.loadingSource,
     companyId: parentSlip.companyId,
     companyName: parentSlip.companyName,
+    firmId: parentSlip.firmId || existing?.firmId,
+    orderFirmId: parentSlip.orderFirmId || parentSlip.firmId || existing?.orderFirmId,
     fgLoadingId: parentSlip.id,
     [fieldName]: nextConsumptionTransactionNo || undefined,
     lines: buildLinkedLines(details),

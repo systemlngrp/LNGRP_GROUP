@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import type { Company, DispatchPlan, LoadingSlip, Order, PackingDetail, Truck } from "../types";
+import type { Company, DispatchPlan, Firm, LoadingSlip, Order, PackingDetail, Truck } from "../types";
 import type { OrderCatalogItem } from "../lib/orderItems";
 import { buildLinkedLoadingDetailsFromSlip } from "../lib/linkedLoading";
 import { normalizeTruckStatus } from "../lib/truckStatus";
@@ -9,6 +9,7 @@ import { X, Plus, Trash2 } from "lucide-react";
 type Props = {
   open: boolean;
   companies: Company[];
+  firms: Firm[];
   trucks: Truck[];
   allItems: OrderCatalogItem[];
   plans: DispatchPlan[];
@@ -27,6 +28,7 @@ type Props = {
 type Draft = {
   date: string;
   companyId: string;
+  firmId: string;
   itemId: string;
   truckId: string;
   manualTruckNo: string;
@@ -40,6 +42,7 @@ const makePacking = (): PackingDetail => ({ extra: 0, bundles: 0, packSize: 0, q
 const makeDraft = (): Draft => ({
   date: new Date().toISOString().slice(0, 10),
   companyId: "",
+  firmId: "",
   itemId: "",
   truckId: "",
   manualTruckNo: "",
@@ -52,6 +55,7 @@ const makeDraft = (): Draft => ({
 export function DirectLoadingSlipModal({
   open,
   companies,
+  firms,
   trucks,
   allItems,
   plans,
@@ -65,6 +69,12 @@ export function DirectLoadingSlipModal({
   const [draft, setDraft] = useState<Draft>(makeDraft());
   const [isSaving, setIsSaving] = useState(false);
   const company = useMemo(() => companies.find((row) => row.id === draft.companyId), [companies, draft.companyId]);
+  const firm = useMemo(() => firms.find((row) => row.id === draft.firmId), [firms, draft.firmId]);
+  const firmOptions = useMemo(
+    () => [...firms].map((row) => ({ value: row.id, label: row.shortName || row.firmName || row.id }))
+      .sort((left, right) => left.label.localeCompare(right.label, undefined, { sensitivity: "base" })),
+    [firms]
+  );
   const companyOptions = useMemo(
     () =>
       [...companies]
@@ -121,7 +131,7 @@ export function DirectLoadingSlipModal({
   const previewSlip = useMemo<LoadingSlip | null>(() => {
     const truckNoInput = draft.manualTruckNo.trim();
     const matchedTruck = availableTrucks.find((truck) => truck.truckNo.trim().toUpperCase() === truckNoInput.toUpperCase());
-    if (!company || !item || !truckNoInput || !(Number(draft.loadedQty || 0) > 0)) return null;
+    if (!firm || !company || !item || !truckNoInput || !(Number(draft.loadedQty || 0) > 0)) return null;
     return {
       id: "direct-preview",
       slipNo: "",
@@ -129,6 +139,8 @@ export function DirectLoadingSlipModal({
       truckId: matchedTruck?.id || "",
       truckNo: truckNoInput || undefined,
       loadingSource: "DIRECT",
+      firmId: firm.id,
+      orderFirmId: firm.id,
       companyId: company.id,
       companyName: company.name,
       lines: [
@@ -152,7 +164,7 @@ export function DirectLoadingSlipModal({
       updatedBy: "System User",
       updateTimestamp: new Date().toISOString(),
     };
-  }, [company, item, draft, normalizedPacking, availableTrucks]);
+  }, [firm, company, item, draft, normalizedPacking, availableTrucks]);
 
   const isFgItem = item?.source === "FG";
   const phpDetails = useMemo(
@@ -193,7 +205,7 @@ export function DirectLoadingSlipModal({
 
   const handleSave = async () => {
     if (!previewSlip) {
-      alert("Please select company, item, truck number, and loaded qty.");
+      alert("Please select firm, company, item, truck number, and loaded qty.");
       return;
     }
     setIsSaving(true);
@@ -223,6 +235,20 @@ export function DirectLoadingSlipModal({
           <div className="space-y-4 rounded border border-black p-4">
             <table className="w-full border-collapse border border-black">
               <tbody>
+                <tr className="border-b border-black">
+                  <td colSpan={2} className="p-3 align-top">
+                    {field(
+                      "Firm",
+                      <Select
+                        options={firmOptions}
+                        value={draft.firmId}
+                        onChange={(value) => setDraft((prev) => ({ ...prev, firmId: value }))}
+                        placeholder="Select Firm"
+                      />,
+                      true
+                    )}
+                  </td>
+                </tr>
                 <tr className="divide-x divide-black border-b border-black">
                   <td className="w-1/2 p-3 align-top">
                     {field(

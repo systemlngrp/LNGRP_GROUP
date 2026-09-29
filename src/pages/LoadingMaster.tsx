@@ -8,6 +8,7 @@ import {
   DispatchPlan,
   Order,
   Company,
+  Firm,
   Invoice,
   InvoiceLineItem,
   Setting
@@ -51,7 +52,7 @@ export function LoadingMaster() {
   const npdItems = useNpdItems();
   const { resolveOrderItem, itemsBySource, allItems } = useOrderItemCatalog();
   const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
-  const [firms] = useData<any>("firms", [], { firmScope: "all", storageKey: "firms-all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
   const [invoices, setInvoices] = useData<Invoice>("invoices", [], { firmScope: "all", storageKey: "invoices-all-firms" });
   const [invoiceLineItems, setInvoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-lines-all-firms" });
   const [phpJobs] = useData<any>("php_job_master", []);
@@ -860,6 +861,7 @@ export function LoadingMaster() {
       <DirectLoadingSlipModal
         open={isDirectModalOpen}
         companies={companies}
+        firms={firms}
         trucks={trucks}
         allItems={allItems}
         plans={plans}
