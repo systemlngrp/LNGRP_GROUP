@@ -2864,11 +2864,15 @@ async function generateLockedGateEntryNo(db, dateStr, firmId) {
 }
 async function ensureInterFirmAutomationSchema(db, database) {
     await ensureColumnExists(db, database, "inter_firm_pending_invoices", "lines", "LONGTEXT");
-    // This function is also called directly by the production-save request.
-    // Ensure legacy databases have the MRR audit columns before the request
-    // opens its transaction and attempts the automatic material_in insert.
-    for (const [column, type] of [["updatedBy", "VARCHAR(255) NULL"], ["updateTimestamp", "VARCHAR(255) NULL"]]) {
-        await ensureColumnExists(db, database, "material_in", column, type);
+    // A completed report inserts into all of these tables in one transaction.
+    // Repair legacy audit schemas before opening it, including issue lines
+    // (which are not covered by the inter-firm column migration).
+    for (const table of [
+        "inter_firm_pending_invoices", "material_issues", "material_issue_lines",
+        "material_in", "gate_entries", "invoices", "invoice_line_items",
+    ]) {
+        await ensureColumnExists(db, database, table, "updatedBy", "VARCHAR(255) NULL");
+        await ensureColumnExists(db, database, table, "updateTimestamp", "VARCHAR(255) NULL");
     }
     for (const table of ["php_loading_slips", "plate_loading_slips"]) {
         await ensureColumnExists(db, database, table, "firmId", "VARCHAR(36)");
