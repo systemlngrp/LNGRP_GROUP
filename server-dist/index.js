@@ -9,6 +9,7 @@ import crypto from "crypto";
 import { exec } from "child_process";
 import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
+import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { GoogleGenAI } from "@google/genai";
 import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
 const execPromise = util.promisify(exec);
@@ -8736,31 +8737,24 @@ const createHandlers = (tableName) => {
                     const [existingProcessingRows] = await db.query("SELECT `id` FROM `production_processing` WHERE `id` = ? LIMIT 1", [String(data.id || "")]);
                     const isNewProcessingEntry = !existingProcessingRows[0]?.id;
                     if (isNewProcessingEntry) {
-                        const [productionRows] = await db.query(`SELECT p.itemSource, n.boxType FROM \`productions\` p LEFT JOIN \`npd\` n ON n.id = p.itemId WHERE p.id = ? LIMIT 1`, [data.productionId]);
+                        const [productionRows] = await db.query(`SELECT p.itemSource, p.methodology, p.phpScheduledJobId, p.plateScheduledJobId,
+                      php.methodology AS phpMasterMethodology, plate.methodology AS plateMasterMethodology,
+                      n.boxType
+               FROM \`productions\` p
+               LEFT JOIN \`npd\` n ON n.id = p.itemId
+               LEFT JOIN \`php_job_master\` php ON php.id = p.phpScheduledJobId
+               LEFT JOIN \`plate_job_master\` plate ON plate.id = p.plateScheduledJobId
+               WHERE p.id = ? LIMIT 1`, [data.productionId]);
                         const productionRow = productionRows[0];
                         const [settingRows] = await db.query("SELECT `mandatoryMachinesByType` FROM `settings` ORDER BY `updateTimestamp` DESC LIMIT 1");
                         const mandatoryMapping = parseMandatoryMachinesByType(settingRows[0]);
-                        const source = String(productionRow?.itemSource || "FG").trim().toUpperCase();
-                        const typeName = String(productionRow?.boxType || "").trim();
-                        const mappingKey = Object.keys(mandatoryMapping).find((key) => key.toUpperCase() === typeName.toUpperCase());
-                        let requiredMachines = mappingKey ? mandatoryMapping[mappingKey] : [];
-                        if (source === "PHP" || source === "PLATE") {
-                            requiredMachines = ["Corrugation Liner"];
-                        }
-                        requiredMachines = Array.from(new Set(requiredMachines.map((name) => normalizeMachineName(name)).filter(Boolean)));
-                        if ((source === "PHP" || source === "PLATE") && data.machineName !== "Corrugation Liner") {
-                            return res.status(409).json({ error: "PHP and Plate jobs can only be reported under Corrugation Liner." });
+                        const { source, requiredMachines } = getProcessingMachineRoute(productionRow || {}, mandatoryMapping, normalizeMachineName);
+                        if ((source === "PHP" || source === "PLATE") && !requiredMachines.includes(data.machineName)) {
+                            return res.status(409).json({ error: `${source} job does not require ${data.machineName}.` });
                         }
                         if (requiredMachines.includes(data.machineName)) {
                             const [stepRows] = await db.query(`SELECT machineName, completionStatus FROM \`production_processing\` WHERE productionId = ?`, [data.productionId]);
-                            const completedMachines = new Set();
-                            stepRows.forEach((row) => {
-                                const machineName = normalizeMachineName(String(row.machineName || ""));
-                                const status = String(row.completionStatus || "").trim();
-                                if (!status || status === "Full")
-                                    completedMachines.add(machineName);
-                            });
-                            const currentMachine = requiredMachines.find((machineName) => !completedMachines.has(machineName)) || "";
+                            const currentMachine = getCurrentRequiredMachine(requiredMachines, stepRows, normalizeMachineName);
                             if (currentMachine && data.machineName !== currentMachine) {
                                 return res.status(409).json({
                                     error: `Complete ${currentMachine} before reporting ${data.machineName}.`,
@@ -11312,6 +11306,16 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
         }
         const [productionRows] = await db.query(`SELECT * FROM \`productions\` ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY transactionNo DESC`, params);
         const productions = productionRows;
+        const phpJobIds = Array.from(new Set(productions.map((p) => String(p.phpScheduledJobId || "").trim()).filter(Boolean)));
+        const plateJobIds = Array.from(new Set(productions.map((p) => String(p.plateScheduledJobId || "").trim()).filter(Boolean)));
+        const [phpMethodologyRows] = phpJobIds.length
+            ? await db.query(`SELECT id, methodology FROM \`php_job_master\` WHERE id IN (${phpJobIds.map(() => "?").join(",")})`, phpJobIds)
+            : [[]];
+        const [plateMethodologyRows] = plateJobIds.length
+            ? await db.query(`SELECT id, methodology FROM \`plate_job_master\` WHERE id IN (${plateJobIds.map(() => "?").join(",")})`, plateJobIds)
+            : [[]];
+        const phpMethodologyById = new Map(phpMethodologyRows.map((row) => [String(row.id), String(row.methodology || "")]));
+        const plateMethodologyById = new Map(plateMethodologyRows.map((row) => [String(row.id), String(row.methodology || "")]));
         const productionIds = productions.map((p) => String(p.id));
         const scheduleIds = productions.map((p) => String(p.scheduleId || "")).filter(Boolean);
         const itemIds = productions.map((p) => normalizeItemLookupId(p)).filter(Boolean);
@@ -11362,7 +11366,14 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
             const planQty = Number(p.qty || 0);
             const planDate = String(p.date || "");
             const item = itemsById.get(normalizeItemLookupId(p));
-            const typeName = String(item?.boxType || "").trim();
+            const route = getProcessingMachineRoute({
+                ...p,
+                boxType: item?.boxType,
+                phpMasterMethodology: phpMethodologyById.get(String(p.phpScheduledJobId || "")) || "",
+                plateMasterMethodology: plateMethodologyById.get(String(p.plateScheduledJobId || "")) || "",
+            }, mandatoryByType, normalizeMachineName);
+            const typeName = route.source === "PHP" || route.source === "PLATE"
+                ? route.source : String(item?.boxType || "").trim();
             const itemName = String(item?.itemName || "").trim();
             const schedule = schedulesById.get(String(p.scheduleId || ""));
             const order = schedule ? ordersById.get(String(schedule.orderId || "")) : undefined;
@@ -11375,7 +11386,7 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
             if (filters.type && typeName && typeName.toLowerCase() !== String(filters.type).toLowerCase()) {
                 return null;
             }
-            const requiredSteps = (mandatoryByType[typeName] || []).map((name) => normalizeMachineName(name));
+            const requiredSteps = route.requiredMachines;
             const records = processingByProductionId.get(productionId) || [];
             const normalizedRecords = records.map((r) => ({
                 ...r,
