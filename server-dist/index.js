@@ -3064,7 +3064,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             // Keep an edited production quantity/rate synchronized with the
             // already-linked auto MRR without allocating a second document number.
             await conn.query(`UPDATE material_in
-         SET lines = ?, totalPoValue = ?, totalInvoiceValue = ?, totalActualValue = ?,
+         SET \`lines\` = ?, totalPoValue = ?, totalInvoiceValue = ?, totalActualValue = ?,
              totalInvoiceValueAfterGst = ?, totalAmount = ?, supplierId = ?,
              updateTimestamp = ?
          WHERE id = ?`, [JSON.stringify([{ itemId, qty, rate, gstRate }]), qty * rate, qty * rate,
