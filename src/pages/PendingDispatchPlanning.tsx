@@ -2,10 +2,12 @@ import React, { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { TableControls } from "../components/TableControls";
+import { FirmFilter } from "../components/FirmFilter";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { OrderSchedule, Order, Company, Item, DispatchPlan, LoadingSlip, Production } from "../types";
+import { OrderSchedule, Order, Company, Item, DispatchPlan, LoadingSlip, Production, Firm } from "../types";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { normalizeOrderItemSource } from "../lib/orderItems";
@@ -23,6 +25,7 @@ export function PendingDispatchPlanning() {
 
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
   const [companies] = useData<Company>("companies", []);
   const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
@@ -31,6 +34,7 @@ export function PendingDispatchPlanning() {
   const [productions] = useData<Production>("productions", []);
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
+  const [selectedFirmId, setSelectedFirmId] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [rowPlannedQty, setRowPlannedQty] = useState<Record<string, number | "">>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -174,9 +178,10 @@ export function PendingDispatchPlanning() {
 
   const filteredSchedules = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
-    const rows = !selectedCompanyId ? basePendingSchedules : basePendingSchedules.filter(s => {
+    const rows = basePendingSchedules.filter(s => {
       const order = orders.find(o => o.id === s.orderId);
-      return order?.companyId === selectedCompanyId;
+      return (!selectedCompanyId || order?.companyId === selectedCompanyId) &&
+        (!selectedFirmId || String(s.firmId || order?.firmId || "") === selectedFirmId);
     });
 
     return [...rows]
@@ -190,6 +195,7 @@ export function PendingDispatchPlanning() {
           schedule.scheduleNo,
           order?.orderNo,
           company?.name,
+          getFirmDisplayNameById(schedule.firmId || order?.firmId, firms),
           item?.name,
           String(schedule.qty || ""),
         ].join(" ").toLowerCase();
@@ -231,7 +237,7 @@ export function PendingDispatchPlanning() {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [basePendingSchedules, selectedCompanyId, orders, companies, searchTerm, sortDirection, sortKey, getEffectivePlannedForSchedule, resolveOrderItem]);
+  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, orders, companies, firms, searchTerm, sortDirection, sortKey, getEffectivePlannedForSchedule, resolveOrderItem]);
 
   const {
     page,
@@ -457,9 +463,6 @@ export function PendingDispatchPlanning() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-black pb-4">
           <div>
             <h2 className="text-2xl font-black text-black tracking-tight uppercase">Dispatch Planning</h2>
-            <p className="text-sm font-medium text-slate-600 uppercase">
-              Schedule Orders for Loading & Delivery
-            </p>
           </div>
           
           <div className="flex items-center gap-3">
@@ -510,8 +513,10 @@ export function PendingDispatchPlanning() {
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[240px] space-y-1">
               <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Search Orders</div>
-              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search by Job, Order, Item, Company..." />
+              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search by Job, Order, Item, Company, Firm..." />
             </div>
+
+            <FirmFilter value={selectedFirmId} onChange={(firmId) => { setSelectedFirmId(firmId); setSelectedIds(new Set()); }} label="Filter by Firm" className="min-w-[180px]" />
 
             <div className="space-y-1">
               <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Company</div>
@@ -530,10 +535,11 @@ export function PendingDispatchPlanning() {
               </select>
             </div>
             
-            {(selectedCompanyId || searchTerm) && (
+            {(selectedCompanyId || selectedFirmId || searchTerm) && (
               <button 
                 onClick={() => {
                   setSelectedCompanyId("");
+                  setSelectedFirmId("");
                   setSearchTerm("");
                 }}
                 className="text-[10px] font-black uppercase text-red-600 hover:text-red-800 underline pb-2"
@@ -612,6 +618,7 @@ export function PendingDispatchPlanning() {
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Order No", "orderNo")}</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Firm</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Item Name", "itemName")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
@@ -621,7 +628,7 @@ export function PendingDispatchPlanning() {
             <tbody className="divide-y divide-black bg-white">
               {filteredSchedules.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-black font-medium">No pending dispatch plans found.</td>
+                  <td colSpan={9} className="px-6 py-8 text-center text-black font-medium">No pending dispatch plans found.</td>
                 </tr>
               ) : (
                 paginatedSchedules.map((s) => {
@@ -655,6 +662,7 @@ export function PendingDispatchPlanning() {
                       </td>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{s.scheduleNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
+                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{getFirmDisplayNameById(s.firmId || order?.firmId, firms)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black">{company?.name || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black">{item?.name || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap">{balance}</td>
@@ -680,7 +688,7 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="bg-slate-100 border-t-2 border-black">
                 <tr className="divide-x divide-black font-black">
-                  <td colSpan={7} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={8} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="px-4 py-3 text-right text-sm text-indigo-700 bg-indigo-50 border border-black">
                     {totalSessionPlannedQty.toLocaleString()}
                   </td>
