@@ -36,6 +36,13 @@ export function getRequiredMachinesForProduction(
 ) {
   const source = String(production.itemSource || "FG").trim().toUpperCase();
   if (source === "PHP" || source === "PLATE") {
+    const methodology = String(production.methodology || "").trim().toUpperCase();
+    if (methodology === "CORRUGATION") {
+      return [
+        normalizeMachineName("Corrugation Liner"),
+        normalizeMachineName("Printing"),
+      ];
+    }
     return [normalizeMachineName("Corrugation Liner")];
   }
   return getRequiredMachinesForType(mapping, getProductionEffectiveType(production, item));
