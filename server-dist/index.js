@@ -2969,42 +2969,9 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             await skip();
             return;
         }
-        const componentLines = [];
-        const componentWarnings = [];
-        if (sourceType === "Production Processing" && normalizedMachine === "Printing" && orderFirmId === String(lnki.id)) {
-            const mainErp = String(order?.erpCode || production.masterErp || production.erpCode || "").trim();
-            if (!mainErp)
-                componentWarnings.push("Customer order ERP code is missing");
-            const normalizeComponentErp = (value) => String(value || "")
-                .trim()
-                .toLowerCase()
-                .replace(/[^a-z0-9]+/g, "");
-            const normalizedMainErp = normalizeComponentErp(mainErp);
-            for (const component of [{ source: "PHP", table: "php_item_master" }, { source: "PLATE", table: "plate_item_master" }]) {
-                if (!normalizedMainErp)
-                    break;
-                const [componentRows] = await conn.query(`SELECT * FROM \`${component.table}\` WHERE COALESCE(TRIM(masterItemNameErpCode), '') <> '' OR COALESCE(TRIM(erpItemCode), '') <> ''`);
-                const master = componentRows.find((row) => normalizeComponentErp(row.masterItemNameErpCode) === normalizedMainErp ||
-                    normalizeComponentErp(row.erpItemCode) === normalizedMainErp);
-                const setsPerBox = Number(master?.numberOfSetsPerBox || 0);
-                if (!master?.id) {
-                    console.warn(`[INTER-FIRM] Optional ${component.source} master not found; continuing with FG billing only`, { sourceId, productionId, mainErp, normalizedMainErp });
-                    componentWarnings.push(`${component.source} master not found for ERP ${mainErp}`);
-                    continue;
-                }
-                if (!Number.isFinite(setsPerBox) || setsPerBox <= 0) {
-                    console.warn(`[INTER-FIRM] Optional ${component.source} Sets/Pcs per box missing; skipping component billing`, { sourceId, productionId, mainErp, itemId: master.id });
-                    componentWarnings.push(`${component.source} Sets/Pcs per box is missing for ERP ${mainErp}`);
-                    continue;
-                }
-                componentLines.push({
-                    itemId: String(master.id), itemSource: component.source, npdId: String(master.id),
-                    qty: Number((Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0) * setsPerBox).toFixed(2)),
-                    uom: String(master.uom || "PCS"), rate: Number(master.rate || 0), gstRate: 18,
-                    scheduleId: String(production.scheduleId || ""),
-                });
-            }
-        }
+        // Inter-firm production automation carries only the finished-goods line.
+        // PHP/Plate consumption remains a separate workflow and must not create
+        // extra invoice lines during the Printing -> LNKI handoff.
         const [interFirmSettingRows] = await conn.query("SELECT interFirmRatePercent, interFirmPairRates FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
         const configuredInterFirmRate = Number(interFirmSettingRows[0]?.interFirmRatePercent);
         let interFirmRatePercent = Number.isFinite(configuredInterFirmRate) && configuredInterFirmRate >= 0 && configuredInterFirmRate <= 100
@@ -3028,10 +2995,11 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         // Inter-firm transfers use the fixed internal GST rate, independent of
         // the customer order/item GST configuration. Manual MRRs are unaffected.
         const gstRate = 18;
-        const pendingInvoiceLines = [
-            { itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG", npdId: sourceRecord.npdId || production.npdId || itemId, qty, uom: sourceRecord.uom || production.uom || "", rate, gstRate },
-            ...componentLines.map((line) => ({ ...line, rate: Number((Number(line.rate || 0) * interFirmRatePercent / 100).toFixed(2)) })),
-        ].map(({ scheduleId: _scheduleId, ...line }) => line);
+        const pendingInvoiceLines = [{
+                itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG",
+                npdId: sourceRecord.npdId || production.npdId || itemId, qty,
+                uom: sourceRecord.uom || production.uom || "", rate, gstRate,
+            }];
         const [orphanPendingRows] = await conn.query(`SELECT ip.* FROM inter_firm_pending_invoices ip
        LEFT JOIN production_processing oldpp ON oldpp.id = ip.sourceTransactionId
        WHERE ip.sourceTransactionType = ? AND ip.jobId = ? AND ip.sourceFirmId = ? AND ip.destinationFirmId = ?
@@ -3053,22 +3021,6 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, \`lines\`, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), \`lines\`=VALUES(\`lines\`), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, JSON.stringify(pendingInvoiceLines), now]);
         const [pendingRows] = await conn.query("SELECT * FROM `inter_firm_pending_invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
         const pending = pendingRows[0];
-        for (const component of componentLines) {
-            const table = component.itemSource === "PHP" ? "php_loading_slips" : "plate_loading_slips";
-            const transactionColumn = component.itemSource === "PHP" ? "phpConsumptionTransactionNo" : "plateConsumptionTransactionNo";
-            const [existingRows] = await conn.query(`SELECT id, slipNo, \`${transactionColumn}\` transactionNo FROM \`${table}\` WHERE sourceTransactionType = ? AND sourceTransactionId = ? LIMIT 1`, [sourceTransactionType, sourceTransactionId]);
-            const existing = existingRows[0];
-            const slipId = String(existing?.id || crypto.randomUUID());
-            const slipNo = String(existing?.slipNo || await generateLoadingSlipNo(conn, table, String(sourceRecord.date || production.date || now.slice(0, 10))));
-            const consumptionNo = String(existing?.transactionNo || await generateSimpleTransactionNumber(conn, table, transactionColumn, component.itemSource === "PHP" ? "PHPCON" : "PLCON", String(sourceRecord.date || production.date || now.slice(0, 10))));
-            const componentSlipLines = JSON.stringify([{ dispatchPlanId: "", loadedQty: component.qty, itemId: component.itemId, itemSource: component.itemSource, uom: component.uom, rate: Number((Number(component.rate || 0) * interFirmRatePercent / 100).toFixed(2)), scheduleId: component.scheduleId }]);
-            if (existing) {
-                await conn.query(`UPDATE \`${table}\` SET \`lines\` = ?, firmId = ?, sourceFirmId = ?, destinationFirmId = ?, orderFirmId = ?, interFirmFlow = 'Yes', autoGenerated = 'Yes', updateTimestamp = ? WHERE id = ?`, [componentSlipLines, sourceFirmId, sourceFirmId, destinationFirmId, orderFirmId, now, slipId]);
-            }
-            else {
-                await conn.query(`INSERT INTO \`${table}\` (id, slipNo, date, truckId, \`${transactionColumn}\`, \`lines\`, status, firmId, sourceFirmId, destinationFirmId, orderFirmId, sourceTransactionType, sourceTransactionId, interFirmFlow, autoGenerated, updatedBy, updateTimestamp) VALUES (?, ?, ?, NULL, ?, ?, 'Active', ?, ?, ?, ?, ?, ?, 'Yes', 'Yes', 'System', ?)`, [slipId, slipNo, String(sourceRecord.date || production.date || now.slice(0, 10)), consumptionNo, componentSlipLines, sourceFirmId, sourceFirmId, destinationFirmId, orderFirmId, sourceTransactionType, sourceTransactionId, now]);
-            }
-        }
         const [existingIssue] = await conn.query("SELECT id, issueNo FROM `material_issues` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
         let sourceIssue = existingIssue[0];
         if (!sourceIssue) {
@@ -3108,6 +3060,17 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             ]);
             mrr = { id: mrrId, transactionNo };
         }
+        else {
+            // Keep an edited production quantity/rate synchronized with the
+            // already-linked auto MRR without allocating a second document number.
+            await conn.query(`UPDATE material_in
+         SET lines = ?, totalPoValue = ?, totalInvoiceValue = ?, totalActualValue = ?,
+             totalInvoiceValueAfterGst = ?, totalAmount = ?, supplierId = ?,
+             updateTimestamp = ?
+         WHERE id = ?`, [JSON.stringify([{ itemId, qty, rate, gstRate }]), qty * rate, qty * rate,
+                qty * rate, qty * rate * (1 + gstRate / 100), qty * rate * (1 + gstRate / 100),
+                internalSupplierId, now, mrr.id]);
+        }
         const [existingGate] = await conn.query("SELECT id, gateEntryNo FROM `gate_entries` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
         let gate = existingGate[0];
         if (!gate) {
@@ -3118,11 +3081,16 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
             await conn.query("UPDATE material_in SET gateEntryNo = ? WHERE id = ?", [gateEntryNo, mrr.id]);
             gate = { id: gateId, gateEntryNo };
         }
+        else {
+            await conn.query(`UPDATE gate_entries SET invoiceValue = ?, mrrId = ?, mrrDate = ?, mrrNo = ?,
+             updateTimestamp = ? WHERE id = ?`, [qty * rate, mrr.id, String(sourceRecord.date || production.date || now.slice(0, 10)),
+                mrr.transactionNo, now, gate.id]);
+        }
         const invoiceDate = String(sourceRecord.date || production.date || now.slice(0, 10));
-        const invoiceLines = [
-            { itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG", npdId: sourceRecord.npdId || production.npdId || itemId, qty, rate, gstRate },
-            ...componentLines.map((line) => ({ itemId: line.itemId, itemSource: line.itemSource, npdId: line.npdId || line.itemId, qty: Number(line.qty || 0), rate: Number((Number(line.rate || 0) * interFirmRatePercent / 100).toFixed(2)), gstRate: Number(line.gstRate || gstRate) })),
-        ];
+        const invoiceLines = [{
+                itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG",
+                npdId: sourceRecord.npdId || production.npdId || itemId, qty, rate, gstRate,
+            }];
         const invoiceTotalBeforeGst = Number(invoiceLines.reduce((sum, line) => sum + (Number(line.qty || 0) * Number(line.rate || 0)), 0).toFixed(2));
         const invoiceTax = Number(invoiceLines.reduce((sum, line) => sum + (Number(line.qty || 0) * Number(line.rate || 0) * Number(line.gstRate || 0) / 100), 0).toFixed(2));
         const invoiceId = crypto.randomUUID();
@@ -3151,7 +3119,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing", invoiceId: createdInvoiceId, invoiceNo });
         if (ownsConnection)
             await conn.commit();
-        return { warnings: componentWarnings };
+        return { warnings: [] };
     }
     catch (error) {
         if (ownsConnection)
