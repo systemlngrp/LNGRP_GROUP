@@ -284,6 +284,14 @@ export function PendingLoading() {
   const getPlanOpeningStockQty = (key: string) => Number(openingStockQtys[key] || 0);
   const getAlreadyLoadedForJob = (jobId: string) => existingLoadedByJobId.get(jobId) || 0;
 
+  const getFirmStockBalance = (itemId: string, firmId: string) => {
+    const item = npdItems.find((row) => String(row.id || "") === String(itemId));
+    const firmStock = (item as any)?.firmStocks?.[firmId];
+    if (firmStock && Number.isFinite(Number(firmStock.balance))) return Math.max(0, Number(firmStock.balance));
+    if (String((item as any)?.firmId || "") === firmId) return Math.max(0, Number(item?.balance || 0));
+    return 0;
+  };
+
   const isTruckAvailableForLoading = (truckId: string) => {
     const truck = trucks.find((row) => row.id === truckId);
     if (!truck) return false;
@@ -337,6 +345,10 @@ export function PendingLoading() {
 
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
     if (openingStockQty < 0) errors.push(`${stockLabel} quantity cannot be negative.`);
+    if (modal.itemSource === "FG") {
+      const firmBalance = getFirmStockBalance(modal.itemId, modal.firmId);
+      if (openingStockQty > firmBalance + 0.0001) errors.push(`${stockLabel} cannot exceed ${firmBalance.toLocaleString()} available for ${getFirmDisplayNameById(modal.firmId, firms)}.`);
+    }
     if (allocatedTotal <= 0) errors.push("At least one positive adjustment is required.");
     if (Math.abs(allocatedTotal - rowLoadedQty) > 0.0001) errors.push(`Job/${stockLabel} total must exactly match Loaded qty.`);
 
@@ -351,7 +363,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty]);
+  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, firms]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);
@@ -365,7 +377,7 @@ export function PendingLoading() {
     const eligibleJobs = sourceJobs
       .filter((p) => 
         p.itemId === itemId && 
-        (!firmId || !String(p.orderFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.firmId) === firmId) &&
+        (!String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId) === firmId) &&
         isOpenJob(p) &&
         Number(itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0) > 0
       )
@@ -520,7 +532,14 @@ export function PendingLoading() {
 
     const openingStockQty = getPlanOpeningStockQty(modalKey);
     if (openingStockQty > 0) {
-      allocationPool.push({ sourceType: "opening_stock", sourceRef: loadingModal.itemSource === "FG" ? "FG Stock" : `${loadingModal.itemSource} Stock`, qty: openingStockQty });
+      const sourceFirm = firms.find((firm) => firm.id === loadingModal.firmId);
+      allocationPool.push({
+        sourceType: "opening_stock",
+        sourceRef: loadingModal.itemSource === "FG" ? "FG Stock" : `${loadingModal.itemSource} Stock`,
+        qty: openingStockQty,
+        sourceFirmId: loadingModal.itemSource === "FG" ? loadingModal.firmId : undefined,
+        sourceFirmName: loadingModal.itemSource === "FG" ? sourceFirm?.firmName : undefined,
+      });
     }
 
     const sortedPlans = [...loadingModal.plans].sort((a, b) =>
@@ -907,7 +926,7 @@ export function PendingLoading() {
                   const jobs = modalSourceJobs
                     .filter((p) => 
                       p.itemId === loadingModal.itemId && 
-                      (!loadingModal.firmId || !String(p.orderFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.firmId) === loadingModal.firmId) &&
+                      (!String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId) === loadingModal.firmId) &&
                       isOpenJob(p) &&
                       Number(loadingModal.itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0) > 0
                     )
@@ -997,7 +1016,7 @@ export function PendingLoading() {
                                 );
                               })}
                               <tr className="divide-x divide-black bg-emerald-50/40 border-t-2 border-black">
-                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? "FG Stock" : `${loadingModal.itemSource} Stock`}</td>
+                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock — ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
@@ -1006,6 +1025,7 @@ export function PendingLoading() {
                                     type="number"
                                     value={openingStockQtys[modalKey] ?? ""}
                                     min={0}
+                                    max={loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId) : undefined}
                                     onChange={(e) =>
                                       setOpeningStockQtys((prev) => ({
                                         ...prev,

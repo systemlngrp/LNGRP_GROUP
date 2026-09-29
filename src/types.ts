@@ -1165,6 +1165,8 @@ export type LoadingSlipAllocation =
       sourceType: "opening_stock";
       sourceRef: "FG Stock" | "PHP Stock" | "PLATE Stock" | "MATERIAL Stock";
       qty: number;
+      sourceFirmId?: string;
+      sourceFirmName?: string;
     };
 
 export interface PackingDetail {

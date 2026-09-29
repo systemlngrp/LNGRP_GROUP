@@ -19,14 +19,10 @@ export function getNpdItemDisplayName(item?: Partial<Item> | null) {
 export async function fetchNpdItems(pageSize = 10000): Promise<Item[]> {
   const token = window.localStorage.getItem("authToken") || "";
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-  const activeFirm = window.localStorage.getItem("activeFirm");
-  try {
-    const firmId = activeFirm ? JSON.parse(activeFirm)?.id : "";
-    if (firmId) headers["X-Firm-Id"] = String(firmId);
-  } catch {
-    // Ignore malformed active-firm state and let the server apply its default scope.
-  }
-  const response = await fetch(`/api/npd?page=1&pageSize=${pageSize}&status=all`, { headers });
+  // Firm-wise stock is required by cross-firm loading and remains compatible
+  // with the normal NPD row shape because the endpoint returns the base row
+  // plus firmStocks.
+  const response = await fetch(`/api/npd-firm-wise?page=1&pageSize=${pageSize}&status=all`, { headers });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
