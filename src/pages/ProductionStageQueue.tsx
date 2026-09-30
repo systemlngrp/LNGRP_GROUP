@@ -125,9 +125,10 @@ export function ProductionStageQueue({
         materialReturns,
         materialReturnLines,
         materialIssueReelLines,
-        materialReturnReelLines
+        materialReturnReelLines,
+        productions
       ),
-    [materialIssueLines, materialIssueReelLines, materialIssues, materialReturnLines, materialReturnReelLines, materialReturns]
+    [materialIssueLines, materialIssueReelLines, materialIssues, materialReturnLines, materialReturnReelLines, materialReturns, productions]
   );
   const corrugatedSheetUsageMap = useMemo(
     () =>

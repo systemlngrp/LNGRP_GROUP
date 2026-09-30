@@ -9355,6 +9355,24 @@ const createHandlers = (tableName: string) => {
           }
 
           if (data.machineName === "Printing") {
+            const [printingJobRows] = await db.query(
+              `SELECT transactionNo, jobCardNo FROM productions WHERE id = ?
+               UNION ALL SELECT transactionNo, jobCardNo FROM php_job_master WHERE id = ?
+               UNION ALL SELECT transactionNo, jobCardNo FROM plate_job_master WHERE id = ? LIMIT 1`,
+              [data.productionId, data.productionId, data.productionId]
+            );
+            const printingJob = (printingJobRows as any[])[0];
+            const transactionNo = String(printingJob?.transactionNo || "").trim().toLowerCase();
+            const jobCardNo = String(printingJob?.jobCardNo || "").trim().toLowerCase();
+            const matchesPrintingJob = (idExpression: string, jobExpression: string) =>
+              `(${idExpression} = ? OR (
+                (${idExpression} IS NULL OR TRIM(${idExpression}) = '' OR
+                 (NOT EXISTS (SELECT 1 FROM productions p WHERE p.id = ${idExpression}) AND
+                  NOT EXISTS (SELECT 1 FROM php_job_master pj WHERE pj.id = ${idExpression}) AND
+                  NOT EXISTS (SELECT 1 FROM plate_job_master lj WHERE lj.id = ${idExpression})))
+                AND TRIM(${jobExpression}) <> ''
+                AND LOWER(TRIM(${jobExpression})) IN (?, ?)))`;
+            const jobMatchParams = [data.productionId, transactionNo, jobCardNo];
             const [usageRows] = await db.query(
               `SELECT COALESCE(SUM(usagePart.qty), 0) AS netQty,
                       COALESCE(SUM(CASE WHEN usagePart.qty > 0 THEN usagePart.qty ELSE 0 END), 0) AS issuedQty
@@ -9362,26 +9380,26 @@ const createHandlers = (tableName: string) => {
                  SELECT COALESCE(SUM(mil.qty), 0) AS qty
                  FROM material_issues mi
                  JOIN material_issue_lines mil ON mil.materialIssueId = mi.id
-                 WHERE mi.issueType = 'Job' AND mi.productionId = ?
+                 WHERE mi.issueType = 'Job' AND ${matchesPrintingJob("mi.productionId", "mi.jobNo")}
                  UNION ALL
                  SELECT -COALESCE(SUM(mrl.qty), 0) AS qty
                  FROM material_returns mr
                  JOIN material_return_lines mrl ON mrl.materialReturnId = mr.id
-                 WHERE mr.returnType = 'Job' AND mr.productionId = ?
+                 WHERE mr.returnType = 'Job' AND ${matchesPrintingJob("mr.productionId", "mr.jobNo")}
                  UNION ALL
                  SELECT COALESCE(SUM(mirl.weightKg), 0) AS qty
                  FROM material_issue_reel_lines mirl
                  LEFT JOIN material_issues mi ON mi.id = mirl.materialIssueId
                  LEFT JOIN material_issue_lines mil ON mil.id = mirl.materialIssueLineId
-                 WHERE COALESCE(mirl.productionId, mi.productionId) = ? AND mil.id IS NULL
+                 WHERE ${matchesPrintingJob("COALESCE(mirl.productionId, mi.productionId)", "COALESCE(mirl.jobNo, mi.jobNo)")} AND mil.id IS NULL
                  UNION ALL
                  SELECT -COALESCE(SUM(mrrl.weightKg), 0) AS qty
                  FROM material_return_reel_lines mrrl
                  LEFT JOIN material_returns mr ON mr.id = mrrl.materialReturnId
                  LEFT JOIN material_return_lines mrl ON mrl.id = mrrl.materialReturnLineId
-                 WHERE COALESCE(mrrl.productionId, mr.productionId) = ? AND mrl.id IS NULL
+                 WHERE ${matchesPrintingJob("COALESCE(mrrl.productionId, mr.productionId)", "COALESCE(mrrl.jobNo, mr.jobNo)")} AND mrl.id IS NULL
                ) usagePart`,
-              [data.productionId, data.productionId, data.productionId, data.productionId]
+              [...jobMatchParams, ...jobMatchParams, ...jobMatchParams, ...jobMatchParams]
             );
             const netMaterialUsage = Math.max(0, Number((usageRows as any[])[0]?.netQty || 0));
             if (netMaterialUsage <= 0) {

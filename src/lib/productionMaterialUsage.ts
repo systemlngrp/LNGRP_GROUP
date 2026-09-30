@@ -38,17 +38,33 @@ export function buildProductionMaterialUsageMap(
   materialReturns: MaterialReturn[],
   materialReturnLines: MaterialReturnLine[],
   materialIssueReelLines: MaterialIssueReelLine[] = [],
-  materialReturnReelLines: MaterialReturnReelLine[] = []
+  materialReturnReelLines: MaterialReturnReelLine[] = [],
+  productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []
 ) {
+  const productionIds = new Set(productions.map((production) => production.id));
+  const productionIdByJobNo = new Map<string, string>();
+  productions.forEach((production) => {
+    for (const value of [production.transactionNo, production.jobCardNo]) {
+      const jobNo = String(value || "").trim().toLowerCase();
+      if (jobNo && !productionIdByJobNo.has(jobNo)) productionIdByJobNo.set(jobNo, production.id);
+    }
+  });
+  const resolveProductionId = (productionId?: string, jobNo?: string) => {
+    const id = String(productionId || "").trim();
+    if (id && (productions.length === 0 || productionIds.has(id))) return id;
+    return productionIdByJobNo.get(String(jobNo || "").trim().toLowerCase());
+  };
   const issueProductionMap = new Map(
     materialIssues
-      .filter((issue) => issue.issueType === "Job" && issue.productionId)
-      .map((issue) => [issue.id, issue.productionId as string])
+      .filter((issue) => issue.issueType === "Job")
+      .map((issue) => [issue.id, resolveProductionId(issue.productionId, issue.jobNo)])
+      .filter((entry): entry is [string, string] => Boolean(entry[1]))
   );
   const returnProductionMap = new Map(
     materialReturns
-      .filter((entry) => entry.returnType === "Job" && entry.productionId)
-      .map((entry) => [entry.id, entry.productionId as string])
+      .filter((entry) => entry.returnType === "Job")
+      .map((entry) => [entry.id, resolveProductionId(entry.productionId, entry.jobNo)])
+      .filter((entry): entry is [string, string] => Boolean(entry[1]))
   );
 
   const totals = new Map<string, number>();
@@ -69,14 +85,14 @@ export function buildProductionMaterialUsageMap(
 
   materialIssueReelLines.forEach((line) => {
     if (existingIssueLineIds.has(line.materialIssueLineId)) return;
-    const productionId = line.productionId || issueProductionMap.get(line.materialIssueId);
+    const productionId = resolveProductionId(line.productionId, line.jobNo) || issueProductionMap.get(line.materialIssueId);
     if (!productionId) return;
     totals.set(productionId, (totals.get(productionId) || 0) + Number(line.weightKg || 0));
   });
 
   materialReturnReelLines.forEach((line) => {
     if (existingReturnLineIds.has(line.materialReturnLineId)) return;
-    const productionId = line.productionId || returnProductionMap.get(line.materialReturnId);
+    const productionId = resolveProductionId(line.productionId, line.jobNo) || returnProductionMap.get(line.materialReturnId);
     if (!productionId) return;
     totals.set(productionId, (totals.get(productionId) || 0) - Number(line.weightKg || 0));
   });
