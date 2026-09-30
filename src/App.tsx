@@ -92,6 +92,7 @@ import { SamplesProduced } from "./pages/SamplesProduced";
 import { SampleMaster } from "./pages/SampleMaster";
 import { BoardLineQcForm, BoardLineQcMaster } from "./pages/BoardLineQc";
 import { PrintingQcForm, PrintingQcMaster } from "./pages/PrintingQc";
+import { QcMasterData } from "./pages/QcMasterData";
 import { Users } from "./pages/Users";
 import { Services } from "./pages/Services";
 import { PlantHeadUnified } from "./pages/PlantHeadUnified";
@@ -343,6 +344,7 @@ export default function App() {
           <Route path="quality/boardline-qc/master" element={<BoardLineQcMaster />} />
           <Route path="quality/printing-qc/form" element={<PrintingQcForm />} />
           <Route path="quality/printing-qc/master" element={<PrintingQcMaster />} />
+          <Route path="quality/qc-master-data" element={<QcMasterData />} />
           
           {/* Dispatch */}
           <Route path="dispatch/pending-planning" element={<PendingDispatchPlanning />} />
