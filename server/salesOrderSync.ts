@@ -84,15 +84,28 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
   try {
     await conn.beginTransaction();
     const company = await oneMatch(conn, "SELECT id, name FROM companies WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.company], `Company ${parsed.company}`);
-    const item = await oneMatch(conn, "SELECT id, erp, itemName, companyId FROM npd WHERE TRIM(erp) = ? AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 2", [parsed.erp], `ERP ${parsed.erp}`);
-    if (item.companyId && String(item.companyId).trim() !== company.id && normalize(item.companyId) !== normalize(company.name)) throw new Error(`ERP ${parsed.erp} belongs to a different company`);
-    if (parsed.itemName && normalize(parsed.itemName) !== normalize(item.itemName)) throw new Error(`ERP ${parsed.erp} item name does not match`);
+    const itemCandidates: any[] = [];
+    const addCandidates = (rows: any[], source: string) => rows.forEach(row => itemCandidates.push({ ...row, source, resolvedId: String(row.id || row.itemId || "") }));
+    const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE (TRIM(erp) = ? OR LOWER(TRIM(itemName)) = LOWER(?)) AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp, parsed.itemName]);
+    addCandidates(npdRows as any[], "FG");
+    const [itemRows] = await conn.query("SELECT id, name AS itemName, erpCode AS erp, companyId FROM items WHERE (TRIM(erpCode) = ? OR LOWER(TRIM(name)) = LOWER(?)) LIMIT 5", [parsed.erp, parsed.itemName]);
+    addCandidates(itemRows as any[], "FG");
+    for (const source of ["PHP", "PLATE"]) {
+      const table = source === "PHP" ? "php_item_master" : "plate_item_master";
+      const [rows] = await conn.query(`SELECT id, itemId, itemName, erp, company FROM \`${table}\` WHERE (TRIM(COALESCE(erp, '')) = ? OR LOWER(TRIM(itemName)) = LOWER(?)) AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5`, [parsed.erp, parsed.itemName]);
+      addCandidates(rows as any[], source);
+    }
+    const distinctItems = itemCandidates.filter((item, index, all) => item.resolvedId && all.findIndex(other => other.resolvedId === item.resolvedId && other.source === item.source) === index);
+    if (distinctItems.length !== 1) throw new Error(`Item ERP ${parsed.erp} / name ${parsed.itemName}: ${distinctItems.length ? "ambiguous" : "not found"}`);
+    const item = distinctItems[0];
+    if (item.companyId && String(item.companyId).trim() !== company.id && normalize(item.companyId) !== normalize(company.name)) throw new Error(`Item ${parsed.itemName || parsed.erp} belongs to a different company`);
+    if (parsed.itemName && item.itemName && normalize(parsed.itemName) !== normalize(item.itemName)) throw new Error(`ERP ${parsed.erp} item name does not match`);
     const [linkRows] = await conn.query("SELECT orderId FROM sales_order_sheet_links WHERE spreadsheetId = ? AND sourceOrderId = ? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
     const orderId = (linkRows as any[])[0]?.orderId || crypto.randomUUID();
     const [oldRows] = await conn.query("SELECT id, firmId, firmName, orderBy FROM orders WHERE id = ? FOR UPDATE", [orderId]);
     const old = (oldRows as any[])[0];
     // The NPD master does not store firmId. Existing orders for this ERP/item provide the only safe inference.
-    const [firmRows] = await conn.query("SELECT DISTINCT f.id, f.firmName FROM orders o JOIN firms f ON f.id = o.firmId WHERE o.itemId = ? AND COALESCE(o.firmId, '') <> '' LIMIT 2", [item.id]);
+    const [firmRows] = await conn.query("SELECT DISTINCT f.id, f.firmName FROM orders o JOIN firms f ON f.id = o.firmId WHERE o.itemId = ? AND COALESCE(o.firmId, '') <> '' LIMIT 2", [item.resolvedId]);
     const firms = firmRows as any[];
     const firm = old?.firmId
       ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE id = ? LIMIT 2", [old.firmId], "Existing order firm")
@@ -105,12 +118,12 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
       orderBy = (userRows as any[])[0].id;
     }
     if (old) {
-      await conn.query(`UPDATE orders SET orderDate=?, companyId=?, poNumber=?, erpCode=?, itemId=?, itemSource='FG', npdId=?, qty=?, rate=?, orderAmount=?, orderBy=?, poType=?, remarks=?, updatedBy='Salesman App Sync', updateTimestamp=? WHERE id=?`,
-        [parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.id, item.id, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString(), orderId]);
+      await conn.query(`UPDATE orders SET orderDate=?, companyId=?, poNumber=?, erpCode=?, itemId=?, itemSource=?, npdId=?, qty=?, rate=?, orderAmount=?, orderBy=?, poType=?, remarks=?, updatedBy='Salesman App Sync', updateTimestamp=? WHERE id=?`,
+        [parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString(), orderId]);
     } else {
       await conn.query(`INSERT INTO orders (id, firmId, firmName, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, orderBy, poType, remarks, status, updatedBy, updateTimestamp)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'FG', ?, ?, ?, ?, ?, ?, ?, 'Pending PH', 'Salesman App Sync', ?)`,
-        [orderId, firm.id, firm.firmName, parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.id, item.id, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString()]);
+        [orderId, firm.id, firm.firmName, parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString()]);
       await conn.query("INSERT INTO sales_order_sheet_links (spreadsheetId, sourceOrderId, orderId) VALUES (?, ?, ?)", [SHEET_ID, parsed.sourceId, orderId]);
     }
     const [scheduleRows] = await conn.query("SELECT l.slotNo, l.scheduleId, s.scheduledDate, s.qty, s.producedQty, s.canceledQty FROM sales_order_sheet_schedule_links l JOIN orders_schedule s ON s.id=l.scheduleId WHERE l.spreadsheetId=? AND l.sourceOrderId=? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
