@@ -88,7 +88,7 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
     const addCandidates = (rows: any[], source: string) => rows.forEach(row => itemCandidates.push({ ...row, source, resolvedId: String(row.id || row.itemId || "") }));
     const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE (TRIM(erp) = ? OR LOWER(TRIM(itemName)) = LOWER(?)) AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp, parsed.itemName]);
     addCandidates(npdRows as any[], "FG");
-    const [itemRows] = await conn.query("SELECT id, name AS itemName, erpCode AS erp, companyId FROM items WHERE (TRIM(erpCode) = ? OR LOWER(TRIM(name)) = LOWER(?)) LIMIT 5", [parsed.erp, parsed.itemName]);
+    const [itemRows] = await conn.query("SELECT id, name AS itemName, erp AS erp, NULL AS companyId FROM items WHERE (TRIM(CAST(erp AS CHAR)) = ? OR LOWER(TRIM(name)) = LOWER(?)) LIMIT 5", [parsed.erp, parsed.itemName]);
     addCandidates(itemRows as any[], "FG");
     for (const source of ["PHP", "PLATE"]) {
       const table = source === "PHP" ? "php_item_master" : "plate_item_master";
