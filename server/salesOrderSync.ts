@@ -87,13 +87,13 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
     const itemCandidates: any[] = [];
     const addCandidates = (rows: any[], source: string) => rows.forEach(row => itemCandidates.push({ ...row, source, resolvedId: String(row.id || row.itemId || "") }));
     try {
-      const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE (TRIM(erp) = ? OR LOWER(TRIM(itemName)) = LOWER(?)) AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp, parsed.itemName]);
+      const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE TRIM(erp) = ? AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp]);
       addCandidates(npdRows as any[], "FG");
     } catch (error) {
       console.warn("[SALES_ORDER_SYNC] Skipping NPD lookup:", (error as Error).message);
     }
     try {
-      const [itemRows] = await conn.query("SELECT id, name AS itemName, erp AS erp, NULL AS companyId FROM items WHERE (TRIM(CAST(erp AS CHAR)) = ? OR LOWER(TRIM(name)) = LOWER(?)) LIMIT 5", [parsed.erp, parsed.itemName]);
+      const [itemRows] = await conn.query("SELECT id, name AS itemName, erp AS erp, NULL AS companyId FROM items WHERE TRIM(CAST(erp AS CHAR)) = ? LIMIT 5", [parsed.erp]);
       addCandidates(itemRows as any[], "FG");
     } catch (error) {
       console.warn("[SALES_ORDER_SYNC] Skipping legacy items lookup:", (error as Error).message);
@@ -101,17 +101,16 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
     for (const source of ["PHP", "PLATE"]) {
       const table = source === "PHP" ? "php_item_master" : "plate_item_master";
       try {
-        const [rows] = await conn.query(`SELECT id, itemId, itemName, erp, company FROM \`${table}\` WHERE (TRIM(COALESCE(erp, '')) = ? OR LOWER(TRIM(itemName)) = LOWER(?)) AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5`, [parsed.erp, parsed.itemName]);
+        const [rows] = await conn.query(`SELECT id, itemId, itemName, erp, company FROM \`${table}\` WHERE TRIM(COALESCE(erp, '')) = ? AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5`, [parsed.erp]);
         addCandidates(rows as any[], source);
       } catch (error) {
         console.warn(`[SALES_ORDER_SYNC] Skipping ${table} lookup:`, (error as Error).message);
       }
     }
     const distinctItems = itemCandidates.filter((item, index, all) => item.resolvedId && all.findIndex(other => other.resolvedId === item.resolvedId && other.source === item.source) === index);
-    if (distinctItems.length !== 1) throw new Error(`Item ERP ${parsed.erp} / name ${parsed.itemName}: ${distinctItems.length ? "ambiguous" : "not found"}`);
+    if (distinctItems.length !== 1) throw new Error(`Item ERP ${parsed.erp}: ${distinctItems.length ? "ambiguous" : "not found"}`);
     const item = distinctItems[0];
     if (item.companyId && String(item.companyId).trim() !== company.id && normalize(item.companyId) !== normalize(company.name)) throw new Error(`Item ${parsed.itemName || parsed.erp} belongs to a different company`);
-    if (parsed.itemName && item.itemName && normalize(parsed.itemName) !== normalize(item.itemName)) throw new Error(`ERP ${parsed.erp} item name does not match`);
     const [linkRows] = await conn.query("SELECT orderId FROM sales_order_sheet_links WHERE spreadsheetId = ? AND sourceOrderId = ? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
     const orderId = (linkRows as any[])[0]?.orderId || crypto.randomUUID();
     const [oldRows] = await conn.query("SELECT id, firmId, firmName, orderBy FROM orders WHERE id = ? FOR UPDATE", [orderId]);
@@ -135,8 +134,8 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
         [parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString(), orderId]);
     } else {
       await conn.query(`INSERT INTO orders (id, firmId, firmName, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, orderBy, poType, remarks, status, updatedBy, updateTimestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'FG', ?, ?, ?, ?, ?, ?, ?, 'Pending PH', 'Salesman App Sync', ?)`,
-        [orderId, firm.id, firm.firmName, parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString()]);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending PH', 'Salesman App Sync', ?)`,
+        [orderId, firm.id, firm.firmName, parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString()]);
       await conn.query("INSERT INTO sales_order_sheet_links (spreadsheetId, sourceOrderId, orderId) VALUES (?, ?, ?)", [SHEET_ID, parsed.sourceId, orderId]);
     }
     const [scheduleRows] = await conn.query("SELECT l.slotNo, l.scheduleId, s.scheduledDate, s.qty, s.producedQty, s.canceledQty FROM sales_order_sheet_schedule_links l JOIN orders_schedule s ON s.id=l.scheduleId WHERE l.spreadsheetId=? AND l.sourceOrderId=? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
@@ -163,7 +162,7 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
       await conn.query("DELETE FROM orders_schedule WHERE id=?", [prior.scheduleId]);
     }
     await conn.commit();
-    return { status: old ? "updated" : "inserted", orderId };
+    return { status: old ? "updated" : "inserted", orderId, itemName: String(item.itemName ?? "").trim() };
   } catch (error) {
     await conn.rollback();
     throw error;
