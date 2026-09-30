@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { ExcelExport } from "../components/ExcelExport";
+import { getProductionWastageTotals } from "../lib/wastageCalculations";
 import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, Production, ProductionProcessing, Truck } from "../types";
 
 const COLUMNS = [
@@ -36,20 +37,24 @@ export function SummarySheetReport() {
   const rows = useMemo<SummaryRow[]>(() => {
     const orderMap = new Map(orders.map((row) => [row.id, row]));
     const scheduleMap = new Map(schedules.map((row) => [row.id, row]));
-    const planMap = new Map(plans.map((row) => [row.id, row]));
     const invoiceMap = new Map(invoices.map((row) => [row.id, row]));
     const truckMap = new Map(trucks.map((row) => [row.id, row]));
-    const stockByErp = new Map(stockItems.map((item: any) => [s(item.erp || item.erpCode || item.masterItemNameErpCode), n(item.balance)]));
+    const stockByErp = new Map(stockItems.map((item: any) => [s(item.erp || item.erpCode || item.masterItemNameErpCode), { name: s(item.name || item.itemName), balance: n(item.balance) }]));
+    const invoiceLinesBySlip = new Map<string, InvoiceLineItem[]>();
+    invoiceLines.forEach((line) => { const list = invoiceLinesBySlip.get(line.loadingSlipId) || []; list.push(line); invoiceLinesBySlip.set(line.loadingSlipId, list); });
     const processingByJob = new Map<string, ProductionProcessing[]>();
     processing.forEach((entry) => { const list = processingByJob.get(entry.productionId) || []; list.push(entry); processingByJob.set(entry.productionId, list); });
-    const dispatchByProduction = new Map<string, { qty: number; date: string; slips: LoadingSlip[] }>();
+    const dispatchByProduction = new Map<string, { qty: number; date: string; slips: LoadingSlip[]; invoiceIds: Set<string> }>();
     plans.forEach((plan) => {
       if (!plan.productionId) return;
       const relatedSlips = slips.filter((slip) => slip.status !== "Cancelled" && slip.lines.some((line) => line.dispatchPlanId === plan.id));
       const qty = relatedSlips.reduce((sum, slip) => sum + slip.lines.filter((line) => line.dispatchPlanId === plan.id).reduce((lineSum, line) => lineSum + n(line.loadedQty), 0), 0);
-      const current = dispatchByProduction.get(plan.productionId) || { qty: 0, date: "", slips: [] };
-      current.qty += qty || n(plan.loadedQty);
+      const current = dispatchByProduction.get(plan.productionId) || { qty: 0, date: "", slips: [], invoiceIds: new Set<string>() };
+      const planInvoiceLines = relatedSlips.flatMap((slip) => invoiceLinesBySlip.get(slip.id) || []).filter((line) => !line.itemId || line.itemId === plan.orderId);
+      current.qty += planInvoiceLines.reduce((sum, line) => sum + n(line.qty), 0) || qty || n(plan.loadedQty);
       current.date = current.date || dateText(relatedSlips[0]?.date || plan.date);
+      relatedSlips.forEach((slip) => { if (slip.invoiceId) current.invoiceIds.add(slip.invoiceId); });
+      planInvoiceLines.forEach((line) => { if (line.invoiceId) current.invoiceIds.add(line.invoiceId); });
       current.slips.push(...relatedSlips);
       dispatchByProduction.set(plan.productionId, current);
     });
@@ -65,29 +70,30 @@ export function SummarySheetReport() {
       const company = companies.find((entry) => entry.id === (order?.companyId || (production as any).companyId));
       const firmName = s(production.firmName || order?.firmName || firms.find((firm) => firm.id === production.firmId)?.firmName);
       const jobNo = s(production.transactionNo || production.jobCardNo);
-      const itemName = s((production as any).itemName || (production as any).name);
       const erp = s(production.erpCode || production.masterErp || (production as any).erp);
+      const stockItem = stockByErp.get(erp);
+      const itemName = s(stockItem?.name || (production as any).itemName || (production as any).name);
       const productionRows = processingByJob.get(production.id) || [];
       const boardline = productionRows.filter((entry) => /corrugation|pasting|stitching|slotting|punching|gluing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0);
       const printing = productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0);
-      const dispatch = dispatchByProduction.get(production.id) || { qty: 0, date: "", slips: [] };
-      const invoiceIds = Array.from(new Set(dispatch.slips.map((slip) => slip.invoiceId).filter(Boolean) as string[]));
-      const relatedInvoices = invoiceIds.map((id) => invoiceMap.get(id)).filter(Boolean) as Invoice[];
+      const dispatch = dispatchByProduction.get(production.id) || { qty: 0, date: "", slips: [], invoiceIds: new Set<string>() };
+      const relatedInvoices = Array.from(dispatch.invoiceIds).map((id) => invoiceMap.get(id)).filter(Boolean) as Invoice[];
+      relatedInvoices.sort((a, b) => dateText(a.tallyInvDate || a.date).localeCompare(dateText(b.tallyInvDate || b.date)));
       const invoiceValues = relatedInvoices.map((invoice) => money(n(invoice.totalAfterGst || invoice.totalBeforeGst)));
       const invoiceDates = relatedInvoices.map((invoice) => dateText(invoice.tallyInvDate || invoice.date));
-      const firstSlip = dispatch.slips[0];
-      const vehicle = firstSlip ? s(firstSlip.truckNo || truckMap.get(firstSlip.truckId)?.truckNo) : "";
+      const vehicle = Array.from(new Set(dispatch.slips.map((slip) => s(slip.truckNo || truckMap.get(slip.truckId)?.truckNo)).filter(Boolean))).join(", ");
       const planned = n(production.plannedQty || production.qty || schedule?.qty);
       const pprUsed = n(production.actualPaperUsed);
       const jobWeight = n(production.totalWeightOfSet) * planned;
       const rate = n(production.rate || order?.rate);
-      const fgStock = stockByErp.get(erp) || 0;
+      const fgStock = stockItem?.balance || 0;
+      const wastage = getProductionWastageTotals(production, productionRows);
       // The requested export layout contains two columns both labelled Rate.
       // The second value is intentionally the same rate for now because the source model has one reliable rate.
       // @ts-ignore duplicate export label is represented by the COLUMNS array.
       const row: SummaryRow = {
         // @ts-ignore The export schema intentionally repeats the Rate header.
-        "Job No.": jobNo, Date: dateText(production.date), "Party Name": s(production.companyName || company?.name), "Item Name": itemName, ERP: erp, "Planned Qty": planned, "FG Stock": fgStock, "Job Weight": money(jobWeight), "Customer Complaint": "", "PDI REPORT": "", "Realization / kg": n(production.realizationPerKg), Meter: n(production.productionInMeter || production.plannedProductionInMeter), "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).join(" x "), UPS: n(production.ups), "Sheets prdcd": n(production.productionOutputQty), "Plate per box": n(production.setsPerBox), "Boardline Prod.": boardline, "Printing prod.": printing, "PPR Rqd.": n(production.totalPaperWeight), "PPR Used": pprUsed, "Paper Wastage": pprUsed && production.totalPaperWeight ? money(pprUsed - n(production.totalPaperWeight)) : "", "Boardline Wastage": "", "Actual Realization / kg": n(production.realizationPerKg), "Dispatched Qty": money(dispatch.qty), "Dispatch Date": dispatch.date, "Inv No.": relatedInvoices.map((invoice) => invoice.invoiceNo || invoice.tallyInvNo).filter(Boolean).join(", "), "Vehicle No": vehicle, "FG LEFT": money(Math.max(0, planned - dispatch.qty)), Rate: rate, Status: s(production.status), "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0), "Sale Value": money(dispatch.qty * rate), "FINAL FG LEFT": money(Math.max(0, planned - dispatch.qty)), "App Stock": fgStock, "wip value": money(Math.max(0, planned - dispatch.qty) * rate), Remarks: s(production.remarks), "Dispatched From FG": dispatch.qty ? "Yes" : "", "Rate": rate, Value: money(dispatch.qty * rate), Timestamp: s(production.updateTimestamp), "App sale value": money(dispatch.qty * rate), "Invoice Date 1": invoiceDates[0] || "", "Invoice Value 1": invoiceValues[0] ?? "", "Invoice Date 2": invoiceDates[1] || "", "Invoice Value 2": invoiceValues[1] ?? "", "Invoice Date 3": invoiceDates[2] || "", "Invoice Value 3": invoiceValues[2] ?? "",
+        "Job No.": jobNo, Date: dateText(production.date), "Party Name": s(production.companyName || company?.name), "Item Name": itemName, ERP: erp, "Planned Qty": planned, "FG Stock": fgStock, "Job Weight": money(jobWeight), "Customer Complaint": "", "PDI REPORT": "", "Realization / kg": n(production.realizationPerKg), Meter: n(production.productionInMeter || production.plannedProductionInMeter), "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).join(" x "), UPS: n(production.ups), "Sheets prdcd": n(production.productionOutputQty), "Plate per box": n(production.setsPerBox), "Boardline Prod.": boardline, "Printing prod.": printing, "PPR Rqd.": n(production.totalPaperWeight), "PPR Used": pprUsed, "Paper Wastage": pprUsed && production.totalPaperWeight ? money(pprUsed - n(production.totalPaperWeight)) : "", "Boardline Wastage": money(wastage.corrugationKg), "Actual Realization / kg": n(production.realizationPerKg), "Dispatched Qty": money(dispatch.qty), "Dispatch Date": invoiceDates[0] || "", "Inv No.": relatedInvoices.map((invoice) => invoice.invoiceNo || invoice.tallyInvNo).filter(Boolean).join(", "), "Vehicle No": vehicle, "FG LEFT": money(Math.max(0, planned - dispatch.qty)), Rate: rate, Status: s(production.status), "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0), "Sale Value": money(dispatch.qty * rate), "FINAL FG LEFT": money(Math.max(0, planned - dispatch.qty)), "App Stock": fgStock, "wip value": money(Math.max(0, planned - dispatch.qty) * rate), Remarks: s(production.remarks), "Dispatched From FG": dispatch.qty ? "Yes" : "", "Rate": rate, Value: money(dispatch.qty * rate), Timestamp: s(production.updateTimestamp), "App sale value": money(dispatch.qty * rate), "Invoice Date 1": invoiceDates[0] || "", "Invoice Value 1": invoiceValues[0] ?? "", "Invoice Date 2": invoiceDates[1] || "", "Invoice Value 2": invoiceValues[1] ?? "", "Invoice Date 3": invoiceDates[2] || "", "Invoice Value 3": invoiceValues[2] ?? "",
       };
       return row;
     }).filter((row) => {
