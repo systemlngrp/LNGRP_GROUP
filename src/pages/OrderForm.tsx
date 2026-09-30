@@ -210,8 +210,14 @@ export function OrderForm() {
     .map((user) => ({ value: user.id, label: user.name }));
 
   const downloadTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([["Order Date", "Company Name", "PO Number", "ERP Code", "Item", "Qty", "Rate"]]);
-    ws["!cols"] = [{ wch: 16 }, { wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 56 }, { wch: 12 }, { wch: 12 }];
+    const headers = ["Firm Name", "Order Date", "Company Name", "PO Type", "PO Number", "Item Name", "ERP Code", "Qty", "Rate", "Order By", "Remarks"];
+    const exampleFirms = [
+      "Laxmi Narayan Corrugated Boards LLP Unit-I",
+      "Laxmi Narayan Corrugated Boards LLP (Unit-II)",
+      "LAXMI NARAYAN KRAFT INDUSTRIES",
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...exampleFirms.map((name) => [name])]);
+    ws["!cols"] = [{ wch: 52 }, { wch: 16 }, { wch: 32 }, { wch: 14 }, { wch: 20 }, { wch: 56 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 32 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Orders");
     XLSX.writeFile(wb, "Orders_Bulk_Upload_Template.xlsx");
@@ -228,10 +234,14 @@ export function OrderForm() {
         const wb = XLSX.read(bstr, { type: "binary", cellDates: true });
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
-        const data = XLSX.utils.sheet_to_json(ws, { raw: true });
+        const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { raw: true });
+        const orderRows = data
+          .map((row, index) => ({ row, rowNumber: index + 2 }))
+          .filter(({ row }) => Object.entries(row).some(([key, value]) =>
+            key !== "Firm Name" && key !== "Firm" && String(value ?? "").trim() !== ""));
 
-        if (data.length === 0) {
-          alert("The file is empty.");
+        if (orderRows.length === 0) {
+          alert("No completed order rows found. Fill in the order details beside a firm name.");
           return;
         }
 
@@ -265,12 +275,8 @@ export function OrderForm() {
 
         const validationErrors: string[] = [];
         const missingItems: string[] = [];
-        const selectedFirm = firms.find((firm) => firm.id === firmId);
         const selectedUser = users.find((user) => user.id === orderBy);
-        if (!selectedFirm || !selectedUser) {
-          alert("Select Firm and Order By on the form before bulk upload.");
-          return;
-        }
+        const selectedFirm = firms.find((firm) => firm.id === firmId);
         const audit = { updatedBy: "System User", updateTimestamp: new Date().toISOString() } as const;
         const nextVerbalPoNumbers = new Map<string, number>();
         const nextOrderNumbers = new Map<string, number>();
@@ -292,9 +298,8 @@ export function OrderForm() {
           nextOrderNumbers.set(fy, Math.max(nextOrderNumbers.get(fy) || 0, numberPart));
         });
 
-        const newOrders: Order[] = data.map((row: any, index) => {
-          const rowNumber = index + 2;
-          const firmNameValue = String(row["Firm Name"] || row["Firm"] || selectedFirm.firmName).trim();
+        const newOrders: Order[] = orderRows.map(({ row, rowNumber }) => {
+          const firmNameValue = String(row["Firm Name"] || row["Firm"] || selectedFirm?.firmName || "").trim();
           const orderDateValue = normalizeOrderDate(row["Order Date"]);
           const poTypeValue = String(row["PO Type"] || (row["PO Number"] ? "Ref No." : "Verbal")).trim();
           const poNumberValue = String(row["PO Number"] || "").trim();
@@ -303,7 +308,7 @@ export function OrderForm() {
           const companyNameValue = String(row["Company Name"] || "").trim();
           const qtyValue = String(row["Qty"] ?? "").trim();
           const rateValue = String(row["Rate"] ?? "").trim();
-          const orderByValue = String(row["Order By"] || selectedUser.name).trim();
+          const orderByValue = String(row["Order By"] || selectedUser?.name || "").trim();
           const remarksValue = String(row["Remarks"] || "").trim();
 
           const rowIssues: string[] = [];
@@ -327,7 +332,7 @@ export function OrderForm() {
           if (!erpValue && !itemNameValue) rowIssues.push("ERP Code or Item is required");
           const matchedItem = itemMap.get(normalizeText(erpValue || itemNameValue));
           if ((erpValue || itemNameValue) && !matchedItem) {
-            rowIssues.push(`Item not found: ${erpValue || itemNameValue}`);
+            rowIssues.push(erpValue ? `ERP Code not found: ${erpValue}` : `Item not found: ${itemNameValue}`);
             missingItems.push(`Row ${rowNumber}: ${erpValue || itemNameValue}`);
           }
 
@@ -423,7 +428,7 @@ export function OrderForm() {
 
           if (!response.ok) {
             const errData = await response.json().catch(() => ({}));
-            const message = errData.error || `Failed to save row ${index + 2}.`;
+            const message = errData.error || `Failed to save row ${orderRows[index].rowNumber}.`;
             throw new Error(message);
           }
         }
@@ -668,7 +673,7 @@ export function OrderForm() {
           )}
         </div>
       </div>
-      <p className="text-xs text-slate-600">For bulk upload, select Firm and Order By on this form. The template uses ERP Code to find each item.</p>
+      <p className="text-xs text-slate-600">Fill in order details beside a firm name. Enter Order By in the sheet or select it on this form. ERP Code finds the system item.</p>
 
       {isFormOpen && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-lg border border-slate-200 space-y-6 max-w-4xl mx-auto">

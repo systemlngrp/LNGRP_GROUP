@@ -242,6 +242,7 @@ const reportStockItems: NavItem[] = [
 ];
 
 const reportProductionItems: NavItem[] = [
+  { name: "Summary Sheet", href: "/reports/summary-sheet", icon: BarChart3 },
   { name: "Jobs in Progress", href: "/reports/jobs-in-progress", icon: BarChart3 },
   { name: "Fixed Monthly Expenses", href: "/reports/fixed-monthly-expenses", icon: Database },
   { name: "Fixed Daily Expenses", href: "/reports/fixed-daily-expenses", icon: Database },

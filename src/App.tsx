@@ -141,6 +141,7 @@ import { ConversionCostMonthWiseReport } from "./pages/ConversionCostMonthWiseRe
 import { ConversionCostDetailsReport } from "./pages/ConversionCostDetailsReport";
 import { TruckStatusReport } from "./pages/TruckStatusReport";
 import { WastageReport } from "./pages/WastageReport";
+import { SummarySheetReport } from "./pages/SummarySheetReport";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
 import { PhysicalStockMaster } from "./pages/PhysicalStockMaster";
 import { PhysicalStockSessions } from "./pages/PhysicalStockSessions";
@@ -391,6 +392,7 @@ export default function App() {
           <Route path="reports/conversion-cost-details" element={<ConversionCostDetailsReport />} />
           <Route path="reports/truck-status" element={<TruckStatusReport />} />
           <Route path="reports/wastage" element={<WastageReport />} />
+          <Route path="reports/summary-sheet" element={<SummarySheetReport />} />
 
           {/* Documentation */}
           <Route path="plans/production-planning" element={<PlansProductionPlanning />} />
