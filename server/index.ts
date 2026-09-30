@@ -10,6 +10,7 @@ import { exec } from "child_process";
 import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
+import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { GoogleGenAI } from "@google/genai";
 import {
   APP_BUILD_MARKER,
@@ -1037,6 +1038,7 @@ app.use("/api", (req, res, next) => {
     // All NPD create/update/delete endpoints remain protected below.
     req.path.startsWith("/npd-firm-wise") ||
     req.path.startsWith("/npd-sync") ||
+    req.path === "/sales-order-sync" ||
     req.path.startsWith("/tally-sync")
   ) return next();
   return requireAuth(req, res, next);
@@ -13608,6 +13610,8 @@ entities.forEach(entity => {
 // Special handler for Material In lines (since they are stored as JSON)
 // The generic upsert should handle it if the client sends stringified JSON or if mysql2 handles it.
 // mysql2 handles objects/arrays as JSON if specified in the query.
+
+registerSalesOrderSync(app, getPool);
 
 async function startServer() {
   await initDb();
