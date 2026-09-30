@@ -1,12 +1,12 @@
 /** Manual Google Sheets -> LNGRP order import.
- * Set ORDER_SYNC_URL and ORDER_SYNC_SECRET before running syncSalesOrdersFromSheet().
+ * The backend reads the Hostinger IMPORT_KEY environment variable.
  */
 const SALES_ORDER_SYNC_CONFIG = {
   spreadsheetId: '1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg',
   tabName: 'Order Master',
   startDate: '2026-04-01',
   endpoint: 'https://system.lngrp.in/api/sales-order-sync',
-  secret: 'REPLACE_WITH_ORDER_SYNC_SECRET',
+  secret: '1234567890',
   batchSize: 100,
 };
 

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { ORDER_SYNC_SECRET } from "./config.js";
 const SHEET_ID = "1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg";
 const FIRST_DATE = "2026-04-01";
 const normalize = (value) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -156,7 +157,7 @@ async function syncOne(db, raw) {
 }
 export function registerSalesOrderSync(app, getPool) {
     app.post("/api/sales-order-sync", async (req, res) => {
-        const secret = String(process.env.ORDER_SYNC_SECRET || "").trim();
+        const secret = ORDER_SYNC_SECRET;
         if (!secret)
             return res.status(503).json({ error: "ORDER_SYNC_SECRET is not configured" });
         if (req.headers["x-order-sync-secret"] !== secret)

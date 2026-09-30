@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { Express } from "express";
 import type mysql from "mysql2/promise";
+import { ORDER_SYNC_SECRET } from "./config.js";
 
 const SHEET_ID = "1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg";
 const FIRST_DATE = "2026-04-01";
@@ -145,7 +146,7 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
 
 export function registerSalesOrderSync(app: Express, getPool: () => Promise<mysql.Pool | null>) {
   app.post("/api/sales-order-sync", async (req, res) => {
-    const secret = String(process.env.ORDER_SYNC_SECRET || "").trim();
+    const secret = ORDER_SYNC_SECRET;
     if (!secret) return res.status(503).json({ error: "ORDER_SYNC_SECRET is not configured" });
     if (req.headers["x-order-sync-secret"] !== secret) return res.status(401).json({ error: "Invalid sync secret" });
     if (req.body?.spreadsheetId !== SHEET_ID || req.body?.tabName !== "Order Master" || !Array.isArray(req.body?.rows) || req.body.rows.length > 100) return res.status(400).json({ error: "Invalid sheet or batch (maximum 100 rows)" });
