@@ -5,10 +5,22 @@ const SALES_ORDER_SYNC_CONFIG = {
   spreadsheetId: '1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg',
   tabName: 'Order Master',
   startDate: '2026-04-01',
+  firmName: 'Unit-2',
   endpoint: 'https://system.lngrp.in/api/sales-order-sync',
   secret: '1234567890',
-  batchSize: 100,
+  batchSize: 10,
+  maxRows: 10,
 };
+
+const ORDER_IMPORT_COLUMNS = [
+  'Order Id', 'Order Date', 'Company Name', 'PO Number', 'PO Type',
+  'ERP Code', 'Item', 'Qty', 'Rate', 'Order By', 'Remarks',
+  'Scheduled Date 1', 'Qty 1', 'Scheduled Date 2', 'Qty 2',
+  'Scheduled Date 3', 'Qty 3', 'Scheduled Date 4', 'Qty 4',
+  'Scheduled Date 5', 'Qty 5', 'Scheduled Date 6', 'Qty 6',
+  'Scheduled Date 7', 'Qty 7', 'Scheduled Date 8', 'Qty 8',
+  'Scheduled Date 9', 'Qty 9', 'Scheduled Date 10', 'Qty 10'
+];
 
 function syncSalesOrdersFromSheet() {
   const sheet = SpreadsheetApp.openById(SALES_ORDER_SYNC_CONFIG.spreadsheetId)
@@ -22,10 +34,16 @@ function syncSalesOrdersFromSheet() {
     const row = values[i];
     if (row.every(v => String(v || '').trim() === '')) continue;
     const payload = {};
-    headers.forEach((header, column) => { if (header) payload[header] = row[column] || ''; });
+    headers.forEach((header, column) => {
+      if (header && ORDER_IMPORT_COLUMNS.indexOf(header) !== -1) payload[header] = row[column] || '';
+    });
+    payload['Firm Name'] = SALES_ORDER_SYNC_CONFIG.firmName;
     if (!payload['Order Id']) continue;
     const orderDate = parseSalesOrderDate_(payload['Order Date']);
-    if (orderDate && orderDate >= SALES_ORDER_SYNC_CONFIG.startDate) rows.push(payload);
+    if (orderDate && orderDate >= SALES_ORDER_SYNC_CONFIG.startDate) {
+      rows.push(payload);
+      if (rows.length >= SALES_ORDER_SYNC_CONFIG.maxRows) break;
+    }
   }
   const results = [];
   for (let offset = 0; offset < rows.length; offset += SALES_ORDER_SYNC_CONFIG.batchSize) {
@@ -51,7 +69,14 @@ function syncSalesOrdersFromSheet() {
     inserted: results.filter(r => r.status === 'inserted').length,
     updated: results.filter(r => r.status === 'updated').length,
     errors: results.filter(r => r.status === 'error').length, results };
-  Logger.log(JSON.stringify(summary));
+  Logger.log(JSON.stringify({
+    ok: summary.ok,
+    eligibleRows: summary.eligibleRows,
+    inserted: summary.inserted,
+    updated: summary.updated,
+    errors: summary.errors,
+    errorPreview: results.filter(r => r.status === 'error').slice(0, 10),
+  }));
   return summary;
 }
 

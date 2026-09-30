@@ -53,7 +53,7 @@ export function parseSalesOrderRow(raw: Record<string, unknown>) {
     schedules.push({ slot, date, qty: quantity(qtyRaw, `Qty ${slot}`) });
   }
   if (schedules.reduce((sum, schedule) => sum + schedule.qty, 0) > qty) throw new Error("Scheduled quantity exceeds order quantity");
-  return { sourceId, orderDate, company, erp, itemName: cell(row, "Item"), qty, rate, schedules,
+  return { sourceId, orderDate, company, erp, itemName: cell(row, "Item"), firmName: cell(row, "Firm Name"), qty, rate, schedules,
     poNumber: cell(row, "PO Number"), poType: cell(row, "PO Type"), orderBy: cell(row, "Order By"),
     remarks: cell(row, "Remarks") };
 }
@@ -119,9 +119,10 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
     // The NPD master does not store firmId. Existing orders for this ERP/item provide the only safe inference.
     const [firmRows] = await conn.query("SELECT DISTINCT f.id, f.firmName FROM orders o JOIN firms f ON f.id = o.firmId WHERE o.itemId = ? AND COALESCE(o.firmId, '') <> '' LIMIT 2", [item.resolvedId]);
     const firms = firmRows as any[];
-    const firm = old?.firmId
+    const requestedFirm = parsed.firmName ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE LOWER(REPLACE(REPLACE(TRIM(firmName), '-', ''), ' ', '')) = LOWER(REPLACE(REPLACE(TRIM(?), '-', ''), ' ', '')) LIMIT 2", [parsed.firmName], `Firm ${parsed.firmName}`) : null;
+    const firm = requestedFirm || (old?.firmId
       ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE id = ? LIMIT 2", [old.firmId], "Existing order firm")
-      : firms.length === 1 ? firms[0] : null;
+      : firms.length === 1 ? firms[0] : null);
     if (!firm) throw new Error(`Firm for ERP ${parsed.erp}: ${firms.length ? "ambiguous" : "not found"}`);
     let orderBy = old?.orderBy || "";
     if (parsed.orderBy) {

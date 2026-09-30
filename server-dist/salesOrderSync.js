@@ -56,7 +56,7 @@ export function parseSalesOrderRow(raw) {
     }
     if (schedules.reduce((sum, schedule) => sum + schedule.qty, 0) > qty)
         throw new Error("Scheduled quantity exceeds order quantity");
-    return { sourceId, orderDate, company, erp, itemName: cell(row, "Item"), qty, rate, schedules,
+    return { sourceId, orderDate, company, erp, itemName: cell(row, "Item"), firmName: cell(row, "Firm Name"), qty, rate, schedules,
         poNumber: cell(row, "PO Number"), poType: cell(row, "PO Type"), orderBy: cell(row, "Order By"),
         remarks: cell(row, "Remarks") };
 }
@@ -88,8 +88,13 @@ async function syncOne(db, raw) {
         const company = await oneMatch(conn, "SELECT id, name FROM companies WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.company], `Company ${parsed.company}`);
         const itemCandidates = [];
         const addCandidates = (rows, source) => rows.forEach(row => itemCandidates.push({ ...row, source, resolvedId: String(row.id || row.itemId || "") }));
-        const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE (TRIM(erp) = ? OR LOWER(TRIM(itemName)) = LOWER(?)) AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp, parsed.itemName]);
-        addCandidates(npdRows, "FG");
+        try {
+            const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE (TRIM(erp) = ? OR LOWER(TRIM(itemName)) = LOWER(?)) AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp, parsed.itemName]);
+            addCandidates(npdRows, "FG");
+        }
+        catch (error) {
+            console.warn("[SALES_ORDER_SYNC] Skipping NPD lookup:", error.message);
+        }
         try {
             const [itemRows] = await conn.query("SELECT id, name AS itemName, erp AS erp, NULL AS companyId FROM items WHERE (TRIM(CAST(erp AS CHAR)) = ? OR LOWER(TRIM(name)) = LOWER(?)) LIMIT 5", [parsed.erp, parsed.itemName]);
             addCandidates(itemRows, "FG");
@@ -122,7 +127,8 @@ async function syncOne(db, raw) {
         // The NPD master does not store firmId. Existing orders for this ERP/item provide the only safe inference.
         const [firmRows] = await conn.query("SELECT DISTINCT f.id, f.firmName FROM orders o JOIN firms f ON f.id = o.firmId WHERE o.itemId = ? AND COALESCE(o.firmId, '') <> '' LIMIT 2", [item.resolvedId]);
         const firms = firmRows;
-        const firm = old?.firmId
+        const requestedFirm = parsed.firmName ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE LOWER(REPLACE(REPLACE(TRIM(firmName), '-', ''), ' ', '')) = LOWER(REPLACE(REPLACE(TRIM(?), '-', ''), ' ', '')) LIMIT 2", [parsed.firmName], `Firm ${parsed.firmName}`) : null;
+        const firm = requestedFirm || old?.firmId
             ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE id = ? LIMIT 2", [old.firmId], "Existing order firm")
             : firms.length === 1 ? firms[0] : null;
         if (!firm)
