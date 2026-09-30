@@ -106,6 +106,16 @@ export function OrderForm() {
     const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
 
+    const dayFirstMatch = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (dayFirstMatch) {
+      const [, day, month, year] = dayFirstMatch;
+      const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+      if (parsed.getFullYear() === Number(year) && parsed.getMonth() === Number(month) - 1 && parsed.getDate() === Number(day)) {
+        return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      }
+      return "";
+    }
+
     const parsed = new Date(text);
     if (!isNaN(parsed.getTime())) {
       const yyyy = parsed.getFullYear();
@@ -200,21 +210,8 @@ export function OrderForm() {
     .map((user) => ({ value: user.id, label: user.name }));
 
   const downloadTemplate = () => {
-    const templateData = [
-      {
-        "Firm Name": firms[0]?.firmName || "",
-        "Order Date": new Date().toISOString().slice(0, 10),
-        "PO Type": "Verbal",
-        "PO Number": "",
-        "Item Name": "Example Item",
-        Qty: 100,
-        Rate: 12.5,
-        "Order By": "Admin",
-        Remarks: "Urgent order",
-      },
-    ];
-
-    const ws = XLSX.utils.json_to_sheet(templateData);
+    const ws = XLSX.utils.aoa_to_sheet([["Order Date", "Company Name", "PO Number", "ERP Code", "Item", "Qty", "Rate"]]);
+    ws["!cols"] = [{ wch: 16 }, { wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 56 }, { wch: 12 }, { wch: 12 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Orders");
     XLSX.writeFile(wb, "Orders_Bulk_Upload_Template.xlsx");
@@ -268,6 +265,12 @@ export function OrderForm() {
 
         const validationErrors: string[] = [];
         const missingItems: string[] = [];
+        const selectedFirm = firms.find((firm) => firm.id === firmId);
+        const selectedUser = users.find((user) => user.id === orderBy);
+        if (!selectedFirm || !selectedUser) {
+          alert("Select Firm and Order By on the form before bulk upload.");
+          return;
+        }
         const audit = { updatedBy: "System User", updateTimestamp: new Date().toISOString() } as const;
         const nextVerbalPoNumbers = new Map<string, number>();
         const nextOrderNumbers = new Map<string, number>();
@@ -291,14 +294,16 @@ export function OrderForm() {
 
         const newOrders: Order[] = data.map((row: any, index) => {
           const rowNumber = index + 2;
-          const firmNameValue = String(row["Firm Name"] || row["Firm"] || "").trim();
+          const firmNameValue = String(row["Firm Name"] || row["Firm"] || selectedFirm.firmName).trim();
           const orderDateValue = normalizeOrderDate(row["Order Date"]);
-          const poTypeValue = String(row["PO Type"] || "").trim();
+          const poTypeValue = String(row["PO Type"] || (row["PO Number"] ? "Ref No." : "Verbal")).trim();
           const poNumberValue = String(row["PO Number"] || "").trim();
-          const itemNameValue = String(row["Item Name"] || "").trim();
+          const itemNameValue = String(row["Item"] || row["Item Name"] || "").trim();
+          const erpValue = String(row["ERP Code"] || "").trim();
+          const companyNameValue = String(row["Company Name"] || "").trim();
           const qtyValue = String(row["Qty"] ?? "").trim();
           const rateValue = String(row["Rate"] ?? "").trim();
-          const orderByValue = String(row["Order By"] || "").trim();
+          const orderByValue = String(row["Order By"] || selectedUser.name).trim();
           const remarksValue = String(row["Remarks"] || "").trim();
 
           const rowIssues: string[] = [];
@@ -319,17 +324,21 @@ export function OrderForm() {
           if (!poType) rowIssues.push("PO Type must be Verbal or Ref No.");
           if (poType === "Ref No." && !poNumberValue) rowIssues.push("PO Number is required for Ref No.");
 
-          if (!itemNameValue) {
-            rowIssues.push("Item Name is required");
-          }
-
-          const matchedItem = itemMap.get(normalizeText(itemNameValue));
-          if (itemNameValue && !matchedItem) {
-            rowIssues.push(`Item not found: ${itemNameValue}`);
-            missingItems.push(`Row ${rowNumber}: ${itemNameValue}`);
+          if (!erpValue && !itemNameValue) rowIssues.push("ERP Code or Item is required");
+          const matchedItem = itemMap.get(normalizeText(erpValue || itemNameValue));
+          if ((erpValue || itemNameValue) && !matchedItem) {
+            rowIssues.push(`Item not found: ${erpValue || itemNameValue}`);
+            missingItems.push(`Row ${rowNumber}: ${erpValue || itemNameValue}`);
           }
 
           const companyId = resolveItemCompanyId(matchedItem);
+          if (companyNameValue) {
+            const matchedCompany = companies.find((company) => normalizeCompanyName(company.name) === normalizeCompanyName(companyNameValue));
+            if (!matchedCompany) rowIssues.push(`Company not found: ${companyNameValue}`);
+            else if (matchedItem && companyId !== matchedCompany.id) rowIssues.push(`ERP ${erpValue || itemNameValue} does not belong to ${companyNameValue}`);
+          } else {
+            rowIssues.push("Company Name is required");
+          }
 
           if (!qtyValue) {
             rowIssues.push("Qty is required");
@@ -659,6 +668,7 @@ export function OrderForm() {
           )}
         </div>
       </div>
+      <p className="text-xs text-slate-600">For bulk upload, select Firm and Order By on this form. The template uses ERP Code to find each item.</p>
 
       {isFormOpen && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-lg border border-slate-200 space-y-6 max-w-4xl mx-auto">

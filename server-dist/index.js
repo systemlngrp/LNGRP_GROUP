@@ -1172,7 +1172,7 @@ app.post("/api/npd-sync", async (req, res) => {
             headerMap: NPD_SYNC_HEADER_MAP,
             requiredHeaders: NPD_SYNC_REQUIRED_HEADERS,
             mapFn: mapSheetRowToNpdRow,
-            skipIfHostingerSynced: true,
+            skipIfHostingerSynced: false,
         },
         "PHP ITEM MASTER": {
             table: "php_item_master",
