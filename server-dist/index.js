@@ -4625,6 +4625,8 @@ function entityPermissionKey(entity) {
             return "/quality/block-record";
         case "qc_block_location_masters":
             return "/quality/block-location-master";
+        case "pre_dispatch_inspections":
+            return "/quality/pre-dispatch-inspection";
         case "dispatch_plans":
             return "/dispatch";
         case "loading_slips":
@@ -5809,6 +5811,15 @@ async function initDb(retries = 5) {
         \`active\` VARCHAR(10) NOT NULL DEFAULT 'Yes', \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(255),
         UNIQUE KEY \`uk_qc_block_location_name\` (\`name\`)
       )`);
+            await db.query(`CREATE TABLE IF NOT EXISTS \`pre_dispatch_inspections\` (
+        \`id\` VARCHAR(100) PRIMARY KEY, \`productionId\` VARCHAR(36) NOT NULL, \`jobNo\` VARCHAR(100) NOT NULL,
+        \`firmId\` VARCHAR(36), \`firmName\` VARCHAR(255), \`erpCode\` VARCHAR(100), \`partyName\` VARCHAR(255), \`itemName\` TEXT,
+        \`plannedQty\` DECIMAL(15,2) DEFAULT 0, \`lotNo\` VARCHAR(100), \`lengthId\` VARCHAR(50), \`widthId\` VARCHAR(50), \`heightId\` VARCHAR(50),
+        \`csAchieved\` VARCHAR(50), \`gsmAchieved\` VARCHAR(50), \`boxWeightGrams\` VARCHAR(50),
+        \`printingArtworkCheck\` VARCHAR(20), \`printingColorCheck\` VARCHAR(20), \`boxSquaringCheck\` VARCHAR(20), \`flapGapCheck\` VARCHAR(20), \`jointPastingDelaminationCheck\` VARCHAR(20),
+        \`remarks\` TEXT, \`frontPhoto\` TEXT, \`backPhoto\` TEXT, \`result\` VARCHAR(20) NOT NULL DEFAULT 'Pending', \`qcPerson\` VARCHAR(255), \`inspectionDate\` VARCHAR(50), \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(255),
+        UNIQUE KEY \`uk_pre_dispatch_production\` (\`productionId\`)
+      )`);
             // Migration: Add new columns to companies table
             try {
                 const [columns] = await db.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'companies'", [database]);
@@ -6908,6 +6919,34 @@ async function initDb(retries = 5) {
                 { table: "qc_block_location_masters", column: "active", type: "VARCHAR(10) NOT NULL DEFAULT 'Yes'" },
                 { table: "qc_block_location_masters", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "qc_block_location_masters", column: "updateTimestamp", type: "VARCHAR(255)" },
+                { table: "pre_dispatch_inspections", column: "productionId", type: "VARCHAR(36)" },
+                { table: "pre_dispatch_inspections", column: "jobNo", type: "VARCHAR(100)" },
+                { table: "pre_dispatch_inspections", column: "firmId", type: "VARCHAR(36)" },
+                { table: "pre_dispatch_inspections", column: "firmName", type: "VARCHAR(255)" },
+                { table: "pre_dispatch_inspections", column: "erpCode", type: "VARCHAR(100)" },
+                { table: "pre_dispatch_inspections", column: "partyName", type: "VARCHAR(255)" },
+                { table: "pre_dispatch_inspections", column: "itemName", type: "TEXT" },
+                { table: "pre_dispatch_inspections", column: "plannedQty", type: "DECIMAL(15,2) DEFAULT 0" },
+                { table: "pre_dispatch_inspections", column: "lotNo", type: "VARCHAR(100)" },
+                { table: "pre_dispatch_inspections", column: "lengthId", type: "VARCHAR(50)" },
+                { table: "pre_dispatch_inspections", column: "widthId", type: "VARCHAR(50)" },
+                { table: "pre_dispatch_inspections", column: "heightId", type: "VARCHAR(50)" },
+                { table: "pre_dispatch_inspections", column: "csAchieved", type: "VARCHAR(50)" },
+                { table: "pre_dispatch_inspections", column: "gsmAchieved", type: "VARCHAR(50)" },
+                { table: "pre_dispatch_inspections", column: "boxWeightGrams", type: "VARCHAR(50)" },
+                { table: "pre_dispatch_inspections", column: "printingArtworkCheck", type: "VARCHAR(20)" },
+                { table: "pre_dispatch_inspections", column: "printingColorCheck", type: "VARCHAR(20)" },
+                { table: "pre_dispatch_inspections", column: "boxSquaringCheck", type: "VARCHAR(20)" },
+                { table: "pre_dispatch_inspections", column: "flapGapCheck", type: "VARCHAR(20)" },
+                { table: "pre_dispatch_inspections", column: "jointPastingDelaminationCheck", type: "VARCHAR(20)" },
+                { table: "pre_dispatch_inspections", column: "remarks", type: "TEXT" },
+                { table: "pre_dispatch_inspections", column: "frontPhoto", type: "TEXT" },
+                { table: "pre_dispatch_inspections", column: "backPhoto", type: "TEXT" },
+                { table: "pre_dispatch_inspections", column: "result", type: "VARCHAR(20) NOT NULL DEFAULT 'Pending'" },
+                { table: "pre_dispatch_inspections", column: "qcPerson", type: "VARCHAR(255)" },
+                { table: "pre_dispatch_inspections", column: "inspectionDate", type: "VARCHAR(50)" },
+                { table: "pre_dispatch_inspections", column: "updatedBy", type: "VARCHAR(255)" },
+                { table: "pre_dispatch_inspections", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "qc_spec_card_movements", column: "productionId", type: "VARCHAR(36)" },
                 { table: "qc_spec_card_movements", column: "firmId", type: "VARCHAR(36)" },
                 { table: "qc_spec_card_movements", column: "firmName", type: "VARCHAR(255)" },
@@ -10861,7 +10900,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
         conn.release();
     }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 app.get("/api/tally-sync-debug", (req, res) => {
     const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
     return res.json({

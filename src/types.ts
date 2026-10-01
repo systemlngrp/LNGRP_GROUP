@@ -1183,6 +1183,38 @@ export interface QcBlockLocationMaster {
   updateTimestamp?: string;
 }
 
+export interface PreDispatchInspection {
+  id: string;
+  productionId: string;
+  jobNo: string;
+  firmId?: string;
+  firmName?: string;
+  erpCode?: string;
+  partyName?: string;
+  itemName?: string;
+  plannedQty?: number;
+  lotNo?: string;
+  lengthId?: number | string;
+  widthId?: number | string;
+  heightId?: number | string;
+  csAchieved?: number | string;
+  gsmAchieved?: number | string;
+  boxWeightGrams?: number | string;
+  printingArtworkCheck?: string;
+  printingColorCheck?: string;
+  boxSquaringCheck?: string;
+  flapGapCheck?: string;
+  jointPastingDelaminationCheck?: string;
+  remarks?: string;
+  frontPhoto?: string;
+  backPhoto?: string;
+  result: "Pending" | "QC PASS" | "QC HOLD" | string;
+  qcPerson?: string;
+  inspectionDate: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export type TruckLiveStatus = "EMPTY" | "LOADING" | "IN-TRANSIT" | "REPORTED TO PARTY" | "UNLOADING" | "RETURNING" | "BILL PENDING" | "NOT UNLOADED" | "REJECTED";
 
 export interface Truck {
