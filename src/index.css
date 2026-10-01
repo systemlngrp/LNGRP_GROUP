@@ -30,6 +30,18 @@
     flex: none;
   }
 
+  /* Spec Card's legacy add bar is now a compact header action. */
+  .space-y-4.pb-8 > div:first-child button.bg-cyan-700:has(> svg) {
+    width: 2.25rem !important;
+    height: 2.25rem !important;
+    min-width: 2.25rem !important;
+    padding: 0 !important;
+    margin-left: auto !important;
+    border-radius: 9999px !important;
+    font-size: 0 !important;
+    line-height: 1 !important;
+  }
+
   /* QC entry forms open as centered modal cards instead of shifting the page. */
   body:has(.space-y-4.pb-8 > div[class*="bg-white"][class*="p-4"])::before {
     content: "";

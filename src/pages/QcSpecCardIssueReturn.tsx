@@ -3,7 +3,7 @@ import { Plus, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
-import type { Firm, Production, QcPersonMaster, QcSpecCardMovement } from "../types";
+import type { Firm, Order, OrderSchedule, Production, QcPersonMaster, QcSpecCardMovement } from "../types";
 
 const text = (v: unknown) => String(v ?? "").trim();
 const empty = { productionId: "", firmId: "", firmName: "", jobNo: "", erpCode: "", date: "", partyName: "", itemName: "", planQuantity: 0, artwork: "", spec: "", issue: false, issuedTo: "", returned: false, returnedBy: "", qcPerson: "" };
@@ -14,6 +14,8 @@ const opts = (values: string[]) => [...new Set(values.filter(Boolean))].sort().m
 
 export function QcSpecCardIssueReturn() {
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [records, , loading, api] = useData<QcSpecCardMovement>("qc_spec_card_movements", [], { firmScope: "all" });
   const [people] = useData<QcPersonMaster>("qc_person_masters", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
@@ -31,7 +33,10 @@ export function QcSpecCardIssueReturn() {
     const p = productions.find(x => x.id === id); if (!p) { setDraft(empty); setSelectedId(""); return; }
     const jobNo = text(p.transactionNo || p.jobCardNo); const old = records.find(r => r.productionId === p.id || r.jobNo === jobNo);
     const npd = items.find((x: any) => text(x.id) === text(p.npdId || p.itemId) || text(x.erp) === text(p.erpCode || p.masterErp));
-    const firmId = text(p.firmId || old?.firmId); const firmName = text(p.firmName || old?.firmName || firms.find(f => f.id === firmId)?.firmName);
+    const schedule = schedules.find(s => s.id === p.scheduleId);
+    const order = orders.find(o => o.id === schedule?.orderId || o.id === (p as any).orderId);
+    const orderFirmId = text(order?.firmId || (order as any)?.orderFirmId || schedule?.firmId);
+    const firmId = text(orderFirmId || p.firmId || old?.firmId); const firmName = text(order?.firmName || schedule?.firmName || p.firmName || old?.firmName || firms.find(f => f.id === firmId)?.firmName);
     setSelectedId(old?.id || "");
     setDraft(old ? { ...empty, productionId: old.productionId, firmId, firmName, jobNo: old.jobNo, erpCode: old.erpCode, date: old.date, partyName: old.partyName, itemName: old.itemName, planQuantity: old.planQuantity, artwork: old.artwork || "", spec: old.spec || "", issue: Boolean(old.issue), issuedTo: old.issuedTo || "", returned: Boolean(old.returned), returnedBy: old.returnedBy || "", qcPerson: old.printingQcPerson || "" } : { ...empty, productionId: p.id, firmId, firmName, jobNo, erpCode: text(p.erpCode || p.masterErp || (p as any).erp || npd?.erp), date: text(p.date).slice(0,10), partyName: text(p.companyName), itemName: text((p as any).itemName || npd?.name), planQuantity: Number(p.plannedQty || p.qty) || 0, artwork: text((npd as any)?.artwork || (p as any).artwork), spec: text((npd as any)?.spec || (p as any).spec) });
     setMessage("");
