@@ -54,18 +54,53 @@ export function SummarySheetReport() {
     const processingByJob = new Map<string, ProductionProcessing[]>();
     processing.forEach((entry) => { const list = processingByJob.get(entry.productionId) || []; list.push(entry); processingByJob.set(entry.productionId, list); });
     const dispatchByProduction = new Map<string, { qty: number; date: string; slips: LoadingSlip[]; invoiceIds: Set<string> }>();
+    const addDispatch = (productionId: string, qty: number, date = "", slip?: LoadingSlip) => {
+      if (!productionId || !Number.isFinite(qty) || qty <= 0) return;
+      const current = dispatchByProduction.get(productionId) || { qty: 0, date: "", slips: [], invoiceIds: new Set<string>() };
+      current.qty += qty;
+      current.date = current.date || date;
+      if (slip && !current.slips.some((item) => item.id === slip.id)) current.slips.push(slip);
+      if (slip?.invoiceId) current.invoiceIds.add(slip.invoiceId);
+      dispatchByProduction.set(productionId, current);
+    };
+    const loadedByPlan = new Map<string, { qty: number; date: string; slips: LoadingSlip[] }>();
+    slips.filter((slip) => slip.status !== "Cancelled").forEach((slip) => {
+      slip.lines.forEach((line) => {
+        const plan = plans.find((item) => item.id === line.dispatchPlanId);
+        if (plan?.productionId) {
+          const current = loadedByPlan.get(plan.id) || { qty: 0, date: "", slips: [] };
+          current.qty += n(line.loadedQty);
+          current.date = current.date || dateText(slip.date);
+          if (!current.slips.some((item) => item.id === slip.id)) current.slips.push(slip);
+          loadedByPlan.set(plan.id, current);
+        }
+        line.allocations?.forEach((allocation) => {
+          if (allocation.sourceType !== "job" || plan) return;
+          addDispatch(allocation.jobId, n(allocation.qty), dateText(slip.date), slip);
+        });
+      });
+    });
     plans.forEach((plan) => {
       if (!plan.productionId) return;
+      const loaded = loadedByPlan.get(plan.id);
+      const qty = Math.max(n(plan.loadedQty), loaded?.qty || 0);
+      addDispatch(plan.productionId, qty, loaded?.date || dateText(plan.date));
+      if (loaded) {
+        const current = dispatchByProduction.get(plan.productionId);
+        loaded.slips.forEach((slip) => {
+          if (current && !current.slips.some((item) => item.id === slip.id)) current.slips.push(slip);
+          if (current && slip.invoiceId) current.invoiceIds.add(slip.invoiceId);
+        });
+      }
       const relatedSlips = slips.filter((slip) => slip.status !== "Cancelled" && slip.lines.some((line) => line.dispatchPlanId === plan.id));
-      const qty = relatedSlips.reduce((sum, slip) => sum + slip.lines.filter((line) => line.dispatchPlanId === plan.id).reduce((lineSum, line) => lineSum + n(line.loadedQty), 0), 0);
-      const current = dispatchByProduction.get(plan.productionId) || { qty: 0, date: "", slips: [], invoiceIds: new Set<string>() };
-      const planInvoiceLines = relatedSlips.flatMap((slip) => invoiceLinesBySlip.get(slip.id) || []).filter((line) => !line.itemId || line.itemId === plan.orderId);
-      current.qty += planInvoiceLines.reduce((sum, line) => sum + n(line.qty), 0) || qty || n(plan.loadedQty);
-      current.date = current.date || dateText(relatedSlips[0]?.date || plan.date);
-      relatedSlips.forEach((slip) => { if (slip.invoiceId) current.invoiceIds.add(slip.invoiceId); });
-      planInvoiceLines.forEach((line) => { if (line.invoiceId) current.invoiceIds.add(line.invoiceId); });
-      current.slips.push(...relatedSlips);
-      dispatchByProduction.set(plan.productionId, current);
+      relatedSlips.forEach((slip) => {
+        invoiceLinesBySlip.get(slip.id)?.forEach((line) => {
+          if (line.invoiceId) {
+            const current = dispatchByProduction.get(plan.productionId!);
+            if (current) current.invoiceIds.add(line.invoiceId);
+          }
+        });
+      });
     });
     const query = search.trim().toLowerCase();
     return productions.filter((production) => {
