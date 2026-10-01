@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronRight,
   Camera
+  ,ArrowLeftRight
 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { REALTIME_DATA_CHANGE_EVENT } from "../hooks/useRealtimeDataSync";
@@ -177,6 +178,7 @@ const phpPlateProcessItems: NavItem[] = [
   { name: "Production", href: "/production/php-plate/pending-production", icon: Hammer, countKey: "/production/php-plate/pending-production" },
   { name: "PHP Production Master", href: "/production/php/master", icon: Database },
   { name: "Plate Production Master", href: "/production/plate/master", icon: Database },
+  { name: "PHP-PLATE IN / OUT", href: "/production/php-plate/in-out", icon: ArrowLeftRight },
 ];
 
 

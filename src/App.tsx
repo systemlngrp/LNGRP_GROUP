@@ -57,6 +57,7 @@ import { RapcRangeMaster } from "./pages/RapcRangeMaster";
 import { NpdMaster } from "./pages/NpdMaster";
 import { PhpItemMaster } from "./pages/PhpItemMaster";
 import { PlateItemMaster } from "./pages/PlateItemMaster";
+import { PhpPlateInOut } from "./pages/PhpPlateInOut";
 import { MaterialInForm } from "./pages/MaterialInForm";
 import { MrrApprovals } from "./pages/MrrApprovals";
 import { MaterialInMaster } from "./pages/MaterialInMaster";
@@ -333,6 +334,7 @@ export default function App() {
           <Route path="production/php-plate/scheduling" element={<PhpPlateProductionScheduling />} />
           <Route path="production/php-plate/sequencing" element={<PhpPlateProductionSequencing />} />
           <Route path="production/php-plate/pending-production" element={<PhpPlateProductionExecution />} />
+          <Route path="production/php-plate/in-out" element={<PhpPlateInOut />} />
           <Route path="production/plate/master" element={<PlateProductionMaster />} />
           <Route path="production/plate/pending-planning" element={<PendingPlatePlanning />} />
           <Route path="production/plate/scheduling" element={<PlateProductionScheduling />} />

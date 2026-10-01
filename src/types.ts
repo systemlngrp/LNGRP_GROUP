@@ -1550,6 +1550,21 @@ export interface Firm {
   updateTimestamp?: string;
 }
 
+export interface PhpPlateInOutRecord {
+  id: string;
+  firmId?: string;
+  firmName?: string;
+  erpCode: string;
+  masterBoxErp?: string;
+  action: "IN" | "OUT";
+  location?: string;
+  zone?: string;
+  quantity: number;
+  balance?: number;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface InterFirmPendingInvoice {
   id: string;
   firmId?: string;
