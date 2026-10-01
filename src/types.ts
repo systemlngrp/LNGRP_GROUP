@@ -1152,6 +1152,14 @@ export interface QcSpecCardMovement {
   updateTimestamp?: string;
 }
 
+export interface QcPersonMaster {
+  id: string;
+  name: string;
+  active: "Yes" | "No" | string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export type TruckLiveStatus = "EMPTY" | "LOADING" | "IN-TRANSIT" | "REPORTED TO PARTY" | "UNLOADING" | "RETURNING" | "BILL PENDING" | "NOT UNLOADED" | "REJECTED";
 
 export interface Truck {

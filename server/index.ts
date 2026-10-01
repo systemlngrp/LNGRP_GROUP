@@ -4966,6 +4966,8 @@ function entityPermissionKey(entity: string): string {
       return "/quality/complaints";
     case "qc_spec_card_movements":
       return "/quality/spec-card-issue-return";
+    case "qc_person_masters":
+      return "/quality/qc-person-master";
     case "dispatch_plans":
       return "/dispatch";
     case "loading_slips":
@@ -6247,6 +6249,17 @@ async function initDb(retries = 5) {
         )
       `);
 
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`qc_person_masters\` (
+          \`id\` VARCHAR(100) PRIMARY KEY,
+          \`name\` VARCHAR(255) NOT NULL,
+          \`active\` VARCHAR(10) NOT NULL DEFAULT 'Yes',
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255),
+          UNIQUE KEY \`uk_qc_person_master_name\` (\`name\`)
+        )
+      `);
+
       // Migration: Add new columns to companies table
       try {
         const [columns] = await db.query(
@@ -7374,6 +7387,10 @@ await db.query(`
       
       // Ensure all tables have required columns if they were created with an older schema
       const migrations = [
+        { table: "qc_person_masters", column: "name", type: "VARCHAR(255)" },
+        { table: "qc_person_masters", column: "active", type: "VARCHAR(10) NOT NULL DEFAULT 'Yes'" },
+        { table: "qc_person_masters", column: "updatedBy", type: "VARCHAR(255)" },
+        { table: "qc_person_masters", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "qc_spec_card_movements", column: "productionId", type: "VARCHAR(36)" },
         { table: "qc_spec_card_movements", column: "jobNo", type: "VARCHAR(100)" },
         { table: "qc_spec_card_movements", column: "erpCode", type: "VARCHAR(100)" },
@@ -11596,7 +11613,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   }
 });
 
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_spec_card_movements", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_spec_card_movements", "qc_person_masters", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
