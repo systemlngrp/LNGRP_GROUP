@@ -247,7 +247,6 @@ const reportStockItems: NavItem[] = [
 ];
 
 const reportProductionItems: NavItem[] = [
-  { name: "Summary Sheet", href: "/reports/summary-sheet", icon: BarChart3 },
   { name: "Jobs in Progress", href: "/reports/jobs-in-progress", icon: BarChart3 },
   { name: "Fixed Monthly Expenses", href: "/reports/fixed-monthly-expenses", icon: Database },
   { name: "Fixed Daily Expenses", href: "/reports/fixed-daily-expenses", icon: Database },
@@ -305,6 +304,7 @@ export const NAVIGATION: NavGroup[] = [
       { name: "Operation Dashboard", href: "/operations-dashboard", icon: BarChart3 },
       { name: "Audit Dashboard", href: "/audit-dashboard", icon: BarChart3 },
       { name: "Production Plan", href: "/production/plan", icon: ClipboardList },
+      { name: "Summary Sheet", href: "/reports/summary-sheet", icon: BarChart3 },
     ],
   },
   {
