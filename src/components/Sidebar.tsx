@@ -214,6 +214,7 @@ const qualityItems: NavEntry[] = [
       { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
     ],
   },
+  { name: "Spec Card Issue/Return", href: "/quality/spec-card-issue-return", icon: ClipboardList },
 ];
 
 const dispatchItems: NavItem[] = [

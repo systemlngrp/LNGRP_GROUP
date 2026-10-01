@@ -4964,6 +4964,8 @@ function entityPermissionKey(entity: string): string {
       return "/quality/printing-qc";
     case "quality_complaints":
       return "/quality/complaints";
+    case "qc_spec_card_movements":
+      return "/quality/spec-card-issue-return";
     case "dispatch_plans":
       return "/dispatch";
     case "loading_slips":
@@ -6214,6 +6216,37 @@ async function initDb(retries = 5) {
         )
       `);
 
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`qc_spec_card_movements\` (
+          \`id\` VARCHAR(100) PRIMARY KEY,
+          \`productionId\` VARCHAR(36) NOT NULL,
+          \`jobNo\` VARCHAR(100) NOT NULL,
+          \`erpCode\` VARCHAR(100),
+          \`date\` VARCHAR(50),
+          \`partyName\` VARCHAR(255),
+          \`itemName\` TEXT,
+          \`planQuantity\` DECIMAL(15,2) DEFAULT 0,
+          \`artwork\` TEXT,
+          \`spec\` TEXT,
+          \`fileNo\` VARCHAR(100),
+          \`indexNo\` VARCHAR(100),
+          \`sampleNo\` VARCHAR(100),
+          \`blockLocation\` VARCHAR(255),
+          \`blockNo\` VARCHAR(100),
+          \`issue\` VARCHAR(10) NOT NULL DEFAULT 'No',
+          \`issuedTo\` VARCHAR(255),
+          \`returned\` VARCHAR(10) NOT NULL DEFAULT 'No',
+          \`returnedBy\` VARCHAR(255),
+          \`boardline\` VARCHAR(255),
+          \`printing\` VARCHAR(255),
+          \`printingQcPerson\` VARCHAR(255),
+          \`status\` VARCHAR(50) NOT NULL DEFAULT 'Pending Issue',
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255),
+          UNIQUE KEY \`uk_qc_spec_card_production\` (\`productionId\`)
+        )
+      `);
+
       // Migration: Add new columns to companies table
       try {
         const [columns] = await db.query(
@@ -7341,6 +7374,30 @@ await db.query(`
       
       // Ensure all tables have required columns if they were created with an older schema
       const migrations = [
+        { table: "qc_spec_card_movements", column: "productionId", type: "VARCHAR(36)" },
+        { table: "qc_spec_card_movements", column: "jobNo", type: "VARCHAR(100)" },
+        { table: "qc_spec_card_movements", column: "erpCode", type: "VARCHAR(100)" },
+        { table: "qc_spec_card_movements", column: "date", type: "VARCHAR(50)" },
+        { table: "qc_spec_card_movements", column: "partyName", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "itemName", type: "TEXT" },
+        { table: "qc_spec_card_movements", column: "planQuantity", type: "DECIMAL(15,2) DEFAULT 0" },
+        { table: "qc_spec_card_movements", column: "artwork", type: "TEXT" },
+        { table: "qc_spec_card_movements", column: "spec", type: "TEXT" },
+        { table: "qc_spec_card_movements", column: "fileNo", type: "VARCHAR(100)" },
+        { table: "qc_spec_card_movements", column: "indexNo", type: "VARCHAR(100)" },
+        { table: "qc_spec_card_movements", column: "sampleNo", type: "VARCHAR(100)" },
+        { table: "qc_spec_card_movements", column: "blockLocation", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "blockNo", type: "VARCHAR(100)" },
+        { table: "qc_spec_card_movements", column: "issue", type: "VARCHAR(10) NOT NULL DEFAULT 'No'" },
+        { table: "qc_spec_card_movements", column: "issuedTo", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "returned", type: "VARCHAR(10) NOT NULL DEFAULT 'No'" },
+        { table: "qc_spec_card_movements", column: "returnedBy", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "boardline", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "printing", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "printingQcPerson", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "status", type: "VARCHAR(50) NOT NULL DEFAULT 'Pending Issue'" },
+        { table: "qc_spec_card_movements", column: "updatedBy", type: "VARCHAR(255)" },
+        { table: "qc_spec_card_movements", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "quality_complaints", column: "dateOfComplaint", type: "VARCHAR(50)" },
         { table: "quality_complaints", column: "firmId", type: "VARCHAR(36)" },
         { table: "quality_complaints", column: "firmName", type: "VARCHAR(255)" },
@@ -11539,7 +11596,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   }
 });
 
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_spec_card_movements", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();

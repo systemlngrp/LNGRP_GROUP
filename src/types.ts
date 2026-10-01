@@ -1124,6 +1124,34 @@ export interface QualityComplaint {
   updateTimestamp?: string;
 }
 
+export interface QcSpecCardMovement {
+  id: string;
+  productionId: string;
+  jobNo: string;
+  erpCode: string;
+  date: string;
+  partyName: string;
+  itemName: string;
+  planQuantity: number;
+  artwork?: string;
+  spec?: string;
+  fileNo?: string;
+  indexNo?: string;
+  sampleNo?: string;
+  blockLocation?: string;
+  blockNo?: string;
+  issue: boolean;
+  issuedTo?: string;
+  returned: boolean;
+  returnedBy?: string;
+  boardline?: string;
+  printing?: string;
+  printingQcPerson?: string;
+  status: "Pending Issue" | "Issued" | "Returned" | string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export type TruckLiveStatus = "EMPTY" | "LOADING" | "IN-TRANSIT" | "REPORTED TO PARTY" | "UNLOADING" | "RETURNING" | "BILL PENDING" | "NOT UNLOADED" | "REJECTED";
 
 export interface Truck {
