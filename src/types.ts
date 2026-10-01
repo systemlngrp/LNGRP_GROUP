@@ -1101,6 +1101,25 @@ export interface QualityComplaint {
   quantity: number;
   capaNo?: string;
   capaGeneratedAt?: string;
+  capaStatus?: "Draft" | "Open" | "Completed" | string;
+  capaData?: {
+    immediateContainment?: string;
+    rootCauseAnalysis?: string;
+    correctiveAction?: string;
+    preventiveAction?: string;
+    responsiblePerson?: string;
+    targetCompletionDate?: string;
+    completionDate?: string;
+    effectivenessVerification?: string;
+    verificationRemarks?: string;
+    preparedBy?: string;
+    preparedDate?: string;
+    reviewedBy?: string;
+    reviewedDate?: string;
+    approvedBy?: string;
+    approvedDate?: string;
+  };
+  capaUpdatedAt?: string;
   updatedBy?: string;
   updateTimestamp?: string;
 }
