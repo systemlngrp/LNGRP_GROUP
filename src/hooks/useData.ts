@@ -68,6 +68,17 @@ function getAuthHeaders(_includeActiveFirm = true) {
   return headers;
 }
 
+async function getResponseError(response: Response, fallback: string) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const body = await response.json().catch(() => ({}));
+    return String(body?.error || fallback);
+  }
+  const text = await response.text().catch(() => "");
+  if (/<(?:!doctype|html|body)\b/i.test(text)) return `API route unavailable (${response.status}). Please restart the server.`;
+  return text.trim().slice(0, 300) || fallback;
+}
+
 export function useData<T extends { id: string }>(entity: string, initialValue: T[], options?: UseDataOptions) {
   const [data, setDataState] = useState<T[]>(initialValue);
   const dataRef = useRef<T[]>(initialValue);
@@ -121,12 +132,12 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         return;
       }
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 500 && String(errorData.error || "").toLowerCase().includes("authorization failed")) {
+        const message = await getResponseError(response, "Failed to fetch data");
+        if (response.status === 500 && message.toLowerCase().includes("authorization failed")) {
           forbiddenUntilRef.current = Date.now() + 5 * 60_000;
           lastFetchAtRef.current = Date.now();
         }
-        throw new Error(errorData.error || "Failed to fetch data");
+        throw new Error(message);
       }
       const result = await response.json();
       const finalData = Array.isArray(result) ? result : (result && Array.isArray(result.rows) ? result.rows : []);
@@ -250,8 +261,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
           body: JSON.stringify(item),
         });
         if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          let msg = errData.error || response.statusText;
+          let msg = await getResponseError(response, response.statusText);
 
           // A few legacy deployments do not yet have the standard audit
           // columns on production_processing. Retry only that entity without
@@ -267,8 +277,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
               body: JSON.stringify(legacyItem),
             });
             if (retryResponse.ok) continue;
-            const retryError = await retryResponse.json().catch(() => ({}));
-            msg = retryError.error || retryResponse.statusText;
+            msg = await getResponseError(retryResponse, retryResponse.statusText);
           }
 
           hasError = true;
@@ -280,8 +289,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         const response = await fetch(`${endpoint}/${item.id}`, { method: "DELETE", headers: { ...authHeaders } });
         if (!response.ok) {
           hasError = true;
-          const errData = await response.json().catch(() => ({}));
-          lastErrorMessage = errData.error || response.statusText;
+          lastErrorMessage = await getResponseError(response, response.statusText);
         }
       }
 

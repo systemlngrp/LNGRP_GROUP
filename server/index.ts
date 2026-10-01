@@ -2276,7 +2276,7 @@ function normalizeNpdRowForItemConsumers(row: any) {
 function normalizeFetchedRow(tableName: string, row: any) {
   const newRow = normalizeWorkflowStatus(tableName, row);
 
-  const jsonColumns = new Set(["lines", "packingDetails", "phpDetails", "plateDetails"]);
+  const jsonColumns = new Set(["lines", "packingDetails", "phpDetails", "plateDetails", "capaData"]);
   Object.keys(newRow).forEach((key) => {
     if (jsonColumns.has(key) && typeof newRow[key] === "string") {
       try {
@@ -4962,6 +4962,8 @@ function entityPermissionKey(entity: string): string {
       return "/quality/boardline-qc";
     case "printing_qc_checks":
       return "/quality/printing-qc";
+    case "quality_complaints":
+      return "/quality/complaints";
     case "dispatch_plans":
       return "/dispatch";
     case "loading_slips":
@@ -6184,6 +6186,34 @@ async function initDb(retries = 5) {
         )
       `);
 
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`quality_complaints\` (
+          \`id\` VARCHAR(100) PRIMARY KEY,
+          \`timestamp\` VARCHAR(255) NOT NULL,
+          \`dateOfComplaint\` VARCHAR(50) NOT NULL,
+          \`firmId\` VARCHAR(36) NOT NULL,
+          \`firmName\` VARCHAR(255) NOT NULL,
+          \`partyName\` VARCHAR(255) NOT NULL,
+          \`itemName\` TEXT NOT NULL,
+          \`erpCode\` VARCHAR(100) NOT NULL,
+          \`natureOfComplaint\` VARCHAR(100) NOT NULL,
+          \`lotNo\` VARCHAR(100) NOT NULL,
+          \`issueDetails\` TEXT NOT NULL,
+          \`photo1\` TEXT,
+          \`photo2\` TEXT,
+          \`areaOfIssue\` VARCHAR(100),
+          \`concernedPersonName\` VARCHAR(255),
+          \`quantity\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`capaNo\` VARCHAR(100),
+          \`capaGeneratedAt\` VARCHAR(255),
+          \`capaStatus\` VARCHAR(50),
+          \`capaData\` JSON,
+          \`capaUpdatedAt\` VARCHAR(255),
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+
       // Migration: Add new columns to companies table
       try {
         const [columns] = await db.query(
@@ -7311,6 +7341,27 @@ await db.query(`
       
       // Ensure all tables have required columns if they were created with an older schema
       const migrations = [
+        { table: "quality_complaints", column: "dateOfComplaint", type: "VARCHAR(50)" },
+        { table: "quality_complaints", column: "firmId", type: "VARCHAR(36)" },
+        { table: "quality_complaints", column: "firmName", type: "VARCHAR(255)" },
+        { table: "quality_complaints", column: "partyName", type: "VARCHAR(255)" },
+        { table: "quality_complaints", column: "itemName", type: "TEXT" },
+        { table: "quality_complaints", column: "erpCode", type: "VARCHAR(100)" },
+        { table: "quality_complaints", column: "natureOfComplaint", type: "VARCHAR(100)" },
+        { table: "quality_complaints", column: "lotNo", type: "VARCHAR(100)" },
+        { table: "quality_complaints", column: "issueDetails", type: "TEXT" },
+        { table: "quality_complaints", column: "photo1", type: "TEXT" },
+        { table: "quality_complaints", column: "photo2", type: "TEXT" },
+        { table: "quality_complaints", column: "areaOfIssue", type: "VARCHAR(100)" },
+        { table: "quality_complaints", column: "concernedPersonName", type: "VARCHAR(255)" },
+        { table: "quality_complaints", column: "quantity", type: "DECIMAL(15,2) DEFAULT 0" },
+        { table: "quality_complaints", column: "capaNo", type: "VARCHAR(100)" },
+        { table: "quality_complaints", column: "capaGeneratedAt", type: "VARCHAR(255)" },
+        { table: "quality_complaints", column: "capaStatus", type: "VARCHAR(50)" },
+        { table: "quality_complaints", column: "capaData", type: "JSON" },
+        { table: "quality_complaints", column: "capaUpdatedAt", type: "VARCHAR(255)" },
+        { table: "quality_complaints", column: "updatedBy", type: "VARCHAR(255)" },
+        { table: "quality_complaints", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "physical_stock_sessions", column: "sessionNo", type: "VARCHAR(100) NOT NULL" },
         { table: "physical_stock_sessions", column: "sessionName", type: "VARCHAR(255) NOT NULL" },
         { table: "physical_stock_sessions", column: "fy", type: "VARCHAR(20) NOT NULL" },
@@ -11488,7 +11539,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   }
 });
 
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
