@@ -1,13 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { ExcelExport } from "../components/ExcelExport";
 import { getProductionWastageTotals } from "../lib/wastageCalculations";
+import { ClientPagination } from "../components/ClientPagination";
 import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, Production, ProductionProcessing, Truck } from "../types";
 
 const COLUMNS = [
-  "Sl No", "Job No.", "Date", "Party Name", "Item Name", "ERP", "Planned Qty", "FG Stock", "Job Weight", "Customer Complaint", "PDI REPORT", "Realization / kg", "Meter", "Cutting Size", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.", "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Actual Realization / kg", "Dispatched Qty", "Dispatch Date", "Inv No.", "Vehicle No", "FG LEFT", "Rate", "Status", "Job Closed", "Close Date", "Printing Wastage", "Sale Value", "FINAL FG LEFT", "App Stock", "wip value", "Remarks", "Dispatched From FG", "Rate", "Value", "Timestamp", "App sale value", "Invoice Date 1", "Invoice Value 1", "Invoice Date 2", "Invoice Value 2", "Invoice Date 3", "Invoice Value 3",
+  "Sl No", "Job No.", "Date", "Party Name", "Item Name", "ERP", "Planned Qty", "FG Stock", "Job Weight", "Customer Complaint", "PDI REPORT", "Realization / kg", "Meter", "Cutting Size", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.", "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Actual Realization / kg", "Dispatched Qty", "Dispatch Date", "Inv No.", "Vehicle No", "FG LEFT", "Rate", "Status", "Close Date", "Printing Wastage", "Sale Value", "FINAL FG LEFT", "App Stock", "wip value", "Remarks", "Dispatched From FG", "Rate", "Value", "Timestamp", "App sale value", "Invoice Date 1", "Invoice Value 1", "Invoice Date 2", "Invoice Value 2", "Invoice Date 3", "Invoice Value 3", "Job Closed",
 ] as const;
 type SummaryRow = Record<string, string | number>;
 const n = (value: unknown) => { const result = Number(value); return Number.isFinite(result) ? result : 0; };
@@ -32,7 +33,14 @@ export function SummarySheetReport() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [closedFilter, setClosedFilter] = useState("");
+  const [partyFilter, setPartyFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [erpFilter, setErpFilter] = useState("");
   const [visibleColumns, setVisibleColumns] = useState<number[]>(() => COLUMNS.map((_, index) => index));
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const closeJob = (id: string) => void setProductions((current) => current.map((p) => p.id === id ? { ...p, closeBy: "Yes", closeDate: new Date().toISOString().slice(0, 10), updatedBy: "System User", updateTimestamp: new Date().toISOString() } : p));
 
   const rows = useMemo<SummaryRow[]>(() => {
@@ -62,9 +70,14 @@ export function SummarySheetReport() {
     const query = search.trim().toLowerCase();
     return productions.filter((production) => {
       if (production.status === "Cancelled") return false;
+      if (statusFilter && production.status !== statusFilter) return false;
+      const closed = s(production.closeBy).toLowerCase() === "yes" && s(production.closeDate);
+      if (closedFilter === "Closed" && !closed) return false;
+      if (closedFilter === "Open" && closed) return false;
       if (!firmFilter) return true;
       const name = s(production.firmName || firms.find((firm) => firm.id === production.firmId)?.firmName).toLowerCase();
-      return name === firmFilter.toLowerCase();
+      if (name !== firmFilter.toLowerCase()) return false;
+      return true;
     }).map((production) => {
       const order = orderMap.get(schedules.find((schedule) => schedule.id === production.scheduleId)?.orderId || "");
       const schedule = scheduleMap.get(production.scheduleId || "");
@@ -104,9 +117,12 @@ export function SummarySheetReport() {
       if (from && rowDate < from) return false;
       if (to && rowDate > to) return false;
       if (query && ![row["Job No."], row["Party Name"], row["Item Name"], row.ERP].some((value) => s(value).toLowerCase().includes(query))) return false;
+      if (partyFilter && s(row["Party Name"]) !== partyFilter) return false;
+      if (itemFilter && s(row["Item Name"]) !== itemFilter) return false;
+      if (erpFilter && s(row.ERP) !== erpFilter) return false;
       return true;
     });
-  }, [companies, firmFilter, firms, from, invoiceLines, invoices, orders, plans, processing, productions, schedules, search, slips, stockItems, to, trucks]);
+  }, [companies, closedFilter, erpFilter, firmFilter, firms, from, invoiceLines, invoices, itemFilter, orders, partyFilter, plans, processing, productions, schedules, search, slips, statusFilter, stockItems, to, trucks]);
 
   const selectedColumns = useMemo(() => visibleColumns.filter((index) => index >= 0 && index < COLUMNS.length), [visibleColumns]);
   const valueForColumn = (row: SummaryRow, columnIndex: number, rowIndex: number) => columnIndex === 0 ? rowIndex + 1 : row[COLUMNS[columnIndex]] ?? "";
@@ -115,10 +131,28 @@ export function SummarySheetReport() {
     const exportLabel = label === "Rate" ? `Rate ${columnIndex === 29 ? 1 : 2}` : label;
     return [exportLabel, valueForColumn(row, columnIndex, rowIndex)];
   }))), [rows, selectedColumns]);
+  const filterOptions = useMemo(() => ({
+    statuses: [...new Set(productions.filter((p) => p.status !== "Cancelled").map((p) => s(p.status)).filter(Boolean))].sort(),
+    parties: [...new Set(rows.map((r) => s(r["Party Name"])).filter(Boolean))].sort(),
+    items: [...new Set(rows.map((r) => s(r["Item Name"])).filter(Boolean))].sort(),
+    erps: [...new Set(rows.map((r) => s(r.ERP)).filter(Boolean))].sort(),
+  }), [productions, rows]);
+  const summary = useMemo(() => ({
+    total: rows.length,
+    open: rows.filter((r) => !s(r["Job Closed"])).length,
+    closed: rows.filter((r) => s(r["Job Closed"]) === "Yes").length,
+    planned: rows.reduce((sum, r) => sum + n(r["Planned Qty"]), 0),
+    dispatched: rows.reduce((sum, r) => sum + n(r["Dispatched Qty"]), 0),
+    fgLeft: rows.reduce((sum, r) => sum + n(r["FG LEFT"]), 0),
+  }), [rows]);
+  useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
+  const pagedRows = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, rows]);
+  const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
-  return <div className="space-y-4"><div className="rounded border border-black bg-white p-3"><div className="mb-2 font-bold">Job Closed</div><div className="flex flex-wrap gap-2">{productions.filter((p) => p.status !== "Cancelled" && s(p.closeBy).toLowerCase() !== "yes").map((p) => <button key={p.id} type="button" onClick={() => closeJob(p.id)} className="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Close {s(p.transactionNo || p.jobCardNo)}</button>)}</div></div>
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Summary Sheet</h2><ExcelExport data={exportRows} fileName="Summary_Sheet" sheetName="Summary Sheet" /></div>
-    <div className="flex flex-wrap items-center gap-2 rounded border border-black bg-white p-3"><div className="relative min-w-[260px] flex-1"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search job / party / item / ERP" value={search} onChange={(event) => setSearch(event.target.value)} /></div><input type="date" className="rounded border border-black p-2" value={from} onChange={(event) => setFrom(event.target.value)} /><input type="date" className="rounded border border-black p-2" value={to} onChange={(event) => setTo(event.target.value)} /><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{firm.firmName}</option>)}</select><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-20 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}{column === "Rate" ? ` (${index === 29 ? 1 : 2})` : ""}</span></label>)}</div></details></div>
-    <div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr className="bg-indigo-700 text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className="whitespace-nowrap border border-black px-2 py-2 text-left font-black">{COLUMNS[columnIndex]}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row, index) => <tr key={`${row["Job No."]}-${index}`} className="odd:bg-white even:bg-slate-50">{selectedColumns.map((columnIndex) => <td key={`${COLUMNS[columnIndex]}-${columnIndex}`} className="whitespace-nowrap border border-black px-2 py-2">{valueForColumn(row, columnIndex, index)}</td>)}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Summary Sheet</h2><ExcelExport data={exportRows} fileName="Summary_Sheet" sheetName="Summary Sheet" className="px-2 py-1 text-xs" /></div>
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">{[["Total Jobs", summary.total, "bg-indigo-100"], ["Open Jobs", summary.open, "bg-amber-100"], ["Closed Jobs", summary.closed, "bg-emerald-100"], ["Planned Qty", summary.planned, "bg-sky-100"], ["Dispatched Qty", summary.dispatched, "bg-violet-100"], ["FG Left", summary.fgLeft, "bg-rose-100"]].map(([label, value, color]) => <div key={String(label)} className={`rounded border border-black p-3 ${color}`}><div className="text-xs font-bold uppercase">{label}</div><div className="text-xl font-black">{Number(value).toLocaleString("en-IN")}</div></div>)}</div>
+    <div className="grid grid-cols-1 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search job / party / item / ERP" value={search} onChange={(event) => setSearch(event.target.value)} /></div><input type="date" className="rounded border border-black p-2" value={from} onChange={(event) => setFrom(event.target.value)} /><input type="date" className="rounded border border-black p-2" value={to} onChange={(event) => setTo(event.target.value)} /><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{firm.firmName}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-20 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}{column === "Rate" ? ` (${index === 29 ? 1 : 2})` : ""}</span></label>)}</div></details></div>
+    <div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr className="bg-indigo-700 text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className="whitespace-nowrap border border-black px-2 py-2 text-left font-black">{COLUMNS[columnIndex]}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`} className="odd:bg-white even:bg-slate-50">{selectedColumns.map((columnIndex) => <td key={`${COLUMNS[columnIndex]}-${columnIndex}`} className="whitespace-nowrap border border-black px-2 py-2">{COLUMNS[columnIndex] === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <span className="font-bold text-emerald-700">Yes ({s(row["Close Date"])})</span> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : valueForColumn(row, columnIndex, (page - 1) * pageSize + index)}</td>)}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div><ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
   </div>;
 }
