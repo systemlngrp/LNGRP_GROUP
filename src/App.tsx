@@ -144,6 +144,7 @@ import { TruckStatusReport } from "./pages/TruckStatusReport";
 import { WastageReport } from "./pages/WastageReport";
 import { SummarySheetReport } from "./pages/SummarySheetReport";
 import { QcView } from "./pages/QcView";
+import { PdiReport } from "./pages/PdiReport";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
 import { PhysicalStockMaster } from "./pages/PhysicalStockMaster";
 import { PhysicalStockSessions } from "./pages/PhysicalStockSessions";
@@ -347,6 +348,7 @@ export default function App() {
           <Route path="quality/printing-qc/master" element={<PrintingQcMaster />} />
           <Route path="quality/qc-master-data" element={<QcMasterData />} />
           <Route path="quality/qc-view" element={<QcView />} />
+          <Route path="quality/pdi-report" element={<PdiReport />} />
           
           {/* Dispatch */}
           <Route path="dispatch/pending-planning" element={<PendingDispatchPlanning />} />
