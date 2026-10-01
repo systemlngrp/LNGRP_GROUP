@@ -1101,7 +1101,7 @@ export interface QualityComplaint {
   quantity: number;
   capaNo?: string;
   capaGeneratedAt?: string;
-  capaStatus?: "Draft" | "Open" | "Completed" | string;
+  capaStatus?: "Pending" | "Generated" | "Completed" | string;
   capaData?: {
     immediateContainment?: string;
     rootCauseAnalysis?: string;

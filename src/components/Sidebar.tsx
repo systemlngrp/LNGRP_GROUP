@@ -198,6 +198,7 @@ const qualityItems: NavItem[] = [
   { name: "PDI Report", href: "/quality/pdi-report", icon: ClipboardList },
   { name: "QC Complaint Form", href: "/quality/complaints/form", icon: ClipboardList },
   { name: "QC Complaint Master", href: "/quality/complaints/master", icon: Database },
+  { name: "CAPA Master", href: "/quality/capa/master", icon: Database },
   { name: "Board Line QC Form", href: "/quality/boardline-qc/form", icon: ClipboardList },
   { name: "Board Line QC Master", href: "/quality/boardline-qc/master", icon: Database },
   { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },

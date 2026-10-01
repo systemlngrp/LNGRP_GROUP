@@ -148,6 +148,7 @@ import { PdiReport } from "./pages/PdiReport";
 import { QualityComplaintForm } from "./pages/QualityComplaintForm";
 import { QualityComplaintMaster } from "./pages/QualityComplaintMaster";
 import { QualityComplaintCapa } from "./pages/QualityComplaintCapa";
+import { QualityCapaMaster } from "./pages/QualityCapaMaster";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
 import { PhysicalStockMaster } from "./pages/PhysicalStockMaster";
 import { PhysicalStockSessions } from "./pages/PhysicalStockSessions";
@@ -355,6 +356,7 @@ export default function App() {
           <Route path="quality/complaints/form" element={<QualityComplaintForm />} />
           <Route path="quality/complaints/master" element={<QualityComplaintMaster />} />
           <Route path="quality/complaints/:id/capa" element={<QualityComplaintCapa />} />
+          <Route path="quality/capa/master" element={<QualityCapaMaster />} />
           
           {/* Dispatch */}
           <Route path="dispatch/pending-planning" element={<PendingDispatchPlanning />} />
