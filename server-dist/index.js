@@ -5756,6 +5756,8 @@ async function initDb(retries = 5) {
         CREATE TABLE IF NOT EXISTS \`qc_spec_card_movements\` (
           \`id\` VARCHAR(100) PRIMARY KEY,
           \`productionId\` VARCHAR(36) NOT NULL,
+          \`firmId\` VARCHAR(36),
+          \`firmName\` VARCHAR(255),
           \`jobNo\` VARCHAR(100) NOT NULL,
           \`erpCode\` VARCHAR(100),
           \`date\` VARCHAR(50),
@@ -6879,6 +6881,8 @@ async function initDb(retries = 5) {
                 { table: "qc_person_masters", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "qc_person_masters", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "qc_spec_card_movements", column: "productionId", type: "VARCHAR(36)" },
+                { table: "qc_spec_card_movements", column: "firmId", type: "VARCHAR(36)" },
+                { table: "qc_spec_card_movements", column: "firmName", type: "VARCHAR(255)" },
                 { table: "qc_spec_card_movements", column: "jobNo", type: "VARCHAR(100)" },
                 { table: "qc_spec_card_movements", column: "erpCode", type: "VARCHAR(100)" },
                 { table: "qc_spec_card_movements", column: "date", type: "VARCHAR(50)" },

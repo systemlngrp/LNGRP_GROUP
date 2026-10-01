@@ -1127,6 +1127,8 @@ export interface QualityComplaint {
 export interface QcSpecCardMovement {
   id: string;
   productionId: string;
+  firmId?: string;
+  firmName?: string;
   jobNo: string;
   erpCode: string;
   date: string;
