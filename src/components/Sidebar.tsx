@@ -216,6 +216,8 @@ const qualityItems: NavEntry[] = [
   },
   { name: "Spec Card Issue/Return", href: "/quality/spec-card-issue-return", icon: ClipboardList },
   { name: "QC Person Master", href: "/quality/qc-person-master", icon: Database },
+  { name: "Block Record", href: "/quality/block-record", icon: ClipboardList },
+  { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },
 ];
 
 const dispatchItems: NavItem[] = [

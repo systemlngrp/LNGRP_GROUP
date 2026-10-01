@@ -151,6 +151,8 @@ import { QualityComplaintCapa } from "./pages/QualityComplaintCapa";
 import { QualityCapaMaster } from "./pages/QualityCapaMaster";
 import { QcSpecCardIssueReturn } from "./pages/QcSpecCardIssueReturn";
 import { QcPersonMaster } from "./pages/QcPersonMaster";
+import { QcBlockRecord } from "./pages/QcBlockRecord";
+import { QcBlockLocationMaster } from "./pages/QcBlockLocationMaster";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
 import { PhysicalStockMaster } from "./pages/PhysicalStockMaster";
 import { PhysicalStockSessions } from "./pages/PhysicalStockSessions";
@@ -361,6 +363,8 @@ export default function App() {
           <Route path="quality/capa/master" element={<QualityCapaMaster />} />
           <Route path="quality/spec-card-issue-return" element={<QcSpecCardIssueReturn />} />
           <Route path="quality/qc-person-master" element={<QcPersonMaster />} />
+          <Route path="quality/block-record" element={<QcBlockRecord />} />
+          <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
           
           {/* Dispatch */}
           <Route path="dispatch/pending-planning" element={<PendingDispatchPlanning />} />

@@ -1162,6 +1162,27 @@ export interface QcPersonMaster {
   updateTimestamp?: string;
 }
 
+export interface QcBlockRecord {
+  id: string;
+  firmId?: string;
+  firmName?: string;
+  erpCode: string;
+  partyName?: string;
+  itemName?: string;
+  blockLocation: string;
+  blockNo: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
+export interface QcBlockLocationMaster {
+  id: string;
+  name: string;
+  active: "Yes" | "No" | string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export type TruckLiveStatus = "EMPTY" | "LOADING" | "IN-TRANSIT" | "REPORTED TO PARTY" | "UNLOADING" | "RETURNING" | "BILL PENDING" | "NOT UNLOADED" | "REJECTED";
 
 export interface Truck {
