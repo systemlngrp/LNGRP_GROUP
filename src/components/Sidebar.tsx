@@ -194,7 +194,6 @@ const sampleItems: NavItem[] = [
 ];
 
 const qualityItems: NavEntry[] = [
-  { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
   { name: "PDI Report", href: "/quality/pdi-report", icon: ClipboardList },
   {
     section: "Complaint",
@@ -204,11 +203,17 @@ const qualityItems: NavEntry[] = [
       { name: "CAPA Master", href: "/quality/capa/master", icon: Database },
     ],
   },
-  { name: "Board Line QC Form", href: "/quality/boardline-qc/form", icon: ClipboardList },
-  { name: "Board Line QC Master", href: "/quality/boardline-qc/master", icon: Database },
-  { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },
-  { name: "Printing QC Master", href: "/quality/printing-qc/master", icon: Database },
-  { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
+  {
+    section: "QC Check",
+    items: [
+      { name: "Board Line QC Form", href: "/quality/boardline-qc/form", icon: ClipboardList },
+      { name: "Board Line QC Master", href: "/quality/boardline-qc/master", icon: Database },
+      { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },
+      { name: "Printing QC Master", href: "/quality/printing-qc/master", icon: Database },
+      { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
+      { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
+    ],
+  },
 ];
 
 const dispatchItems: NavItem[] = [
