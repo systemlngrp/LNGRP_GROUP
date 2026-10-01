@@ -1082,6 +1082,29 @@ export interface PrintingQcCheck {
   updateTimestamp?: string;
 }
 
+export interface QualityComplaint {
+  id: string;
+  timestamp: string;
+  dateOfComplaint: string;
+  firmId: string;
+  firmName: string;
+  partyName: string;
+  itemName: string;
+  erpCode: string;
+  natureOfComplaint: "Complaint" | "Rejection" | string;
+  lotNo: string;
+  issueDetails: string;
+  photo1?: string;
+  photo2?: string;
+  areaOfIssue?: "Boardline" | "Printing" | "Dispatch" | string;
+  concernedPersonName: string;
+  quantity: number;
+  capaNo?: string;
+  capaGeneratedAt?: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export type TruckLiveStatus = "EMPTY" | "LOADING" | "IN-TRANSIT" | "REPORTED TO PARTY" | "UNLOADING" | "RETURNING" | "BILL PENDING" | "NOT UNLOADED" | "REJECTED";
 
 export interface Truck {

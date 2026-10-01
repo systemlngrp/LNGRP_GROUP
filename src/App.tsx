@@ -145,6 +145,8 @@ import { WastageReport } from "./pages/WastageReport";
 import { SummarySheetReport } from "./pages/SummarySheetReport";
 import { QcView } from "./pages/QcView";
 import { PdiReport } from "./pages/PdiReport";
+import { QualityComplaintForm } from "./pages/QualityComplaintForm";
+import { QualityComplaintMaster } from "./pages/QualityComplaintMaster";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
 import { PhysicalStockMaster } from "./pages/PhysicalStockMaster";
 import { PhysicalStockSessions } from "./pages/PhysicalStockSessions";
@@ -349,6 +351,8 @@ export default function App() {
           <Route path="quality/qc-master-data" element={<QcMasterData />} />
           <Route path="quality/qc-view" element={<QcView />} />
           <Route path="quality/pdi-report" element={<PdiReport />} />
+          <Route path="quality/complaints/form" element={<QualityComplaintForm />} />
+          <Route path="quality/complaints/master" element={<QualityComplaintMaster />} />
           
           {/* Dispatch */}
           <Route path="dispatch/pending-planning" element={<PendingDispatchPlanning />} />
