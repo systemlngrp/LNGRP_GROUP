@@ -219,6 +219,8 @@ const qualityItems: NavEntry[] = [
   { name: "Block Record", href: "/quality/block-record", icon: ClipboardList },
   { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },
   { name: "Pre-Dispatch Inspection", href: "/quality/pre-dispatch-inspection", icon: ClipboardList },
+  { name: "Sample Requirement", href: "/quality/sample-requirement", icon: ClipboardList },
+  { name: "Sample Requirement Master", href: "/quality/sample-requirement/master", icon: Database },
 ];
 
 const dispatchItems: NavItem[] = [

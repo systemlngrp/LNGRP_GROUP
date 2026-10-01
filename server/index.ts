@@ -4974,6 +4974,8 @@ function entityPermissionKey(entity: string): string {
       return "/quality/block-location-master";
     case "pre_dispatch_inspections":
       return "/quality/pre-dispatch-inspection";
+    case "qc_sample_requirements":
+      return "/quality/sample-requirement";
     case "dispatch_plans":
       return "/dispatch";
     case "loading_slips":
@@ -6288,6 +6290,11 @@ async function initDb(retries = 5) {
         \`remarks\` TEXT, \`frontPhoto\` TEXT, \`backPhoto\` TEXT, \`result\` VARCHAR(20) NOT NULL DEFAULT 'Pending', \`qcPerson\` VARCHAR(255), \`inspectionDate\` VARCHAR(50), \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(255),
         UNIQUE KEY \`uk_pre_dispatch_production\` (\`productionId\`)
       )`);
+      await db.query(`CREATE TABLE IF NOT EXISTS \`qc_sample_requirements\` (
+        \`id\` VARCHAR(100) PRIMARY KEY, \`firmId\` VARCHAR(36), \`firmName\` VARCHAR(255), \`receivingDate\` VARCHAR(50) NOT NULL,
+        \`partyName\` VARCHAR(255) NOT NULL, \`itemName\` TEXT NOT NULL, \`address\` TEXT, \`length\` VARCHAR(50), \`width\` VARCHAR(50), \`height\` VARCHAR(50),
+        \`ply\` VARCHAR(50), \`flute\` VARCHAR(50), \`topPaperGsm\` VARCHAR(50), \`f1\` VARCHAR(50), \`b1\` VARCHAR(50), \`f2\` VARCHAR(50), \`b2\` VARCHAR(50), \`bf\` VARCHAR(50), \`cs\` VARCHAR(50), \`bs\` VARCHAR(50), \`gsm\` VARCHAR(50), \`quantity\` VARCHAR(50), \`requiredDate\` VARCHAR(50), \`boxPhotos\` TEXT, \`specReceived\` TEXT, \`salesPerson\` VARCHAR(255), \`specialRemarks\` TEXT, \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(255)
+      )`);
 
       // Migration: Add new columns to companies table
       try {
@@ -7461,6 +7468,13 @@ await db.query(`
         { table: "pre_dispatch_inspections", column: "inspectionDate", type: "VARCHAR(50)" },
         { table: "pre_dispatch_inspections", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "pre_dispatch_inspections", column: "updateTimestamp", type: "VARCHAR(255)" },
+        { table: "qc_sample_requirements", column: "firmId", type: "VARCHAR(36)" },
+        { table: "qc_sample_requirements", column: "firmName", type: "VARCHAR(255)" },
+        { table: "qc_sample_requirements", column: "receivingDate", type: "VARCHAR(50)" },
+        { table: "qc_sample_requirements", column: "partyName", type: "VARCHAR(255)" },
+        { table: "qc_sample_requirements", column: "itemName", type: "TEXT" },
+        { table: "qc_sample_requirements", column: "address", type: "TEXT" },
+        ...["length","width","height","ply","flute","topPaperGsm","f1","b1","f2","b2","bf","cs","bs","gsm","quantity","requiredDate","boxPhotos","specReceived","salesPerson","specialRemarks","updatedBy","updateTimestamp"].map(column => ({ table: "qc_sample_requirements", column, type: "TEXT" })),
         { table: "qc_spec_card_movements", column: "productionId", type: "VARCHAR(36)" },
         { table: "qc_spec_card_movements", column: "firmId", type: "VARCHAR(36)" },
         { table: "qc_spec_card_movements", column: "firmName", type: "VARCHAR(255)" },
@@ -11685,7 +11699,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   }
 });
 
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();

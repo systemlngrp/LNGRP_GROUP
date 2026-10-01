@@ -1215,6 +1215,38 @@ export interface PreDispatchInspection {
   updateTimestamp?: string;
 }
 
+export interface QcSampleRequirement {
+  id: string;
+  firmId?: string;
+  firmName?: string;
+  receivingDate: string;
+  partyName: string;
+  itemName: string;
+  address?: string;
+  length?: string | number;
+  width?: string | number;
+  height?: string | number;
+  ply?: string;
+  flute?: string;
+  topPaperGsm?: string | number;
+  f1?: string | number;
+  b1?: string | number;
+  f2?: string | number;
+  b2?: string | number;
+  bf?: string | number;
+  cs?: string | number;
+  bs?: string | number;
+  gsm?: string | number;
+  quantity?: string | number;
+  requiredDate?: string;
+  boxPhotos?: string;
+  specReceived?: string;
+  salesPerson?: string;
+  specialRemarks?: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export type TruckLiveStatus = "EMPTY" | "LOADING" | "IN-TRANSIT" | "REPORTED TO PARTY" | "UNLOADING" | "RETURNING" | "BILL PENDING" | "NOT UNLOADED" | "REJECTED";
 
 export interface Truck {
