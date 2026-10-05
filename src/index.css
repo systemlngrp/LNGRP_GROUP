@@ -42,6 +42,13 @@
     line-height: 1 !important;
   }
 
+  .space-y-4.pb-8 > div:first-child.flex.items-center.justify-between {
+    min-height: 3rem;
+    height: auto;
+    padding-block: 0.5rem;
+    align-items: center;
+  }
+
   /* QC entry forms open as centered modal cards instead of shifting the page. */
   body:has(.space-y-4.pb-8 > div[class*="bg-white"][class*="p-4"])::before {
     content: "";
