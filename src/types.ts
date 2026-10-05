@@ -1029,6 +1029,20 @@ export interface BoardLineQcCheck {
   updateTimestamp?: string;
 }
 
+export interface QcUpdateRecord {
+  id: string;
+  erpNo: string;
+  itemName: string;
+  fileNo: string;
+  indexNo: string;
+  zoneNo: string;
+  spec: string;
+  remarks?: string;
+  updatedBy: string;
+  updateDate: string;
+  updateTimestamp?: string;
+}
+
 export interface PrintingQcCheck {
   id: string;
   timestamp: string;
