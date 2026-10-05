@@ -158,6 +158,7 @@ import { QcBlockLocationMaster } from "./pages/QcBlockLocationMaster";
 import { PreDispatchInspection, PreDispatchInspectionForm } from "./pages/PreDispatchInspection";
 import { QcSampleRequirement } from "./pages/QcSampleRequirement";
 import { QcSampleRequirementMaster } from "./pages/QcSampleRequirementMaster";
+import { QcSampleRequirementForm } from "./pages/QcSampleRequirementForm";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
 import { PhysicalStockMaster } from "./pages/PhysicalStockMaster";
 import { PhysicalStockSessions } from "./pages/PhysicalStockSessions";
@@ -376,6 +377,7 @@ export default function App() {
           <Route path="quality/pre-dispatch-inspection/form" element={<PreDispatchInspectionForm />} />
           <Route path="quality/sample-requirement" element={<QcSampleRequirement />} />
           <Route path="quality/sample-requirement/master" element={<QcSampleRequirementMaster />} />
+          <Route path="quality/sample-requirement/master/form" element={<QcSampleRequirementForm />} />
           
           {/* Dispatch */}
           <Route path="dispatch/pending-planning" element={<PendingDispatchPlanning />} />
