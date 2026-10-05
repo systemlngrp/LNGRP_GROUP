@@ -42,18 +42,20 @@ function mergeSmallRowsNearClosestReel(bigRows: ProductionPlanSortRow[], smallRo
 
   smallRows.forEach((smallRow) => {
     const smallReel = getReel(smallRow);
-    let closestIndex = 0;
+    let closestBigRow = bigRows[0];
     let closestDifference = Number.POSITIVE_INFINITY;
 
-    merged.forEach((row, index) => {
+    bigRows.forEach((row) => {
       const difference = Math.abs(getReel(row) - smallReel);
       if (difference < closestDifference) {
         closestDifference = difference;
-        closestIndex = index;
+        closestBigRow = row;
       }
     });
 
-    merged.splice(closestIndex + 1, 0, smallRow);
+    const matchedIndex = merged.indexOf(closestBigRow);
+    const insertAfter = smallReel <= getReel(closestBigRow);
+    merged.splice(Math.max(0, matchedIndex + (insertAfter ? 1 : 0)), 0, smallRow);
   });
 
   return merged;

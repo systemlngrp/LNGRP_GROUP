@@ -16,6 +16,7 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { sortProductionPlanRows } from "../lib/productionPlanSorting";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { resolveProductionPlanCompany } from "../lib/productionPlanCompany";
+import { buildSampleJobNumbers, deriveProductionPlanStatuses } from "../lib/productionPlanStatus";
 
 export function ProductionPlan() {
   const [productions, setProductions, productionsLoading] = useData<Production>("productions", []);
@@ -74,17 +75,7 @@ export function ProductionPlan() {
     return Number.isFinite(num) ? num.toFixed(2) : "-";
   };
 
-  const sampleJobKeys = useMemo(() => {
-    return new Set(
-      sampleRequests.map((row) => `${String(row.itemId || "").trim()}::${String(row.jobCardNo || "").trim()}`)
-    );
-  }, [sampleRequests]);
-
-  const isSampleProduction = (production: Production) => {
-    return sampleJobKeys.has(
-      `${String(production.itemId || "").trim()}::${String(production.transactionNo || production.jobCardNo || "").trim()}`
-    );
-  };
+  const sampleJobNumbers = useMemo(() => buildSampleJobNumbers(sampleRequests), [sampleRequests]);
 
   const realizationTargets = useMemo(
     () => parseRealizationTargets(settings[0]?.realizationPerKgTargets),
@@ -95,13 +86,6 @@ export function ProductionPlan() {
     [realizationTargets, selectedDate]
   );
   const requiredRealization = selectedRealizationTarget ? Number(selectedRealizationTarget.value || 0) * 0.98 : null;
-  const shouldHighlightProduction = (production: Production, isSample: boolean) => {
-    if (isSample || requiredRealization === null) return false;
-    const realizationPerKg = Number(production.realizationPerKg);
-    if (!Number.isFinite(realizationPerKg)) return false;
-    return realizationPerKg < requiredRealization;
-  };
-
   const beginSequenceEdit = (production: Production) => {
     setEditingSequenceId(production.id);
     setEditingSequence(String(production.sequence ?? ""));
@@ -158,6 +142,7 @@ export function ProductionPlan() {
           ...production,
           productionPlanCompanyName: company.name,
           productionPlanCompanyId: company.companyId,
+          itemName: npdItems.find((item) => item.id === String(production.itemId || "").trim())?.name || "",
         };
       });
   }, [productions, selectedDate, searchTerm, companyFilter, itemFilter, npdItems, schedules, orders, companies]);
@@ -168,6 +153,10 @@ export function ProductionPlan() {
   ])).values()).filter((option) => option.value && option.label && option.label !== "-").sort((a, b) => a.label.localeCompare(b.label)), [filteredList]);
   const itemOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const item = npdItems.find((i) => i.id === String(row.itemId || "").trim()); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [filteredList, npdItems]);
   const sortedList = useMemo(() => sortProductionPlanRows(filteredList), [filteredList]);
+  const statusRows = useMemo(
+    () => deriveProductionPlanStatuses(sortedList, sampleJobNumbers, requiredRealization),
+    [sortedList, sampleJobNumbers, requiredRealization]
+  );
   const {
     page,
     setPage,
@@ -175,7 +164,7 @@ export function ProductionPlan() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedList,
-  } = useClientPagination(sortedList, 25);
+  } = useClientPagination(statusRows, 25);
 
   const getExportData = (data: Production[]) => {
     return data.map((p, index) => {
@@ -183,7 +172,7 @@ export function ProductionPlan() {
       const order = orders.find(o => o.id === schedule?.orderId);
       const company = resolveProductionPlanCompany(p, schedule, order, companies);
       const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
-      const isSample = isSampleProduction(p);
+      const isSample = sampleJobNumbers.has(String(p.transactionNo || p.jobCardNo || "").trim());
       const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
 
       return {
@@ -222,7 +211,7 @@ export function ProductionPlan() {
     doc.text(`Production Plan - ${formatDate(selectedDate)}`, 14, 15);
     doc.setFontSize(10);
     
-    const exportData = sortedList.map((p, index) => {
+    const exportData = statusRows.map((p, index) => {
       const schedule = schedules.find(s => s.id === p.scheduleId);
       const order = orders.find(o => o.id === schedule?.orderId);
       const company = resolveProductionPlanCompany(p, schedule, order, companies);
@@ -237,7 +226,7 @@ export function ProductionPlan() {
         "TOTAL Paper WEIGHT": format2(p.totalPaperWeight), "Planned Production in Meter": format2(p.plannedProductionInMeter),
         "REMARK": p.remarks || "-", "REALIZATION PER KG": format2(p.realizationPerKg), "SHEET WEIGHT": format2(p.sheetWeight),
         "Least Sheet Weight": format2(p.leastGsm), "Flute Batch": p.fluteBatches || "-", "Job Sequence": p.sequence || "-",
-        "Date": formatDate(p.date), "Rate": format2(p.rate), "Value": format2(value), "Sample": isSampleProduction(p) ? "Yes" : "No",
+        "Date": formatDate(p.date), "Rate": format2(p.rate), "Value": format2(value), "Sample": p.isSample ? "Yes" : "No",
       } as Record<string, string | number>;
     });
     if (exportData.length === 0) return;
@@ -254,10 +243,9 @@ export function ProductionPlan() {
       headStyles: { fillColor: [200, 200, 200], textColor: 0, fontStyle: 'bold' },
       didParseCell: (data) => {
         if (data.section !== "body") return;
-        const production = sortedList[data.row.index];
+        const production = statusRows[data.row.index];
         if (!production) return;
-        const isSample = isSampleProduction(production);
-        if (!shouldHighlightProduction(production, isSample)) return;
+        if (!production.shouldHighlight) return;
         data.cell.styles.fillColor = [255, 153, 153];
       },
     });
@@ -364,9 +352,9 @@ export function ProductionPlan() {
                   const order = orders.find(o => o.id === schedule?.orderId);
                   const company = resolveProductionPlanCompany(p, schedule, order, companies);
                   const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
-                  const isSample = isSampleProduction(p);
+                  const isSample = Boolean(p.isSample);
                   const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
-                  const highlightRow = shouldHighlightProduction(p, isSample);
+                  const highlightRow = Boolean(p.shouldHighlight);
 
                   return (
                     <tr
