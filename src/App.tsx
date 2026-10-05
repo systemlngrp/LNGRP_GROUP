@@ -155,7 +155,7 @@ import { QcSpecCardIssueReturn } from "./pages/QcSpecCardIssueReturn";
 import { QcPersonMaster } from "./pages/QcPersonMaster";
 import { QcBlockRecord } from "./pages/QcBlockRecord";
 import { QcBlockLocationMaster } from "./pages/QcBlockLocationMaster";
-import { PreDispatchInspection } from "./pages/PreDispatchInspection";
+import { PreDispatchInspection, PreDispatchInspectionForm } from "./pages/PreDispatchInspection";
 import { QcSampleRequirement } from "./pages/QcSampleRequirement";
 import { QcSampleRequirementMaster } from "./pages/QcSampleRequirementMaster";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
@@ -373,6 +373,7 @@ export default function App() {
           <Route path="quality/block-record" element={<QcBlockRecord />} />
           <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
           <Route path="quality/pre-dispatch-inspection" element={<PreDispatchInspection />} />
+          <Route path="quality/pre-dispatch-inspection/form" element={<PreDispatchInspectionForm />} />
           <Route path="quality/sample-requirement" element={<QcSampleRequirement />} />
           <Route path="quality/sample-requirement/master" element={<QcSampleRequirementMaster />} />
           
