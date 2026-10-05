@@ -321,10 +321,23 @@ function pageSection(doc: jsPDF, x: number, y: number, w: number, title: string)
   return section(doc, x, y, w, title);
 }
 
-function ensureSecondPageSpace(doc: jsPDF, y: number, needed: number, x: number, w: number, title?: string) {
+function continuationHeader(doc: jsPDF, jobNo: string, title: string) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(0, 0, 0);
+  doc.text("LAXMI NARAYAN PACKAGING INDUSTRIES", 7, 7);
+  doc.text(`JOB CARD: ${jobNo || "-"}`, pageWidth - 7, 7, { align: "right" });
+  doc.line(7, 9, pageWidth - 7, 9);
+  doc.setFontSize(7);
+  doc.text(title, 7, 13);
+}
+
+function ensureSecondPageSpace(doc: jsPDF, y: number, needed: number, x: number, w: number, title?: string, jobNo?: string) {
   if (y + needed <= 286) return y;
   doc.addPage();
-  const nextY = 12;
+  if (jobNo) continuationHeader(doc, jobNo, "OPERATIONS / PRODUCTION DETAILS");
+  const nextY = jobNo ? 16 : 12;
   return title ? pageSection(doc, x, nextY, w, title) : nextY;
 }
 
@@ -341,6 +354,8 @@ function drawJobCardOperationsPage(doc: jsPDF, args: {
   const w = 196;
   let y = 12;
   doc.addPage();
+  continuationHeader(doc, firstValue(args.production.jobCardNo, args.production.transactionNo), "OPERATIONS / PRODUCTION DETAILS");
+  y = 16;
 
   const reelRows = buildReelConsumptionRows(args);
   y = pageSection(doc, x, y, w, "Reel Consumption Details");
@@ -360,7 +375,8 @@ function drawJobCardOperationsPage(doc: jsPDF, args: {
   rowsToDraw.forEach((row) => {
     if (y + 6 > 286) {
       doc.addPage();
-      y = pageSection(doc, x, 12, w, "Reel Consumption Details");
+      continuationHeader(doc, firstValue(args.production.jobCardNo, args.production.transactionNo), "REEL CONSUMPTION DETAILS");
+      y = pageSection(doc, x, 16, w, "Reel Consumption Details");
       y = drawReelHeader(y);
     }
     const values = row ? [row.reelNo, row.tfb, row.bf, row.gsm, num(row.weight, 2), num(row.balance, 2)] : ["", "", "", "", "", ""];
@@ -372,7 +388,7 @@ function drawJobCardOperationsPage(doc: jsPDF, args: {
     y += 6;
   });
 
-  y = ensureSecondPageSpace(doc, y + 8, 50, x, w);
+  y = ensureSecondPageSpace(doc, y + 8, 50, x, w, undefined, firstValue(args.production.jobCardNo, args.production.transactionNo));
   y = pageSection(doc, x, y, w, "PROCESS DATA");
   const processing = (args.processingEntries || []).filter((entry) => entry.productionId === args.production.id);
   const sortedProcessing = [...processing].sort((a, b) => processingTimeValue(a) - processingTimeValue(b));
@@ -392,7 +408,7 @@ function drawJobCardOperationsPage(doc: jsPDF, args: {
     y += rowH;
   });
 
-  y = ensureSecondPageSpace(doc, y + 8, 28, x, w);
+  y = ensureSecondPageSpace(doc, y + 8, 28, x, w, undefined, firstValue(args.production.jobCardNo, args.production.transactionNo));
   y = pageSection(doc, x, y, w, "REPORTS");
   const calculatedWastage = calculatedWastagePercent(args.production, args.issueReelLines, args.returnReelLines, args.processingEntries);
   const reportRows: Array<[string, unknown]> = [
@@ -518,8 +534,8 @@ export async function downloadJobCardPdf({ production, schedule, order, company,
   y += 6;
   cell(doc, x, y, 42, 6, "Flute %", { fill: LIGHT_ORANGE, bold: true, align: "left" });
   cell(doc, x + 42, y, 50, 6, fixedNum(firstValue(production.takeUpFactor, raw.takeUpFactor, raw.takeUp), 2), { bold: true });
-  cell(doc, x, y, 42, 6, "No. of Outs", { fill: LIGHT_ORANGE, bold: true, align: "left" });
-  cell(doc, x + 42, y, 50, 6, firstValue(production.ups, raw.ups, raw.noOfUps), { bold: true });
+  cell(doc, x + 111, y, 45, 6, "No. of Outs", { fill: LIGHT_ORANGE, bold: true, align: "left" });
+  cell(doc, x + 156, y, 40, 6, firstValue(production.ups, raw.ups, raw.noOfUps), { bold: true });
   y += 6;
 
   y = section(doc, x, y, w, "COMBINATION AND CUTTER SIZE");
@@ -594,7 +610,8 @@ export async function downloadJobCardPdf({ production, schedule, order, company,
   cell(doc, x + 104, y, 92, 12, production.actualPaperUsed ? num(production.actualPaperUsed, 2) : "");
   y += 17;
 
-  const signatureY = Math.min(y + 8, 292);
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const signatureY = Math.min(y + 8, pageHeight - 8);
   doc.setFont("helvetica", "bolditalic");
   doc.setTextColor(0, 32, 96);
   doc.setFontSize(8);
