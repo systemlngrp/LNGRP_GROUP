@@ -15,6 +15,7 @@ import { fetchNpdItems } from "../lib/npdItems";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { sortProductionPlanRows } from "../lib/productionPlanSorting";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
+import { resolveProductionPlanCompany } from "../lib/productionPlanCompany";
 
 export function ProductionPlan() {
   const [productions, , productionsLoading] = useData<Production>("productions", []);
@@ -104,28 +105,32 @@ export function ProductionPlan() {
         const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
         const schedule = schedules.find(s => s.id === p.scheduleId);
         const order = orders.find(o => o.id === schedule?.orderId);
-        const company = companies.find(c => c.id === order?.companyId);
+        const resolvedCompany = resolveProductionPlanCompany(p, schedule, order, companies);
         
-        if (companyFilter && order?.companyId !== companyFilter) return false;
+        if (companyFilter && resolvedCompany.companyId !== companyFilter && resolvedCompany.name !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${p.erpCode || ""}`;
         if (itemFilter && itemKey !== itemFilter) return false;
         return p.transactionNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (item?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (order?.orderNo || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (company?.name || "").toLowerCase().includes(searchTerm.toLowerCase());
+        resolvedCompany.name.toLowerCase().includes(searchTerm.toLowerCase());
       })
       .map((production) => {
         const schedule = schedules.find(s => s.id === production.scheduleId);
         const order = orders.find(o => o.id === schedule?.orderId);
-        const company = companies.find(c => c.id === order?.companyId);
+        const company = resolveProductionPlanCompany(production, schedule, order, companies);
         return {
           ...production,
-          productionPlanCompanyName: company?.name || production.companyName || "",
+          productionPlanCompanyName: company.name,
+          productionPlanCompanyId: company.companyId,
         };
       });
   }, [productions, selectedDate, searchTerm, companyFilter, itemFilter, npdItems, schedules, orders, companies]);
 
-  const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const schedule = schedules.find((s) => s.id === row.scheduleId); const order = orders.find((o) => o.id === schedule?.orderId); const company = companies.find((c) => c.id === order?.companyId); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companies, filteredList, orders, schedules]);
+  const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => [
+    row.productionPlanCompanyId || row.productionPlanCompanyName,
+    { value: row.productionPlanCompanyId || row.productionPlanCompanyName, label: row.productionPlanCompanyName },
+  ])).values()).filter((option) => option.value && option.label && option.label !== "-").sort((a, b) => a.label.localeCompare(b.label)), [filteredList]);
   const itemOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const item = npdItems.find((i) => i.id === String(row.itemId || "").trim()); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [filteredList, npdItems]);
   const sortedList = useMemo(() => sortProductionPlanRows(filteredList), [filteredList]);
   const {
@@ -141,7 +146,7 @@ export function ProductionPlan() {
     return data.map((p, index) => {
       const schedule = schedules.find(s => s.id === p.scheduleId);
       const order = orders.find(o => o.id === schedule?.orderId);
-      const company = companies.find(c => c.id === order?.companyId);
+      const company = resolveProductionPlanCompany(p, schedule, order, companies);
       const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
       const isSample = isSampleProduction(p);
       const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
@@ -150,7 +155,7 @@ export function ProductionPlan() {
         "Sr. No.": index + 1,
         "Date": formatDate(p.date),
         "Job Number": p.transactionNo || "-",
-        "Company": company?.name || "-",
+        "Company": company.name,
         "ERP": p.erpCode || "-",
         "Item Name": item?.name || "-",
         "Sample (Yes/No)": isSample ? "Yes" : "No",
@@ -301,7 +306,7 @@ export function ProductionPlan() {
                 paginatedList.map((p, index) => {
                   const schedule = schedules.find(s => s.id === p.scheduleId);
                   const order = orders.find(o => o.id === schedule?.orderId);
-                  const company = companies.find(c => c.id === order?.companyId);
+                  const company = resolveProductionPlanCompany(p, schedule, order, companies);
                   const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
                   const isSample = isSampleProduction(p);
                   const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
@@ -316,7 +321,7 @@ export function ProductionPlan() {
                       <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
                       <td className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
-                      <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[220px] max-w-[220px]" title={company?.name}>{company?.name || "-"}</td>
+                      <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[220px] max-w-[220px]" title={company.name}>{company.name}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{p.erpCode || "-"}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[320px] max-w-[320px]" title={item?.name}>{item?.name || "-"}</td>
                       <td className="px-4 py-3 text-center text-[11px] text-black border border-black whitespace-nowrap">{isSample ? "Yes" : "No"}</td>
