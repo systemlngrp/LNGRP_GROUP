@@ -18,7 +18,7 @@ import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/re
 import { resolveProductionPlanCompany } from "../lib/productionPlanCompany";
 
 export function ProductionPlan() {
-  const [productions, , productionsLoading] = useData<Production>("productions", []);
+  const [productions, setProductions, productionsLoading] = useData<Production>("productions", []);
   const [schedules, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", []);
   const [orders, , ordersLoading] = useData<Order>("orders", []);
   const [companies, , companiesLoading] = useData<Company>("companies", []);
@@ -47,6 +47,10 @@ export function ProductionPlan() {
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [editingSequenceId, setEditingSequenceId] = useState<string | null>(null);
+  const [editingSequence, setEditingSequence] = useState("");
+  const [sequenceError, setSequenceError] = useState("");
+  const [savingSequenceId, setSavingSequenceId] = useState<string | null>(null);
   const allowExports = exportsAllowed();
   const isLoading =
     productionsLoading ||
@@ -96,6 +100,37 @@ export function ProductionPlan() {
     const realizationPerKg = Number(production.realizationPerKg);
     if (!Number.isFinite(realizationPerKg)) return false;
     return realizationPerKg < requiredRealization;
+  };
+
+  const beginSequenceEdit = (production: Production) => {
+    setEditingSequenceId(production.id);
+    setEditingSequence(String(production.sequence ?? ""));
+    setSequenceError("");
+  };
+
+  const cancelSequenceEdit = () => {
+    setEditingSequenceId(null);
+    setEditingSequence("");
+    setSequenceError("");
+  };
+
+  const saveSequence = async (production: Production) => {
+    const nextSequence = editingSequence.trim();
+    const duplicate = productions.some((row) => row.id !== production.id && normalizeDate(row.date) === normalizeDate(production.date) && Boolean(nextSequence) && String(row.sequence ?? "").trim().toLowerCase() === nextSequence.toLowerCase());
+    if (duplicate) {
+      setSequenceError(`Job Sequence "${nextSequence}" is already used on this date.`);
+      return;
+    }
+    setSavingSequenceId(production.id);
+    setSequenceError("");
+    try {
+      await setProductions((rows) => rows.map((row) => row.id === production.id ? { ...row, sequence: nextSequence } : row));
+      cancelSequenceEdit();
+    } catch (error) {
+      setSequenceError((error as Error).message || "Failed to save Job Sequence.");
+    } finally {
+      setSavingSequenceId(null);
+    }
   };
 
   const filteredList = useMemo(() => {
@@ -187,7 +222,24 @@ export function ProductionPlan() {
     doc.text(`Production Plan - ${formatDate(selectedDate)}`, 14, 15);
     doc.setFontSize(10);
     
-    const exportData = getExportData(sortedList);
+    const exportData = sortedList.map((p, index) => {
+      const schedule = schedules.find(s => s.id === p.scheduleId);
+      const order = orders.find(o => o.id === schedule?.orderId);
+      const company = resolveProductionPlanCompany(p, schedule, order, companies);
+      const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
+      const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
+      return {
+        "Sr. No.": index + 1, "Job No": p.transactionNo || "-", "Company Name": company.name,
+        "Item Name": item?.name || "-", "ERP CODE": p.erpCode || "-", "UPS": format2(p.ups), "Plan QTY": format2(p.qty),
+        "Reel As Per Calculation": format2(p.reelAsPerCalc), "REEL Actual with TRIMMING": format2(p.reelActualWithTrimming),
+        "CUTTING with TRIMMING": format2(p.cuttingWithTrimming), "PLY": format2(p.ply), "FLUTE": p.flute || "-",
+        "L1": format2(p.l1), "F1": format2(p.f1), "L2": format2(p.l2), "F2": format2(p.f2), "L3": format2(p.l3), "GSM": format2(p.gsm),
+        "TOTAL Paper WEIGHT": format2(p.totalPaperWeight), "Planned Production in Meter": format2(p.plannedProductionInMeter),
+        "REMARK": p.remarks || "-", "REALIZATION PER KG": format2(p.realizationPerKg), "SHEET WEIGHT": format2(p.sheetWeight),
+        "Least Sheet Weight": format2(p.leastGsm), "Flute Batch": p.fluteBatches || "-", "Job Sequence": p.sequence || "-",
+        "Date": formatDate(p.date), "Rate": format2(p.rate), "Value": format2(value), "Sample": isSampleProduction(p) ? "Yes" : "No",
+      } as Record<string, string | number>;
+    });
     if (exportData.length === 0) return;
 
     const tableColumn = Object.keys(exportData[0]);
@@ -240,6 +292,8 @@ export function ProductionPlan() {
           ) : null}
         </div>
       </div>
+
+      {sequenceError ? <div className="rounded border border-red-700 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{sequenceError}</div> : null}
 
       <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
         <TableControls
@@ -345,7 +399,17 @@ export function ProductionPlan() {
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.sheetWeight)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.leastGsm)}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{p.fluteBatches || "-"}</td>
-                      <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{p.sequence || "-"}</td>
+                      <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">
+                        {editingSequenceId === p.id ? (
+                          <div className="flex items-center gap-1">
+                            <input autoFocus value={editingSequence} disabled={savingSequenceId === p.id} onChange={(event) => setEditingSequence(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSequence(p); if (event.key === "Escape") cancelSequenceEdit(); }} className="w-20 rounded border border-indigo-600 px-1 py-0.5 text-[11px]" />
+                            <button type="button" onClick={() => void saveSequence(p)} disabled={savingSequenceId === p.id} className="font-bold text-emerald-700">✓</button>
+                            <button type="button" onClick={cancelSequenceEdit} disabled={savingSequenceId === p.id} className="font-bold text-red-700">×</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => beginSequenceEdit(p)} className="min-w-8 text-left hover:text-indigo-700 hover:underline">{String(p.sequence || "-")}</button>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.rate)}</td>
                       <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{format2(value)}</td>
