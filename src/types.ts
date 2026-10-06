@@ -1031,12 +1031,14 @@ export interface BoardLineQcCheck {
 
 export interface QcUpdateRecord {
   id: string;
+  npdId: string;
   erpNo: string;
   itemName: string;
   fileNo: string;
   indexNo: string;
   zoneNo: string;
-  spec: string;
+  sampleNo: string;
+  spec?: string;
   remarks?: string;
   updatedBy: string;
   updateDate: string;
