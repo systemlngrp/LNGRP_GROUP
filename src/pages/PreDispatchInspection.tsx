@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
-import type { Firm, Item, Production, PreDispatchInspection as Inspection, QcPersonMaster } from "../types";
+import type { Firm, Item, Order, OrderSchedule, Production, PreDispatchInspection as Inspection, QcPersonMaster } from "../types";
 
 const input = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const text = (v: unknown) => String(v ?? "").trim();
@@ -13,19 +13,30 @@ const checkLabels: Record<typeof checks[number], string> = { printingArtworkChec
 type Form = Partial<Inspection> & { productionId: string; jobNo: string };
 const blank: Form = { productionId: "", jobNo: "", issue: "" } as Form;
 const opts = (values: string[]) => [...new Set(values.filter(Boolean))].sort().map(value => ({ value, label: value }));
+const normalizePrefix = (value: unknown) => text(value).toUpperCase().split(/[\/_-]/)[0].replace(/[^A-Z0-9]/g, "");
+const resolveFirmFromJobPrefix = (jobNo: string, firms: Firm[]) => {
+  const jobPrefix = normalizePrefix(jobNo);
+  if (!jobPrefix) return undefined;
+  return firms
+    .map(firm => ({ firm, prefix: normalizePrefix(firm.shortName) }))
+    .filter(entry => entry.prefix && (jobPrefix === entry.prefix || jobPrefix.startsWith(entry.prefix)))
+    .sort((a, b) => b.prefix.length - a.prefix.length)[0]?.firm;
+};
 
 function useInspectionData() {
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [records, , loading, api] = useData<Inspection>("pre_dispatch_inspections", [], { firmScope: "all" });
   const [people] = useData<QcPersonMaster>("qc_person_masters", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const items = useNpdItems();
-  return { productions, records, loading, api, people, firms, items };
+  return { productions, records, loading, api, people, firms, orders, schedules, items };
 }
 
 export function PreDispatchInspectionForm() {
   const navigate = useNavigate();
-  const { productions, records, api, people, items } = useInspectionData();
+  const { productions, records, api, people, firms, orders, schedules, items } = useInspectionData();
   const [form, setForm] = useState<Form>(blank);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -39,15 +50,37 @@ export function PreDispatchInspectionForm() {
     const jobNo = text(production.transactionNo || production.jobCardNo);
     const old = records.find(r => r.productionId === id || r.jobNo === jobNo);
     const item = (items as Item[]).find(i => String(i.id) === String(production.itemId || production.npdId) || String(i.erp) === String(production.erpCode || production.masterErp));
-    setForm(old ? { ...old, productionId: id, jobNo } : { ...blank, productionId: id, jobNo, firmId: production.firmId, firmName: production.firmName, erpCode: text(production.erpCode || production.masterErp || item?.erp), partyName: text(production.companyName || item?.customer), itemName: text((production as any).itemName || item?.name), csRequired: text((production as any).csRequired || (production as any).csStandard || (item as any)?.cs || (item as any)?.cuttingSize), bGsm: text((production as any).bGsm || (production as any).gsm || (production as any).boardGsm || (item as any)?.gsm), plannedQty: Number(production.plannedQty || production.qty) || 0, lengthId: production.length, widthId: production.breadth, heightId: production.height });
-    setMessage("");
+    const schedule = schedules.find(value => String(value.id) === String(production.scheduleId));
+    const orderId = schedule?.orderId || (production as any).orderId;
+    const order = orders.find(value => String(value.id) === String(orderId));
+    const orderFirm = order?.firmId ? firms.find(value => String(value.id) === String(order.firmId)) : undefined;
+    const prefixFirm = resolveFirmFromJobPrefix(jobNo, firms);
+    const productionFirm = production.firmId ? firms.find(value => String(value.id) === String(production.firmId)) : undefined;
+    const resolvedFirm = order?.firmId || order?.firmName ? { id: order.firmId || orderFirm?.id || "", firmName: order.firmName || orderFirm?.firmName || "" } : prefixFirm || productionFirm;
+    const jobFields = {
+      productionId: id,
+      jobNo,
+      firmId: order?.firmId || resolvedFirm?.id || production.firmId || "",
+      firmName: order?.firmName || resolvedFirm?.firmName || production.firmName || "",
+      erpCode: text(production.erpCode || production.masterErp || order?.erpCode || item?.erp),
+      partyName: text(production.companyName || item?.customer),
+      itemName: text((production as any).itemName || item?.name),
+      csRequired: text((production as any).csRequired || (production as any).csStandard || (item as any)?.cs || (item as any)?.cuttingSize),
+      bGsm: text((production as any).bGsm || (production as any).gsm || (production as any).boardGsm || (item as any)?.gsm),
+      plannedQty: Number(production.plannedQty || production.qty) || 0,
+      lengthId: production.length,
+      widthId: production.breadth,
+      heightId: production.height
+    };
+    setForm(old ? { ...old, ...jobFields } : { ...blank, ...jobFields });
+    setMessage(resolvedFirm ? "" : "Warning: Firm could not be resolved from the Original Order or Job No. prefix. Please verify it before saving.");
   };
   const derive = () => { const values = checks.map(key => text(form[key])); if (values.some(value => value === "NOT OK")) return "QC HOLD"; if (values.every(value => value === "OK")) return "QC PASS"; return "Pending"; };
   const upload = async (key: "frontPhoto" | "backPhoto", file?: File) => { if (!file) return; const reader = new FileReader(); reader.onload = async () => { try { const response = await fetch("/api/upload-artwork", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, base64: reader.result }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "Upload failed"); update(key, result.filename); } catch (error) { setMessage(error instanceof Error ? error.message : "Photo upload failed."); } }; reader.readAsDataURL(file); };
   const save = async () => { if (!form.productionId) return setMessage("Select a Job No. first."); if (!text(form.lotNo)) return setMessage("Lot No. is required."); if (!text(form.qcPerson)) return setMessage("QC Person is required."); const old = records.find(r => r.productionId === form.productionId || r.jobNo === form.jobNo); const item: Inspection = { ...form, id: old?.id || `PDI-${Date.now()}`, result: derive(), inspectionDate: form.inspectionDate || new Date().toISOString(), updatedBy: "System User", updateTimestamp: new Date().toISOString() } as Inspection; setSaving(true); try { if (old) await api.saveItem(item); else await api.addItem(item); navigate("/quality/pre-dispatch-inspection", { state: { message: "Pre-Dispatch Inspection saved successfully." } }); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save inspection."); } finally { setSaving(false); } };
   const readOnlyFields = [["Firm", "firmName"], ["ERP", "erpCode"], ["Party Name", "partyName"], ["Item Name", "itemName"], ["Planned Quantity", "plannedQty"], ["CS Act. / CS REQ.", "csRequired"], ["B.GSM", "bGsm"]] as const;
   const editableFields = [["Lot No.", "lotNo"], ["Length (ID)", "lengthId"], ["Width (ID)", "widthId"], ["Height (ID)", "heightId"], ["CS Achieved", "csAchieved"], ["GSM Achieved", "gsmAchieved"], ["Box Weight (Grams)", "boxWeightGrams"]] as const;
-  return <div className="mx-auto max-w-7xl space-y-5 pb-8 text-black"><div className="flex items-center justify-between border-b border-black pb-3"><div><h2 className="text-xl font-bold uppercase">Pre-Dispatch Inspection Form</h2><p className="text-sm text-slate-600">Complete the inspection details and submit the result.</p></div><button type="button" onClick={() => navigate("/quality/pre-dispatch-inspection")} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-4 py-2 font-bold"><ArrowLeft size={17} />Back</button></div>{message && <div className="rounded border-2 border-black bg-amber-100 p-3 font-bold">{message}</div>}<section className="rounded border-2 border-black bg-white p-4"><h3 className="mb-4 bg-cyan-800 p-3 font-bold uppercase text-white">Job Information</h3><div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4"><label className="space-y-1"><b>Job No. *</b><Select value={form.productionId} onChange={selectJob} options={jobOptions} placeholder="Select Job No." compact={false} /></label>{readOnlyFields.map(([label, key]) => <label key={key} className="space-y-1"><b>{label}</b><input className={`${input} bg-slate-100`} readOnly value={String(form[key] ?? "")} /></label>)}</div></section><section className="rounded border-2 border-black bg-white p-4"><h3 className="mb-4 bg-cyan-800 p-3 font-bold uppercase text-white">PDI Form Columns</h3><label className="mb-3 block space-y-1"><b>Timestamp</b><input className={`${input} bg-slate-100`} readOnly value={String(form.inspectionDate || new Date().toISOString())} /></label><div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">{editableFields.map(([label, key]) => <label key={key} className="space-y-1"><b>{label}{key === "lotNo" ? " *" : ""}</b><input className={input} value={String(form[key] ?? "")} onChange={event => update(key, event.target.value)} /></label>)}{checks.map(key => <label key={key} className="space-y-1"><b>{checkLabels[key]}</b><Select value={text(form[key])} onChange={value => update(key, value)} options={[{ value: "OK", label: "OK" }, { value: "NOT OK", label: "NOT OK" }]} placeholder="Select result" compact={false} /></label>)}<label className="space-y-1"><b>QC Person *</b><Select value={text(form.qcPerson)} onChange={value => update("qcPerson", value)} options={personOptions} placeholder="Select QC Person" compact={false} /></label><label className="space-y-1 md:col-span-2 xl:col-span-2"><b>Remarks</b><textarea className={`${input} min-h-24`} value={text(form.remarks)} onChange={event => update("remarks", event.target.value)} /></label><label className="space-y-1"><b>Box Photo Front</b><input className={input} type="file" accept="image/*" onChange={event => void upload("frontPhoto", event.target.files?.[0])} /></label><label className="space-y-1"><b>Box Photo Back</b><input className={input} type="file" accept="image/*" onChange={event => void upload("backPhoto", event.target.files?.[0])} /></label></div></section><div className="flex justify-end gap-3"><button type="button" onClick={() => navigate("/quality/pre-dispatch-inspection")} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-5 py-3 font-bold"><X size={17} />Cancel</button><button type="button" disabled={saving} onClick={() => void save()} className="inline-flex items-center gap-2 rounded bg-cyan-700 px-5 py-3 font-bold text-white disabled:opacity-60"><Save size={17} />{saving ? "Saving..." : "Save Inspection"}</button></div></div>;
+  return <div className="mx-auto max-w-7xl space-y-5 pb-8 text-black"><div className="flex items-center justify-between border-b border-black pb-3"><div><h2 className="text-xl font-bold uppercase">Pre-Dispatch Inspection Form</h2><p className="text-sm text-slate-600">Complete the inspection details and submit the result.</p></div><button type="button" onClick={() => navigate("/quality/pre-dispatch-inspection")} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-4 py-2 font-bold"><ArrowLeft size={17} />Back</button></div>{message && <div className="rounded border-2 border-black bg-amber-100 p-3 font-bold">{message}</div>}<section className="rounded border-2 border-black bg-white p-4"><h3 className="mb-4 bg-cyan-800 p-3 font-bold uppercase text-white">Job Information</h3><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"><label className="flex h-full flex-col gap-1"><b>Job No. *</b><Select value={form.productionId} onChange={selectJob} options={jobOptions} placeholder="Select Job No." compact={false} /></label>{readOnlyFields.map(([label, key]) => <label key={key} className="flex h-full flex-col gap-1"><b>{label}</b><input className={`${input} bg-slate-100`} readOnly value={String(form[key] ?? "")} /></label>)}</div></section><section className="rounded border-2 border-black bg-white p-4"><h3 className="mb-4 bg-cyan-800 p-3 font-bold uppercase text-white">PDI Form Columns</h3><div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">{editableFields.map(([label, key]) => <label key={key} className="flex h-full flex-col gap-1"><b>{label}{key === "lotNo" ? " *" : ""}</b><input className={input} value={String(form[key] ?? "")} onChange={event => update(key, event.target.value)} /></label>)}{checks.map(key => <label key={key} className="flex h-full flex-col gap-1"><b>{checkLabels[key]}</b><Select value={text(form[key])} onChange={value => update(key, value)} options={[{ value: "OK", label: "OK" }, { value: "NOT OK", label: "NOT OK" }]} placeholder="Select result" compact={false} /></label>)}<label className="flex h-full flex-col gap-1"><b>QC Person *</b><Select value={text(form.qcPerson)} onChange={value => update("qcPerson", value)} options={personOptions} placeholder="Select QC Person" compact={false} /></label><label className="flex h-full flex-col gap-1 md:col-span-2 xl:col-span-2"><b>Remarks</b><textarea className={`${input} min-h-24 flex-1`} value={text(form.remarks)} onChange={event => update("remarks", event.target.value)} /></label><label className="flex h-full flex-col gap-1"><b>Box Photo Front</b><input className={input} type="file" accept="image/*" onChange={event => void upload("frontPhoto", event.target.files?.[0])} /></label><label className="flex h-full flex-col gap-1"><b>Box Photo Back</b><input className={input} type="file" accept="image/*" onChange={event => void upload("backPhoto", event.target.files?.[0])} /></label></div></section><div className="flex w-full items-center justify-end gap-3 border-t-2 border-black pt-4"><button type="button" onClick={() => navigate("/quality/pre-dispatch-inspection")} className="inline-flex h-12 min-w-32 items-center justify-center gap-2 rounded border-2 border-black bg-white px-5 font-bold"><X size={17} />Cancel</button><button type="button" disabled={saving} onClick={() => void save()} className="inline-flex h-12 min-w-40 items-center justify-center gap-2 rounded bg-cyan-700 px-5 font-bold text-white disabled:opacity-60"><Save size={17} />{saving ? "Saving..." : "Save Inspection"}</button></div></div>;
 }
 
 export function PreDispatchInspection() {
