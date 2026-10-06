@@ -88,10 +88,23 @@ export function ItemwiseLeastCost() {
     npdItems.forEach((item) => {
       const erp = String(item.erp || "").trim();
       const gsm = Number(item.gsmLeastCost || 0);
-      if (!erp || !gsm || gsm <= 0) return;
+      if (!erp) return;
       const existing = erpMap.get(erp);
-      if (existing) { existing.gsm = gsm; return; }
-      erpMap.set(erp, { date: "", jobCardNo: "", itemName: item.name || "", erp, erpCode: erp, company: "", length: Number(item.length || 0), breadth: Number(item.breadth || 0), height: Number(item.height || 0), reelAsPerCalc: 0, reelActual: 0, cutting: 0, l1: Number(item.l1 || 0), f1: Number(item.f1 || 0), l2: Number(item.l2 || 0), f2: Number(item.f2 || 0), l3: Number(item.l3 || 0), gsm, sheetWeight: 0 });
+      if (existing) {
+        existing.itemName = item.name || existing.itemName;
+        existing.company = item.customer || existing.company;
+        existing.length = Number(item.length || 0);
+        existing.breadth = Number(item.breadth || 0);
+        existing.height = Number(item.height || 0);
+        existing.l1 = Number(item.l1 || 0);
+        existing.f1 = Number(item.f1 || 0);
+        existing.l2 = Number(item.l2 || 0);
+        existing.f2 = Number(item.f2 || 0);
+        existing.l3 = Number(item.l3 || 0);
+        if (gsm > 0) { existing.gsm = gsm; existing.jobCardNo = "Opening"; }
+        return;
+      }
+      if (gsm > 0) erpMap.set(erp, { date: "", jobCardNo: "Opening", itemName: item.name || "", erp, erpCode: erp, company: item.customer || "", length: Number(item.length || 0), breadth: Number(item.breadth || 0), height: Number(item.height || 0), reelAsPerCalc: 0, reelActual: 0, cutting: 0, l1: Number(item.l1 || 0), f1: Number(item.f1 || 0), l2: Number(item.l2 || 0), f2: Number(item.f2 || 0), l3: Number(item.l3 || 0), gsm, sheetWeight: 0 });
     });
 
     return Array.from(erpMap.values()).sort((a, b) => a.erp.localeCompare(b.erp));
@@ -173,6 +186,7 @@ export function ItemwiseLeastCost() {
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black whitespace-nowrap">
               <tr className="divide-x divide-black">
                 <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">SL No</th>
+                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Job No</th>
                 <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Item Name</th>
                 <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">ERP CODE</th>
                 <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Company</th>
@@ -194,7 +208,7 @@ export function ItemwiseLeastCost() {
             <tbody className="divide-y divide-black bg-white">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={19} className="px-6 py-12 text-center text-slate-500 font-bold italic uppercase tracking-widest bg-slate-50/50">
+                  <td colSpan={18} className="px-6 py-12 text-center text-slate-500 font-bold italic uppercase tracking-widest bg-slate-50/50">
                     No data found matching your criteria
                   </td>
                 </tr>
@@ -202,6 +216,7 @@ export function ItemwiseLeastCost() {
                 paginatedData.map((row, idx) => (
                   <tr key={idx} className="hover:bg-slate-50 transition-colors divide-x divide-black text-xs whitespace-nowrap">
                     <td className="px-3 py-2 font-bold text-black">{(page - 1) * pageSize + idx + 1}</td>
+                    <td className="px-3 py-2 font-bold text-black">{row.jobCardNo || "-"}</td>
                     <td className="px-3 py-2 text-black min-w-[260px] max-w-[320px] truncate" title={row.itemName}>{row.itemName}</td>
                     <td className="px-3 py-2 font-bold text-black">{row.erp}</td>
                     <td className="px-3 py-2 text-black min-w-[180px] max-w-[240px] truncate" title={row.company}>{row.company}</td>
@@ -225,7 +240,7 @@ export function ItemwiseLeastCost() {
             {filteredData.length > 0 && (
             <tfoot className="bg-slate-100 border-t border-black divide-y divide-black">
                     <tr>
-                        <td colSpan={17} className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">
+                        <td colSpan={18} className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">
                             Total Unique ERPs: {filteredData.length}
                         </td>
                     </tr>
