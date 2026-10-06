@@ -1057,6 +1057,18 @@ export interface SpecialRemarkRecord {
   updateTimestamp?: string;
 }
 
+export interface PrintingStereoRecord {
+  id: string;
+  npdId: string;
+  erpCode: string;
+  partyName: string;
+  itemName: string;
+  location: string;
+  blockNo: string;
+  updatedBy: string;
+  updateTimestamp?: string;
+}
+
 export interface PrintingQcCheck {
   id: string;
   timestamp: string;

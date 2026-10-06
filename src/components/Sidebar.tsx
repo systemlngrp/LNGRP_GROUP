@@ -216,6 +216,8 @@ const qualityItems: NavEntry[] = [
       { name: "QC Update Form", href: "/quality/qc-update/form", icon: ClipboardList },
       { name: "Special Remark Form", href: "/quality/special-remarks/form", icon: ClipboardList },
       { name: "Special Remark Master", href: "/quality/special-remarks", icon: Database },
+      { name: "Printing Stereo Form", href: "/quality/printing-stereo/form", icon: ClipboardList },
+      { name: "Printing Stereo Master", href: "/quality/printing-stereo", icon: Database },
       { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
       { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
     ],
