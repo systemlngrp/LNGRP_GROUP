@@ -40,6 +40,8 @@ export function ItemwiseLeastCost() {
   const itemsLoading = false;
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [jobFilter, setJobFilter] = useState("");
+  const [erpFilter, setErpFilter] = useState("");
   const [message, setMessage] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
 
@@ -112,12 +114,17 @@ export function ItemwiseLeastCost() {
   const filteredData = useMemo(() => {
     return leastCostData.filter((row) => {
       const itemValue = itemFilter.split("::")[0];
-      return (!companyFilter || row.company === companyFilter) && (!itemFilter || row.itemName === itemValue);
+      return (!companyFilter || row.company === companyFilter) &&
+        (!itemFilter || row.itemName === itemValue) &&
+        (!jobFilter || row.jobCardNo === jobFilter) &&
+        (!erpFilter || row.erp === erpFilter);
     });
-  }, [companyFilter, itemFilter, leastCostData]);
+  }, [companyFilter, erpFilter, itemFilter, jobFilter, leastCostData]);
 
   const companyOptions = useMemo(() => Array.from(new Set(leastCostData.map((row) => row.company).filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name })), [leastCostData]);
   const itemOptions = useMemo(() => Array.from(new Map(leastCostData.map((row) => [`${row.itemName}::${row.erp}`, { value: `${row.itemName}::${row.erp}`, label: row.erp && row.itemName && !row.itemName.toLowerCase().includes(row.erp.toLowerCase()) ? `${row.itemName} - ${row.erp}` : row.itemName || row.erp, searchText: `${row.itemName} ${row.erp}` }])).values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)), [leastCostData]);
+  const jobOptions = useMemo(() => Array.from(new Set(leastCostData.map((row) => row.jobCardNo).filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value })), [leastCostData]);
+  const erpOptions = useMemo(() => Array.from(new Set(leastCostData.map((row) => row.erp).filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value })), [leastCostData]);
 
   const upload = async (file?: File) => {
     if (!file) return;
@@ -163,18 +170,21 @@ export function ItemwiseLeastCost() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-black">
-        <div>
+        <div className="flex w-full items-center justify-between gap-4">
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Itemwise Least GSM</h2>
           <input ref={uploadRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => void upload(event.target.files?.[0])} />
+          <button type="button" onClick={() => uploadRef.current?.click()} className="inline-flex shrink-0 items-center gap-2 rounded border-2 border-black bg-indigo-600 px-3 py-2 text-sm font-bold text-white"><Upload size={16} />Upload Least GSM</button>
         </div>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 bg-white border-2 border-black rounded p-3">
         <div className="min-w-[220px] flex-1"><Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" /></div>
         <div className="min-w-[260px] flex-1"><Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" /></div>
+        <div className="min-w-[220px] flex-1"><Select value={jobFilter} onChange={setJobFilter} options={jobOptions} placeholder="Job No" /></div>
+        <div className="min-w-[220px] flex-1"><Select value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="ERP Code" /></div>
         {message && <div className="w-full rounded border border-black bg-amber-100 px-3 py-2 text-sm font-bold">{message}</div>}
-        {(companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
+        {(companyFilter || itemFilter || jobFilter || erpFilter) ? (
+          <button type="button" onClick={() => { setCompanyFilter(""); setItemFilter(""); setJobFilter(""); setErpFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
         ) : null}
       </div>
 
@@ -248,10 +258,6 @@ export function ItemwiseLeastCost() {
             )}
           </table>
         </div>
-      </div>
-
-      <div className="flex justify-end">
-        <button type="button" onClick={() => uploadRef.current?.click()} className="inline-flex items-center gap-2 rounded border-2 border-black bg-indigo-600 px-3 py-2 text-sm font-bold text-white"><Upload size={16} />Upload Least GSM</button>
       </div>
 
       <ClientPagination
