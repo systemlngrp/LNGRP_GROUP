@@ -282,8 +282,13 @@ export function ProductionForm() {
         }
       }
     });
+    npdItems.forEach((item) => {
+      const erp = String(item.erp || "").trim();
+      const gsm = Number(item.gsmLeastCost || 0);
+      if (erp && gsm > 0) map.set(erp, gsm);
+    });
     return map;
-  }, [productions]);
+  }, [npdItems, productions]);
 
   const selectedSchedule = pendingSchedules.find((schedule) => schedule.id === selectedScheduleId);
   const selectedOrder = orders.find((order) => order.id === selectedSchedule?.orderId);

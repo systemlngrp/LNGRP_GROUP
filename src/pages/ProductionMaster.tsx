@@ -263,8 +263,13 @@ export function ProductionMaster() {
         }
       }
     });
+    Object.values(itemsBySource).flat().forEach((item: any) => {
+      const erp = String(item?.erp || "").trim();
+      const gsm = Number(item?.gsmLeastCost || 0);
+      if (erp && gsm > 0) map.set(erp, gsm);
+    });
     return map;
-  }, [productions]);
+  }, [itemsBySource, productions]);
 
   const loadedQtyByProductionId = useMemo(() => {
     const map = new Map<string, number>();
