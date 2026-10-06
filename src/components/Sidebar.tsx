@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Boxes,
@@ -218,11 +218,14 @@ const qualityItems: NavEntry[] = [
       { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
     ],
   },
-  { name: "Spec Card Issue/Return", href: "/quality/spec-card-issue-return", icon: ClipboardList },
+  { name: "Spec QC Form", href: "/quality/spec-card-issue-return/form", icon: ClipboardList },
+  { name: "Spec QC Master", href: "/quality/spec-card-issue-return", icon: Database },
   { name: "QC Person Master", href: "/quality/qc-person-master", icon: Database },
-  { name: "Block Record", href: "/quality/block-record", icon: ClipboardList },
+  { name: "Block Record Form", href: "/quality/block-record/form", icon: ClipboardList },
+  { name: "Block Record Master", href: "/quality/block-record", icon: Database },
   { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },
-  { name: "Pre-Dispatch Inspection", href: "/quality/pre-dispatch-inspection", icon: ClipboardList },
+  { name: "Pre-Dispatch Inspection Form", href: "/quality/pre-dispatch-inspection/form", icon: ClipboardList },
+  { name: "Pre-Dispatch Inspection Master", href: "/quality/pre-dispatch-inspection", icon: Database },
 ];
 
 const dispatchItems: NavItem[] = [

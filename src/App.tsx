@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -155,6 +155,7 @@ import { QualityPendingCapa } from "./pages/QualityPendingCapa";
 import { QcSpecCardIssueReturn, QcSpecCardIssueReturnForm } from "./pages/QcSpecCardIssueReturn";
 import { QcPersonMaster } from "./pages/QcPersonMaster";
 import { QcBlockRecord } from "./pages/QcBlockRecord";
+import { QcBlockRecordForm } from "./pages/QcBlockRecordForm";
 import { QcBlockLocationMaster } from "./pages/QcBlockLocationMaster";
 import { PreDispatchInspection, PreDispatchInspectionForm } from "./pages/PreDispatchInspection";
 import { QcSampleRequirement } from "./pages/QcSampleRequirement";
@@ -375,6 +376,7 @@ export default function App() {
           <Route path="quality/spec-card-issue-return/form" element={<QcSpecCardIssueReturnForm />} />
           <Route path="quality/qc-person-master" element={<QcPersonMaster />} />
           <Route path="quality/block-record" element={<QcBlockRecord />} />
+          <Route path="quality/block-record/form" element={<QcBlockRecordForm />} />
           <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
           <Route path="quality/pre-dispatch-inspection" element={<PreDispatchInspection />} />
           <Route path="quality/pre-dispatch-inspection/form" element={<PreDispatchInspectionForm />} />
