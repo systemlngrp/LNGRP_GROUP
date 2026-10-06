@@ -1206,6 +1206,8 @@ export interface PreDispatchInspection {
   firmId?: string;
   firmName?: string;
   erpCode?: string;
+  csRequired?: number | string;
+  bGsm?: number | string;
   partyName?: string;
   itemName?: string;
   plannedQty?: number;

@@ -5817,7 +5817,7 @@ async function initDb(retries = 5) {
       )`);
             await db.query(`CREATE TABLE IF NOT EXISTS \`pre_dispatch_inspections\` (
         \`id\` VARCHAR(100) PRIMARY KEY, \`productionId\` VARCHAR(36) NOT NULL, \`jobNo\` VARCHAR(100) NOT NULL,
-        \`firmId\` VARCHAR(36), \`firmName\` VARCHAR(255), \`erpCode\` VARCHAR(100), \`partyName\` VARCHAR(255), \`itemName\` TEXT,
+        \`firmId\` VARCHAR(36), \`firmName\` VARCHAR(255), \`erpCode\` VARCHAR(100), \`csRequired\` VARCHAR(100), \`bGsm\` VARCHAR(100), \`partyName\` VARCHAR(255), \`itemName\` TEXT,
         \`plannedQty\` DECIMAL(15,2) DEFAULT 0, \`lotNo\` VARCHAR(100), \`lengthId\` VARCHAR(50), \`widthId\` VARCHAR(50), \`heightId\` VARCHAR(50),
         \`csAchieved\` VARCHAR(50), \`gsmAchieved\` VARCHAR(50), \`boxWeightGrams\` VARCHAR(50),
         \`printingArtworkCheck\` VARCHAR(20), \`printingColorCheck\` VARCHAR(20), \`boxSquaringCheck\` VARCHAR(20), \`flapGapCheck\` VARCHAR(20), \`jointPastingDelaminationCheck\` VARCHAR(20),
@@ -6957,6 +6957,8 @@ async function initDb(retries = 5) {
                 { table: "pre_dispatch_inspections", column: "firmId", type: "VARCHAR(36)" },
                 { table: "pre_dispatch_inspections", column: "firmName", type: "VARCHAR(255)" },
                 { table: "pre_dispatch_inspections", column: "erpCode", type: "VARCHAR(100)" },
+                { table: "pre_dispatch_inspections", column: "csRequired", type: "VARCHAR(100)" },
+                { table: "pre_dispatch_inspections", column: "bGsm", type: "VARCHAR(100)" },
                 { table: "pre_dispatch_inspections", column: "partyName", type: "VARCHAR(255)" },
                 { table: "pre_dispatch_inspections", column: "itemName", type: "TEXT" },
                 { table: "pre_dispatch_inspections", column: "plannedQty", type: "DECIMAL(15,2) DEFAULT 0" },
