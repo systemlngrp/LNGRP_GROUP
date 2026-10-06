@@ -95,6 +95,7 @@ import { BoardLineQcForm, BoardLineQcMaster } from "./pages/BoardLineQc";
 import { PrintingQcForm, PrintingQcMaster } from "./pages/PrintingQc";
 import { QcMasterData } from "./pages/QcMasterData";
 import { QcUpdateForm } from "./pages/QcUpdateForm";
+import { SpecialRemarkForm, SpecialRemarkMaster } from "./pages/SpecialRemarks";
 import { Users } from "./pages/Users";
 import { Services } from "./pages/Services";
 import { PlantHeadUnified } from "./pages/PlantHeadUnified";
@@ -365,6 +366,8 @@ export default function App() {
           <Route path="quality/printing-qc/master" element={<PrintingQcMaster />} />
           <Route path="quality/qc-master-data" element={<QcMasterData />} />
           <Route path="quality/qc-update/form" element={<QcUpdateForm />} />
+          <Route path="quality/special-remarks/form" element={<SpecialRemarkForm />} />
+          <Route path="quality/special-remarks" element={<SpecialRemarkMaster />} />
           <Route path="quality/qc-view" element={<QcView />} />
           <Route path="quality/pdi-report" element={<PdiReport />} />
           <Route path="quality/complaints/form" element={<QualityComplaintForm />} />

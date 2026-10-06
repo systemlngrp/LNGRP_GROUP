@@ -1045,6 +1045,18 @@ export interface QcUpdateRecord {
   updateTimestamp?: string;
 }
 
+export interface SpecialRemarkRecord {
+  id: string;
+  npdId: string;
+  erpCode: string;
+  itemName: string;
+  specialRemarks: string;
+  emailAddress?: string;
+  updatedBy: string;
+  updateDate: string;
+  updateTimestamp?: string;
+}
+
 export interface PrintingQcCheck {
   id: string;
   timestamp: string;
