@@ -151,6 +151,7 @@ import { QualityComplaintForm } from "./pages/QualityComplaintForm";
 import { QualityComplaintMaster } from "./pages/QualityComplaintMaster";
 import { QualityComplaintCapa } from "./pages/QualityComplaintCapa";
 import { QualityCapaMaster } from "./pages/QualityCapaMaster";
+import { QualityPendingCapa } from "./pages/QualityPendingCapa";
 import { QcSpecCardIssueReturn, QcSpecCardIssueReturnForm } from "./pages/QcSpecCardIssueReturn";
 import { QcPersonMaster } from "./pages/QcPersonMaster";
 import { QcBlockRecord } from "./pages/QcBlockRecord";
@@ -367,6 +368,7 @@ export default function App() {
           <Route path="quality/pdi-report" element={<PdiReport />} />
           <Route path="quality/complaints/form" element={<QualityComplaintForm />} />
           <Route path="quality/complaints/master" element={<QualityComplaintMaster />} />
+          <Route path="quality/complaints/pending-capa" element={<QualityPendingCapa />} />
           <Route path="quality/complaints/:id/capa" element={<QualityComplaintCapa />} />
           <Route path="quality/capa/master" element={<QualityCapaMaster />} />
           <Route path="quality/spec-card-issue-return" element={<QcSpecCardIssueReturn />} />

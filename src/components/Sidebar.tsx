@@ -202,6 +202,7 @@ const qualityItems: NavEntry[] = [
     items: [
       { name: "Add QC Complaint", href: "/quality/complaints/form", icon: ClipboardList },
       { name: "QC Complaint Master", href: "/quality/complaints/master", icon: Database },
+      { name: "Pending CAPA", href: "/quality/complaints/pending-capa", icon: Database },
       { name: "CAPA Master", href: "/quality/capa/master", icon: Database },
     ],
   },
