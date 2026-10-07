@@ -6,7 +6,7 @@ import { useNpdItems } from "../hooks/useNpdItems";
 import type { BoardLineQcCheck, PrintingQcCheck, Production } from "../types";
 
 const GROUPS = [
-  { label: "PROGRAM", group: "bg-[#24165f] text-white", head: "bg-[#0b4773] text-white", columns: ["Job No.", "Date", "Party Name", "Item Name", "ERP Code", "Plan Quantity", "Item Status"] },
+  { label: "PROGRAM", group: "bg-[#24165f] text-white", head: "bg-[#0b4773] text-white", columns: ["SL No.", "Job No.", "Date", "Party Name", "Item Name", "ERP Code", "Plan Quantity", "Item Status"] },
   { label: "RECORD KEEPING", group: "bg-[#075985] text-white", head: "bg-[#0b4773] text-white", columns: ["Artwork", "Spec"] },
   { label: "QC REMARKS", group: "bg-[#b80000] text-white", head: "bg-[#f59e0b] text-black", columns: ["Boardline AUTO-CORRECTION Message", "Previous Customer Complaint", "PDI RESULT", "QC Remarks"] },
   { label: "PROCESS REPORT", group: "bg-[#1724dc] text-white", head: "bg-[#bfd4f4] text-black", columns: ["Boardline Production", "Printing Production", "Loaded Quantity"] },
@@ -18,6 +18,21 @@ type Row = Record<string, string | number>;
 const s = (v: unknown) => String(v ?? "").trim(); const key = (v: unknown) => s(v).toLowerCase(); const n = (v: unknown): string | number => v === "" || v == null ? "" : Number.isFinite(Number(v)) ? Number(v) : s(v); const isUrl = (v: unknown) => /^https?:\/\//i.test(s(v));
 const dateKey = (value: unknown) => { const raw = s(value).slice(0, 10); if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw; const match = raw.match(/^(\d{2})[-\/]?(\d{2})[-\/]?(\d{4})$/); return match ? `${match[3]}-${match[2]}-${match[1]}` : ""; };
 const formatDate = (value: unknown) => { const normalized = dateKey(value); return normalized ? `${normalized.slice(8, 10)}-${normalized.slice(5, 7)}-${normalized.slice(0, 4)}` : s(value); };
+const rowDateClass = (value: unknown) => {
+  const normalized = dateKey(value);
+  if (!normalized) return "odd:bg-white even:bg-slate-50 hover:bg-amber-50";
+  const [year, month, day] = normalized.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return "odd:bg-white even:bg-slate-50 hover:bg-amber-50";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date < yesterday) return "bg-red-50 text-red-700";
+  if (date < today) return "bg-pink-100 text-black";
+  if (date.getTime() === today.getTime()) return "bg-green-100 text-black";
+  return "bg-slate-100 text-black";
+};
 const LinkCell = ({ value }: { value: unknown }) => isUrl(value) ? <button type="button" onClick={() => window.open(s(value), "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><ExternalLink size={13} />Open</button> : <>{s(value)}</>;
 
 export function QcView() {
@@ -30,9 +45,9 @@ export function QcView() {
   }, [rows]);
   const clear = () => { setSearch(""); setJobFilter(""); setErpFilter(""); setPartyFilter(""); setItemFilter(""); setStatusFilter(""); setResultFilter(""); };
   return <div className="space-y-4">
-    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">QC View</h2><span className="text-sm font-bold text-slate-700">{rows.length} records</span></div>
+    <h2 className="text-xl font-bold uppercase">QC View</h2>
     <div className="rounded border border-black bg-white p-3">
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-9">
         <div className="relative sm:col-span-2"><Search className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-500" size={16}/><input className="h-[34px] w-full rounded border-2 border-black pl-9 pr-3 text-sm" placeholder="Search job, ERP, party, item or QC values" value={search} onChange={(e) => setSearch(e.target.value)}/></div>
         <Select compact value={jobFilter} onChange={setJobFilter} options={options.jobs} placeholder="All Jobs"/>
         <Select compact value={erpFilter} onChange={setErpFilter} options={options.erps} placeholder="All ERP Codes"/>
@@ -40,8 +55,8 @@ export function QcView() {
         <Select compact value={itemFilter} onChange={setItemFilter} options={options.items} placeholder="All Items"/>
         <Select compact value={statusFilter} onChange={setStatusFilter} options={options.statuses} placeholder="All Statuses"/>
         <Select compact value={resultFilter} onChange={setResultFilter} options={options.results} placeholder="All PDI Results"/>
+        <button type="button" onClick={clear} className="inline-flex h-[34px] w-full items-center justify-center gap-2 rounded border-2 border-black px-3 text-sm font-bold hover:bg-slate-100"><X size={15}/>Clear Filters</button>
       </div>
-      <div className="mt-2 flex justify-end"><button type="button" onClick={clear} className="inline-flex w-full items-center justify-center gap-2 rounded border-2 border-black px-4 py-1.5 text-sm font-bold hover:bg-slate-100 sm:w-auto"><X size={15}/>Clear Filters</button></div>
     </div>
     <div className="max-h-[calc(100vh-290px)] overflow-auto rounded border-2 border-black bg-white">
       <table className="min-w-[4200px] border-collapse text-[11px]">
@@ -49,7 +64,7 @@ export function QcView() {
           <tr className="h-[34px]">{GROUPS.map((group) => <th key={group.label} colSpan={group.columns.length} className={`sticky top-0 z-20 border border-black px-3 py-2 text-center text-sm font-extrabold ${group.group}`}>{group.label}</th>)}</tr>
           <tr>{GROUPS.flatMap((group) => group.columns.map((column) => <th key={column} className={`sticky top-[34px] z-20 min-w-[92px] whitespace-normal border border-black px-2 py-2 text-center font-bold leading-tight ${group.head}`}>{column}</th>))}</tr>
         </thead>
-        <tbody>{rows.length ? rows.map((row, ri) => <tr key={`${row["Job No."]}-${ri}`} className="odd:bg-white even:bg-slate-50 hover:bg-amber-50">{COLUMNS.map((column) => <td key={column} className="max-w-[260px] whitespace-normal break-words border border-black px-2 py-2 align-top">{column === "Artwork" || column === "Spec" ? <LinkCell value={row[column]}/> : row[column] === "" ? "-" : row[column]}</td>)}</tr>) : <tr><td colSpan={COLUMNS.length} className="p-8 text-center font-semibold">No open QC jobs match the selected filters.</td></tr>}</tbody>
+        <tbody>{rows.length ? rows.map((row, ri) => <tr key={`${row["Job No."]}-${ri}`} className={rowDateClass(row.Date)}>{COLUMNS.map((column) => <td key={column} className="max-w-[260px] whitespace-normal break-words border border-black px-2 py-2 align-top">{column === "SL No." ? ri + 1 : column === "Artwork" || column === "Spec" ? <LinkCell value={row[column]}/> : row[column] === "" ? "-" : row[column]}</td>)}</tr>) : <tr><td colSpan={COLUMNS.length} className="p-8 text-center font-semibold">No open QC jobs match the selected filters.</td></tr>}</tbody>
       </table>
     </div>
   </div>;
