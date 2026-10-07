@@ -119,6 +119,11 @@ function safeHeaderName(itemName: unknown, erp: unknown) {
   return name || erpCode || "NPD Item";
 }
 
+export function getNpdCardPdfFileName(npdRow: RowRecord) {
+  const safeFileName = safeHeaderName(npdRow.itemName, npdRow.erp).replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "NPD_Item";
+  return `NPD_Card_${safeFileName}.pdf`;
+}
+
 async function drawOrganizationLogo(doc: jsPDF, setting: Setting | null | undefined, x: number, y: number, w: number, h: number) {
   if (!setting?.organizationLogo) return false;
   try {
@@ -450,7 +455,7 @@ function drawRevisionFooter(doc: jsPDF, y: number) {
   cell(doc, SHEET_X + 106, y, 90, 9, "APPROVED BY", { bold: true, textColor: RED, fontSize: FONT_HEADING_14PX });
 }
 
-export async function downloadNpdCardPdf({ npdRow, phpRow, plateRow, setting }: DownloadNpdCardPdfArgs) {
+export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, setting }: DownloadNpdCardPdfArgs) {
   const doc = new jsPDF("p", "mm", "a4");
 
   doc.setProperties({
@@ -469,7 +474,13 @@ export async function downloadNpdCardPdf({ npdRow, phpRow, plateRow, setting }: 
   doc.setTextColor(120);
   doc.text("Generated from NPD Master", SHEET_X, PAGE_HEIGHT - 4);
 
-  const safeFileName = safeHeaderName(npdRow.itemName, npdRow.erp).replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "") || "NPD_Item";
-  doc.save(`NPD_Card_${safeFileName}.pdf`);
+  return doc;
+}
+
+export async function downloadNpdCardPdf(args: DownloadNpdCardPdfArgs) {
+  const { npdRow } = args;
+  const doc = await buildNpdCardPdf(args);
+
+  doc.save(getNpdCardPdfFileName(npdRow));
 }
 
