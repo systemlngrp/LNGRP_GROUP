@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
+import { Download } from "lucide-react";
 import type {
   Company,
   Consumption,
@@ -51,6 +52,9 @@ import {
 } from "../lib/operationDashboard";
 import { buildPendingTaskCounts, getPendingTaskGroups } from "../lib/pendingTaskCounts";
 import { buildScrapInvoiceRows, summarizeScrapInvoiceRows } from "../lib/wastageReport";
+import { findLinkedItemByErp } from "../lib/linkedLoading";
+import { downloadNpdCardPdf } from "../lib/npdCardPdf";
+import { normalizeOrderCatalogItem } from "../lib/orderItems";
 
 type ProcessingTotals = {
   paper: number;
@@ -196,15 +200,60 @@ export function OperationDashboard() {
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [machines] = useData<Machine>("machines", []);
   const [settings] = useData<Setting>("settings", []);
+  const [phpItemRows] = useData<any>("php_item_master", []);
+  const [plateItemRows] = useData<any>("plate_item_master", []);
 
   const allowExports = exportsAllowed();
   const [dateRange, setDateRange] = useState(getDefaultRange);
   const [closedJobFilter, setClosedJobFilter] = useState<ClosedJobFilter>("no");
   const [pendingJobClosureCount, setPendingJobClosureCount] = useState<number>(0);
+  const [specErp, setSpecErp] = useState("");
+  const [specDownloadState, setSpecDownloadState] = useState<"idle" | "downloading">("idle");
+  const [specMessage, setSpecMessage] = useState("");
+  const phpItems = useMemo(
+    () => phpItemRows.map((row: any) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean),
+    [phpItemRows]
+  );
+  const plateItems = useMemo(
+    () => plateItemRows.map((row: any) => normalizeOrderCatalogItem(row, "PLATE")).filter(Boolean),
+    [plateItemRows]
+  );
   const operationExportFileName =
     dateRange.from && dateRange.to
       ? `Operation_Dashboard_${dateRange.from}_${dateRange.to}`
       : "Operation_Dashboard_All_Dates";
+
+  const downloadSpec = async () => {
+    const erp = specErp.trim();
+    if (!erp) {
+      setSpecMessage("Enter an ERP code to download the specification.");
+      return;
+    }
+
+    const matchedItem = npdItems.find((item) => String(item.erp || "").trim().toLowerCase() === erp.toLowerCase());
+    if (!matchedItem) {
+      setSpecMessage(`ERP ${erp} was not found in the item master.`);
+      return;
+    }
+
+    setSpecMessage("");
+    setSpecDownloadState("downloading");
+    try {
+      const linkedPhp = findLinkedItemByErp(phpItems as any, erp);
+      const linkedPlate = findLinkedItemByErp(plateItems as any, erp);
+      await downloadNpdCardPdf({
+        npdRow: matchedItem as any,
+        phpRow: linkedPhp?.raw || null,
+        plateRow: linkedPlate?.raw || null,
+        setting: settings[0] || null,
+      });
+    } catch (error) {
+      console.error("Failed to download specification PDF:", error);
+      setSpecMessage("Unable to download the specification PDF. Please try again.");
+    } finally {
+      setSpecDownloadState("idle");
+    }
+  };
 
   useEffect(() => {
     const refreshPendingJobClosureCount = async () => {
@@ -621,8 +670,28 @@ export function OperationDashboard() {
               {allowExports ? (
                 <ExcelExport data={exportData} fileName={operationExportFileName} />
               ) : null}
+              <div className="flex items-center gap-1.5 rounded-md border-2 border-slate-900 bg-cyan-50 px-2 py-1 shadow-[3px_3px_0px_0px_rgba(15,23,42,1)]">
+                <input
+                  value={specErp}
+                  onChange={(event) => { setSpecErp(event.target.value); if (specMessage) setSpecMessage(""); }}
+                  onKeyDown={(event) => { if (event.key === "Enter") void downloadSpec(); }}
+                  placeholder="ERP for Spec"
+                  aria-label="ERP code for specification PDF"
+                  className="h-[28px] w-28 rounded border border-slate-900 bg-white px-2 text-[10px] font-bold uppercase outline-none focus:ring-2 focus:ring-cyan-600"
+                />
+                <button
+                  type="button"
+                  onClick={() => void downloadSpec()}
+                  disabled={specDownloadState === "downloading"}
+                  className="inline-flex min-h-[28px] items-center gap-1 rounded border-2 border-slate-900 bg-cyan-700 px-2 py-1 text-[10px] font-black uppercase text-white transition hover:bg-cyan-800 disabled:cursor-wait disabled:opacity-60"
+                >
+                  <Download size={13} />
+                  {specDownloadState === "downloading" ? "Preparing..." : "Download Spec"}
+                </button>
+              </div>
             </div>
           </div>
+          {specMessage ? <div className="px-3 pb-2 text-[11px] font-bold text-red-700">{specMessage}</div> : null}
         </div>
       </div>
 
