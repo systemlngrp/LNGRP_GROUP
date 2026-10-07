@@ -55,6 +55,7 @@ import { Trucks } from "./pages/Trucks";
 import { Machines } from "./pages/Machines";
 import { RapcRangeMaster } from "./pages/RapcRangeMaster";
 import { NpdMaster } from "./pages/NpdMaster";
+import { NewSpec } from "./pages/NewSpec";
 import { PhpItemMaster } from "./pages/PhpItemMaster";
 import { PlateItemMaster } from "./pages/PlateItemMaster";
 import { PhpPlateInOut } from "./pages/PhpPlateInOut";
@@ -247,6 +248,7 @@ export default function App() {
           <Route path="masters/trucks" element={<Trucks />} />
           <Route path="masters/machines" element={<Machines />} />
           <Route path="masters/rapc-ranges" element={<RapcRangeMaster />} />
+          <Route path="masters/spec" element={<NewSpec />} />
           <Route path="masters/npd" element={<NpdMaster />} />
           <Route path="masters/php-item-master" element={<PhpItemMaster />} />
           <Route path="masters/plate-item-master" element={<PlateItemMaster />} />

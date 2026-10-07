@@ -334,6 +334,7 @@ const storeReportItems: NavItem[] = [
 ];
 
 const npdDirectItems: NavItem[] = [
+  { name: "New Spec", href: "/masters/spec", icon: FileText },
   { name: "NPD Items", href: "/masters/npd", icon: Database },
   { name: "PHP Item Master", href: "/masters/php-item-master", icon: Database },
   { name: "Plate Item Master", href: "/masters/plate-item-master", icon: Database },
