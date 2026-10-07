@@ -209,17 +209,32 @@ const qualityItems: NavEntry[] = [
   {
     section: "QC Check",
     items: [
-      { name: "Board Line QC Form", href: "/quality/boardline-qc/form", icon: ClipboardList },
-      { name: "Board Line QC Master", href: "/quality/boardline-qc/master", icon: Database },
-      { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },
-      { name: "Printing QC Master", href: "/quality/printing-qc/master", icon: Database },
-      { name: "QC Update Form", href: "/quality/qc-update/form", icon: ClipboardList },
+      {
+        section: "Board QC Check",
+        items: [
+          { name: "Board Line QC Form", href: "/quality/boardline-qc/form", icon: ClipboardList },
+          { name: "Board Line QC Master", href: "/quality/boardline-qc/master", icon: Database },
+        ],
+      },
+      {
+        section: "Printing QC",
+        items: [
+          { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },
+          { name: "Printing QC Master", href: "/quality/printing-qc/master", icon: Database },
+        ],
+      },
+      {
+        section: "QC Master",
+        items: [
+          { name: "QC Update Form", href: "/quality/qc-update/form", icon: ClipboardList },
+          { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
+          { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
+        ],
+      },
       { name: "Special Remark Form", href: "/quality/special-remarks/form", icon: ClipboardList },
       { name: "Special Remark Master", href: "/quality/special-remarks", icon: Database },
       { name: "Printing Stereo Form", href: "/quality/printing-stereo/form", icon: ClipboardList },
       { name: "Printing Stereo Master", href: "/quality/printing-stereo", icon: Database },
-      { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
-      { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
     ],
   },
   { name: "Spec QC Form", href: "/quality/spec-card-issue-return/form", icon: ClipboardList },
