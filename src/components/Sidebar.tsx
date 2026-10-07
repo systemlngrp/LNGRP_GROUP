@@ -26,6 +26,7 @@ import {
   Camera
   ,ArrowLeftRight
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { REALTIME_DATA_CHANGE_EVENT } from "../hooks/useRealtimeDataSync";
 import { useNpdItems } from "../hooks/useNpdItems";
@@ -72,7 +73,7 @@ interface SidebarProps {
 export type NavItem = {
   name: string;
   href: string;
-  icon: any;
+  icon: LucideIcon;
   countKey?: string;
 };
 
@@ -757,6 +758,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const renderNavLink = (item: NavItem, nested = false) => {
     const isActive = isActiveItem(item);
     const count = item.countKey ? counts[item.countKey] : (item as any).count || 0;
+    const Icon = typeof item.icon === "function" ? item.icon : FileText;
 
     return (
       <Link
@@ -775,7 +777,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
         )}
       >
         <div className="flex min-w-0 flex-1 items-start">
-          <item.icon
+          <Icon
             className={cn(
               isActive ? "text-black" : "text-white",
               "mr-2 mt-0.5 h-4 w-4 shrink-0"
