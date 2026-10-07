@@ -79,7 +79,7 @@ export type NavItem = {
 
 export type NavSubGroup = {
   section: string;
-  items: NavItem[];
+  items: NavEntry[];
 };
 
 export type NavEntry = NavItem | NavSubGroup;
@@ -674,7 +674,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     (entries: NavEntry[]): NavEntry[] =>
       entries.reduce<NavEntry[]>((visible, entry) => {
         if (isNavSubGroup(entry)) {
-          const visibleItems = entry.items.filter((item) => hasAccess(item.href));
+          const visibleItems = getVisibleEntries(entry.items);
           if (visibleItems.length > 0) visible.push({ ...entry, items: visibleItems });
           return visible;
         }
@@ -696,14 +696,14 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
         return groups;
       }
 
-      const filteredEntries = visibleEntries.reduce<NavEntry[]>((entries, entry) => {
+      const filterEntries = (entriesToFilter: NavEntry[]): NavEntry[] => entriesToFilter.reduce<NavEntry[]>((entries, entry) => {
         if (isNavSubGroup(entry)) {
           if (matches(entry.section)) {
             entries.push(entry);
             return entries;
           }
 
-          const matchingItems = entry.items.filter((item) => matches(item.name));
+          const matchingItems = filterEntries(entry.items);
           if (matchingItems.length > 0) entries.push({ ...entry, items: matchingItems });
           return entries;
         }
@@ -711,6 +711,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
         if (matches(entry.name)) entries.push(entry);
         return entries;
       }, []);
+      const filteredEntries = filterEntries(visibleEntries);
 
       if (filteredEntries.length > 0) groups.push({ ...group, items: filteredEntries });
       return groups;
@@ -718,14 +719,24 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   }, [getVisibleEntries, menuSearchTerm, navigation]);
   useEffect(() => {
     const next: Record<string, boolean> = {};
-    for (const group of navigation) {
-      next[group.section] = true;
-      group.items.forEach((entry) => {
-        if (isNavSubGroup(entry)) next[`${group.section}/${entry.section}`] = true;
+    const hasActiveEntry = (entries: NavEntry[]): boolean => entries.some((entry) => {
+      if (isNavSubGroup(entry)) return hasActiveEntry(entry.items);
+      return isActiveItem(entry);
+    });
+    const setNestedState = (entries: NavEntry[], parentKey: string) => {
+      entries.forEach((entry) => {
+        if (!isNavSubGroup(entry)) return;
+        const sectionKey = `${parentKey}/${entry.section}`;
+        next[sectionKey] = !hasActiveEntry(entry.items);
+        setNestedState(entry.items, sectionKey);
       });
+    };
+    for (const group of navigation) {
+      next[group.section] = !hasActiveEntry(group.items);
+      setNestedState(group.items, group.section);
     }
     setCollapsedSections(next);
-  }, [navigation]);
+  }, [location.pathname, location.search, navigation]);
 
   const toggleSection = (section: string) => {
     setCollapsedSections((prev) => {
@@ -802,34 +813,34 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     );
   };
 
-  const renderNavEntry = (entry: NavEntry, groupSection: string) => {
-    if (!isNavSubGroup(entry)) return renderNavLink(entry);
+  const renderNavEntry = (entry: NavEntry, groupSection: string, depth = 0): React.ReactNode => {
+    if (!isNavSubGroup(entry)) return renderNavLink(entry, depth > 0);
 
     const sectionKey = `${groupSection}/${entry.section}`;
 
     if (isCollapsed) {
       return (
         <div key={sectionKey} className="space-y-px">
-          {entry.items.map((item) => renderNavLink(item, true))}
+          {entry.items.map((item) => renderNavEntry(item, sectionKey, depth + 1))}
         </div>
       );
     }
 
     return (
-      <div key={sectionKey} className="rounded bg-black/10 py-0.5">
+      <div key={sectionKey} className={cn("rounded py-0.5", depth > 0 ? "bg-cyan-950/45" : "bg-black/10")}>
         <button
           type="button"
           onClick={() => toggleNestedSection(sectionKey)}
           className={cn(
-            "flex w-full items-center justify-between rounded px-2 py-1 text-left text-[10px] font-black uppercase tracking-wide hover:bg-black/10",
-            menuSearchTerm.trim() || !collapsedSections[sectionKey] ? "bg-red-600 text-white shadow-inner" : "text-white/80"
+            "flex w-full items-center justify-between rounded px-2 py-1 text-left text-[10px] font-black uppercase tracking-wide text-white hover:bg-cyan-700",
+            menuSearchTerm.trim() || !collapsedSections[sectionKey] ? "bg-cyan-900 text-white shadow-inner" : "bg-cyan-950/70 text-white"
           )}
         >
           <span className="max-w-[190px] overflow-hidden text-ellipsis whitespace-nowrap">{entry.section}</span>
           {menuSearchTerm.trim() || !collapsedSections[sectionKey] ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </button>
         <div className={cn("mt-0.5 space-y-px", !menuSearchTerm.trim() && collapsedSections[sectionKey] && "hidden")}>
-          {entry.items.map((item) => renderNavLink(item, true))}
+          {entry.items.map((item) => renderNavEntry(item, sectionKey, depth + 1))}
         </div>
       </div>
     );
