@@ -232,8 +232,13 @@ const qualityItems: NavEntry[] = [
           { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
         ],
       },
-      { name: "Special Remark Form", href: "/quality/special-remarks/form", icon: ClipboardList },
-      { name: "Special Remark Master", href: "/quality/special-remarks", icon: Database },
+      {
+        section: "Special Remark",
+        items: [
+          { name: "Special Remark Form", href: "/quality/special-remarks/form", icon: ClipboardList },
+          { name: "Special Remark Master", href: "/quality/special-remarks", icon: Database },
+        ],
+      },
       { name: "Printing Stereo Form", href: "/quality/printing-stereo/form", icon: ClipboardList },
       { name: "Printing Stereo Master", href: "/quality/printing-stereo", icon: Database },
     ],
