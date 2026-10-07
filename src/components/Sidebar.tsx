@@ -245,7 +245,6 @@ const qualityItems: NavEntry[] = [
   },
   { name: "Spec QC Form", href: "/quality/spec-card-issue-return/form", icon: ClipboardList },
   { name: "Spec QC Master", href: "/quality/spec-card-issue-return", icon: Database },
-  { name: "QC Person Master", href: "/quality/qc-person-master", icon: Database },
   { name: "Block Record Form", href: "/quality/block-record/form", icon: ClipboardList },
   { name: "Block Record Master", href: "/quality/block-record", icon: Database },
   { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },

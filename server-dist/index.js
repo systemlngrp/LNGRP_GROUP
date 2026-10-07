@@ -1,3 +1,4 @@
+import { migrateQcPeopleToUsers } from "./qcPeopleMigration.js";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
@@ -8086,6 +8087,7 @@ async function initDb(retries = 5) {
             }
             try {
                 await ensureUsersCanonicalData(db, database);
+                await migrateQcPeopleToUsers(db);
             }
             catch (err) {
                 console.warn("[DB] Could not normalize legacy users columns:", err.message);

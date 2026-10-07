@@ -2,7 +2,8 @@ import { FormEvent, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
-import type { Company, Firm, Order, Production, QualityComplaint, QcPersonMaster } from "../types";
+import type { Company, Firm, Order, Production, QualityComplaint, User } from "../types";
+import { qcPersonOptions } from "../utils/qcPeople";
 
 const blank = { firmId: "", partyName: "", itemName: "", erpCode: "", dateOfComplaint: new Date().toISOString().slice(0, 10), natureOfComplaint: "Complaint", lotNo: "", issueDetails: "", photo1: "", photo2: "", areaOfIssue: "", concernedPersonName: "", quantity: "" };
 const field = "w-full rounded border border-black bg-white px-3 py-2";
@@ -10,7 +11,7 @@ const key = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const dateValue = (value: unknown) => new Date(String(value || "")).getTime() || 0;
 
 export function QualityComplaintForm() {
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all" }); const [companies] = useData<Company>("companies", [], { firmScope: "all" }); const [productions] = useData<Production>("productions", [], { firmScope: "all" }); const [orders] = useData<Order>("orders", [], { firmScope: "all" }); const [people] = useData<QcPersonMaster>("qc_person_masters", [], { firmScope: "all" }); const items = useNpdItems(); const [, , , api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" }); const [companies] = useData<Company>("companies", [], { firmScope: "all" }); const [productions] = useData<Production>("productions", [], { firmScope: "all" }); const [orders] = useData<Order>("orders", [], { firmScope: "all" }); const [people] = useData<User>("users", []); const items = useNpdItems(); const [, , , api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
   const [form, setForm] = useState(blank); const [message, setMessage] = useState(""); const [hint, setHint] = useState("");
   const selectedFirm = firms.find((f) => f.id === form.firmId);
   const partyOptions = useMemo(() => [...new Set([...companies.map((c) => c.name), ...productions.map((p) => p.companyName || ""), ...items.map((i: any) => i.customer || "")].map((v) => String(v || "").trim()).filter(Boolean))].sort(), [companies, items, productions]);
@@ -21,7 +22,7 @@ export function QualityComplaintForm() {
   const itemSelectOptions = itemOptions.map((item) => ({ value: item.name, label: item.name, searchText: `${item.name} ${item.erp}` }));
   const erpOptions = [...new Set(items.map((item: any) => String(item.erp || "").trim()).filter(Boolean))].map((value) => ({ value, label: value, searchText: `${value} ${items.find((item: any) => String(item.erp || "").trim() === value)?.name || ""}` }));
   const jobOptions = [...new Set(productions.map((production) => String(production.transactionNo || production.jobCardNo || "").trim()).filter(Boolean))].sort().map((value) => ({ value, label: value, searchText: `${value} ${(productions.find((production) => String(production.transactionNo || production.jobCardNo || "").trim() === value) as any)?.companyName || ""}` }));
-  const personOptions = people.filter((person) => person.name && String(person.active).toLowerCase() !== "no").map((person) => ({ value: person.name, label: person.name }));
+  const personOptions = qcPersonOptions(people);
   const latestJob = (party: string, itemName: string, erp: string) => productions.filter((p) => (!party || key(p.companyName) === key(party)) && ((erp && key(p.erpCode) === key(erp)) || (itemName && key((p as any).itemName) === key(itemName)))).sort((a, b) => dateValue(b.date) - dateValue(a.date) || dateValue(b.updateTimestamp) - dateValue(a.updateTimestamp))[0];
   const applySelection = (itemName: string, erp: string, party = form.partyName) => { const match = items.find((item: any) => (erp && key(item.erp) === key(erp)) || (itemName && key(item.name) === key(itemName))); const resolvedName = String((match as any)?.name || itemName || ""); const resolvedErp = String((match as any)?.erp || erp || ""); const job = latestJob(party, resolvedName, resolvedErp); setForm((current) => ({ ...current, itemName: resolvedName || current.itemName, erpCode: resolvedErp || current.erpCode, lotNo: job?.transactionNo || current.lotNo })); setHint(job ? `Latest matching Job No.: ${job.transactionNo}` : resolvedName ? "No matching Job No. found. You can enter Job No. manually." : "ERP/item not found. You can enter values manually."); };
   const selectJob = (jobNo: string) => { const job = productions.find((production) => String(production.transactionNo || production.jobCardNo || "").trim() === jobNo); if (!job) { setForm((current) => ({ ...current, lotNo: jobNo })); return; } const npd = items.find((item: any) => key(item.id) === key(job.itemId || job.npdId) || key(item.erp) === key(job.erpCode || job.masterErp)); setForm((current) => ({ ...current, firmId: job.firmId || current.firmId, partyName: String((job as any).companyName || ""), itemName: String((job as any).itemName || (npd as any)?.name || ""), erpCode: String(job.erpCode || job.masterErp || (npd as any)?.erp || ""), lotNo: jobNo, quantity: String(job.plannedQty || job.planQty || job.qty || "") })); setHint("Job details loaded successfully."); };

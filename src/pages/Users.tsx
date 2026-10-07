@@ -63,7 +63,7 @@ export function Users() {
   const isViewMode = modalMode === "view";
   
   const [searchTerm, setSearchTerm] = useState("");
-  const designationOptions = useMemo(() => parseDesignations(settings[0]), [settings]);
+  const designationOptions = useMemo(() => [...new Set([...parseDesignations(settings[0]), "QC Person"])].sort((a, b) => a.localeCompare(b)), [settings]);
   const allMenuItems = useMemo<MenuAccessGroup[]>(() => {
     return NAVIGATION.map((group) => {
       const parents: MenuAccessParent[] = [];
@@ -117,6 +117,19 @@ export function Users() {
     setShowPassword(false);
     setFormData({ userId: "", name: "", mobile: "", email: "", password: "", designation: "", role: "Employee", status: "Active", menuAccess: ["/"] });
     setIsFormOpen(true);
+  };
+
+  const updateQcField = (field: "name" | "designation", value: string) => {
+    setFormData((current) => {
+      const next = { ...current, [field]: value };
+      if (editingId) return next;
+      if (next.designation.trim().toLowerCase() === "qc person") {
+        if (!current.userId || current.userId === current.name.trim().toLowerCase()) next.userId = next.name.trim().toLowerCase();
+        if (!current.password) next.password = "12345";
+        if (current.menuAccess.length === 1 && current.menuAccess[0] === "/") next.menuAccess = ["/quality"];
+      }
+      return next;
+    });
   };
 
   const loadUserForm = (user: User) => {
@@ -354,7 +367,7 @@ export function Users() {
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => updateQcField("name", e.target.value)}
                   required
                   disabled={isViewMode}
                   className="border-2 border-black rounded p-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-500"
@@ -364,12 +377,12 @@ export function Users() {
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col space-y-1">
-                <label className="font-bold text-black text-sm">Mobile *</label>
+                <label className="font-bold text-black text-sm">Mobile{formData.designation.trim().toLowerCase() === "qc person" ? "" : " *"}</label>
                 <input
                   type="tel"
                   value={formData.mobile}
                   onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                  required
+                  required={formData.designation.trim().toLowerCase() !== "qc person"}
                   disabled={isViewMode}
                   className="border-2 border-black rounded p-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-500"
                 />
@@ -391,7 +404,7 @@ export function Users() {
                 <label className="font-bold text-black text-sm">Designation</label>
                 <select
                   value={formData.designation}
-                  onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                  onChange={(e) => updateQcField("designation", e.target.value)}
                   disabled={isViewMode}
                   className="border-2 border-black rounded p-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-500"
                 >

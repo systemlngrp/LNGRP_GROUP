@@ -156,7 +156,6 @@ import { QualityComplaintCapa } from "./pages/QualityComplaintCapa";
 import { QualityCapaMaster } from "./pages/QualityCapaMaster";
 import { QualityPendingCapa } from "./pages/QualityPendingCapa";
 import { QcSpecCardIssueReturn, QcSpecCardIssueReturnForm } from "./pages/QcSpecCardIssueReturn";
-import { QcPersonMaster } from "./pages/QcPersonMaster";
 import { QcBlockRecord } from "./pages/QcBlockRecord";
 import { QcBlockRecordForm } from "./pages/QcBlockRecordForm";
 import { QcBlockLocationMaster } from "./pages/QcBlockLocationMaster";
@@ -382,7 +381,6 @@ export default function App() {
           <Route path="quality/capa/master" element={<QualityCapaMaster />} />
           <Route path="quality/spec-card-issue-return" element={<QcSpecCardIssueReturn />} />
           <Route path="quality/spec-card-issue-return/form" element={<QcSpecCardIssueReturnForm />} />
-          <Route path="quality/qc-person-master" element={<QcPersonMaster />} />
           <Route path="quality/block-record" element={<QcBlockRecord />} />
           <Route path="quality/block-record/form" element={<QcBlockRecordForm />} />
           <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
