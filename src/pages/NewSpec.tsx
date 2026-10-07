@@ -10,19 +10,21 @@ import type { QcUpdateRecord, Setting } from "../types";
 
 type Row = Record<string, any>;
 const text = (value: unknown) => String(value ?? "").trim();
-const display = (row: Row | null | undefined, ...keys: string[]) => {
+const value = (row: Row | null | undefined, ...keys: string[]) => {
   for (const key of keys) if (row?.[key] !== null && row?.[key] !== undefined && row?.[key] !== "") return text(row[key]);
   return "-";
 };
-const dimensions = (row: Row, ...keys: string[]) => keys.map((key) => display(row, key)).join(" × ");
+const dim = (row: Row, ...keys: string[]) => keys.map((key) => value(row, key)).join(" x ");
 
-function Detail({ label, value }: { label: string; value: string }) {
-  return <div className="rounded border border-slate-300 bg-slate-50 p-3"><div className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</div><div className="mt-1 break-words text-sm font-bold text-slate-950">{value}</div></div>;
+function Cell({ label, children, className = "" }: { label?: string; children: React.ReactNode; className?: string }) {
+  return <div className={`min-h-14 border border-black px-2 py-2 ${className}`}><div className="text-[10px] font-black uppercase leading-tight text-slate-600">{label}</div><div className="mt-1 break-words text-sm font-bold leading-tight text-black">{children}</div></div>;
 }
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return <section className="overflow-hidden rounded-lg border-2 border-slate-900 bg-white"><h3 className="bg-cyan-800 px-4 py-3 text-sm font-black uppercase tracking-wide text-white">{title}</h3><div className="p-3">{children}</div></section>;
+function Bar({ children, className = "bg-yellow-300 text-black" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`border border-black px-3 py-2 text-center text-sm font-black uppercase ${className}`}>{children}</div>;
 }
-function Grid({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">{children}</div>; }
+function Table({ headers, rows, headerClass = "bg-slate-200" }: { headers: string[]; rows: string[][]; headerClass?: string }) {
+  return <div className="overflow-x-auto"><table className="w-full min-w-[700px] border-collapse text-xs"><thead className={headerClass}><tr>{headers.map((header) => <th key={header} className="border border-black px-2 py-2 text-center font-black uppercase">{header}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((item, cellIndex) => <td key={cellIndex} className="border border-black px-2 py-2 text-center font-bold">{item || "-"}</td>)}</tr>)}</tbody></table></div>;
+}
 
 export function NewSpec() {
   const npdItems = useNpdItems();
@@ -40,10 +42,10 @@ export function NewSpec() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState("NPD_Card.pdf");
   const downloadUrlRef = useRef<string | null>(null);
-
-  useEffect(() => () => { if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current); }, []);
   const phpItems = useMemo(() => phpRows.map((row: any) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean), [phpRows]);
   const plateItems = useMemo(() => plateRows.map((row: any) => normalizeOrderCatalogItem(row, "PLATE")).filter(Boolean), [plateRows]);
+
+  useEffect(() => () => { if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current); }, []);
 
   const showSpec = async () => {
     const normalizedErp = erp.trim();
@@ -59,7 +61,8 @@ export function NewSpec() {
       const doc = await buildNpdCardPdf({ npdRow, phpRow: nextPhp, plateRow: nextPlate, qcFileNo: nextFileNo, setting: settings[0] || null });
       const nextUrl = URL.createObjectURL(doc.output("blob"));
       if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
-      downloadUrlRef.current = nextUrl; setDownloadUrl(nextUrl); setDownloadName(getNpdCardPdfFileName(npdRow));
+      downloadUrlRef.current = nextUrl;
+      setDownloadUrl(nextUrl); setDownloadName(getNpdCardPdfFileName(npdRow));
       setSelected(npdRow); setPhpRow(nextPhp); setPlateRow(nextPlate); setFileNo(nextFileNo);
     } catch (error) {
       console.error("Failed to generate specification PDF:", error);
@@ -68,17 +71,39 @@ export function NewSpec() {
   };
 
   const downloadSpec = () => { if (!downloadUrl) return; const link = document.createElement("a"); link.href = downloadUrl; link.download = downloadName; link.click(); };
-  const colours = selected ? [display(selected, "printingColour1"), display(selected, "printingColour2")].filter((item) => item !== "-").join(" / ") || "-" : "-";
+  const issueDate = new Date().toLocaleDateString("en-GB");
+  const colours = selected ? [value(selected, "printingColour1"), value(selected, "printingColour2")].filter((item) => item !== "-").join(" / ") || "-" : "-";
+  const layerRows = selected ? [
+    ["Top Layer", value(selected, "psL1", "l1"), value(selected, "psL1Bf", "b3")],
+    ["Fluting 1 A FLUTING", value(selected, "psF1", "f1"), value(selected, "psF1Bf")],
+    ["Backing 1 A BACKING", value(selected, "psL2", "l2"), value(selected, "psL2Bf")],
+    ["Fluting 2 B FLUTING", value(selected, "psF2", "f2"), value(selected, "psF2Bf")],
+    ["Backing 2 B BACKING", "-", "-"],
+  ] : [];
 
-  return <div className="mx-auto max-w-6xl space-y-5 pb-8">
-    <div className="border-b-2 border-black pb-4"><h2 className="text-xl font-black uppercase tracking-tight text-slate-950">New Spec</h2><p className="mt-1 text-sm font-semibold text-slate-600">Enter an ERP code to view the specification and download its A4 PDF.</p></div>
-    <section className="rounded-xl border-2 border-slate-900 bg-white p-5 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]"><label htmlFor="new-spec-erp" className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-700">ERP Code</label><div className="flex flex-col gap-3 sm:flex-row"><input id="new-spec-erp" value={erp} onChange={(event) => { setErp(event.target.value); if (message) setMessage(""); }} onKeyDown={(event) => { if (event.key === "Enter") void showSpec(); }} placeholder="Enter ERP code" autoComplete="off" className="min-h-11 flex-1 rounded border-2 border-slate-900 px-3 text-sm font-bold uppercase outline-none focus:border-cyan-700 focus:ring-2 focus:ring-cyan-200" /><button type="button" onClick={() => void showSpec()} disabled={status === "generating"} className="inline-flex min-h-11 items-center justify-center gap-2 rounded border-2 border-slate-900 bg-cyan-700 px-5 py-2 text-sm font-black uppercase text-white transition hover:bg-cyan-800 disabled:cursor-wait disabled:opacity-60"><Eye size={17} />{status === "generating" ? "Preparing..." : "Show Spec"}</button></div>{message ? <p className="mt-3 text-sm font-bold text-red-700" role="alert">{message}</p> : null}</section>
-    {selected ? <div className="space-y-4 rounded-xl border-2 border-slate-900 bg-slate-100 p-3 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
-      <div className="flex flex-col gap-3 rounded-lg border-2 border-slate-900 bg-white p-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Specification Sheet - CFB</p><h3 className="mt-1 text-xl font-black text-slate-950">{display(selected, "itemName", "name")}</h3></div><button type="button" onClick={downloadSpec} disabled={!downloadUrl} className="inline-flex min-h-11 items-center justify-center gap-2 rounded border-2 border-slate-900 bg-slate-950 px-5 py-2 text-sm font-black uppercase text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"><Download size={17} />Download PDF</button></div>
-      <Section title="Document Details"><Grid><Detail label="File No." value={fileNo || "-"} /><Detail label="ERP" value={display(selected, "erp")} /><Detail label="Sample No." value={`ERP - ${display(selected, "erp")}`} /><Detail label="Issue Date" value={new Date().toLocaleDateString("en-GB")} /><Detail label="Firm" value={display(selected, "firmName")} /><Detail label="Special Remarks" value={display(selected, "specialRemarks", "remarks")} /></Grid></Section>
-      <Section title="Item and Board Specification"><Grid><Detail label="Item Name" value={display(selected, "itemName", "name")} /><Detail label="Customer / Party" value={display(selected, "customerName", "customer")} /><Detail label="Box Dimension (ID)" value={dimensions(selected, "lengthId", "breadthId", "heightId")} /><Detail label="Rotary Dimension (OD)" value={dimensions(selected, "lengthOd", "breadthOd", "heightOd")} /><Detail label="Cutting Size" value={display(selected, "cuttingSize", "cuttingWithTrimming")} /><Detail label="No. of Ply" value={display(selected, "ply")} /><Detail label="Flute" value={display(selected, "fluteType", "flute")} /><Detail label="Box Type" value={display(selected, "boxType")} /><Detail label="Flap" value={display(selected, "flapSize", "flap")} /><Detail label="Required CS" value={display(selected, "csKgTarget", "csKgStd")} /><Detail label="Required BS" value={display(selected, "bsKgCm2Calculated", "bsKgCm2Std")} /><Detail label="Required Board GSM" value={display(selected, "standardBGsm", "calculatedBGsm", "gsmLeastCost")} /><Detail label="Top Shade" value={display(selected, "topPaperShade")} /><Detail label="Backing Shade" value={display(selected, "backingPaperShade")} /><Detail label="Printing Colours" value={colours} /></Grid></Section>
-      <Section title="Paper Layers and UPS"><Grid><Detail label="Top Layer" value={`${display(selected, "psL1", "l1")} / BF ${display(selected, "psL1Bf", "b3")}`} /><Detail label="Fluting 1" value={`${display(selected, "psF1", "f1")} / BF ${display(selected, "psF1Bf")}`} /><Detail label="Backing 1" value={`${display(selected, "psL2", "l2")} / BF ${display(selected, "psL2Bf")}`} /><Detail label="Fluting 2" value={`${display(selected, "psF2", "f2")} / BF ${display(selected, "psF2Bf")}`} /><Detail label="UPS" value={display(selected, "ups", "noOfUps")} /><Detail label="Qty. per Bundle" value={display(selected, "qtyPerBundle")} /></Grid></Section>
-      <Section title="PHP and Plate"><div className="grid grid-cols-1 gap-4 lg:grid-cols-2"><div><h4 className="mb-2 text-xs font-black uppercase text-cyan-800">PHP</h4><Grid><Detail label="Length" value={display(phpRow, "length")} /><Detail label="Width" value={display(phpRow, "breadth", "width")} /><Detail label="Height" value={display(phpRow, "height")} /><Detail label="Ply" value={display(phpRow, "noOfPly")} /><Detail label="Flute" value={display(phpRow, "fluteType")} /><Detail label="Qty / Box" value={display(phpRow, "numberOfSetsPerBox")} /></Grid></div><div><h4 className="mb-2 text-xs font-black uppercase text-amber-700">Plate</h4><Grid><Detail label="Plate Type" value={display(plateRow, "typeOfPlate")} /><Detail label="ERP" value={display(plateRow, "erpItemCode", "erp")} /><Detail label="Length" value={display(plateRow, "length")} /><Detail label="Width" value={display(plateRow, "breadth", "width")} /><Detail label="Ply" value={display(plateRow, "noOfPly")} /><Detail label="Flute" value={display(plateRow, "fluteType")} /><Detail label="BS" value={display(plateRow, "brustingStrengthReq")} /><Detail label="Qty / Box" value={display(plateRow, "numberOfSetsPerBox")} /></Grid></div></div></Section>
-    </div> : null}
+  return <div className="mx-auto max-w-6xl space-y-5 pb-8 text-black">
+    <div className="border-b-2 border-black pb-4"><h2 className="text-xl font-black uppercase tracking-tight">New Spec</h2></div>
+    <section className="rounded-xl border-2 border-slate-900 bg-white p-5 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]"><label htmlFor="new-spec-erp" className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-700">ERP Code</label><div className="flex flex-col gap-3 sm:flex-row"><input id="new-spec-erp" value={erp} onChange={(event) => { setErp(event.target.value); if (message) setMessage(""); }} onKeyDown={(event) => { if (event.key === "Enter") void showSpec(); }} placeholder="Enter ERP code" autoComplete="off" className="min-h-11 min-w-0 flex-1 rounded border-2 border-slate-900 px-3 text-sm font-bold uppercase outline-none focus:border-cyan-700 focus:ring-2 focus:ring-cyan-200" /><button type="button" onClick={() => void showSpec()} disabled={status === "generating"} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border-2 border-slate-900 bg-cyan-700 px-5 py-2 text-sm font-black uppercase text-white transition hover:bg-cyan-800 disabled:cursor-wait disabled:opacity-60"><Eye size={17} />{status === "generating" ? "Preparing..." : "Show Spec"}</button></div>{message ? <p className="mt-3 text-sm font-bold text-red-700" role="alert">{message}</p> : null}</section>
+    {selected ? <section className="overflow-hidden rounded-xl border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
+      <div className="flex flex-col border-b-2 border-black sm:flex-row"><div className="w-full border-b-2 border-black bg-yellow-50 p-3 text-xl font-black sm:w-[20%] sm:border-b-0 sm:border-r-2">FILE NO.-<div className="mt-3 text-2xl">{fileNo || "-"}</div></div><div className="flex min-h-32 flex-1 flex-col items-center justify-center border-b-2 border-black p-3 text-center sm:border-b-0 sm:border-r-2"><div className="text-2xl font-black text-slate-700">LAXMI NARAYAN</div><div className="mt-2 text-sm font-black uppercase">Laxmi Narayan Corrugated Boards LLP</div></div><div className="w-full bg-amber-50 p-3 text-center font-black sm:w-[34%]">Special Remarks<div className="mt-5 min-h-12 font-bold">{value(selected, "specialRemarks", "remarks")}</div></div></div>
+      <div className="grid grid-cols-1 border-b-2 border-black sm:grid-cols-[20%_1fr_20%_1fr]"><Cell label="Sample No." className="bg-amber-50">ERP - {value(selected, "erp")}</Cell><Cell label="ERP" className="text-center text-xl">{value(selected, "erp")}</Cell><Cell label="Issue Date" className="bg-amber-50">{issueDate}</Cell><Cell label="Document / Revision">{value(selected, "url", "URL", "link", "driveLink")}<span className="ml-2 text-[10px]">Rev.No./Date - 01/25.02.26</span></Cell></div>
+      <div className="p-3"><Bar>Specification Sheet - CFB</Bar>
+        <div className="grid grid-cols-1 border-x border-black md:grid-cols-[1.5fr_1fr]"><Cell label="Item Name" className="min-h-20">{value(selected, "itemName", "name")}</Cell><Cell label="Party Name" className="min-h-20">{value(selected, "customerName", "customer")}</Cell></div>
+        <div className="grid grid-cols-1 border-x border-black md:grid-cols-2"><Cell label="Box Dimension (ID)">{dim(selected, "lengthId", "breadthId", "heightId")}</Cell><Cell label="Reel Deckle / Size">{value(selected, "deckleSize", "reelSize")} / {value(selected, "reelSize")}</Cell><Cell label="Rotary Dimension (OD)">{dim(selected, "lengthOd", "breadthOd", "heightOd")}</Cell><Cell label="Cutting Length">{value(selected, "cuttingSize", "cuttingWithTrimming")}</Cell></div>
+        <Table headers={["Specification", "Value", "Specification", "Value", "Specification", "Value"]} rows={[
+          ["NO. OF PLY", value(selected, "ply"), "FLUTING %", "B-37% / A-45%", "CAL. BOX WEIGHT", value(selected, "calculatedWeightPerBox", "standardWeightGms")],
+          ["FLAP", value(selected, "flapSize", "flap"), "CREASING TYPE", "M/F", "QTY. PER BUNDLE", value(selected, "qtyPerBundle")],
+          ["TRIMMING", "16", "PRINTING COLOUR", colours, "NO. OF COLOUR", colours === "-" ? "-" : colours.split("/").length.toString()],
+          ["REQUIRED BS", value(selected, "bsKgCm2Calculated", "bsKgCm2Std"), "FLUTE", value(selected, "fluteType", "flute"), "BOX TYPE", value(selected, "boxType")],
+          ["REQUIRED BOARD GSM", value(selected, "standardBGsm", "calculatedBGsm", "gsmLeastCost"), "CAL. BGSM", value(selected, "calculatedBGsm", "standardBGsm"), "TOP", value(selected, "topPaperShade")],
+          ["REQUIRED CS", value(selected, "csKgTarget", "csKgStd"), "TARGET CS", value(selected, "rapc"), "BOTTOM", value(selected, "backingPaperShade")],
+        ]} />
+        <div className="mt-3"><Bar className="bg-slate-700 text-white">Layers / GSM / BF / UPS</Bar><Table headers={["Layers", "GSM", "BF", "1 UPS", "2 UPS", "3 UPS", "4 UPS", "5 UPS"]} rows={layerRows.map((row) => [...row, ...[1, 2, 3, 4, 5].map((ups) => ups === Number(value(selected, "ups", "noOfUps")) && row[0].startsWith("Backing 1") ? "X" : "-")])} /></div>
+        <div className="mt-3"><div className="grid grid-cols-2"><Bar>PHP</Bar><Bar className="bg-amber-600 text-white">Plate</Bar></div><div className="grid grid-cols-1 border-x border-black lg:grid-cols-2"><div><Table headers={["Length", "Width", "Height"]} rows={[[value(phpRow, "length"), value(phpRow, "breadth", "width"), value(phpRow, "height")]]} /><Table headers={["Ply", "BS", "Holes L", "Holes W", "Qty/Box", "Flute"]} rows={[[value(phpRow, "noOfPly"), value(phpRow, "brustingStrengthReq"), value(phpRow, "holesOrientationL", "numberOfHolesInPhp"), value(phpRow, "holesOrientationW"), value(phpRow, "numberOfSetsPerBox"), value(phpRow, "fluteType")]]} /></div><Table headers={["Type", "ERP", "Length", "Width", "Ply", "Flute", "BS", "Qty/Box"]} headerClass="bg-amber-300" rows={[[value(plateRow, "typeOfPlate"), value(plateRow, "erpItemCode", "erp"), value(plateRow, "length"), value(plateRow, "breadth", "width"), value(plateRow, "noOfPly"), value(plateRow, "fluteType"), value(plateRow, "brustingStrengthReq"), value(plateRow, "numberOfSetsPerBox")]]} /></div></div>
+        <div className="mt-3 grid grid-cols-1 border border-black md:grid-cols-3"><Cell label="Remarks" className="min-h-20 md:col-span-2">{value(selected, "specialRemarks", "remarks")}</Cell><Cell label="Creaser / Plate Notes" className="min-h-20">CREASER<br />Z PLATE / U PLATE / O PLATE</Cell></div>
+        <div className="mt-3"><Table headers={["Revision", "Description of revision", "Reason for Revision"]} rows={[["4 / 2/25/2026", "Auto calculated sheet weight / B.S. GSM added.", "For better accuracy."]]} /><div className="grid grid-cols-1 border-x border-b border-black sm:grid-cols-3"><Cell>PREPARED BY</Cell><Cell className="text-blue-700">MASTER COPY</Cell><Cell className="text-red-700">APPROVED BY</Cell></div></div>
+        <div className="mt-4 flex flex-col gap-3 border-t-2 border-black pt-3 sm:flex-row sm:items-center sm:justify-between"><span className="text-xs font-bold text-slate-500">Generated from NPD Master</span><button type="button" onClick={downloadSpec} disabled={!downloadUrl} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border-2 border-black bg-slate-950 px-5 py-2 text-sm font-black uppercase text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"><Download size={17} />Download PDF</button></div>
+      </div>
+    </section> : null}
   </div>;
 }
