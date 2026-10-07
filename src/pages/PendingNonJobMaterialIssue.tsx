@@ -32,6 +32,19 @@ export function PendingNonJobMaterialIssue() {
     );
   }, [firmFilter, pendingDates, searchTerm]);
 
+  const groupedByFirm = useMemo(() => {
+    const groups = new Map<string, { firmId: string; firmName: string; rows: typeof filtered }>();
+    filtered.forEach((row) => {
+      const existing = groups.get(row.firmId);
+      if (existing) {
+        existing.rows.push(row);
+      } else {
+        groups.set(row.firmId, { firmId: row.firmId, firmName: row.firmName, rows: [row] });
+      }
+    });
+    return Array.from(groups.values()).sort((a, b) => a.firmName.localeCompare(b.firmName));
+  }, [filtered]);
+
   const openForm = (firmId: string, date: string) => {
     const params = new URLSearchParams({
       date,
@@ -105,9 +118,6 @@ export function PendingNonJobMaterialIssue() {
       <div className="flex justify-between items-center pb-4 border-b border-black">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Non-Job Material Issue</h2>
-          <div className="text-xs text-slate-600">
-            Every firm must record Daily Consumables or mark the date Not Applicable from its first job date through today.
-          </div>
         </div>
       </div>
 
@@ -143,29 +153,36 @@ export function PendingNonJobMaterialIssue() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((row) => (
-                  <tr key={`${row.firmId}:${row.date}`} className="divide-x divide-black hover:bg-slate-50">
-                    <td className="px-4 py-3 text-sm font-bold">{row.firmName}</td>
-                    <td className="px-4 py-3 text-sm font-bold">{formatDate(row.date) || row.date}</td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        onClick={() => openNotApplicableModal(row.firmId, row.date)}
-                        disabled={markingDate === `${row.firmId}:${row.date}`}
-                        className="mr-2 bg-white text-black px-4 py-1.5 rounded border border-black text-xs font-bold hover:bg-slate-100 transition disabled:opacity-50"
-                      >
-                        {markingDate === `${row.firmId}:${row.date}` ? "Saving..." : "Not Applicable"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openForm(row.firmId, row.date)}
-                        className="bg-indigo-600 text-white px-4 py-1.5 rounded border border-black text-xs font-bold hover:bg-indigo-700 transition"
-                      >
-                        Create Issue
-                      </button>
+                groupedByFirm.flatMap((group) => [
+                  <tr key={`firm-${group.firmId}`} className="border-y border-black bg-slate-100">
+                    <td colSpan={3} className="px-4 py-2 text-sm font-black uppercase tracking-wide text-black">
+                      {group.firmName}
                     </td>
-                  </tr>
-                ))
+                  </tr>,
+                  ...group.rows.map((row) => (
+                    <tr key={`${row.firmId}:${row.date}`} className="divide-x divide-black hover:bg-slate-50">
+                      <td className="px-4 py-3 text-sm font-bold">{row.firmName}</td>
+                      <td className="px-4 py-3 text-sm font-bold">{formatDate(row.date) || row.date}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openNotApplicableModal(row.firmId, row.date)}
+                          disabled={markingDate === `${row.firmId}:${row.date}`}
+                          className="mr-2 bg-white text-black px-4 py-1.5 rounded border border-black text-xs font-bold hover:bg-slate-100 transition disabled:opacity-50"
+                        >
+                          {markingDate === `${row.firmId}:${row.date}` ? "Saving..." : "Not Applicable"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openForm(row.firmId, row.date)}
+                          className="bg-indigo-600 text-white px-4 py-1.5 rounded border border-black text-xs font-bold hover:bg-indigo-700 transition"
+                        >
+                          Create Issue
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ])
               )}
             </tbody>
           </table>
