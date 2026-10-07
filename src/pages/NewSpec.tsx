@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Eye } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { Select } from "../components/Select";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { buildNpdCardPdf, getNpdCardPdfFileName } from "../lib/npdCardPdf";
 import { normalizeOrderCatalogItem } from "../lib/orderItems";
@@ -44,6 +45,19 @@ export function NewSpec() {
   const downloadUrlRef = useRef<string | null>(null);
   const phpItems = useMemo(() => phpRows.map((row: any) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean), [phpRows]);
   const plateItems = useMemo(() => plateRows.map((row: any) => normalizeOrderCatalogItem(row, "PLATE")).filter(Boolean), [plateRows]);
+  const erpOptions = useMemo(() => npdItems
+    .map((item) => {
+      const erpCode = text(item.erp);
+      const itemName = text(item.name);
+      const customer = text(item.customer);
+      return {
+        value: erpCode,
+        label: `${erpCode} - ${itemName || "Unnamed item"}`,
+        searchText: `${erpCode} ${itemName} ${customer}`,
+      };
+    })
+    .filter((option) => option.value)
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })), [npdItems]);
 
   useEffect(() => () => { if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current); }, []);
 
@@ -83,7 +97,7 @@ export function NewSpec() {
 
   return <div className="mx-auto max-w-6xl space-y-5 pb-8 text-black">
     <div className="border-b-2 border-black pb-4"><h2 className="text-xl font-black uppercase tracking-tight">New Spec</h2></div>
-    <section className="rounded-xl border-2 border-slate-900 bg-white p-5 shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]"><label htmlFor="new-spec-erp" className="mb-2 block text-xs font-black uppercase tracking-wide text-slate-700">ERP Code</label><div className="flex flex-col gap-3 sm:flex-row"><input id="new-spec-erp" value={erp} onChange={(event) => { setErp(event.target.value); if (message) setMessage(""); }} onKeyDown={(event) => { if (event.key === "Enter") void showSpec(); }} placeholder="Enter ERP code" autoComplete="off" className="min-h-11 min-w-0 flex-1 rounded border-2 border-slate-900 px-3 text-sm font-bold uppercase outline-none focus:border-cyan-700 focus:ring-2 focus:ring-cyan-200" /><button type="button" onClick={() => void showSpec()} disabled={status === "generating"} className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded border-2 border-slate-900 bg-cyan-700 px-5 py-2 text-sm font-black uppercase text-white transition hover:bg-cyan-800 disabled:cursor-wait disabled:opacity-60"><Eye size={17} />{status === "generating" ? "Preparing..." : "Show Spec"}</button></div>{message ? <p className="mt-3 text-sm font-bold text-red-700" role="alert">{message}</p> : null}</section>
+    <section className="space-y-3"><label htmlFor="new-spec-erp" className="block text-xs font-black uppercase tracking-wide text-slate-700">ERP Code</label><Select id="new-spec-erp" value={erp} onChange={(value) => { setErp(value); if (message) setMessage(""); }} options={erpOptions} placeholder="Search ERP, item name, or customer" compact wrapLabels noOptionsMessage="No matching ERP items" /><div className="flex justify-end"><button type="button" onClick={() => void showSpec()} disabled={status === "generating"} className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded border-2 border-slate-900 bg-cyan-700 px-5 py-2 text-sm font-black uppercase text-white transition hover:bg-cyan-800 disabled:cursor-wait disabled:opacity-60 sm:w-auto"><Eye size={17} />{status === "generating" ? "Preparing..." : "Show Spec"}</button></div>{message ? <p className="text-sm font-bold text-red-700" role="alert">{message}</p> : null}</section>
     {selected ? <section className="overflow-hidden rounded-xl border-2 border-black bg-white shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
       <div className="flex flex-col border-b-2 border-black sm:flex-row"><div className="w-full border-b-2 border-black bg-yellow-50 p-3 text-xl font-black sm:w-[20%] sm:border-b-0 sm:border-r-2">FILE NO.-<div className="mt-3 text-2xl">{fileNo || "-"}</div></div><div className="flex min-h-32 flex-1 flex-col items-center justify-center border-b-2 border-black p-3 text-center sm:border-b-0 sm:border-r-2"><div className="text-2xl font-black text-slate-700">LAXMI NARAYAN</div><div className="mt-2 text-sm font-black uppercase">Laxmi Narayan Corrugated Boards LLP</div></div><div className="w-full bg-amber-50 p-3 text-center font-black sm:w-[34%]">Special Remarks<div className="mt-5 min-h-12 font-bold">{value(selected, "specialRemarks", "remarks")}</div></div></div>
       <div className="grid grid-cols-1 border-b-2 border-black sm:grid-cols-[20%_1fr_20%_1fr]"><Cell label="Sample No." className="bg-amber-50">ERP - {value(selected, "erp")}</Cell><Cell label="ERP" className="text-center text-xl">{value(selected, "erp")}</Cell><Cell label="Issue Date" className="bg-amber-50">{issueDate}</Cell><Cell label="Document / Revision">{value(selected, "url", "URL", "link", "driveLink")}<span className="ml-2 text-[10px]">Rev.No./Date - 01/25.02.26</span></Cell></div>
