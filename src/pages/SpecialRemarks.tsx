@@ -12,7 +12,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const text = (value: unknown) => String(value ?? "").trim();
 
 export function SpecialRemarkForm() {
-  const { user } = useAuth(); const items = useNpdItems(); const [, , , api] = useData<SpecialRemarkRecord>("special_remark_records", [], { firmScope: "all" });
+  const { user } = useAuth(); const navigate = useNavigate(); const items = useNpdItems(); const [, , , api] = useData<SpecialRemarkRecord>("special_remark_records", [], { firmScope: "all" });
   const displayName = text(user?.name || user?.userId || user?.email);
   const [form, setForm] = useState({ npdId: "", erpCode: "", itemName: "", specialRemarks: "", updatedBy: displayName, updateDate: today() });
   const [message, setMessage] = useState(""); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
