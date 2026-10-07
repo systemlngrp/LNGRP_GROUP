@@ -240,10 +240,12 @@ async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | nul
   cell(doc, SHEET_X + 131, y2, 65, 8, formatDate(new Date()), { bold: true, fontSize: FONT_BODY_12PX });
 
   const y3 = y2 + 8;
-  cell(doc, SHEET_X, y3, 55, 5, "Doc.No. L.N./NPD/", { align: "left", fontSize: FONT_MICRO, padding: 0.7 });
-  linkCell(doc, SHEET_X + 55, y3, 86, 5, valueOf(npdRow, "url", "URL", "link", "driveLink"));
-  cell(doc, SHEET_X + 141, y3, 55, 5, "Rev.No./Date - 01/25.02.26", { align: "right", fontSize: FONT_MICRO, padding: 0.7 });
-  return y3 + 5;
+  cell(doc, SHEET_X, y3, 24, 8, "Artwork URL", { bold: true, align: "left", fontSize: FONT_MICRO, padding: 0.5 });
+  linkCell(doc, SHEET_X + 24, y3, 57, 8, valueOf(npdRow, "url", "URL", "link", "driveLink"));
+  cell(doc, SHEET_X + 81, y3, 24, 8, "Artwork File", { bold: true, align: "left", fontSize: FONT_MICRO, padding: 0.5 });
+  linkCell(doc, SHEET_X + 105, y3, 57, 8, valueOf(npdRow, "artwork"));
+  cell(doc, SHEET_X + 162, y3, 34, 8, "Rev.No./Date - 01/25.02.26", { align: "right", fontSize: FONT_MICRO, padding: 0.4 });
+  return y3 + 8;
 }
 
 function drawSpecBlock(doc: jsPDF, y: number, npdRow: RowRecord) {
