@@ -11,6 +11,7 @@ type DownloadNpdCardPdfArgs = {
   phpRow?: RowRecord | null;
   plateRow?: RowRecord | null;
   qcFileNo?: string;
+  specialRemarks?: string;
   setting?: Setting | null;
 };
 
@@ -210,7 +211,7 @@ function linkCell(doc: jsPDF, x: number, y: number, w: number, h: number, url: R
   doc.setTextColor(0);
 }
 
-async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | null, qcFileNo?: string) {
+async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | null, qcFileNo?: string, specialRemarks?: string) {
   const y = SHEET_Y;
   doc.setDrawColor(0);
   doc.setLineWidth(0.35);
@@ -231,7 +232,7 @@ async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | nul
   doc.text(resolvePdfFirm({ firmId: String(npdRow.firmId || "") })?.firmName || "LAXMINARAYAN CORRUGATED BOARDS LLP", SHEET_X + 73, y + 25, { align: "center" });
 
   cell(doc, SHEET_X + 107, y, 23, 28, "Special\nRemarks", { bold: true, fontSize: FONT_SMALL });
-  cell(doc, SHEET_X + 130, y, 66, 28, "", { fontSize: FONT_BODY_12PX });
+  cell(doc, SHEET_X + 130, y, 66, 28, specialRemarks || "-", { bold: true, fontSize: FONT_SMALL, valign: "top", align: "left", padding: 1 });
 
   const y2 = y + 28;
   cell(doc, SHEET_X, y2, 39, 8, "Sample No.-", { bold: true, align: "left", fontSize: FONT_BODY_12PX, padding: 0.8 });
@@ -458,7 +459,7 @@ function drawRevisionFooter(doc: jsPDF, y: number) {
   cell(doc, SHEET_X + 106, y, 90, 9, "APPROVED BY", { bold: true, textColor: RED, fontSize: FONT_HEADING_14PX });
 }
 
-export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, qcFileNo, setting }: DownloadNpdCardPdfArgs) {
+export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, qcFileNo, specialRemarks, setting }: DownloadNpdCardPdfArgs) {
   const doc = new jsPDF("p", "mm", "a4");
 
   doc.setProperties({
@@ -466,7 +467,7 @@ export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, qcFileNo, sett
     subject: "Specification Sheet - CFB",
   });
 
-  let y = await drawHeader(doc, npdRow, setting, qcFileNo);
+  let y = await drawHeader(doc, npdRow, setting, qcFileNo, specialRemarks);
   y = drawSpecBlock(doc, y, npdRow);
   y = drawLayersAndUps(doc, y, npdRow);
   y = drawPhpPlateSection(doc, y, phpRow, plateRow);
