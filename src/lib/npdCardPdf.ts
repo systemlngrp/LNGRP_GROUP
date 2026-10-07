@@ -10,6 +10,7 @@ type DownloadNpdCardPdfArgs = {
   npdRow: RowRecord;
   phpRow?: RowRecord | null;
   plateRow?: RowRecord | null;
+  qcFileNo?: string;
   setting?: Setting | null;
 };
 
@@ -209,13 +210,13 @@ function linkCell(doc: jsPDF, x: number, y: number, w: number, h: number, url: R
   doc.setTextColor(0);
 }
 
-async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | null) {
+async function drawHeader(doc: jsPDF, npdRow: RowRecord, setting?: Setting | null, qcFileNo?: string) {
   const y = SHEET_Y;
   doc.setDrawColor(0);
   doc.setLineWidth(0.35);
   doc.rect(SHEET_X, y, SHEET_W, SHEET_H);
 
-  cell(doc, SHEET_X, y, 39, 28, `FILE NO.-\n${formatValue(npdRow.erp)}`, { bold: true, align: "left", fontSize: FONT_BODY_12PX, padding: 1.3 });
+  cell(doc, SHEET_X, y, 39, 28, `FILE NO.-\n${formatValue(qcFileNo || npdRow.erp)}`, { bold: true, align: "left", fontSize: FONT_BODY_12PX, padding: 1.3 });
   cell(doc, SHEET_X + 39, y, 68, 28, "", { fill: WHITE });
   const hasLogo = await drawOrganizationLogo(doc, setting, SHEET_X + 55, y + 2, 36, 14);
   if (!hasLogo) {
@@ -455,7 +456,7 @@ function drawRevisionFooter(doc: jsPDF, y: number) {
   cell(doc, SHEET_X + 106, y, 90, 9, "APPROVED BY", { bold: true, textColor: RED, fontSize: FONT_HEADING_14PX });
 }
 
-export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, setting }: DownloadNpdCardPdfArgs) {
+export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, qcFileNo, setting }: DownloadNpdCardPdfArgs) {
   const doc = new jsPDF("p", "mm", "a4");
 
   doc.setProperties({
@@ -463,7 +464,7 @@ export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, setting }: Dow
     subject: "Specification Sheet - CFB",
   });
 
-  let y = await drawHeader(doc, npdRow, setting);
+  let y = await drawHeader(doc, npdRow, setting, qcFileNo);
   y = drawSpecBlock(doc, y, npdRow);
   y = drawLayersAndUps(doc, y, npdRow);
   y = drawPhpPlateSection(doc, y, phpRow, plateRow);
