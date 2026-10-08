@@ -99,7 +99,6 @@ const sections: FieldSection[] = [
       { key: "printingColour2Standard", label: "Printing Colour 2 (Standard)", readOnly: true },
       { key: "colour2Actual", label: "Colour 2 (Actual)" },
       { key: "standardArtwork", label: "STANDARD ARTWORK", type: "textarea", wide: true, readOnly: true },
-      { key: "lotNoPrinted", label: "LOT No. Printed" },
     ],
   },
   {
@@ -143,7 +142,6 @@ const formSections: FieldSection[] = [
   {
     title: "Printing Details",
     fields: [
-      { key: "lotNoPrinted", label: "LOT No. Printed", required: true },
       { key: "boardThickness", label: "Board Thickness", type: "number", required: true },
       { key: "csAchieved", label: "CS Achieved", type: "number", required: true },
       { key: "bsAchieved", label: "BS Achieved", type: "number", required: true },
@@ -319,8 +317,8 @@ function calculatePrintingQcForm(form: Partial<PrintingQcCheck>, settings?: Sett
   };
 }
 
-function buildPayload(form: Partial<PrintingQcCheck>, updatedBy: string): PrintingQcCheck {
-  const calculatedForm = calculatePrintingQcForm(form, settings[0]);
+function buildPayload(form: Partial<PrintingQcCheck>, updatedBy: string, setting?: Setting): PrintingQcCheck {
+  const calculatedForm = calculatePrintingQcForm(form, setting);
   const timestampInput = String(calculatedForm.timestamp || "").trim();
   const timestamp = timestampInput ? new Date(timestampInput).toISOString() : new Date().toISOString();
   const payload: Record<string, unknown> = {
@@ -527,7 +525,6 @@ export function PrintingQcForm() {
     "lengthId",
     "widthId",
     "heightId",
-    "lotNoPrinted",
     "boardThickness",
     "csAchieved",
     "bsAchieved",
@@ -554,7 +551,7 @@ export function PrintingQcForm() {
     setIsSubmitting(true);
     try {
       const updatedBy = qcPersonName;
-      const payload = buildPayload({ ...form, qcPerson: qcPersonName, pqcNo: nextPqcNo }, updatedBy);
+      const payload = buildPayload({ ...form, qcPerson: qcPersonName, pqcNo: nextPqcNo }, updatedBy, settings[0]);
       await setChecks((prev) => [...prev, payload]);
       setSelectedProductionId("");
       setForm(createInitialForm());
@@ -688,7 +685,6 @@ const wideMasterColumnKeys = new Set<keyof PrintingQcCheck>([
   "printingColor1Standard",
   "printingColour2Standard",
   "standardArtwork",
-  "lotNoPrinted",
   "previousCustomerComplaintWarning",
   "photo",
   "systemAutoCorrection1",
