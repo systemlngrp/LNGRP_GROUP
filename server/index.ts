@@ -1818,6 +1818,43 @@ async function getDeleteBlockers(db: mysql.Pool, tableName: string, id: string) 
   return blockers;
 }
 
+type BlockLocationUsage = { count: number; details: { label: string; count: number }[] };
+
+const BLOCK_LOCATION_REFERENCES = [
+  { table: "qc_block_records", column: "blockLocation", label: "Block Records" },
+  { table: "printing_stereo_records", column: "location", label: "Printing Stereo Records" },
+  { table: "control_records", column: "location", label: "Control Sample Records" },
+  { table: "qc_spec_card_movements", column: "blockLocation", label: "Spec Card Movements" },
+] as const;
+
+async function getBlockLocationUsage(db: mysql.Pool | mysql.PoolConnection, name: string): Promise<BlockLocationUsage> {
+  const details: BlockLocationUsage["details"] = [];
+  for (const reference of BLOCK_LOCATION_REFERENCES) {
+    const [rows] = await db.query(
+      `SELECT COUNT(*) AS count FROM \`${reference.table}\` WHERE LOWER(TRIM(\`${reference.column}\`)) = LOWER(?)`,
+      [name.trim()]
+    );
+    const count = Number((rows as any[])[0]?.count || 0);
+    if (count) details.push({ label: reference.label, count });
+  }
+  // This field exists only on some older sample-requirement schemas.
+  const [columns] = await db.query(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'qc_sample_requirements' AND COLUMN_NAME = 'blockLocation' LIMIT 1"
+  );
+  if ((columns as any[]).length) {
+    const [rows] = await db.query(
+      "SELECT COUNT(*) AS count FROM `qc_sample_requirements` WHERE LOWER(TRIM(`blockLocation`)) = LOWER(?)",
+      [name.trim()]
+    );
+    const count = Number((rows as any[])[0]?.count || 0);
+    if (count) details.push({ label: "Sample Requirements", count });
+  }
+  return { count: details.reduce((sum, detail) => sum + detail.count, 0), details };
+}
+
+function blockLocationUsageMessage(usage: BlockLocationUsage) {
+  return `Location is used in ${usage.details.map(detail => `${detail.label} (${detail.count})`).join(", ")}. Deactivate it instead.`;
+}
 type ForeignKeyDef = {
   table: string;
   column: string;
@@ -9198,6 +9235,39 @@ const createHandlers = (tableName: string) => {
       );
       let materialOpening: null | { firmId: string; qty: number; rate: number; value: number } = null;
       try {
+        if (tableName === "qc_block_location_masters") {
+          const id = String(data.id || "").trim();
+          const nextName = String(data.name || "").trim();
+          const active = String(data.active || "").trim();
+          if (!id || !nextName || !["Yes", "No"].includes(active)) {
+            return res.status(400).json({ error: "Location name and valid status are required." });
+          }
+          const conn = await db.getConnection();
+          try {
+            await conn.beginTransaction();
+            const [existingRows] = await conn.query("SELECT name FROM `qc_block_location_masters` WHERE id = ? FOR UPDATE", [id]);
+            const existingName = String((existingRows as any[])[0]?.name || "").trim();
+            if (existingName && existingName.toLowerCase() !== nextName.toLowerCase()) {
+              const usage = await getBlockLocationUsage(conn, existingName);
+              if (usage.count) {
+                await conn.rollback();
+                return res.status(409).json({ error: blockLocationUsageMessage(usage) });
+              }
+            }
+            if (existingName) {
+              await conn.query("UPDATE `qc_block_location_masters` SET name = ?, active = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [nextName, active, data.updatedBy, data.updateTimestamp, id]);
+            } else {
+              await conn.query("INSERT INTO `qc_block_location_masters` (id, name, active, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?)", [id, nextName, active, data.updatedBy, data.updateTimestamp]);
+            }
+            await conn.commit();
+            return res.json({ success: true });
+          } catch (error) {
+            await conn.rollback();
+            throw error;
+          } finally {
+            conn.release();
+          }
+        }
         if (REMOVED_FIRM_SCOPE_TABLES.includes(tableName)) {
           delete data.firmId;
           delete data.firmName;
@@ -10643,6 +10713,26 @@ const createHandlers = (tableName: string) => {
       const { id } = req.params;
       try {
         console.log(`[DB] Deleting from ${tableName}`, { id });
+
+        if (tableName === "qc_block_location_masters") {
+          const conn = await db.getConnection();
+          try {
+            await conn.beginTransaction();
+            const [locationRows] = await conn.query("SELECT name FROM `qc_block_location_masters` WHERE id = ? FOR UPDATE", [id]);
+            const name = String((locationRows as any[])[0]?.name || "").trim();
+            if (!name) { await conn.rollback(); return res.status(404).json({ error: "Location not found." }); }
+            const usage = await getBlockLocationUsage(conn, name);
+            if (usage.count) { await conn.rollback(); return res.status(409).json({ error: blockLocationUsageMessage(usage) }); }
+            await conn.query("DELETE FROM `qc_block_location_masters` WHERE id = ?", [id]);
+            await conn.commit();
+            return res.json({ success: true });
+          } catch (error) {
+            await conn.rollback();
+            throw error;
+          } finally {
+            conn.release();
+          }
+        }
 
         if (["productions", "production_processing"].includes(tableName)) {
           const [linkedRows] = await db.query("SELECT COUNT(*) AS cnt FROM inter_firm_pending_invoices WHERE sourceTransactionId = ? AND status <> 'Cancelled'", [id]);
@@ -13875,7 +13965,7 @@ app.post("/api/control-records/create", requireAuth, async (req, res) => {
       return res.status(409).json({ error: "This request ID already belongs to another Control Sample Record." });
     }
     const [npdRows] = await conn.query("SELECT erp FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
-    const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [location]);
+    const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1 FOR UPDATE", [location]);
     const erpCode = String((npdRows as any[])[0]?.erp || "").trim();
     if (!erpCode || !(locationRows as any[])[0]) { await conn.rollback(); return res.status(400).json({ error: "Select a valid ERP and active Location." }); }
     const now = new Date().toISOString();
@@ -13901,7 +13991,7 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
   const blockLocation = String(req.body?.blockLocation || "").trim();
   const blockNo = String(req.body?.blockNo || "").trim();
   if (!/^BLOCK-[a-f0-9-]{36}$/i.test(id) || !npdId || !blockLocation || !blockNo || blockNo.length > 100) {
-    return res.status(400).json({ error: "Firm, NPD item, Block Location, and Block No. are required." });
+    return res.status(400).json({ error: "ERP, Block Location, and Block No. are required." });
   }
 
   const db = await getPool();
@@ -13931,7 +14021,7 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
 
     const [firmRows] = firmId ? await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]) : [[]];
     const [npdRows] = await conn.query("SELECT erp, itemName, customerName FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
-    const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [blockLocation]);
+    const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1 FOR UPDATE", [blockLocation]);
     const firm = (firmRows as any[])[0];
     const npd = (npdRows as any[])[0];
     if ((firmId && !firm) || !npd || !(locationRows as any[])[0] || !String(npd.erp || "").trim()) {
@@ -13958,6 +14048,24 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
 });
 
 
+app.get("/api/qc-block-location-masters/usage", requireAuth, async (req, res) => {
+  try {
+    const user = await getRequestUser(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (!hasPermission(user, "/quality/block-location-master")) return res.status(403).json({ error: "Forbidden" });
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "Database unavailable" });
+    const [locations] = await db.query("SELECT id, name FROM `qc_block_location_masters`");
+    const usage: Record<string, BlockLocationUsage> = {};
+    for (const location of locations as any[]) {
+      usage[String(location.id)] = await getBlockLocationUsage(db, String(location.name || ""));
+    }
+    return res.json(usage);
+  } catch (error) {
+    console.error("[BLOCK_LOCATION] Usage lookup failed:", error);
+    return res.status(500).json({ error: "Unable to check location usage." });
+  }
+});
 entities.forEach(entity => {
   const handlers = createHandlers(entity);
   const route = `/api/${entity.replace(/_/g, "-")}`;
