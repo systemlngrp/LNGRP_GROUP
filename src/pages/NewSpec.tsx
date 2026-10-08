@@ -69,7 +69,7 @@ export function NewSpec() {
 
   useEffect(() => () => { if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current); }, []);
 
-  const showSpec = async (requestedErp = erp) => {
+  const showSpec = async (requestedErp = erp, autoDownload = false) => {
     const normalizedErp = requestedErp.trim();
     if (!normalizedErp) return setMessage("Enter an ERP code to show the specification.");
     const item = npdItems.find((row) => text(row.erp).toLowerCase() === normalizedErp.toLowerCase());
@@ -88,8 +88,17 @@ export function NewSpec() {
       const nextUrl = URL.createObjectURL(doc.output("blob"));
       if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
       downloadUrlRef.current = nextUrl;
-      setDownloadUrl(nextUrl); setDownloadName(getNpdCardPdfFileName(npdRow));
+      const nextDownloadName = getNpdCardPdfFileName(npdRow);
+      setDownloadUrl(nextUrl); setDownloadName(nextDownloadName);
       setSelected(npdRow); setPhpRow(nextPhp); setPlateRow(nextPlate); setFileNo(nextFileNo); setSpecialRemarks(nextSpecialRemark);
+      if (autoDownload) {
+        const link = document.createElement("a");
+        link.href = nextUrl;
+        link.download = nextDownloadName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
     } catch (error) {
       console.error("Failed to generate specification PDF:", error);
       setMessage("Unable to generate the specification PDF. Please try again.");
@@ -107,7 +116,7 @@ export function NewSpec() {
     }
     const matchedErp = text(match.erp);
     setErp(matchedErp);
-    void showSpec(matchedErp);
+    void showSpec(matchedErp, true);
   }, [npdItems, queryErp]);
 
   const downloadSpec = () => { if (!downloadUrl) return; const link = document.createElement("a"); link.href = downloadUrl; link.download = downloadName; link.click(); };
