@@ -49,7 +49,12 @@ export function NewSpec() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState("NPD_Card.pdf");
   const downloadUrlRef = useRef<string | null>(null);
-  const queryErp = useMemo(() => new URLSearchParams(window.location.search).get("erp")?.trim() || "", []);
+  const queryErp = useMemo(() => {
+    const direct = new URLSearchParams(window.location.search).get("erp");
+    if (direct) return direct.trim();
+    const hashQuery = window.location.hash.includes("?") ? window.location.hash.slice(window.location.hash.indexOf("?") + 1) : "";
+    return new URLSearchParams(hashQuery).get("erp")?.trim() || "";
+  }, []);
   const autoRequestedRef = useRef(false);
   const phpItems = useMemo(() => phpRows.map((row: any) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean), [phpRows]);
   const plateItems = useMemo(() => plateRows.map((row: any) => normalizeOrderCatalogItem(row, "PLATE")).filter(Boolean), [plateRows]);

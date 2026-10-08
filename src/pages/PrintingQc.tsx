@@ -441,6 +441,7 @@ export function PrintingQcForm() {
   const jobOptions = useMemo(
     () =>
       [...productions]
+        .filter((production) => production.status !== "Cancelled" && production.status !== "Completed" && String(production.closeBy || "").trim().toLowerCase() !== "yes" && !production.closeDate && !production.cancelTimestamp)
         .sort((a, b) =>
           String(b.date || b.updateTimestamp || b.transactionNo || "").localeCompare(String(a.date || a.updateTimestamp || a.transactionNo || ""))
         )

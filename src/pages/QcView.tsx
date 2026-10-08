@@ -59,7 +59,7 @@ const LinkCell = ({ value }: { value: unknown }) => isUrl(value) ? <button type=
 const SpecCell = ({ value, erp }: { value: unknown; erp: unknown }) => {
   const label = s(value);
   const erpCode = s(erp);
-  return erpCode ? <a href={`/masters/spec?erp=${encodeURIComponent(erpCode)}`} className="text-blue-700 underline hover:text-blue-900" title={`Open New Spec for ERP ${erpCode}`}>{label || "Open New Spec"}</a> : <>{label}</>;
+  return erpCode ? <a href={`/#/masters/spec?erp=${encodeURIComponent(erpCode)}`} className="text-blue-700 underline hover:text-blue-900" title={`Open New Spec for ERP ${erpCode}`}>{label || "Open New Spec"}</a> : <>{label}</>;
 };
 
 const isPassingPdi = (value: unknown) => ["pass", "qc pass"].includes(key(value));
