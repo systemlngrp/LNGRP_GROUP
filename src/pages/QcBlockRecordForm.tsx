@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
-import type { Firm, QcBlockLocationMaster } from "../types";
+import type { QcBlockLocationMaster } from "../types";
 
 const input = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const readOnlyStyle = { backgroundColor: "#9ca3af", color: "#111827" };
@@ -13,9 +13,7 @@ const clean = (value: unknown) => String(value ?? "").trim();
 export function QcBlockRecordForm() {
   const navigate = useNavigate();
   const [locations] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const items = useNpdItems();
-  const [firmId, setFirmId] = useState("");
   const [npdId, setNpdId] = useState("");
   const [location, setLocation] = useState("");
   const [blockNo, setBlockNo] = useState("");
@@ -30,9 +28,7 @@ export function QcBlockRecordForm() {
     label: `${clean(value.erp)} - ${clean(value.name)}`,
     searchText: `${clean(value.erp)} ${clean(value.name)} ${clean(value.customer)}`,
   })), [items]);
-  const firmOptions = firms.map(value => ({ value: value.id, label: value.firmName }));
   const locationOptions = locations.filter(value => clean(value.active).toLowerCase() === "yes").map(value => ({ value: value.name, label: value.name }));
-  const changeFirm = (value: string) => { pendingId.current = null; setFirmId(value); };
   const changeNpd = (value: string) => { pendingId.current = null; setNpdId(value); };
   const changeLocation = (value: string) => { pendingId.current = null; setLocation(value); };
   const changeBlockNo = (value: string) => { pendingId.current = null; setBlockNo(value); };
@@ -40,8 +36,8 @@ export function QcBlockRecordForm() {
 
   const save = async () => {
     setMessage("");
-    if (!firmId || !npdId || !location || !blockNo.trim() || !sampleNo.trim()) {
-      setMessage("Firm, NPD item, Block Location, Block No., and Sample No. are required.");
+    if (!npdId || !location || !blockNo.trim() || !sampleNo.trim()) {
+      setMessage("NPD item, Block Location, Block No., and Sample No. are required.");
       return;
     }
     if (saving) return;
@@ -52,7 +48,7 @@ export function QcBlockRecordForm() {
       const response = await fetch("/api/block-records/create-with-stereo", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ id: pendingId.current, firmId, npdId, blockLocation: location, blockNo: blockNo.trim(), sampleNo: sampleNo.trim() }),
+        body: JSON.stringify({ id: pendingId.current, npdId, blockLocation: location, blockNo: blockNo.trim(), sampleNo: sampleNo.trim() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "Unable to save block record.");
@@ -73,7 +69,6 @@ export function QcBlockRecordForm() {
     {message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}
     <section className="rounded border-2 border-black bg-white p-4">
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <label><b>Firm *</b><Select value={firmId} onChange={changeFirm} options={firmOptions} placeholder="Select Firm"/></label>
         <label><b>NPD Item *</b><Select value={npdId} onChange={changeNpd} options={npdOptions} placeholder="Search ERP or Item Name"/></label>
         <label><b>ERP Code</b><input className={input} style={readOnlyStyle} value={clean(selectedItem?.erp)} readOnly/></label>
         <label><b>Party Name</b><input className={input} style={readOnlyStyle} value={clean(selectedItem?.customer)} readOnly/></label>

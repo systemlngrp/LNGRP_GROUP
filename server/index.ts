@@ -13864,7 +13864,7 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
   const blockLocation = String(req.body?.blockLocation || "").trim();
   const blockNo = String(req.body?.blockNo || "").trim();
   const sampleNo = String(req.body?.sampleNo || "").trim();
-  if (!/^BLOCK-[a-f0-9-]{36}$/i.test(id) || !firmId || !npdId || !blockLocation || !blockNo || !sampleNo || blockNo.length > 100 || sampleNo.length > 255) {
+  if (!/^BLOCK-[a-f0-9-]{36}$/i.test(id) || !npdId || !blockLocation || !blockNo || !sampleNo || blockNo.length > 100 || sampleNo.length > 255) {
     return res.status(400).json({ error: "Firm, NPD item, Block Location, and Block No. are required." });
   }
 
@@ -13890,12 +13890,12 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
       return res.status(409).json({ error: "This save ID already belongs to another record." });
     }
 
-    const [firmRows] = await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+    const [firmRows] = firmId ? await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]) : [[]];
     const [npdRows] = await conn.query("SELECT erp, itemName, customerName FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
     const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [blockLocation]);
     const firm = (firmRows as any[])[0];
     const npd = (npdRows as any[])[0];
-    if (!firm || !npd || !(locationRows as any[])[0] || !String(npd.erp || "").trim()) {
+    if ((firmId && !firm) || !npd || !(locationRows as any[])[0] || !String(npd.erp || "").trim()) {
       await conn.rollback();
       return res.status(400).json({ error: "Select a valid firm, NPD item, and active Block Location." });
     }
@@ -13905,7 +13905,7 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
     const itemName = String(npd.itemName || "").trim();
     const updatedBy = String(user.name || user.userId || user.email || "").trim();
     const updateTimestamp = new Date().toISOString();
-    await conn.query("INSERT INTO `qc_block_records` (id, firmId, firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, firmId, firm.firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
+    await conn.query("INSERT INTO `qc_block_records` (id, firmId, firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, firmId || null, firm?.firmName || null, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
     await conn.query("INSERT INTO `printing_stereo_records` (id, npdId, erpCode, partyName, itemName, location, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [stereoId, npdId, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
     await conn.query("INSERT INTO `control_records` (id, erpCode, location, sampleNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?)", [controlId, erpCode, blockLocation, sampleNo, updatedBy, updateTimestamp]);
     await conn.commit();
