@@ -55,7 +55,7 @@ const sections: FieldSection[] = [
       { key: "timestamp", label: "Timestamp", type: "datetime-local", required: true },
       { key: "bqcNo", label: "BQC No", readOnly: true },
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "partyName", label: "Party Name", required: true, readOnly: true },
+      { key: "partyName", label: "Company", required: true, readOnly: true },
       { key: "itemName", label: "Item Name", required: true, wide: true, readOnly: true },
       { key: "checkNo", label: "Check No.", required: true, readOnly: true },
       { key: "standard", label: "Standard", readOnly: true },
@@ -446,11 +446,10 @@ export function BoardLineQcForm() {
           const itemName = String((production as any).itemName || item?.name || production.itemId || "").trim();
           const partyName = String(production.companyName || item?.companyName || "").trim();
           const erp = String(production.erpCode || production.masterErp || item?.erp || "").trim();
-          const labelParts = [jobNo, partyName, itemName, erp].filter(Boolean);
           return {
             value: String(production.id),
-            label: labelParts.join(" | "),
-            searchText: labelParts.join(" "),
+            label: jobNo,
+            searchText: [jobNo, partyName, itemName, erp].filter(Boolean).join(" "),
           };
         }),
     [findItemAcrossSources, productions]
