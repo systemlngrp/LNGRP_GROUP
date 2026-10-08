@@ -364,7 +364,7 @@ function FieldInput({
   onChange: (key: keyof BoardLineQcCheck, value: string | number | "") => void;
 }) {
   const commonClass =
-    "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full read-only:bg-slate-100 read-only:text-slate-700";
+    "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full read-only:bg-gray-400 read-only:text-gray-900";
   const stringValue = value === undefined || value === null ? "" : String(value);
 
   return (
@@ -838,6 +838,7 @@ export function BoardLineQcMaster() {
     </div>
   );
 }
+
 
 
 
