@@ -379,7 +379,7 @@ function FieldInput({
           readOnly={field.readOnly}
           required={field.required}
           rows={3}
-          className={`${commonClass} min-h-[88px] resize-y`}
+          className={`${commonClass} min-h-[88px] resize-y`} style={field.readOnly ? { backgroundColor: "#9ca3af", color: "#111827" } : undefined}
         />
       ) : (
         <input

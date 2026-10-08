@@ -190,6 +190,8 @@ const productionProcessingItems: NavItem[] = [
 ];
 
 const sampleItems: NavItem[] = [
+  { name: "Control Sample Form", href: "/quality/sample-requirement/master/form", icon: ClipboardList },
+  { name: "Control Sample Master", href: "/quality/sample-requirement/master", icon: Database },
   { name: "Sample Form", href: "/samples/form", icon: FlaskConical },
   { name: "Pending Samples", href: "/samples/pending", icon: Activity, countKey: "/samples/pending" },
   { name: "Samples Produced", href: "/samples/produced", icon: CheckCircle },
@@ -908,3 +910,4 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     </div>
   );
 }
+
