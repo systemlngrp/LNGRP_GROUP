@@ -5842,6 +5842,11 @@ async function initDb(retries = 5) {
         \`partyName\` VARCHAR(255), \`itemName\` TEXT, \`location\` VARCHAR(255) NOT NULL,
         \`blockNo\` VARCHAR(255) NOT NULL, \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(255)
       )`);
+            await db.query(`CREATE TABLE IF NOT EXISTS \`control_records\` (
+        \`id\` VARCHAR(100) PRIMARY KEY, \`erpCode\` VARCHAR(100) NOT NULL,
+        \`location\` VARCHAR(255) NOT NULL, \`sampleNo\` VARCHAR(255) NOT NULL,
+        \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(255)
+      )`);
             await db.query(`CREATE TABLE IF NOT EXISTS \`qc_sample_requirements\` (
         \`id\` VARCHAR(100) PRIMARY KEY, \`firmId\` VARCHAR(36), \`firmName\` VARCHAR(255), \`receivingDate\` VARCHAR(50) NOT NULL,
         \`partyName\` VARCHAR(255) NOT NULL, \`itemName\` TEXT NOT NULL, \`address\` TEXT, \`length\` VARCHAR(50), \`width\` VARCHAR(50), \`height\` VARCHAR(50),
@@ -10982,7 +10987,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
         conn.release();
     }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_update_records", "special_remark_records", "printing_stereo_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "quality_complaints", "qc_update_records", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 app.get("/api/tally-sync-debug", (req, res) => {
     const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
     return res.json({
@@ -12774,6 +12779,72 @@ app.get("/api/indent-lines", requireAuth, async (req, res) => {
     catch (error) {
         console.error("[INDENT_LINES_DETAIL] failed:", error);
         return res.status(500).json({ error: "Failed to load indent lines" });
+    }
+});
+app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (!hasPermission(user, "/quality/block-record"))
+        return res.status(403).json({ error: "Forbidden" });
+    const id = String(req.body?.id || "").trim();
+    const firmId = String(req.body?.firmId || "").trim();
+    const npdId = String(req.body?.npdId || "").trim();
+    const blockLocation = String(req.body?.blockLocation || "").trim();
+    const blockNo = String(req.body?.blockNo || "").trim();
+    const sampleNo = String(req.body?.sampleNo || "").trim();
+    if (!/^BLOCK-[a-f0-9-]{36}$/i.test(id) || !firmId || !npdId || !blockLocation || !blockNo || !sampleNo || blockNo.length > 100 || sampleNo.length > 255) {
+        return res.status(400).json({ error: "Firm, NPD item, Block Location, and Block No. are required." });
+    }
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    const conn = await db.getConnection();
+    const stereoId = `STEREO-${id}`;
+    try {
+        await conn.beginTransaction();
+        const [existingBlocks] = await conn.query("SELECT id, firmId, erpCode, blockLocation, blockNo FROM `qc_block_records` WHERE id = ? FOR UPDATE", [id]);
+        const [existingStereos] = await conn.query("SELECT id, npdId, erpCode, location, blockNo FROM `printing_stereo_records` WHERE id = ? FOR UPDATE", [stereoId]);
+        const controlId = `CONTROL-${id}`;
+        const [existingControls] = await conn.query("SELECT id, erpCode, location, sampleNo FROM `control_records` WHERE id = ? FOR UPDATE", [controlId]);
+        const existingBlock = existingBlocks[0];
+        const existingStereo = existingStereos[0];
+        const existingControl = existingControls[0];
+        if (existingBlock || existingStereo || existingControl) {
+            if (existingBlock && existingStereo && existingControl && existingBlock.firmId === firmId && existingStereo.npdId === npdId && existingBlock.blockLocation === blockLocation && existingStereo.location === blockLocation && existingBlock.blockNo === blockNo && existingStereo.blockNo === blockNo && existingBlock.erpCode === existingStereo.erpCode && existingControl.sampleNo === sampleNo && existingControl.location === blockLocation && existingControl.erpCode === existingStereo.erpCode) {
+                await conn.commit();
+                return res.json({ ok: true, id, stereoId, controlId });
+            }
+            await conn.rollback();
+            return res.status(409).json({ error: "This save ID already belongs to another record." });
+        }
+        const [firmRows] = await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
+        const [npdRows] = await conn.query("SELECT erp, itemName, customerName FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
+        const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [blockLocation]);
+        const firm = firmRows[0];
+        const npd = npdRows[0];
+        if (!firm || !npd || !locationRows[0] || !String(npd.erp || "").trim()) {
+            await conn.rollback();
+            return res.status(400).json({ error: "Select a valid firm, NPD item, and active Block Location." });
+        }
+        const erpCode = String(npd.erp).trim();
+        const partyName = String(npd.customerName || "").trim();
+        const itemName = String(npd.itemName || "").trim();
+        const updatedBy = String(user.name || user.userId || user.email || "").trim();
+        const updateTimestamp = new Date().toISOString();
+        await conn.query("INSERT INTO `qc_block_records` (id, firmId, firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, firmId, firm.firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
+        await conn.query("INSERT INTO `printing_stereo_records` (id, npdId, erpCode, partyName, itemName, location, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [stereoId, npdId, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
+        await conn.query("INSERT INTO `control_records` (id, erpCode, location, sampleNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?)", [controlId, erpCode, blockLocation, sampleNo, updatedBy, updateTimestamp]);
+        await conn.commit();
+        return res.status(201).json({ ok: true, id, stereoId, controlId });
+    }
+    catch (error) {
+        await conn.rollback();
+        console.error("[BLOCK_RECORD] paired save failed:", error);
+        return res.status(500).json({ error: "Unable to save Block Record and Printing Stereo record together." });
+    }
+    finally {
+        conn.release();
     }
 });
 entities.forEach(entity => {

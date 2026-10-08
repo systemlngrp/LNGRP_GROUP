@@ -1223,6 +1223,15 @@ export interface QcBlockLocationMaster {
   updateTimestamp?: string;
 }
 
+export interface ControlRecord {
+  id: string;
+  erpCode: string;
+  location: string;
+  sampleNo: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface PreDispatchInspection {
   id: string;
   productionId: string;

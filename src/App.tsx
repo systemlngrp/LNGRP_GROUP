@@ -97,7 +97,9 @@ import { PrintingQcForm, PrintingQcMaster } from "./pages/PrintingQc";
 import { QcMasterData } from "./pages/QcMasterData";
 import { QcUpdateForm } from "./pages/QcUpdateForm";
 import { SpecialRemarkForm, SpecialRemarkMaster } from "./pages/SpecialRemarks";
-import { PrintingStereoForm, PrintingStereoMaster } from "./pages/PrintingStereo";
+import { PrintingStereoMaster } from "./pages/PrintingStereo";
+import { QcBlockRecordForm } from "./pages/QcBlockRecordForm";
+import { ControlRecordMaster } from "./pages/ControlRecord";
 import { Users } from "./pages/Users";
 import { Services } from "./pages/Services";
 import { PlantHeadUnified } from "./pages/PlantHeadUnified";
@@ -368,8 +370,11 @@ export default function App() {
           <Route path="quality/qc-update/form" element={<QcUpdateForm />} />
           <Route path="quality/special-remarks/form" element={<SpecialRemarkForm />} />
           <Route path="quality/special-remarks" element={<SpecialRemarkMaster />} />
-          <Route path="quality/printing-stereo/form" element={<PrintingStereoForm />} />
+          <Route path="quality/printing-stereo/form" element={<Navigate to="/quality/block-record/form" replace />} />
           <Route path="quality/printing-stereo" element={<PrintingStereoMaster />} />
+          <Route path="quality/block-record/form" element={<QcBlockRecordForm />} />
+          <Route path="quality/control-record/form" element={<Navigate to="/quality/block-record/form" replace />} />
+          <Route path="quality/control-record" element={<ControlRecordMaster />} />
           <Route path="quality/qc-view" element={<QcView />} />
           <Route path="quality/pdi-report" element={<PdiReport />} />
           <Route path="quality/complaints/form" element={<QualityComplaintForm />} />
