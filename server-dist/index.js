@@ -12781,6 +12781,56 @@ app.get("/api/indent-lines", requireAuth, async (req, res) => {
         return res.status(500).json({ error: "Failed to load indent lines" });
     }
 });
+app.post("/api/control-records/create", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (!hasPermission(user, "/quality/block-record"))
+        return res.status(403).json({ error: "Forbidden" });
+    const id = String(req.body?.id || "").trim();
+    const npdId = String(req.body?.npdId || "").trim();
+    const location = String(req.body?.location || "").trim();
+    const sampleNo = String(req.body?.sampleNo || "").trim();
+    if (!/^CONTROL-[a-f0-9-]{36}$/i.test(id) || !npdId || !location)
+        return res.status(400).json({ error: "ERP, Location, and Sample Number are required." });
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [existing] = await conn.query("SELECT id, erpCode, location, sampleNo FROM `control_records` WHERE id = ? FOR UPDATE", [id]);
+        const prior = existing[0];
+        if (prior) {
+            if (prior.location === location && prior.sampleNo === sampleNo) {
+                await conn.commit();
+                return res.json({ ok: true, id });
+            }
+            await conn.rollback();
+            return res.status(409).json({ error: "This request ID already belongs to another Control Sample Record." });
+        }
+        const [npdRows] = await conn.query("SELECT erp FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
+        const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [location]);
+        const erpCode = String(npdRows[0]?.erp || "").trim();
+        if (!erpCode || !locationRows[0]) {
+            await conn.rollback();
+            return res.status(400).json({ error: "Select a valid ERP and active Location." });
+        }
+        const now = new Date().toISOString();
+        const updatedBy = String(user.name || user.userId || user.email || "").trim();
+        await conn.query("INSERT INTO `control_records` (id, erpCode, location, sampleNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?)", [id, erpCode, location, sampleNo, updatedBy, now]);
+        await conn.commit();
+        return res.status(201).json({ ok: true, id });
+    }
+    catch (error) {
+        await conn.rollback();
+        console.error("[CONTROL_RECORD] save failed:", error);
+        return res.status(500).json({ error: "Unable to save Control Sample Record." });
+    }
+    finally {
+        conn.release();
+    }
+});
 app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) => {
     const user = await getRequestUser(req);
     if (!user)
@@ -12792,8 +12842,7 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
     const npdId = String(req.body?.npdId || "").trim();
     const blockLocation = String(req.body?.blockLocation || "").trim();
     const blockNo = String(req.body?.blockNo || "").trim();
-    const sampleNo = String(req.body?.sampleNo || "").trim();
-    if (!/^BLOCK-[a-f0-9-]{36}$/i.test(id) || !npdId || !blockLocation || !blockNo || !sampleNo || blockNo.length > 100 || sampleNo.length > 255) {
+    if (!/^BLOCK-[a-f0-9-]{36}$/i.test(id) || !npdId || !blockLocation || !blockNo || blockNo.length > 100) {
         return res.status(400).json({ error: "Firm, NPD item, Block Location, and Block No. are required." });
     }
     const db = await getPool();
@@ -12805,48 +12854,46 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
         await conn.beginTransaction();
         const [existingBlocks] = await conn.query("SELECT id, firmId, erpCode, blockLocation, blockNo FROM `qc_block_records` WHERE id = ? FOR UPDATE", [id]);
         const [existingStereos] = await conn.query("SELECT id, npdId, erpCode, location, blockNo FROM `printing_stereo_records` WHERE id = ? FOR UPDATE", [stereoId]);
-        const controlId = `CONTROL-${id}`;
-        const [existingControls] = await conn.query("SELECT id, erpCode, location, sampleNo FROM `control_records` WHERE id = ? FOR UPDATE", [controlId]);
         const existingBlock = existingBlocks[0];
         const existingStereo = existingStereos[0];
-        const existingControl = existingControls[0];
-        if (existingBlock || existingStereo || existingControl) {
-            if (existingBlock && existingStereo && existingControl && existingBlock.firmId === firmId && existingStereo.npdId === npdId && existingBlock.blockLocation === blockLocation && existingStereo.location === blockLocation && existingBlock.blockNo === blockNo && existingStereo.blockNo === blockNo && existingBlock.erpCode === existingStereo.erpCode && existingControl.sampleNo === sampleNo && existingControl.location === blockLocation && existingControl.erpCode === existingStereo.erpCode) {
-                await conn.commit();
-                return res.json({ ok: true, id, stereoId, controlId });
-            }
-            await conn.rollback();
-            return res.status(409).json({ error: "This save ID already belongs to another record." });
+        if (existingBlock || existingStereo) {
+            await conn.commit();
+            return res.json({ ok: true, id, stereoId });
         }
-        const [firmRows] = firmId ? await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]) : [[]];
-        const [npdRows] = await conn.query("SELECT erp, itemName, customerName FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
-        const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [blockLocation]);
-        const firm = firmRows[0];
-        const npd = npdRows[0];
-        if ((firmId && !firm) || !npd || !locationRows[0] || !String(npd.erp || "").trim()) {
-            await conn.rollback();
-            return res.status(400).json({ error: "Select a valid firm, NPD item, and active Block Location." });
-        }
-        const erpCode = String(npd.erp).trim();
-        const partyName = String(npd.customerName || "").trim();
-        const itemName = String(npd.itemName || "").trim();
-        const updatedBy = String(user.name || user.userId || user.email || "").trim();
-        const updateTimestamp = new Date().toISOString();
-        await conn.query("INSERT INTO `qc_block_records` (id, firmId, firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, firmId || null, firm?.firmName || null, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
-        await conn.query("INSERT INTO `printing_stereo_records` (id, npdId, erpCode, partyName, itemName, location, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [stereoId, npdId, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
-        await conn.query("INSERT INTO `control_records` (id, erpCode, location, sampleNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?)", [controlId, erpCode, blockLocation, sampleNo, updatedBy, updateTimestamp]);
-        await conn.commit();
-        return res.status(201).json({ ok: true, id, stereoId, controlId });
-    }
-    catch (error) {
         await conn.rollback();
-        console.error("[BLOCK_RECORD] paired save failed:", error);
-        return res.status(500).json({ error: "Unable to save Block Record and Printing Stereo record together." });
+        return res.status(409).json({ error: "This save ID already belongs to another record." });
     }
     finally {
-        conn.release();
     }
+    const [firmRows] = firmId ? await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]) : [[]];
+    const [npdRows] = await conn.query("SELECT erp, itemName, customerName FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
+    const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [blockLocation]);
+    const firm = firmRows[0];
+    const npd = npdRows[0];
+    if ((firmId && !firm) || !npd || !locationRows[0] || !String(npd.erp || "").trim()) {
+        await conn.rollback();
+        return res.status(400).json({ error: "Select a valid firm, NPD item, and active Block Location." });
+    }
+    const erpCode = String(npd.erp).trim();
+    const partyName = String(npd.customerName || "").trim();
+    const itemName = String(npd.itemName || "").trim();
+    const updatedBy = String(user.name || user.userId || user.email || "").trim();
+    const updateTimestamp = new Date().toISOString();
+    await conn.query("INSERT INTO `qc_block_records` (id, firmId, firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, firmId || null, firm?.firmName || null, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
+    await conn.query("INSERT INTO `printing_stereo_records` (id, npdId, erpCode, partyName, itemName, location, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [stereoId, npdId, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
+    await conn.commit();
+    return res.status(201).json({ ok: true, id, stereoId });
 });
+try { }
+catch (error) {
+    await conn.rollback();
+    console.error("[BLOCK_RECORD] paired save failed:", error);
+    return res.status(500).json({ error: "Unable to save Block Record and Printing Stereo record together." });
+}
+finally {
+    conn.release();
+}
+;
 entities.forEach(entity => {
     const handlers = createHandlers(entity);
     const route = `/api/${entity.replace(/_/g, "-")}`;

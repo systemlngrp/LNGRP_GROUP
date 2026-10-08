@@ -244,6 +244,7 @@ const qualityItems: NavEntry[] = [
       { name: "Block Record Form", href: "/quality/block-record/form", icon: ClipboardList },
       { name: "Printing Stereo Records", href: "/quality/printing-stereo", icon: Database },
       { name: "Control Records", href: "/quality/control-record", icon: Database },
+      { name: "Sample Entry Form", href: "/quality/control-record/form", icon: ClipboardList },
     ],
   },
   { name: "Spec QC Form", href: "/quality/spec-card-issue-return/form", icon: ClipboardList },
