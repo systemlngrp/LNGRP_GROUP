@@ -323,8 +323,8 @@ function buildFlapHeightValue(flap: number | "", height: number | "") {
   return `${flap}-${height}-${flap}`;
 }
 
-function buildPayload(form: Partial<BoardLineQcCheck>, updatedBy: string): BoardLineQcCheck {
-  const calculatedForm = calculateBoardLineForm(form, settings[0]);
+function buildPayload(form: Partial<BoardLineQcCheck>, updatedBy: string, setting?: Setting): BoardLineQcCheck {
+  const calculatedForm = calculateBoardLineForm(form, setting);
   const timestampInput = String(form.timestamp || "").trim();
   const timestamp = timestampInput ? new Date(timestampInput).toISOString() : new Date().toISOString();
   const payload: Record<string, unknown> = {
@@ -540,7 +540,7 @@ export function BoardLineQcForm() {
     setIsSubmitting(true);
     try {
       const updatedBy = qcPersonName;
-      const payload = buildPayload({ ...form, qcPerson: qcPersonName, bqcNo: nextBqcNo }, updatedBy);
+      const payload = buildPayload({ ...form, qcPerson: qcPersonName, bqcNo: nextBqcNo }, updatedBy, settings[0]);
       await setChecks((prev) => [...prev, payload]);
       setSelectedProductionId("");
       setForm(createInitialForm());
