@@ -5,8 +5,9 @@ import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { BoardLineQcCheck, Production } from "../types";
+import { BoardLineQcCheck, Production, Setting } from "../types";
 import { formatDate } from "../lib/utils";
+import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
 
@@ -249,7 +250,7 @@ function firstText(...values: unknown[]) {
   return "";
 }
 
-function calculateBoardLineForm(form: Partial<BoardLineQcCheck>): Partial<BoardLineQcCheck> {
+function calculateBoardLineForm(form: Partial<BoardLineQcCheck>, settings?: Setting): Partial<BoardLineQcCheck> {
   const heightOd = toFiniteNumber(form.heightOd);
   const ply = toFiniteNumber(form.ply);
   const width = toFiniteNumber(form.width);
@@ -266,7 +267,7 @@ function calculateBoardLineForm(form: Partial<BoardLineQcCheck>): Partial<BoardL
   const cuttingSizeRequired =
     isNumber(part) && isNumber(width) && isNumber(length) ? (part === 1 ? (length + width) * 2 + 30 : length + width + 30) : "";
   const standard = blankIfMissing(heightOd, flap) ? "" : `${flap} - ${heightOd} - ${flap}`;
-  const samplingPlanQty = isNumber(planQty) ? (planQty / 2 < 2 ? 2 : planQty / 2000 > 4 ? 4 : 3) : "";
+  const samplingPlanQty = calculateSamplingPlanQty(planQty, settings);
   const samplingCheckNo = String(form.checkNo || "").trim() && samplingPlanQty !== "" ? `${String(form.checkNo).trim()} / ${samplingPlanQty}` : "";
   const hasOsFlapInputs = isNumber(flapAchievedOs) && isNumber(flapMinDs) && isNumber(flapMaxDs) && qcPerson !== "";
   const hasOsHeightInputs = isNumber(heightAchievedOs) && isNumber(heightOd) && qcPerson !== "";
@@ -323,7 +324,7 @@ function buildFlapHeightValue(flap: number | "", height: number | "") {
 }
 
 function buildPayload(form: Partial<BoardLineQcCheck>, updatedBy: string): BoardLineQcCheck {
-  const calculatedForm = calculateBoardLineForm(form);
+  const calculatedForm = calculateBoardLineForm(form, settings[0]);
   const timestampInput = String(form.timestamp || "").trim();
   const timestamp = timestampInput ? new Date(timestampInput).toISOString() : new Date().toISOString();
   const payload: Record<string, unknown> = {
@@ -397,6 +398,7 @@ function FieldInput({
 
 export function BoardLineQcForm() {
   const [checks, setChecks] = useData<BoardLineQcCheck>("boardline_qc_checks", []);
+  const [settings] = useData<Setting>("settings", []);
   const [productions] = useData<Production>("productions", []);
   const { findItemAcrossSources } = useOrderItemCatalog();
   const { user } = useAuth();
@@ -407,7 +409,7 @@ export function BoardLineQcForm() {
   const nextBqcNo = useMemo(() => nextQcNo(checks, "bqcNo", "BQC"), [checks]);
 
   useEffect(() => {
-    setForm((prev) => calculateBoardLineForm({ ...prev, qcPerson: qcPersonName, bqcNo: nextBqcNo }));
+    setForm((prev) => calculateBoardLineForm({ ...prev, qcPerson: qcPersonName, bqcNo: nextBqcNo }, settings[0]));
   }, [qcPersonName, nextBqcNo]);
 
   useEffect(() => {
@@ -416,7 +418,7 @@ export function BoardLineQcForm() {
       if (!jobNo) return prev;
       const checkNo = nextJobCheckNo(checks, jobNo);
       if (String(prev.checkNo || "") === checkNo) return prev;
-      return calculateBoardLineForm({ ...prev, checkNo });
+      return calculateBoardLineForm({ ...prev, checkNo }, settings[0]);
     });
   }, [checks]);
 
@@ -456,7 +458,7 @@ export function BoardLineQcForm() {
   );
 
   const setField = (key: keyof BoardLineQcCheck, value: string | number | "") => {
-    setForm((prev) => calculateBoardLineForm({ ...prev, [key]: value }));
+    setForm((prev) => calculateBoardLineForm({ ...prev, [key]: value }, settings[0]));
   };
 
   const handleJobSelect = (productionId: string) => {
@@ -836,3 +838,7 @@ export function BoardLineQcMaster() {
     </div>
   );
 }
+
+
+
+

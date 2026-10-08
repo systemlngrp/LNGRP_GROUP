@@ -5,8 +5,9 @@ import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { ColorMaster, PrintingQcCheck, Production, User } from "../types";
+import { ColorMaster, PrintingQcCheck, Production, Setting, User } from "../types";
 import { formatDate } from "../lib/utils";
+import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
 
@@ -258,7 +259,7 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
-function calculatePrintingQcForm(form: Partial<PrintingQcCheck>): Partial<PrintingQcCheck> {
+function calculatePrintingQcForm(form: Partial<PrintingQcCheck>, settings?: Setting): Partial<PrintingQcCheck> {
   const qcPerson = String(form.qcPerson || "").trim();
   const lengthId = toFiniteNumber(form.lengthId);
   const widthId = toFiniteNumber(form.widthId);
@@ -271,7 +272,7 @@ function calculatePrintingQcForm(form: Partial<PrintingQcCheck>): Partial<Printi
   const csStandard = toFiniteNumber(form.csStandard);
   const bsStandard = toFiniteNumber(form.bsStandard);
   const planQty = toFiniteNumber(form.planQty);
-  const samplingPlanQty = isNumber(planQty) ? (planQty / 2000 < 2 ? 2 : planQty / 2000 > 4 ? 4 : 3) : "";
+  const samplingPlanQty = calculateSamplingPlanQty(planQty, settings);
   const samplingCheckNo = String(form.checkNo || "").trim() && samplingPlanQty !== "" ? `${String(form.checkNo).trim()} / ${samplingPlanQty}` : "";
   const colour1Expected = normalizeText(form.printingColor1Standard);
   const colour1Actual = normalizeText(form.colour1Actual);
@@ -319,7 +320,7 @@ function calculatePrintingQcForm(form: Partial<PrintingQcCheck>): Partial<Printi
 }
 
 function buildPayload(form: Partial<PrintingQcCheck>, updatedBy: string): PrintingQcCheck {
-  const calculatedForm = calculatePrintingQcForm(form);
+  const calculatedForm = calculatePrintingQcForm(form, settings[0]);
   const timestampInput = String(calculatedForm.timestamp || "").trim();
   const timestamp = timestampInput ? new Date(timestampInput).toISOString() : new Date().toISOString();
   const payload: Record<string, unknown> = {
@@ -393,6 +394,7 @@ function FieldInput({
 
 export function PrintingQcForm() {
   const [checks, setChecks] = useData<PrintingQcCheck>("printing_qc_checks", []);
+  const [settings] = useData<Setting>("settings", []);
   const [productions] = useData<Production>("productions", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
   const [users] = useData<User>("users", []);
@@ -417,7 +419,7 @@ export function PrintingQcForm() {
   );
 
   useEffect(() => {
-    setForm((prev) => calculatePrintingQcForm({ ...prev, qcPerson: qcPersonName, pqcNo: nextPqcNo }));
+    setForm((prev) => calculatePrintingQcForm({ ...prev, qcPerson: qcPersonName, pqcNo: nextPqcNo }, settings[0]));
   }, [qcPersonName, nextPqcNo]);
 
   useEffect(() => {
@@ -426,7 +428,7 @@ export function PrintingQcForm() {
       if (!jobNo) return prev;
       const checkNo = nextJobCheckNo(checks, jobNo);
       if (String(prev.checkNo || "") === checkNo) return prev;
-      return calculatePrintingQcForm({ ...prev, checkNo });
+      return calculatePrintingQcForm({ ...prev, checkNo }, settings[0]);
     });
   }, [checks]);
 
@@ -465,7 +467,7 @@ export function PrintingQcForm() {
   );
 
   const setField = (key: keyof PrintingQcCheck, value: string | number | "") => {
-    setForm((prev) => calculatePrintingQcForm({ ...prev, [key]: value }));
+    setForm((prev) => calculatePrintingQcForm({ ...prev, [key]: value }, settings[0]));
   };
 
   const handleJobSelect = (productionId: string) => {
@@ -855,3 +857,7 @@ export function PrintingQcMaster() {
     </div>
   );
 }
+
+
+
+

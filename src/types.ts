@@ -1659,6 +1659,9 @@ export interface Setting {
   invoiceNumberSeries?: string;
   mandatoryMachinesByType?: string;
   designations?: string;
+  samplingPlanQtyDivisor?: number;
+  samplingPlanQtyMin?: number;
+  samplingPlanQtyMax?: number;
   organizationLogo?: string;
   updatedBy?: string;
   updateTimestamp?: string;
@@ -1740,4 +1743,6 @@ export interface OperationDashboardSummary {
   comparisonLabel: string;
   groups: OperationDashboardMetricGroup[];
 }
+
+
 
