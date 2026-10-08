@@ -54,27 +54,62 @@ export function Layout() {
     return () => window.clearTimeout(timeoutId);
   }, [currentAlert]);
 
-  // Legacy route pages use independently authored flex headers. Normalize those
-  // headers at the application boundary so a title can never share its row with
-  // search, filters, actions, or dates while pages are incrementally migrated to
-  // the PageHeader component.
+  // Mark add actions across legacy pages, then keep a single header add action
+  // beside its title. Other header controls retain the title-first layout.
   useEffect(() => {
     const content = document.querySelector<HTMLElement>(".app-view-content");
     if (!content) return;
 
     const normalizeHeaders = () => {
+      content.querySelectorAll<HTMLElement>("button, a").forEach((action) => {
+        const hasPlus = Boolean(action.querySelector("svg.lucide-plus"));
+        const textPlus = (action.textContent || "").trim().startsWith("+");
+        action.classList.toggle("app-add-action", hasPlus || textPlus);
+      });
+
+      content.querySelectorAll<HTMLElement>(".app-add-action-group").forEach(group => group.classList.remove("app-add-action-group"));
+      const actionParents = new Set<HTMLElement>();
+      content.querySelectorAll<HTMLElement>(".app-add-action").forEach(action => {
+        if (action.parentElement instanceof HTMLElement) actionParents.add(action.parentElement);
+      });
+      actionParents.forEach(parent => {
+        const children = Array.from(parent.children);
+        if (children.length > 1 && children.every(child => child.classList.contains("app-add-action"))) {
+          parent.classList.add("app-add-action-group");
+        }
+      });
+
       content.querySelectorAll<HTMLElement>("h1, h2").forEach((title) => {
         const header = title.parentElement as HTMLElement | null;
         if (!header || header.children.length < 2 || getComputedStyle(header).display !== "flex") return;
+        const children = Array.from(header.children) as HTMLElement[];
+        const isSingleAddAction = children.length === 2 && children.some(child =>
+          child !== title && (child.classList.contains("app-add-action") ||
+            (child.children.length === 1 && child.firstElementChild?.classList.contains("app-add-action")))
+        );
+        if (isSingleAddAction) {
+          header.classList.add("app-add-header");
+          header.style.display = "grid";
+          header.style.gridTemplateColumns = "minmax(0, 1fr) auto";
+          header.style.alignItems = "center";
+          title.style.width = "auto";
+          title.style.whiteSpace = "normal";
+          children.forEach(child => {
+            if (child !== title) {
+              child.style.width = "auto";
+              child.style.justifySelf = "end";
+            }
+          });
+          return;
+        }
 
         header.style.flexDirection = "column";
         header.style.alignItems = "stretch";
         header.style.justifyContent = "flex-start";
         title.style.width = "100%";
         title.style.whiteSpace = "nowrap";
-
-        Array.from(header.children).forEach((child) => {
-          if (child !== title && child instanceof HTMLElement) child.style.width = "100%";
+        children.forEach(child => {
+          if (child !== title) child.style.width = child.classList.contains("app-add-action") ? "auto" : "100%";
         });
       });
     };
@@ -84,7 +119,6 @@ export function Layout() {
     observer.observe(content, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [location.pathname]);
-
   const dismissAlert = () => {
     setAlertQueue((previous) => previous.slice(1));
   };

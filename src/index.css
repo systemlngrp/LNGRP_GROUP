@@ -188,3 +188,47 @@ table td button:focus-visible {
   padding-block: 0.5rem;
   align-items: center;
 }
+/* Add actions sit at the right edge of their own header, form row, or cell. */
+.app-view-content .app-add-action {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  margin-inline-start: auto;
+  justify-self: end;
+  align-self: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.app-view-content .app-add-action[title="Add New"] {
+  width: 42px;
+}
+
+.app-view-content .app-add-action.bg-cyan-700:has(> svg),
+.app-view-content .app-add-action.bg-red-600:has(> svg) {
+  width: 2.25rem;
+}
+.app-view-content .app-add-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+.app-view-content .app-add-action-group > .app-add-action {
+  margin-inline-start: 0;
+}
+
+@media (max-width: 640px) {
+  .app-view-content .app-add-header {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-view-content .app-add-action {
+    white-space: normal;
+    text-align: center;
+  }
+}
