@@ -1285,6 +1285,8 @@ export interface QcSampleRequirement {
   specReceived?: string;
   salesPerson?: string;
   specialRemarks?: string;
+  blockNo?: string;
+  blockLocation?: string;
   updatedBy?: string;
   updateTimestamp?: string;
 }
@@ -1743,6 +1745,3 @@ export interface OperationDashboardSummary {
   comparisonLabel: string;
   groups: OperationDashboardMetricGroup[];
 }
-
-
-

@@ -156,8 +156,6 @@ import { QualityComplaintCapa } from "./pages/QualityComplaintCapa";
 import { QualityCapaMaster } from "./pages/QualityCapaMaster";
 import { QualityPendingCapa } from "./pages/QualityPendingCapa";
 import { QcSpecCardIssueReturn, QcSpecCardIssueReturnForm } from "./pages/QcSpecCardIssueReturn";
-import { QcBlockRecord } from "./pages/QcBlockRecord";
-import { QcBlockRecordForm } from "./pages/QcBlockRecordForm";
 import { QcBlockLocationMaster } from "./pages/QcBlockLocationMaster";
 import { PreDispatchInspection, PreDispatchInspectionForm } from "./pages/PreDispatchInspection";
 import { QcSampleRequirement } from "./pages/QcSampleRequirement";
@@ -380,10 +378,7 @@ export default function App() {
           <Route path="quality/complaints/:id/capa" element={<QualityComplaintCapa />} />
           <Route path="quality/capa/master" element={<QualityCapaMaster />} />
           <Route path="quality/spec-card-issue-return" element={<QcSpecCardIssueReturn />} />
-          <Route path="quality/spec-card-issue-return/form" element={<QcSpecCardIssueReturnForm />} />
-          <Route path="quality/block-record" element={<QcBlockRecord />} />
-          <Route path="quality/block-record/form" element={<QcBlockRecordForm />} />
-          <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
+          <Route path="quality/spec-card-issue-return/form" element={<QcSpecCardIssueReturnForm />} />          <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
           <Route path="quality/pre-dispatch-inspection" element={<PreDispatchInspection />} />
           <Route path="quality/pre-dispatch-inspection/form" element={<PreDispatchInspectionForm />} />
           <Route path="quality/sample-requirement" element={<QcSampleRequirement />} />
@@ -452,4 +447,3 @@ export default function App() {
     </HashRouter>
   );
 }
-
