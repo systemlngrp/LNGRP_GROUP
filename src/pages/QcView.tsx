@@ -55,11 +55,12 @@ const checkColumnValues = (checkNo: unknown, operatorValue: string, driveValue: 
   cutting[index - 1] = cuttingValue;
   return { checks: values, cutting };
 };
-const LinkCell = ({ value }: { value: unknown }) => isUrl(value) ? <button type="button" onClick={() => window.open(s(value), "_blank", "noopener,noreferrer")} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><ExternalLink size={13} />Open</button> : <>{s(value)}</>;
+const OpenLinkButton = ({ href, newTab = false }: { href: string; newTab?: boolean }) => <a href={href} target={newTab ? "_blank" : undefined} rel={newTab ? "noopener noreferrer" : undefined} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><ExternalLink size={13} />Open</a>;
+const LinkCell = ({ value }: { value: unknown }) => isUrl(value) ? <OpenLinkButton href={s(value)} newTab /> : <>{s(value)}</>;
 const SpecCell = ({ value, erp }: { value: unknown; erp: unknown }) => {
   const label = s(value);
   const erpCode = s(erp);
-  return erpCode ? <a href={`/#/masters/spec?erp=${encodeURIComponent(erpCode)}`} className="text-blue-700 underline hover:text-blue-900" title={`Open New Spec for ERP ${erpCode}`}>{label || "Open New Spec"}</a> : <>{label}</>;
+  return erpCode ? <OpenLinkButton href={`/#/masters/spec?erp=${encodeURIComponent(erpCode)}`} /> : <>{label}</>;
 };
 
 const isPassingPdi = (value: unknown) => ["pass", "qc pass"].includes(key(value));
