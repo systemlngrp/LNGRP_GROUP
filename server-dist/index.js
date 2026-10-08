@@ -12857,43 +12857,47 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
         const existingBlock = existingBlocks[0];
         const existingStereo = existingStereos[0];
         if (existingBlock || existingStereo) {
-            await conn.commit();
-            return res.json({ ok: true, id, stereoId });
+            if (existingBlock && existingStereo &&
+                String(existingBlock.firmId || "") === firmId &&
+                String(existingBlock.blockLocation || "") === blockLocation &&
+                String(existingBlock.blockNo || "") === blockNo &&
+                String(existingStereo.npdId || "") === npdId &&
+                String(existingStereo.location || "") === blockLocation &&
+                String(existingStereo.blockNo || "") === blockNo) {
+                await conn.commit();
+                return res.json({ ok: true, id, stereoId });
+            }
+            await conn.rollback();
+            return res.status(409).json({ error: "This save ID already belongs to another record." });
         }
+        const [firmRows] = firmId ? await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]) : [[]];
+        const [npdRows] = await conn.query("SELECT erp, itemName, customerName FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
+        const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [blockLocation]);
+        const firm = firmRows[0];
+        const npd = npdRows[0];
+        if ((firmId && !firm) || !npd || !locationRows[0] || !String(npd.erp || "").trim()) {
+            await conn.rollback();
+            return res.status(400).json({ error: "Select a valid firm, NPD item, and active Block Location." });
+        }
+        const erpCode = String(npd.erp).trim();
+        const partyName = String(npd.customerName || "").trim();
+        const itemName = String(npd.itemName || "").trim();
+        const updatedBy = String(user.name || user.userId || user.email || "").trim();
+        const updateTimestamp = new Date().toISOString();
+        await conn.query("INSERT INTO `qc_block_records` (id, firmId, firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, firmId || null, firm?.firmName || null, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
+        await conn.query("INSERT INTO `printing_stereo_records` (id, npdId, erpCode, partyName, itemName, location, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [stereoId, npdId, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
+        await conn.commit();
+        return res.status(201).json({ ok: true, id, stereoId });
+    }
+    catch (error) {
         await conn.rollback();
-        return res.status(409).json({ error: "This save ID already belongs to another record." });
+        console.error("[BLOCK_RECORD] paired save failed:", error);
+        return res.status(500).json({ error: "Unable to save Block Record and Printing Stereo record together." });
     }
     finally {
+        conn.release();
     }
-    const [firmRows] = firmId ? await conn.query("SELECT firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]) : [[]];
-    const [npdRows] = await conn.query("SELECT erp, itemName, customerName FROM `npd` WHERE id = ? LIMIT 1", [npdId]);
-    const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE name = ? AND LOWER(active) = 'yes' LIMIT 1", [blockLocation]);
-    const firm = firmRows[0];
-    const npd = npdRows[0];
-    if ((firmId && !firm) || !npd || !locationRows[0] || !String(npd.erp || "").trim()) {
-        await conn.rollback();
-        return res.status(400).json({ error: "Select a valid firm, NPD item, and active Block Location." });
-    }
-    const erpCode = String(npd.erp).trim();
-    const partyName = String(npd.customerName || "").trim();
-    const itemName = String(npd.itemName || "").trim();
-    const updatedBy = String(user.name || user.userId || user.email || "").trim();
-    const updateTimestamp = new Date().toISOString();
-    await conn.query("INSERT INTO `qc_block_records` (id, firmId, firmName, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [id, firmId || null, firm?.firmName || null, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
-    await conn.query("INSERT INTO `printing_stereo_records` (id, npdId, erpCode, partyName, itemName, location, blockNo, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", [stereoId, npdId, erpCode, partyName, itemName, blockLocation, blockNo, updatedBy, updateTimestamp]);
-    await conn.commit();
-    return res.status(201).json({ ok: true, id, stereoId });
 });
-try { }
-catch (error) {
-    await conn.rollback();
-    console.error("[BLOCK_RECORD] paired save failed:", error);
-    return res.status(500).json({ error: "Unable to save Block Record and Printing Stereo record together." });
-}
-finally {
-    conn.release();
-}
-;
 entities.forEach(entity => {
     const handlers = createHandlers(entity);
     const route = `/api/${entity.replace(/_/g, "-")}`;
@@ -12941,9 +12945,6 @@ entities.forEach(entity => {
 // mysql2 handles objects/arrays as JSON if specified in the query.
 registerSalesOrderSync(app, getPool);
 async function startServer() {
-    await initDb();
-    const db = await getPool();
-    await ensureProductionProcessingAuditColumns(db);
     if (process.env.NODE_ENV !== "production") {
         const vite = await createViteServer({
             server: { middlewareMode: true },
@@ -12960,6 +12961,16 @@ async function startServer() {
     }
     app.listen(PORT, "0.0.0.0", () => {
         console.log(`Server running on http://localhost:${PORT}`);
+    });
+    // Database setup can take longer than the proxy's startup timeout.
+    // Keep the web server available while migrations run.
+    void (async () => {
+        await initDb();
+        const db = await getPool();
+        if (db)
+            await ensureProductionProcessingAuditColumns(db);
+    })().catch((error) => {
+        console.error("[SERVER] Database initialization failed:", error);
     });
 }
 startServer().catch((error) => {

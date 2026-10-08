@@ -13915,6 +13915,13 @@ app.post("/api/block-records/create-with-stereo", requireAuth, async (req, res) 
     const existingBlock = (existingBlocks as any[])[0];
     const existingStereo = (existingStereos as any[])[0];
     if (existingBlock || existingStereo) {
+      if (existingBlock && existingStereo &&
+          String(existingBlock.firmId || "") === firmId &&
+          String(existingBlock.blockLocation || "") === blockLocation &&
+          String(existingBlock.blockNo || "") === blockNo &&
+          String(existingStereo.npdId || "") === npdId &&
+          String(existingStereo.location || "") === blockLocation &&
+          String(existingStereo.blockNo || "") === blockNo) {
         await conn.commit();
         return res.json({ ok: true, id, stereoId });
       }
@@ -13999,10 +14006,6 @@ entities.forEach(entity => {
 registerSalesOrderSync(app, getPool);
 
 async function startServer() {
-  await initDb();
-  const db = await getPool();
-  await ensureProductionProcessingAuditColumns(db);
-
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -14019,6 +14022,15 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+  // Database setup can take longer than the proxy's startup timeout.
+  // Keep the web server available while migrations run.
+  void (async () => {
+    await initDb();
+    const db = await getPool();
+    if (db) await ensureProductionProcessingAuditColumns(db);
+  })().catch((error) => {
+    console.error("[SERVER] Database initialization failed:", error);
   });
 }
 
