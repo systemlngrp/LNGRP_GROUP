@@ -49,6 +49,8 @@ export function NewSpec() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState("NPD_Card.pdf");
   const downloadUrlRef = useRef<string | null>(null);
+  const queryErp = useMemo(() => new URLSearchParams(window.location.search).get("erp")?.trim() || "", []);
+  const autoRequestedRef = useRef(false);
   const phpItems = useMemo(() => phpRows.map((row: any) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean), [phpRows]);
   const plateItems = useMemo(() => plateRows.map((row: any) => normalizeOrderCatalogItem(row, "PLATE")).filter(Boolean), [plateRows]);
   const erpOptions = useMemo(() => npdItems
@@ -67,8 +69,8 @@ export function NewSpec() {
 
   useEffect(() => () => { if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current); }, []);
 
-  const showSpec = async () => {
-    const normalizedErp = erp.trim();
+  const showSpec = async (requestedErp = erp) => {
+    const normalizedErp = requestedErp.trim();
     if (!normalizedErp) return setMessage("Enter an ERP code to show the specification.");
     const item = npdItems.find((row) => text(row.erp).toLowerCase() === normalizedErp.toLowerCase());
     if (!item) return setMessage(`ERP ${normalizedErp} was not found in the item master.`);
@@ -93,6 +95,20 @@ export function NewSpec() {
       setMessage("Unable to generate the specification PDF. Please try again.");
     } finally { setStatus("idle"); }
   };
+
+  useEffect(() => {
+    if (autoRequestedRef.current || !queryErp || !npdItems.length) return;
+    autoRequestedRef.current = true;
+    const match = npdItems.find((row) => text(row.erp).toLowerCase() === queryErp.toLowerCase());
+    if (!match) {
+      setErp(queryErp);
+      setMessage(`ERP ${queryErp} was not found in the item master.`);
+      return;
+    }
+    const matchedErp = text(match.erp);
+    setErp(matchedErp);
+    void showSpec(matchedErp);
+  }, [npdItems, queryErp]);
 
   const downloadSpec = () => { if (!downloadUrl) return; const link = document.createElement("a"); link.href = downloadUrl; link.download = downloadName; link.click(); };
   const issueDate = new Date().toLocaleDateString("en-GB");
