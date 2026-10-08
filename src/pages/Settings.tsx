@@ -370,11 +370,15 @@ export function SettingsPage() {
   const [materialNumberingErrors, setMaterialNumberingErrors] = useState<Partial<Record<MaterialNumberingKey, string>>>({});
   const [samplingPlanQtyDraft, setSamplingPlanQtyDraft] = useState({ divisor: "2000", minimum: "2", maximum: "4" });
   const [samplingPlanQtyError, setSamplingPlanQtyError] = useState("");
+  const [qcBgsmToleranceDraft, setQcBgsmToleranceDraft] = useState("3");
+  const [qcBgsmToleranceError, setQcBgsmToleranceError] = useState("");
 
   const currentSetting = settings[0];
 
   useEffect(() => { setSamplingPlanQtyDraft({ divisor: String(currentSetting?.samplingPlanQtyDivisor || 2000), minimum: String(currentSetting?.samplingPlanQtyMin || 2), maximum: String(currentSetting?.samplingPlanQtyMax || 4) }); }, [currentSetting?.samplingPlanQtyDivisor, currentSetting?.samplingPlanQtyMin, currentSetting?.samplingPlanQtyMax]);
+  useEffect(() => { setQcBgsmToleranceDraft(String(currentSetting?.qcBgsmTolerancePercent ?? 3)); }, [currentSetting?.qcBgsmTolerancePercent]);
   const saveSamplingPlanQty = async () => { const divisor=Number(samplingPlanQtyDraft.divisor), minimum=Number(samplingPlanQtyDraft.minimum), maximum=Number(samplingPlanQtyDraft.maximum); if (!Number.isFinite(divisor)||divisor<=0) return setSamplingPlanQtyError("Divisor must be greater than zero."); if (!Number.isInteger(minimum)||minimum<=0) return setSamplingPlanQtyError("Minimum must be a positive whole number."); if (!Number.isInteger(maximum)||maximum<minimum) return setSamplingPlanQtyError("Maximum must be a whole number greater than or equal to minimum."); setSamplingPlanQtyError(""); await handleChange({ samplingPlanQtyDivisor: divisor, samplingPlanQtyMin: minimum, samplingPlanQtyMax: maximum }); };
+  const saveQcBgsmTolerance = async () => { const value = Number(qcBgsmToleranceDraft); if (!Number.isFinite(value) || value < 0) return setQcBgsmToleranceError("Tolerance must be zero or greater."); setQcBgsmToleranceError(""); await handleChange({ qcBgsmTolerancePercent: value }); };
   const isPankajUser = String(user?.email || "").trim().toLowerCase() === GLOBAL_ITEM_RENAME_ALLOWED_EMAIL;
   const allowInvoiceTallyEdit = currentSetting?.allowInvoiceTallyEdit === "Yes";
 
@@ -707,6 +711,7 @@ export function SettingsPage() {
         samplingPlanQtyDivisor: Number(currentSetting?.samplingPlanQtyDivisor || 2000),
         samplingPlanQtyMin: Number(currentSetting?.samplingPlanQtyMin || 2),
         samplingPlanQtyMax: Number(currentSetting?.samplingPlanQtyMax || 4),
+        qcBgsmTolerancePercent: Number(currentSetting?.qcBgsmTolerancePercent ?? 3),
         organizationLogo: currentSetting?.organizationLogo || "",
         updatedBy: "System User",
         updateTimestamp: timestamp,
@@ -1862,6 +1867,7 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">Sampling Plan Quantity</h3><p className="text-sm leading-6 text-black">Plan Quantity is divided by the configured divisor, rounded up, and clamped between the minimum and maximum.</p><div className="grid grid-cols-1 gap-3 md:grid-cols-3"><label>Divisor<input type="number" min="1" step="any" value={samplingPlanQtyDraft.divisor} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, divisor: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Minimum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.minimum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, minimum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Maximum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.maximum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, maximum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label></div>{samplingPlanQtyError && <div className="font-bold text-red-700">{samplingPlanQtyError}</div>}<button type="button" onClick={() => void saveSamplingPlanQty()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save Sampling Settings</button></div>
+        <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">QC BGSM Formula</h3><p className="text-sm leading-6 text-black">BGSM minimum and maximum are calculated around Required B.GSM using this tolerance percentage.</p><div className="max-w-xs"><label>Tolerance (%)<input type="number" min="0" step="any" value={qcBgsmToleranceDraft} onChange={(event) => setQcBgsmToleranceDraft(event.target.value)} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label></div>{qcBgsmToleranceError && <div className="font-bold text-red-700">{qcBgsmToleranceError}</div>}<button type="button" onClick={() => void saveQcBgsmTolerance()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save BGSM Formula</button></div>
 
         <div className="flex flex-col space-y-2">
           <label htmlFor="flapAsPerCalculation" className="text-xs font-black uppercase tracking-wide text-black">

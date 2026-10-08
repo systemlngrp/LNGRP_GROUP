@@ -1673,6 +1673,7 @@ export interface Setting {
   samplingPlanQtyDivisor?: number;
   samplingPlanQtyMin?: number;
   samplingPlanQtyMax?: number;
+  qcBgsmTolerancePercent?: number;
   organizationLogo?: string;
   updatedBy?: string;
   updateTimestamp?: string;
