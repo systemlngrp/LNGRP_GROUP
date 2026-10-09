@@ -814,6 +814,7 @@ function onOpen() {
 
   menu
     .addItem('Sync Latest Rates', 'syncNpdRatesFromHostinger')
+    .addItem('Format PDI Report', 'setupPdiReportConditionalFormatting')
     .addItem('Install Rate Trigger', 'installRateSyncTrigger')
     .addToUi();
 }

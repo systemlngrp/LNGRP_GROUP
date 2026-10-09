@@ -26,9 +26,11 @@ const headerColor = (index: number) => {
   if (index < 32) return "bg-[#fff2cc] text-black";
   return "bg-[#ee00ee] text-black";
 };
-const NPD_COLUMNS = new Set(["Required Length", "Min length", "Max Length", "Required Width", "Width Min", "Width Max", "Required Height", "Height Min", "Height Max", "Artwork", "Ply", "Standard CS", "STD CS"]);
-const PDI_COLUMNS = new Set(["Achieved Length", "Achieved Width", "Achieved Height", "CS Act / CS STD", "B.GSM", "Box Weight (Grams)", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Remarks [IF ANY]", "Box Photo [FRONT]", "Box Photo [BACK]", "Result", "QC Person Name", "PDI TIME", "Actual CS"]);
-const sourceCellClass = (column: string) => NPD_COLUMNS.has(column) ? "bg-[#c8daf7]" : PDI_COLUMNS.has(column) ? "bg-[#b5d6a7]" : "";
+const NPD_COLUMNS = new Set(["Required Length", "Required Width", "Required Height", "Artwork", "Ply", "Standard CS", "STD CS"]);
+const NPD_RANGE_COLUMNS = new Set(["Min length", "Max Length", "Width Min", "Width Max", "Height Min", "Height Max"]);
+const PDI_TECHNICAL_COLUMNS = new Set(["CS Act / CS STD", "B.GSM", "Box Weight (Grams)"]);
+const PDI_COLUMNS = new Set(["Achieved Length", "Achieved Width", "Achieved Height", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Remarks [IF ANY]", "Box Photo [FRONT]", "Box Photo [BACK]", "Result", "QC Person Name", "PDI TIME", "Actual CS"]);
+const sourceCellClass = (column: string) => NPD_RANGE_COLUMNS.has(column) ? "bg-[#ffff00]" : PDI_TECHNICAL_COLUMNS.has(column) ? "bg-[#cc4125]" : NPD_COLUMNS.has(column) ? "bg-[#c8daf7]" : PDI_COLUMNS.has(column) ? "bg-[#b5d6a7]" : "";
 const s = (v: unknown) => String(v ?? "").trim(); const key = (v: unknown) => s(v).toLowerCase(); const same = (a: unknown, b: unknown) => key(a) === key(b); const isLink = (v: unknown) => /^https?:\/\//i.test(s(v)) || s(v).startsWith("/uploads/"); const LinkCell = ({ value }: { value: unknown }) => isLink(value) ? <a href={s(value)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><ExternalLink size={13} />Open</a> : <>{s(value)}</>;
 
 export function PdiReport() {
