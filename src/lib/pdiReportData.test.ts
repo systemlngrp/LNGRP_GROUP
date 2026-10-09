@@ -19,7 +19,6 @@ const item = {
   heightId: "120",
   ply: 5,
   csKgStd: "180",
-  csKgTarget: "200",
   artwork: "https://example.com/artwork",
 } as unknown as NpdPdiItem;
 
@@ -79,7 +78,7 @@ test("uses NPD specifications and saved inspection values for the report", () =>
   assert.equal(row["Box Weight (Grams)"], 440);
   assert.equal(row.Ply, 5);
   assert.equal(row["Standard CS"], 180);
-  assert.equal(row["STD CS"], 200);
+  assert.equal(row["STD CS"], 180);
   assert.equal(row["Actual CS"], 185);
 });
 
@@ -90,6 +89,7 @@ test("leaves inspection data and invalid dimension ranges empty", () => {
   assert.equal(row["Box Photo [FRONT]"], "");
   assert.equal(row.Result, "");
   assert.equal(row["Actual CS"], "");
+  assert.equal(buildPdiReportRow(production, undefined, inspection)["STD CS"], 0);
   assert.deepEqual(dimensionRange("430", ""), { min: "", max: "" });
   assert.deepEqual(dimensionRange("invalid", 5), { min: "", max: "" });
 });

@@ -5,7 +5,6 @@ export type NpdPdiItem = Item & {
   breadthId?: number | string;
   heightId?: number | string;
   csKgStd?: number | string;
-  csKgTarget?: number | string;
 };
 
 export type PdiReportRow = Record<string, string | number>;
@@ -103,7 +102,7 @@ export function buildPdiReportRow(
     "PDI TIME": text(inspection?.inspectionDate),
     Ply: displayNumber(item?.ply),
     "Standard CS": displayNumber(item?.csKgStd),
-    "STD CS": displayNumber(item?.csKgTarget),
+    "STD CS": text(item?.csKgStd) ? displayNumber(item?.csKgStd) : 0,
     "Actual CS": displayNumber(inspection?.csAchieved),
   };
 }
