@@ -772,18 +772,9 @@ export function BoardLineQcMaster() {
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          <select value={jobFilter} onChange={(event) => setJobFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
-            <option value="">Job No.</option>
-            {filterOptions.jobs.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-          <select value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
-            <option value="">Party Name</option>
-            {filterOptions.parties.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-          <select value={qcPersonFilter} onChange={(event) => setQcPersonFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
-            <option value="">QC Person</option>
-            {filterOptions.qcPeople.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
+          <Select compact value={jobFilter} onChange={setJobFilter} options={filterOptions.jobs.map((value) => ({ value, label: value }))} placeholder="Job No." noOptionsMessage="No matching job no."/>
+          <Select compact value={partyFilter} onChange={setPartyFilter} options={filterOptions.parties.map((value) => ({ value, label: value }))} placeholder="Party Name" noOptionsMessage="No matching party name"/>
+          <Select compact value={qcPersonFilter} onChange={setQcPersonFilter} options={filterOptions.qcPeople.map((value) => ({ value, label: value }))} placeholder="QC Person" noOptionsMessage="No matching qc person"/>
           <select value={warningFilter} onChange={(event) => setWarningFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
             <option>All</option>
             <option>With Warning</option>
