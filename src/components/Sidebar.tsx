@@ -199,7 +199,14 @@ const sampleItems: NavItem[] = [
 ];
 
 const qualityItems: NavEntry[] = [
-  { name: "PDI Report", href: "/quality/pdi-report", icon: ClipboardList },
+  {
+    section: "PDI",
+    items: [
+      { name: "PDI Report", href: "/quality/pdi-report", icon: ClipboardList },
+      { name: "PDI Form", href: "/quality/pre-dispatch-inspection/form", icon: ClipboardList },
+      { name: "PDI Master", href: "/quality/pre-dispatch-inspection", icon: Database },
+    ],
+  },
   {
     section: "Complaint",
     items: [
@@ -250,8 +257,6 @@ const qualityItems: NavEntry[] = [
   { name: "Spec QC Form", href: "/quality/spec-card-issue-return/form", icon: ClipboardList },
   { name: "Spec QC Master", href: "/quality/spec-card-issue-return", icon: Database },
   { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },
-  { name: "Pre-Dispatch Inspection Form", href: "/quality/pre-dispatch-inspection/form", icon: ClipboardList },
-  { name: "Pre-Dispatch Inspection Master", href: "/quality/pre-dispatch-inspection", icon: Database },
 ];
 
 const dispatchItems: NavItem[] = [
