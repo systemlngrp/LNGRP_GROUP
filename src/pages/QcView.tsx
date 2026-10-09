@@ -33,6 +33,9 @@ const columnHighlightClass = (column: string) => REQUIRED_COLUMNS.has(column)
   : CHECK_COLUMNS.has(column)
     ? "bg-[#b5d6a7] text-slate-950 font-bold"
     : "";
+const columnHeaderClass = (column: string) => REQUIRED_COLUMNS.has(column) || CHECK_COLUMNS.has(column)
+  ? "bg-[#0a5494] text-white font-bold"
+  : "";
 type Row = Record<string, string | number>;
 const s = (v: unknown) => String(v ?? "").trim(); const key = (v: unknown) => s(v).toLowerCase(); const n = (v: unknown): string | number => v === "" || v == null ? "" : Number.isFinite(Number(v)) ? Number(v) : s(v); const isUrl = (v: unknown) => /^https?:\/\//i.test(s(v));
 const formatDate = (value: unknown) => { const normalized = dateKey(value); return normalized ? `${normalized.slice(8, 10)}-${normalized.slice(5, 7)}-${normalized.slice(0, 4)}` : s(value); };
@@ -125,7 +128,7 @@ export function QcView() {
       <table className="min-w-[4200px] border-collapse text-[11px]">
         <thead>
           <tr className="h-[34px]">{visibleGroups.map((group) => <th key={group.label} colSpan={group.columns.length} className={`sticky top-0 z-20 border border-black px-3 py-2 text-center text-sm font-extrabold ${group.group}`}>{group.label}</th>)}</tr>
-          <tr>{visibleGroups.flatMap((group) => group.columns.map((column) => <th key={column} aria-sort={column === "Date" ? dateSort === "asc" ? "ascending" : "descending" : undefined} className={`sticky top-[34px] z-20 min-w-[92px] whitespace-normal border border-black px-2 py-2 text-center font-bold leading-tight ${group.head} ${columnHighlightClass(column)}`}>{column === "Date" ? <button type="button" onClick={() => setDateSort((current) => current === "asc" ? "desc" : "asc")} className="w-full font-bold" title={`Sort by date ${dateSort === "asc" ? "newest first" : "oldest first"}`}>Date {dateSort === "asc" ? "?" : "?"}</button> : column}</th>))}</tr>
+          <tr>{visibleGroups.flatMap((group) => group.columns.map((column) => <th key={column} aria-sort={column === "Date" ? dateSort === "asc" ? "ascending" : "descending" : undefined} className={`sticky top-[34px] z-20 min-w-[92px] whitespace-normal border border-black px-2 py-2 text-center font-bold leading-tight ${group.head} ${columnHeaderClass(column)}`}>{column === "Date" ? <button type="button" onClick={() => setDateSort((current) => current === "asc" ? "desc" : "asc")} className="w-full font-bold" title={`Sort by date ${dateSort === "asc" ? "newest first" : "oldest first"}`}>Date {dateSort === "asc" ? "?" : "?"}</button> : column}</th>))}</tr>
         </thead>
       <tbody>{paginatedItems.length ? paginatedItems.map((row, ri) => <tr key={`${row["Job No."]}-${(page - 1) * pageSize + ri}`} className="odd:bg-white even:bg-slate-50">{visibleColumnList.map((column) => { const rowColorClass = column === "Job No." ? jobNumberCellClass(row.Date, row["PDI RESULT"]) : ["Date", "Party Name", "Item Name", "ERP Code"].includes(column) ? jobDateCellClass(row.Date) : ""; const colorClass = columnHighlightClass(column) || rowColorClass; const cellClass = column === MESSAGE_COLUMN ? "w-[320px] min-w-[320px] max-w-[320px] whitespace-normal break-words leading-5" : "max-w-[260px] whitespace-normal break-words"; return <td key={column} className={`${cellClass} border border-black px-2 py-2 align-top ${colorClass}`}>{column === "SL No." ? (page - 1) * pageSize + ri + 1 : column === "Spec" ? <SpecCell value={row[column]} erp={row["ERP Code"]}/> : column === "Artwork" ? <LinkCell value={row[column]}/> : row[column] === "" ? "-" : row[column]}</td>; })}</tr>) : <tr><td colSpan={visibleColumnList.length} className="p-8 text-center font-semibold">No open QC jobs match the selected filters.</td></tr>}</tbody>
       </table>
