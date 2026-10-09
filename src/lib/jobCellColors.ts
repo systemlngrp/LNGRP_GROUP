@@ -36,3 +36,5 @@ export const jobNumberCellClass = (date: unknown, result: unknown, now = new Dat
   if (jobDate && jobDate < localDateKey(now)) return "bg-[#ffff00] text-slate-950 font-bold";
   return jobDateCellClass(date, now);
 };
+
+export const qcResultCellClass = (result: unknown): string => { const normalized = String(result ?? "").trim().toLowerCase(); if (["qc pass", "pass"].includes(normalized)) return "bg-[#b7e1cd] text-slate-950 font-bold"; if (["qc hold", "hold", "qc fail", "fail"].includes(normalized)) return "bg-[#f4cccc] text-slate-950 font-bold"; return ""; };
