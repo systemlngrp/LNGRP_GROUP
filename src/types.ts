@@ -1665,6 +1665,7 @@ export interface Setting {
   allowInvoiceTallyEdit?: string;
   allowInvoiceTallyEditUsers?: string;
   productionFormVisibleColumns?: string;
+  pdiReportVisibleColumns?: string;
   poMandatoryMrrTypes?: string;
   realizationPerKgTargets?: string;
   invoiceNumberSeries?: string;

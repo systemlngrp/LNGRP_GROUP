@@ -9,6 +9,12 @@ function setupPdiReportConditionalFormatting() {
   const firstRow = 4;
   const lastRow = 5090;
   const rules = sheet.getConditionalFormatRules();
+  const titleRow = sheet.getRange(1, 1, 1, sheet.getLastColumn());
+  titleRow.setBackground('#0b3640')
+    .setFontColor('#ffffff')
+    .setFontWeight('bold')
+    .setHorizontalAlignment('center')
+    .setVerticalAlignment('middle');
   const targetA1 = new Set(['H4:H5090', 'L4:L5090', 'P4:P5090']);
   const headerRow = sheet.getRange(3, 1, 1, sheet.getLastColumn()).getDisplayValues()[0]
     .map((header) => String(header || '').trim().toLowerCase());
