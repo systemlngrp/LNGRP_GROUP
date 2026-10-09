@@ -64,7 +64,7 @@ export function buildPdiReportRow(
   const widthRange = dimensionRange(requiredWidth, item?.ply);
   const heightRange = dimensionRange(requiredHeight, item?.ply);
   const achievedCs = text(inspection?.csAchieved);
-  const requiredCs = text(inspection?.csRequired);
+  const standardCs = text(item?.csKgStd);
 
   return {
     "Job. No.": text(production.transactionNo || production.jobCardNo),
@@ -85,7 +85,7 @@ export function buildPdiReportRow(
     "Achieved Height": displayNumber(inspection?.heightId),
     "Height Min": heightRange.min,
     "Height Max": heightRange.max,
-    "CS Act / CS STD": achievedCs && requiredCs ? achievedCs + " / " + requiredCs : "",
+    "CS Act / CS STD": achievedCs ? (standardCs ? achievedCs + " / " + standardCs : achievedCs) : "",
     "B.GSM": displayNumber(inspection?.bGsm),
     "Box Weight (Grams)": displayNumber(inspection?.boxWeightGrams),
     Artwork: text(item?.artwork),
