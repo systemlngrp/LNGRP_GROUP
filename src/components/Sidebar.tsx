@@ -75,6 +75,7 @@ export type NavItem = {
   href: string;
   icon: LucideIcon;
   countKey?: string;
+  disabled?: boolean;
 };
 
 export type NavSubGroup = {
@@ -200,6 +201,20 @@ const sampleItems: NavItem[] = [
 
 const qualityItems: NavEntry[] = [
   {
+    section: "BoardLine QC Check",
+    items: [
+      { name: "Board Line QC Form", href: "/quality/boardline-qc/form", icon: ClipboardList },
+      { name: "Board Line QC Master", href: "/quality/boardline-qc/master", icon: Database },
+    ],
+  },
+  {
+    section: "Printing QC Check",
+    items: [
+      { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },
+      { name: "Printing QC Master", href: "/quality/printing-qc/master", icon: Database },
+    ],
+  },
+  {
     section: "PDI",
     items: [
       { name: "PDI Report", href: "/quality/pdi-report", icon: ClipboardList },
@@ -217,48 +232,60 @@ const qualityItems: NavEntry[] = [
     ],
   },
   {
-    section: "QC Check",
+    section: "QC Master",
     items: [
-      {
-        section: "Board QC Check",
-        items: [
-          { name: "Board Line QC Form", href: "/quality/boardline-qc/form", icon: ClipboardList },
-          { name: "Board Line QC Master", href: "/quality/boardline-qc/master", icon: Database },
-        ],
-      },
-      {
-        section: "Printing QC",
-        items: [
-          { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },
-          { name: "Printing QC Master", href: "/quality/printing-qc/master", icon: Database },
-          { name: "Printing Wastage Form", href: "/quality/printing-wastage/form", icon: ClipboardList },
-          { name: "Printing Wastage Master", href: "/quality/printing-wastage/master", icon: Database },
-        ],
-      },
-      {
-        section: "QC Master",
-        items: [
-          { name: "QC Update Form", href: "/quality/qc-update/form", icon: ClipboardList },
-          { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
-          { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
-        ],
-      },
-      {
-        section: "Special Remark",
-        items: [
-          { name: "Special Remark Form", href: "/quality/special-remarks/form", icon: ClipboardList },
-          { name: "Special Remark Master", href: "/quality/special-remarks", icon: Database },
-        ],
-      },
+      { name: "QC Update Form", href: "/quality/qc-update/form", icon: ClipboardList },
+      { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
+      { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
+    ],
+  },
+  {
+    section: "Printing Wastage",
+    items: [
+      { name: "Printing Wastage Form", href: "/quality/printing-wastage/form", icon: ClipboardList },
+      { name: "Printing Wastage Master", href: "/quality/printing-wastage/master", icon: Database },
+    ],
+  },
+  {
+    section: "PHP and Plate",
+    items: [
+      { name: "Coming Soon", href: "#", icon: Hammer, disabled: true },
+    ],
+  },
+  {
+    section: "Spec Card",
+    items: [
+      { name: "Spec QC Form", href: "/quality/spec-card-issue-return/form", icon: ClipboardList },
+      { name: "Spec QC Master", href: "/quality/spec-card-issue-return", icon: Database },
+    ],
+  },
+  {
+    section: "Special Remark",
+    items: [
+      { name: "Special Remark Form", href: "/quality/special-remarks/form", icon: ClipboardList },
+      { name: "Special Remark Master", href: "/quality/special-remarks", icon: Database },
+    ],
+  },
+  {
+    section: "Block Records",
+    items: [
       { name: "Block Record Form", href: "/quality/block-record/form", icon: ClipboardList },
       { name: "Printing Stereo Records", href: "/quality/printing-stereo", icon: Database },
+    ],
+  },
+  {
+    section: "Control Records",
+    items: [
       { name: "Control Records", href: "/quality/control-record", icon: Database },
       { name: "Sample Entry Form", href: "/quality/control-record/form", icon: ClipboardList },
     ],
   },
-  { name: "Spec QC Form", href: "/quality/spec-card-issue-return/form", icon: ClipboardList },
-  { name: "Spec QC Master", href: "/quality/spec-card-issue-return", icon: Database },
-  { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },
+  {
+    section: "Block Location",
+    items: [
+      { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },
+    ],
+  },
 ];
 
 const dispatchItems: NavItem[] = [
@@ -693,7 +720,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
           return visible;
         }
 
-        if (hasAccess(entry.href)) visible.push(entry);
+        if (entry.disabled || hasAccess(entry.href)) visible.push(entry);
         return visible;
       }, []),
     [hasAccess]
@@ -773,6 +800,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   };
 
   const isActiveItem = (item: NavItem) => {
+    if (item.disabled) return false;
     const itemUrl = new URL(item.href, window.location.origin);
     return (item.href === "/" && location.pathname === "/") ||
       (item.href !== "/" &&
@@ -784,6 +812,25 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     const isActive = isActiveItem(item);
     const count = item.countKey ? counts[item.countKey] : (item as any).count || 0;
     const Icon = typeof item.icon === "function" ? item.icon : FileText;
+
+    if (item.disabled) {
+      return (
+        <div
+          key={item.name}
+          title={item.name}
+          aria-disabled="true"
+          className={cn(
+            "group flex items-start justify-between gap-2 rounded-sm py-1.5 text-[11px] text-white/50",
+            isCollapsed ? "px-2" : nested ? "pl-4 pr-2" : "px-2"
+          )}
+        >
+          <div className="flex min-w-0 flex-1 items-start">
+            <Icon className="mr-2 mt-0.5 h-4 w-4 shrink-0 text-white/40" aria-hidden="true" />
+            {!isCollapsed && <span className="block min-w-0 flex-1 whitespace-normal break-words leading-tight">{item.name}</span>}
+          </div>
+        </div>
+      );
+    }
 
     return (
       <Link
