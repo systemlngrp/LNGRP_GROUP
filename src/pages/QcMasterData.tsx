@@ -80,8 +80,8 @@ export function QcMasterData() {
       put("Individual Layer GSM", sourceValue([[item.l1, item.f1, item.l2, item.f2, item.l3, item.f3].filter((value: unknown) => text(value)).join(" / "), "NPD"]));
       put("CS", sourceValue([printing?.qcMasterCsSpec || printing?.csStandard, "Printing QC"], [item.cuttingSize, "NPD"]));
       put("BS", sourceValue([printing?.qcMasterBsSpec || printing?.bsStandard, "Printing QC"], [item.breadth, "NPD"]));
-      put("STACK NORMS", sourceValue());
-      put("WEIGHT & PACK DETAILS", sourceValue());
+      put("STACK NORMS", sourceValue([item.stackHeight, "NPD"]));
+      put("WEIGHT & PACK DETAILS", sourceValue([item.weightPackDetails, "NPD"], [item.weightAndPackDetails, "NPD"], [item.weightAndPackingDetails, "NPD"], [item.calculatedWeightPerBox, "NPD"], [item.standardWeightGms, "NPD"], [item.materialWeightInsideInOneBox, "NPD"]));
       put("BOX WEIGHT", sourceValue([printing?.boxWeightGrams, "Printing QC"], [item.plateWeight, "NPD"]));
       put("BF", sourceValue([item.bf || item.b3, "NPD"]));
       put("PHP", sourceValue());
