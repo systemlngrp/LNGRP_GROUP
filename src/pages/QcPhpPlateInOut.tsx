@@ -12,7 +12,7 @@ const normalize = (value: unknown) => clean(value).toLowerCase();
 const uniqueValues = (values: string[]) => [...new Set(values.filter(Boolean))].sort().map(value => ({ value, label: value }));
 
 type Source = "PHP" | "PLATE";
-type Mapping = { erpCode: string; masterErp: string; source: Source };
+type Mapping = { erpCode: string; masterErp: string; source: Source; itemName?: string };
 
 function firstValue(...values: unknown[]) {
   return values.map(clean).find(Boolean) || "";
@@ -22,14 +22,16 @@ function itemMapping(item: any, source: Source): Mapping | undefined {
   const raw = item?.raw || item;
   const erpCode = firstValue(item?.erp, raw?.erp, raw?.erpCode, raw?.erpItemCode);
   const masterErp = firstValue(item?.masterErp, raw?.masterErp, raw?.masterErpCode, raw?.masterItemNameErpCode);
-  return erpCode && masterErp ? { erpCode, masterErp, source } : undefined;
+  const itemName = firstValue(item?.itemName, item?.name, raw?.itemName, raw?.name);
+  return erpCode && masterErp ? { erpCode, masterErp, source, itemName: itemName || undefined } : undefined;
 }
 
 function jobMapping(job: any, source: Source): Mapping | undefined {
   const raw = job?.raw || job;
   const erpCode = firstValue(job?.erpCode, job?.erp, job?.itemErp, raw?.erpCode, raw?.erp, raw?.erpItemCode);
   const masterErp = firstValue(job?.masterErp, raw?.masterErp, raw?.masterErpCode, raw?.masterItemNameErpCode);
-  return erpCode && masterErp ? { erpCode, masterErp, source } : undefined;
+  const itemName = firstValue(job?.itemName, job?.name, raw?.itemName, raw?.name);
+  return erpCode && masterErp ? { erpCode, masterErp, source, itemName: itemName || undefined } : undefined;
 }
 
 function usePhpPlateData() {
@@ -45,7 +47,11 @@ function usePhpPlateData() {
       ...plateJobs.map((job: any) => jobMapping(job, "PLATE")),
     ].filter((row): row is Mapping => Boolean(row));
     const result = new Map<string, Mapping>();
-    rows.forEach(row => result.set(`${normalize(row.erpCode)}|${normalize(row.masterErp)}|${row.source}`, row));
+    rows.forEach(row => {
+      const key = `${normalize(row.erpCode)}|${normalize(row.masterErp)}|${row.source}`;
+      const existing = result.get(key);
+      result.set(key, existing ? { ...existing, itemName: existing.itemName || row.itemName } : row);
+    });
     return [...result.values()];
   }, [phpItems, plateItems, phpJobs, plateJobs]);
   return { mappings, phpJobs, plateJobs };
@@ -131,7 +137,7 @@ export function QcPhpPlateInOutForm() {
     }
   };
 
-  return <div className="mx-auto max-w-4xl space-y-5 text-black"><div className="flex items-center justify-between border-b border-black pb-4"><h2 className="text-xl font-bold uppercase">PHP-PLATE IN / OUT Form</h2></div>{message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}<div className="grid gap-4 rounded border-2 border-black bg-white p-5 md:grid-cols-2"><label className="font-bold">PHP/Plate ERP<Select value={erpCode} onChange={chooseErp} options={erpOptions} placeholder="Search PHP/Plate ERP" /></label><label className="font-bold">Master ERP<Select value={masterErp} onChange={chooseMaster} options={masterOptions} placeholder="Search Master ERP" /></label>{masterErp && matchingMappings.length > 1 && <div className="rounded border border-indigo-300 bg-indigo-50 p-3 text-sm md:col-span-2"><b>PHP/Plate ERP codes:</b> {matchingMappings.map(row => `${row.erpCode} (${row.source})`).join(", ")}</div>}<label className="font-bold">Action<div className="flex h-[42px] items-center gap-6 rounded border-2 border-black px-3"><label className="font-normal"><input type="radio" checked={action === "IN"} onChange={() => setAction("IN")} /> IN</label><label className="font-normal"><input type="radio" checked={action === "OUT"} onChange={() => setAction("OUT")} /> OUT</label></div></label><label className="font-bold">Location<input className={input} value={location} onChange={event => setLocation(event.target.value)} /></label><label className="font-bold">Zone<input className={input} value={zone} onChange={event => setZone(event.target.value)} /></label><label className="font-bold">Quantity<input className={input} type="number" min="0.01" step="0.01" value={quantity} onChange={event => setQuantity(event.target.value)} /></label></div><button type="button" onClick={() => void save()} className="rounded bg-indigo-700 px-5 py-2 font-bold text-white"><Plus size={17} className="mr-2 inline" />Save PHP/Plate Transaction</button></div>;
+  return <div className="mx-auto max-w-4xl space-y-5 text-black"><div className="flex items-center justify-between border-b border-black pb-4"><h2 className="text-xl font-bold uppercase">PHP-PLATE IN / OUT Form</h2></div>{message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}<div className="grid gap-4 rounded border-2 border-black bg-white p-5 md:grid-cols-2"><label className="font-bold">PHP/Plate ERP<Select value={erpCode} onChange={chooseErp} options={erpOptions} placeholder="Search PHP/Plate ERP" /></label><label className="font-bold">Master ERP<Select value={masterErp} onChange={chooseMaster} options={masterOptions} placeholder="Search Master ERP" /></label>{masterErp && matchingMappings.length > 1 && <div className="rounded border border-indigo-300 bg-indigo-50 p-3 text-sm md:col-span-2"><b>PHP/Plate items:</b> {matchingMappings.map(row => `${row.itemName || row.erpCode} (${row.source})`).join(", ")}</div>}<label className="font-bold">Action<div className="flex h-[42px] items-center gap-6 rounded border-2 border-black px-3"><label className="font-normal"><input type="radio" checked={action === "IN"} onChange={() => setAction("IN")} /> IN</label><label className="font-normal"><input type="radio" checked={action === "OUT"} onChange={() => setAction("OUT")} /> OUT</label></div></label><label className="font-bold">Location<input className={input} value={location} onChange={event => setLocation(event.target.value)} /></label><label className="font-bold">Zone<input className={input} value={zone} onChange={event => setZone(event.target.value)} /></label><label className="font-bold">Quantity<input className={input} type="number" min="0.01" step="0.01" value={quantity} onChange={event => setQuantity(event.target.value)} /></label></div><button type="button" onClick={() => void save()} className="rounded bg-indigo-700 px-5 py-2 font-bold text-white"><Plus size={17} className="mr-2 inline" />Save PHP/Plate Transaction</button></div>;
 }
 
 type Filters = { search: string; erpCode: string; masterErp: string; action: string };
