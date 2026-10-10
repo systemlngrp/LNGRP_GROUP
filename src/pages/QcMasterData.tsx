@@ -11,7 +11,9 @@ const COLUMNS = ["Sl No.", "ERP", "Party Name", "Item Name", "Artwork", "Spec", 
 const text = (value: unknown) => String(value ?? "").trim();
 const first = (...values: unknown[]) => values.map(text).find(Boolean) || "";
 const uploadHref = (value: unknown) => { const raw = text(value); if (!raw) return ""; if (/^(https?:)?\/\//i.test(raw) || /^blob:/i.test(raw)) return raw; return `/uploads/${raw.replace(/^\/?uploads\//i, "").split("/").map(encodeURIComponent).join("/")}`; };
-type MasterRow = Record<string, string | number> & { __isPreview?: boolean };`r`n`r`nconst columnBand = (column: string, header = false) => {
+type MasterRow = Record<string, string | number> & { __isPreview?: boolean };
+
+const columnBand = (column: string, header = false) => {
   if (column === "ITEM STATUS") return header ? "bg-[#24165f] text-white" : "bg-[#e7d9e5]";
   if (["ERP", "Party Name", "Item Name", "Artwork", "Spec", "Block No.", "Block Location"].includes(column)) return header ? "bg-[#0b4773] text-white" : "bg-white";
   if (["File No.", "Index No", "ZONE NO.", "Sample No."].includes(column)) return header ? "bg-[#0b4773] text-white" : "bg-[#b8e1d0]";
