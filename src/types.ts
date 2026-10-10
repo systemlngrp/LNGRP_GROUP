@@ -653,6 +653,18 @@ export interface ProductionProcessing {
   jobSetting?: number;
 }
 
+export interface QcPrintingWastage {
+  id: string;
+  timestamp: string;
+  productionId: string;
+  jobNo: string;
+  quantity: number;
+  firmId?: string;
+  firmName?: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface Company {
   id: string;
   name: string;

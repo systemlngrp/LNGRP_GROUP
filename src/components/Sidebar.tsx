@@ -231,6 +231,8 @@ const qualityItems: NavEntry[] = [
         items: [
           { name: "Printing QC Form", href: "/quality/printing-qc/form", icon: ClipboardList },
           { name: "Printing QC Master", href: "/quality/printing-qc/master", icon: Database },
+          { name: "Printing Wastage Form", href: "/quality/printing-wastage/form", icon: ClipboardList },
+          { name: "Printing Wastage Master", href: "/quality/printing-wastage/master", icon: Database },
         ],
       },
       {

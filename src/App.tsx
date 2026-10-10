@@ -99,6 +99,7 @@ import { QcUpdateForm } from "./pages/QcUpdateForm";
 import { SpecialRemarkForm, SpecialRemarkMaster } from "./pages/SpecialRemarks";
 import { PrintingStereoMaster } from "./pages/PrintingStereo";
 import { QcBlockRecordForm } from "./pages/QcBlockRecordForm";
+import { QcPrintingWastageForm, QcPrintingWastageMaster } from "./pages/QcPrintingWastage";
 import { ControlRecordMaster } from "./pages/ControlRecord";
 import { SampleEntryForm } from "./pages/SampleEntryForm";
 import { Users } from "./pages/Users";
@@ -367,6 +368,8 @@ export default function App() {
           <Route path="quality/boardline-qc/master" element={<BoardLineQcMaster />} />
           <Route path="quality/printing-qc/form" element={<PrintingQcForm />} />
           <Route path="quality/printing-qc/master" element={<PrintingQcMaster />} />
+          <Route path="quality/printing-wastage/form" element={<QcPrintingWastageForm />} />
+          <Route path="quality/printing-wastage/master" element={<QcPrintingWastageMaster />} />
           <Route path="quality/qc-master-data" element={<QcMasterData />} />
           <Route path="quality/qc-update/form" element={<QcUpdateForm />} />
           <Route path="quality/special-remarks/form" element={<SpecialRemarkForm />} />
