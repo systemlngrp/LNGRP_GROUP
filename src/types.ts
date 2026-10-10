@@ -1155,6 +1155,15 @@ export interface QualityComplaint {
   capaGeneratedAt?: string;
   capaStatus?: "Pending" | "Generated" | "Completed" | string;
   capaData?: {
+    defectDescription?: string;
+    defectPercentage?: string;
+    rejectionDetails?: string;
+    previousActionPlanStatus?: string;
+    productionFailureRootCause?: string;
+    detectionFailureRootCause?: string;
+    productionPreventiveAction?: string;
+    detectionPreventiveAction?: string;
+    targetDate?: string;
     immediateContainment?: string;
     rootCauseAnalysis?: string;
     correctiveAction?: string;
