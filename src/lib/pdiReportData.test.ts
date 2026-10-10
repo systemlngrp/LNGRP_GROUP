@@ -102,16 +102,16 @@ test("leaves inspection data and invalid dimension ranges empty", () => {
   assert.deepEqual(dimensionRange("invalid", 5), { min: "", max: "" });
 });
 
-test("finds the latest complaint before the production date by normalized ERP code", () => {
+test("finds the latest complaint for a normalized ERP code regardless of date", () => {
   const complaints = [
     { id: "old", erpCode: " 12345 ", dateOfComplaint: "2026-10-01", timestamp: "2026-10-01T08:00:00.000Z", issueDetails: "Old issue", lotNo: "LOT-OLD" },
     { id: "latest", erpCode: "12345", dateOfComplaint: "2026-10-08", timestamp: "2026-10-08T09:00:00.000Z", issueDetails: "Latest issue", lotNo: "LOT-LATEST" },
     { id: "same-day", erpCode: "12345", dateOfComplaint: "2026-10-09", timestamp: "2026-10-09T09:00:00.000Z", issueDetails: "Same day" },
     { id: "future", erpCode: "12345", dateOfComplaint: "2026-10-10", timestamp: "2026-10-10T09:00:00.000Z", issueDetails: "Future issue" },
   ] as QualityComplaint[];
-  const result = findLatestPreviousComplaint(complaints, "12345", "2026-10-09");
-  assert.equal(result?.id, "latest");
-  assert.equal(formatPreviousComplaint(result), "Latest issue | Date: 2026-10-08 | LOT NO.: LOT-LATEST");
+  const result = findLatestPreviousComplaint(complaints, "12345");
+  assert.equal(result?.id, "future");
+  assert.equal(formatPreviousComplaint(result), "Future issue | Date: 2026-10-10");
 });
 
 test("prefers a stored previous complaint over the Printing QC warning", () => {

@@ -23,12 +23,9 @@ const dateKey = (value: unknown) => text(value).slice(0, 10);
 export function findLatestPreviousComplaint(
   complaints: QualityComplaint[],
   erpCode: string,
-  productionDate: string,
 ): QualityComplaint | undefined {
-  const currentDate = dateKey(productionDate);
-  if (!currentDate || !text(erpCode)) return undefined;
+  if (!text(erpCode)) return undefined;
   return complaints
-    .filter((complaint) => dateKey(complaint.dateOfComplaint || complaint.timestamp) < currentDate)
     .filter((complaint) => normalized(complaint.erpCode) === normalized(erpCode))
     .sort((left, right) => {
       const dateOrder = dateKey(left.dateOfComplaint || left.timestamp).localeCompare(dateKey(right.dateOfComplaint || right.timestamp));
