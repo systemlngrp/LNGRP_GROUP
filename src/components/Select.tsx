@@ -72,7 +72,7 @@ export function Select({ options, value, onChange, onAdd, placeholder = "Select.
               padding: compact ? '0px' : '2px',
               borderRadius: '0.25rem',
               color: '#000000',
-              backgroundColor: '#ffffff',
+              backgroundColor: state.isDisabled ? '#e5e7eb' : '#ffffff',
               minHeight: compact ? '34px' : '42px',
               height: wrapLabels ? 'auto' : base.height
             }),

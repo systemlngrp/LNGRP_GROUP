@@ -155,7 +155,7 @@ import { WastageReport } from "./pages/WastageReport";
 import { SummarySheetReport } from "./pages/SummarySheetReport";
 import { QcView } from "./pages/QcView";
 import { PdiReport } from "./pages/PdiReport";
-import { QualityComplaintScreenshotForm as QualityComplaintForm } from "./pages/QualityComplaintScreenshotForm";
+import { QualityComplaintFormUpdated as QualityComplaintForm } from "./pages/QualityComplaintFormUpdated";
 import { QualityComplaintMasterScreenshot as QualityComplaintMaster } from "./pages/QualityComplaintMasterScreenshot";
 import { QualityComplaintCapa } from "./pages/QualityComplaintCapa";
 import { QualityCapaMaster } from "./pages/QualityCapaMaster";
