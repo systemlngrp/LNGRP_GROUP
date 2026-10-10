@@ -232,3 +232,22 @@ table td button:focus-visible {
     text-align: center;
   }
 }
+/* QC Master Data table reaches the edge of its page content without changing global layout spacing. */
+.qc-master-table-shell {
+  margin-left: -0.5rem;
+  width: calc(100% + 0.5rem);
+}
+
+@media (min-width: 640px) {
+  .qc-master-table-shell {
+    margin-left: -0.75rem;
+    width: calc(100% + 0.75rem);
+  }
+}
+
+@media (min-width: 1024px) {
+  .qc-master-table-shell {
+    margin-left: -1rem;
+    width: calc(100% + 1rem);
+  }
+}
