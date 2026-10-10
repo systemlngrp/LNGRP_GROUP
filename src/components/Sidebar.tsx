@@ -249,7 +249,8 @@ const qualityItems: NavEntry[] = [
   {
     section: "PHP and Plate",
     items: [
-      { name: "PHP-PLATE IN / OUT", href: "/quality/php-plate/in-out", icon: ArrowLeftRight },
+      { name: "PHP-PLATE IN / OUT Form", href: "/quality/php-plate/in-out/form", icon: ClipboardList },
+      { name: "PHP-PLATE IN / OUT Master", href: "/quality/php-plate/in-out/master", icon: Database },
     ],
   },
   {

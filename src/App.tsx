@@ -59,6 +59,7 @@ import { NewSpec } from "./pages/NewSpec";
 import { PhpItemMaster } from "./pages/PhpItemMaster";
 import { PlateItemMaster } from "./pages/PlateItemMaster";
 import { PhpPlateInOut } from "./pages/PhpPlateInOut";
+import { QcPhpPlateInOutForm, QcPhpPlateInOutMaster } from "./pages/QcPhpPlateInOut";
 import { MaterialInForm } from "./pages/MaterialInForm";
 import { MrrApprovals } from "./pages/MrrApprovals";
 import { MaterialInMaster } from "./pages/MaterialInMaster";
@@ -370,6 +371,8 @@ export default function App() {
           <Route path="quality/printing-qc/master" element={<PrintingQcMaster />} />
           <Route path="quality/printing-wastage/form" element={<QcPrintingWastageForm />} />
           <Route path="quality/printing-wastage/master" element={<QcPrintingWastageMaster />} />
+          <Route path="quality/php-plate/in-out/form" element={<QcPhpPlateInOutForm />} />
+          <Route path="quality/php-plate/in-out/master" element={<QcPhpPlateInOutMaster />} />
           <Route path="quality/php-plate/in-out" element={<PhpPlateInOut />} />
           <Route path="quality/qc-master-data" element={<QcMasterData />} />
           <Route path="quality/qc-update/form" element={<QcUpdateForm />} />
