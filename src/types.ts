@@ -1169,11 +1169,13 @@ export interface QualityComplaint {
     correctiveAction?: string;
     preventiveAction?: string;
     responsiblePerson?: string;
+    responsiblePersonUserId?: string;
     targetCompletionDate?: string;
     completionDate?: string;
     effectivenessVerification?: string;
     verificationRemarks?: string;
     preparedBy?: string;
+    preparedByUserId?: string;
     preparedDate?: string;
     reviewedBy?: string;
     reviewedDate?: string;
