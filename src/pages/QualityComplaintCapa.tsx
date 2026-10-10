@@ -3,6 +3,7 @@ import { ArrowLeft, Printer, Save } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
+import { printQualityCapaReport } from "../utils/qualityCapaPrint";
 import type { QualityComplaint, User } from "../types";
 
 type CapaData = NonNullable<QualityComplaint["capaData"]>;
@@ -33,15 +34,6 @@ const toFormData = (stored: CapaData | undefined, users: User[]): CapaData => {
   };
 };
 
-const isPhotoLink = (value: unknown) => /^https?:\/\//i.test(s(value)) || /^\/uploads\//i.test(s(value)) || /^[^/\s]+\.(?:jpe?g|png|gif|webp|bmp)$/i.test(s(value));
-const photoHref = (value: unknown) => /^https?:\/\//i.test(s(value)) || /^\/uploads\//i.test(s(value)) ? s(value) : `/uploads/${encodeURIComponent(s(value))}`;
-const escapeHtml = (value: unknown) => s(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] || character);
-const waitForPrintImages = async (win: Window) => {
-  await Promise.all(Array.from(win.document.images).map((image) => image.complete ? Promise.resolve() : new Promise<void>((resolve) => {
-    image.onload = () => resolve();
-    image.onerror = () => resolve();
-  })));
-};
 
 const Field = ({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) => (
   <label className="block space-y-2">
@@ -134,18 +126,7 @@ export function QualityComplaintCapa() {
     setMessage("CAPA saved successfully.");
   };
 
-  const print = () => {
-    const rows: Array<[string, unknown]> = [
-      ["CAPA No.", complaint.capaNo || "Pending"], ["Complaint Date", complaint.dateOfComplaint], ["Firm", complaint.firmName], ["Party Name", complaint.partyName], ["Item Name", complaint.itemName], ["ERP Code", complaint.erpCode], ["Nature", complaint.natureOfComplaint], ["LOT NO.", complaint.lotNo], ["Quantity", complaint.quantity], ["Issue Details", complaint.issueDetails],
-      ["Type of Defect (SHORT DESCRIPTION)", data.defectDescription], ["% of Defects", data.defectPercentage], ["Details of Rejection", data.rejectionDetails], ["Status of Last Action Plan", data.previousActionPlanStatus], ["Root Cause - Production Failure", data.productionFailureRootCause], ["Root Cause - Detection Failure", data.detectionFailureRootCause], ["Corrective Action", data.correctiveAction], ["Preventive Action - Production Failures", data.productionPreventiveAction], ["Preventive Action - Detection Failures", data.detectionPreventiveAction], ["Target Date", data.targetDate], ["Responsible Person", data.responsiblePerson], ["Prepared By", data.preparedBy], ["Completion Date", data.completionDate], ["Reviewed By / Date", `${data.reviewedBy} / ${data.reviewedDate}`], ["Approved By / Date", `${data.approvedBy} / ${data.approvedDate}`],
-    ];
-    const photos = [complaint.photo1, complaint.photo2].filter(Boolean).map((photo, index) => isPhotoLink(photo) ? `<figure><figcaption>Photo ${index + 1}</figcaption><img src="${escapeHtml(photoHref(photo))}" alt="Photo ${index + 1}" /></figure>` : "").join("");
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(`<html><head><title>CAPA ${escapeHtml(complaint.capaNo || "Report")}</title><style>body{font-family:Arial;padding:32px}h1{text-align:center;background:#123b59;color:#fff;padding:16px}table{width:100%;border-collapse:collapse}td{border:1px solid #222;padding:9px;vertical-align:top;white-space:pre-wrap}td:first-child{font-weight:bold;width:34%;background:#eef3f7}figure{display:inline-block;vertical-align:top;width:46%;margin:10px 2% 10px 0}figcaption{font-weight:bold;margin-bottom:6px}figure img{display:block;max-width:100%;max-height:320px;object-fit:contain;border:1px solid #ccc}@media print{figure{break-inside:avoid}}</style></head><body><h1>GENERATE CAPA REPORT</h1><table>${rows.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join("")}</table>${photos ? `<h3>Photos</h3>${photos}` : ""}</body></html>`);
-    win.document.close();
-    void waitForPrintImages(win).then(() => { win.focus(); win.print(); });
-  };
+  const print = () => { void printQualityCapaReport(complaint, data).then((opened) => { if (!opened) setMessage("Printing was blocked by the browser. Please allow pop-ups and try again."); }); };
 
   const clearForm = () => {
     setData(empty);
