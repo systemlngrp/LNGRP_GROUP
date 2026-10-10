@@ -154,7 +154,7 @@ import { TruckStatusReport } from "./pages/TruckStatusReport";
 import { WastageReport } from "./pages/WastageReport";
 import { SummarySheetReport } from "./pages/SummarySheetReport";
 import { QcView } from "./pages/QcView";
-import { PdiReport } from "./pages/PdiReport";
+import { PdiReportWithComplaints as PdiReport } from "./pages/PdiReportWithComplaints";
 import { QualityComplaintFormUpdated as QualityComplaintForm } from "./pages/QualityComplaintFormUpdated";
 import { QualityComplaintMasterScreenshot as QualityComplaintMaster } from "./pages/QualityComplaintMasterScreenshot";
 import { QualityComplaintCapa } from "./pages/QualityComplaintCapa";

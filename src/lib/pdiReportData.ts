@@ -1,4 +1,4 @@
-import type { Item, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
+import type { Item, PreDispatchInspection, PrintingQcCheck, Production, QualityComplaint } from "../types";
 
 export type NpdPdiItem = Item & {
   lengthId?: number | string;
@@ -17,6 +17,34 @@ const displayNumber = (value: unknown): string | number => {
   const number = Number(raw);
   return Number.isFinite(number) ? number : raw;
 };
+
+const dateKey = (value: unknown) => text(value).slice(0, 10);
+
+export function findLatestPreviousComplaint(
+  complaints: QualityComplaint[],
+  erpCode: string,
+  productionDate: string,
+): QualityComplaint | undefined {
+  const currentDate = dateKey(productionDate);
+  if (!currentDate || !text(erpCode)) return undefined;
+  return complaints
+    .filter((complaint) => dateKey(complaint.dateOfComplaint || complaint.timestamp) < currentDate)
+    .filter((complaint) => normalized(complaint.erpCode) === normalized(erpCode))
+    .sort((left, right) => {
+      const dateOrder = dateKey(left.dateOfComplaint || left.timestamp).localeCompare(dateKey(right.dateOfComplaint || right.timestamp));
+      return dateOrder || text(left.timestamp).localeCompare(text(right.timestamp));
+    })
+    .at(-1);
+}
+
+export function formatPreviousComplaint(complaint?: QualityComplaint): string {
+  if (!complaint) return "";
+  const context = [
+    text(complaint.dateOfComplaint) ? `Date: ${dateKey(complaint.dateOfComplaint)}` : "",
+    text(complaint.lotNo) ? `LOT NO.: ${text(complaint.lotNo)}` : "",
+  ].filter(Boolean).join(" | ");
+  return [text(complaint.issueDetails), context].filter(Boolean).join(" | ");
+}
 
 export function findLatestInspection(
   inspections: PreDispatchInspection[],
@@ -56,6 +84,7 @@ export function buildPdiReportRow(
   item?: NpdPdiItem,
   inspection?: PreDispatchInspection,
   printing?: PrintingQcCheck,
+  previousCustomerComplaint?: string,
 ): PdiReportRow {
   const requiredLength = item?.lengthId;
   const requiredWidth = item?.breadthId;
@@ -72,7 +101,7 @@ export function buildPdiReportRow(
     "Party Name": text(production.companyName || inspection?.partyName || printing?.partyName),
     "Item Name": text((production as Production & { itemName?: string }).itemName || item?.name || inspection?.itemName || printing?.itemName),
     "ERP Code": text(production.erpCode || inspection?.erpCode || item?.erp || printing?.erp),
-    "Previous Customer Complaint": text(printing?.previousCustomerComplaintWarning),
+    "Previous Customer Complaint": text(previousCustomerComplaint) || text(printing?.previousCustomerComplaintWarning),
     "Required Length": displayNumber(requiredLength),
     "Achieved Length": displayNumber(inspection?.lengthId),
     "Min length": lengthRange.min,

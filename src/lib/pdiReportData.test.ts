@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { PreDispatchInspection, PrintingQcCheck, Production } from "../types";
-import { buildPdiReportRow, dimensionRange, findLatestInspection, type NpdPdiItem } from "./pdiReportData";
+import type { PreDispatchInspection, PrintingQcCheck, Production, QualityComplaint } from "../types";
+import { buildPdiReportRow, dimensionRange, findLatestInspection, findLatestPreviousComplaint, formatPreviousComplaint, type NpdPdiItem } from "./pdiReportData";
 
 const production = {
   id: "production-1",
@@ -100,4 +100,21 @@ test("leaves inspection data and invalid dimension ranges empty", () => {
   assert.equal(buildPdiReportRow(production, undefined, inspection)["STD CS"], 0);
   assert.deepEqual(dimensionRange("430", ""), { min: "", max: "" });
   assert.deepEqual(dimensionRange("invalid", 5), { min: "", max: "" });
+});
+
+test("finds the latest complaint before the production date by normalized ERP code", () => {
+  const complaints = [
+    { id: "old", erpCode: " 12345 ", dateOfComplaint: "2026-10-01", timestamp: "2026-10-01T08:00:00.000Z", issueDetails: "Old issue", lotNo: "LOT-OLD" },
+    { id: "latest", erpCode: "12345", dateOfComplaint: "2026-10-08", timestamp: "2026-10-08T09:00:00.000Z", issueDetails: "Latest issue", lotNo: "LOT-LATEST" },
+    { id: "same-day", erpCode: "12345", dateOfComplaint: "2026-10-09", timestamp: "2026-10-09T09:00:00.000Z", issueDetails: "Same day" },
+    { id: "future", erpCode: "12345", dateOfComplaint: "2026-10-10", timestamp: "2026-10-10T09:00:00.000Z", issueDetails: "Future issue" },
+  ] as QualityComplaint[];
+  const result = findLatestPreviousComplaint(complaints, "12345", "2026-10-09");
+  assert.equal(result?.id, "latest");
+  assert.equal(formatPreviousComplaint(result), "Latest issue | Date: 2026-10-08 | LOT NO.: LOT-LATEST");
+});
+
+test("prefers a stored previous complaint over the Printing QC warning", () => {
+  const row = buildPdiReportRow(production, item, inspection, { previousCustomerComplaintWarning: "Printing warning" } as PrintingQcCheck, "Complaint details | Date: 2026-10-01 | LOT NO.: LOT-1");
+  assert.equal(row["Previous Customer Complaint"], "Complaint details | Date: 2026-10-01 | LOT NO.: LOT-1");
 });
