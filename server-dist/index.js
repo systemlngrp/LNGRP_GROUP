@@ -26,6 +26,32 @@ process.on("uncaughtException", (error) => {
     console.error("[PROCESS] Uncaught exception:", error);
 });
 app.use(express.json({ limit: "50mb" }));
+function uploadedFileBuffer(value) {
+    if (!value)
+        return undefined;
+    if (Buffer.isBuffer(value))
+        return value.length ? value : undefined;
+    if (value instanceof Uint8Array)
+        return value.byteLength ? Buffer.from(value) : undefined;
+    if (value instanceof ArrayBuffer) {
+        const data = Buffer.from(new Uint8Array(value));
+        return data.length ? data : undefined;
+    }
+    const raw = String(value).trim();
+    if (!raw)
+        return undefined;
+    const dataUrl = raw.match(/^data:[^;]+;base64,(.*)$/is);
+    const encoded = (dataUrl?.[1] || raw).replace(/\s/g, "");
+    if (!/^[a-z0-9+/=]+$/i.test(encoded))
+        return undefined;
+    try {
+        const data = Buffer.from(encoded, "base64");
+        return data.length ? data : undefined;
+    }
+    catch {
+        return undefined;
+    }
+}
 app.get("/uploads/:filename", async (req, res, next) => {
     const filename = String(req.params.filename || "").trim();
     if (!filename)
@@ -38,10 +64,12 @@ app.get("/uploads/:filename", async (req, res, next) => {
         const row = rows?.[0];
         if (!row?.data)
             return next();
+        const data = uploadedFileBuffer(row.data);
+        if (!data)
+            return next();
         const mimeType = String(row.mimeType || "application/octet-stream");
         res.setHeader("Content-Type", mimeType);
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        const data = Buffer.isBuffer(row.data) ? row.data : Buffer.from(row.data);
         return res.send(data);
     }
     catch (error) {
