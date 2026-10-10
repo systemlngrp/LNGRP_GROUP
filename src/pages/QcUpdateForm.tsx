@@ -36,7 +36,7 @@ export function QcUpdateForm() {
   const selectNpd = (npdId: string) => { const item = items.find((value: any) => String(value.id) === npdId) as any; setForm((current) => ({ ...current, npdId, erpNo: String(item?.erp || ""), itemName: String(item?.name || "") })); };
   const fields = [["File No.", "fileNo"], ["Index No.", "indexNo"], ["Zone No.", "zoneNo"]] as const;
   return <div className="mx-auto max-w-5xl space-y-5 text-black">
-    <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">QC Update Form</h2><p className="text-sm text-slate-600">Record QC details for each ERP and Item Name.</p></div>
+    <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">QC Update Form</h2></div>
     {message && <div className="flex items-center gap-2 rounded border border-emerald-700 bg-emerald-100 p-3 font-bold text-emerald-900"><CheckCircle2 size={18} />{message}</div>}
     {error && <div className="rounded border border-red-700 bg-red-100 p-3 font-bold text-red-900">{error}</div>}
     <form onSubmit={save} className="space-y-5">
@@ -46,7 +46,7 @@ export function QcUpdateForm() {
         {fields.map(([label, key]) => <label key={key} className="space-y-1"><span className="font-bold">{label} <span className="text-red-700">*</span></span><input className={inputClass} value={form[key]} onChange={(e) => setField(key, e.target.value)} /></label>)}
         <label className="space-y-1 md:col-span-2"><span className="font-bold">Remarks</span><textarea className={`${inputClass} min-h-24`} value={form.remarks} onChange={(e) => setField("remarks", e.target.value)} /></label>
       </div></section>
-      <div className="flex flex-wrap gap-3"><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded bg-emerald-700 px-5 py-3 font-bold text-white disabled:opacity-60"><Save size={17} />{saving ? "Saving..." : "Save / Submit"}</button><button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-5 py-3 font-bold"><RotateCcw size={17} />Clear / Reset</button></div>
+      <div className="flex flex-wrap gap-3"><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded bg-emerald-700 px-5 py-3 font-bold text-white disabled:opacity-60"><Save size={17} />{saving ? "Saving..." : "Save"}</button><button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-5 py-3 font-bold"><RotateCcw size={17} />Clear / Reset</button></div>
     </form>
   </div>;
 }
