@@ -249,7 +249,7 @@ const qualityItems: NavEntry[] = [
   {
     section: "PHP and Plate",
     items: [
-      { name: "Coming Soon", href: "#", icon: Hammer, disabled: true },
+      { name: "PHP-PLATE IN / OUT", href: "/quality/php-plate/in-out", icon: ArrowLeftRight },
     ],
   },
   {

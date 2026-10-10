@@ -370,6 +370,7 @@ export default function App() {
           <Route path="quality/printing-qc/master" element={<PrintingQcMaster />} />
           <Route path="quality/printing-wastage/form" element={<QcPrintingWastageForm />} />
           <Route path="quality/printing-wastage/master" element={<QcPrintingWastageMaster />} />
+          <Route path="quality/php-plate/in-out" element={<PhpPlateInOut />} />
           <Route path="quality/qc-master-data" element={<QcMasterData />} />
           <Route path="quality/qc-update/form" element={<QcUpdateForm />} />
           <Route path="quality/special-remarks/form" element={<SpecialRemarkForm />} />

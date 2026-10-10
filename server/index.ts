@@ -14113,6 +14113,10 @@ entities.forEach(entity => {
       if (req.method === "GET") return next();
 
       const required = entityPermissionKey(entity);
+      if (entity === "php_plate_in_out_records") {
+        if (!hasPermission(user, "/production/php-plate/in-out") && !hasPermission(user, "/quality/php-plate/in-out")) return res.status(403).json({ error: "Forbidden" });
+        return next();
+      }
       if (!required) {
         if (user.role !== "Admin") return res.status(403).json({ error: "Forbidden" });
         return next();
