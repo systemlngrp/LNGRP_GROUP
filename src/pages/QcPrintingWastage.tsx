@@ -4,13 +4,18 @@ import { useNavigate } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
-import type { Production, QcPrintingWastage } from "../types";
+import { getProductionWastageTotals } from "../lib/wastageCalculations";
+import type { Production, ProductionProcessing, QcPrintingWastage } from "../types";
 
 const inputClass = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const clean = (value: unknown) => String(value ?? "").trim();
 const jobNumber = (production: Production) => clean(production.transactionNo || production.jobCardNo);
 const productionItemName = (production: Production) => clean((production as any).itemName);
 const isOpenQcJob = (production: Production) => production.status !== "Cancelled" && !(clean((production as any).closeBy).toLowerCase() === "yes" && clean((production as any).closeDate));
+const formatMetric = (value: unknown) => {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "-";
+};
 const formatTimestamp = (value: string) => value ? new Date(value).toLocaleString() : "-";
 
 function useOpenQcJobs() {
@@ -22,12 +27,19 @@ export function QcPrintingWastageForm() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const jobs = useOpenQcJobs();
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [, setRecords] = useData<QcPrintingWastage>("qc_printing_wastage_records", []);
   const [productionId, setProductionId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const selectedJob = jobs.find((production) => production.id === productionId);
+  const selectedWastage = selectedJob ? getProductionWastageTotals(selectedJob, processing) : null;
+  const selectedItemName = selectedJob ? productionItemName(selectedJob) || "-" : "-";
+  const selectedCompany = selectedJob ? clean(selectedJob.companyName || selectedJob.firmName) || "-" : "-";
+  const selectedActualPaperUsed = selectedJob && selectedJob.actualPaperUsed !== undefined && selectedJob.actualPaperUsed !== null && clean(selectedJob.actualPaperUsed) !== ""
+    ? formatMetric(selectedJob.actualPaperUsed)
+    : "-";
   const jobOptions = useMemo(() => jobs.map((production) => ({
     value: production.id,
     label: `${jobNumber(production)}${productionItemName(production) ? ` - ${productionItemName(production)}` : ""}`,
@@ -69,7 +81,10 @@ export function QcPrintingWastageForm() {
     <section className="rounded border-2 border-black bg-white p-4">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <label><b>Job No. *</b><Select value={productionId} onChange={setProductionId} options={jobOptions} placeholder="Search Job No." noOptionsMessage="No open QC jobs found" /></label>
-        <label><b>Selected Job No.</b><input className={inputClass} value={selectedJob ? jobNumber(selectedJob) : ""} readOnly /></label>
+        <label><b>Item Name</b><input className={inputClass} value={selectedItemName} readOnly /></label>
+        <label><b>Company</b><input className={inputClass} value={selectedCompany} readOnly /></label>
+        <label><b>Total Wastage (KG)</b><input className={inputClass} value={selectedWastage ? formatMetric(selectedWastage.totalWastageKg) : "-"} readOnly /></label>
+        <label><b>Actual Paper Used (KG)</b><input className={inputClass} value={selectedActualPaperUsed} readOnly /></label>
         <label><b>Quantity *</b><input type="number" min="0" step="0.01" className={inputClass} value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Enter quantity" /></label>
       </div>
     </section>
