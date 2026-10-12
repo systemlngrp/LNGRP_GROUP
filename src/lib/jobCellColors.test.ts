@@ -1,6 +1,6 @@
 ﻿import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dateKey, jobDateCellClass, jobNumberCellClass } from "./jobCellColors";
+import { dateKey, jobDateCellClass, jobNumberCellClass, normalizeQcResult, qcResultCellClass } from "./jobCellColors";
 
 const today = new Date(2026, 9, 9, 12);
 
@@ -16,9 +16,12 @@ test("job dates use the four requested backgrounds", () => {
 });
 
 test("QC results override the Job No. date color", () => {
-  assert.match(jobNumberCellClass("2026-10-06", "QC PASS", today), /bg-\[#b7e1cd\]/);
-  assert.match(jobNumberCellClass("2026-10-09", "QC HOLD", today), /bg-\[#f4cccc\]/);
-  assert.match(jobNumberCellClass("2026-10-09", "QC FAIL", today), /bg-\[#f4cccc\]/);
+  assert.match(jobNumberCellClass("2026-10-06", "QC PASS", today), /bg-\[#006100\]/);
+  assert.match(jobNumberCellClass("2026-10-09", "QC HOLD", today), /bg-\[#006100\]/);
+  assert.match(jobNumberCellClass("2026-10-09", "QC FAIL", today), /bg-\[#006100\]/);
+  assert.match(qcResultCellClass("FAIL"), /bg-\[#006100\]/);
+  assert.equal(normalizeQcResult("QC HOLD"), "QC FAIL");
+  assert.equal(normalizeQcResult("Pending"), "Pending");
   assert.match(jobNumberCellClass("2026-10-06", "Pending", today), /bg-\[#ffff00\]/);
   assert.match(jobNumberCellClass("2026-10-08", "", today), /bg-\[#ffff00\]/);
   assert.match(jobNumberCellClass("2026-10-09", "", today), /bg-\[#00ffff\]/);

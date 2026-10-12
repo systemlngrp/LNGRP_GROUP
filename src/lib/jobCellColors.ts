@@ -16,6 +16,13 @@
 const localDateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
+export const normalizeQcResult = (value: unknown): string => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["qc pass", "pass"].includes(normalized)) return "QC PASS";
+  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized)) return "QC FAIL";
+  return String(value ?? "").trim();
+};
+
 export const jobDateCellClass = (value: unknown, now = new Date()): string => {
   const jobDate = dateKey(value);
   if (!jobDate) return "";
@@ -29,12 +36,11 @@ export const jobDateCellClass = (value: unknown, now = new Date()): string => {
 };
 
 export const jobNumberCellClass = (date: unknown, result: unknown, now = new Date()): string => {
-  const normalizedResult = String(result ?? "").trim().toLowerCase();
-  if (["qc pass", "pass"].includes(normalizedResult)) return "bg-[#b7e1cd] text-slate-950 font-bold";
-  if (["qc hold", "hold", "qc fail", "fail"].includes(normalizedResult)) return "bg-[#f4cccc] text-slate-950 font-bold";
+  const normalizedResult = normalizeQcResult(result);
+  if (["QC PASS", "QC FAIL"].includes(normalizedResult)) return "bg-[#006100] text-white font-bold";
   const jobDate = dateKey(date);
   if (jobDate && jobDate < localDateKey(now)) return "bg-[#ffff00] text-slate-950 font-bold";
   return jobDateCellClass(date, now);
 };
 
-export const qcResultCellClass = (result: unknown): string => { const normalized = String(result ?? "").trim().toLowerCase(); if (["qc pass", "pass"].includes(normalized)) return "bg-[#b7e1cd] text-slate-950 font-bold"; if (["qc hold", "hold", "qc fail", "fail"].includes(normalized)) return "bg-[#f4cccc] text-slate-950 font-bold"; return ""; };
+export const qcResultCellClass = (result: unknown): string => ["QC PASS", "QC FAIL"].includes(normalizeQcResult(result)) ? "bg-[#006100] text-white font-bold" : "";

@@ -1282,7 +1282,7 @@ export interface PreDispatchInspection {
   remarks?: string;
   frontPhoto?: string;
   backPhoto?: string;
-  result: "Pending" | "QC PASS" | "QC HOLD" | string;
+  result: "Pending" | "QC PASS" | "QC FAIL" | string;
   qcPerson?: string;
   inspectionDate: string;
   updatedBy?: string;

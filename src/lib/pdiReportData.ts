@@ -1,4 +1,5 @@
 import type { Item, PreDispatchInspection, PrintingQcCheck, Production, QualityComplaint } from "../types";
+import { normalizeQcResult } from "./jobCellColors";
 
 export type NpdPdiItem = Item & {
   lengthId?: number | string;
@@ -56,9 +57,10 @@ export function findLatestInspection(
     : jobNo
       ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo))
       : [];
-  return [...matches].sort((left, right) =>
+  const latest = [...matches].sort((left, right) =>
     text(left.updateTimestamp || left.inspectionDate).localeCompare(text(right.updateTimestamp || right.inspectionDate))
   ).at(-1);
+  return latest ? { ...latest, result: normalizeQcResult(latest.result) } : undefined;
 }
 
 export function dimensionRange(required: unknown, ply: unknown): { min: string | number; max: string | number } {
@@ -123,7 +125,7 @@ export function buildPdiReportRow(
     "Remarks [IF ANY]": text(inspection?.remarks),
     "Box Photo [FRONT]": photoPath(inspection?.frontPhoto),
     "Box Photo [BACK]": photoPath(inspection?.backPhoto),
-    Result: text(inspection?.result),
+    Result: normalizeQcResult(inspection?.result),
     "QC Person Name": text(inspection?.qcPerson),
     "PDI TIME": text(inspection?.inspectionDate),
     Ply: displayNumber(item?.ply),

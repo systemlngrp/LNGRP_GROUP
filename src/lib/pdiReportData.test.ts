@@ -71,7 +71,7 @@ test("uses NPD specifications and saved inspection values for the report", () =>
   assert.equal(row["Box Squaring Check"], "OK");
   assert.equal(row["Box Photo [FRONT]"], "/uploads/front.jpg");
   assert.equal(row["Box Photo [BACK]"], "/uploads/back.jpg");
-  assert.equal(row.Result, "QC HOLD");
+  assert.equal(row.Result, "QC FAIL");
   assert.equal(row["QC Person Name"], "Inspector");
   assert.equal(row["PDI TIME"], inspection.inspectionDate);
   assert.equal(row["CS Act / CS STD"], "185 / 180");
