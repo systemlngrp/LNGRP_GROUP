@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Edit, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ColorMaster, PrintingQcCheck, Production, Setting, User } from "../types";
-import { formatDate } from "../lib/utils";
+import { formatDate, formatTime } from "../lib/utils";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
@@ -24,6 +24,8 @@ type FieldSection = {
   title: string;
   fields: FieldConfig[];
 };
+
+const CHECK_NO_OPTIONS = ["1", "2", "3", "4", "5"].map((value) => ({ value, label: value }));
 
 const numberFields = new Set<keyof PrintingQcCheck>([
   "lengthId",
@@ -57,8 +59,8 @@ const sections: FieldSection[] = [
       { key: "partyName", label: "Party Name", required: true },
       { key: "itemName", label: "Item Name", required: true, wide: true },
       { key: "erp", label: "ERP", readOnly: true },
-      { key: "checkNo", label: "Check No.", required: true, readOnly: true },
-      { key: "qcPerson", label: "QC Person", required: true, readOnly: true },
+      { key: "checkNo", label: "Check No.", required: true },
+      { key: "qcPerson", label: "QC Person", required: true },
     ],
   },
   {
@@ -128,8 +130,8 @@ const formSections: FieldSection[] = [
     title: "Job Details",
     fields: [
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "checkNo", label: "Check No.", required: true, readOnly: true },
-      { key: "qcPerson", label: "QC Person", required: true, readOnly: true },
+      { key: "checkNo", label: "Check No.", required: true },
+      { key: "qcPerson", label: "QC Person", required: true },
     ],
   },
   {
@@ -189,17 +191,6 @@ function nextQcNo<T extends object>(rows: T[], key: keyof T, prefix: string) {
   return `${prefix}-${String(highest + 1).padStart(6, "0")}`;
 }
 
-function nextJobCheckNo(rows: PrintingQcCheck[], jobNo: string) {
-  const selectedJobNo = jobNo.trim();
-  if (!selectedJobNo) return "";
-  const highest = rows.reduce((max, row) => {
-    if (String(row.jobNo || "").trim() !== selectedJobNo) return max;
-    const parsed = Number(String(row.checkNo || "").trim());
-    return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
-  }, 0);
-  return String(highest + 1);
-}
-
 function hasAnyWarning(values: Array<unknown>) {
   return values.some((value) => String(value ?? "").trim() !== "");
 }
@@ -251,8 +242,6 @@ function parseBoxSize(value: unknown): [number | "", number | "", number | ""] {
 function normalizeText(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
-
-const formatTimestamp = formatDate;
 
 function displayValue(value: unknown) {
   if (value === null || value === undefined || value === "") return "-";
@@ -319,12 +308,12 @@ function calculatePrintingQcForm(form: Partial<PrintingQcCheck>, settings?: Sett
   };
 }
 
-function buildPayload(form: Partial<PrintingQcCheck>, updatedBy: string, setting?: Setting): PrintingQcCheck {
+function buildPayload(form: Partial<PrintingQcCheck>, updatedBy: string, setting?: Setting, existingId?: string): PrintingQcCheck {
   const calculatedForm = calculatePrintingQcForm(form, setting);
   const timestampInput = String(calculatedForm.timestamp || "").trim();
   const timestamp = timestampInput ? new Date(timestampInput).toISOString() : new Date().toISOString();
   const payload: Record<string, unknown> = {
-    id: crypto.randomUUID(),
+    id: existingId || crypto.randomUUID(),
     timestamp,
     jobNo: String(calculatedForm.jobNo || "").trim(),
     partyName: String(calculatedForm.partyName || "").trim(),
@@ -405,6 +394,12 @@ export function PrintingQcForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const qcPersonName = currentUserDisplayName(user);
   const nextPqcNo = useMemo(() => nextQcNo(checks, "pqcNo", "PQC"), [checks]);
+  const qcPersonOptions = useMemo(() => {
+    const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
+    const current = String(form.qcPerson || "").trim();
+    if (current && !active.some((option) => option.value === current)) active.unshift({ value: current, label: `${current} (Inactive)` });
+    return active.sort((a, b) => a.label.localeCompare(b.label));
+  }, [form.qcPerson, users]);
   const colorOptions = useMemo(
     () => uniqueOptions(colors.map((color) => color.name)).map((name) => ({ value: name, label: name })),
     [colors]
@@ -421,16 +416,6 @@ export function PrintingQcForm() {
   useEffect(() => {
     setForm((prev) => calculatePrintingQcForm({ ...prev, qcPerson: qcPersonName, pqcNo: nextPqcNo }, settings[0]));
   }, [qcPersonName, nextPqcNo]);
-
-  useEffect(() => {
-    setForm((prev) => {
-      const jobNo = String(prev.jobNo || "").trim();
-      if (!jobNo) return prev;
-      const checkNo = nextJobCheckNo(checks, jobNo);
-      if (String(prev.checkNo || "") === checkNo) return prev;
-      return calculatePrintingQcForm({ ...prev, checkNo }, settings[0]);
-    });
-  }, [checks]);
 
   const productionById = useMemo(() => {
     const map = new Map<string, Production>();
@@ -501,7 +486,7 @@ export function PrintingQcForm() {
       calculatePrintingQcForm({
         ...prev,
         jobNo,
-        checkNo: nextJobCheckNo(checks, jobNo),
+        checkNo: String(prev.checkNo || ""),
         partyName,
         itemName,
         erp,
@@ -545,7 +530,7 @@ export function PrintingQcForm() {
       hasFormValue(form.itemName) &&
       hasFormValue(form.checkNo) &&
       requiredInputFields.every((key) => hasFormValue(form[key])) &&
-      qcPersonName
+      hasFormValue(form.qcPerson)
   );
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -555,7 +540,7 @@ export function PrintingQcForm() {
     setIsSubmitting(true);
     try {
       const updatedBy = qcPersonName;
-      const payload = buildPayload({ ...form, qcPerson: qcPersonName, pqcNo: nextPqcNo }, updatedBy, settings[0]);
+      const payload = buildPayload({ ...form, qcPerson: String(form.qcPerson || "").trim(), pqcNo: nextPqcNo }, updatedBy, settings[0]);
       await setChecks((prev) => [...prev, payload]);
       setSelectedProductionId("");
       setForm(createInitialForm());
@@ -622,6 +607,19 @@ export function PrintingQcForm() {
                       required={field.required}
                       placeholder="Choose"
                       wrapLabels
+                    />
+                  </div>
+                ) : field.key === "checkNo" || field.key === "qcPerson" ? (
+                  <div key={String(field.key)} className={`flex flex-col space-y-1 ${field.wide ? "md:col-span-2 xl:col-span-3" : ""}`}>
+                    <label className="font-bold text-black text-sm">
+                      {field.label} {field.required ? <span className="text-red-600">*</span> : null}
+                    </label>
+                    <Select
+                      options={field.key === "checkNo" ? CHECK_NO_OPTIONS : qcPersonOptions}
+                      value={String(form[field.key] || "")}
+                      onChange={(value) => setField(field.key, value)}
+                      required={field.required}
+                      placeholder="Choose"
                     />
                   </div>
                 ) : (
@@ -713,7 +711,11 @@ function masterCellClass(key: keyof PrintingQcCheck) {
 }
 
 export function PrintingQcMaster() {
-  const [checks, , loading] = useData<PrintingQcCheck>("printing_qc_checks", []);
+  const [checks, setChecks, loading] = useData<PrintingQcCheck>("printing_qc_checks", []);
+  const [settings] = useData<Setting>("settings", []);
+  const [users] = useData<User>("users", []);
+  const [colors] = useData<ColorMaster>("color_masters", []);
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [jobFilter, setJobFilter] = useState("");
   const [partyFilter, setPartyFilter] = useState("");
@@ -721,6 +723,45 @@ export function PrintingQcMaster() {
   const [warningFilter, setWarningFilter] = useState("All");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
+  const [editingRow, setEditingRow] = useState<PrintingQcCheck | null>(null);
+  const [editForm, setEditForm] = useState<Partial<PrintingQcCheck>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  const colorOptions = useMemo(() => uniqueOptions(colors.map((color) => color.name)).map((name) => ({ value: name, label: name })), [colors]);
+  const operatorOptions = useMemo(
+    () => users.filter((row) => row.status !== "Inactive").sort((a, b) => a.name.localeCompare(b.name)).map((row) => ({ value: row.name, label: row.name })),
+    [users]
+  );
+
+  const editQcPersonOptions = useMemo(() => {
+    const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
+    const current = String(editForm.qcPerson || "").trim();
+    if (current && !active.some((option) => option.value === current)) active.unshift({ value: current, label: `${current} (Inactive)` });
+    return active.sort((a, b) => a.label.localeCompare(b.label));
+  }, [editForm.qcPerson, users]);
+
+  const openEdit = (row: PrintingQcCheck) => {
+    setEditingRow(row);
+    setEditForm({ ...row, timestamp: row.timestamp ? toLocalDatetimeInput(new Date(row.timestamp)) : "" });
+  };
+
+  const updateEditField = (key: keyof PrintingQcCheck, value: string | number | "") => {
+    setEditForm((prev) => calculatePrintingQcForm({ ...prev, [key]: value }, settings[0]));
+  };
+
+  const saveEdit = async () => {
+    if (!editingRow || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)) return;
+    setIsSaving(true);
+    try {
+      const updatedBy = currentUserDisplayName(user);
+      const updated = buildPayload({ ...editForm, qcPerson: String(editForm.qcPerson || "").trim() }, updatedBy, settings[0], editingRow.id);
+      await setChecks((prev) => prev.map((row) => (row.id === editingRow.id ? updated : row)));
+      setEditingRow(null);
+      setEditForm({});
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   useEffect(() => {
     setPage(1);
@@ -812,26 +853,32 @@ export function PrintingQcMaster() {
           <table className="min-w-full border-collapse divide-y divide-black border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[110px] whitespace-nowrap">Date</th>
                 {masterColumns.map((column) => (
                   <th key={String(column.key)} className={masterHeaderClass(column.key)}>
                     {column.label}
                   </th>
                 ))}
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {loading ? (
-                <tr><td colSpan={masterColumns.length} className="px-6 py-8 text-center text-black">Loading Printing QC checks...</td></tr>
+                <tr><td colSpan={masterColumns.length + 2} className="px-6 py-8 text-center text-black">Loading Printing QC checks...</td></tr>
               ) : pagedRows.length === 0 ? (
-                <tr><td colSpan={masterColumns.length} className="px-6 py-8 text-center font-medium italic text-black">No Printing QC checks found.</td></tr>
+                <tr><td colSpan={masterColumns.length + 2} className="px-6 py-8 text-center font-medium italic text-black">No Printing QC checks found.</td></tr>
               ) : (
                 pagedRows.map((row) => (
                   <tr key={row.id} className="divide-x divide-black transition-colors hover:bg-slate-50">
+                    <td className="border border-black px-3 py-2 text-sm text-black align-top min-w-[110px] whitespace-nowrap">{formatDate(row.timestamp)}</td>
                     {masterColumns.map((column) => (
                       <td key={String(column.key)} className={masterCellClass(column.key)}>
-                        {column.key === "timestamp" ? formatTimestamp(row.timestamp) : displayValue(row[column.key])}
+                        {column.key === "timestamp" ? formatTime(row.timestamp) : displayValue(row[column.key])}
                       </td>
                     ))}
+                    <td className="border border-black px-3 py-2 text-sm text-black align-top whitespace-nowrap">
+                      <button type="button" onClick={() => openEdit(row)} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -847,6 +894,35 @@ export function PrintingQcMaster() {
           </div>
         </div>
       </div>
+      {editingRow ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Edit Printing QC">
+          <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded border-2 border-black bg-white p-5 text-black shadow-xl">
+            <div className="mb-4 flex items-center justify-between border-b border-black pb-3">
+              <h3 className="text-lg font-black uppercase">Edit Printing QC</h3>
+              <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-3 py-1 font-bold">Close</button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {allFields.map((field) => field.key === "checkNo" || field.key === "qcPerson" || field.key === "colour1Actual" || field.key === "colour2Actual" || field.key === "operatorName" ? (
+                <div key={String(field.key)} className="flex flex-col space-y-1">
+                  <label className="font-bold text-sm">{field.label}</label>
+                  <Select
+                    options={field.key === "checkNo" ? [...CHECK_NO_OPTIONS, ...(editForm.checkNo && !CHECK_NO_OPTIONS.some((option) => option.value === String(editForm.checkNo)) ? [{ value: String(editForm.checkNo), label: `${editForm.checkNo} (Legacy)` }] : [])] : field.key === "qcPerson" ? editQcPersonOptions : field.key === "operatorName" ? operatorOptions : colorOptions}
+                    value={String(editForm[field.key] || "")}
+                    onChange={(value) => updateEditField(field.key, value)}
+                    placeholder="Choose"
+                  />
+                </div>
+              ) : (
+                <FieldInput key={String(field.key)} field={field} value={editForm[field.key]} onChange={updateEditField} />
+              ))}
+            </div>
+            <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
+              <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

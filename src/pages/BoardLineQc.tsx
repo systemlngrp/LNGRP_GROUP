@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Edit, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { BoardLineQcCheck, Production, Setting } from "../types";
-import { formatDate } from "../lib/utils";
+import { BoardLineQcCheck, Production, Setting, User } from "../types";
+import { formatDate, formatTime } from "../lib/utils";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
@@ -24,6 +24,8 @@ type FieldSection = {
   title: string;
   fields: FieldConfig[];
 };
+
+const CHECK_NO_OPTIONS = ["1", "2", "3", "4", "5"].map((value) => ({ value, label: value }));
 
 const numberFields = new Set<keyof BoardLineQcCheck>([
   "cuttingSizeRequired",
@@ -58,9 +60,9 @@ const sections: FieldSection[] = [
       { key: "jobNo", label: "Job No.", required: true },
       { key: "partyName", label: "Company", required: true, readOnly: true },
       { key: "itemName", label: "Item Name", required: true, wide: true, readOnly: true },
-      { key: "checkNo", label: "Check No.", required: true, readOnly: true },
+      { key: "checkNo", label: "Check No.", required: true },
       { key: "standard", label: "Standard", readOnly: true },
-      { key: "qcPerson", label: "QC Person", required: true, readOnly: true },
+      { key: "qcPerson", label: "QC Person", required: true },
       { key: "erp", label: "ERP", readOnly: true },
     ],
   },
@@ -132,8 +134,8 @@ const formSections: FieldSection[] = [
     title: "Job Details",
     fields: [
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "checkNo", label: "Check No.", required: true, readOnly: true },
-      { key: "qcPerson", label: "QC Person", required: true, readOnly: true },
+      { key: "checkNo", label: "Check No.", required: true },
+      { key: "qcPerson", label: "QC Person", required: true },
     ],
   },
   {
@@ -192,17 +194,6 @@ function nextQcNo<T extends Record<string, unknown>>(rows: T[], key: keyof T, pr
   return `${prefix}-${String(highest + 1).padStart(6, "0")}`;
 }
 
-function nextJobCheckNo(rows: BoardLineQcCheck[], jobNo: string) {
-  const selectedJobNo = jobNo.trim();
-  if (!selectedJobNo) return "";
-  const highest = rows.reduce((max, row) => {
-    if (String(row.jobNo || "").trim() !== selectedJobNo) return max;
-    const parsed = Number(String(row.checkNo || "").trim());
-    return Number.isFinite(parsed) ? Math.max(max, parsed) : max;
-  }, 0);
-  return String(highest + 1);
-}
-
 function hasAnyWarning(values: Array<unknown>) {
   return values.some((value) => String(value ?? "").trim() !== "");
 }
@@ -210,8 +201,6 @@ function hasAnyWarning(values: Array<unknown>) {
 function uniqueOptions(values: Array<unknown>) {
   return [...new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
-
-const formatTimestamp = formatDate;
 
 function toOptionalNumber(...values: unknown[]) {
   for (const value of values) {
@@ -323,12 +312,12 @@ function buildFlapHeightValue(flap: number | "", height: number | "") {
   return `${flap}-${height}-${flap}`;
 }
 
-function buildPayload(form: Partial<BoardLineQcCheck>, updatedBy: string, setting?: Setting): BoardLineQcCheck {
+function buildPayload(form: Partial<BoardLineQcCheck>, updatedBy: string, setting?: Setting, existingId?: string): BoardLineQcCheck {
   const calculatedForm = calculateBoardLineForm(form, setting);
   const timestampInput = String(form.timestamp || "").trim();
   const timestamp = timestampInput ? new Date(timestampInput).toISOString() : new Date().toISOString();
   const payload: Record<string, unknown> = {
-    id: crypto.randomUUID(),
+    id: existingId || crypto.randomUUID(),
     timestamp,
     jobNo: String(calculatedForm.jobNo || "").trim(),
     partyName: String(calculatedForm.partyName || "").trim(),
@@ -400,6 +389,7 @@ export function BoardLineQcForm() {
   const [checks, setChecks] = useData<BoardLineQcCheck>("boardline_qc_checks", []);
   const [settings] = useData<Setting>("settings", []);
   const [productions] = useData<Production>("productions", []);
+  const [users] = useData<User>("users", []);
   const { findItemAcrossSources } = useOrderItemCatalog();
   const { user } = useAuth();
   const [form, setForm] = useState<Partial<BoardLineQcCheck>>(createInitialForm);
@@ -407,20 +397,16 @@ export function BoardLineQcForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const qcPersonName = currentUserDisplayName(user);
   const nextBqcNo = useMemo(() => nextQcNo(checks, "bqcNo", "BQC"), [checks]);
+  const qcPersonOptions = useMemo(() => {
+    const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
+    const current = String(form.qcPerson || "").trim();
+    if (current && !active.some((option) => option.value === current)) active.unshift({ value: current, label: `${current} (Inactive)` });
+    return active.sort((a, b) => a.label.localeCompare(b.label));
+  }, [form.qcPerson, users]);
 
   useEffect(() => {
     setForm((prev) => calculateBoardLineForm({ ...prev, qcPerson: qcPersonName, bqcNo: nextBqcNo }, settings[0]));
   }, [qcPersonName, nextBqcNo]);
-
-  useEffect(() => {
-    setForm((prev) => {
-      const jobNo = String(prev.jobNo || "").trim();
-      if (!jobNo) return prev;
-      const checkNo = nextJobCheckNo(checks, jobNo);
-      if (String(prev.checkNo || "") === checkNo) return prev;
-      return calculateBoardLineForm({ ...prev, checkNo }, settings[0]);
-    });
-  }, [checks]);
 
   const productionById = useMemo(() => {
     const map = new Map<string, Production>();
@@ -493,7 +479,7 @@ export function BoardLineQcForm() {
       calculateBoardLineForm({
         ...prev,
         jobNo,
-        checkNo: nextJobCheckNo(checks, jobNo),
+        checkNo: String(prev.checkNo || ""),
         partyName,
         itemName,
         erp,
@@ -530,7 +516,7 @@ export function BoardLineQcForm() {
       hasFormValue(form.checkNo) &&
       FLUTE_OPTIONS.some((option) => option.value === String(form.typeOfFlute || "")) &&
       requiredInputFields.every((key) => hasFormValue(form[key])) &&
-      qcPersonName
+      hasFormValue(form.qcPerson)
   );
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -540,7 +526,7 @@ export function BoardLineQcForm() {
     setIsSubmitting(true);
     try {
       const updatedBy = qcPersonName;
-      const payload = buildPayload({ ...form, qcPerson: qcPersonName, bqcNo: nextBqcNo }, updatedBy, settings[0]);
+      const payload = buildPayload({ ...form, qcPerson: String(form.qcPerson || "").trim(), bqcNo: nextBqcNo }, updatedBy, settings[0]);
       await setChecks((prev) => [...prev, payload]);
       setSelectedProductionId("");
       setForm(createInitialForm());
@@ -588,6 +574,19 @@ export function BoardLineQcForm() {
                     </label>
                     <Select
                       options={FLUTE_OPTIONS}
+                      value={String(form[field.key] || "")}
+                      onChange={(value) => setField(field.key, value)}
+                      required={field.required}
+                      placeholder="Choose"
+                    />
+                  </div>
+                ) : field.key === "checkNo" || field.key === "qcPerson" ? (
+                  <div key={String(field.key)} className={`flex flex-col space-y-1 ${field.wide ? "md:col-span-2 xl:col-span-3" : ""}`}>
+                    <label className="font-bold text-black text-sm">
+                      {field.label} {field.required ? <span className="text-red-600">*</span> : null}
+                    </label>
+                    <Select
+                      options={field.key === "checkNo" ? CHECK_NO_OPTIONS : qcPersonOptions}
                       value={String(form[field.key] || "")}
                       onChange={(value) => setField(field.key, value)}
                       required={field.required}
@@ -685,7 +684,10 @@ function masterCellClass(key: keyof BoardLineQcCheck) {
 }
 
 export function BoardLineQcMaster() {
-  const [checks, , loading] = useData<BoardLineQcCheck>("boardline_qc_checks", []);
+  const [checks, setChecks, loading] = useData<BoardLineQcCheck>("boardline_qc_checks", []);
+  const [settings] = useData<Setting>("settings", []);
+  const [users] = useData<User>("users", []);
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [jobFilter, setJobFilter] = useState("");
   const [partyFilter, setPartyFilter] = useState("");
@@ -693,6 +695,39 @@ export function BoardLineQcMaster() {
   const [warningFilter, setWarningFilter] = useState("All");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
+  const [editingRow, setEditingRow] = useState<BoardLineQcCheck | null>(null);
+  const [editForm, setEditForm] = useState<Partial<BoardLineQcCheck>>({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  const editQcPersonOptions = useMemo(() => {
+    const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
+    const current = String(editForm.qcPerson || "").trim();
+    if (current && !active.some((option) => option.value === current)) active.unshift({ value: current, label: `${current} (Inactive)` });
+    return active.sort((a, b) => a.label.localeCompare(b.label));
+  }, [editForm.qcPerson, users]);
+
+  const openEdit = (row: BoardLineQcCheck) => {
+    setEditingRow(row);
+    setEditForm({ ...row, timestamp: row.timestamp ? toLocalDatetimeInput(new Date(row.timestamp)) : "" });
+  };
+
+  const updateEditField = (key: keyof BoardLineQcCheck, value: string | number | "") => {
+    setEditForm((prev) => calculateBoardLineForm({ ...prev, [key]: value }, settings[0]));
+  };
+
+  const saveEdit = async () => {
+    if (!editingRow || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)) return;
+    setIsSaving(true);
+    try {
+      const updatedBy = currentUserDisplayName(user);
+      const updated = buildPayload({ ...editForm, qcPerson: String(editForm.qcPerson || "").trim() }, updatedBy, settings[0], editingRow.id);
+      await setChecks((prev) => prev.map((row) => (row.id === editingRow.id ? updated : row)));
+      setEditingRow(null);
+      setEditForm({});
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   useEffect(() => {
     setPage(1);
@@ -791,26 +826,32 @@ export function BoardLineQcMaster() {
           <table className="min-w-full border-collapse divide-y divide-black border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[110px] whitespace-nowrap">Date</th>
                 {masterColumns.map((column) => (
                   <th key={String(column.key)} className={masterHeaderClass(column.key)}>
                     {column.label}
                   </th>
                 ))}
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {loading ? (
-                <tr><td colSpan={masterColumns.length} className="px-6 py-8 text-center text-black">Loading QC checks...</td></tr>
+                <tr><td colSpan={masterColumns.length + 2} className="px-6 py-8 text-center text-black">Loading QC checks...</td></tr>
               ) : pagedRows.length === 0 ? (
-                <tr><td colSpan={masterColumns.length} className="px-6 py-8 text-center font-medium italic text-black">No Board Line QC checks found.</td></tr>
+                <tr><td colSpan={masterColumns.length + 2} className="px-6 py-8 text-center font-medium italic text-black">No Board Line QC checks found.</td></tr>
               ) : (
                 pagedRows.map((row) => (
                   <tr key={row.id} className="divide-x divide-black transition-colors hover:bg-slate-50">
+                    <td className="border border-black px-3 py-2 text-sm text-black align-top min-w-[110px] whitespace-nowrap">{formatDate(row.timestamp)}</td>
                     {masterColumns.map((column) => (
                       <td key={String(column.key)} className={masterCellClass(column.key)}>
-                        {column.key === "timestamp" ? formatTimestamp(row.timestamp) : displayValue(row[column.key])}
+                        {column.key === "timestamp" ? formatTime(row.timestamp) : displayValue(row[column.key])}
                       </td>
                     ))}
+                    <td className="border border-black px-3 py-2 text-sm text-black align-top whitespace-nowrap">
+                      <button type="button" onClick={() => openEdit(row)} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -826,6 +867,35 @@ export function BoardLineQcMaster() {
           </div>
         </div>
       </div>
+      {editingRow ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Edit Board Line QC">
+          <div className="max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded border-2 border-black bg-white p-5 text-black shadow-xl">
+            <div className="mb-4 flex items-center justify-between border-b border-black pb-3">
+              <h3 className="text-lg font-black uppercase">Edit Board Line QC</h3>
+              <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-3 py-1 font-bold">Close</button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {allFields.map((field) => field.key === "checkNo" || field.key === "qcPerson" || field.key === "typeOfFlute" ? (
+                <div key={String(field.key)} className="flex flex-col space-y-1">
+                  <label className="font-bold text-sm">{field.label}</label>
+                  <Select
+                    options={field.key === "checkNo" ? [...CHECK_NO_OPTIONS, ...(editForm.checkNo && !CHECK_NO_OPTIONS.some((option) => option.value === String(editForm.checkNo)) ? [{ value: String(editForm.checkNo), label: `${editForm.checkNo} (Legacy)` }] : [])] : field.key === "typeOfFlute" ? FLUTE_OPTIONS : editQcPersonOptions}
+                    value={String(editForm[field.key] || "")}
+                    onChange={(value) => updateEditField(field.key, value)}
+                    placeholder="Choose"
+                  />
+                </div>
+              ) : (
+                <FieldInput key={String(field.key)} field={field} value={editForm[field.key]} onChange={updateEditField} />
+              ))}
+            </div>
+            <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
+              <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
