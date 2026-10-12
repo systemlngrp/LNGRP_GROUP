@@ -8,13 +8,13 @@ import { jobDateCellClass, jobNumberCellClass, qcResultCellClass } from "../lib/
 import { useAuth } from "../auth/AuthContext";
 import type { Setting } from "../types";
 
-const COLUMNS = ["Job. No.", "Date", "Party Name", "Item Name", "ERP Code", "Previous Customer Complaint", "Required Length", "Achieved Length", "Min length", "Max Length", "Required Width", "Achieved Width", "Width Min", "Width Max", "Required Height", "Achieved Height", "Height Min", "Height Max", "CS Act / CS STD", "B.GSM", "Box Weight (Grams)", "Artwork", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Remarks [IF ANY]", "Box Photo [FRONT]", "Box Photo [BACK]", "Result", "QC Person Name", "PDI TIME", "Ply", "Standard CS", "STD CS", "Actual CS"] as const;
+const COLUMNS = ["Job. No.", "Date", "Party Name", "Item Name", "ERP Code", "Previous Customer Complaint", "Required Length", "Achieved Length", "Min length", "Max Length", "Required Width", "Achieved Width", "Width Min", "Width Max", "Required Height", "Achieved Height", "Height Min", "Height Max", "CS Act / CS STD", "Box Weight (Grams)", "Artwork", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Remarks [IF ANY]", "Box Photo [FRONT]", "Box Photo [BACK]", "Result", "QC Person Name", "PDI TIME", "Ply", "Standard CS", "STD CS", "Actual CS"] as const;
 const GROUPS = [
   { label: "PROGRAM", start: 0, end: 5, color: "bg-[#244b13] text-white" },
   { label: "TARGET SIZE Vs ACTUAL", start: 6, end: 17, color: "bg-[#201249] text-white" },
-  { label: "Technical Checks", start: 18, end: 20, color: "bg-[#4b1230] text-white" },
-  { label: "VISUAL CHECKS", start: 21, end: 29, color: "bg-[#a000f5] text-white" },
-  { label: "SUMMARY REPORT", start: 30, end: 36, color: "bg-[#ffff00] text-black" },
+  { label: "Technical Checks", start: 18, end: 19, color: "bg-[#4b1230] text-white" },
+  { label: "VISUAL CHECKS", start: 20, end: 28, color: "bg-[#a000f5] text-white" },
+  { label: "SUMMARY REPORT", start: 29, end: 35, color: "bg-[#ffff00] text-black" },
 ] as const;
 const headerColor = (index: number) => {
   if (index < 5) return "bg-[#0b3760] text-white";
@@ -23,14 +23,14 @@ const headerColor = (index: number) => {
   if ([8, 9, 12, 13, 16, 17].includes(index)) return "bg-[#ffff00] text-black";
   if ([10, 11].includes(index)) return "bg-[#b4a7d6] text-black";
   if ([14, 15].includes(index)) return "bg-[#a2c4c9] text-black";
-  if (index < 21) return "bg-[#cc4125] text-white";
-  if (index < 30) return "bg-[#e7cdd8] text-black";
-  if (index < 32) return "bg-[#fff2cc] text-black";
+  if (index < 20) return "bg-[#cc4125] text-white";
+  if (index < 29) return "bg-[#e7cdd8] text-black";
+  if (index < 31) return "bg-[#fff2cc] text-black";
   return "bg-[#ee00ee] text-black";
 };
 const NPD_COLUMNS = new Set(["Required Length", "Required Width", "Required Height", "Artwork", "Ply", "Standard CS", "STD CS"]);
 const NPD_RANGE_COLUMNS = new Set(["Min length", "Max Length", "Width Min", "Width Max", "Height Min", "Height Max"]);
-const PDI_TECHNICAL_COLUMNS = new Set(["CS Act / CS STD", "B.GSM", "Box Weight (Grams)"]);
+const PDI_TECHNICAL_COLUMNS = new Set(["CS Act / CS STD", "Box Weight (Grams)"]);
 export function parsePdiVisibleColumns(raw: unknown): number[] { const all=COLUMNS.map((_,i)=>i); if(!raw)return all; try { const p=typeof raw==="string"?JSON.parse(raw):raw; if(!Array.isArray(p))return all; const v=[...new Set(p.map(Number).filter((x)=>Number.isInteger(x)&&x>=0&&x<COLUMNS.length))]; return v.length?v:all; } catch { return all; } }
 const PDI_COLUMNS = new Set(["Achieved Length", "Achieved Width", "Achieved Height", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Remarks [IF ANY]", "Box Photo [FRONT]", "Box Photo [BACK]", "Result", "QC Person Name", "PDI TIME", "Actual CS"]);
 const sourceCellClass = (column: string) => NPD_RANGE_COLUMNS.has(column) ? "bg-[#ffff00]" : PDI_TECHNICAL_COLUMNS.has(column) ? "bg-[#cc4125]" : NPD_COLUMNS.has(column) ? "bg-[#c8daf7]" : PDI_COLUMNS.has(column) ? "bg-[#b5d6a7]" : "";

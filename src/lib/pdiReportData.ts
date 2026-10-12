@@ -114,7 +114,6 @@ export function buildPdiReportRow(
     "Height Min": heightRange.min,
     "Height Max": heightRange.max,
     "CS Act / CS STD": achievedCs ? (standardCs ? achievedCs + " / " + standardCs : achievedCs) : "",
-    "B.GSM": displayNumber(inspection?.bGsm),
     "Box Weight (Grams)": displayNumber(inspection?.boxWeightGrams),
     Artwork: text(item?.artwork),
     "Printing Artwork Check": text(inspection?.printingArtworkCheck),
