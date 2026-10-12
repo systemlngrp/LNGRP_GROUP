@@ -98,6 +98,7 @@ const sections: FieldSection[] = [
       { key: "colour1Actual", label: "Colour 1 (Actual)" },
       { key: "printingColour2Standard", label: "Printing Colour 2 (Standard)", readOnly: true },
       { key: "colour2Actual", label: "Colour 2 (Actual)" },
+      { key: "lotNoPrinted", label: "Lot No Printed" },
       { key: "standardArtwork", label: "STANDARD ARTWORK", type: "textarea", wide: true, readOnly: true },
     ],
   },
@@ -149,6 +150,7 @@ const formSections: FieldSection[] = [
       { key: "colour1Actual", label: "Colour 1 (Actual)", required: true },
       { key: "colour2Actual", label: "Colour 2 (Actual)", required: true },
       { key: "operatorName", label: "Operator Name", required: true },
+      { key: "lotNoPrinted", label: "Lot No Printed", required: true },
     ],
   },
 ];
@@ -533,6 +535,7 @@ export function PrintingQcForm() {
     "colour1Actual",
     "colour2Actual",
     "operatorName",
+    "lotNoPrinted",
   ];
 
   const canSubmit = Boolean(
@@ -651,6 +654,7 @@ const masterColumns: FieldConfig[] = [
   { key: "itemName", label: "Item Name" },
   { key: "erp", label: "ERP", readOnly: true },
   { key: "checkNo", label: "Check No." },
+  { key: "lotNoPrinted", label: "Lot No Printed" },
   ...allFields.filter(
     (field) =>
       ![
@@ -661,6 +665,7 @@ const masterColumns: FieldConfig[] = [
         "itemName",
         "erp",
         "checkNo",
+        "lotNoPrinted",
         "whatsapp",
         "column40",
         "column41",
