@@ -434,10 +434,11 @@ export function BoardLineQcForm() {
           const itemName = String((production as any).itemName || item?.name || production.itemId || "").trim();
           const partyName = String(production.companyName || item?.companyName || "").trim();
           const erp = String(production.erpCode || production.masterErp || item?.erp || "").trim();
+          const labelParts = [jobNo, partyName, itemName, erp].filter(Boolean);
           return {
             value: String(production.id),
-            label: jobNo,
-            searchText: [jobNo, partyName, itemName, erp].filter(Boolean).join(" "),
+            label: labelParts.join(" | "),
+            searchText: labelParts.join(" "),
           };
         }),
     [findItemAcrossSources, productions]
