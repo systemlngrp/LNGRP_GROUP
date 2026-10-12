@@ -12,6 +12,11 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },
+  "overrides": {
+    "vite": {
+      "esbuild": "^0.28.1"
+    }
+  },
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
