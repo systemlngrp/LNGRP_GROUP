@@ -1051,6 +1051,7 @@ export interface QcUpdateRecord {
   indexNo?: string;
   zoneNo?: string;
   sampleNo?: string;
+  location?: string;
   controlRecordId?: string;
   spec?: string;
   remarks?: string;
@@ -1062,7 +1063,7 @@ export interface QcUpdateRecord {
 export interface QcUpdateAuditLog {
   id: string;
   qcUpdateId: string;
-  action: "CREATE" | "UPDATE" | "LINK_CONTROL_SAMPLE" | string;
+  action: "CREATE" | "UPDATE" | "CREATE_CONTROL_SAMPLE" | "LINK_CONTROL_SAMPLE" | string;
   beforeJson?: string;
   afterJson?: string;
   updatedBy: string;

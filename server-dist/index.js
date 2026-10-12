@@ -5959,7 +5959,7 @@ async function initDb(retries = 5) {
             await db.query(`CREATE TABLE IF NOT EXISTS \`qc_update_records\` (
         \`id\` VARCHAR(100) PRIMARY KEY, \`npdId\` VARCHAR(100) NOT NULL, \`erpNo\` VARCHAR(100) NOT NULL,
         \`itemName\` TEXT NOT NULL, \`fileNo\` VARCHAR(255) NOT NULL, \`indexNo\` VARCHAR(255) NOT NULL,
-        \`zoneNo\` VARCHAR(255) NOT NULL, \`sampleNo\` VARCHAR(255) NOT NULL, \`updateType\` VARCHAR(50), \`controlRecordId\` VARCHAR(100), \`spec\` TEXT,
+        \`zoneNo\` VARCHAR(255) NOT NULL, \`sampleNo\` VARCHAR(255) NOT NULL, \`updateType\` VARCHAR(50), \`location\` VARCHAR(255), \`controlRecordId\` VARCHAR(100), \`spec\` TEXT,
         \`remarks\` TEXT, \`updatedBy\` VARCHAR(255) NOT NULL, \`updateDate\` VARCHAR(50) NOT NULL,
         \`updateTimestamp\` VARCHAR(255)
       )`);
@@ -7147,6 +7147,7 @@ async function initDb(retries = 5) {
                 { table: "qc_update_records", column: "zoneNo", type: "VARCHAR(255)" },
                 { table: "qc_update_records", column: "sampleNo", type: "VARCHAR(255)" },
                 { table: "qc_update_records", column: "updateType", type: "VARCHAR(50)" },
+                { table: "qc_update_records", column: "location", type: "VARCHAR(255)" },
                 { table: "qc_update_records", column: "controlRecordId", type: "VARCHAR(100)" },
                 { table: "qc_update_records", column: "spec", type: "TEXT" },
                 { table: "qc_update_records", column: "remarks", type: "TEXT" },
@@ -13173,6 +13174,7 @@ app.post("/api/qc-update-records/save", qcUpdateGuard, async (req, res) => {
             fileNo: String(body.fileNo || ""),
             indexNo: String(body.indexNo || ""),
             zoneNo: String(body.zoneNo || ""),
+            location: String(body.location || ""),
             sampleNo: String(body.sampleNo || ""),
             controlRecordId: String(body.controlRecordId || before?.controlRecordId || ""),
             spec: String(body.spec || ""),
@@ -13181,8 +13183,30 @@ app.post("/api/qc-update-records/save", qcUpdateGuard, async (req, res) => {
             updateDate: String(body.updateDate || now.slice(0, 10)),
             updateTimestamp: now,
         };
-        await conn.query("INSERT INTO `qc_update_records` (`id`,`npdId`,`erpNo`,`itemName`,`updateType`,`fileNo`,`indexNo`,`zoneNo`,`sampleNo`,`controlRecordId`,`spec`,`remarks`,`updatedBy`,`updateDate`,`updateTimestamp`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE `npdId`=VALUES(`npdId`),`erpNo`=VALUES(`erpNo`),`itemName`=VALUES(`itemName`),`updateType`=VALUES(`updateType`),`fileNo`=VALUES(`fileNo`),`indexNo`=VALUES(`indexNo`),`zoneNo`=VALUES(`zoneNo`),`sampleNo`=VALUES(`sampleNo`),`controlRecordId`=VALUES(`controlRecordId`),`spec`=VALUES(`spec`),`remarks`=VALUES(`remarks`),`updatedBy`=VALUES(`updatedBy`),`updateDate`=VALUES(`updateDate`),`updateTimestamp`=VALUES(`updateTimestamp`)", [record.id, record.npdId, record.erpNo, record.itemName, record.updateType, record.fileNo, record.indexNo, record.zoneNo, record.sampleNo, record.controlRecordId, record.spec, record.remarks, record.updatedBy, record.updateDate, record.updateTimestamp]);
+        let controlAudit = null;
+        if (record.location && record.sampleNo) {
+            const [locationRows] = await conn.query("SELECT id FROM `qc_block_location_masters` WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) AND LOWER(active) = 'yes' LIMIT 1", [record.location]);
+            if (!locationRows[0])
+                throw new Error("Select a valid active Sample Location.");
+            const [matchingControls] = await conn.query("SELECT id, erpCode, location, sampleNo, updatedBy, updateTimestamp FROM `control_records` WHERE LOWER(TRIM(erpCode)) = LOWER(TRIM(?)) AND LOWER(TRIM(location)) = LOWER(TRIM(?)) AND LOWER(TRIM(sampleNo)) = LOWER(TRIM(?)) LIMIT 1 FOR UPDATE", [record.erpNo, record.location, record.sampleNo]);
+            const matchingControl = matchingControls[0];
+            if (matchingControl?.id) {
+                record.controlRecordId = String(matchingControl.id);
+                if (String(before?.controlRecordId || "") !== record.controlRecordId)
+                    controlAudit = { action: "LINK_CONTROL_SAMPLE", before: before?.controlRecordId ? { controlRecordId: before.controlRecordId } : null, after: matchingControl };
+            }
+            else {
+                const control = { id: crypto.randomUUID(), erpCode: record.erpNo, location: record.location, sampleNo: record.sampleNo, updatedBy: actor, updateTimestamp: now };
+                await conn.query("INSERT INTO `control_records` (`id`,`erpCode`,`location`,`sampleNo`,`updatedBy`,`updateTimestamp`) VALUES (?,?,?,?,?,?)", [control.id, control.erpCode, control.location, control.sampleNo, control.updatedBy, control.updateTimestamp]);
+                record.controlRecordId = control.id;
+                controlAudit = { action: "CREATE_CONTROL_SAMPLE", before: null, after: control };
+            }
+        }
+        await conn.query("INSERT INTO `qc_update_records` (`id`,`npdId`,`erpNo`,`itemName`,`updateType`,`fileNo`,`indexNo`,`zoneNo`,`location`,`sampleNo`,`controlRecordId`,`spec`,`remarks`,`updatedBy`,`updateDate`,`updateTimestamp`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE `npdId`=VALUES(`npdId`),`erpNo`=VALUES(`erpNo`),`itemName`=VALUES(`itemName`),`updateType`=VALUES(`updateType`),`fileNo`=VALUES(`fileNo`),`indexNo`=VALUES(`indexNo`),`zoneNo`=VALUES(`zoneNo`),`location`=VALUES(`location`),`sampleNo`=VALUES(`sampleNo`),`controlRecordId`=VALUES(`controlRecordId`),`spec`=VALUES(`spec`),`remarks`=VALUES(`remarks`),`updatedBy`=VALUES(`updatedBy`),`updateDate`=VALUES(`updateDate`),`updateTimestamp`=VALUES(`updateTimestamp`)", [record.id, record.npdId, record.erpNo, record.itemName, record.updateType, record.fileNo, record.indexNo, record.zoneNo, record.location, record.sampleNo, record.controlRecordId, record.spec, record.remarks, record.updatedBy, record.updateDate, record.updateTimestamp]);
         await conn.query("INSERT INTO `qc_update_audit_logs` (`id`,`qcUpdateId`,`action`,`beforeJson`,`afterJson`,`updatedBy`,`updateTimestamp`) VALUES (?,?,?,?,?,?,?)", [crypto.randomUUID(), id, before ? "UPDATE" : "CREATE", before ? JSON.stringify(before) : null, JSON.stringify(record), actor, now]);
+        if (controlAudit) {
+            await conn.query("INSERT INTO `qc_update_audit_logs` (`id`,`qcUpdateId`,`action`,`beforeJson`,`afterJson`,`updatedBy`,`updateTimestamp`) VALUES (?,?,?,?,?,?,?)", [crypto.randomUUID(), id, controlAudit.action, controlAudit.before ? JSON.stringify(controlAudit.before) : null, JSON.stringify(controlAudit.after), actor, now]);
+        }
         await conn.commit();
         return res.json(record);
     }

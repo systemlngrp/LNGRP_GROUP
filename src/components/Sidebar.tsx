@@ -279,7 +279,6 @@ const qualityItems: NavEntry[] = [
     section: "Control Records",
     items: [
       { name: "Control Records", href: "/quality/control-record", icon: Database },
-      { name: "Sample Entry Form", href: "/quality/control-record/form", icon: ClipboardList },
     ],
   },
   {
