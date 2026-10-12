@@ -948,7 +948,7 @@ export function PrintingQcMaster() {
               <h3 className="text-lg font-black uppercase">Edit Printing QC</h3>
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-3 py-1 font-bold">Close</button>
             </div>
-            {sections.map((section) => (
+            {formSections.map((section) => (
               <section key={section.title} className="mb-6 space-y-3">
                 <h4 className="border-b border-black pb-1 text-sm font-black uppercase tracking-wide">{section.title}</h4>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
