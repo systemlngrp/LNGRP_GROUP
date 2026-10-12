@@ -5039,6 +5039,9 @@ function entityPermissionKey(entity: string): string {
       return "/quality/printing-wastage";
     case "quality_complaints":
       return "/quality/complaints";
+    case "qc_update_records":
+    case "qc_update_audit_logs":
+      return "/quality/qc-update";
     case "qc_spec_card_movements":
       return "/quality/spec-card-issue-return";
     case "qc_person_masters":
@@ -6439,9 +6442,15 @@ async function initDb(retries = 5) {
       await db.query(`CREATE TABLE IF NOT EXISTS \`qc_update_records\` (
         \`id\` VARCHAR(100) PRIMARY KEY, \`npdId\` VARCHAR(100) NOT NULL, \`erpNo\` VARCHAR(100) NOT NULL,
         \`itemName\` TEXT NOT NULL, \`fileNo\` VARCHAR(255) NOT NULL, \`indexNo\` VARCHAR(255) NOT NULL,
-        \`zoneNo\` VARCHAR(255) NOT NULL, \`sampleNo\` VARCHAR(255) NOT NULL, \`spec\` TEXT,
+        \`zoneNo\` VARCHAR(255) NOT NULL, \`sampleNo\` VARCHAR(255) NOT NULL, \`updateType\` VARCHAR(50), \`controlRecordId\` VARCHAR(100), \`spec\` TEXT,
         \`remarks\` TEXT, \`updatedBy\` VARCHAR(255) NOT NULL, \`updateDate\` VARCHAR(50) NOT NULL,
         \`updateTimestamp\` VARCHAR(255)
+      )`);
+      await db.query(`CREATE TABLE IF NOT EXISTS \`qc_update_audit_logs\` (
+        \`id\` VARCHAR(100) PRIMARY KEY, \`qcUpdateId\` VARCHAR(100) NOT NULL,
+        \`action\` VARCHAR(50) NOT NULL, \`beforeJson\` LONGTEXT, \`afterJson\` LONGTEXT,
+        \`updatedBy\` VARCHAR(255) NOT NULL, \`updateTimestamp\` VARCHAR(255) NOT NULL,
+        INDEX \`idx_qc_update_audit_record\` (\`qcUpdateId\`)
       )`);
       await db.query(`CREATE TABLE IF NOT EXISTS \`special_remark_records\` (
         \`id\` VARCHAR(100) PRIMARY KEY, \`npdId\` VARCHAR(100) NOT NULL, \`erpCode\` VARCHAR(100) NOT NULL,
@@ -7666,6 +7675,8 @@ await db.query(`
         { table: "qc_update_records", column: "indexNo", type: "VARCHAR(255)" },
         { table: "qc_update_records", column: "zoneNo", type: "VARCHAR(255)" },
         { table: "qc_update_records", column: "sampleNo", type: "VARCHAR(255)" },
+        { table: "qc_update_records", column: "updateType", type: "VARCHAR(50)" },
+        { table: "qc_update_records", column: "controlRecordId", type: "VARCHAR(100)" },
         { table: "qc_update_records", column: "spec", type: "TEXT" },
         { table: "qc_update_records", column: "remarks", type: "TEXT" },
         { table: "qc_update_records", column: "updatedBy", type: "VARCHAR(255)" },
@@ -11979,7 +11990,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   }
 });
 
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
@@ -14180,6 +14191,99 @@ app.get("/api/qc-block-location-masters/usage", requireAuth, async (req, res) =>
     return res.status(500).json({ error: "Unable to check location usage." });
   }
 });
+const qcUpdateGuard = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  try {
+    const user = await getRequestUser(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    if (user.role === "TruckDriver") return res.status(403).json({ error: "Forbidden" });
+    if (!hasPermission(user, "/quality/qc-update")) return res.status(403).json({ error: "Forbidden" });
+    return next();
+  } catch (error) {
+    console.error("[AUTHZ] QC Update guard failed:", error);
+    return res.status(500).json({ error: "Authorization failed" });
+  }
+};
+
+app.post("/api/qc-update-records/save", qcUpdateGuard, async (req, res) => {
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const body = req.body || {};
+    const id = String(body.id || crypto.randomUUID()).trim();
+    const npdId = String(body.npdId || "").trim();
+    if (!npdId) { await conn.rollback(); return res.status(400).json({ error: "NPD ERP / Item is required." }); }
+    const actor = resolveAuditActorName(await getRequestUser(req));
+    const now = new Date().toISOString();
+    const [existingRows] = await conn.query("SELECT * FROM `qc_update_records` WHERE id = ? LIMIT 1 FOR UPDATE", [id]);
+    const before = (existingRows as any[])[0] || null;
+    const record = {
+      id,
+      npdId,
+      erpNo: String(body.erpNo || ""),
+      itemName: String(body.itemName || ""),
+      updateType: String(body.updateType || ""),
+      fileNo: String(body.fileNo || ""),
+      indexNo: String(body.indexNo || ""),
+      zoneNo: String(body.zoneNo || ""),
+      sampleNo: String(body.sampleNo || ""),
+      controlRecordId: String(body.controlRecordId || before?.controlRecordId || ""),
+      spec: String(body.spec || ""),
+      remarks: String(body.remarks || ""),
+      updatedBy: actor,
+      updateDate: String(body.updateDate || now.slice(0, 10)),
+      updateTimestamp: now,
+    };
+    await conn.query(
+      "INSERT INTO `qc_update_records` (`id`,`npdId`,`erpNo`,`itemName`,`updateType`,`fileNo`,`indexNo`,`zoneNo`,`sampleNo`,`controlRecordId`,`spec`,`remarks`,`updatedBy`,`updateDate`,`updateTimestamp`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE `npdId`=VALUES(`npdId`),`erpNo`=VALUES(`erpNo`),`itemName`=VALUES(`itemName`),`updateType`=VALUES(`updateType`),`fileNo`=VALUES(`fileNo`),`indexNo`=VALUES(`indexNo`),`zoneNo`=VALUES(`zoneNo`),`sampleNo`=VALUES(`sampleNo`),`controlRecordId`=VALUES(`controlRecordId`),`spec`=VALUES(`spec`),`remarks`=VALUES(`remarks`),`updatedBy`=VALUES(`updatedBy`),`updateDate`=VALUES(`updateDate`),`updateTimestamp`=VALUES(`updateTimestamp`)",
+      [record.id, record.npdId, record.erpNo, record.itemName, record.updateType, record.fileNo, record.indexNo, record.zoneNo, record.sampleNo, record.controlRecordId, record.spec, record.remarks, record.updatedBy, record.updateDate, record.updateTimestamp]
+    );
+    await conn.query(
+      "INSERT INTO `qc_update_audit_logs` (`id`,`qcUpdateId`,`action`,`beforeJson`,`afterJson`,`updatedBy`,`updateTimestamp`) VALUES (?,?,?,?,?,?,?)",
+      [crypto.randomUUID(), id, before ? "UPDATE" : "CREATE", before ? JSON.stringify(before) : null, JSON.stringify(record), actor, now]
+    );
+    await conn.commit();
+    return res.json(record);
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    console.error("[QC_UPDATE] Save failed:", error);
+    return res.status(500).json({ error: (error as Error).message || "Unable to save QC update." });
+  } finally {
+    conn.release();
+  }
+});
+
+app.post("/api/qc-update-records/link-control-sample", qcUpdateGuard, async (req, res) => {
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const qcUpdateId = String(req.body?.qcUpdateId || "").trim();
+    const controlRecordId = String(req.body?.controlRecordId || "").trim();
+    if (!qcUpdateId || !controlRecordId) { await conn.rollback(); return res.status(400).json({ error: "QC Update and Control Sample are required." }); }
+    const actor = resolveAuditActorName(await getRequestUser(req));
+    const now = new Date().toISOString();
+    const [updateRows] = await conn.query("SELECT * FROM `qc_update_records` WHERE id = ? LIMIT 1 FOR UPDATE", [qcUpdateId]);
+    const before = (updateRows as any[])[0];
+    if (!before) { await conn.rollback(); return res.status(404).json({ error: "QC Update record not found." }); }
+    const [controlRows] = await conn.query("SELECT id, erpCode, location, sampleNo FROM `control_records` WHERE id = ? LIMIT 1", [controlRecordId]);
+    if (!(controlRows as any[])[0]) { await conn.rollback(); return res.status(404).json({ error: "Control Sample record not found." }); }
+    const after = { ...before, controlRecordId };
+    await conn.query("UPDATE `qc_update_records` SET `controlRecordId` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?", [controlRecordId, actor, now, qcUpdateId]);
+    await conn.query("INSERT INTO `qc_update_audit_logs` (`id`,`qcUpdateId`,`action`,`beforeJson`,`afterJson`,`updatedBy`,`updateTimestamp`) VALUES (?,?,?,?,?,?,?)", [crypto.randomUUID(), qcUpdateId, "LINK_CONTROL_SAMPLE", JSON.stringify(before), JSON.stringify(after), actor, now]);
+    await conn.commit();
+    return res.json(after);
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    console.error("[QC_UPDATE] Control Sample link failed:", error);
+    return res.status(500).json({ error: (error as Error).message || "Unable to link Control Sample." });
+  } finally {
+    conn.release();
+  }
+});
+
 entities.forEach(entity => {
   const handlers = createHandlers(entity);
   const route = `/api/${entity.replace(/_/g, "-")}`;

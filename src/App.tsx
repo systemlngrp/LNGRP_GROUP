@@ -97,6 +97,7 @@ import { BoardLineQcForm, BoardLineQcMaster } from "./pages/BoardLineQc";
 import { PrintingQcForm, PrintingQcMaster } from "./pages/PrintingQc";
 import { QcMasterData } from "./pages/QcMasterData";
 import { QcUpdateForm } from "./pages/QcUpdateForm";
+import { QcUpdateMaster } from "./pages/QcUpdateMaster";
 import { SpecialRemarkForm, SpecialRemarkMaster } from "./pages/SpecialRemarks";
 import { PrintingStereoMaster } from "./pages/PrintingStereo";
 import { QcBlockRecordForm } from "./pages/QcBlockRecordForm";
@@ -376,6 +377,7 @@ export default function App() {
           <Route path="quality/php-plate/in-out" element={<PhpPlateInOut />} />
           <Route path="quality/qc-master-data" element={<QcMasterData />} />
           <Route path="quality/qc-update/form" element={<QcUpdateForm />} />
+          <Route path="quality/qc-update/master" element={<QcUpdateMaster />} />
           <Route path="quality/special-remarks/form" element={<SpecialRemarkForm />} />
           <Route path="quality/special-remarks" element={<SpecialRemarkMaster />} />
           <Route path="quality/printing-stereo/form" element={<Navigate to="/quality/block-record/form" replace />} />

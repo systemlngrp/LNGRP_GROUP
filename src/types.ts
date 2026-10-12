@@ -1046,15 +1046,27 @@ export interface QcUpdateRecord {
   npdId: string;
   erpNo: string;
   itemName: string;
-  fileNo: string;
-  indexNo: string;
-  zoneNo: string;
-  sampleNo: string;
+  updateType?: "File Update" | "Sample" | string;
+  fileNo?: string;
+  indexNo?: string;
+  zoneNo?: string;
+  sampleNo?: string;
+  controlRecordId?: string;
   spec?: string;
   remarks?: string;
   updatedBy: string;
   updateDate: string;
   updateTimestamp?: string;
+}
+
+export interface QcUpdateAuditLog {
+  id: string;
+  qcUpdateId: string;
+  action: "CREATE" | "UPDATE" | "LINK_CONTROL_SAMPLE" | string;
+  beforeJson?: string;
+  afterJson?: string;
+  updatedBy: string;
+  updateTimestamp: string;
 }
 
 export interface SpecialRemarkRecord {

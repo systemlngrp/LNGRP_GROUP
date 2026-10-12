@@ -235,6 +235,7 @@ const qualityItems: NavEntry[] = [
     section: "QC Master",
     items: [
       { name: "QC Update Form", href: "/quality/qc-update/form", icon: ClipboardList },
+      { name: "QC Update Master", href: "/quality/qc-update/master", icon: Database },
       { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
       { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
     ],

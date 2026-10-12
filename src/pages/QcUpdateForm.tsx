@@ -4,15 +4,13 @@ import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { Select } from "../components/Select";
 import { useNpdItems } from "../hooks/useNpdItems";
-import { QcUpdateRecord } from "../types";
 
 const today = () => new Date().toISOString().slice(0, 10);
-const initialForm = { npdId: "", erpNo: "", itemName: "", fileNo: "", indexNo: "", zoneNo: "", remarks: "", updatedBy: "", updateDate: today() };
+const initialForm = { npdId: "", erpNo: "", itemName: "", updateType: "", fileNo: "", indexNo: "", zoneNo: "", sampleNo: "", remarks: "", updatedBy: "", updateDate: today() };
 const inputClass = "w-full rounded border border-black bg-white p-2 text-sm";
 
 export function QcUpdateForm() {
   const { user } = useAuth();
-  const [, , , api] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all" });
   const items = useNpdItems();
   const displayName = useMemo(() => String(user?.name || user?.userId || user?.email || "").trim(), [user]);
   const [form, setForm] = useState(() => ({ ...initialForm, updatedBy: displayName }));
@@ -23,11 +21,12 @@ export function QcUpdateForm() {
   const reset = () => { setForm({ ...initialForm, updatedBy: displayName }); setError(""); setMessage(""); };
   const save = async (event: FormEvent) => {
     event.preventDefault(); setMessage("");
-    const required = ["npdId", "erpNo", "itemName", "fileNo", "indexNo", "zoneNo"] as const;
-    if (required.some((key) => !form[key].trim())) { setError("Please fill all required fields."); return; }
+    if (!form.npdId.trim()) { setError("NPD ERP / Item is required."); return; }
     setSaving(true);
     try {
-      await api.addItem({ ...form, id: crypto.randomUUID(), updatedBy: displayName, updateDate: today(), updateTimestamp: new Date().toISOString() });
+      const response = await fetch("/api/qc-update-records/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, id: crypto.randomUUID(), updatedBy: displayName, updateDate: today(), updateTimestamp: new Date().toISOString() }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Unable to save QC update.");
       setForm({ ...initialForm, updatedBy: displayName }); setError(""); setMessage("QC update saved successfully.");
     } catch (saveError) { setError(saveError instanceof Error ? saveError.message : "Unable to save QC update."); }
     finally { setSaving(false); }
@@ -42,8 +41,9 @@ export function QcUpdateForm() {
     <form onSubmit={save} className="space-y-5">
       <section className="rounded border-2 border-black bg-white p-4"><h3 className="mb-4 bg-indigo-800 p-3 font-bold uppercase text-white">QC Information</h3><div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="space-y-1 md:col-span-2"><span className="font-bold">NPD ERP / Item <span className="text-red-700">*</span></span><Select value={form.npdId} onChange={selectNpd} options={npdOptions} placeholder="Search ERP or Item" /></label>
-        
-        {fields.map(([label, key]) => <label key={key} className="space-y-1"><span className="font-bold">{label} <span className="text-red-700">*</span></span><input className={inputClass} value={form[key]} onChange={(e) => setField(key, e.target.value)} /></label>)}
+        <label className="space-y-1"><span className="font-bold">Update Type <span className="text-gray-500">(optional)</span></span><select className={inputClass} value={form.updateType} onChange={(e) => setField("updateType", e.target.value)}><option value="">Select type</option><option value="File Update">File Update</option><option value="Sample">Sample</option></select></label>
+        {fields.map(([label, key]) => <label key={key} className="space-y-1"><span className="font-bold">{label} <span className="text-gray-500">(optional)</span></span><input className={inputClass} value={form[key]} onChange={(e) => setField(key, e.target.value)} /></label>)}
+        <label className="space-y-1"><span className="font-bold">Sample No. <span className="text-gray-500">(optional)</span></span><input className={inputClass} value={form.sampleNo} onChange={(e) => setField("sampleNo", e.target.value)} /></label>
         <label className="space-y-1 md:col-span-2"><span className="font-bold">Remarks</span><textarea className={`${inputClass} min-h-24`} value={form.remarks} onChange={(e) => setField("remarks", e.target.value)} /></label>
       </div></section>
       <div className="flex flex-wrap gap-3"><button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded bg-emerald-700 px-5 py-3 font-bold text-white disabled:opacity-60"><Save size={17} />{saving ? "Saving..." : "Save"}</button><button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-5 py-3 font-bold"><RotateCcw size={17} />Clear / Reset</button></div>
