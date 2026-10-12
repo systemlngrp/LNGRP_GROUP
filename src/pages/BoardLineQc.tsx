@@ -689,6 +689,8 @@ export function BoardLineQcMaster() {
   const [checks, setChecks, loading] = useData<BoardLineQcCheck>("boardline_qc_checks", []);
   const [settings] = useData<Setting>("settings", []);
   const [users] = useData<User>("users", []);
+  const [productions] = useData<Production>("productions", []);
+  const { findItemAcrossSources } = useOrderItemCatalog();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [jobFilter, setJobFilter] = useState("");
@@ -699,7 +701,25 @@ export function BoardLineQcMaster() {
   const [page, setPage] = useState(1);
   const [editingRow, setEditingRow] = useState<BoardLineQcCheck | null>(null);
   const [editForm, setEditForm] = useState<Partial<BoardLineQcCheck>>({});
+  const [editSelectedProductionId, setEditSelectedProductionId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  const editJobOptions = useMemo(
+    () =>
+      [...productions]
+        .sort((a, b) => String(b.date || b.updateTimestamp || b.transactionNo || "").localeCompare(String(a.date || a.updateTimestamp || a.transactionNo || "")))
+        .map((production) => {
+          const item = findItemAcrossSources(String(production.itemId || production.npdId || ""), production.itemSource, production.erpCode || production.masterErp);
+          const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo || production.id);
+          const itemName = String((production as any).itemName || item?.name || production.itemId || "").trim();
+          const partyName = String(production.companyName || item?.companyName || "").trim();
+          const erp = String(production.erpCode || production.masterErp || item?.erp || "").trim();
+          const labelParts = [jobNo, partyName, itemName, erp].filter(Boolean);
+          return { value: String(production.id), label: labelParts.join(" | "), searchText: labelParts.join(" ") };
+        }),
+    [findItemAcrossSources, productions]
+  );
+  const editProductionById = useMemo(() => new Map(productions.map((production) => [String(production.id), production])), [productions]);
 
   const editQcPersonOptions = useMemo(() => {
     const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
@@ -710,15 +730,41 @@ export function BoardLineQcMaster() {
 
   const openEdit = (row: BoardLineQcCheck) => {
     setEditingRow(row);
+    const selected = productions.find((production) => normalizeProductionJobNumber(production.transactionNo || production.jobCardNo) === normalizeProductionJobNumber(row.jobNo));
+    setEditSelectedProductionId(String(selected?.id || ""));
     setEditForm({ ...row, timestamp: row.timestamp ? toLocalDatetimeInput(new Date(row.timestamp)) : "" });
   };
+
+  const handleEditJobSelect = (productionId: string) => {
+    setEditSelectedProductionId(productionId);
+    const production = editProductionById.get(productionId);
+    if (!production) return;
+    const item = findItemAcrossSources(String(production.itemId || production.npdId || ""), production.itemSource, production.erpCode || production.masterErp);
+    const rawItem = item?.raw || {};
+    const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo);
+    const partyName = firstText(production.companyName, item?.companyName, rawItem.customerName, rawItem.customer);
+    const itemName = firstText((production as any).itemName, item?.name, rawItem.itemName, rawItem.name);
+    const erp = firstText(production.erpCode, production.masterErp, item?.erp, rawItem.erp, rawItem.erpCode);
+    const ply = toOptionalNumber(production.ply, rawItem.ply, rawItem.noOfPly);
+    const heightId = toOptionalNumber(rawItem.heightId, rawItem.hId, rawItem.height);
+    const widthId = toOptionalNumber(rawItem.breadthId, rawItem.widthId, rawItem.wId, rawItem.width, rawItem.breadth);
+    const lengthId = toOptionalNumber(rawItem.lengthId, rawItem.lId, rawItem.length);
+    const height = isNumber(heightId) && isNumber(ply) ? heightId + ply : toOptionalNumber(production.height, rawItem.hOd, rawItem.heightOd);
+    const width = isNumber(widthId) && isNumber(ply) ? widthId + ply : toOptionalNumber(production.breadth, rawItem.wOd, rawItem.widthOd);
+    const length = isNumber(lengthId) && isNumber(ply) ? lengthId + ply : toOptionalNumber(production.length, rawItem.lOd, rawItem.lengthOd);
+    const part = firstText(rawItem.part, rawItem.noOfParts, production.noOfParts);
+    const boardGsm = toOptionalNumber(production.boardGsmReq, production.gsm, rawItem.boardGsmReq, rawItem.gsm, rawItem.calculatedBGsm, rawItem.standardBGsm);
+    setEditForm((prev) => calculateBoardLineForm({ ...prev, jobNo, partyName, itemName, erp, heightOd: height, width, length, ply, part, typeOfFlute: firstText(production.flute, production.fluteType, rawItem.flute), boardGsm, sheetWeightGrams: toOptionalNumber(production.sheetWeight, rawItem.sheetWeightGrams, rawItem.calculatedWeightPerBox), planQty: toOptionalNumber(production.plannedQty, production.qty, rawItem.planQty, rawItem.orderQuantity), printingArtwork: firstText(rawItem.artwork, rawItem.artworkUpload, prev.printingArtwork) }, settings[0]));
+  };
+
+  const requiredEditFields: Array<keyof BoardLineQcCheck> = ["flapHeightFlapOperatorSide", "flapHeightFlapDriveSide", "cuttingSizeMm", "boardGsm", "typeOfFlute", "boardThickness", "moisture", "sheetWeightGrams"];
 
   const updateEditField = (key: keyof BoardLineQcCheck, value: string | number | "") => {
     setEditForm((prev) => calculateBoardLineForm({ ...prev, [key]: value }, settings[0]));
   };
 
   const saveEdit = async () => {
-    if (!editingRow || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)) return;
+    if (!editingRow || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !FLUTE_OPTIONS.some((option) => option.value === String(editForm.typeOfFlute || "")) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))) return;
     setIsSaving(true);
     try {
       const updatedBy = currentUserDisplayName(user);
@@ -726,6 +772,7 @@ export function BoardLineQcMaster() {
       await setChecks((prev) => prev.map((row) => (row.id === editingRow.id ? updated : row)));
       setEditingRow(null);
       setEditForm({});
+      setEditSelectedProductionId("");
     } finally {
       setIsSaving(false);
     }
@@ -876,24 +923,22 @@ export function BoardLineQcMaster() {
               <h3 className="text-lg font-black uppercase">Edit Board Line QC</h3>
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-3 py-1 font-bold">Close</button>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {allFields.map((field) => field.key === "checkNo" || field.key === "qcPerson" || field.key === "typeOfFlute" ? (
-                <div key={String(field.key)} className="flex flex-col space-y-1">
-                  <label className="font-bold text-sm">{field.label}</label>
-                  <Select
-                    options={field.key === "checkNo" ? [...CHECK_NO_OPTIONS, ...(editForm.checkNo && !CHECK_NO_OPTIONS.some((option) => option.value === String(editForm.checkNo)) ? [{ value: String(editForm.checkNo), label: `${editForm.checkNo} (Legacy)` }] : [])] : field.key === "typeOfFlute" ? FLUTE_OPTIONS : editQcPersonOptions}
-                    value={String(editForm[field.key] || "")}
-                    onChange={(value) => updateEditField(field.key, value)}
-                    placeholder="Choose"
-                  />
+            {sections.map((section) => (
+              <section key={section.title} className="mb-6 space-y-3">
+                <h4 className="border-b border-black pb-1 text-sm font-black uppercase tracking-wide">{section.title}</h4>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {section.fields.map((field) => {
+                    const label = <label className="font-bold text-black text-sm">{field.label} {field.required ? <span className="text-red-600">*</span> : null}</label>;
+                    if (field.key === "jobNo") return <div key={String(field.key)} className="flex flex-col space-y-1">{label}<Select options={[...editJobOptions, ...(editForm.jobNo && (!editSelectedProductionId || !editJobOptions.some((option) => option.value === editSelectedProductionId)) ? [{ value: editSelectedProductionId || "__legacy__", label: String(editForm.jobNo) }] : [])]} value={editSelectedProductionId || (editForm.jobNo ? "__legacy__" : "")} onChange={handleEditJobSelect} required placeholder="Search and select job no..." wrapLabels /></div>;
+                    if (field.key === "checkNo" || field.key === "qcPerson" || field.key === "typeOfFlute") return <div key={String(field.key)} className="flex flex-col space-y-1">{label}<Select options={field.key === "checkNo" ? [...CHECK_NO_OPTIONS, ...(editForm.checkNo && !CHECK_NO_OPTIONS.some((option) => option.value === String(editForm.checkNo)) ? [{ value: String(editForm.checkNo), label: `${editForm.checkNo} (Legacy)` }] : [])] : field.key === "typeOfFlute" ? FLUTE_OPTIONS : editQcPersonOptions} value={String(editForm[field.key] || "")} onChange={(value) => updateEditField(field.key, value)} required={field.required} placeholder="Choose" /></div>;
+                    return <FieldInput key={String(field.key)} field={field} value={editForm[field.key]} onChange={updateEditField} />;
+                  })}
                 </div>
-              ) : (
-                <FieldInput key={String(field.key)} field={field} value={editForm[field.key]} onChange={updateEditField} />
-              ))}
-            </div>
+              </section>
+            ))}
             <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
-              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !FLUTE_OPTIONS.some((option) => option.value === String(editForm.typeOfFlute || "")) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
             </div>
           </div>
         </div>

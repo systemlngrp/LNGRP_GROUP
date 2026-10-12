@@ -429,7 +429,7 @@ export function PrintingQcForm() {
   const jobOptions = useMemo(
     () =>
       [...productions]
-        .filter((production) => production.status !== "Cancelled" && production.status !== "Completed" && String(production.closeBy || "").trim().toLowerCase() !== "yes" && !production.closeDate && !production.cancelTimestamp)
+        .filter((production) => production.status !== "Cancelled" && production.status !== "Completed" && String(production.closeBy || "").trim().toLowerCase() !== "yes" && !production.closeDate && !production.cancelTimestamp || normalizeProductionJobNumber(production.transactionNo || production.jobCardNo) === normalizeProductionJobNumber(editForm.jobNo))
         .sort((a, b) =>
           String(b.date || b.updateTimestamp || b.transactionNo || "").localeCompare(String(a.date || a.updateTimestamp || a.transactionNo || ""))
         )
@@ -450,7 +450,7 @@ export function PrintingQcForm() {
             searchText: labelParts.join(" "),
           };
         }),
-    [findItemAcrossSources, productions]
+    [editForm.jobNo, findItemAcrossSources, productions]
   );
 
   const setField = (key: keyof PrintingQcCheck, value: string | number | "") => {
@@ -714,8 +714,10 @@ function masterCellClass(key: keyof PrintingQcCheck) {
 export function PrintingQcMaster() {
   const [checks, setChecks, loading] = useData<PrintingQcCheck>("printing_qc_checks", []);
   const [settings] = useData<Setting>("settings", []);
+  const [productions] = useData<Production>("productions", []);
   const [users] = useData<User>("users", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
+  const { findItemAcrossSources } = useOrderItemCatalog();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [jobFilter, setJobFilter] = useState("");
@@ -726,7 +728,26 @@ export function PrintingQcMaster() {
   const [page, setPage] = useState(1);
   const [editingRow, setEditingRow] = useState<PrintingQcCheck | null>(null);
   const [editForm, setEditForm] = useState<Partial<PrintingQcCheck>>({});
+  const [editSelectedProductionId, setEditSelectedProductionId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+
+  const editJobOptions = useMemo(
+    () =>
+      [...productions]
+        .filter((production) => production.status !== "Cancelled" && production.status !== "Completed" && String(production.closeBy || "").trim().toLowerCase() !== "yes" && !production.closeDate && !production.cancelTimestamp)
+        .sort((a, b) => String(b.date || b.updateTimestamp || b.transactionNo || "").localeCompare(String(a.date || a.updateTimestamp || a.transactionNo || "")))
+        .map((production) => {
+          const item = findItemAcrossSources(String(production.itemId || production.npdId || ""), production.itemSource, production.erpCode || production.masterErp);
+          const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo || production.id);
+          const itemName = String((production as any).itemName || item?.name || production.itemId || "").trim();
+          const partyName = String(production.companyName || item?.companyName || "").trim();
+          const erp = String(production.erpCode || production.masterErp || item?.erp || "").trim();
+          const labelParts = [jobNo, partyName, itemName, erp].filter(Boolean);
+          return { value: String(production.id), label: labelParts.join(" | "), searchText: labelParts.join(" ") };
+        }),
+    [findItemAcrossSources, productions]
+  );
+  const editProductionById = useMemo(() => new Map(productions.map((production) => [String(production.id), production])), [productions]);
 
   const colorOptions = useMemo(() => uniqueOptions(colors.map((color) => color.name)).map((name) => ({ value: name, label: name })), [colors]);
   const operatorOptions = useMemo(
@@ -743,15 +764,39 @@ export function PrintingQcMaster() {
 
   const openEdit = (row: PrintingQcCheck) => {
     setEditingRow(row);
+    const selected = productions.find((production) => normalizeProductionJobNumber(production.transactionNo || production.jobCardNo) === normalizeProductionJobNumber(row.jobNo));
+    setEditSelectedProductionId(String(selected?.id || ""));
     setEditForm({ ...row, timestamp: row.timestamp ? toLocalDatetimeInput(new Date(row.timestamp)) : "" });
   };
+
+  const handleEditJobSelect = (productionId: string) => {
+    setEditSelectedProductionId(productionId);
+    const production = editProductionById.get(productionId);
+    if (!production) return;
+    const item = findItemAcrossSources(String(production.itemId || production.npdId || ""), production.itemSource, production.erpCode || production.masterErp);
+    const rawItem = item?.raw || {};
+    const lengthSpec = toOptionalNumber(production.length, rawItem.lOd, rawItem.length);
+    const widthSpec = toOptionalNumber(production.breadth, rawItem.wOd, rawItem.width, rawItem.breadth);
+    const heightSpec = toOptionalNumber(production.height, rawItem.hOd, rawItem.height);
+    const csSpec = toOptionalNumber(rawItem.cs, rawItem.compressionStrength, rawItem.csStandard);
+    const bsSpec = toOptionalNumber(production.brustingStrengthReq, rawItem.bs, rawItem.burstingStrength, rawItem.bsStandard);
+    const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo);
+    const partyName = firstText(production.companyName, item?.companyName, rawItem.customerName, rawItem.customer);
+    const itemName = firstText((production as any).itemName, item?.name, rawItem.itemName, rawItem.name);
+    const erp = firstText(production.erpCode, production.masterErp, item?.erp, rawItem.erp, rawItem.erpCode);
+    const color1 = firstText(production.color1, rawItem.printingColour1, rawItem.color1);
+    const color2 = firstText(production.color2, rawItem.printingColour2, rawItem.color2);
+    setEditForm((prev) => calculatePrintingQcForm({ ...prev, jobNo, partyName, itemName, erp, lengthSpec, widthSpec, heightSpec, standardBoxSize: buildBoxSize(lengthSpec, widthSpec, heightSpec), csStandard: csSpec, bsStandard: bsSpec, qcMasterCsSpec: csSpec, npdSheetCsSpec: csSpec, qcMasterBsSpec: bsSpec, npdSheetBsSpec: bsSpec, boxWeightGrams: toOptionalNumber(production.weightPerPcSetReq, production.sheetWeight, rawItem.boxWeightGrams), printingColor1Standard: color1, printingColour2Standard: color2, standardArtwork: firstText(rawItem.artwork, rawItem.artworkUpload, rawItem.standardArtwork), planQty: toOptionalNumber(production.plannedQty, production.qty) }, settings[0]));
+  };
+
+  const requiredEditFields: Array<keyof PrintingQcCheck> = ["lengthId", "widthId", "heightId", "boardThickness", "csAchieved", "bsAchieved", "boxWeightGrams", "colour1Actual", "colour2Actual", "operatorName", "lotNoPrinted"];
 
   const updateEditField = (key: keyof PrintingQcCheck, value: string | number | "") => {
     setEditForm((prev) => calculatePrintingQcForm({ ...prev, [key]: value }, settings[0]));
   };
 
   const saveEdit = async () => {
-    if (!editingRow || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)) return;
+    if (!editingRow || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))) return;
     setIsSaving(true);
     try {
       const updatedBy = currentUserDisplayName(user);
@@ -759,6 +804,7 @@ export function PrintingQcMaster() {
       await setChecks((prev) => prev.map((row) => (row.id === editingRow.id ? updated : row)));
       setEditingRow(null);
       setEditForm({});
+      setEditSelectedProductionId("");
     } finally {
       setIsSaving(false);
     }
@@ -902,24 +948,22 @@ export function PrintingQcMaster() {
               <h3 className="text-lg font-black uppercase">Edit Printing QC</h3>
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-3 py-1 font-bold">Close</button>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {allFields.map((field) => field.key === "checkNo" || field.key === "qcPerson" || field.key === "colour1Actual" || field.key === "colour2Actual" || field.key === "operatorName" ? (
-                <div key={String(field.key)} className="flex flex-col space-y-1">
-                  <label className="font-bold text-sm">{field.label}</label>
-                  <Select
-                    options={field.key === "checkNo" ? [...CHECK_NO_OPTIONS, ...(editForm.checkNo && !CHECK_NO_OPTIONS.some((option) => option.value === String(editForm.checkNo)) ? [{ value: String(editForm.checkNo), label: `${editForm.checkNo} (Legacy)` }] : [])] : field.key === "qcPerson" ? editQcPersonOptions : field.key === "operatorName" ? operatorOptions : colorOptions}
-                    value={String(editForm[field.key] || "")}
-                    onChange={(value) => updateEditField(field.key, value)}
-                    placeholder="Choose"
-                  />
+            {sections.map((section) => (
+              <section key={section.title} className="mb-6 space-y-3">
+                <h4 className="border-b border-black pb-1 text-sm font-black uppercase tracking-wide">{section.title}</h4>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {section.fields.map((field) => {
+                    const label = <label className="font-bold text-black text-sm">{field.label} {field.required ? <span className="text-red-600">*</span> : null}</label>;
+                    if (field.key === "jobNo") return <div key={String(field.key)} className="flex flex-col space-y-1">{label}<Select options={[...editJobOptions, ...(editForm.jobNo && (!editSelectedProductionId || !editJobOptions.some((option) => option.value === editSelectedProductionId)) ? [{ value: editSelectedProductionId || "__legacy__", label: String(editForm.jobNo) }] : [])]} value={editSelectedProductionId || (editForm.jobNo ? "__legacy__" : "")} onChange={handleEditJobSelect} required placeholder="Search and select job no..." wrapLabels /></div>;
+                    if (field.key === "checkNo" || field.key === "qcPerson" || field.key === "colour1Actual" || field.key === "colour2Actual" || field.key === "operatorName") return <div key={String(field.key)} className="flex flex-col space-y-1">{label}<Select options={field.key === "checkNo" ? [...CHECK_NO_OPTIONS, ...(editForm.checkNo && !CHECK_NO_OPTIONS.some((option) => option.value === String(editForm.checkNo)) ? [{ value: String(editForm.checkNo), label: `${editForm.checkNo} (Legacy)` }] : [])] : field.key === "qcPerson" ? editQcPersonOptions : field.key === "operatorName" ? operatorOptions : colorOptions} value={String(editForm[field.key] || "")} onChange={(value) => updateEditField(field.key, value)} required={field.required} placeholder="Choose" wrapLabels /></div>;
+                    return <FieldInput key={String(field.key)} field={field} value={editForm[field.key]} onChange={updateEditField} />;
+                  })}
                 </div>
-              ) : (
-                <FieldInput key={String(field.key)} field={field} value={editForm[field.key]} onChange={updateEditField} />
-              ))}
-            </div>
+              </section>
+            ))}
             <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
-              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson)} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
             </div>
           </div>
         </div>
