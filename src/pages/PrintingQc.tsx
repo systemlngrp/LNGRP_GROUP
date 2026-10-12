@@ -429,7 +429,7 @@ export function PrintingQcForm() {
   const jobOptions = useMemo(
     () =>
       [...productions]
-        .filter((production) => production.status !== "Cancelled" && production.status !== "Completed" && String(production.closeBy || "").trim().toLowerCase() !== "yes" && !production.closeDate && !production.cancelTimestamp || normalizeProductionJobNumber(production.transactionNo || production.jobCardNo) === normalizeProductionJobNumber(editForm.jobNo))
+        .filter((production) => production.status !== "Cancelled" && production.status !== "Completed" && String(production.closeBy || "").trim().toLowerCase() !== "yes" && !production.closeDate && !production.cancelTimestamp)
         .sort((a, b) =>
           String(b.date || b.updateTimestamp || b.transactionNo || "").localeCompare(String(a.date || a.updateTimestamp || a.transactionNo || ""))
         )
@@ -450,7 +450,7 @@ export function PrintingQcForm() {
             searchText: labelParts.join(" "),
           };
         }),
-    [editForm.jobNo, findItemAcrossSources, productions]
+    [findItemAcrossSources, productions]
   );
 
   const setField = (key: keyof PrintingQcCheck, value: string | number | "") => {
