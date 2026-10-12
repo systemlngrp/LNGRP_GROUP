@@ -7,6 +7,7 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { BoardLineQcCheck, Production, Setting, User } from "../types";
 import { formatDate, formatTime } from "../lib/utils";
+import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
@@ -319,7 +320,7 @@ function buildPayload(form: Partial<BoardLineQcCheck>, updatedBy: string, settin
   const payload: Record<string, unknown> = {
     id: existingId || crypto.randomUUID(),
     timestamp,
-    jobNo: String(calculatedForm.jobNo || "").trim(),
+    jobNo: normalizeProductionJobNumber(calculatedForm.jobNo),
     partyName: String(calculatedForm.partyName || "").trim(),
     itemName: String(calculatedForm.itemName || "").trim(),
     checkNo: String(calculatedForm.checkNo || "").trim(),
@@ -430,7 +431,7 @@ export function BoardLineQcForm() {
             production.itemSource,
             production.erpCode || production.masterErp
           );
-          const jobNo = String(production.transactionNo || production.jobCardNo || production.id || "").trim();
+          const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo || production.id);
           const itemName = String((production as any).itemName || item?.name || production.itemId || "").trim();
           const partyName = String(production.companyName || item?.companyName || "").trim();
           const erp = String(production.erpCode || production.masterErp || item?.erp || "").trim();
@@ -462,7 +463,7 @@ export function BoardLineQcForm() {
       production.erpCode || production.masterErp
     );
     const rawItem = item?.raw || {};
-    const jobNo = String(production.transactionNo || production.jobCardNo || "").trim();
+    const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo);
     const partyName = firstText(production.companyName, item?.companyName, rawItem.customerName, rawItem.customer);
     const itemName = firstText((production as any).itemName, item?.name, rawItem.itemName, rawItem.name);
     const erp = firstText(production.erpCode, production.masterErp, item?.erp, rawItem.erp, rawItem.erpCode);

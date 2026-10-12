@@ -15,6 +15,15 @@ import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { GoogleGenAI } from "@google/genai";
 import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
 const execPromise = util.promisify(exec);
+function normalizeStoredProductionJobNumber(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw)
+        return "";
+    const match = raw.match(/^(.*?\/)?(\d+)$/);
+    if (!match)
+        return raw;
+    return `${match[1] || ""}${match[2].replace(/^0+(?=\d)/, "")}`;
+}
 dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2945,7 +2954,8 @@ async function generateProductionFirmNo(db, firmId, documentCode, dateStr) {
      ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [counterKey]);
     await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [counterKey]);
     const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
-    return `${firmPrefix}/${counterKey}/${String(Number(rows[0]?.nextValue || 0)).padStart(5, "0")}`;
+    const nextValue = String(Number(rows[0]?.nextValue || 0));
+    return `${firmPrefix}/${counterKey}/${documentCode === "JOB" ? nextValue : nextValue.padStart(5, "0")}`;
 }
 async function generateLockedMrrNo(db, dateStr, firmId) {
     return generateFirmDocumentNo(db, firmId, "MRR", dateStr);
@@ -4897,58 +4907,106 @@ async function backfillFirmSupplierAttribution(db, database) {
     return firmByName;
 }
 async function backfillProductionJobNumbers(db) {
-    const [rows] = await db.query("SELECT id, transactionNo, jobCardNo, date, firmId, sourceFirmId, orderFirmId FROM `productions` ORDER BY date ASC, id ASC");
-    const used = new Set();
-    const maxByCounter = new Map();
-    let changed = 0;
-    for (const row of rows) {
-        const firmId = String(row.firmId || row.sourceFirmId || row.orderFirmId || "").trim();
-        if (!firmId) {
-            console.warn(`[DB] Preserving production job number without resolvable firm: ${row.transactionNo || row.jobCardNo || row.id}`);
-            continue;
+    const connection = await db.getConnection();
+    const referenceColumns = [
+        { table: "boardline_qc_checks", column: "jobNo" },
+        { table: "printing_qc_checks", column: "jobNo" },
+        { table: "qc_printing_wastage_records", column: "jobNo", productionId: "productionId" },
+        { table: "qc_spec_card_movements", column: "jobNo", productionId: "productionId" },
+        { table: "pre_dispatch_inspections", column: "jobNo", productionId: "productionId" },
+        { table: "production_processing", column: "jobNo", productionId: "productionId" },
+        { table: "material_issues", column: "jobNo", productionId: "productionId" },
+        { table: "material_issue_reel_lines", column: "jobNo", productionId: "productionId" },
+        { table: "material_returns", column: "jobNo", productionId: "productionId" },
+        { table: "material_return_reel_lines", column: "jobNo", productionId: "productionId" },
+        { table: "consumptions", column: "jobCardNo", productionId: "productionId" },
+        { table: "sample_requests", column: "jobCardNo" },
+    ];
+    try {
+        await connection.beginTransaction();
+        const [rows] = await connection.query("SELECT id, transactionNo, jobCardNo, date FROM `productions` ORDER BY date ASC, id ASC FOR UPDATE");
+        const productions = rows;
+        const mappings = new Map();
+        const productionUpdates = [];
+        const normalizedTransactionNos = new Map();
+        for (const row of productions) {
+            const id = String(row.id || "").trim();
+            const oldTransactionNo = String(row.transactionNo || "").trim();
+            const oldJobCardNo = String(row.jobCardNo || "").trim();
+            const newTransactionNo = normalizeStoredProductionJobNumber(oldTransactionNo);
+            const newJobCardNo = oldJobCardNo ? normalizeStoredProductionJobNumber(oldJobCardNo) : "";
+            if (oldTransactionNo && newTransactionNo) {
+                const existingId = normalizedTransactionNos.get(newTransactionNo);
+                if (existingId && existingId !== id) {
+                    throw new Error(`Cannot normalize production job numbers because ${newTransactionNo} would be duplicated.`);
+                }
+                normalizedTransactionNos.set(newTransactionNo, id);
+                mappings.set(oldTransactionNo, newTransactionNo);
+            }
+            if (oldJobCardNo && newJobCardNo)
+                mappings.set(oldJobCardNo, newJobCardNo);
+            productionUpdates.push({ id, oldTransactionNo, newTransactionNo, oldJobCardNo, newJobCardNo });
         }
-        const firmPrefix = await getFirmDocumentPrefix(db, firmId);
-        const parsed = normalizeProductionJobNumber(row.transactionNo || row.jobCardNo, row.date);
-        let next = parsed.number;
-        if (!next)
-            next = 1;
-        let candidate = `${firmPrefix}/JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
-        while (used.has(candidate)) {
-            next += 1;
-            candidate = `${firmPrefix}/JOB/${parsed.fy}/${String(next).padStart(5, "0")}`;
-        }
-        used.add(candidate);
-        const counterKey = `JOB/${parsed.fy}`;
-        maxByCounter.set(counterKey, Math.max(maxByCounter.get(counterKey) || 0, next));
-        if (String(row.transactionNo || "").trim() !== candidate) {
-            await db.query("UPDATE `productions` SET `transactionNo` = ? WHERE `id` = ?", [candidate, row.id]);
+        let changed = 0;
+        for (const update of productionUpdates) {
+            if (update.oldTransactionNo === update.newTransactionNo && update.oldJobCardNo === update.newJobCardNo)
+                continue;
+            await connection.query("UPDATE `productions` SET `transactionNo` = ?, `jobCardNo` = ? WHERE `id` = ?", [update.newTransactionNo, update.newJobCardNo || null, update.id]);
             changed += 1;
         }
-        if (String(row.jobCardNo || "").trim() && String(row.jobCardNo).trim() !== candidate) {
-            await db.query("UPDATE `productions` SET `jobCardNo` = ? WHERE `id` = ?", [candidate, row.id]);
+        for (const reference of referenceColumns) {
+            const [columns] = await connection.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME IN (?, ?)", [reference.table, reference.column, reference.productionId || "__missing__"]);
+            const available = new Set(columns.map((column) => String(column.COLUMN_NAME)));
+            if (!available.has(reference.column))
+                continue;
+            const [referenceRows] = await connection.query(`SELECT \`${reference.column}\` AS jobValue${reference.productionId && available.has(reference.productionId) ? `, \`${reference.productionId}\` AS productionId` : ""} FROM \`${reference.table}\``);
+            for (const row of referenceRows) {
+                const current = String(row.jobValue || "").trim();
+                const productionId = String(row.productionId || "").trim();
+                const production = productionId ? productionUpdates.find((item) => item.id === productionId) : undefined;
+                const next = production
+                    ? (reference.column === "jobCardNo" ? production.newJobCardNo : production.newTransactionNo)
+                    : mappings.get(current) || "";
+                if (!current || !next || current === next)
+                    continue;
+                if (productionId && production && production.newTransactionNo !== next)
+                    continue;
+                const where = productionId && production ? `WHERE \`${reference.productionId}\` = ?` : `WHERE \`${reference.column}\` = ?`;
+                const params = productionId && production ? [next, productionId] : [next, current];
+                await connection.query(`UPDATE \`${reference.table}\` SET \`${reference.column}\` = ? ${where}`, params);
+            }
         }
-    }
-    for (const [counterKey, lastValue] of maxByCounter) {
-        await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
-       VALUES (?, ?)
-       ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [counterKey, lastValue]);
-    }
-    try {
-        await db.query("ALTER TABLE `productions` ADD UNIQUE KEY `uq_productions_transactionNo` (`transactionNo`)");
+        const [counterRows] = await connection.query("SELECT transactionNo, date FROM `productions`");
+        const maxByCounter = new Map();
+        for (const row of counterRows) {
+            const value = String(row.transactionNo || "");
+            const parsed = normalizeProductionJobNumber(value, row.date);
+            if (!parsed.number)
+                continue;
+            const counterKey = `JOB/${parsed.fy}`;
+            maxByCounter.set(counterKey, Math.max(maxByCounter.get(counterKey) || 0, parsed.number));
+        }
+        for (const [counterKey, lastValue] of maxByCounter) {
+            await connection.query(`INSERT INTO transaction_counters (counterKey, lastValue)
+         VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [counterKey, lastValue]);
+        }
+        await connection.commit();
+        return changed;
     }
     catch (error) {
-        const message = String(error.message || "");
-        if (!message.toLowerCase().includes("duplicate") && !message.toLowerCase().includes("already exists")) {
-            console.warn("[DB] Could not add production job number uniqueness:", message);
-        }
+        await connection.rollback();
+        throw error;
     }
-    return changed;
+    finally {
+        connection.release();
+    }
 }
 async function generateProductionJobNumber(db, dateValue) {
     const fy = getShortFinancialYear(String(dateValue || "")) || getShortFinancialYear();
     const [rows] = await db.query("SELECT transactionNo FROM `productions` WHERE transactionNo LIKE ? ORDER BY CAST(SUBSTRING_INDEX(transactionNo, '/', -1) AS UNSIGNED) DESC LIMIT 1", [`JOB/${fy}/%`]);
     const last = Number.parseInt(String(rows[0]?.transactionNo || "").split("/").pop() || "0", 10) || 0;
-    return `JOB/${fy}/${String(last + 1).padStart(5, "0")}`;
+    return `JOB/${fy}/${String(last + 1)}`;
 }
 async function generateStandaloneProductionJobNumber(db, tableName, prefix, dateValue) {
     const fy = getShortFinancialYear(String(dateValue || "")) || getShortFinancialYear();
@@ -8223,7 +8281,7 @@ async function initDb(retries = 5) {
             try {
                 const backfilledCount = await backfillProductionJobNumbers(db);
                 if (backfilledCount > 0) {
-                    console.log(`[DB] Backfilled ${backfilledCount} production job number(s) with JOB prefix.`);
+                    console.log(`[DB] Normalized ${backfilledCount} production job number(s) and linked references.`);
                 }
             }
             catch (err) {

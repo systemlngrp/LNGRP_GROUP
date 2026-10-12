@@ -7,6 +7,7 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ColorMaster, PrintingQcCheck, Production, Setting, User } from "../types";
 import { formatDate, formatTime } from "../lib/utils";
+import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
@@ -315,7 +316,7 @@ function buildPayload(form: Partial<PrintingQcCheck>, updatedBy: string, setting
   const payload: Record<string, unknown> = {
     id: existingId || crypto.randomUUID(),
     timestamp,
-    jobNo: String(calculatedForm.jobNo || "").trim(),
+    jobNo: normalizeProductionJobNumber(calculatedForm.jobNo),
     partyName: String(calculatedForm.partyName || "").trim(),
     itemName: String(calculatedForm.itemName || "").trim(),
     checkNo: String(calculatedForm.checkNo || "").trim(),
@@ -438,7 +439,7 @@ export function PrintingQcForm() {
             production.itemSource,
             production.erpCode || production.masterErp
           );
-          const jobNo = String(production.transactionNo || production.jobCardNo || production.id || "").trim();
+          const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo || production.id);
           const itemName = String((production as any).itemName || item?.name || production.itemId || "").trim();
           const partyName = String(production.companyName || item?.companyName || "").trim();
           const erp = String(production.erpCode || production.masterErp || item?.erp || "").trim();
@@ -475,7 +476,7 @@ export function PrintingQcForm() {
     const heightSpec = toOptionalNumber(production.height, rawItem.hOd, rawItem.height);
     const csSpec = toOptionalNumber(rawItem.cs, rawItem.compressionStrength, rawItem.csStandard);
     const bsSpec = toOptionalNumber(production.brustingStrengthReq, rawItem.bs, rawItem.burstingStrength, rawItem.bsStandard);
-    const jobNo = String(production.transactionNo || production.jobCardNo || "").trim();
+    const jobNo = normalizeProductionJobNumber(production.transactionNo || production.jobCardNo);
     const partyName = firstText(production.companyName, item?.companyName, rawItem.customerName, rawItem.customer);
     const itemName = firstText((production as any).itemName, item?.name, rawItem.itemName, rawItem.name);
     const erp = firstText(production.erpCode, production.masterErp, item?.erp, rawItem.erp, rawItem.erpCode);
