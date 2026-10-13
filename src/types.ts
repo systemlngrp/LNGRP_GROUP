@@ -1060,6 +1060,14 @@ export interface QcUpdateRecord {
   updateTimestamp?: string;
 }
 
+export interface QcFileNoMaster {
+  id: string;
+  fileNo: string;
+  active: "Yes" | "No" | string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface QcUpdateAuditLog {
   id: string;
   qcUpdateId: string;

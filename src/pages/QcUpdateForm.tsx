@@ -4,16 +4,18 @@ import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { Select } from "../components/Select";
 import { useNpdItems } from "../hooks/useNpdItems";
-import type { QcBlockLocationMaster } from "../types";
+import type { QcBlockLocationMaster, QcFileNoMaster } from "../types";
+import { fileNoOptions } from "../lib/qcFileNo";
 
 const today = () => new Date().toISOString().slice(0, 10);
-const initialForm = { npdId: "", erpNo: "", itemName: "", updateType: "", fileNo: "", indexNo: "", zoneNo: "", location: "", sampleNo: "", remarks: "", updatedBy: "", updateDate: today() };
+const initialForm = { npdId: "", erpNo: "", itemName: "", fileNo: "", indexNo: "", zoneNo: "", location: "", sampleNo: "", remarks: "", updatedBy: "", updateDate: today() };
 const inputClass = "w-full rounded border border-black bg-white p-2 text-sm";
 
 export function QcUpdateForm() {
   const { user } = useAuth();
   const items = useNpdItems();
   const [locations] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
+  const [fileNos] = useData<QcFileNoMaster>("qc_file_no_masters", [], { firmScope: "all" });
   const displayName = useMemo(() => String(user?.name || user?.userId || user?.email || "").trim(), [user]);
   const [form, setForm] = useState(() => ({ ...initialForm, updatedBy: displayName }));
   const [message, setMessage] = useState("");
@@ -35,8 +37,9 @@ export function QcUpdateForm() {
   };
   const npdOptions = useMemo(() => items.map((item: any) => ({ value: String(item.id || ""), label: `${item.erp || ""} - ${item.name || ""}`, searchText: `${item.erp || ""} ${item.name || ""} ${item.customer || ""}` })).filter((option) => option.value), [items]);
   const selectNpd = (npdId: string) => { const item = items.find((value: any) => String(value.id) === npdId) as any; setForm((current) => ({ ...current, npdId, erpNo: String(item?.erp || ""), itemName: String(item?.name || "") })); };
-  const fields = [["File No.", "fileNo"], ["Index No.", "indexNo"], ["Zone No.", "zoneNo"]] as const;
+  const fields = [["Index No.", "indexNo"], ["Zone No.", "zoneNo"]] as const;
   const locationOptions = useMemo(() => locations.filter(location => String(location.active || "").toLowerCase() === "yes").map(location => ({ value: location.name, label: location.name })), [locations]);
+  const fileNoSelectOptions = useMemo(() => fileNoOptions(fileNos), [fileNos]);
   return <div className="mx-auto max-w-5xl space-y-5 text-black">
     <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">QC Update Form</h2></div>
     {message && <div className="flex items-center gap-2 rounded border border-emerald-700 bg-emerald-100 p-3 font-bold text-emerald-900"><CheckCircle2 size={18} />{message}</div>}
@@ -44,7 +47,7 @@ export function QcUpdateForm() {
     <form onSubmit={save} className="space-y-5">
       <section className="rounded border-2 border-black bg-white p-4"><h3 className="mb-4 bg-indigo-800 p-3 font-bold uppercase text-white">QC Information</h3><div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <label className="space-y-1 md:col-span-2"><span className="font-bold">NPD ERP / Item <span className="text-red-700">*</span></span><Select value={form.npdId} onChange={selectNpd} options={npdOptions} placeholder="Search ERP or Item" /></label>
-        <label className="space-y-1"><span className="font-bold">Update Type <span className="text-gray-500">(optional)</span></span><select className={inputClass} value={form.updateType} onChange={(e) => setField("updateType", e.target.value)}><option value="">Select type</option><option value="File Update">File Update</option><option value="Sample">Sample</option></select></label>
+        <label className="space-y-1"><span className="font-bold">File No. <span className="text-gray-500">(optional)</span></span><Select value={form.fileNo} onChange={(value) => setField("fileNo", value)} options={fileNoSelectOptions} placeholder="Search File No." noOptionsMessage="No active File Nos." /></label>
         {fields.map(([label, key]) => <label key={key} className="space-y-1"><span className="font-bold">{label} <span className="text-gray-500">(optional)</span></span><input className={inputClass} value={form[key]} onChange={(e) => setField(key, e.target.value)} /></label>)}
         <label className="space-y-1"><span className="font-bold">Sample Location <span className="text-gray-500">(optional)</span></span><Select value={form.location} onChange={(value) => setField("location", value)} options={locationOptions} placeholder="Select Location" /></label>
         <label className="space-y-1"><span className="font-bold">Sample No. <span className="text-gray-500">(optional)</span></span><input className={inputClass} value={form.sampleNo} onChange={(e) => setField("sampleNo", e.target.value)} /></label>
