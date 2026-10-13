@@ -127,15 +127,6 @@ export function OrderForm() {
     return text;
   };
 
-  const getOrderFinancialYearLabel = (dateStr: string) => {
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return "0000-00";
-    let fyStart = date.getFullYear();
-    const month = date.getMonth() + 1;
-    if (month < 4) fyStart -= 1;
-    return `${fyStart}-${String(fyStart + 1).slice(2)}`;
-  };
-
   const poOptions = [
     { value: "Verbal", label: "Verbal" },
     { value: "Ref No.", label: "Ref No." },
@@ -279,7 +270,6 @@ export function OrderForm() {
         const selectedFirm = firms.find((firm) => firm.id === firmId);
         const audit = { updatedBy: "System User", updateTimestamp: new Date().toISOString() } as const;
         const nextVerbalPoNumbers = new Map<string, number>();
-        const nextOrderNumbers = new Map<string, number>();
 
         orders.forEach((order) => {
           if (order.poType !== "Verbal") return;
@@ -288,14 +278,6 @@ export function OrderForm() {
           const numberPart = parseInt(poNumberParts[1] || "0", 10);
           if (!fy || !Number.isFinite(numberPart)) return;
           nextVerbalPoNumbers.set(fy, Math.max(nextVerbalPoNumbers.get(fy) || 0, numberPart));
-        });
-
-        orders.forEach((order) => {
-          const orderNoParts = String(order.orderNo || "").split("/");
-          const fy = orderNoParts[0] || "";
-          const numberPart = parseInt(orderNoParts[1] || "0", 10);
-          if (!fy || !Number.isFinite(numberPart)) return;
-          nextOrderNumbers.set(fy, Math.max(nextOrderNumbers.get(fy) || 0, numberPart));
         });
 
         const newOrders: Order[] = orderRows.map(({ row, rowNumber }) => {
@@ -378,16 +360,10 @@ export function OrderForm() {
             resolvedPoNumber = `${fy}/${nextNumber}`;
           }
 
-          const orderFy = getOrderFinancialYearLabel(orderDateValue);
-          const nextOrderNumber = (nextOrderNumbers.get(orderFy) || 0) + 1;
-          nextOrderNumbers.set(orderFy, nextOrderNumber);
-          const resolvedOrderNo = `${orderFy}/${String(nextOrderNumber).padStart(5, "0")}`;
-
           return {
             id: crypto.randomUUID(),
             firmId: matchedFirm?.id || "",
             firmName: matchedFirm?.firmName || firmNameValue,
-            orderNo: resolvedOrderNo,
             orderDate: orderDateValue,
             companyId,
             poNumber: poType === "Ref No." ? poNumberValue : resolvedPoNumber,

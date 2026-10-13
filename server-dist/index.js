@@ -2939,7 +2939,8 @@ async function generateFirmDocumentNo(db, firmId, documentCode, dateStr) {
      ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [key]);
     await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [key]);
     const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
-    return `${key}/${String(Number(rows[0]?.nextValue || 0)).padStart(5, "0")}`;
+    const nextValue = String(Number(rows[0]?.nextValue || 0));
+    return [key, code === "ORD" ? nextValue : nextValue.padStart(5, "0")].join("/");
 }
 async function resolveDispatchOrderFirmId(db, orderId) {
     const [rows] = await db.query("SELECT firmId FROM `orders` WHERE id = ? LIMIT 1", [orderId]);
@@ -9398,7 +9399,8 @@ const createHandlers = (tableName) => {
                     data.physicalWeight = Number.isFinite(physicalWeight) ? Number(physicalWeight.toFixed(2)) : 0;
                     data.variance = Number((data.physicalWeight - data.systemAvailableWeight).toFixed(2));
                 }
-                // Auto-generate orderNo for orders when not provided
+                // Calculate order totals and apply the existing order approval rules.
+                // New Order Numbers are assigned by the firm-document generator below.
                 if (tableName === 'orders') {
                     try {
                         const orderQty = Number(data.qty || 0);
@@ -9407,27 +9409,6 @@ const createHandlers = (tableName) => {
                             Number.isFinite(orderQty) && Number.isFinite(orderRate)
                                 ? Number((orderQty * orderRate).toFixed(2))
                                 : 0;
-                        if (!data.orderNo) {
-                            const dateStr = data.orderDate || new Date().toISOString().slice(0, 10);
-                            const d = new Date(dateStr);
-                            let fyStart = d.getFullYear();
-                            const month = d.getMonth() + 1;
-                            if (month < 4)
-                                fyStart = fyStart - 1;
-                            const fyLabel = `${fyStart}-${String(fyStart + 1).slice(2)}`;
-                            const likePattern = `${fyLabel}/%`;
-                            const [rows] = await db.query(`SELECT orderNo FROM \`orders\` WHERE orderNo LIKE ? ORDER BY CAST(SUBSTRING_INDEX(orderNo,'/',-1) AS UNSIGNED) DESC LIMIT 1`, [likePattern]);
-                            let lastNum = 0;
-                            if (rows.length > 0) {
-                                const lastOrderNo = rows[0].orderNo;
-                                const parts = lastOrderNo.split('/');
-                                const suffix = parts[1];
-                                lastNum = parseInt(suffix || '0', 10) || 0;
-                            }
-                            const nextNum = lastNum + 1;
-                            const padded = String(nextNum).padStart(5, '0');
-                            data.orderNo = `${fyLabel}/${padded}`;
-                        }
                         // Auto-approve order (skip Pending Salesman Approval) when:
                         // 1) Order Rate == Last Billing Rate 1 (latest invoice rate for same item)
                         // 2) Punch Date (orderDate) falls into a Realization Rate Chart range
@@ -9746,7 +9727,7 @@ const createHandlers = (tableName) => {
                 // New firm-owned documents always receive a server-authoritative serial.
                 // Legacy records keep their existing numbers because they are detected by ID.
                 const firmDocumentFields = {
-                    orders: { field: "orderNo", code: "ORD", dateField: "date" },
+                    orders: { field: "orderNo", code: "ORD", dateField: "orderDate" },
                     indents: { field: "indentNo", code: "IND", dateField: "requisitionDate" },
                     gate_entries: { field: "gateEntryNo", code: "GE", dateField: "date" },
                     material_in: { field: "transactionNo", code: "MRR", dateField: "date" },
