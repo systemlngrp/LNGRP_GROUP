@@ -252,7 +252,214 @@ table td button:focus-visible {
   }
 }
 
+.traceability-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.traceability-search-toolbar {
+  position: relative;
+  z-index: 20;
+  max-width: 1040px;
+  margin-bottom: 16px;
+  padding: 14px 16px 12px;
+  border: 2px solid #000;
+  background: #eef2f7;
+  font-family: Arial, sans-serif;
+}
+
+.traceability-search-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.traceability-search-title {
+  color: #102f5d;
+  font-size: 18px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.traceability-search-subtitle,
+.traceability-search-hint {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.traceability-selected-job {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #000;
+  background: #fff200;
+  padding: 6px 10px;
+  color: #000;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.traceability-search-combobox {
+  position: relative;
+}
+
+.traceability-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  color: #334155;
+  pointer-events: none;
+}
+
+.traceability-search-input {
+  width: 100%;
+  height: 42px;
+  border: 2px solid #000;
+  background: #fff;
+  padding: 0 42px 0 40px;
+  color: #000;
+  font-size: 14px;
+  font-weight: 700;
+  outline: none;
+}
+
+.traceability-search-input:focus {
+  border-color: #244b8b;
+  box-shadow: 0 0 0 2px #9db8e7;
+}
+
+.traceability-search-clear {
+  position: absolute;
+  right: 9px;
+  top: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+}
+
+.traceability-search-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 46px;
+  max-height: 330px;
+  overflow: auto;
+  border: 2px solid #000;
+  background: #fff;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, .18);
+}
+
+.traceability-search-result {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #94a3b8;
+  background: #fff;
+  padding: 9px 12px;
+  color: #000;
+  text-align: left;
+  cursor: pointer;
+}
+
+.traceability-search-result:last-of-type {
+  border-bottom: 0;
+}
+
+.traceability-search-result:hover,
+.traceability-search-result.is-highlighted {
+  background: #e0eaff;
+}
+
+.traceability-search-result-top,
+.traceability-search-result-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.traceability-search-result-top {
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.traceability-search-result-meta {
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.traceability-search-empty {
+  padding: 14px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.traceability-search-hint {
+  margin-top: 7px;
+}
+
+.traceability-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 1040px;
+  margin-bottom: 8px;
+}
+
+.traceability-action-primary,
+.traceability-action-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid #000;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.traceability-action-primary {
+  background: #244b8b;
+  color: #fff;
+}
+
+.traceability-action-secondary {
+  background: #fff;
+  color: #000;
+}
+
+.traceability-not-found {
+  max-width: 1040px;
+  margin-bottom: 8px;
+  border: 2px solid #9f1239;
+  background: #fff1f2;
+  padding: 10px 12px;
+  color: #9f1239;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.traceability-sheet-scroll {
+  max-width: 1040px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
 .traceability-sheet {
+  min-width: 960px;
   width: 100%;
   overflow: hidden;
   border: 2px solid #000;
@@ -289,6 +496,7 @@ table td button:focus-visible {
 }
 
 .traceability-section-title {
+  min-height: 32px;
   background: #000;
   color: #fff;
   font-size: 12px;
@@ -298,86 +506,228 @@ table td button:focus-visible {
   border-bottom: 1px solid #000;
 }
 
-.traceability-grid {
+.traceability-sheet-row {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
-.traceability-field {
-  min-height: 58px;
-  border-right: 1px solid #000;
-  border-bottom: 1px solid #000;
-  background: #fff;
-}
-
-.traceability-field:nth-child(6n) {
-  border-right: 0;
-}
-
-.traceability-label {
-  min-height: 35px;
+.traceability-sheet-cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #d9d2e9;
-  padding: 5px 6px;
+  min-width: 0;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+  padding: 6px;
   text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.traceability-sheet-cell:last-child {
+  border-right: 0;
+}
+
+.traceability-label-cell {
+  min-height: 39px;
+  background: #d9d2e9;
+  color: #000;
   font-size: 10px;
   font-weight: 900;
   line-height: 1.1;
   text-transform: uppercase;
 }
 
-.traceability-value {
-  min-height: 34px;
+.traceability-value-cell {
+  min-height: 43px;
+  background: #fff;
+  color: #f00000;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.traceability-identity {
+  border-bottom: 1px solid #000;
+}
+
+.traceability-identity-top {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.traceability-identity-cell,
+.traceability-identity-spacer {
+  min-height: 43px;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+}
+
+.traceability-identity-label,
+.traceability-identity-status-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 5px 6px;
-  text-align: center;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
-.traceability-identity-grid .traceability-field:nth-child(1) .traceability-label,
-.traceability-identity-grid .traceability-field:nth-child(3) .traceability-label {
   background: #d9d2e9;
+  color: #000;
+  font-size: 11px;
+  font-weight: 900;
 }
 
-.traceability-identity-grid .traceability-field:nth-child(1) .traceability-value {
+.traceability-identity-label {
+  grid-column: span 1;
+}
+
+.traceability-identity-lot {
+  grid-column: span 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #ffff00;
-  font-size: 18px;
+  color: #000;
+  font-size: 20px;
+  font-weight: 900;
 }
 
-.traceability-identity-grid .traceability-field:nth-child(3) .traceability-value {
+.traceability-identity-spacer {
+  grid-column: span 1;
+  background: #000;
+}
+
+.traceability-identity-status-label,
+.traceability-identity-status-value {
+  grid-column: span 1;
+}
+
+.traceability-identity-status-label {
+  background: #00ffff;
+}
+
+.traceability-identity-status-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #00ff00;
+  color: #000;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.traceability-identity-cell:last-child {
+  border-right: 0;
+}
+
+.traceability-identity-row {
+  display: grid;
+  grid-template-columns: 1fr 5fr;
+}
+
+.traceability-identity-row-label,
+.traceability-identity-row-value {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.traceability-identity-row-label {
+  justify-content: center;
+  background: #5a0b35;
+  color: #fff;
+}
+
+.traceability-identity-row-value {
+  background: #ead6df;
+  color: #000;
+}
+
+.traceability-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #000;
+  padding: 4px 8px;
+  color: #000;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.traceability-status-open {
   background: #00ff00;
 }
 
-.traceability-status .traceability-value {
-  padding: 4px;
+.traceability-status-closed {
+  background: #22c55e;
+  color: #fff;
 }
 
-.traceability-pdi-result .traceability-value {
+.traceability-status-cancelled {
+  background: #ef4444;
+  color: #fff;
+}
+
+.traceability-status-pending {
+  background: #fff200;
+}
+
+.traceability-pdi-value {
   background: #00ff00;
 }
 
-@media (max-width: 900px) {
-  .traceability-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+.traceability-operator-value {
+  background: #fff200;
+  color: #f00000;
+}
+
+.traceability-inspector-value {
+  background: #0000ff;
+  color: #fff;
+}
+
+.traceability-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #244b8b;
+  background: #244b8b;
+  padding: 4px 7px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.traceability-empty-sheet-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border-bottom: 1px solid #000;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+@media (max-width: 720px) {
+  .traceability-search-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .traceability-field:nth-child(6n) {
-    border-right: 1px solid #000;
+  .traceability-search-toolbar {
+    padding: 12px;
   }
 
-  .traceability-field:nth-child(2n) {
-    border-right: 0;
-  }
-
-  .traceability-company-header {
-    font-size: 14px;
+  .traceability-action-primary,
+  .traceability-action-secondary {
+    flex: 1;
+    justify-content: center;
   }
 }
 
@@ -393,8 +743,10 @@ table td button:focus-visible {
 
   body:has(.traceability-print-root) header,
   body:has(.traceability-print-root) aside,
-  body:has(.traceability-print-root) .traceability-toolbar,
-  body:has(.traceability-print-root) .traceability-detail-actions {
+  body:has(.traceability-print-root) .traceability-search-toolbar,
+  body:has(.traceability-print-root) .traceability-detail-actions,
+  body:has(.traceability-print-root) .traceability-not-found,
+  body:has(.traceability-print-root) .traceability-empty-sheet-prompt {
     display: none !important;
   }
 
@@ -406,8 +758,22 @@ table td button:focus-visible {
     padding: 0 !important;
   }
 
+  .traceability-page,
+  .traceability-sheet-scroll {
+    max-width: none;
+    padding: 0;
+  }
+
+  .traceability-sheet-scroll {
+    overflow: visible;
+  }
+
   .traceability-sheet {
+    width: 100%;
+    min-width: 0;
     border-width: 1px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   .traceability-company-header {
@@ -422,25 +788,47 @@ table td button:focus-visible {
     font-size: 9px;
   }
 
-  .traceability-field {
-    min-height: 38px;
-  }
-
-  .traceability-label,
-  .traceability-value {
+  .traceability-label-cell,
+  .traceability-value-cell {
     min-height: 22px;
     padding: 3px 4px;
     font-size: 7px;
   }
 
-  .traceability-identity-grid .traceability-field:nth-child(1) .traceability-value {
+  .traceability-identity-cell,
+  .traceability-identity-spacer {
+    min-height: 25px;
+  }
+
+  .traceability-identity-label,
+  .traceability-identity-status-label,
+  .traceability-identity-status-value,
+  .traceability-identity-row-label,
+  .traceability-identity-row-value {
+    font-size: 7px;
+  }
+
+  .traceability-identity-lot {
     font-size: 12px;
   }
 
+  .traceability-identity-row-label,
+  .traceability-identity-row-value {
+    min-height: 22px;
+    padding: 3px 4px;
+  }
+
+  .traceability-status-badge {
+    padding: 2px 4px;
+    font-size: 7px;
+  }
+
   .traceability-link {
+    border: 0;
     background: transparent !important;
     color: #000 !important;
-    padding: 0 !important;
+    padding: 0;
+    font-size: 7px;
   }
 
   .traceability-link svg {
