@@ -5054,6 +5054,8 @@ function entityPermissionKey(entity: string): string {
       return "/quality/pre-dispatch-inspection";
     case "qc_sample_requirements":
       return "/quality/sample-requirement";
+    case "special_remark_records":
+      return "/quality/special-remarks";
     case "dispatch_plans":
       return "/dispatch";
     case "loading_slips":

@@ -1,11 +1,12 @@
 import { FormEvent, useMemo, useState } from "react";
-import { CheckCircle2, RotateCcw, Save, Search } from "lucide-react";
+import { CheckCircle2, RotateCcw, Save, Search, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import type { SpecialRemarkRecord } from "../types";
+import { groupSpecialRemarks } from "../lib/specialRemarks";
 
 const input = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -24,10 +25,59 @@ export function SpecialRemarkForm() {
 }
 
 export function SpecialRemarkMaster() {
-  const location = useLocation(); const [records, , loading] = useData<SpecialRemarkRecord>("special_remark_records", [], { firmScope: "all" });
-  const [search, setSearch] = useState(""); const [erpFilter, setErpFilter] = useState(""); const [itemFilter, setItemFilter] = useState(""); const [updatedByFilter, setUpdatedByFilter] = useState(""); const message = text((location.state as { message?: string } | null)?.message);
-  const latest = useMemo(() => { const map = new Map<string, SpecialRemarkRecord>(); records.forEach(record => { const key = text(record.erpCode).toLowerCase(); const old = map.get(key); if (!old || text(record.updateTimestamp || record.updateDate) > text(old.updateTimestamp || old.updateDate)) map.set(key, record); }); const query = search.toLowerCase().trim(); return [...map.values()].filter(record => { const haystack = `${record.erpCode} ${record.itemName} ${record.specialRemarks} ${record.updatedBy}`.toLowerCase(); return (!query || haystack.includes(query)) && (!erpFilter || text(record.erpCode).toLowerCase() === erpFilter.toLowerCase()) && (!itemFilter || text(record.itemName) === itemFilter) && (!updatedByFilter || text(record.updatedBy) === updatedByFilter); }).sort((a, b) => text(a.erpCode).localeCompare(text(b.erpCode), undefined, { numeric: true })); }, [records, search, erpFilter, itemFilter, updatedByFilter]);
-  const options = useMemo(() => ({ erps: [...new Set(records.map(record => text(record.erpCode)).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })), items: [...new Set(records.map(record => text(record.itemName)).filter(Boolean))].sort(), users: [...new Set(records.map(record => text(record.updatedBy)).filter(Boolean))].sort() }), [records]);
+  const location = useLocation();
+  const { user, hasAccess } = useAuth();
+  const [records, setRecords, loading] = useData<SpecialRemarkRecord>("special_remark_records", [], { firmScope: "all" });
+  const [search, setSearch] = useState("");
+  const [erpFilter, setErpFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [updatedByFilter, setUpdatedByFilter] = useState("");
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState("");
+  const [error, setError] = useState("");
+  const navigationMessage = text((location.state as { message?: string } | null)?.message);
+  const canDelete = user?.role === "Admin" || hasAccess("/quality/special-remarks");
+
+  const grouped = useMemo(() => groupSpecialRemarks(records), [records]);
+  const visibleGroups = useMemo(() => {
+    const query = search.toLowerCase().trim();
+    return grouped
+      .filter(group => (
+        (!query || group.searchText.includes(query)) &&
+        (!erpFilter || text(group.erpCode).toLowerCase() === erpFilter.toLowerCase()) &&
+        (!itemFilter || group.records.some(record => text(record.itemName) === itemFilter)) &&
+        (!updatedByFilter || group.records.some(record => text(record.updatedBy) === updatedByFilter))
+      ))
+      .sort((a, b) => text(a.erpCode).localeCompare(text(b.erpCode), undefined, { numeric: true }));
+  }, [grouped, search, erpFilter, itemFilter, updatedByFilter]);
+
+  const options = useMemo(() => ({
+    erps: [...new Set(records.map(record => text(record.erpCode)).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+    items: [...new Set(records.map(record => text(record.itemName)).filter(Boolean))].sort(),
+    users: [...new Set(records.map(record => text(record.updatedBy)).filter(Boolean))].sort(),
+  }), [records]);
+
   const clearFilters = () => { setSearch(""); setErpFilter(""); setItemFilter(""); setUpdatedByFilter(""); };
-  return <div className="space-y-5 pb-8"><div className="flex items-center justify-between border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Special Remark Master</h2></div>{message && <div className="rounded border border-emerald-700 bg-emerald-100 p-3 font-bold text-emerald-900">{message}</div>}<div className="grid grid-cols-1 gap-2 rounded border-2 border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-5"><div className="relative xl:col-span-2"><Search className="absolute left-3 top-2.5 text-slate-500" size={18}/><input className="w-full rounded border-2 border-black py-2 pl-10 pr-3" placeholder="Search ERP, item, remark, updater..." value={search} onChange={event => setSearch(event.target.value)}/></div><select className="rounded border-2 border-black px-3 py-2" value={erpFilter} onChange={event => setErpFilter(event.target.value)}><option value="">All ERP Codes</option>{options.erps.map(option => <option key={option}>{option}</option>)}</select><select className="rounded border-2 border-black px-3 py-2" value={itemFilter} onChange={event => setItemFilter(event.target.value)}><option value="">All Item Names</option>{options.items.map(option => <option key={option}>{option}</option>)}</select><select className="rounded border-2 border-black px-3 py-2" value={updatedByFilter} onChange={event => setUpdatedByFilter(event.target.value)}><option value="">All Updated By</option>{options.users.map(option => <option key={option}>{option}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border-2 border-black bg-white px-3 py-2 font-bold">Clear Filters</button></div><div className="overflow-x-auto rounded border-2 border-black bg-white"><table className="min-w-[900px] w-full border-collapse text-sm"><thead className="bg-cyan-800 text-white"><tr>{["ERP Code","Item Name","Special Remarks","Updated By","Update Date"].map(header => <th key={header} className="border border-black p-2 text-left">{header}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={5} className="p-6 text-center">Loading...</td></tr> : latest.length ? latest.map(record => <tr key={record.id}><td className="border border-black p-2 font-bold">{record.erpCode}</td><td className="border border-black p-2">{record.itemName}</td><td className="whitespace-pre-wrap border border-black p-2">{record.specialRemarks}</td><td className="border border-black p-2">{record.updatedBy || "-"}</td><td className="border border-black p-2">{record.updateDate || "-"}</td></tr>) : <tr><td colSpan={5} className="p-6 text-center">No Special Remark records found.</td></tr>}</tbody></table></div></div>;
+
+  const handleDelete = async (group: ReturnType<typeof groupSpecialRemarks>[number]) => {
+    if (!canDelete) return;
+    setError("");
+    setFeedback("");
+    if (deletingKey !== group.key) {
+      setDeletingKey(group.key);
+      window.setTimeout(() => setDeletingKey(current => current === group.key ? null : current), 3000);
+      return;
+    }
+
+    setDeletingKey(null);
+    try {
+      await setRecords(current => current.filter(record => !group.recordIds.includes(record.id)));
+      setFeedback("Special Remark records deleted successfully.");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Unable to delete Special Remark records.");
+    }
+  };
+
+  const message = feedback || navigationMessage;
+  return <div className="space-y-5 pb-8"><div className="flex items-center justify-between border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Special Remark Master</h2></div>{message && <div className="rounded border border-emerald-700 bg-emerald-100 p-3 font-bold text-emerald-900">{message}</div>}{error && <div className="rounded border border-red-700 bg-red-100 p-3 font-bold text-red-900">{error}</div>}<div className="grid grid-cols-1 gap-2 rounded border-2 border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-5"><div className="relative xl:col-span-2"><Search className="absolute left-3 top-2.5 text-slate-500" size={18}/><input className="w-full rounded border-2 border-black py-2 pl-10 pr-3" placeholder="Search ERP, item, remark, updater..." value={search} onChange={event => setSearch(event.target.value)}/></div><select className="rounded border-2 border-black px-3 py-2" value={erpFilter} onChange={event => setErpFilter(event.target.value)}><option value="">All ERP Codes</option>{options.erps.map(option => <option key={option}>{option}</option>)}</select><select className="rounded border-2 border-black px-3 py-2" value={itemFilter} onChange={event => setItemFilter(event.target.value)}><option value="">All Item Names</option>{options.items.map(option => <option key={option}>{option}</option>)}</select><select className="rounded border-2 border-black px-3 py-2" value={updatedByFilter} onChange={event => setUpdatedByFilter(event.target.value)}><option value="">All Updated By</option>{options.users.map(option => <option key={option}>{option}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border-2 border-black bg-white px-3 py-2 font-bold">Clear Filters</button></div><div className="overflow-x-auto rounded border-2 border-black bg-white"><table className="min-w-[1050px] w-full border-collapse text-sm"><thead className="bg-cyan-800 text-white"><tr>{["ERP Code","Item Name","Special Remarks","Updated By","Update Date","Actions"].map(header => <th key={header} className="border border-black p-2 text-left">{header}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={6} className="p-6 text-center">Loading...</td></tr> : visibleGroups.length ? visibleGroups.map(group => <tr key={group.key}><td className="border border-black p-2 font-bold">{group.erpCode}</td><td className="border border-black p-2">{group.itemName}</td><td className="whitespace-pre-wrap border border-black p-2">{group.specialRemarks}</td><td className="border border-black p-2">{group.updatedBy || "-"}</td><td className="border border-black p-2">{group.updateDate || "-"}</td><td className="whitespace-nowrap border border-black p-2 text-center">{canDelete ? <button type="button" onClick={() => void handleDelete(group)} className={`${deletingKey === group.key ? "animate-pulse text-amber-600" : "text-red-600"} inline-flex items-center gap-1 font-bold hover:text-red-900`} title={deletingKey === group.key ? "Confirm delete" : "Delete"} aria-label={deletingKey === group.key ? "Confirm delete" : "Delete"}><Trash2 size={16}/>{deletingKey === group.key ? "Confirm?" : "Delete"}</button> : "-"}</td></tr>) : <tr><td colSpan={6} className="p-6 text-center">No Special Remark records found.</td></tr>}</tbody></table></div></div>;
 }
