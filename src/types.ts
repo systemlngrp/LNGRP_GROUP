@@ -819,7 +819,7 @@ export interface User {
   email?: string;
   password?: string;
   designation?: string;
-  role?: "Admin" | "Employee" | "Operator";
+  role?: string;
   status?: "Active" | "Inactive";
   menuAccess?: string[];
   updatedBy?: string;

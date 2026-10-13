@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_SYSTEM_ROLES, normalizeSystemRoles, parseSystemRoles } from "./userRoles";
 
-test("normalizes supported roles, removes duplicates, and excludes TruckDriver", () => {
-  assert.deepEqual(normalizeSystemRoles(["Operator", "Admin", "Operator", "TruckDriver", "Unknown"]), ["Admin", "Operator"]);
+test("normalizes custom roles, removes duplicates, and excludes TruckDriver", () => {
+  assert.deepEqual(normalizeSystemRoles(["Operator", "admin", "Manager", "manager", "TruckDriver", "Unknown"]), ["Admin", "Manager", "Operator", "Unknown"]);
 });
 
 test("falls back to the default roles for missing, invalid, or empty settings", () => {
@@ -13,5 +13,9 @@ test("falls back to the default roles for missing, invalid, or empty settings", 
 });
 
 test("parses a configured role list", () => {
-  assert.deepEqual(parseSystemRoles(JSON.stringify(["Employee", "Admin"])), ["Admin", "Employee"]);
+  assert.deepEqual(parseSystemRoles(JSON.stringify(["Employee", "Manager", "Admin"])), ["Admin", "Employee", "Manager"]);
+});
+
+test("rejects empty and overlong role names", () => {
+  assert.deepEqual(normalizeSystemRoles(["", "This role name is definitely too long"]), []);
 });

@@ -108,7 +108,7 @@ type AuthUser = {
   userId: string;
   name: string;
   email?: string | null;
-  role: "Admin" | "Employee" | "Operator" | "TruckDriver";
+  role: string;
   status: "Active" | "Inactive";
   menuAccess: string[];
   truckId?: string | null;
@@ -822,11 +822,15 @@ function normalizeStringArray(raw: unknown): string[] {
 
 function normalizeUserRole(raw: unknown): AuthUser["role"] {
   const role = String(raw || "Employee").trim();
-  if (role === "Admin") return "Admin";
-  if (role === "Operator") return "Operator";
-  if (role === "TruckDriver") return "TruckDriver";
-  return "Employee";
+  if (!role) return "Employee";
+  if (role.toLowerCase() === "admin") return "Admin";
+  if (role.toLowerCase() === "operator") return "Operator";
+  if (role.toLowerCase() === "truckdriver") return "TruckDriver";
+  if (role.toLowerCase() === "employee") return "Employee";
+  return role;
 }
+
+const USER_ROLE_MAX_LENGTH = 20;
 
 function hasPermission(user: AuthUser, required: string) {
   if (user.role === "Admin") return true;
@@ -9664,6 +9668,10 @@ const createHandlers = (tableName: string) => {
           data.userId = normalizedUserId;
           data.updatedBy = String(data.updatedBy || "").trim() || "System Admin";
           data.updateTimestamp = String(data.updateTimestamp || "").trim() || new Date().toISOString();
+          const requestedRole = String(data.role || "Employee").trim();
+          if (!requestedRole || requestedRole.length > USER_ROLE_MAX_LENGTH) {
+            return res.status(400).json({ error: `Role name must be between 1 and ${USER_ROLE_MAX_LENGTH} characters.` });
+          }
 
           const userRecord: Record<string, any> = {
             id: String(data.id || crypto.randomUUID()),

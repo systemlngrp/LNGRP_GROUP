@@ -778,14 +778,19 @@ function normalizeStringArray(raw) {
 }
 function normalizeUserRole(raw) {
     const role = String(raw || "Employee").trim();
-    if (role === "Admin")
+    if (!role)
+        return "Employee";
+    if (role.toLowerCase() === "admin")
         return "Admin";
-    if (role === "Operator")
+    if (role.toLowerCase() === "operator")
         return "Operator";
-    if (role === "TruckDriver")
+    if (role.toLowerCase() === "truckdriver")
         return "TruckDriver";
-    return "Employee";
+    if (role.toLowerCase() === "employee")
+        return "Employee";
+    return role;
 }
+const USER_ROLE_MAX_LENGTH = 20;
 function hasPermission(user, required) {
     if (user.role === "Admin")
         return true;
@@ -9078,6 +9083,10 @@ const createHandlers = (tableName) => {
                     data.userId = normalizedUserId;
                     data.updatedBy = String(data.updatedBy || "").trim() || "System Admin";
                     data.updateTimestamp = String(data.updateTimestamp || "").trim() || new Date().toISOString();
+                    const requestedRole = String(data.role || "Employee").trim();
+                    if (!requestedRole || requestedRole.length > USER_ROLE_MAX_LENGTH) {
+                        return res.status(400).json({ error: `Role name must be between 1 and ${USER_ROLE_MAX_LENGTH} characters.` });
+                    }
                     const userRecord = {
                         id: String(data.id || crypto.randomUUID()),
                         userId: data.userId,

@@ -1,19 +1,23 @@
 export const SYSTEM_ROLES = ["Admin", "Employee", "Operator"] as const;
-export type SystemRole = (typeof SYSTEM_ROLES)[number];
+export type SystemRole = string;
+export const ROLE_NAME_MAX_LENGTH = 20;
+export const RESERVED_ROLE = "TruckDriver";
 
-export const DEFAULT_SYSTEM_ROLES: SystemRole[] = [...SYSTEM_ROLES];
+export const DEFAULT_SYSTEM_ROLES: string[] = [...SYSTEM_ROLES];
 
-export function normalizeSystemRoles(values: unknown): SystemRole[] {
+export function normalizeSystemRoles(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
 
-  const allowed = new Set<string>(SYSTEM_ROLES);
-  const unique = new Set<SystemRole>();
+  const unique = new Map<string, string>();
   values.forEach((value) => {
-    const role = String(value || "").trim() as SystemRole;
-    if (allowed.has(role)) unique.add(role);
+    const rawRole = String(value || "").trim();
+    const role = SYSTEM_ROLES.find((systemRole) => systemRole.toLowerCase() === rawRole.toLowerCase()) || rawRole;
+    if (!role || role.length > ROLE_NAME_MAX_LENGTH || role.toLowerCase() === RESERVED_ROLE.toLowerCase()) return;
+    const key = role.toLowerCase();
+    if (!unique.has(key)) unique.set(key, role);
   });
 
-  return Array.from(unique).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return Array.from(unique.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
 export function parseSystemRoles(raw: unknown): SystemRole[] {

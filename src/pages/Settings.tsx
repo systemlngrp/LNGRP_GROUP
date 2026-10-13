@@ -15,7 +15,7 @@ import { useAuth } from "../auth/AuthContext";
 import { parseRealizationTargets } from "../lib/realizationTargets";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel, OrderCatalogItem } from "../lib/orderItems";
-import { DEFAULT_SYSTEM_ROLES, normalizeSystemRoles, parseSystemRoles, SYSTEM_ROLES, SystemRole } from "../lib/userRoles";
+import { DEFAULT_SYSTEM_ROLES, normalizeSystemRoles, parseSystemRoles, RESERVED_ROLE, ROLE_NAME_MAX_LENGTH, SystemRole } from "../lib/userRoles";
 import { GripVertical, X } from "lucide-react";
 
 const FLAP_FORMULA_OPTIONS = [
@@ -342,7 +342,7 @@ export function SettingsPage() {
   const [designationDraft, setDesignationDraft] = useState<string[]>([]);
   const [newDesignation, setNewDesignation] = useState("");
   const [roleDraft, setRoleDraft] = useState<SystemRole[]>([...DEFAULT_SYSTEM_ROLES]);
-  const [newRole, setNewRole] = useState<SystemRole | "">("");
+  const [newRole, setNewRole] = useState("");
   const [interFirmRateDraft, setInterFirmRateDraft] = useState("100");
   const [interFirmPairRatesDraft, setInterFirmPairRatesDraft] = useState<InterFirmPairRate[]>([]);
   const [pairFromFirmId, setPairFromFirmId] = useState("");
@@ -866,30 +866,44 @@ export function SettingsPage() {
         <div>
           <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Role Setup</h3>
           <p className="text-sm text-black leading-6">
-            Maintain the system roles available in the Users form. TruckDriver remains reserved for the truck-driver workflow.
+            Maintain the system and custom roles available in the Users form. TruckDriver remains reserved for the truck-driver workflow.
           </p>
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row">
-          <select
+          <input
+            type="text"
             value={newRole}
-            onChange={(event) => setNewRole(event.target.value as SystemRole | "")}
+            onChange={(event) => setNewRole(event.target.value)}
             disabled={loading || saving}
+            maxLength={ROLE_NAME_MAX_LENGTH}
+            placeholder="Enter role name"
             className="flex-1 rounded border-2 border-black p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          >
-            <option value="">Select role to add</option>
-            {SYSTEM_ROLES.filter((role) => !roleDraft.includes(role)).map((role) => (
-              <option key={role} value={role}>{role}</option>
-            ))}
-          </select>
+          />
           <button
             type="button"
             onClick={() => {
-              if (!newRole || roleDraft.includes(newRole)) return;
-              setRoleDraft((prev) => normalizeSystemRoles([...prev, newRole]));
+              const trimmed = newRole.trim();
+              if (!trimmed) {
+                alert("Role name is required.");
+                return;
+              }
+              if (trimmed.length > ROLE_NAME_MAX_LENGTH) {
+                alert(`Role name must be ${ROLE_NAME_MAX_LENGTH} characters or less.`);
+                return;
+              }
+              if (trimmed.toLowerCase() === RESERVED_ROLE.toLowerCase()) {
+                alert(`${RESERVED_ROLE} is reserved and cannot be added here.`);
+                return;
+              }
+              if (roleDraft.some((role) => role.toLowerCase() === trimmed.toLowerCase())) {
+                alert("Role already exists.");
+                return;
+              }
+              setRoleDraft((prev) => normalizeSystemRoles([...prev, trimmed]));
               setNewRole("");
             }}
-            disabled={loading || saving || !newRole}
+            disabled={loading || saving}
             className="rounded border-2 border-black bg-white px-4 py-2 font-bold text-black hover:bg-slate-50 disabled:opacity-50"
           >
             Add Role

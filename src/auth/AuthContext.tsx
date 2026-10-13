@@ -6,7 +6,7 @@ export type AuthUser = {
   userId: string;
   name: string;
   email?: string | null;
-  role: "Admin" | "Employee" | "Operator" | "TruckDriver";
+  role: string;
   status: "Active" | "Inactive";
   menuAccess: string[];
   truckId?: string | null;
@@ -86,10 +86,7 @@ function normalizeMenuAccess(raw: unknown): string[] {
 
 function normalizeRole(raw: unknown): AuthUser["role"] {
   const role = String(raw || "Employee").trim();
-  if (role === "Admin") return "Admin";
-  if (role === "Operator") return "Operator";
-  if (role === "TruckDriver") return "TruckDriver";
-  return "Employee";
+  return role || "Employee";
 }
 
 function getEffectiveMenuAccess(user: AuthUser | null) {
