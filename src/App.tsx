@@ -166,6 +166,7 @@ import { PreDispatchInspection, PreDispatchInspectionForm } from "./pages/PreDis
 import { QcSampleRequirement } from "./pages/QcSampleRequirement";
 import { QcSampleRequirementMaster } from "./pages/QcSampleRequirementMaster";
 import { QcSampleRequirementForm } from "./pages/QcSampleRequirementForm";
+import { TraceabilitySystem } from "./pages/TraceabilitySystem";
 import { ReelStockTakerReport } from "./pages/ReelStockTakerReport";
 import { PhysicalStockMaster } from "./pages/PhysicalStockMaster";
 import { PhysicalStockSessions } from "./pages/PhysicalStockSessions";
@@ -385,6 +386,8 @@ export default function App() {
           <Route path="quality/control-record/form" element={<Navigate to="/quality/qc-update/form" replace />} />
           <Route path="quality/control-record" element={<ControlRecordMaster />} />
           <Route path="quality/qc-view" element={<QcView />} />
+           <Route path="quality/traceability" element={<TraceabilitySystem />} />
+           <Route path="quality/traceability/:productionId" element={<TraceabilitySystem />} />
           <Route path="quality/pdi-report" element={<PdiReport />} />
           <Route path="quality/complaints/form" element={<QualityComplaintForm />} />
           <Route path="quality/complaints/master" element={<QualityComplaintMaster />} />

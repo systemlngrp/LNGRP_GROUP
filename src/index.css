@@ -251,3 +251,199 @@ table td button:focus-visible {
     width: calc(100% + 1rem);
   }
 }
+
+.traceability-sheet {
+  width: 100%;
+  overflow: hidden;
+  border: 2px solid #000;
+  background: #fff;
+  color: #000;
+  font-family: Arial, sans-serif;
+}
+
+.traceability-company-header,
+.traceability-document-title,
+.traceability-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-bottom: 1px solid #000;
+  padding: 7px 10px;
+  text-align: center;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.traceability-company-header {
+  min-height: 46px;
+  background: #0b3842;
+  color: #fff;
+  font-size: 18px;
+}
+
+.traceability-document-title {
+  background: #244b8b;
+  color: #fff;
+  font-size: 12px;
+}
+
+.traceability-section-title {
+  background: #000;
+  color: #fff;
+  font-size: 12px;
+}
+
+.traceability-section {
+  border-bottom: 1px solid #000;
+}
+
+.traceability-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.traceability-field {
+  min-height: 58px;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+  background: #fff;
+}
+
+.traceability-field:nth-child(6n) {
+  border-right: 0;
+}
+
+.traceability-label {
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #d9d2e9;
+  padding: 5px 6px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.traceability-value {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 6px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.traceability-identity-grid .traceability-field:nth-child(1) .traceability-label,
+.traceability-identity-grid .traceability-field:nth-child(3) .traceability-label {
+  background: #d9d2e9;
+}
+
+.traceability-identity-grid .traceability-field:nth-child(1) .traceability-value {
+  background: #ffff00;
+  font-size: 18px;
+}
+
+.traceability-identity-grid .traceability-field:nth-child(3) .traceability-value {
+  background: #00ff00;
+}
+
+.traceability-status .traceability-value {
+  padding: 4px;
+}
+
+.traceability-pdi-result .traceability-value {
+  background: #00ff00;
+}
+
+@media (max-width: 900px) {
+  .traceability-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .traceability-field:nth-child(6n) {
+    border-right: 1px solid #000;
+  }
+
+  .traceability-field:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .traceability-company-header {
+    font-size: 14px;
+  }
+}
+
+@media print {
+  @page {
+    size: landscape;
+    margin: 6mm;
+  }
+
+  body:has(.traceability-print-root) {
+    background: #fff;
+  }
+
+  body:has(.traceability-print-root) header,
+  body:has(.traceability-print-root) aside,
+  body:has(.traceability-print-root) .traceability-toolbar,
+  body:has(.traceability-print-root) .traceability-detail-actions {
+    display: none !important;
+  }
+
+  body:has(.traceability-print-root) .app-view-content {
+    overflow: visible !important;
+  }
+
+  body:has(.traceability-print-root) .app-view-content > div {
+    padding: 0 !important;
+  }
+
+  .traceability-sheet {
+    border-width: 1px;
+  }
+
+  .traceability-company-header {
+    min-height: 30px;
+    font-size: 14px;
+  }
+
+  .traceability-document-title,
+  .traceability-section-title {
+    min-height: 22px;
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
+  .traceability-field {
+    min-height: 38px;
+  }
+
+  .traceability-label,
+  .traceability-value {
+    min-height: 22px;
+    padding: 3px 4px;
+    font-size: 7px;
+  }
+
+  .traceability-identity-grid .traceability-field:nth-child(1) .traceability-value {
+    font-size: 12px;
+  }
+
+  .traceability-link {
+    background: transparent !important;
+    color: #000 !important;
+    padding: 0 !important;
+  }
+
+  .traceability-link svg {
+    display: none;
+  }
+}
