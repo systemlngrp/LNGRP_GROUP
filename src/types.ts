@@ -1710,6 +1710,7 @@ export interface Setting {
   allowInvoiceTallyEditUsers?: string;
   productionFormVisibleColumns?: string;
   pdiReportVisibleColumns?: string;
+  qcViewVisibleColumns?: string;
   poMandatoryMrrTypes?: string;
   realizationPerKgTargets?: string;
   invoiceNumberSeries?: string;

@@ -7514,6 +7514,7 @@ await db.query(`
           \`allowInvoiceTallyEditUsers\` LONGTEXT,
           \`productionFormVisibleColumns\` LONGTEXT,
           \`pdiReportVisibleColumns\` LONGTEXT,
+          \`qcViewVisibleColumns\` LONGTEXT,
           \`poMandatoryMrrTypes\` LONGTEXT,
           \`realizationPerKgTargets\` LONGTEXT,
           \`invoiceNumberSeries\` LONGTEXT,
@@ -8610,6 +8611,7 @@ await db.query(`
         { table: "settings", column: "allowInvoiceTallyEditUsers", type: "LONGTEXT" },
         { table: "settings", column: "productionFormVisibleColumns", type: "LONGTEXT" },
         { table: "settings", column: "pdiReportVisibleColumns", type: "LONGTEXT" },
+        { table: "settings", column: "qcViewVisibleColumns", type: "LONGTEXT" },
         { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
         { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
         { table: "settings", column: "mandatoryMachinesByType", type: "LONGTEXT" },
@@ -14442,6 +14444,44 @@ entities.forEach(entity => {
 // The generic upsert should handle it if the client sends stringified JSON or if mysql2 handles it.
 // mysql2 handles objects/arrays as JSON if specified in the query.
 
+
+const QC_REPORT_COLUMN_RULES = {
+  "qc-view": { count: 57, permission: "/quality/qc-view", setting: "qcViewVisibleColumns" },
+  "pdi-report": { count: 36, permission: "/quality/pdi-report", setting: "pdiReportVisibleColumns" },
+} as const;
+
+app.put("/api/qc-report-columns/:report", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const report = String(req.params.report || "");
+  const rule = QC_REPORT_COLUMN_RULES[report as keyof typeof QC_REPORT_COLUMN_RULES];
+  if (!rule) return res.status(404).json({ error: "Unknown QC report." });
+  if (!canManageMasterRecords(user) || !hasPermission(user, rule.permission)) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  const columns = req.body?.columns;
+  if (!Array.isArray(columns) || columns.length === 0 || columns.length > rule.count ||
+      !columns.every((index: unknown) => Number.isInteger(index) && (index as number) >= 0 && (index as number) < rule.count) ||
+      new Set(columns).size !== columns.length) {
+    return res.status(400).json({ error: "Invalid column selection." });
+  }
+  try {
+    const db = await getPool();
+    if (!db) return res.status(500).json({ error: "DB connection not available" });
+    const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+    const id = String((rows as any[])[0]?.id || "");
+    const value = JSON.stringify([...columns].sort((a: number, b: number) => a - b));
+    if (id) {
+      await db.query("UPDATE `settings` SET `" + rule.setting + "` = ? WHERE id = ?", [value, id]);
+    } else {
+      await db.query("INSERT INTO `settings` (`id`, `" + rule.setting + "`) VALUES (?, ?)", [crypto.randomUUID(), value]);
+    }
+    return res.json({ columns: JSON.parse(value) });
+  } catch (error) {
+    console.error("[QC_COLUMNS] Save failed:", error);
+    return res.status(500).json({ error: "Unable to save QC columns." });
+  }
+});
 registerSalesOrderSync(app, getPool);
 
 async function startServer() {
