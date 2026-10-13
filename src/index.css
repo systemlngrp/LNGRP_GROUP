@@ -483,10 +483,46 @@ table td button:focus-visible {
 }
 
 .traceability-company-header {
+  position: relative;
   min-height: 46px;
   background: #0b3842;
   color: #fff;
   font-size: 18px;
+  padding-right: 42px;
+}
+
+.traceability-mode-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 100%;
+  border: 0;
+  border-left: 1px solid #000;
+  padding: 0;
+  background: #111;
+  color: #fff;
+  cursor: pointer;
+}
+
+.traceability-company-header.is-planned-paper .traceability-mode-toggle {
+  background: #00f000;
+  color: #000;
+}
+
+.traceability-mode-checkbox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid currentColor;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
 }
 
 .traceability-document-title {
@@ -779,6 +815,17 @@ table td button:focus-visible {
   .traceability-company-header {
     min-height: 30px;
     font-size: 14px;
+    padding-right: 30px;
+  }
+
+  .traceability-mode-toggle {
+    width: 22px;
+  }
+
+  .traceability-mode-checkbox {
+    width: 10px;
+    height: 10px;
+    font-size: 9px;
   }
 
   .traceability-document-title,

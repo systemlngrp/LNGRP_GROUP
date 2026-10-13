@@ -67,6 +67,7 @@ const EMPTY_TRACEABILITY_RECORD: TraceabilityRecord = {
     paperSpec: "",
     sizeLxWxHmm: "",
     plannedPaper: "",
+    lineIncharge: "",
     sheetPlantRequiredSize: "",
     sheetPlantProducedSize: "",
     sheetPlantProducedSizeDr: "",
@@ -200,7 +201,15 @@ function traceabilityInputs(
 
 function DetailView({ record, onClear, notFound }: { record?: TraceabilityRecord; onClear: () => void; notFound: boolean }) {
   const data = record || EMPTY_TRACEABILITY_RECORD;
+  const [showPlannedPaper, setShowPlannedPaper] = useState(true);
   const field = (label: string, value: TraceabilityValue | ReactNode, span?: number, options: Omit<SheetField, "label" | "value" | "span"> = {}) => ({ label, value, span, ...options });
+
+  useEffect(() => {
+    setShowPlannedPaper(true);
+  }, [record?.id]);
+
+  const paperModeLabel = showPlannedPaper ? "PLANNED PAPER" : "LINE - INCHARGE";
+  const paperModeValue = showPlannedPaper ? data.boardline.plannedPaper : data.boardline.lineIncharge;
 
   return <div className="traceability-detail">
     {record && <div className="traceability-detail-actions">
@@ -210,7 +219,18 @@ function DetailView({ record, onClear, notFound }: { record?: TraceabilityRecord
     {notFound && <div className="traceability-not-found">Traceability record not found. Search by job number, lot number, ERP code, party, or item.</div>}
     <div className="traceability-sheet-scroll">
       <div className="traceability-sheet">
-        <div className="traceability-company-header">{display(data.firmName || "LAXMI NARAYAN CORRUGATED BOARDS LLP.")}</div>
+        <div className={`traceability-company-header ${showPlannedPaper ? "is-planned-paper" : "is-line-incharge"}`}>
+          <span>{display(data.firmName || "LAXMI NARAYAN CORRUGATED BOARDS LLP.")}</span>
+          <button
+            type="button"
+            className="traceability-mode-toggle"
+            aria-label={showPlannedPaper ? "Showing planned paper. Click to show line in charge." : "Showing line in charge. Click to show planned paper."}
+            aria-pressed={showPlannedPaper}
+            onClick={() => setShowPlannedPaper((current) => !current)}
+          >
+            <span aria-hidden="true" className="traceability-mode-checkbox">{showPlannedPaper ? "✓" : ""}</span>
+          </button>
+        </div>
         <div className="traceability-document-title">TRACEABILITY SYSTEM</div>
         {!record && <div className="traceability-empty-sheet-prompt"><Search size={18} />Search for a job or lot above to display the traceability record.</div>}
 
@@ -258,7 +278,7 @@ function DetailView({ record, onClear, notFound }: { record?: TraceabilityRecord
           <SheetRow fields={[
             field("PAPER SPEC", data.boardline.paperSpec),
             field("SIZE (L X W X H) MM", data.boardline.sizeLxWxHmm),
-            field("PLANNED PAPER", data.boardline.plannedPaper),
+            field(paperModeLabel, paperModeValue),
             field("SHEET PLANT REQUIRED SIZE (FLAP - HEIGHT - FLAP) MM", data.boardline.sheetPlantRequiredSize),
             field("SHEET PLANT PRODUCED SIZE - OP (FLAP - HEIGHT - FLAP) MM", data.boardline.sheetPlantProducedSize),
             field("SHEET PLANT PRODUCED SIZE - DR (FLAP - HEIGHT - FLAP) MM", data.boardline.sheetPlantProducedSizeDr),

@@ -58,6 +58,7 @@ export type TraceabilityRecord = {
     paperSpec: string;
     sizeLxWxHmm: string;
     plannedPaper: TraceabilityValue;
+    lineIncharge: string;
     sheetPlantRequiredSize: string;
     sheetPlantProducedSize: string;
     sheetPlantProducedSizeDr: string;
@@ -198,6 +199,15 @@ function statusOf(production: Production): TraceabilityStatus {
   return "JOB OPEN";
 }
 
+function layerValue(value: unknown) {
+  const normalized = text(value);
+  if (!normalized) return "";
+  const numeric = Number(normalized);
+  if (!Number.isFinite(numeric)) return normalized;
+  if (numeric === 0) return "";
+  return String(numeric);
+}
+
 function paperSpec(item?: Item) {
   if (!item) return "";
   return [
@@ -208,17 +218,33 @@ function paperSpec(item?: Item) {
     ["L3", item.l3],
     ["F3", item.f3],
   ].map(([label, value]) => {
-    const normalized = text(value);
-    if (!normalized || Number(normalized) === 0) return "";
-    return `${label} ${normalized}`;
+    const normalized = layerValue(value);
+    return normalized ? `${label} ${normalized}` : "";
   }).filter(Boolean).join(" / ");
 }
 
 function plannedPaper(production: Production): TraceabilityValue {
   return [production.l1, production.f1, production.l2, production.f2, production.l3]
-    .map(text)
-    .filter((value) => value && Number(value) !== 0)
+    .map(layerValue)
+    .filter(Boolean)
     .join(" / ");
+}
+
+function explicitLineIncharge(board?: BoardLineQcCheck) {
+  if (!board) return "";
+  const lineInchargeKeys = new Set(["lineincharge", "lineinchargename", "lineinchargeperson"]);
+  const rawBoard = board as unknown as Record<string, unknown>;
+  return Object.entries(rawBoard)
+    .filter(([field]) => lineInchargeKeys.has(field.toLowerCase().replace(/[^a-z0-9]/g, "")))
+    .map(([, value]) => text(value))
+    .find(Boolean) || "";
+}
+
+function processingLineIncharge(rows: ProductionProcessing[]) {
+  return firstText(latest(
+    rows.filter((row) => key(row.machineName) === "corrugation liner" && text(row.operatorName)),
+    (row) => row.updateTimestamp || row.date,
+  )?.operatorName);
 }
 
 export function buildTraceabilityRecord(production: Production, input: TraceabilityInputs): TraceabilityRecord {
@@ -246,6 +272,7 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
   const lotNumbers = [...new Set([text(inspection?.lotNo), text(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
   const planQuantity = resolvePlanQuantity(production.plannedQty, production.qty, board?.planQty, printing?.planQty, inspection?.plannedQty, plans.reduce((sum, plan) => sum + Number(plan.plannedQty || 0), 0));
   const plannedPaperValue = plannedPaper(production);
+  const lineIncharge = firstText(explicitLineIncharge(board), processingLineIncharge(productionProcessing));
   const paperRequired = firstValue(production.totalPaperWeight);
   const paperUsed = numberValue(getProductionActualPaperUsed(production));
   const requiredNumber = Number(paperRequired || 0);
@@ -306,6 +333,7 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
       paperSpec: paperSpec(item),
       sizeLxWxHmm: joinSize(production.length || item?.length, production.breadth || item?.breadth, production.height || item?.height),
       plannedPaper: plannedPaperValue,
+      lineIncharge,
       sheetPlantRequiredSize: firstText((production as Production & { sheetPlantRequiredSize?: string }).sheetPlantRequiredSize, board?.standard),
       sheetPlantProducedSize: firstText((production as Production & { sheetPlantProducedSize?: string }).sheetPlantProducedSize),
       sheetPlantProducedSizeDr: firstText((production as Production & { sheetPlantProducedSizeDr?: string }).sheetPlantProducedSizeDr),

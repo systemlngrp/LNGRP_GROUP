@@ -162,6 +162,59 @@ test("planned paper omits blank and zero Production Plan layers", () => {
   assert.equal(record.boardline.plannedPaper, "120 / 150");
 });
 
+test("line in charge prefers an explicit Boardline field", () => {
+  const record = buildTraceabilityRecord(production(), {
+    ...baseInput,
+    boardline: [{ ...boardline(), lineInCharge: "Explicit Line In-Charge" } as BoardLineQcCheck],
+  });
+  assert.equal(record.boardline.lineIncharge, "Explicit Line In-Charge");
+});
+
+test("line in charge falls back to the latest Corrugation Liner operator", () => {
+  const record = buildTraceabilityRecord(production(), {
+    ...baseInput,
+    boardline: [boardline()],
+    processing: [
+      ...processing,
+      { ...processing[0], id: "process-board-latest", operatorName: "Latest Board Operator", date: "2026-10-10T18:00:00Z" },
+    ],
+  });
+  assert.equal(record.boardline.lineIncharge, "Latest Board Operator");
+});
+
+test("line in charge remains blank when no explicit field or corrugation operator exists", () => {
+  const record = buildTraceabilityRecord(production(), {
+    ...baseInput,
+    boardline: [boardline()],
+    processing: [],
+  });
+  assert.equal(record.boardline.lineIncharge, "");
+});
+
+test("layer GSM formatting removes unnecessary decimals but preserves meaningful fractions", () => {
+  const asNumeric = (value: string) => value as unknown as number;
+  const record = buildTraceabilityRecord(production({
+    l1: asNumeric("120.00"),
+    f1: asNumeric("120.50"),
+    l2: asNumeric("150.00"),
+    f2: asNumeric("150.5"),
+    l3: asNumeric("0.00"),
+  }), {
+    ...baseInput,
+    items: [{
+      ...item,
+      l1: asNumeric("120.00"),
+      f1: asNumeric("120.50"),
+      l2: asNumeric("150.00"),
+      f2: asNumeric("150.5"),
+      l3: asNumeric("0.00"),
+      f3: asNumeric("120.00"),
+    }],
+  });
+  assert.equal(record.boardline.paperSpec, "L1 120 / F1 120.5 / L2 150 / F2 150.5 / F3 120");
+  assert.equal(record.boardline.plannedPaper, "120 / 120.5 / 150 / 150.5");
+});
+
 test("missing source values remain blank instead of being fabricated", () => {
   const record = buildTraceabilityRecord(production({ erpCode: "", companyName: "" }), { productions: [], items: [] });
   assert.equal(record.erpCode, "");
