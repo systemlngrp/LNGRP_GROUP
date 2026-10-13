@@ -1715,6 +1715,7 @@ export interface Setting {
   invoiceNumberSeries?: string;
   mandatoryMachinesByType?: string;
   designations?: string;
+  roles?: string;
   samplingPlanQtyDivisor?: number;
   samplingPlanQtyMin?: number;
   samplingPlanQtyMax?: number;

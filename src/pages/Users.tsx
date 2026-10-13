@@ -6,6 +6,7 @@ import { Spinner } from "../components/Spinner";
 import { NAVIGATION } from "../components/Sidebar";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { parseSystemRoles, SystemRole } from "../lib/userRoles";
 
 function parseDesignations(setting?: Setting) {
   if (!setting?.designations) return [];
@@ -64,6 +65,12 @@ export function Users() {
   
   const [searchTerm, setSearchTerm] = useState("");
   const designationOptions = useMemo(() => [...new Set([...parseDesignations(settings[0]), "QC Person"])].sort((a, b) => a.localeCompare(b)), [settings]);
+  const configuredRoleOptions = useMemo(() => parseSystemRoles(settings[0]?.roles), [settings]);
+  const roleOptions = useMemo(() => {
+    const currentRole = editingId ? users.find((user) => user.id === editingId)?.role : undefined;
+    if (!currentRole || configuredRoleOptions.includes(currentRole)) return configuredRoleOptions;
+    return [...configuredRoleOptions, currentRole].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [configuredRoleOptions, editingId, users]);
   const allMenuItems = useMemo<MenuAccessGroup[]>(() => {
     return NAVIGATION.map((group) => {
       const parents: MenuAccessParent[] = [];
@@ -96,7 +103,7 @@ export function Users() {
     email: string;
     password: string;
     designation: string;
-    role: "Admin" | "Employee" | "Operator";
+    role: SystemRole;
     status: "Active" | "Inactive";
     menuAccess: string[];
   }>({
@@ -111,11 +118,16 @@ export function Users() {
     menuAccess: ["/"],
   });
 
+  useEffect(() => {
+    if (!isFormOpen || editingId || roleOptions.includes(formData.role)) return;
+    setFormData((current) => ({ ...current, role: roleOptions[0] || "Employee" }));
+  }, [editingId, formData.role, isFormOpen, roleOptions]);
+
   const handleCreateNew = () => {
     setModalMode("create");
     setEditingId(null);
     setShowPassword(false);
-    setFormData({ userId: "", name: "", mobile: "", email: "", password: "", designation: "", role: "Employee", status: "Active", menuAccess: ["/"] });
+    setFormData({ userId: "", name: "", mobile: "", email: "", password: "", designation: "", role: roleOptions[0] || "Employee", status: "Active", menuAccess: ["/"] });
     setIsFormOpen(true);
   };
 
@@ -420,13 +432,13 @@ export function Users() {
                 <label className="font-bold text-black text-sm">Role *</label>
                 <select
                   value={formData.role}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, role: e.target.value as any }))}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, role: e.target.value as SystemRole }))}
                   disabled={isViewMode}
                   className="border-2 border-black rounded p-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-500"
                 >
-                  <option value="Admin">Admin</option>
-                  <option value="Employee">Employee</option>
-                  <option value="Operator">Operator</option>
+                  {roleOptions.map((role) => (
+                    <option key={role} value={role}>{role}</option>
+                  ))}
                 </select>
               </div>
               <div className="flex flex-col space-y-1">

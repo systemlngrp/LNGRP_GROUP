@@ -15,6 +15,7 @@ import { useAuth } from "../auth/AuthContext";
 import { parseRealizationTargets } from "../lib/realizationTargets";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel, OrderCatalogItem } from "../lib/orderItems";
+import { DEFAULT_SYSTEM_ROLES, normalizeSystemRoles, parseSystemRoles, SYSTEM_ROLES, SystemRole } from "../lib/userRoles";
 import { GripVertical, X } from "lucide-react";
 
 const FLAP_FORMULA_OPTIONS = [
@@ -340,6 +341,8 @@ export function SettingsPage() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [designationDraft, setDesignationDraft] = useState<string[]>([]);
   const [newDesignation, setNewDesignation] = useState("");
+  const [roleDraft, setRoleDraft] = useState<SystemRole[]>([...DEFAULT_SYSTEM_ROLES]);
+  const [newRole, setNewRole] = useState<SystemRole | "">("");
   const [interFirmRateDraft, setInterFirmRateDraft] = useState("100");
   const [interFirmPairRatesDraft, setInterFirmPairRatesDraft] = useState<InterFirmPairRate[]>([]);
   const [pairFromFirmId, setPairFromFirmId] = useState("");
@@ -469,6 +472,10 @@ export function SettingsPage() {
       setDesignationDraft([]);
     }
   }, [currentSetting?.designations]);
+
+  useEffect(() => {
+    setRoleDraft(parseSystemRoles(currentSetting?.roles));
+  }, [currentSetting?.roles]);
 
   const realizationTargets = useMemo(
     () => parseRealizationTargets(currentSetting?.realizationPerKgTargets),
@@ -708,6 +715,7 @@ export function SettingsPage() {
         invoiceNumberSeries: currentSetting?.invoiceNumberSeries || JSON.stringify([]),
         mandatoryMachinesByType: currentSetting?.mandatoryMachinesByType || JSON.stringify({}),
         designations: currentSetting?.designations || JSON.stringify([]),
+        roles: currentSetting?.roles || JSON.stringify(DEFAULT_SYSTEM_ROLES),
         samplingPlanQtyDivisor: Number(currentSetting?.samplingPlanQtyDivisor || 2000),
         samplingPlanQtyMin: Number(currentSetting?.samplingPlanQtyMin || 2),
         samplingPlanQtyMax: Number(currentSetting?.samplingPlanQtyMax || 4),
@@ -1535,6 +1543,106 @@ export function SettingsPage() {
               className="bg-indigo-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
             >
               {saving ? <Spinner size={18} className="text-white" /> : "Save Designations"}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4 border-b border-dashed border-black pb-5">
+          <div>
+            <h3 className="text-sm font-black uppercase text-slate-600 mb-2">Role Setup</h3>
+            <p className="text-sm text-black leading-6">
+              Maintain the system roles available in the Users form. TruckDriver remains reserved for the truck-driver workflow.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 md:flex-row">
+            <select
+              value={newRole}
+              onChange={(event) => setNewRole(event.target.value as SystemRole | "")}
+              disabled={loading || saving}
+              className="flex-1 rounded border-2 border-black p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+            >
+              <option value="">Select role to add</option>
+              {SYSTEM_ROLES.filter((role) => !roleDraft.includes(role)).map((role) => (
+                <option key={role} value={role}>{role}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                if (!newRole || roleDraft.includes(newRole)) return;
+                setRoleDraft((prev) => normalizeSystemRoles([...prev, newRole]));
+                setNewRole("");
+              }}
+              disabled={loading || saving || !newRole}
+              className="rounded border-2 border-black bg-white px-4 py-2 font-bold text-black hover:bg-slate-50 disabled:opacity-50"
+            >
+              Add Role
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setRoleDraft([...DEFAULT_SYSTEM_ROLES]);
+                setNewRole("");
+                void handleChange({ roles: JSON.stringify(DEFAULT_SYSTEM_ROLES) });
+              }}
+              disabled={loading || saving}
+              className="rounded border-2 border-black bg-white px-4 py-2 font-bold text-black hover:bg-slate-50 disabled:opacity-50"
+            >
+              Restore Defaults
+            </button>
+          </div>
+
+          <div className="table-sticky-scroll rounded border border-black">
+            <table className="min-w-full border-collapse border border-black">
+              <thead className="sticky top-0 z-30 bg-slate-100">
+                <tr className="divide-x divide-black">
+                  <th className="border border-black px-4 py-2 text-left text-xs font-bold uppercase text-black">Role</th>
+                  <th className="border border-black px-4 py-2 text-right text-xs font-bold uppercase text-black">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roleDraft.map((role) => (
+                  <tr key={role} className="divide-x divide-black">
+                    <td className="border border-black px-4 py-2">{role}</td>
+                    <td className="border border-black px-4 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (roleDraft.length <= 1) {
+                            alert("At least one role must remain configured.");
+                            return;
+                          }
+                          setRoleDraft((prev) => prev.filter((value) => value !== role));
+                        }}
+                        disabled={loading || saving}
+                        className="rounded border border-black bg-white px-3 py-1 text-xs font-bold text-black hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                const cleaned = normalizeSystemRoles(roleDraft);
+                if (cleaned.length === 0) {
+                  alert("At least one role must be configured.");
+                  return;
+                }
+                setRoleDraft(cleaned);
+                void handleChange({ roles: JSON.stringify(cleaned) });
+              }}
+              disabled={loading || saving}
+              className="bg-indigo-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
+            >
+              {saving ? <Spinner size={18} className="text-white" /> : "Save Roles"}
             </button>
           </div>
         </div>
