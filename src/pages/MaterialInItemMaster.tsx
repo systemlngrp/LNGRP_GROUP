@@ -9,6 +9,8 @@ import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { buildReelStockRows } from "../lib/reelStock";
 
 function makeOptions(values: Array<string | number>) {
@@ -23,6 +25,8 @@ function isOpeningMrrNo(value?: string | number | null) {
 
 export function MaterialInItemMaster() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
@@ -328,7 +332,7 @@ export function MaterialInItemMaster() {
         <tbody className="divide-y divide-black bg-white">
           {data.map((line: any) => {
             const itemName = materials.find(i => i.id === line.itemId)?.name || npdItems.find(i => i.id === line.itemId)?.name || "Unknown";
-            const canEditInline = line.parentStatus === "Pending PH";
+            const canEditInline = canManage && line.parentStatus === "Pending PH";
             const isEditing = editingLineId === line.id;
 
             return (
@@ -376,13 +380,13 @@ export function MaterialInItemMaster() {
                     </div>
                   ) : (
                     <div className="flex items-center justify-end gap-2">
-                       <button
+                       {canManage ? <button
                           onClick={() => navigate(`/material-in/form?edit=${line.parentId}`)}
                           className="inline-flex items-center text-blue-600 hover:text-blue-800 font-bold text-xs"
                           title="Edit MRR Entry"
                        >
                          <ExternalLink size={14} className="mr-1" /> Edit MRR
-                       </button>
+                       </button> : null}
 
                        {canEditInline ? (
                         <button

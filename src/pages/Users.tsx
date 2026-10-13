@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Setting, User } from "../types";
 import { Plus, Edit, Trash2, Search, Eye, EyeOff, Eraser } from "lucide-react";
 import { Spinner } from "../components/Spinner";
@@ -54,6 +56,8 @@ function IndeterminateCheckbox({ indeterminate = false, checked, ...props }: Ind
   return <input ref={inputRef} type="checkbox" checked={checked} {...props} />;
 }
 export function Users() {
+  const { user: currentUser } = useAuth();
+  const canManage = canManageMasterRecords(currentUser?.role);
   const [users, setUsers, usersLoading, userActions] = useData<User>("users", []);
   const [settings] = useData<Setting>("settings", []);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -634,18 +638,18 @@ export function Users() {
                                  >
                                     <Eye size={16} />
                                  </button>
-                                 <button
+                                 {canManage ? <button
                                     onClick={() => handleEdit(user)}
                                     className="text-indigo-600 hover:text-indigo-900 font-bold"
                                  >
                                     <Edit size={16} />
-                                 </button>
-                                  <button
+                                 </button> : null}
+                                  {canManage ? <button
                                      onClick={() => handleDelete(user.id)}
                                      className="text-red-600 hover:text-red-900 font-bold"
                                   >
                                      <Trash2 size={16} />
-                                  </button>
+                                  </button> : null}
                              </div>
                         </div>
                         <div className="text-xs font-black text-slate-500 uppercase">Contact</div>
@@ -700,18 +704,18 @@ export function Users() {
                           >
                             <Eye size={16} className="mr-1" /> View
                           </button>
-                          <button
+                          {canManage ? <button
                             onClick={() => handleEdit(user)}
                             className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center"
                           >
                             <Edit size={16} className="mr-1" /> Edit
-                          </button>
-                          <button
+                          </button> : null}
+                          {canManage ? <button
                             onClick={() => handleDelete(user.id)}
                             className="text-red-600 hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end"
                           >
                             <Trash2 size={16} className="mr-1" /> Delete
-                          </button>
+                          </button> : null}
                         </td>
                       </tr>
                     ))

@@ -3,6 +3,7 @@ import { Edit, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { BoardLineQcCheck, Production, Setting, User } from "../types";
@@ -692,6 +693,7 @@ export function BoardLineQcMaster() {
   const [productions] = useData<Production>("productions", []);
   const { findItemAcrossSources } = useOrderItemCatalog();
   const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [searchTerm, setSearchTerm] = useState("");
   const [jobFilter, setJobFilter] = useState("");
   const [partyFilter, setPartyFilter] = useState("");
@@ -899,7 +901,7 @@ export function BoardLineQcMaster() {
                       </td>
                     ))}
                     <td className="border border-black px-3 py-2 text-sm text-black align-top whitespace-nowrap">
-                      <button type="button" onClick={() => openEdit(row)} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button>
+                      {canManage ? <button type="button" onClick={() => openEdit(row)} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button> : null}
                     </td>
                   </tr>
                 ))

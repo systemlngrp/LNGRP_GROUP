@@ -4,8 +4,12 @@ import { MaterialVisit, Supplier, Company } from "../types";
 import { formatDate } from "../lib/serial";
 import { Trash2, Search, Plus, CheckCircle, Clock, XCircle, PlayCircle } from "lucide-react";
 import { Spinner } from "../components/Spinner";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 
 export function MaterialVisitMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [visits, setVisits] = useData<MaterialVisit>("material-visit", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
@@ -122,12 +126,12 @@ export function MaterialVisitMaster() {
                     </div>
                   </td>
                   <td className="px-4 py-4 text-right text-sm font-medium border border-black">
-                    <button
+                    {canManage ? <button
                       onClick={() => handleDelete(v.id)}
                       className={`${deletingId === v.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}
                     >
                       <Trash2 size={16} className="mr-1" /> {deletingId === v.id ? "Confirm?" : "Delete"}
-                    </button>
+                    </button> : null}
                   </td>
                 </tr>
               ))

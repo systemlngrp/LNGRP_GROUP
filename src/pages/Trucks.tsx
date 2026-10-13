@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { LoadingSlip, Truck } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -8,6 +10,8 @@ import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 export function Trucks() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [searchTerm, setSearchTerm] = useState('');
 
   const [trucks, setTrucks, isLoading] = useData<Truck>("trucks", []);
@@ -255,14 +259,14 @@ export function Trucks() {
                             <div className="text-xs font-bold text-black">Loadings: {loadingCount}</div>
                         </div>
                         <div className="flex items-center gap-2">
-                             <button
+                             {canManage ? <button
                                 onClick={() => handleEdit(truck)}
                                 disabled={isSubmitting}
                                 className="text-indigo-600 hover:text-indigo-900 flex items-center disabled:opacity-50 font-bold"
                             >
                                 <Edit size={16} />
-                            </button>
-                            {loadingCount === 0 ? (
+                            </button> : null}
+                            {loadingCount === 0 && canManage ? (
                                 <button
                                     onClick={() => handleDelete(truck.id)}
                                     className={`${deletingId === truck.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold flex items-center`}
@@ -308,7 +312,7 @@ export function Trucks() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-black border border-black">{truck.truckType || "External"}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-bold text-black border border-black">{loadingCount}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium border border-black">
-                    <button
+                    {canManage ? <button
                       title="Edit"
                       aria-label="Edit"
                       onClick={() => handleEdit(truck)}
@@ -316,8 +320,8 @@ export function Trucks() {
                       className="text-indigo-600 hover:text-indigo-900 mr-4 disabled:opacity-50"
                     >
                       <Edit size={16} />
-                    </button>
-                    {loadingCount === 0 ? (
+                    </button> : null}
+                    {loadingCount === 0 && canManage ? (
                       <button
                         title={deletingId === truck.id ? "Confirm delete" : "Delete"}
                         aria-label={deletingId === truck.id ? "Confirm delete" : "Delete"}

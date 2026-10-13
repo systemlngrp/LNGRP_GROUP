@@ -7,6 +7,7 @@ import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import type { SpecialRemarkRecord } from "../types";
 import { groupSpecialRemarks } from "../lib/specialRemarks";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 
 const input = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -27,6 +28,7 @@ export function SpecialRemarkForm() {
 export function SpecialRemarkMaster() {
   const location = useLocation();
   const { user, hasAccess } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [records, setRecords, loading] = useData<SpecialRemarkRecord>("special_remark_records", [], { firmScope: "all" });
   const [search, setSearch] = useState("");
   const [erpFilter, setErpFilter] = useState("");
@@ -36,7 +38,7 @@ export function SpecialRemarkMaster() {
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
   const navigationMessage = text((location.state as { message?: string } | null)?.message);
-  const canDelete = user?.role === "Admin" || hasAccess("/quality/special-remarks");
+  const canDelete = canManage && (user?.role?.trim().toLowerCase() === "admin" || hasAccess("/quality/special-remarks"));
 
   const grouped = useMemo(() => groupSpecialRemarks(records), [records]);
   const visibleGroups = useMemo(() => {

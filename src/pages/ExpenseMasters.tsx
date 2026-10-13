@@ -3,11 +3,15 @@ import { Edit, Plus, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import type { ExpenseMaster } from "../types";
 
 
 const EXPENSE_TYPES: NonNullable<ExpenseMaster["type"]>[] = ["Monthly", "Daily"];
 export function ExpenseMasters() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [expenses, setExpenses] = useData<ExpenseMaster>("expense_masters", []);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -173,15 +177,15 @@ export function ExpenseMasters() {
                       <td className="border border-black px-6 py-4 text-sm text-black">{expense.name}</td>
                       <td className="border border-black px-6 py-4 text-sm text-black">{expense.type || "Monthly"}</td>
                       <td className="whitespace-nowrap border border-black px-6 py-4 text-right text-sm font-medium">
-                        <button onClick={() => openEdit(expense)} className="mr-4 inline-flex items-center font-bold text-indigo-600 hover:text-indigo-900">
+                        {canManage ? <button onClick={() => openEdit(expense)} className="mr-4 inline-flex items-center font-bold text-indigo-600 hover:text-indigo-900">
                           <Edit size={16} className="mr-1" /> Edit
-                        </button>
-                        <button
+                        </button> : null}
+                        {canManage ? <button
                           onClick={() => void handleDelete(expense.id)}
                           className={`${deletingId === expense.id ? "animate-pulse text-amber-600" : "text-red-600"} inline-flex min-w-[80px] items-center justify-end font-bold hover:text-red-900`}
                         >
                           <Trash2 size={16} className="mr-1" /> {deletingId === expense.id ? "Confirm?" : "Delete"}
-                        </button>
+                        </button> : null}
                       </td>
                     </tr>
                   ))

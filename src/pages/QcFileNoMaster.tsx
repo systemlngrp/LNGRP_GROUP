@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { useData } from "../hooks/useData";
 import type { QcFileNoMaster } from "../types";
 
@@ -7,6 +8,7 @@ const text = (value: unknown) => String(value ?? "").trim();
 
 export function QcFileNoMaster() {
   const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [rows, , loading, api] = useData<QcFileNoMaster>("qc_file_no_masters", [], { firmScope: "all" });
   const [fileNo, setFileNo] = useState("");
   const [editing, setEditing] = useState("");
@@ -89,7 +91,7 @@ export function QcFileNoMaster() {
           const active = text(row.active).toLowerCase() === "yes";
           return <tr key={row.id} className="border-t border-black">
             <td className="p-2 font-bold">{row.fileNo}</td><td className="p-2">{active ? "Active" : "Inactive"}</td><td className="p-2">{row.updatedBy || "-"}</td>
-            <td className="flex flex-wrap gap-3 p-2"><button type="button" disabled={Boolean(busyId)} onClick={() => { setEditing(row.id); setFileNo(row.fileNo); setMessage(""); }} className="font-bold underline disabled:opacity-50">Edit</button><button type="button" disabled={Boolean(busyId)} onClick={() => void toggle(row)} className="font-bold underline disabled:opacity-50">{active ? "Deactivate" : "Activate"}</button></td>
+            <td className="flex flex-wrap gap-3 p-2">{canManage ? <button type="button" disabled={Boolean(busyId)} onClick={() => { setEditing(row.id); setFileNo(row.fileNo); setMessage(""); }} className="font-bold underline disabled:opacity-50">Edit</button> : null}{canManage ? <button type="button" disabled={Boolean(busyId)} onClick={() => void toggle(row)} className="font-bold underline disabled:opacity-50">{active ? "Deactivate" : "Activate"}</button> : null}</td>
           </tr>;
         }) : <tr><td colSpan={4} className="p-5 text-center">No File Nos. found.</td></tr>}</tbody>
       </table>

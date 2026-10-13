@@ -3,6 +3,7 @@ import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import {
   Invoice,
   InvoiceLineItem,
@@ -62,6 +63,7 @@ function getInvoiceSortValue(invoiceNo: string) {
 export function InvoicesMaster() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [invoices, setInvoices] = useData<Invoice>("invoices", []);
   const [settings] = useData<Setting>("settings", []);
   const [lineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
@@ -96,11 +98,11 @@ export function InvoicesMaster() {
     }
   }, [currentSetting?.allowInvoiceTallyEditUsers]);
   const canEditInvoiceFields =
-    currentSetting?.allowInvoiceTallyEdit === "Yes" &&
+    canManage && currentSetting?.allowInvoiceTallyEdit === "Yes" &&
     Boolean(currentUserEmail) &&
     allowedInvoiceEditUsers.includes(currentUserEmail);
   const canFullEditInvoice = (invoice: Invoice | null | undefined) =>
-    Boolean(invoice) && (isPankajUser || !invoice.tallyTimestamp);
+    Boolean(canManage && invoice) && (isPankajUser || !invoice?.tallyTimestamp);
 
   const toggleRow = (id: string) => {
     const next = new Set(expandedRows);

@@ -10,6 +10,8 @@ import { normalizeMaterialInRecord, recalculateMaterialLine } from "../lib/mater
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -17,6 +19,8 @@ function makeOptions(values: Array<string | number>) {
     .map((value) => ({ value, label: value }));
 }
 export function MaterialInMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
@@ -415,9 +419,9 @@ export function MaterialInMaster() {
                       </div>
                     ) : null}
                   </div>
-                  <button onClick={() => handleDelete(entry.id)} className={`${deletingId === entry.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}>
+                  {canManage ? <button onClick={() => handleDelete(entry.id)} className={`${deletingId === entry.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}>
                     <Trash2 size={16} className="mr-1" /> {deletingId === entry.id ? "Confirm?" : "Delete"}
-                  </button>
+                  </button> : null}
                 </div>
               </div>
             </div>
@@ -546,9 +550,9 @@ export function MaterialInMaster() {
                             </div>
                           ) : null}
                         </div>
-                        <button onClick={() => handleDelete(entry.id)} className={`${deletingId === entry.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}>
+                        {canManage ? <button onClick={() => handleDelete(entry.id)} className={`${deletingId === entry.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}>
                           <Trash2 size={16} className="mr-1" /> {deletingId === entry.id ? "Confirm?" : "Delete"}
-                        </button>
+                        </button> : null}
                       </div>
                     </td>
                   </tr>

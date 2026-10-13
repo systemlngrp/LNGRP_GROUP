@@ -2,6 +2,8 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Material, MaterialFirmOpening, MaterialGroup, MaterialIn, MaterialInPackingSlip, MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Supplier, UnitMaster, Item, ColorMaster, Setting, Firm, GstRateMaster } from "../types";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
@@ -131,6 +133,8 @@ function createInitialFormState(materials: Material[], reelGroupId = "", reelSta
 }
 
 export function Materials() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2204,13 +2208,13 @@ export function Materials() {
                               </span>
                             ) : (
                               <div className="flex items-center gap-2">
-                                <button
+                                {canManage ? <button
                                   onClick={() => handleEdit(material)}
                                   className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition border border-transparent hover:border-indigo-200"
                                   title="Edit Item"
                                 >
                                   <Edit size={14} />
-                                </button>
+                                </button> : null}
                                 <button
                                   onClick={() => handleToggleActive(material)}
                                   className={`p-1.5 rounded transition border border-transparent ${
@@ -2222,13 +2226,13 @@ export function Materials() {
                                 >
                                   <CheckCircle size={14} />
                                 </button>
-                                <button
+                                {canManage ? <button
                                   onClick={() => handleDelete(material.id)}
                                   className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition border border-transparent hover:border-rose-200"
                                   title="Delete Item"
                                 >
                                   <Trash2 size={14} />
-                                </button>
+                                </button> : null}
                               </div>
                             )}
                           </td>

@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { ClientPagination } from "../components/ClientPagination";
 import { TableControls } from "../components/TableControls";
@@ -47,6 +49,8 @@ function getFgCellClasses(isBlocked: boolean, requiresFgGate: boolean) {
 }
 
 export function StandaloneProductionMaster({ source }: StandaloneProductionMasterProps) {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [productions, setProductions] = useData<Production>(getJobMasterEntityName(source), []);
   const [fgProductions] = useData<Production>("productions", []);
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
@@ -271,14 +275,14 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
                     <td className="px-3 py-2 text-sm">{formatCell(row.status)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.cancelRemarks || row.remarks)}</td>
                     <td className="px-3 py-2 text-center text-sm">
-                      <button
+                      {canManage ? <button
                         type="button"
                         disabled={row.status === "Cancelled"}
                         onClick={() => void handleCancel(row.id)}
                         className="rounded border border-black px-2 py-1 font-bold uppercase disabled:opacity-40"
                       >
                         Cancel
-                      </button>
+                      </button> : null}
                     </td>
                   </tr>
                 );

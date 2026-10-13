@@ -790,7 +790,28 @@ function normalizeUserRole(raw) {
         return "Employee";
     return role;
 }
+function canManageMasterRecords(value) {
+    const role = typeof value === "object" && value !== null
+        ? value.role
+        : value;
+    const normalizedRole = String(role ?? "").trim().toLowerCase();
+    return normalizedRole === "admin" || normalizedRole === "qc manager";
+}
 const USER_ROLE_MAX_LENGTH = 20;
+// These entities are presented through Master screens. New records retain the
+// existing create rules; updates and deletes require the Master management role.
+const MASTER_RECORD_ENTITIES = new Set([
+    "item_groups", "material_groups", "items", "materials", "suppliers", "states", "units",
+    "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "trucks",
+    "machines", "npd", "php_item_master", "plate_item_master", "users", "services", "settings",
+    "boardline_qc_checks", "printing_qc_checks", "pre_dispatch_inspections", "quality_complaints",
+    "qc_printing_wastage_records", "qc_update_records", "qc_file_no_masters", "special_remark_records",
+    "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters",
+    "qc_sample_requirements", "php_plate_in_out_records", "material_in", "material_issues",
+    "material_returns", "consumptions", "orders", "orders_schedule", "productions", "production_processing",
+    "dispatch_plans", "loading_slips", "material_visit", "invoices", "gate_entries", "gate_passes",
+    "sample_requests", "physical_stock_sessions",
+]);
 function hasPermission(user, required) {
     if (user.role === "Admin")
         return true;
@@ -4650,6 +4671,8 @@ function entityPermissionKey(entity) {
             return "/production/php-plate/in-out";
         case "settings":
             return "/masters/settings";
+        case "services":
+            return "/masters/services";
         case "material_in":
         case "material_in_packing_slips":
             return "/material-in";
@@ -13164,6 +13187,19 @@ const qcUpdateGuard = async (req, res, next) => {
             return res.status(403).json({ error: "Forbidden" });
         if (!hasPermission(user, "/quality/qc-update"))
             return res.status(403).json({ error: "Forbidden" });
+        if (req.path.endsWith("/link-control-sample") && !canManageMasterRecords(user))
+            return res.status(403).json({ error: "Forbidden" });
+        if (req.path.endsWith("/save")) {
+            const requestedId = String(req.body?.id || "").trim();
+            if (requestedId) {
+                const db = await getPool();
+                if (db) {
+                    const [rows] = await db.query("SELECT id FROM `qc_update_records` WHERE id = ? LIMIT 1", [requestedId]);
+                    if (rows[0]?.id && !canManageMasterRecords(user))
+                        return res.status(403).json({ error: "Forbidden" });
+                }
+            }
+        }
         return next();
     }
     catch (error) {
@@ -13303,8 +13339,25 @@ entities.forEach(entity => {
             if (entity === "users") {
                 if (req.method === "GET")
                     return next();
-                if (user.role !== "Admin")
+                if (req.method === "POST") {
+                    const db = await getPool();
+                    const requestedId = String(req.body?.id || "").trim();
+                    let isExistingUser = false;
+                    if (db && requestedId) {
+                        const [rows] = await db.query("SELECT id FROM users WHERE id = ? LIMIT 1", [requestedId]);
+                        isExistingUser = Boolean(rows[0]?.id);
+                    }
+                    if (isExistingUser) {
+                        if (!canManageMasterRecords(user) || !hasPermission(user, "/masters/users"))
+                            return res.status(403).json({ error: "Forbidden" });
+                    }
+                    else if (user.role !== "Admin") {
+                        return res.status(403).json({ error: "Forbidden" });
+                    }
+                }
+                else if (!canManageMasterRecords(user) || !hasPermission(user, "/masters/users")) {
                     return res.status(403).json({ error: "Forbidden" });
+                }
                 return next();
             }
             // Menu access controls which views a user can open. Once a permitted view is
@@ -13313,6 +13366,22 @@ entities.forEach(entity => {
             // Keep create, update, and delete operations protected by the view permission.
             if (req.method === "GET")
                 return next();
+            if (MASTER_RECORD_ENTITIES.has(entity)) {
+                let isExistingRecordUpdate = req.method === "DELETE";
+                if (req.method === "POST") {
+                    const requestedId = String(req.body?.id || "").trim();
+                    if (requestedId) {
+                        const db = await getPool();
+                        if (db) {
+                            const [rows] = await db.query("SELECT id FROM " + entity + " WHERE id = ? LIMIT 1", [requestedId]);
+                            isExistingRecordUpdate = Boolean(rows[0]?.id);
+                        }
+                    }
+                }
+                if (isExistingRecordUpdate && !canManageMasterRecords(user)) {
+                    return res.status(403).json({ error: "Forbidden" });
+                }
+            }
             const required = entityPermissionKey(entity);
             if (entity === "php_plate_in_out_records") {
                 if (!hasPermission(user, "/production/php-plate/in-out") && !hasPermission(user, "/quality/php-plate/in-out"))

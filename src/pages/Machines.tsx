@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Machine, UnitMaster, User } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -9,6 +11,8 @@ import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/utils";
 
 export function Machines() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [machines, setMachines, machinesLoading] = useData<Machine>("machines", []);
   const [users] = useData<User>("users", []);
   const [units] = useData<UnitMaster>("units", []);
@@ -302,15 +306,15 @@ export function Machines() {
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{machine.updatedBy || "-"}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{formatDate(machine.updateTimestamp)}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button onClick={() => { setName(normalizeMachineName(machine.name)); setMaxOutputPerHour(machine.maxOutputPerHour || ""); setUom(machine.uom || ""); setSelectedOperatorIds(Array.isArray(machine.assignedOperatorIds) ? machine.assignedOperatorIds : []); setEditingId(machine.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
+                      {canManage ? <button onClick={() => { setName(normalizeMachineName(machine.name)); setMaxOutputPerHour(machine.maxOutputPerHour || ""); setUom(machine.uom || ""); setSelectedOperatorIds(Array.isArray(machine.assignedOperatorIds) ? machine.assignedOperatorIds : []); setEditingId(machine.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
                         <Edit size={16} className="mr-1" /> Edit
-                      </button>
-                      <button 
+                      </button> : null}
+                      {canManage ? <button
                         onClick={() => handleDelete(machine.id)} 
                         className={`${deletingId === machine.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}
                       >
                         <Trash2 size={16} className="mr-1" /> {deletingId === machine.id ? "Confirm?" : "Delete"}
-                      </button>
+                      </button> : null}
                     </td>
                   </tr>
                 ))

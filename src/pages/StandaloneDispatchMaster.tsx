@@ -6,6 +6,8 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -17,6 +19,8 @@ type StandaloneDispatchMasterProps = {
 };
 
 export function StandaloneDispatchMaster({ source }: StandaloneDispatchMasterProps) {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [searchTerm, setSearchTerm] = useState("");
   const [plans, setPlans] = useData<DispatchPlan>(getDispatchEntityName(source), []);
   const [productions] = useData<Production>(getJobMasterEntityName(source), []);
@@ -133,13 +137,13 @@ export function StandaloneDispatchMaster({ source }: StandaloneDispatchMasterPro
                   <td className="px-3 py-2 text-sm text-right">{Number(row.plan.canceledQty || 0).toLocaleString()}</td>
                   <td className="px-3 py-2 text-sm">{row.plan.status}</td>
                   <td className="px-3 py-2 text-center text-sm">
-                    <button
+                    {canManage ? <button
                       type="button"
                       onClick={() => handleDelete(row.plan.id)}
                       className="rounded border border-black px-2 py-1 font-bold uppercase"
                     >
                       {deletingId === row.plan.id ? "Confirm" : "Delete"}
-                    </button>
+                    </button> : null}
                   </td>
                 </tr>
               ))

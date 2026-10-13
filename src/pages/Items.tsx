@@ -1,5 +1,7 @@
 import React, { useMemo, useState, useRef } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2, ExternalLink, FileUp, XCircle, Upload, Download, FileSpreadsheet } from "lucide-react";
 import { ColorMaster, Company, Item, ItemGroup, Production, Setting, MaterialIn, RapcRange } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -11,6 +13,8 @@ import { resolveRapcRange } from "../lib/rapcRanges";
 import { calculateTakeUpFactor } from "../lib/utils";
 
 export function Items() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [items, setItems] = useData<Item>("items", []);
   const [groups, setGroups] = useData<ItemGroup>("item-groups", []);
   const [colors, setColors] = useData<ColorMaster>("color_masters", []);
@@ -1229,8 +1233,8 @@ export function Items() {
                                 <div className="text-sm font-bold">{item.name}</div>
                              </div>
                              <div className="flex items-center gap-2">
-                                 <button onClick={() => populateItemForm(item)} className="text-indigo-600 hover:text-indigo-900 font-bold"><Edit size={16} /></button>
-                                  <button
+                                 {canManage ? <button onClick={() => populateItemForm(item)} className="text-indigo-600 hover:text-indigo-900 font-bold"><Edit size={16} /></button> : null}
+                                 {canManage ? <button
                                     onClick={() => handleDelete(item.id)}
                                     disabled={producedItemIds.has(item.id)}
                                     title={producedItemIds.has(item.id) ? "Cannot delete: item already produced" : "Delete"}
@@ -1241,7 +1245,7 @@ export function Items() {
                                     ].join(" ")}
                                   >
                                     <Trash2 size={16} />
-                                  </button>
+                                 </button> : null}
                               </div>
                          </div>
                          <div className="flex gap-4 flex-wrap">
@@ -1539,8 +1543,8 @@ export function Items() {
                       <td className="px-4 py-3 text-sm text-black border border-black">{item.plateWeight ?? ""}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black">{item.gsmLeastCost ?? ""}</td>
                       <td className="px-6 py-4 text-right text-sm font-medium border border-black whitespace-nowrap">
-                            <button onClick={() => populateItemForm(item)} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center"><Edit size={16} className="mr-1" /> Edit</button>
-                        <button
+                            {canManage ? <button onClick={() => populateItemForm(item)} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center"><Edit size={16} className="mr-1" /> Edit</button> : null}
+                            {canManage ? <button
                           onClick={() => handleDelete(item.id)}
                           disabled={producedItemIds.has(item.id)}
                           title={producedItemIds.has(item.id) ? "Cannot delete: item already produced" : "Delete"}
@@ -1551,7 +1555,7 @@ export function Items() {
                           ].join(" ")}
                         >
                           <Trash2 size={16} className="mr-1" /> {producedItemIds.has(item.id) ? "Locked" : (deletingId === item.id ? "Confirm?" : "Delete")}
-                        </button>
+                            </button> : null}
                       </td>
                     </tr>
                   ))

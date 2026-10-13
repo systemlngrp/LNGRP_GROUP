@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { Download, Eye, FilePlus2, Pencil, Search, X } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { useNavigate } from "react-router-dom";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
@@ -17,6 +19,8 @@ function makeOptions(values: Array<string | number>) {
 }
 
 export function GatePassMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const navigate = useNavigate();
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [invoices] = useData<Invoice>("invoices", []);
@@ -182,9 +186,9 @@ export function GatePassMaster() {
                         <button type="button" onClick={() => setSelectedGatePassId(gatePass.id)} className="rounded border border-black p-2 text-black hover:bg-slate-100" title="View">
                           <Eye size={15} />
                         </button>
-                        <button type="button" onClick={() => navigate(`/gate-pass/form?id=${gatePass.id}`)} className="rounded border border-black p-2 text-black hover:bg-slate-100" title="Edit">
+                        {canManage ? <button type="button" onClick={() => navigate(`/gate-pass/form?id=${gatePass.id}`)} className="rounded border border-black p-2 text-black hover:bg-slate-100" title="Edit">
                           <Pencil size={15} />
-                        </button>
+                        </button> : null}
                         <button type="button" onClick={() => handleDownloadPdf(gatePass)} disabled={isDownloading === gatePass.id || !canDownloadGatePassPdf(gatePass)} className="rounded border border-black p-2 text-black hover:bg-slate-100 disabled:opacity-50" title={canDownloadGatePassPdf(gatePass) ? "Download PDF" : "PDF available after Tally invoice number is generated"}>
                           {isDownloading === gatePass.id ? <span className="text-xs font-bold">...</span> : <Download size={15} />}
                         </button>
@@ -276,9 +280,9 @@ export function GatePassMaster() {
                 <button type="button" onClick={() => handleDownloadPdf(selectedGatePass)} disabled={isDownloading === selectedGatePass.id || !canDownloadGatePassPdf(selectedGatePass)} className="rounded border-2 border-black px-4 py-2 text-sm font-black uppercase hover:bg-slate-50 disabled:opacity-50" title={canDownloadGatePassPdf(selectedGatePass) ? "Download PDF" : "PDF available after Tally invoice number is generated"}>
                   {isDownloading === selectedGatePass.id ? "Generating PDF..." : "Download PDF"}
                 </button>
-                <button type="button" onClick={() => navigate(`/gate-pass/form?id=${selectedGatePass.id}`)} className="rounded bg-indigo-600 px-4 py-2 text-sm font-black uppercase text-white hover:bg-indigo-700">
+                {canManage ? <button type="button" onClick={() => navigate(`/gate-pass/form?id=${selectedGatePass.id}`)} className="rounded bg-indigo-600 px-4 py-2 text-sm font-black uppercase text-white hover:bg-indigo-700">
                   Edit Gate Pass
-                </button>
+                </button> : null}
               </div>
             </div>
           </div>

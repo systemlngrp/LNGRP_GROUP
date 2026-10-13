@@ -5,6 +5,8 @@ import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { Select } from "../components/Select";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import type { SheetMasterColumn, SheetMasterFilter } from "../lib/sheetMasterConfigs";
 
 export type SheetMasterRow = {
@@ -35,6 +37,8 @@ export function SheetMasterPage({
   rowsOverride?: SheetMasterRow[];
   editableColumns?: string[];
 }) {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [rows, setRows] = useData<SheetMasterRow>(entity, []);
   const effectiveRows = rowsOverride || rows;
   const [searchTerm, setSearchTerm] = useState("");
@@ -262,7 +266,7 @@ export function SheetMasterPage({
                   <tr key={row.id} className="hover:bg-slate-50">
                     {columns.map((column) => {
                       const draftKey = getCellDraftKey(row.id, column.key);
-                      const isEditable = editableColumnSet.has(column.key);
+                      const isEditable = canManage && editableColumnSet.has(column.key);
                       return (
                         <td key={column.key} className="whitespace-nowrap border border-black px-3 py-2 align-top">
                           {isEditable ? (

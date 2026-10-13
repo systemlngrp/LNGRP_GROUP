@@ -13,9 +13,11 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 
 export function DispatchPlansMaster() {
-  const { setActiveFirm } = useAuth();
+  const { user, setActiveFirm } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
@@ -305,7 +307,7 @@ export function DispatchPlansMaster() {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-center text-xs font-medium border border-black whitespace-nowrap">
-                        <button
+                        {canManage ? <button
                           type="button"
                           onClick={() => openEditModal(p)}
                           disabled={hasLoadingSlip}
@@ -313,13 +315,13 @@ export function DispatchPlansMaster() {
                           className={`mr-2 p-1 transition ${hasLoadingSlip ? "text-slate-300 cursor-not-allowed" : "text-indigo-600 hover:text-indigo-900"}`}
                         >
                           <Pencil size={16} />
-                        </button>
-                        <button 
+                        </button> : null}
+                        {canManage ? <button
                           onClick={() => handleDelete(p.id)} 
                           className={`${deletingId === p.id ? "text-amber-600 animate-pulse scale-110" : "text-red-600"} hover:text-red-900 transition-all p-1`}
                         >
                           <Trash2 size={16} />
-                        </button>
+                        </button> : null}
                       </td>
                     </tr>
                   );

@@ -1,11 +1,15 @@
 import React, { useState } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { ColorMaster } from "../types";
 
 export function ColorMasters() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [colors, setColors] = useData<ColorMaster>("color_masters", []);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -119,8 +123,8 @@ export function ColorMasters() {
                   <div className="flex justify-between items-center">
                     <div className="font-bold">{color.name}</div>
                     <div className="flex items-center gap-2">
-                      <button onClick={() => { setName(color.name); setEditingId(color.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 font-bold"><Edit size={16} /></button>
-                      <button onClick={() => handleDelete(color.id)} className={`${deletingId === color.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold`}><Trash2 size={16} /></button>
+                      {canManage ? <button onClick={() => { setName(color.name); setEditingId(color.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 font-bold"><Edit size={16} /></button> : null}
+                      {canManage ? <button onClick={() => handleDelete(color.id)} className={`${deletingId === color.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold`}><Trash2 size={16} /></button> : null}
                     </div>
                   </div>
                 </div>
@@ -144,15 +148,15 @@ export function ColorMasters() {
                     <tr key={color.id} className="hover:bg-slate-50 divide-x divide-black">
                       <td className="px-6 py-4 text-sm text-black border border-black">{color.name}</td>
                       <td className="px-6 py-4 text-right text-sm font-medium border border-black whitespace-nowrap">
-                        <button onClick={() => { setName(color.name); setEditingId(color.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
+                        {canManage ? <button onClick={() => { setName(color.name); setEditingId(color.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
                           <Edit size={16} className="mr-1" /> Edit
-                        </button>
-                        <button
+                        </button> : null}
+                        {canManage ? <button
                           onClick={() => handleDelete(color.id)}
                           className={`${deletingId === color.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}
                         >
                           <Trash2 size={16} className="mr-1" /> {deletingId === color.id ? "Confirm?" : "Delete"}
-                        </button>
+                        </button> : null}
                       </td>
                     </tr>
                   ))

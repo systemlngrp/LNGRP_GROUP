@@ -4,10 +4,14 @@ import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { Firm } from "../types";
 import { generateFirmShortName } from "../lib/firmDisplay";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 
 const inputClass = "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors";
 
 export function FirmMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [firms, setFirms, isLoading] = useData<Firm>("firms", []);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -214,7 +218,7 @@ export function FirmMaster() {
                 </tr>
               ) : (
                 sortedFirms.map((firm, index) => (
-                  <tr key={firm.id} onClick={() => openEdit(firm)} className="cursor-pointer hover:bg-slate-50">
+                  <tr key={firm.id} onClick={canManage ? () => openEdit(firm) : undefined} className={canManage ? "cursor-pointer hover:bg-slate-50" : undefined}>
                     <td className="px-4 py-3 text-right text-sm font-bold text-black border border-black">{index + 1}</td>
                     <td className="px-4 py-3 text-sm text-black border border-black">{firm.firmName}</td>
                     <td className="px-4 py-3 text-sm font-bold text-black border border-black">{firm.shortName || generateFirmShortName(firm.firmName)}</td>

@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Eye, Pencil, Plus, Search, X, XCircle } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useData } from "../hooks/useData";
 import { Company, Firm, GateEntry, GateEntryPhoto, Production, ProductionProcessing, Supplier } from "../types";
 import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
-import { useAuth } from "../auth/AuthContext";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { formatDate } from "../lib/utils";
 
@@ -30,8 +31,9 @@ function formatGateEntryDate(value?: string | null) {
 }
 
 export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps = {}) {
-  const navigate = useNavigate();
   const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
+  const navigate = useNavigate();
   const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
   const [gateEntryPhotos] = useData<GateEntryPhoto>("gate-entry-photos", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
@@ -291,11 +293,11 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
                           >
                             <Eye size={15} /> View
                           </button>
-                          {editable ? (
+                          {editable && canManage ? (
                             <>
                               <button
                                 type="button"
-                                onClick={() => navigate(`/gate-entry/form?id=${entry.id}`)}
+                                onClick={canManage ? () => navigate(`/gate-entry/form?id=${entry.id}`) : undefined}
                                 className="inline-flex items-center gap-2 rounded border border-indigo-700 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-800 transition hover:bg-indigo-100"
                               >
                                 <Pencil size={15} /> Edit

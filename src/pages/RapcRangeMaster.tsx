@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Edit, Plus, Search, Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { RapcRange } from "../types";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
@@ -9,6 +11,8 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { buildSeedRapcRanges } from "../lib/rapcRanges";
 
 export function RapcRangeMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [ranges, setRanges, loading] = useData<RapcRange>("rapc-ranges", []);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -242,7 +246,7 @@ export function RapcRangeMaster() {
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{row.to}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{row.rapcRange}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
+                      {canManage ? <button
                         onClick={() => {
                           setFromValue(row.from);
                           setToValue(row.to);
@@ -253,7 +257,7 @@ export function RapcRangeMaster() {
                         className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center"
                       >
                         <Edit size={16} className="mr-1" /> Edit
-                      </button>
+                      </button> : null}
                       <button
                         onClick={() => handleDelete(row.id)}
                         className={`${deletingId === row.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}

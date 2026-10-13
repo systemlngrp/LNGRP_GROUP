@@ -33,6 +33,8 @@ import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../li
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { isDirectLoadingSlip, resolveLoadingSlipLineContext, summarizeLoadingSlip } from "../lib/loadingSlipContext";
 import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
@@ -44,6 +46,8 @@ function getSlipNoSortValue(slipNo: string) {
 }
 
 export function LoadingMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const confirm = useConfirm();
   const [loadingSlips, setLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
@@ -643,7 +647,7 @@ export function LoadingMaster() {
                       {isDownloading === slip.id ? <Spinner size={14} /> : <Download size={14} />}
                       PDF
                     </button>
-                    {slip.status !== "Cancelled" ? (
+                    {canManage && slip.status !== "Cancelled" ? (
                       <button
                         type="button"
                         onClick={() => startEdit(slip)}
@@ -690,16 +694,16 @@ export function LoadingMaster() {
                           Slip {slip.slipNo} - Date {formatDate(slip.date)}
                         </div>
                         <div className="flex items-center gap-2">
-                          {slip.status !== "Cancelled" ? (
+                          {canManage && slip.status !== "Cancelled" ? (
                             isEditing ? (
                               <>
-                                <button
+                                {canManage ? <button
                                   type="button"
                                   onClick={() => void saveEdit(slip.id)}
                                   className="px-3 py-1.5 text-xs font-bold border border-black rounded bg-emerald-600 text-white hover:bg-emerald-700"
                                 >
                                   Save
-                                </button>
+                                </button> : null}
                                 <button
                                   type="button"
                                   onClick={() => cancelEdit(slip.id)}

@@ -1,5 +1,7 @@
 import React, { useState, useRef, useMemo } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2, Upload, Download } from "lucide-react";
 import { Company } from "../types";
 import { Spinner } from "../components/Spinner";
@@ -12,6 +14,8 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import * as XLSX from "xlsx";
 
 export function Companies() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [companies, setCompanies, isLoading] = useData<Company>("companies", []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -573,8 +577,8 @@ export function Companies() {
           {paginatedCompanies.map((c, index) => (
             <div
               key={c.id}
-              onClick={() => handleEdit(c)}
-              className="cursor-pointer bg-white border-2 border-black p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]"
+              onClick={canManage ? () => handleEdit(c) : undefined}
+              className={`${canManage ? "cursor-pointer" : ""} bg-white border-2 border-black p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}
             >
               <div className="flex justify-between items-start">
                 <div>
@@ -594,8 +598,8 @@ export function Companies() {
                   <div className="text-xs text-slate-700">Tolerance Allowed: {c.toleranceAllowed ?? "-"}%</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={(event) => { event.stopPropagation(); handleEdit(c); }} disabled={isSubmitting} className="text-indigo-600 hover:text-indigo-900 flex items-center disabled:opacity-50 font-bold"><Edit size={16} /></button>
-                  <button onClick={(event) => { event.stopPropagation(); handleDelete(c.id); }} className={`${deletingId === c.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold flex items-center`}><Trash2 size={16} /></button>
+                  {canManage ? <button onClick={(event) => { event.stopPropagation(); handleEdit(c); }} disabled={isSubmitting} className="text-indigo-600 hover:text-indigo-900 flex items-center disabled:opacity-50 font-bold"><Edit size={16} /></button> : null}
+                  {canManage ? <button onClick={(event) => { event.stopPropagation(); handleDelete(c.id); }} className={`${deletingId === c.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold flex items-center`}><Trash2 size={16} /></button> : null}
                 </div>
               </div>
               {c.address && <div className="text-xs text-slate-700">{c.address}</div>}
@@ -647,8 +651,8 @@ export function Companies() {
                 paginatedCompanies.map((c, index) => (
                   <tr
                     key={c.id}
-                    onClick={() => handleEdit(c)}
-                    className="cursor-pointer hover:bg-slate-50 transition-colors divide-x divide-black"
+                    onClick={canManage ? () => handleEdit(c) : undefined}
+                    className={`${canManage ? "cursor-pointer" : ""} hover:bg-slate-50 transition-colors divide-x divide-black`}
                   >
                     <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-black text-right border border-black">{(page - 1) * pageSize + index + 1}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-black border border-black">{c.name}</td>
@@ -677,7 +681,7 @@ export function Companies() {
                     <td className="px-4 py-3 whitespace-nowrap text-sm text-black text-right border border-black">{c.toleranceAllowed ?? "-"}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm font-bold text-black border border-black">{c.active === "No" ? "No" : "Yes"}</td>
                     <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium border border-black">
-                      <button
+                        {canManage ? <button
                         title="Edit"
                         aria-label="Edit"
                         onClick={(event) => {
@@ -688,8 +692,8 @@ export function Companies() {
                         className="text-indigo-600 hover:text-indigo-900 mr-4 disabled:opacity-50"
                       >
                         <Edit size={16} />
-                      </button>
-                      <button
+                        </button> : null}
+                        {canManage ? <button
                         title={deletingId === c.id ? "Confirm delete" : "Delete"}
                         aria-label={deletingId === c.id ? "Confirm delete" : "Delete"}
                         onClick={(event) => {
@@ -699,7 +703,7 @@ export function Companies() {
                         className={`${deletingId === c.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 inline-flex items-center justify-end`}
                       >
                         <Trash2 size={16} />
-                      </button>
+                        </button> : null}
                     </td>
                   </tr>
                 ))

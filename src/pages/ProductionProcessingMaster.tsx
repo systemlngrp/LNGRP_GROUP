@@ -8,6 +8,7 @@ import { formatDate } from "../lib/serial";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { usesPartFullProgress } from "../lib/productionProcessingProgress";
 import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { CorrugationWastageFields } from "../components/CorrugationWastageFields";
 import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, wastageDraftFromEntry, type CorrugationWastageDraft } from "../lib/corrugationWastage";
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
@@ -41,6 +42,7 @@ const ZERO_PRINTING_WASTAGE_VALUES = buildPrintingWastageValues(EMPTY_PRINTING_W
 export function ProductionProcessingMaster() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [processing, setProcessing] = useData<ProductionProcessing>("production_processing", []);
   const [productions] = useData<Production>("productions", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
@@ -391,20 +393,20 @@ export function ProductionProcessingMaster() {
                           </div>
                         ) : (
                           <div className="inline-flex items-center justify-end gap-3">
-                            <button
+                            {canManage ? <button
                               type="button"
                               onClick={() => startEdit(item)}
                               className="inline-flex items-center gap-1 font-bold text-indigo-600 hover:text-indigo-900"
                             >
                               <Pencil size={16} /> Edit
-                            </button>
-                            <button 
+                            </button> : null}
+                            {canManage ? <button
                               type="button"
                               onClick={() => handleDelete(item.id)} 
                               className={`${deletingId === item.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}
                             >
                               <Trash2 size={16} className="mr-1" /> {deletingId === item.id ? "Confirm?" : "Delete"}
-                            </button>
+                            </button> : null}
                           </div>
                         )}
                       </td>

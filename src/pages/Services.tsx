@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Service } from "../types";
 
 export function Services() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [services, setServices] = useData<Service>("services", []);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -138,9 +142,9 @@ export function Services() {
                         <td className="px-4 py-5 text-black font-bold border-2 border-black">{service.name}</td>
                         <td className="px-4 py-5 text-black border-2 border-black">{service.active || "Yes"}</td>
                         <td className="px-4 py-3 text-right border-2 border-black">
-                          <button type="button" onClick={() => openEdit(service)} className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition">
+                          {canManage ? <button type="button" onClick={() => openEdit(service)} className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition">
                             Open
-                          </button>
+                          </button> : null}
                         </td>
                       </tr>
                     ))

@@ -2,9 +2,13 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { StateMaster } from "../types";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Spinner } from "../components/Spinner";
 
 export function States() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const navigate = useNavigate();
   const [states, setStates] = useData<StateMaster>("states", []);
   const [searchTerm, setSearchTerm] = useState("");
@@ -181,13 +185,13 @@ export function States() {
                         <td className="px-4 py-5 text-black font-bold border-2 border-black">{state.name}</td>
                         <td className="px-4 py-5 text-black border-2 border-black">{state.active || "Yes"}</td>
                         <td className="px-4 py-3 text-right border-2 border-black">
-                          <button
+                          {canManage ? <button
                             type="button"
                             onClick={() => openEdit(state)}
                             className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition"
                           >
                             Open
-                          </button>
+                          </button> : null}
                         </td>
                       </tr>
                     ))

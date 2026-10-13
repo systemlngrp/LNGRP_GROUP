@@ -5,8 +5,12 @@ import { formatDate } from "../lib/serial";
 import { TableControls } from "../components/TableControls";
 import { Trash2 } from "lucide-react";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 
 export function ConsumptionMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [consumptions, setConsumptions] = useData<Consumption>("consumptions", []);
   const npdItems = useNpdItems();
   const [searchTerm, setSearchTerm] = useState("");
@@ -62,12 +66,12 @@ export function ConsumptionMaster() {
                     <div className="text-xs text-slate-500">{formatDate(c.date)}</div>
                     <div className="text-sm font-bold">{npdItems.find(i => i.id === c.itemId)?.name || "Unknown"}</div>
                     <div className="text-sm">{c.qty} {c.uom}</div>
-                     <button 
+                     {canManage ? <button
                       onClick={() => handleDelete(c.id)} 
                       className={`${deletingId === c.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center w-full justify-center p-2 mt-2 border border-black`}
                     >
                       <Trash2 size={16} className="mr-1" /> {deletingId === c.id ? "Confirm?" : "Delete"}
-                    </button>
+                    </button> : null}
                 </div>
             ))}
         </div>
@@ -120,12 +124,12 @@ export function ConsumptionMaster() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-right text-sm font-medium border border-black whitespace-nowrap">
-                    <button 
+                    {canManage ? <button
                       onClick={() => handleDelete(c.id)} 
                       className={`${deletingId === c.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}
                     >
                       <Trash2 size={16} className="mr-1" /> {deletingId === c.id ? "Confirm?" : "Delete"}
-                    </button>
+                    </button> : null}
                   </td>
                 </tr>
               ))

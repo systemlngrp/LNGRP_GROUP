@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import type { QcBlockLocationMaster } from "../types";
 
 type LocationUsage = { count: number; details: { label: string; count: number }[] };
 
 export function QcBlockLocationMaster() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [rows, , loading, api] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
   const [name, setName] = useState("");
   const [editing, setEditing] = useState("");
@@ -132,11 +136,11 @@ export function QcBlockLocationMaster() {
           return <tr key={row.id} className="border-t border-black">
             <td className="p-2">{row.name}</td><td className="p-2">{active ? "Active" : "Inactive"}</td>
             <td className="flex flex-wrap gap-3 p-2">
-              <button type="button" onClick={() => { setEditing(row.id); setName(row.name); setMessage(""); }} className="underline">Edit</button>
-              <button type="button" disabled={Boolean(busyId)} onClick={() => void toggle(row)} className="underline disabled:opacity-50">{active ? "Deactivate" : "Activate"}</button>
-              <span title={reason || (usageLoading ? "Checking usage" : usageError || "")}>
-                <button type="button" disabled={deleteDisabled} onClick={() => void remove(row)} className="font-bold text-red-700 underline disabled:text-gray-500 disabled:no-underline">Delete</button>
-              </span>
+              {canManage ? <button type="button" onClick={() => { setEditing(row.id); setName(row.name); setMessage(""); }} className="underline">Edit</button> : null}
+              {canManage ? <button type="button" disabled={Boolean(busyId)} onClick={() => void toggle(row)} className="underline disabled:opacity-50">{active ? "Deactivate" : "Activate"}</button> : null}
+              {canManage ? <span title={reason || (usageLoading ? "Checking usage" : usageError || "")}>
+                {canManage ? <button type="button" disabled={deleteDisabled} onClick={() => void remove(row)} className="font-bold text-red-700 underline disabled:text-gray-500 disabled:no-underline">Delete</button> : null}
+              </span> : null}
               {reason && <span className="text-xs text-gray-600">Used in {reason}</span>}
             </td>
           </tr>;

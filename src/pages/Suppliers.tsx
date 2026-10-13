@@ -1,6 +1,8 @@
 import React, { useMemo, useState, useRef } from "react";
 import { Supplier, StateMaster } from "../types";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
@@ -40,6 +42,8 @@ const createInitialFormState = (): SupplierFormState => ({
 });
 
 export function Suppliers() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [suppliers, setSuppliers, suppliersLoading] = useData<Supplier>("suppliers", []);
   const [states] = useData<StateMaster>("states", []);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -507,12 +511,12 @@ export function Suppliers() {
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.pinCode || ""}</td>
                       <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{supplier.active || "Yes"}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium border border-black">
-                        <button onClick={() => openEdit(supplier)} className="text-indigo-600 hover:text-indigo-900 mr-4">
+                        {canManage ? <button onClick={() => openEdit(supplier)} className="text-indigo-600 hover:text-indigo-900 mr-4">
                           <Edit size={16} />
-                        </button>
-                        <button onClick={() => handleDelete(supplier.id)} className="text-red-600 hover:text-red-900 inline-flex items-center justify-end">
+                        </button> : null}
+                        {canManage ? <button onClick={() => handleDelete(supplier.id)} className="text-red-600 hover:text-red-900 inline-flex items-center justify-end">
                           <Trash2 size={16} />
-                        </button>
+                        </button> : null}
                       </td>
                     </tr>
                   ))

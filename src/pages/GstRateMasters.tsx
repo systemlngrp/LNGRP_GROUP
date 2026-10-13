@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { GstRateMaster } from "../types";
 
 export function GstRateMasters() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [rates, setRates] = useData<GstRateMaster>("gst_rate_masters", []);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -152,9 +156,9 @@ export function GstRateMasters() {
                         <td className="px-4 py-5 text-black border-2 border-black">{Number(entry.rate || 0).toFixed(2)}%</td>
                         <td className="px-4 py-5 text-black border-2 border-black">{entry.active || "Yes"}</td>
                         <td className="px-4 py-3 text-right border-2 border-black">
-                          <button type="button" onClick={() => openEdit(entry)} className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition">
+                          {canManage ? <button type="button" onClick={() => openEdit(entry)} className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition">
                             Open
-                          </button>
+                          </button> : null}
                         </td>
                       </tr>
                     ))

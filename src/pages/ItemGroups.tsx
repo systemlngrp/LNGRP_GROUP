@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { useData } from "../hooks/useData";
+import { useAuth } from "../auth/AuthContext";
+import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
@@ -12,6 +14,8 @@ interface ItemGroup {
 }
 
 export function ItemGroups() {
+  const { user } = useAuth();
+  const canManage = canManageMasterRecords(user?.role);
   const [groups, setGroups] = useData<ItemGroup>("item-groups", []);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -123,13 +127,13 @@ export function ItemGroups() {
                     <div className="flex justify-between items-center">
                         <div className="font-bold">{group.name}</div>
                         <div className="flex items-center gap-2">
-                             <button onClick={() => { setName(group.name); setEditingId(group.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 font-bold"><Edit size={16} /></button>
-                             <button 
+                             {canManage ? <button onClick={() => { setName(group.name); setEditingId(group.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 font-bold"><Edit size={16} /></button> : null}
+                             {canManage ? <button
                                 onClick={() => handleDelete(group.id)} 
                                 className={`${deletingId === group.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold`}
                                 >
                                 <Trash2 size={16} />
-                            </button>
+                             </button> : null}
                         </div>
                     </div>
                 </div>
@@ -157,15 +161,15 @@ export function ItemGroups() {
                     <tr key={group.id} className="hover:bg-slate-50 divide-x divide-black">
                       <td className="px-6 py-4 text-sm text-black border border-black">{group.name}</td>
                       <td className="px-6 py-4 text-right text-sm font-medium border border-black whitespace-nowrap">
-                        <button onClick={() => { setName(group.name); setEditingId(group.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
+                        {canManage ? <button onClick={() => { setName(group.name); setEditingId(group.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
                           <Edit size={16} className="mr-1" /> Edit
-                        </button>
-                        <button 
+                        </button> : null}
+                        {canManage ? <button
                           onClick={() => handleDelete(group.id)} 
                           className={`${deletingId === group.id ? "text-amber-600 animate-pulse" : "text-red-600"} hover:text-red-900 font-bold inline-flex items-center min-w-[80px] justify-end`}
                         >
                           <Trash2 size={16} className="mr-1" /> {deletingId === group.id ? "Confirm?" : "Delete"}
-                        </button>
+                        </button> : null}
                       </td>
                     </tr>
                   ))
