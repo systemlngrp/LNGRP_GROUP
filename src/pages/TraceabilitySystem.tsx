@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ExternalLink, FileText, Printer, RotateCcw, Search, X } from "lucide-react";
+import { ExternalLink, FileText, Search, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
@@ -296,10 +296,6 @@ function DetailView({
   const paperModeValue = showPlannedPaper ? data.boardline.plannedPaper : data.boardline.lineIncharge;
 
   return <div className="traceability-detail">
-    {record && <div className="traceability-detail-actions">
-      <button type="button" onClick={onClear} className="traceability-action-secondary"><RotateCcw size={15} />Search another job</button>
-      <button type="button" onClick={() => window.print()} className="traceability-action-primary"><Printer size={15} />Print traceability</button>
-    </div>}
     {notFound && <div className="traceability-not-found">Traceability record not found. Search by job number, lot number, ERP code, party, or item.</div>}
     <div className="traceability-sheet-scroll">
       <div className="traceability-sheet">

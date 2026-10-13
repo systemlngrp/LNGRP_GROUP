@@ -411,36 +411,6 @@ table td button:focus-visible {
   margin-top: 7px;
 }
 
-.traceability-detail-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  max-width: 1040px;
-  margin-bottom: 8px;
-}
-
-.traceability-action-primary,
-.traceability-action-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 2px solid #000;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.traceability-action-primary {
-  background: #244b8b;
-  color: #fff;
-}
-
-.traceability-action-secondary {
-  background: #fff;
-  color: #000;
-}
-
 .traceability-not-found {
   max-width: 1040px;
   margin-bottom: 8px;
@@ -832,11 +802,6 @@ table td button:focus-visible {
     padding: 12px;
   }
 
-  .traceability-action-primary,
-  .traceability-action-secondary {
-    flex: 1;
-    justify-content: center;
-  }
 }
 
 @media print {
@@ -856,7 +821,6 @@ table td button:focus-visible {
   body:has(.traceability-print-root) .traceability-lot-clear,
   body:has(.traceability-print-root) .traceability-lot-results,
   body:has(.traceability-print-root) .traceability-mode-toggle,
-  body:has(.traceability-print-root) .traceability-detail-actions,
   body:has(.traceability-print-root) .traceability-not-found,
   body:has(.traceability-print-root) .traceability-empty-sheet-prompt {
     display: none !important;
