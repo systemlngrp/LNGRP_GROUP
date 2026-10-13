@@ -199,7 +199,91 @@ function traceabilityInputs(
   return { productions, items, companies, orders, schedules, processing, boardline, printing, inspections, dispatchPlans, loadingSlips, invoices, invoiceLineItems, trucks, qcUpdates, complaints };
 }
 
-function DetailView({ record, onClear, notFound }: { record?: TraceabilityRecord; onClear: () => void; notFound: boolean }) {
+function LotSearchInput({
+  query,
+  onQueryChange,
+  suggestions,
+  loading,
+  onSelect,
+  onClear,
+}: {
+  query: string;
+  onQueryChange: (value: string) => void;
+  suggestions: TraceabilityRecord[];
+  loading: boolean;
+  onSelect: (record: TraceabilityRecord) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [focused, setFocused] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const visible = focused;
+  const hasNoMatches = visible && !loading && Boolean(query.trim()) && suggestions.length === 0;
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [query]);
+
+  const choose = (record: TraceabilityRecord) => {
+    onSelect(record);
+    setFocused(false);
+    setHighlightedIndex(-1);
+  };
+
+  return <div className="traceability-lot-search">
+    <Search className="traceability-lot-search-icon" size={18} aria-hidden="true" />
+    <input
+      ref={inputRef}
+      value={query}
+      onChange={(event) => { onQueryChange(event.target.value); setFocused(true); }}
+      onFocus={() => setFocused(true)}
+      onBlur={() => window.setTimeout(() => setFocused(false), 120)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") { setFocused(false); return; }
+        if (event.key === "ArrowDown" && suggestions.length) { event.preventDefault(); setHighlightedIndex((index) => (index + 1) % suggestions.length); return; }
+        if (event.key === "ArrowUp" && suggestions.length) { event.preventDefault(); setHighlightedIndex((index) => (index - 1 + suggestions.length) % suggestions.length); return; }
+        if (event.key === "Enter" && highlightedIndex >= 0 && suggestions[highlightedIndex]) { event.preventDefault(); choose(suggestions[highlightedIndex]); }
+      }}
+      role="combobox"
+      aria-label="Search traceability by lot number, job number, ERP code, party, or item"
+      aria-autocomplete="list"
+      aria-expanded={visible}
+      aria-controls="traceability-lot-results"
+      placeholder="Search lot no."
+      className="traceability-lot-input"
+    />
+    {query && <button type="button" aria-label="Clear traceability lot search" onMouseDown={(event) => event.preventDefault()} onClick={onClear} className="traceability-lot-clear"><X size={17} /></button>}
+    {visible && <div id="traceability-lot-results" role="listbox" className="traceability-lot-results">
+      {suggestions.map((record, index) => <button key={record.id} type="button" role="option" aria-selected={index === highlightedIndex} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(record)} className={`traceability-search-result ${index === highlightedIndex ? "is-highlighted" : ""}`}>
+        <div className="traceability-search-result-top"><strong>{display(record.lotNo || record.jobNo)}</strong><StatusBadge status={record.status} /></div>
+        <div className="traceability-search-result-meta"><span>Job: {display(record.jobNo)}</span><span>{display(record.partyName)}</span><span>{display(record.itemName)}</span></div>
+      </button>)}
+      {hasNoMatches && <div className="traceability-search-empty">No matching records.</div>}
+      {!query.trim() && !loading && suggestions.length === 0 && <div className="traceability-search-empty">No non-cancelled jobs available.</div>}
+      {loading && <div className="traceability-search-empty">Loading traceability records…</div>}
+    </div>}
+  </div>;
+}
+
+function DetailView({
+  record,
+  onClear,
+  notFound,
+  query,
+  onQueryChange,
+  suggestions,
+  loading,
+  onSelect,
+}: {
+  record?: TraceabilityRecord;
+  onClear: () => void;
+  notFound: boolean;
+  query: string;
+  onQueryChange: (value: string) => void;
+  suggestions: TraceabilityRecord[];
+  loading: boolean;
+  onSelect: (record: TraceabilityRecord) => void;
+}) {
   const data = record || EMPTY_TRACEABILITY_RECORD;
   const [showPlannedPaper, setShowPlannedPaper] = useState(true);
   const field = (label: string, value: TraceabilityValue | ReactNode, span?: number, options: Omit<SheetField, "label" | "value" | "span"> = {}) => ({ label, value, span, ...options });
@@ -232,12 +316,13 @@ function DetailView({ record, onClear, notFound }: { record?: TraceabilityRecord
           </button>
         </div>
         <div className="traceability-document-title">TRACEABILITY SYSTEM</div>
-        {!record && <div className="traceability-empty-sheet-prompt"><Search size={18} />Search for a job or lot above to display the traceability record.</div>}
 
         <section className="traceability-identity">
           <div className="traceability-identity-top">
             <div className="traceability-identity-cell traceability-identity-label">LOT NO.</div>
-            <div className="traceability-identity-cell traceability-identity-lot">{display(data.lotNo)}</div>
+            <div className="traceability-identity-cell traceability-identity-lot">
+              <LotSearchInput query={query} onQueryChange={onQueryChange} suggestions={suggestions} loading={loading} onSelect={onSelect} onClear={onClear} />
+            </div>
             <div className="traceability-identity-spacer" />
             <div className="traceability-identity-cell traceability-identity-status-label">JOB STATUS</div>
             <div className="traceability-identity-cell traceability-identity-status-value">{record ? <StatusBadge status={data.status} /> : "—"}</div>
@@ -477,17 +562,17 @@ export function TraceabilitySystem() {
     complaints,
   )), [boardline, complaints, companies, dispatchPlans, inspections, invoiceLineItems, invoices, items, loadingSlips, orders, printing, processing, productions, qcUpdates, schedules, trucks]);
   const selected = productionId ? records.find((record) => record.id === productionId) : undefined;
-  const suggestions = useMemo(() => filterTraceabilityRecords(records, search).slice(0, 12), [records, search]);
+  const suggestions = useMemo(() => filterTraceabilityRecords(records, search), [records, search]);
   const loading = [productionsLoading, companiesLoading, ordersLoading, schedulesLoading, processingLoading, boardlineLoading, printingLoading, inspectionsLoading, dispatchPlansLoading, loadingSlipsLoading, invoicesLoading, invoiceLineItemsLoading, trucksLoading, qcUpdatesLoading, complaintsLoading].some(Boolean);
   const notFound = Boolean(productionId && !selected && !loading);
 
   useEffect(() => {
-    if (selected) setSearch(selected.jobNo);
+    if (selected) setSearch(selected.lotNo || selected.jobNo);
     else if (!productionId) setSearch("");
   }, [productionId, selected?.id, selected?.jobNo]);
 
   const selectRecord = (record: TraceabilityRecord) => {
-    setSearch(record.jobNo);
+    setSearch(record.lotNo || record.jobNo);
     navigate(`/quality/traceability/${encodeURIComponent(record.id)}`);
   };
   const clearSelection = () => {
@@ -496,7 +581,6 @@ export function TraceabilitySystem() {
   };
 
   return <div className="traceability-print-root traceability-page">
-    <SearchToolbar query={search} onQueryChange={setSearch} suggestions={suggestions} loading={loading} selected={selected} onSelect={selectRecord} onClear={clearSelection} />
-    <DetailView record={selected} onClear={clearSelection} notFound={notFound} />
+    <DetailView record={selected} onClear={clearSelection} notFound={notFound} query={search} onQueryChange={setSearch} suggestions={suggestions} loading={loading} onSelect={selectRecord} />
   </div>;
 }

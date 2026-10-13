@@ -211,23 +211,20 @@ function layerValue(value: unknown) {
 function paperSpec(item?: Item) {
   if (!item) return "";
   return [
-    ["L1", item.l1],
-    ["F1", item.f1],
-    ["L2", item.l2],
-    ["F2", item.f2],
-    ["L3", item.l3],
-    ["F3", item.f3],
-  ].map(([label, value]) => {
-    const normalized = layerValue(value);
-    return normalized ? `${label} ${normalized}` : "";
-  }).filter(Boolean).join(" / ");
+    item.l1,
+    item.f1,
+    item.l2,
+    item.f2,
+    item.l3,
+    item.f3,
+  ].map(layerValue).filter(Boolean).join(" - ");
 }
 
 function plannedPaper(production: Production): TraceabilityValue {
   return [production.l1, production.f1, production.l2, production.f2, production.l3]
     .map(layerValue)
     .filter(Boolean)
-    .join(" / ");
+    .join(" - ");
 }
 
 function explicitLineIncharge(board?: BoardLineQcCheck) {
@@ -405,6 +402,7 @@ export function buildTraceabilityRecords(input: TraceabilityInputs) {
 
 export function filterTraceabilityRecords(records: TraceabilityRecord[], search: string) {
   const query = key(search);
-  if (!query) return records;
-  return records.filter((record) => record.searchText.includes(query));
+  const searchableRecords = records.filter((record) => record.status !== "JOB CANCELLED");
+  if (!query) return searchableRecords;
+  return searchableRecords.filter((record) => record.searchText.includes(query));
 }

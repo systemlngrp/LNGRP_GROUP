@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { BoardLineQcCheck, DispatchPlan, Item, LoadingSlip, PreDispatchInspection, PrintingQcCheck, Production, ProductionProcessing, Truck } from "../types";
-import { buildTraceabilityRecord, buildTraceabilityRecords } from "./traceabilityData";
+import { buildTraceabilityRecord, buildTraceabilityRecords, filterTraceabilityRecords } from "./traceabilityData";
 
 const production = (overrides: Partial<Production> = {}): Production => ({
   id: "production-1",
@@ -140,7 +140,7 @@ test("paper spec uses NPD layer values instead of production layer values", () =
     ...baseInput,
     items: [{ ...item, l1: 120, f1: 120, l2: 150, f2: 150, l3: 150, f3: 120, b3: 999 }],
   });
-  assert.equal(record.boardline.paperSpec, "L1 120 / F1 120 / L2 150 / F2 150 / L3 150 / F3 120");
+  assert.equal(record.boardline.paperSpec, "120 - 120 - 150 - 150 - 150 - 120");
 });
 
 test("planned paper uses Production Plan layer values in layer order", () => {
@@ -153,13 +153,13 @@ test("planned paper uses Production Plan layer values in layer order", () => {
     totalPaperWeight: 309.75,
     reelAsPerCalc: 1600,
   }), { ...baseInput, items: [{ ...item, l1: 999, f1: 999 }] });
-  assert.equal(record.boardline.plannedPaper, "120 / 120 / 150 / 150 / 150");
+  assert.equal(record.boardline.plannedPaper, "120 - 120 - 150 - 150 - 150");
   assert.equal(record.boardline.paperRequiredKg, 309.75);
 });
 
 test("planned paper omits blank and zero Production Plan layers", () => {
   const record = buildTraceabilityRecord(production({ l1: 120, f1: 0, l2: undefined, f2: 150, l3: 0 }), baseInput);
-  assert.equal(record.boardline.plannedPaper, "120 / 150");
+  assert.equal(record.boardline.plannedPaper, "120 - 150");
 });
 
 test("line in charge prefers an explicit Boardline field", () => {
@@ -211,8 +211,18 @@ test("layer GSM formatting removes unnecessary decimals but preserves meaningful
       f3: asNumeric("120.00"),
     }],
   });
-  assert.equal(record.boardline.paperSpec, "L1 120 / F1 120.5 / L2 150 / F2 150.5 / F3 120");
-  assert.equal(record.boardline.plannedPaper, "120 / 120.5 / 150 / 150.5");
+  assert.equal(record.boardline.paperSpec, "120 - 120.5 - 150 - 150.5 - 120");
+  assert.equal(record.boardline.plannedPaper, "120 - 120.5 - 150 - 150.5");
+});
+
+test("traceability search excludes cancelled jobs and returns all active jobs when empty", () => {
+  const records = buildTraceabilityRecords({
+    ...baseInput,
+    productions: [production(), production({ id: "closed", status: "Completed", transactionNo: "10431" }), production({ id: "cancelled", status: "Cancelled", transactionNo: "10432" })],
+  });
+  assert.deepEqual(filterTraceabilityRecords(records, "").map((record) => record.id), ["production-1", "closed"]);
+  assert.deepEqual(filterTraceabilityRecords(records, "10432"), []);
+  assert.equal(records.find((record) => record.id === "cancelled")?.status, "JOB CANCELLED");
 });
 
 test("missing source values remain blank instead of being fabricated", () => {
