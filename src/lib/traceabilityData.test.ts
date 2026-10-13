@@ -115,6 +115,54 @@ test("traceability joins normalized job numbers and selects latest stage records
   assert.equal(record.dispatch.driverName, "Driver One");
 });
 
+test("traceability maps latest Boardline QC operator and driver side sizes", () => {
+  const sourceProduction = { ...production(), sheetPlantProducedSize: "PRODUCTION OP", sheetPlantProducedSizeDr: "PRODUCTION DR" } as Production;
+  const record = buildTraceabilityRecord(sourceProduction, {
+    ...baseInput,
+    boardline: [
+      boardline({ id: "board-old", timestamp: "2026-10-10T09:00:00Z", flapHeightFlapOperatorSide: "OLD OP", flapHeightFlapDriveSide: "OLD DR" }),
+      boardline({ id: "board-latest", timestamp: "2026-10-10T13:00:00Z", flapHeightFlapOperatorSide: "156 - 157 - 156", flapHeightFlapDriveSide: "157 - 157 - 157" }),
+    ],
+  });
+  assert.equal(record.boardline.sheetPlantProducedSize, "156 - 157 - 156");
+  assert.equal(record.boardline.sheetPlantProducedSizeDr, "157 - 157 - 157");
+});
+
+test("traceability leaves Boardline side sizes blank when QC fields are unavailable", () => {
+  const record = buildTraceabilityRecord({ ...production(), sheetPlantProducedSize: "PRODUCTION OP", sheetPlantProducedSizeDr: "PRODUCTION DR" } as Production, {
+    ...baseInput,
+    boardline: [boardline()],
+  });
+  assert.equal(record.boardline.sheetPlantProducedSize, "");
+  assert.equal(record.boardline.sheetPlantProducedSizeDr, "");
+});
+
+test("traceability maps achieved converting size from Printing QC", () => {
+  const record = buildTraceabilityRecord(production({ length: 999, breadth: 999, height: 999 }), {
+    ...baseInput,
+    printing: [printing({ boxSizeAchieved: "251 x 196 x 230" })],
+    inspections: [inspection({ lengthId: 111, widthId: 111, heightId: 111 })],
+  });
+  assert.equal(record.converting.sizeAchieved, "251 x 196 x 230");
+});
+
+test("traceability builds achieved converting size from Printing QC dimensions when needed", () => {
+  const record = buildTraceabilityRecord(production(), {
+    ...baseInput,
+    printing: [printing({ boxSizeAchieved: "", lengthId: 300, widthId: 200, heightId: 150 })],
+  });
+  assert.equal(record.converting.sizeAchieved, "300 x 200 x 150");
+});
+
+test("traceability does not fabricate achieved converting size from non-Printing QC data", () => {
+  const record = buildTraceabilityRecord(production({ length: 999, breadth: 999, height: 999 }), {
+    ...baseInput,
+    printing: [printing({ boxSizeAchieved: "", lengthId: "", widthId: "", heightId: "" })],
+    inspections: [inspection({ lengthId: 111, widthId: 111, heightId: 111 })],
+  });
+  assert.equal(record.converting.sizeAchieved, "");
+});
+
 test("traceability prioritizes inspection productionId over a later same-job record", () => {
   const record = buildTraceabilityRecord(production(), {
     ...baseInput,
