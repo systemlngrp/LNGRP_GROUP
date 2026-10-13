@@ -135,6 +135,33 @@ test("record builder keeps cancelled productions visible with their status", () 
   assert.equal(records[1].status, "JOB CANCELLED");
 });
 
+test("paper spec uses NPD layer values instead of production layer values", () => {
+  const record = buildTraceabilityRecord(production({ l1: 999, f1: 999 }), {
+    ...baseInput,
+    items: [{ ...item, l1: 120, f1: 120, l2: 150, f2: 150, l3: 150, f3: 120, b3: 999 }],
+  });
+  assert.equal(record.boardline.paperSpec, "L1 120 / F1 120 / L2 150 / F2 150 / L3 150 / F3 120");
+});
+
+test("planned paper uses Production Plan layer values in layer order", () => {
+  const record = buildTraceabilityRecord(production({
+    l1: 120,
+    f1: 120,
+    l2: 150,
+    f2: 150,
+    l3: 150,
+    totalPaperWeight: 309.75,
+    reelAsPerCalc: 1600,
+  }), { ...baseInput, items: [{ ...item, l1: 999, f1: 999 }] });
+  assert.equal(record.boardline.plannedPaper, "120 / 120 / 150 / 150 / 150");
+  assert.equal(record.boardline.paperRequiredKg, 309.75);
+});
+
+test("planned paper omits blank and zero Production Plan layers", () => {
+  const record = buildTraceabilityRecord(production({ l1: 120, f1: 0, l2: undefined, f2: 150, l3: 0 }), baseInput);
+  assert.equal(record.boardline.plannedPaper, "120 / 150");
+});
+
 test("missing source values remain blank instead of being fabricated", () => {
   const record = buildTraceabilityRecord(production({ erpCode: "", companyName: "" }), { productions: [], items: [] });
   assert.equal(record.erpCode, "");

@@ -200,15 +200,25 @@ function statusOf(production: Production): TraceabilityStatus {
 
 function paperSpec(item?: Item) {
   if (!item) return "";
-  return joinNonEmpty(" / ",
-    item.l1 ? `L1 ${item.l1}` : "",
-    item.f1 ? `F1 ${item.f1}` : "",
-    item.l2 ? `L2 ${item.l2}` : "",
-    item.f2 ? `F2 ${item.f2}` : "",
-    item.l3 ? `L3 ${item.l3}` : "",
-    item.f3 ? `F3 ${item.f3}` : "",
-    item.b3 ? `B3 ${item.b3}` : "",
-  );
+  return [
+    ["L1", item.l1],
+    ["F1", item.f1],
+    ["L2", item.l2],
+    ["F2", item.f2],
+    ["L3", item.l3],
+    ["F3", item.f3],
+  ].map(([label, value]) => {
+    const normalized = text(value);
+    if (!normalized || Number(normalized) === 0) return "";
+    return `${label} ${normalized}`;
+  }).filter(Boolean).join(" / ");
+}
+
+function plannedPaper(production: Production): TraceabilityValue {
+  return [production.l1, production.f1, production.l2, production.f2, production.l3]
+    .map(text)
+    .filter((value) => value && Number(value) !== 0)
+    .join(" / ");
 }
 
 export function buildTraceabilityRecord(production: Production, input: TraceabilityInputs): TraceabilityRecord {
@@ -235,8 +245,8 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
   const complaintLots = rows(input.complaints).filter((complaint) => key(complaint.erpCode) === key(erpCode)).map((complaint) => text(complaint.lotNo));
   const lotNumbers = [...new Set([text(inspection?.lotNo), text(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
   const planQuantity = resolvePlanQuantity(production.plannedQty, production.qty, board?.planQty, printing?.planQty, inspection?.plannedQty, plans.reduce((sum, plan) => sum + Number(plan.plannedQty || 0), 0));
-  const plannedPaper = firstValue(production.totalPaperWeight, production.reelAsPerCalc);
-  const paperRequired = firstValue(production.totalPaperWeight, plannedPaper);
+  const plannedPaperValue = plannedPaper(production);
+  const paperRequired = firstValue(production.totalPaperWeight);
   const paperUsed = numberValue(getProductionActualPaperUsed(production));
   const requiredNumber = Number(paperRequired || 0);
   const usedNumber = Number(paperUsed || 0);
@@ -295,7 +305,7 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
       flute: firstText(production.flute, item?.flute, board?.typeOfFlute),
       paperSpec: paperSpec(item),
       sizeLxWxHmm: joinSize(production.length || item?.length, production.breadth || item?.breadth, production.height || item?.height),
-      plannedPaper,
+      plannedPaper: plannedPaperValue,
       sheetPlantRequiredSize: firstText((production as Production & { sheetPlantRequiredSize?: string }).sheetPlantRequiredSize, board?.standard),
       sheetPlantProducedSize: firstText((production as Production & { sheetPlantProducedSize?: string }).sheetPlantProducedSize),
       sheetPlantProducedSizeDr: firstText((production as Production & { sheetPlantProducedSizeDr?: string }).sheetPlantProducedSizeDr),
