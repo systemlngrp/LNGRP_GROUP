@@ -6,6 +6,7 @@ import { Select } from "../components/Select";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { ClientPagination } from "../components/ClientPagination";
 import type { QualityComplaint } from "../types";
+import { isRejectionComplaint } from "../lib/complaintResponsibility";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -20,10 +21,10 @@ export function QualityPendingCapa() {
     const query = search.toLowerCase().trim();
     return complaints.filter((row) => {
       const haystack = [row.erpCode, row.partyName, row.itemName, row.lotNo, row.issueDetails].join(" ").toLowerCase();
-      return !row.capaNo && (!firm || row.firmName === firm) && (!nature || row.natureOfComplaint === nature) && (!area || row.areaOfIssue === area) && (!date || row.dateOfComplaint === date) && (!query || haystack.includes(query));
+      return isRejectionComplaint(row.natureOfComplaint) && !row.capaNo && (!firm || row.firmName === firm) && (!nature || row.natureOfComplaint === nature) && (!area || row.areaOfIssue === area) && (!date || row.dateOfComplaint === date) && (!query || haystack.includes(query));
     }).sort((a, b) => text(b.timestamp).localeCompare(text(a.timestamp)));
   }, [area, complaints, date, firm, nature, search]);
-  const options = useMemo(() => ({ firms: [...new Set(complaints.filter((row) => !row.capaNo).map((row) => row.firmName).filter(Boolean))].sort(), natures: [...new Set(complaints.filter((row) => !row.capaNo).map((row) => row.natureOfComplaint).filter(Boolean))].sort(), areas: [...new Set(complaints.filter((row) => !row.capaNo).map((row) => row.areaOfIssue).filter(Boolean))].sort() }), [complaints]);
+  const options = useMemo(() => ({ firms: [...new Set(complaints.filter((row) => isRejectionComplaint(row.natureOfComplaint) && !row.capaNo).map((row) => row.firmName).filter(Boolean))].sort(), natures: [...new Set(complaints.filter((row) => isRejectionComplaint(row.natureOfComplaint) && !row.capaNo).map((row) => row.natureOfComplaint).filter(Boolean))].sort(), areas: [...new Set(complaints.filter((row) => isRejectionComplaint(row.natureOfComplaint) && !row.capaNo).map((row) => row.areaOfIssue).filter(Boolean))].sort() }), [complaints]);
   const clear = () => { setSearch(""); setFirm(""); setNature(""); setArea(""); setDate(""); };
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(pending, 25);
   useEffect(() => setPage(1), [area, date, firm, nature, search, setPage]);

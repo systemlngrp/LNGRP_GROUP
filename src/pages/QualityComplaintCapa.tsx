@@ -5,6 +5,7 @@ import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { printQualityCapaReport } from "../utils/qualityCapaPrint";
 import type { QualityComplaint, User } from "../types";
+import { isRejectionComplaint } from "../lib/complaintResponsibility";
 
 type CapaData = NonNullable<QualityComplaint["capaData"]>;
 
@@ -69,6 +70,9 @@ export function QualityComplaintCapa() {
 
   if (loading) return <div className="p-6">Loading CAPA...</div>;
   if (!complaint) return <div className="rounded border border-red-700 bg-red-50 p-6 font-bold">Complaint not found.</div>;
+  if (!isRejectionComplaint(complaint.natureOfComplaint) && !complaint.capaNo) {
+    return <div className="rounded border border-amber-700 bg-amber-50 p-6 font-bold">CAPA can only be generated for Rejection complaints.</div>;
+  }
 
   const update = (key: keyof CapaData, value: string) => {
     setData((current) => ({ ...current, [key]: value }));
@@ -93,6 +97,10 @@ export function QualityComplaintCapa() {
 
   const save = async (event?: FormEvent) => {
     event?.preventDefault();
+    if (!isRejectionComplaint(complaint.natureOfComplaint)) {
+      setMessage("CAPA can only be generated for Rejection complaints.");
+      return;
+    }
     if (requiredValues.some((value) => !s(value).trim())) {
       setMessage("Please complete all required CAPA fields.");
       return;

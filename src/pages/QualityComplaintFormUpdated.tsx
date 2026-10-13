@@ -1,9 +1,10 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
-import type { Firm, Production, QualityComplaint, User } from "../types";
+import type { DispatchPlan, Firm, Production, ProductionProcessing, QualityComplaint, User } from "../types";
 import { qcPersonOptions } from "../utils/qcPeople";
+import { concernedPersonForJob } from "../lib/complaintResponsibility";
 
 type FormState = {
   firmId: string;
@@ -44,6 +45,8 @@ function fileDataUrl(file: File) {
 export function QualityComplaintFormUpdated() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
+  const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all" });
   const [people] = useData<User>("users", []);
   const items = useNpdItems();
   const [, , , api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
@@ -51,17 +54,37 @@ export function QualityComplaintFormUpdated() {
   const [message, setMessage] = useState("");
   const [hint, setHint] = useState("");
   const [saving, setSaving] = useState(false);
+  const manuallySelectedPerson = useRef(false);
   const [uploading, setUploading] = useState<Record<"photo1" | "photo2", boolean>>({ photo1: false, photo2: false });
 
   const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: firm.firmName })), [firms]);
   const erpOptions = useMemo(() => [...new Set(items.map((item: any) => String(item.erp || "").trim()).filter(Boolean))].map((value) => ({ value, label: value, searchText: `${value} ${items.find((item: any) => String(item.erp || "").trim() === value)?.name || ""}` })), [items]);
   const jobOptions = useMemo(() => [...new Set(productions.map((production) => String(production.transactionNo || production.jobCardNo || "").trim()).filter(Boolean))].sort().map((value) => ({ value, label: value })), [productions]);
-  const personOptions = qcPersonOptions(people);
+  const suggestedPerson = useMemo(
+    () => concernedPersonForJob(form.lotNo, form.areaOfIssue, productions, processing, dispatchPlans),
+    [form.lotNo, form.areaOfIssue, productions, processing, dispatchPlans],
+  );
+  const personOptions = qcPersonOptions(people, [suggestedPerson, form.concernedPersonName]);
   const selectedFirm = firms.find((firm) => firm.id === form.firmId);
   const locked = Boolean(form.erpCode);
 
   const latestErpProduction = (erp: string) => productions.filter((production) => matchesErp(production, erp)).sort((a, b) => dateValue(b.date) - dateValue(a.date) || dateValue(b.updateTimestamp) - dateValue(a.updateTimestamp))[0];
-  const setFormValue = <K extends keyof FormState>(name: K, value: FormState[K]) => { setForm((current) => ({ ...current, [name]: value })); setMessage(""); };
+  const setFormValue = <K extends keyof FormState>(name: K, value: FormState[K]) => {
+    if (name === "lotNo" || name === "areaOfIssue") manuallySelectedPerson.current = false;
+    if (name === "concernedPersonName") manuallySelectedPerson.current = true;
+    setForm((current) => {
+      const next = { ...current, [name]: value };
+      return name === "lotNo" || name === "areaOfIssue"
+        ? { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans) }
+        : next;
+    });
+    setMessage("");
+  };
+  useEffect(() => {
+    if (!manuallySelectedPerson.current) {
+      setForm((current) => current.concernedPersonName === suggestedPerson ? current : { ...current, concernedPersonName: suggestedPerson });
+    }
+  }, [suggestedPerson]);
 
   const applyProduction = (production: Production | undefined, current: FormState, erp: string) => {
     const item = items.find((candidate: any) => key(candidate.erp) === key(erp) || key(candidate.id) === key((production as any)?.itemId || (production as any)?.npdId));
@@ -79,7 +102,11 @@ export function QualityComplaintFormUpdated() {
 
   const chooseErp = (erp: string) => {
     const production = latestErpProduction(erp);
-    setForm((current) => applyProduction(production, current, erp));
+    manuallySelectedPerson.current = false;
+    setForm((current) => {
+      const next = applyProduction(production, current, erp);
+      return { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans) };
+    });
     setHint(production ? `Latest matching Job No.: ${production.transactionNo || production.jobCardNo}` : "No matching production found for this ERP Code.");
     setMessage("");
   };
@@ -87,8 +114,12 @@ export function QualityComplaintFormUpdated() {
   const chooseJob = (jobNo: string) => {
     const production = productions.find((row) => String(row.transactionNo || row.jobCardNo || "").trim() === jobNo);
     if (!production) return setFormValue("lotNo", jobNo);
+    manuallySelectedPerson.current = false;
     const erp = String((production as any).erpCode || (production as any).itemErp || (production as any).masterErp || form.erpCode);
-    setForm((current) => applyProduction(production, current, erp));
+    setForm((current) => {
+      const next = applyProduction(production, current, erp);
+      return { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans) };
+    });
     setHint(`Job details loaded successfully.`);
   };
 
@@ -122,6 +153,7 @@ export function QualityComplaintFormUpdated() {
     setSaving(true);
     try {
       await api.addItem(record);
+      manuallySelectedPerson.current = false;
       setForm(blank());
       setHint("");
       setMessage("QC complaint saved successfully.");
@@ -142,7 +174,7 @@ export function QualityComplaintFormUpdated() {
     <label className="space-y-1"><span className="font-bold">Job No. *</span><Select value={form.lotNo} onChange={chooseJob} options={jobOptions} placeholder="Select Job No." disabled={locked} />{hint && <span className="block text-xs font-bold text-amber-700">{hint}</span>}</label>
     <label className="space-y-1"><span className="font-bold">Quantity *</span><input type="number" min="0" className={field} value={form.quantity} onChange={(event) => setFormValue("quantity", event.target.value)} /></label>
     <label className="space-y-1"><span className="font-bold">Area of Issue</span><Select value={form.areaOfIssue} onChange={(value) => setFormValue("areaOfIssue", value)} options={[{ value: "Boardline", label: "Boardline" }, { value: "Printing", label: "Printing" }, { value: "Dispatch", label: "Dispatch" }]} placeholder="Select Area" /></label>
-    <label className="space-y-1"><span className="font-bold">Concerned Person Name</span><Select value={form.concernedPersonName} onChange={(value) => setFormValue("concernedPersonName", value)} options={personOptions} placeholder="Select QC Person" /></label>
+    <label className="space-y-1"><span className="font-bold">Concerned Person Name</span><Select value={form.concernedPersonName} onChange={(value) => setFormValue("concernedPersonName", value)} options={personOptions} placeholder="Select Person" /></label>
     <label className="space-y-1 md:col-span-2"><span className="font-bold">Issue Details *</span><textarea className={`${field} min-h-28`} value={form.issueDetails} onChange={(event) => setFormValue("issueDetails", event.target.value)} /></label>
     {(["photo1", "photo2"] as const).map((name, index) => <label key={name} className="space-y-1"><span className="font-bold">Photo {index + 1}</span><input type="file" accept="image/*" className={`${field} file:mr-3 file:rounded file:border-0 file:bg-indigo-600 file:px-3 file:py-1 file:font-bold file:text-white`} disabled={saving || uploading[name]} onChange={(event) => void uploadPhoto(name, event.target.files?.[0])} />{uploading[name] && <span className="block text-xs font-bold text-indigo-700">Uploading...</span>}{form[name] && !uploading[name] && <span className="block text-xs text-slate-600">Photo uploaded.</span>}</label>)}
     <div className="md:col-span-2"><button className="rounded bg-cyan-700 px-5 py-2 font-bold text-white disabled:opacity-60" type="submit" disabled={saving || uploading.photo1 || uploading.photo2}>{saving ? "Saving..." : "Save QC Complaint"}</button></div>

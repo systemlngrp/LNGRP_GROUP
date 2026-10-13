@@ -9405,6 +9405,18 @@ const createHandlers = (tableName: string) => {
       );
       let materialOpening: null | { firmId: string; qty: number; rate: number; value: number } = null;
       try {
+        if (tableName === "quality_complaints" && String(data.capaNo || "").trim()) {
+          const [existingRows] = await db.query(
+            "SELECT natureOfComplaint, capaNo FROM `quality_complaints` WHERE id = ? LIMIT 1",
+            [String(data.id || "")]
+          );
+          const existingComplaint = (existingRows as any[])[0];
+          if (!String(existingComplaint?.capaNo || "").trim() &&
+              (String(existingComplaint?.natureOfComplaint || data.natureOfComplaint || "").trim().toLowerCase() !== "rejection" ||
+               String(data.natureOfComplaint || existingComplaint?.natureOfComplaint || "").trim().toLowerCase() !== "rejection")) {
+            return res.status(403).json({ error: "CAPA can only be generated for Rejection complaints." });
+          }
+        }
         if (tableName === "qc_block_location_masters") {
           const id = String(data.id || "").trim();
           const nextName = String(data.name || "").trim();
