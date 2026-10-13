@@ -1202,6 +1202,14 @@ export interface QualityComplaint {
     reviewedDate?: string;
     approvedBy?: string;
     approvedDate?: string;
+    deliveryNo?: string;
+    vehicleNo?: string;
+    invoiceDate?: string;
+    productionDate?: string;
+    dispatchDate?: string;
+    productionTargetDate?: string;
+    detectionTargetDate?: string;
+    hodProduction?: string;
   };
   capaUpdatedAt?: string;
   updatedBy?: string;
@@ -1722,6 +1730,7 @@ export interface Setting {
   samplingPlanQtyMax?: number;
   qcBgsmTolerancePercent?: number;
   organizationLogo?: string;
+  organizationName?: string;
   updatedBy?: string;
   updateTimestamp?: string;
 }

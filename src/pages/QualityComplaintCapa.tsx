@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Printer, Save } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Select } from "../components/Select";
@@ -6,6 +6,7 @@ import { useData } from "../hooks/useData";
 import { printQualityCapaReport } from "../utils/qualityCapaPrint";
 import type { QualityComplaint, User } from "../types";
 import { isRejectionComplaint } from "../lib/complaintResponsibility";
+import { useCapaReportContext } from "../hooks/useCapaReportContext";
 
 type CapaData = NonNullable<QualityComplaint["capaData"]>;
 
@@ -13,7 +14,7 @@ const s = (value: unknown) => String(value ?? "");
 const field = "w-full rounded border-2 border-black bg-white px-3 py-2.5 text-sm text-black shadow-sm outline-none transition focus:border-indigo-600 focus:ring-2 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-100";
 const textArea = `${field} min-h-28 resize-y`;
 const card = "rounded border-2 border-black bg-white p-4 shadow-sm md:p-5";
-const empty: CapaData = { defectDescription: "", defectPercentage: "", rejectionDetails: "", previousActionPlanStatus: "", productionFailureRootCause: "", detectionFailureRootCause: "", productionPreventiveAction: "", detectionPreventiveAction: "", targetDate: "", preparedBy: "", immediateContainment: "", rootCauseAnalysis: "", correctiveAction: "", preventiveAction: "", responsiblePerson: "", targetCompletionDate: "", completionDate: "", effectivenessVerification: "", verificationRemarks: "", preparedDate: "", reviewedBy: "", reviewedDate: "", approvedBy: "", approvedDate: "" };
+const empty: CapaData = { defectDescription: "", defectPercentage: "", rejectionDetails: "", previousActionPlanStatus: "", productionFailureRootCause: "", detectionFailureRootCause: "", productionPreventiveAction: "", detectionPreventiveAction: "", targetDate: "", preparedBy: "", immediateContainment: "", rootCauseAnalysis: "", correctiveAction: "", preventiveAction: "", responsiblePerson: "", targetCompletionDate: "", completionDate: "", effectivenessVerification: "", verificationRemarks: "", preparedDate: "", reviewedBy: "", reviewedDate: "", approvedBy: "", approvedDate: "", deliveryNo: "", vehicleNo: "", invoiceDate: "", productionDate: "", dispatchDate: "", productionTargetDate: "", detectionTargetDate: "", hodProduction: "" };
 
 const resolveUserName = (users: User[], value?: string, userId?: string) => users.find((user) => user.id === userId || user.userId === userId || user.id === value || user.userId === value || user.name === value)?.name || value || "";
 const toFormData = (stored: CapaData | undefined, users: User[]): CapaData => {
@@ -30,6 +31,7 @@ const toFormData = (stored: CapaData | undefined, users: User[]): CapaData => {
     productionPreventiveAction: value.productionPreventiveAction || value.preventiveAction || "",
     detectionPreventiveAction: value.detectionPreventiveAction || "",
     targetDate: value.targetDate || value.targetCompletionDate || "",
+    productionTargetDate: value.productionTargetDate || value.targetDate || value.targetCompletionDate || "",
     preparedBy: resolveUserName(users, value.preparedBy, value.preparedByUserId),
     responsiblePerson: resolveUserName(users, value.responsiblePerson, value.responsiblePersonUserId) || resolveUserName(users, value.preparedBy, value.preparedByUserId),
   };
@@ -55,9 +57,14 @@ export function QualityComplaintCapa() {
   const navigate = useNavigate();
   const [complaints, , loading, api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
   const [users] = useData<User>("users", []);
+  const { setting, linkedDetails } = useCapaReportContext();
   const complaint = complaints.find((record) => record.id === id);
   const [data, setData] = useState<CapaData>(empty);
   const [message, setMessage] = useState("");
+  const touchedReportFields = useRef(new Set<keyof CapaData>());
+  const loadedRevision = useRef("");
+  const suggested = complaint ? linkedDetails(complaint) : undefined;
+  const suggestionKey = suggested ? JSON.stringify(suggested) : "";
 
   const userOptions = useMemo(() => users
     .filter((user) => user.status !== "Inactive" && user.name)
@@ -65,8 +72,23 @@ export function QualityComplaintCapa() {
     .map((user) => ({ value: user.name, label: user.name, searchText: `${user.name} ${user.userId} ${user.email || ""}` })), [users]);
 
   useEffect(() => {
-    if (complaint) setData(toFormData(complaint.capaData, users));
+    if (!complaint) return;
+    const revision = `${complaint.id}:${complaint.capaUpdatedAt || ""}`;
+    if (loadedRevision.current === revision) return;
+    loadedRevision.current = revision;
+    touchedReportFields.current.clear();
+    setData(toFormData(complaint.capaData, users));
   }, [complaint?.id, complaint?.capaUpdatedAt, users]);
+  useEffect(() => {
+    if (!suggested) return;
+    setData((current) => {
+      const next = { ...current };
+      for (const field of ["deliveryNo", "vehicleNo", "invoiceDate", "productionDate", "dispatchDate"] as const) {
+        if (!touchedReportFields.current.has(field) && !next[field]) next[field] = suggested[field];
+      }
+      return next;
+    });
+  }, [complaint?.id, suggestionKey]);
 
   if (loading) return <div className="p-6">Loading CAPA...</div>;
   if (!complaint) return <div className="rounded border border-red-700 bg-red-50 p-6 font-bold">Complaint not found.</div>;
@@ -75,6 +97,7 @@ export function QualityComplaintCapa() {
   }
 
   const update = (key: keyof CapaData, value: string) => {
+    touchedReportFields.current.add(key);
     setData((current) => ({ ...current, [key]: value }));
     setMessage("");
   };
@@ -116,7 +139,8 @@ export function QualityComplaintCapa() {
       preventiveAction: data.productionPreventiveAction,
       responsiblePerson: data.responsiblePerson,
       responsiblePersonUserId: responsibleUser?.id || data.responsiblePersonUserId,
-      targetCompletionDate: data.targetDate,
+      targetCompletionDate: data.productionTargetDate || data.targetDate,
+      targetDate: data.productionTargetDate || data.targetDate,
       preparedBy: data.preparedBy,
       preparedByUserId: preparedUser?.id || data.preparedByUserId,
     };
@@ -134,7 +158,7 @@ export function QualityComplaintCapa() {
     setMessage("CAPA saved successfully.");
   };
 
-  const print = () => { void printQualityCapaReport(complaint, data).then((opened) => { if (!opened) setMessage("Printing was blocked by the browser. Please allow pop-ups and try again."); }); };
+  const print = () => { void printQualityCapaReport(complaint, data, { setting, linkedDetails: suggested }).then((opened) => { if (!opened) setMessage("Printing was blocked by the browser. Please allow pop-ups and try again."); }); };
 
   const clearForm = () => {
     setData(empty);
@@ -188,8 +212,24 @@ export function QualityComplaintCapa() {
         <Section title="Ownership and target date">
           <div className="space-y-3">
             <div className={card}><Field label="Target Date"><input type="date" className={field} value={s(data.targetDate)} onChange={(event) => update("targetDate", event.target.value)} /></Field></div>
+            <div className={card}><Field label="Production / Transit Target Date"><input type="date" className={field} value={s(data.productionTargetDate)} onChange={(event) => update("productionTargetDate", event.target.value)} /></Field></div>
+            <div className={card}><Field label="Detection Target Date"><input type="date" className={field} value={s(data.detectionTargetDate)} onChange={(event) => update("detectionTargetDate", event.target.value)} /></Field></div>
             <div className={card}><Field label="Responsible Person" required><Select value={s(data.responsiblePerson)} onChange={(value) => update("responsiblePerson", value)} options={userOptions} placeholder="Select responsible person..." /></Field></div>
             <div className={card}><Field label="Prepared By" required><Select value={s(data.preparedBy)} onChange={(value) => update("preparedBy", value)} options={userOptions} placeholder="Select prepared by..." /></Field></div>
+          </div>
+        </Section>
+
+        <Section title="Print report details and sign-off">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className={card}><Field label="Delivery / Invoice No."><input className={field} value={s(data.deliveryNo)} onChange={(event) => update("deliveryNo", event.target.value)} /></Field></div>
+            <div className={card}><Field label="Vehicle No."><input className={field} value={s(data.vehicleNo)} onChange={(event) => update("vehicleNo", event.target.value)} /></Field></div>
+            <div className={card}><Field label="Invoice Date"><input type="date" className={field} value={s(data.invoiceDate).slice(0, 10)} onChange={(event) => update("invoiceDate", event.target.value)} /></Field></div>
+            <div className={card}><Field label="Production Date"><input type="date" className={field} value={s(data.productionDate).slice(0, 10)} onChange={(event) => update("productionDate", event.target.value)} /></Field></div>
+            <div className={card}><Field label="Dispatch Date"><input type="date" className={field} value={s(data.dispatchDate).slice(0, 10)} onChange={(event) => update("dispatchDate", event.target.value)} /></Field></div>
+            <div className={card}><Field label="HOD Quality"><Select value={s(data.reviewedBy)} onChange={(value) => update("reviewedBy", value)} options={userOptions} placeholder="Select HOD Quality..." /></Field></div>
+            <div className={card}><Field label="HOD Production"><Select value={s(data.hodProduction)} onChange={(value) => update("hodProduction", value)} options={userOptions} placeholder="Select HOD Production..." /></Field></div>
+            <div className={card}><Field label="Approved by - Plant Head"><Select value={s(data.approvedBy)} onChange={(value) => update("approvedBy", value)} options={userOptions} placeholder="Select approver..." /></Field></div>
+            <div className={`${card} md:col-span-2`}><Field label="Verification for Effectiveness"><textarea className={textArea} value={s(data.effectivenessVerification)} onChange={(event) => update("effectivenessVerification", event.target.value)} /></Field></div>
           </div>
         </Section>
 
