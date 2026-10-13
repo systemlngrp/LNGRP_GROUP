@@ -334,8 +334,8 @@ function DetailView({
             field("PLANNED DATE OF PRODUCTION", data.planning.plannedDate),
             field("JOB WEIGHT (KG)", data.planning.jobWeightKg),
             field("CALCULATED REALIZATION / KG", data.planning.realizationPerKg),
-            field("CUSTOMER SPECIFICATION", data.planning.customerSpecification, 1, { link: true }),
-            field("CUSTOMER ARTWORK", data.planning.customerArtwork, 1, { link: true }),
+            field("CUSTOMER ARTWORK", data.planning.customerSpecification, 1, { link: true }),
+            field("CUSTOMER SPECIFICATION", data.planning.customerArtwork, 1, { link: true }),
           ]} />
         </SheetSection>
 
