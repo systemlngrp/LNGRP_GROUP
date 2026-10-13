@@ -141,6 +141,7 @@ export type TraceabilityInputs = {
 
 const text = (value: unknown) => String(value ?? "").trim();
 const key = (value: unknown) => text(value).toLowerCase().replace(/\s+/g, " ");
+const rows = <T>(value: T[] | null | undefined): T[] => Array.isArray(value) ? value : [];
 const numberValue = (value: unknown): TraceabilityValue => {
   if (value === "" || value === null || value === undefined) return "";
   const numeric = Number(value);
@@ -212,26 +213,26 @@ function paperSpec(item?: Item) {
 
 export function buildTraceabilityRecord(production: Production, input: TraceabilityInputs): TraceabilityRecord {
   const jobNo = firstText(production.transactionNo, production.jobCardNo);
-  const board = latestByJob(input.boardline || [], jobNo);
-  const printing = latestByJob(input.printing || [], jobNo);
-  const inspection = findLatestInspection(input.inspections || [], production.id, jobNo);
-  const productionProcessing = processingFor(input.processing || [], production, jobNo);
-  const item = input.items.find((candidate) =>
+  const board = latestByJob(rows(input.boardline), jobNo);
+  const printing = latestByJob(rows(input.printing), jobNo);
+  const inspection = findLatestInspection(rows(input.inspections), production.id, jobNo);
+  const productionProcessing = processingFor(rows(input.processing), production, jobNo);
+  const item = rows(input.items).find((candidate) =>
     [candidate.id, candidate.erp].some((value) => key(value) && (key(value) === key(production.itemId) || key(value) === key(production.npdId) || key(value) === key(production.erpCode) || key(value) === key(board?.erp) || key(value) === key(printing?.erp)))
   );
-  const schedule = (input.schedules || []).find((candidate) => key(candidate.id) === key(production.scheduleId));
-  const order = (input.orders || []).find((candidate) => key(candidate.id) === key(schedule?.orderId));
-  const company = (input.companies || []).find((candidate) => key(candidate.id) === key(order?.companyId));
+  const schedule = rows(input.schedules).find((candidate) => key(candidate.id) === key(production.scheduleId));
+  const order = rows(input.orders).find((candidate) => key(candidate.id) === key(schedule?.orderId));
+  const company = rows(input.companies).find((candidate) => key(candidate.id) === key(order?.companyId));
   const erpCode = firstText(production.erpCode, inspection?.erpCode, board?.erp, printing?.erp, item?.erp);
   const partyName = firstText(production.companyName, inspection?.partyName, board?.partyName, printing?.partyName, company?.name);
   const itemName = firstText((production as Production & { itemName?: string }).itemName, item?.name, inspection?.itemName, board?.itemName, printing?.itemName);
-  const plans = (input.dispatchPlans || []).filter((plan) => key(plan.productionId) === key(production.id));
-  const slips = productionLoadingSlips(production, jobNo, input.dispatchPlans || [], input.loadingSlips || []);
+  const plans = rows(input.dispatchPlans).filter((plan) => key(plan.productionId) === key(production.id));
+  const slips = productionLoadingSlips(production, jobNo, rows(input.dispatchPlans), rows(input.loadingSlips));
   const latestSlip = latest(slips, (slip) => slip.updateTimestamp || slip.date);
-  const invoice = (input.invoices || []).find((candidate) => key(candidate.id) === key(latestSlip?.invoiceId));
-  const invoiceLine = (input.invoiceLineItems || []).find((line) => key(line.invoiceId) === key(invoice?.id) && (key(line.npdId) === key(production.npdId) || key(line.itemId) === key(production.itemId)));
-  const truck = (input.trucks || []).find((candidate) => key(candidate.id) === key(latestSlip?.truckId));
-  const complaintLots = (input.complaints || []).filter((complaint) => key(complaint.erpCode) === key(erpCode)).map((complaint) => text(complaint.lotNo));
+  const invoice = rows(input.invoices).find((candidate) => key(candidate.id) === key(latestSlip?.invoiceId));
+  const invoiceLine = rows(input.invoiceLineItems).find((line) => key(line.invoiceId) === key(invoice?.id) && (key(line.npdId) === key(production.npdId) || key(line.itemId) === key(production.itemId)));
+  const truck = rows(input.trucks).find((candidate) => key(candidate.id) === key(latestSlip?.truckId));
+  const complaintLots = rows(input.complaints).filter((complaint) => key(complaint.erpCode) === key(erpCode)).map((complaint) => text(complaint.lotNo));
   const lotNumbers = [...new Set([text(inspection?.lotNo), text(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
   const planQuantity = resolvePlanQuantity(production.plannedQty, production.qty, board?.planQty, printing?.planQty, inspection?.plannedQty, plans.reduce((sum, plan) => sum + Number(plan.plannedQty || 0), 0));
   const plannedPaper = firstValue(production.totalPaperWeight, production.reelAsPerCalc);
@@ -252,8 +253,8 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
     const belongsToJob = (line.jobNos || []).some((value) => sameJob(value, jobNo));
     return lineTotal + (belongsToJob || plans.some((plan) => key(plan.id) === key(line.dispatchPlanId)) ? Number(line.loadedQty || 0) : 0);
   }, 0), 0);
-  const latestQcUpdate = latest((input.qcUpdates || []).filter((record) => key(record.erpNo) === key(erpCode)), (record) => record.updateTimestamp || record.updateDate);
-  const latestComplaint = latest((input.complaints || []).filter((record) => key(record.erpCode) === key(erpCode)), (record) => record.timestamp || record.dateOfComplaint);
+  const latestQcUpdate = latest(rows(input.qcUpdates).filter((record) => key(record.erpNo) === key(erpCode)), (record) => record.updateTimestamp || record.updateDate);
+  const latestComplaint = latest(rows(input.complaints).filter((record) => key(record.erpCode) === key(erpCode)), (record) => record.timestamp || record.dateOfComplaint);
   const latestPlan = latest(plans, (plan) => plan.updateTimestamp || plan.date);
   const plannedDate = firstText(production.scheduledDate, schedule?.scheduledDate, production.date);
   const actualPdiDate = inspection?.inspectionDate || inspection?.updateTimestamp || "";
@@ -359,8 +360,8 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
 }
 
 export function buildTraceabilityRecords(input: TraceabilityInputs) {
-  return input.productions
-    .filter((production) => Boolean(text(production.id)))
+  return rows(input.productions)
+    .filter((production): production is Production => Boolean(production && text(production.id)))
     .map((production) => buildTraceabilityRecord(production, input));
 }
 

@@ -141,3 +141,10 @@ test("missing source values remain blank instead of being fabricated", () => {
   assert.equal(record.dispatch.invoiceNo, "");
   assert.equal(record.boardline.paperSpec, "");
 });
+
+test("record builder tolerates unavailable dataset arrays while data loads", () => {
+  const record = buildTraceabilityRecord(production(), { productions: [], items: undefined as any });
+  assert.equal(record.jobNo, "0010430");
+  assert.equal(record.itemName, "");
+  assert.equal(record.pdi.result, "");
+});
