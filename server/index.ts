@@ -14369,8 +14369,17 @@ entities.forEach(entity => {
 
   const guard = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
-      const user = await getRequestUser(req);
-      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      let user: AuthUser | null;
+      try {
+        user = await getRequestUser(req);
+      } catch (error) {
+        console.error("[AUTHZ] User resolution failed", { entity, method: req.method, userId: String((req as any).authUserId || "") || undefined, error: (error as Error).message });
+        return res.status(503).json({ error: "Unable to verify user authorization. Please try again." });
+      }
+      if (!user) {
+        console.warn("[AUTHZ] Missing or invalid authentication", { entity, method: req.method });
+        return res.status(401).json({ error: "Unauthorized" });
+      }
       if (user.role === "TruckDriver") return res.status(403).json({ error: "Forbidden" });
 
       if (entity === "users") {
@@ -14405,10 +14414,15 @@ entities.forEach(entity => {
         if (req.method === "POST") {
           const requestedId = String(req.body?.id || "").trim();
           if (requestedId) {
-            const db = await getPool();
-            if (db) {
-              const [rows] = await db.query("SELECT id FROM " + entity + " WHERE id = ? LIMIT 1", [requestedId]);
+            let db: mysql.Pool | null;
+            try {
+              db = await getPool();
+              if (!db) return res.status(503).json({ error: "Database unavailable while checking the record." });
+              const [rows] = await db.query("SELECT `id` FROM `" + entity + "` WHERE `id` = ? LIMIT 1", [requestedId]);
               isExistingRecordUpdate = Boolean((rows as any[])[0]?.id);
+            } catch (error) {
+              console.error("[AUTHZ] Existing-record lookup failed", { entity, method: req.method, userId: user.id, role: user.role, error: (error as Error).message });
+              return res.status(503).json({ error: "Unable to verify whether this is a new or existing record." });
             }
           }
         }
@@ -14427,11 +14441,14 @@ entities.forEach(entity => {
         return next();
       }
 
-      if (!hasPermission(user, required)) return res.status(403).json({ error: "Forbidden" });
+      if (!hasPermission(user, required)) {
+        console.warn("[AUTHZ] Permission denied", { entity, method: req.method, userId: user.id, role: user.role, required });
+        return res.status(403).json({ error: "Forbidden" });
+      }
       return next();
     } catch (err) {
-      console.error("[AUTHZ] guard failed:", err);
-      return res.status(500).json({ error: "Authorization failed" });
+      console.error("[AUTHZ] Unexpected guard failure", { entity, method: req.method, error: (err as Error).message });
+      return res.status(500).json({ error: "Authorization service failed. Please try again." });
     }
   };
 
