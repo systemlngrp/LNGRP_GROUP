@@ -4546,7 +4546,7 @@ async function getPool() {
     });
     return pool;
 }
-async function loadAuthUserById(userId) {
+async function loadAuthUserByIdOnce(userId) {
     const db = await getPool();
     if (!db)
         return null;
@@ -4584,6 +4584,29 @@ async function loadAuthUserById(userId) {
         menuAccess: normalizeMenuAccess(row.menuAccess),
         truckId: null,
     };
+}
+const AUTH_LOOKUP_RETRY_CODES = new Set([
+    "PROTOCOL_CONNECTION_LOST",
+    "ECONNRESET",
+    "EPIPE",
+    "ETIMEDOUT",
+    "ECONNREFUSED",
+    "ER_CON_COUNT_ERROR",
+    "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR",
+]);
+async function loadAuthUserById(userId) {
+    try {
+        return await loadAuthUserByIdOnce(userId);
+    }
+    catch (error) {
+        const code = String(error?.code || "");
+        if (!AUTH_LOOKUP_RETRY_CODES.has(code))
+            throw error;
+        console.warn(`[AUTHZ] Retrying user lookup after ${code}`);
+        pool = null;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+        return loadAuthUserByIdOnce(userId);
+    }
 }
 async function ensureDevSeedUser(db) {
     const userId = "system.lngrp.in";

@@ -4895,7 +4895,7 @@ async function getPool() {
   return pool;
 }
 
-async function loadAuthUserById(userId: string): Promise<AuthUser | null> {
+async function loadAuthUserByIdOnce(userId: string): Promise<AuthUser | null> {
   const db = await getPool();
   if (!db) return null;
   if (userId.startsWith("truck:")) {
@@ -4931,6 +4931,28 @@ async function loadAuthUserById(userId: string): Promise<AuthUser | null> {
   };
 }
 
+const AUTH_LOOKUP_RETRY_CODES = new Set([
+  "PROTOCOL_CONNECTION_LOST",
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ECONNREFUSED",
+  "ER_CON_COUNT_ERROR",
+  "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR",
+]);
+
+async function loadAuthUserById(userId: string): Promise<AuthUser | null> {
+  try {
+    return await loadAuthUserByIdOnce(userId);
+  } catch (error) {
+    const code = String((error as any)?.code || "");
+    if (!AUTH_LOOKUP_RETRY_CODES.has(code)) throw error;
+    console.warn(`[AUTHZ] Retrying user lookup after ${code}`);
+    pool = null;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    return loadAuthUserByIdOnce(userId);
+  }
+}
 async function ensureDevSeedUser(db: mysql.Pool) {
   const userId = "system.lngrp.in";
   const password = "12345";
