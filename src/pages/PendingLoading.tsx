@@ -905,8 +905,11 @@ export function PendingLoading() {
 
                   const jobs = loadingModal.eligibleJobs;
 
+                  const noEligibleJobsMessage = jobs.length === 0;
+
                   return (
                     <div className="w-full space-y-6">
+                        {noEligibleJobsMessage && <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">No eligible production jobs found. FG stock may be used when available.</div>}
                       <div className="overflow-hidden rounded-xl border-2 border-slate-950 shadow-sm">
                         <div className="grid grid-cols-2 gap-px bg-slate-950 text-white md:grid-cols-4">
                           <div className="px-4 py-3 border-r border-white/20">
@@ -982,7 +985,7 @@ export function PendingLoading() {
                                 );
                               })}
                               <tr className="divide-x divide-black bg-emerald-50/40 border-t-2 border-black">
-                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock — ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
+                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock Ã¢â‚¬â€ ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs font-black text-emerald-700">{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId).toLocaleString() : "-"}</td>

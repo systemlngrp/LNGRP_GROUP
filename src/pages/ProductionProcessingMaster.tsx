@@ -44,7 +44,7 @@ export function ProductionProcessingMaster() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
   const [processing, setProcessing] = useData<ProductionProcessing>("production_processing", []);
-  const [productions] = useData<Production>("productions", []);
+  const [productions, , , productionApi] = useData<Production>("productions", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
@@ -92,7 +92,7 @@ export function ProductionProcessingMaster() {
     setEditDraft(blankDraft);
   };
 
-  const handleSaveEdit = (id: string) => {
+  const handleSaveEdit = async (id: string) => {
     const selectedProduction = productions.find((production) => production.id === editDraft.productionId);
     const selectedMachine = machines.find((machine) => machine.id === editDraft.machineId);
     const qtyNumber = Number(editDraft.qty);
@@ -146,6 +146,12 @@ export function ProductionProcessingMaster() {
             };
       })
     );
+    if (normalizedMachineName === "Printing") {
+      const production = productions.find((entry) => entry.id === selectedProduction.id);
+      if (production) {
+        await productionApi.saveItem({ ...production, prodFromFFG: qtyNumber, updatedBy: auditUserName, updateTimestamp: timestamp });
+      }
+    }
     if (isFullCorrugationLiner) window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
     cancelEdit();
   };

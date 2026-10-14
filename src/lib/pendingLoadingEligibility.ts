@@ -247,7 +247,7 @@ export function getPendingLoadingPlanProjections(args: {
       loaded,
       Array.from(itemKeys(item, order)),
     );
-    if (eligibleJobs.length === 0) return [];
+
 
     return [{
       plan,
