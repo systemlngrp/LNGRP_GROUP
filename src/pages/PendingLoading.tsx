@@ -173,6 +173,32 @@ export function PendingLoading() {
     return true;
   };
 
+  const getEligibleJobs = (itemSource: OrderItemSource, itemId: string, firmId: string) => {
+    const sourceJobs = itemSource === "PHP" ? phpJobs : itemSource === "PLATE" ? plateJobs : productions;
+    return sourceJobs
+      .filter((production) =>
+        production.itemId === itemId &&
+        (!String(production.orderFirmId || production.sourceFirmId || production.destinationFirmId || production.firmId || "").trim() ||
+          String(production.orderFirmId || production.sourceFirmId || production.destinationFirmId || production.firmId) === firmId) &&
+        isOpenJob(production) &&
+        Number(itemSource === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0) > 0
+      )
+      .map((production) => {
+        const productionQty = Number(itemSource === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0);
+        const alreadyLoaded = getAlreadyLoadedForJob(production.id);
+        return {
+          jobId: production.id,
+          jobNo: String(production.transactionNo || "").trim(),
+          productionQty,
+          alreadyLoaded,
+          yetToLoad: Math.max(0, productionQty - alreadyLoaded),
+        };
+      })
+      .filter((job) => job.jobNo && job.yetToLoad > 0)
+      .sort((a, b) => b.jobNo.localeCompare(a.jobNo, undefined, { numeric: true, sensitivity: "base" }))
+      .slice(0, 3);
+  };
+
   const existingLoadedByJobId = useMemo(() => {
     const map = new Map<string, number>();
     loadingSlips.forEach((slip) => {
@@ -198,6 +224,8 @@ export function PendingLoading() {
       if (firmFilter && firmId !== firmFilter) return false;
       const item = resolveOrderItem(order);
       const company = companies.find((row) => row.id === order?.companyId);
+      const itemSource = normalizeOrderItemSource(order?.itemSource || item?.source);
+      if (!getEligibleJobs(itemSource, item?.id || "", firmId).length) return false;
 
       const firm = firms.find((row) => row.id === firmId);
       const searchBlob = `${item?.name || ""} ${company?.name || ""} ${order?.orderNo || ""} ${plan.planNo || ""} ${getFirmDisplayNameById(firmId, firms)} ${firm?.firmName || ""}`.toLowerCase();
@@ -213,7 +241,6 @@ export function PendingLoading() {
       const item = resolveOrderItem(order);
       const company = companies.find((row) => row.id === order?.companyId);
 
-      const itemSource = normalizeOrderItemSource(order?.itemSource || item?.source);
       const loadable = Boolean(order && item && company);
       const unavailableReason = !order ? "Order record unavailable" : !item ? "Item record unavailable" : !company ? "Company record unavailable" : undefined;
       const companyId = company?.id || `missing-company-${plan.id}`;
@@ -261,7 +288,7 @@ export function PendingLoading() {
     });
 
     return final;
-  }, [companies, firms, firmFilter, orders, plans, resolveOrderItem, schedules, searchTerm]);
+  }, [companies, firms, firmFilter, getEligibleJobs, orders, plans, resolveOrderItem, schedules, searchTerm]);
 
   useEffect(() => {
     if (didInitExpand.current) return;
@@ -384,21 +411,7 @@ export function PendingLoading() {
     const modalKey = getModalKey(companyId, itemSource, itemId);
     const totalPending = itemPlans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
 
-    const sourceJobs = itemSource === "PHP" ? phpJobs : itemSource === "PLATE" ? plateJobs : productions;
-    const eligibleJobs = sourceJobs
-      .filter((p) => 
-        p.itemId === itemId && 
-        (!String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId) === firmId) &&
-        isOpenJob(p) &&
-        Number(itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0) > 0
-      )
-      .map((p) => {
-        const ffg = Number(itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0);
-        const alreadyLoaded = getAlreadyLoadedForJob(p.id);
-        return { jobId: p.id, jobNo: String(p.transactionNo || "").trim(), ffg, yetToLoad: Math.max(0, ffg - alreadyLoaded) };
-      })
-      .filter((j) => j.jobNo && j.yetToLoad > 0)
-      .sort((a, b) => a.jobNo.localeCompare(b.jobNo, undefined, { numeric: true, sensitivity: "base" }));
+    const eligibleJobs = getEligibleJobs(itemSource, itemId, firmId);
 
     setLoadedQuantities({ [modalKey]: totalPending });
     setOpeningStockQtys({ [modalKey]: "" });
@@ -933,22 +946,7 @@ export function PendingLoading() {
                   const phpDetailsPreview = getPreviewLinkedDetails("PHP", rowLoadedQty);
                   const plateDetailsPreview = getPreviewLinkedDetails("PLATE", rowLoadedQty);
 
-                  const modalSourceJobs = loadingModal.itemSource === "PHP" ? phpJobs : loadingModal.itemSource === "PLATE" ? plateJobs : productions;
-                  const jobs = modalSourceJobs
-                    .filter((p) => 
-                      p.itemId === loadingModal.itemId && 
-                      (!String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId || "").trim() || String(p.orderFirmId || p.sourceFirmId || p.destinationFirmId || p.firmId) === loadingModal.firmId) &&
-                      isOpenJob(p) &&
-                      Number(loadingModal.itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0) > 0
-                    )
-                    .map((p) => {
-                      const ffg = Number(loadingModal.itemSource === "FG" ? p.prodFromFFG || 0 : p.productionOutputQty || 0);
-                      const alreadyLoaded = getAlreadyLoadedForJob(p.id);
-                      const yetToLoad = Math.max(0, ffg - alreadyLoaded);
-                      return { jobId: p.id, jobNo: String(p.transactionNo || "").trim(), ffg, alreadyLoaded, yetToLoad };
-                    })
-                    .filter((j) => j.jobNo && j.yetToLoad > 0)
-                    .sort((a, b) => a.jobNo.localeCompare(b.jobNo, undefined, { numeric: true, sensitivity: "base" }));
+                  const jobs = getEligibleJobs(loadingModal.itemSource, loadingModal.itemId, loadingModal.firmId);
 
                   return (
                     <div className="space-y-6">
@@ -1004,7 +1002,7 @@ export function PendingLoading() {
                                 return (
                                   <tr key={job.jobId} className="divide-x divide-black hover:bg-slate-50 transition-colors">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
-                                    <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.ffg.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.productionQty.toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.alreadyLoaded.toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{job.yetToLoad.toLocaleString()}</td>
                                     <td className="px-4 py-2 text-right bg-indigo-50/30">
