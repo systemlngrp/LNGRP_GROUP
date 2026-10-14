@@ -8895,13 +8895,23 @@ const createHandlers = (tableName) => {
             const data = applyAuditFields(normalizeNpdLinkedPayload(tableName, normalizeWorkflowStatus(tableName, req.body)), requestUser);
             let materialOpening = null;
             try {
-                if (tableName === "quality_complaints" && String(data.capaNo || "").trim()) {
-                    const [existingRows] = await db.query("SELECT natureOfComplaint, capaNo FROM `quality_complaints` WHERE id = ? LIMIT 1", [String(data.id || "")]);
-                    const existingComplaint = existingRows[0];
-                    if (!String(existingComplaint?.capaNo || "").trim() &&
-                        (String(existingComplaint?.natureOfComplaint || data.natureOfComplaint || "").trim().toLowerCase() !== "rejection" ||
-                            String(data.natureOfComplaint || existingComplaint?.natureOfComplaint || "").trim().toLowerCase() !== "rejection")) {
-                        return res.status(403).json({ error: "CAPA can only be generated for Rejection complaints." });
+                if (tableName === "quality_complaints") {
+                    const capaNo = String(data.capaNo || "").trim();
+                    data.capaNo = capaNo || null;
+                    if (capaNo) {
+                        const [existingRows] = await db.query("SELECT natureOfComplaint, capaNo, capaGeneratedAt FROM `quality_complaints` WHERE id = ? LIMIT 1", [String(data.id || "")]);
+                        const existingComplaint = existingRows[0];
+                        const complaintNature = String(existingComplaint?.natureOfComplaint || data.natureOfComplaint || "").trim().toLowerCase();
+                        if (complaintNature !== "rejection") {
+                            return res.status(403).json({ error: "CAPA can only be generated for Rejection complaints." });
+                        }
+                        const [duplicateRows] = await db.query("SELECT id FROM `quality_complaints` WHERE LOWER(TRIM(capaNo)) = LOWER(TRIM(?)) AND id <> ? LIMIT 1", [capaNo, String(data.id || "")]);
+                        if (duplicateRows[0]) {
+                            return res.status(409).json({ error: "CAPA No. already exists." });
+                        }
+                        data.capaStatus = "Generated";
+                        data.capaGeneratedAt = String(existingComplaint?.capaGeneratedAt || data.capaGeneratedAt || new Date().toISOString()).trim();
+                        data.capaUpdatedAt = data.capaUpdatedAt || new Date().toISOString();
                     }
                 }
                 if (tableName === "qc_block_location_masters") {
