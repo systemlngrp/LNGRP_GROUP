@@ -1,0 +1,1 @@
+const a=["Reel","Others","FG Purchase"];function o(r){const t=r?.poMandatoryMrrTypes;if(!t)return["Reel"];try{const n=JSON.parse(t);if(!Array.isArray(n))return["Reel"];const s=new Set(a);return n.map(e=>String(e||"").trim()).filter(e=>s.has(e))}catch{return["Reel"]}}function i(r){return a.includes(String(r||"").trim())}export{a as P,o as p,i as s};

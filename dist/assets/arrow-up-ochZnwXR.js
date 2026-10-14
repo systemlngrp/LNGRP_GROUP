@@ -1,0 +1,1 @@
+import{a1 as o}from"./index-CbmCRp33.js";const a=[["path",{d:"M12 5v14",key:"s699le"}],["path",{d:"m19 12-7 7-7-7",key:"1idqje"}]],t=o("arrow-down",a);const r=[["path",{d:"m5 12 7-7 7 7",key:"hav0vg"}],["path",{d:"M12 19V5",key:"x0mq9r"}]],c=o("arrow-up",r);export{c as A,t as a};

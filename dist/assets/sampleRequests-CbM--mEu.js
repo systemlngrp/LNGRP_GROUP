@@ -1,0 +1,1 @@
+function s(e){return[...e].sort((t,m)=>{const a=new Date(t.updateTimestamp||t.cancelTimestamp||t.timestamp||t.date||0).getTime();return new Date(m.updateTimestamp||m.cancelTimestamp||m.timestamp||m.date||0).getTime()-a})}function i(e){return e.cancelTimestamp?"Cancelled":e.jobCardNo?"Produced":"Pending"}export{i as g,s};

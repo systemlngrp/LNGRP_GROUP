@@ -1,0 +1,1 @@
+const i=t=>t.designation?.trim().toLowerCase()==="qc person"&&t.status!=="Inactive"&&!!t.name?.trim(),n=(t,o=[])=>[...new Set([...t.filter(i).map(e=>e.name.trim()),...o.map(e=>e.trim()).filter(Boolean)])].sort((e,a)=>e.localeCompare(a)).map(e=>({value:e,label:e}));export{i,n as q};

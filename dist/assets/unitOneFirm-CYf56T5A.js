@@ -1,0 +1,1 @@
+function r(n){return String(n||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"")}function t(n){return n.find(e=>{const i=r(e.firmName);return i.endsWith("unit1")||i.endsWith("uniti")})}export{t as f};
