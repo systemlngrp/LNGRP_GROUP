@@ -61,8 +61,8 @@ export function QualityComplaintFormUpdated() {
   const erpOptions = useMemo(() => [...new Set(items.map((item: any) => String(item.erp || "").trim()).filter(Boolean))].map((value) => ({ value, label: value, searchText: `${value} ${items.find((item: any) => String(item.erp || "").trim() === value)?.name || ""}` })), [items]);
   const jobOptions = useMemo(() => [...new Set(productions.map((production) => String(production.transactionNo || production.jobCardNo || "").trim()).filter(Boolean))].sort().map((value) => ({ value, label: value })), [productions]);
   const suggestedPerson = useMemo(
-    () => concernedPersonForJob(form.lotNo, form.areaOfIssue, productions, processing, dispatchPlans),
-    [form.lotNo, form.areaOfIssue, productions, processing, dispatchPlans],
+    () => concernedPersonForJob(form.lotNo, form.areaOfIssue, productions, processing, dispatchPlans, people),
+    [form.lotNo, form.areaOfIssue, people, productions, processing, dispatchPlans],
   );
   const personOptions = qcPersonOptions(people, [suggestedPerson, form.concernedPersonName]);
   const selectedFirm = firms.find((firm) => firm.id === form.firmId);
@@ -75,7 +75,7 @@ export function QualityComplaintFormUpdated() {
     setForm((current) => {
       const next = { ...current, [name]: value };
       return name === "lotNo" || name === "areaOfIssue"
-        ? { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans) }
+        ? { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans, people) }
         : next;
     });
     setMessage("");
@@ -105,7 +105,7 @@ export function QualityComplaintFormUpdated() {
     manuallySelectedPerson.current = false;
     setForm((current) => {
       const next = applyProduction(production, current, erp);
-      return { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans) };
+      return { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans, people) };
     });
     setHint(production ? `Latest matching Job No.: ${production.transactionNo || production.jobCardNo}` : "No matching production found for this ERP Code.");
     setMessage("");
@@ -118,7 +118,7 @@ export function QualityComplaintFormUpdated() {
     const erp = String((production as any).erpCode || (production as any).itemErp || (production as any).masterErp || form.erpCode);
     setForm((current) => {
       const next = applyProduction(production, current, erp);
-      return { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans) };
+      return { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans, people) };
     });
     setHint(`Job details loaded successfully.`);
   };

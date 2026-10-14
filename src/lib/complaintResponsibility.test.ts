@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { concernedPersonForJob, isRejectionComplaint } from "./complaintResponsibility";
-import type { DispatchPlan, Production, ProductionProcessing } from "../types";
+import type { DispatchPlan, Production, ProductionProcessing, User } from "../types";
 
 const jobs = [{ id: "job-1", transactionNo: "JOB/1", scheduleId: "schedule-1" }] as Production[];
 const processing = [
@@ -25,6 +25,19 @@ test("missing or placeholder updater leaves concerned person blank", () => {
   assert.equal(concernedPersonForJob("", "Printing", jobs, processing, dispatches), "");
   assert.equal(concernedPersonForJob("JOB/2", "Printing", jobs, processing, dispatches), "");
   assert.equal(concernedPersonForJob("JOB/1", "Dispatch", jobs, processing, [{ productionId: "job-1", updatedBy: "System User" }] as DispatchPlan[]), "");
+});
+
+test("resolves updater email and user IDs to the full user name", () => {
+  const users = [{ id: "internal-1", userId: "EMP-1", name: "Asha Sharma", mobile: "", email: "asha@example.com" }] as User[];
+  assert.equal(concernedPersonForJob("JOB/1", "Boardline", jobs, [{ ...processing[1], updatedBy: "asha@example.com" }] as ProductionProcessing[], dispatches, users), "Asha Sharma");
+  assert.equal(concernedPersonForJob("JOB/1", "Printing", jobs, [{ ...processing[2], updatedBy: "EMP-1" }] as ProductionProcessing[], dispatches, users), "Asha Sharma");
+  assert.equal(concernedPersonForJob("JOB/1", "Printing", jobs, [{ ...processing[2], updatedBy: "internal-1" }] as ProductionProcessing[], dispatches, users), "Asha Sharma");
+});
+
+test("keeps names and unknown updater values as fallbacks", () => {
+  const users = [{ id: "internal-1", userId: "EMP-1", name: "Asha Sharma", mobile: "", email: "asha@example.com" }] as User[];
+  assert.equal(concernedPersonForJob("JOB/1", "Printing", jobs, processing, dispatches, users), "Printer");
+  assert.equal(concernedPersonForJob("JOB/1", "Printing", jobs, [{ ...processing[2], updatedBy: "removed@example.com" }] as ProductionProcessing[], dispatches, users), "removed@example.com");
 });
 
 test("only Rejection is eligible for a new CAPA", () => {
