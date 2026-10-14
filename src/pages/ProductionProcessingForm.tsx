@@ -54,7 +54,7 @@ function LockedReportForm() {
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
-  const [productions, , , productionApi] = useData<Production>("productions", []);
+  const [productions] = useData<Production>("productions", []);
   const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
@@ -166,11 +166,10 @@ function LockedReportForm() {
         throw new Error(errorData.error || "Failed to submit report");
       }
 
-      const result = await response.json().catch(() => ({}));      if (isPrinting && selectedProduction) {
-        await productionApi.saveItem({ ...selectedProduction, prodFromFFG: qtyNumber, updatedBy: auditUser.name, updateTimestamp: new Date().toISOString() });
-      }
+      const result = await response.json().catch(() => ({}));
       if (result.warning) alert(result.warning);
       window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
+      window.dispatchEvent(new CustomEvent("sync-data-productions"));
       const destination = getProcessingBackUrl(machineId);
       navigate(destination, {
         replace: true,
@@ -324,7 +323,7 @@ function FullReportForm() {
   const lockMachine = searchParams.get("lockMachine") === "1";
   const lockJob = searchParams.get("lockJob") === "1";
   
-  const [productions, , , productionApi] = useData<Production>("productions", []);
+  const [productions] = useData<Production>("productions", []);
   const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
@@ -472,10 +471,9 @@ function FullReportForm() {
         ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
       };
 
-      await setProcessing((prev) => [...prev, newEntry]);      if (normalizedMachineName === "Printing") {
-        await productionApi.saveItem({ ...selectedProduction, prodFromFFG: qtyNumber, updatedBy: auditUser.name, updateTimestamp: new Date().toISOString() });
-      }
+      await setProcessing((prev) => [...prev, newEntry]);
       window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
+      window.dispatchEvent(new CustomEvent("sync-data-productions"));
       navigate(getProcessingBackUrl(initialMachineId));
     } catch (error) {
       console.error("Failed to submit processing report:", error);

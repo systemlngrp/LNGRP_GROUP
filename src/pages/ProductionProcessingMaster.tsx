@@ -44,7 +44,7 @@ export function ProductionProcessingMaster() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
   const [processing, setProcessing] = useData<ProductionProcessing>("production_processing", []);
-  const [productions, , , productionApi] = useData<Production>("productions", []);
+  const [productions] = useData<Production>("productions", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
@@ -110,61 +110,61 @@ export function ProductionProcessingMaster() {
     const auditUserName = user?.name || "System User";
     const normalizedMachineName = normalizeMachineName(selectedMachine.name);
     const timestamp = new Date().toISOString();
-    const existingProcessing = processing.find((item) => item.id === id);
-    const savedCompletionStatus = existingProcessing?.completionStatus || "Full";
-    const isFullCorrugationLiner = normalizedMachineName === "Corrugation Liner" && savedCompletionStatus === "Full";
 
-    setProcessing((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const savedCompletionStatus = item.completionStatus || "Full";
-        const savesWastage = savedCompletionStatus === "Full";
+    try {
+      await setProcessing((prev) =>
+        prev.map((item) => {
+          if (item.id !== id) return item;
+          const savedCompletionStatus = item.completionStatus || "Full";
+          const savesWastage = savedCompletionStatus === "Full";
 
-        return {
-              ...item,
-              date: editDraft.date,
-              productionId: selectedProduction.id,
-              jobNo: selectedProduction.jobCardNo || selectedProduction.transactionNo,
-              machineId: selectedMachine.id,
-              machineName: normalizedMachineName,
-              ...(usesPartFullProgress(normalizedMachineName)
-                ? { completionStatus: item.completionStatus || "Full" as const }
-                : {}),
-              shift: editDraft.shift as "Day" | "Night",
-              qty: qtyNumber,
-              ...ZERO_CORRUGATION_WASTAGE_VALUES,
-              ...ZERO_PRINTING_WASTAGE_VALUES,
-              ...(normalizedMachineName === "Corrugation Liner" && savesWastage
-                ? buildCorrugationWastageValues(editDraft.wastage, selectedProduction)
-                : {}),
-              ...(normalizedMachineName === "Printing" && savesWastage
-                ? buildPrintingWastageValues(editDraft.printingWastage)
-                : {}),
-              erp: selectedProduction.erpCode || item.erp,
-              updatedBy: auditUserName,
-              updateTimestamp: timestamp,
-            };
-      })
-    );
-    if (normalizedMachineName === "Printing") {
-      const production = productions.find((entry) => entry.id === selectedProduction.id);
-      if (production) {
-        await productionApi.saveItem({ ...production, prodFromFFG: qtyNumber, updatedBy: auditUserName, updateTimestamp: timestamp });
-      }
+          return {
+                ...item,
+                date: editDraft.date,
+                productionId: selectedProduction.id,
+                jobNo: selectedProduction.jobCardNo || selectedProduction.transactionNo,
+                machineId: selectedMachine.id,
+                machineName: normalizedMachineName,
+                ...(usesPartFullProgress(normalizedMachineName)
+                  ? { completionStatus: item.completionStatus || "Full" as const }
+                  : {}),
+                shift: editDraft.shift as "Day" | "Night",
+                qty: qtyNumber,
+                ...ZERO_CORRUGATION_WASTAGE_VALUES,
+                ...ZERO_PRINTING_WASTAGE_VALUES,
+                ...(normalizedMachineName === "Corrugation Liner" && savesWastage
+                  ? buildCorrugationWastageValues(editDraft.wastage, selectedProduction)
+                  : {}),
+                ...(normalizedMachineName === "Printing" && savesWastage
+                  ? buildPrintingWastageValues(editDraft.printingWastage)
+                  : {}),
+                erp: selectedProduction.erpCode || item.erp,
+                updatedBy: auditUserName,
+                updateTimestamp: timestamp,
+              };
+        })
+      );
+      window.dispatchEvent(new CustomEvent("sync-data-productions"));
+      cancelEdit();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save report");
     }
-    if (isFullCorrugationLiner) window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
-    cancelEdit();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (deletingId !== id) {
       setDeletingId(id);
       setEditingId(null);
       setTimeout(() => setDeletingId(null), 3000);
       return;
     }
-    setProcessing((prev) => prev.filter((p) => p.id !== id));
-    setDeletingId(null);
+    try {
+      await setProcessing((prev) => prev.filter((p) => p.id !== id));
+      window.dispatchEvent(new CustomEvent("sync-data-productions"));
+      setDeletingId(null);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to delete report");
+    }
   };
 
   const filtered = useMemo(() => {
