@@ -745,19 +745,23 @@ export function PendingLoading() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Loading</h2>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 rounded-lg border-2 border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-indigo-700">Dispatch &amp; Logistics</p>
+          <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-slate-950">Pending Loading</h2>
+          <p className="mt-1 text-xs font-medium text-slate-500">Review open jobs and prepare the next loading slip.</p>
+        </div>
         <div className="flex w-full flex-wrap items-end gap-3 md:w-auto">
         <FirmFilter value={firmFilter} onChange={setFirmFilter} label="Firm" className="min-w-[180px]" />
-        <div className="relative w-full md:w-64">
+        <div className="relative w-full md:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
             placeholder="Search firm, company, item, order, plan..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
+            className="h-10 w-full rounded border-2 border-slate-300 bg-white pl-10 pr-4 text-sm font-medium focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           />
         </div>
         </div>
@@ -775,7 +779,7 @@ export function PendingLoading() {
       ) : (
         <div className="space-y-4">
           {groupedData.map((company) => (
-            <div key={company.groupKey} className="bg-white border border-black rounded shadow-sm overflow-hidden">
+            <div key={company.groupKey} className="overflow-hidden rounded-lg border-2 border-slate-300 bg-white shadow-sm">
               <button
                 onClick={() => {
                   const next = new Set(expandedCompanies);
@@ -783,15 +787,15 @@ export function PendingLoading() {
                   else next.add(company.groupKey);
                   setExpandedCompanies(next);
                 }}
-                className="w-full flex items-center justify-between px-4 py-3 bg-slate-100 hover:bg-slate-200 transition-colors border-b border-black"
+                className="flex w-full items-center justify-between border-b-2 border-slate-300 bg-slate-900 px-4 py-3 text-white transition-colors hover:bg-slate-800"
               >
                 <div className="flex items-center gap-3">
-                  <div className="bg-indigo-600 text-white p-1.5 rounded shadow-inner">
+                  <div className="rounded bg-indigo-500 p-1.5 shadow-inner">
                     <TruckIcon size={18} />
                   </div>
-                  <span className="font-bold text-lg text-black uppercase">{company.companyName}</span>
-                  <span className="text-xs font-bold text-indigo-800">{company.firmName}</span>
-                  <span className="text-xs font-black bg-black text-white px-2 py-0.5 rounded-full uppercase">
+                  <span className="text-base font-black uppercase tracking-wide text-white sm:text-lg">{company.companyName}</span>
+                  <span className="text-xs font-bold text-indigo-200">{company.firmName}</span>
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-black uppercase text-indigo-100">
                     {company.items.length} {company.items.length === 1 ? "Item" : "Items"}
                   </span>
                 </div>
@@ -799,27 +803,28 @@ export function PendingLoading() {
               </button>
 
               {expandedCompanies.has(company.groupKey) ? (
-                <div className="p-4 space-y-8">
+                <div className="space-y-6 bg-slate-50/70 p-3 sm:p-4">
                   {company.items.map((itemGroup) => (
-                    <div key={`${itemGroup.itemSource}::${itemGroup.itemId}`} className="space-y-3">
-                      <div className="flex items-center justify-between px-2 py-1 bg-indigo-50 border-l-4 border-indigo-600">
+                    <div key={`${itemGroup.itemSource}::${itemGroup.itemId}`} className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                      <div className="flex flex-col gap-3 border-l-4 border-indigo-600 bg-indigo-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-2">
                           <Package size={18} className="text-indigo-600" />
-                          <span className="font-bold text-sm text-black uppercase tracking-wider">{itemGroup.itemName}</span>
+                          <span className="text-sm font-black uppercase tracking-wide text-slate-950">{itemGroup.itemName}</span>
+                          <span className="rounded bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-indigo-700">{itemGroup.itemSource}</span>
                         </div>
                         <button
                           onClick={() => handleOpenLoad(itemGroup.firmId, company.companyId, itemGroup.itemSource, itemGroup.itemId, itemGroup.itemName, itemGroup.plans)}
                           disabled={!itemGroup.loadable}
                           title={itemGroup.unavailableReason}
-                          className="bg-black text-white px-5 py-2 rounded text-xs font-black uppercase tracking-widest hover:bg-slate-800 transition shadow-[4px_4px_0px_0px_rgba(79,70,229,1)] active:shadow-none active:translate-y-[2px] disabled:cursor-not-allowed disabled:opacity-40"
+                          className="rounded bg-indigo-700 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] transition hover:bg-indigo-800 active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           LOAD ITEM
                         </button>
                       </div>
-                      {itemGroup.unavailableReason ? <p className="px-2 text-xs font-bold text-red-700">{itemGroup.unavailableReason}. Loading is unavailable until this link is repaired.</p> : null}
+                      {itemGroup.unavailableReason ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{itemGroup.unavailableReason}. Loading is unavailable until this link is repaired.</p> : null}
 
-                      <div className="table-frozen-scroll border border-black">
-                        <table className="w-full min-w-full divide-y divide-black border-collapse">
+                      <div className="table-frozen-scroll overflow-x-auto rounded border border-slate-300">
+                        <table className="w-full min-w-[760px] divide-y divide-slate-300 border-collapse">
                           <thead className="sticky top-0 z-30 bg-slate-50">
                             <tr className="divide-x divide-black">
                               <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Order No</th>
@@ -889,30 +894,30 @@ export function PendingLoading() {
 
       {loadingModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-6xl max-h-[92vh] border-2 border-black rounded shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden flex flex-col">
-            <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b-2 border-black sticky top-0 z-10">
+          <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border-2 border-slate-950 bg-white shadow-[10px_10px_0px_0px_rgba(15,23,42,1)]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-slate-950 bg-slate-950 px-5 py-4 text-white sm:px-6">
               <div className="flex items-center gap-3">
                 <TruckIcon size={20} className="text-indigo-400" />
                 <h3 className="font-black uppercase tracking-widest text-sm">Loading Slip - {companies.find(c => c.id === loadingModal.companyId)?.name}</h3>
               </div>
-              <button onClick={handleCloseLoad} className="hover:rotate-90 transition-transform duration-200 bg-white/10 p-1 rounded">
+              <button aria-label="Close loading slip" onClick={handleCloseLoad} className="rounded-lg bg-white/10 p-1.5 transition-transform duration-200 hover:rotate-90 hover:bg-white/20">
                 <X size={24} />
               </button>
             </div>
 
-            <div className="p-6 space-y-8 overflow-y-auto flex-1">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-slate-50 p-4 border border-black rounded shadow-inner">
+            <div className="flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
                   <div className="text-[10px] text-slate-500 uppercase font-black mb-1">Item Being Loaded</div>
                   <div className="font-bold text-black text-sm">{loadingModal.itemName}</div>
                 </div>
                 
-                <div className="bg-slate-50 p-4 border border-black rounded shadow-inner">
+                <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
                   <div className="text-[10px] text-slate-500 uppercase font-black mb-1">Loading Date</div>
                   <div className="font-bold text-black text-sm">{formatDate(new Date().toISOString())}</div>
                 </div>
 
-                <div className="bg-slate-50 p-4 border border-black rounded shadow-inner flex flex-col justify-center">
+                <div className="flex flex-col justify-center rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
                   <div className="text-[10px] text-slate-500 uppercase font-black mb-1">Truck Number *</div>
                   <input
                     list="pending-loading-truck-options"
@@ -924,7 +929,7 @@ export function PendingLoading() {
                       setModalTruckId(match?.id || "");
                     }}
                     placeholder="Select or enter truck no"
-                    className="w-full border-2 border-black rounded p-1 text-sm font-bold uppercase focus:outline-none focus:border-indigo-600 bg-white"
+                    className="h-10 w-full rounded border-2 border-slate-400 bg-white px-3 text-sm font-bold uppercase focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                   />
                   <datalist id="pending-loading-truck-options">
                     {availableTrucks.map((truck) => (
@@ -950,8 +955,8 @@ export function PendingLoading() {
 
                   return (
                     <div className="space-y-6">
-                      <div className="border-2 border-black rounded overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-0 bg-slate-900 text-white">
+                      <div className="overflow-hidden rounded-xl border-2 border-slate-950 shadow-sm">
+                        <div className="grid grid-cols-2 gap-px bg-slate-950 text-white md:grid-cols-4">
                           <div className="px-4 py-3 border-r border-white/20">
                             <div className="text-[10px] uppercase text-slate-400 font-black">Planned Total</div>
                             <div className="font-black text-lg">{totalPlanned.toLocaleString()}</div>
@@ -960,7 +965,7 @@ export function PendingLoading() {
                             <div className="text-[10px] uppercase text-slate-400 font-black">Yet to Load</div>
                             <div className="font-black text-lg text-indigo-400">{totalPending.toLocaleString()}</div>
                           </div>
-                          <div className="px-4 py-3 border-r border-white/20 bg-indigo-900/40">
+                          <div className="border-r border-white/10 bg-indigo-900/70 px-4 py-3">
                             <div className="text-[10px] uppercase text-indigo-200 font-black">Load Quantity</div>
                             <input
                               type="number"
@@ -985,10 +990,10 @@ export function PendingLoading() {
                           </div>
                         </div>
 
-                        <div className="table-frozen-scroll">
-                          <table className="min-w-full divide-y divide-black border-collapse">
+                        <div className="table-frozen-scroll overflow-x-auto">
+                          <table className="w-full min-w-[680px] divide-y divide-slate-300 border-collapse">
                             <thead className="sticky top-0 z-30 bg-slate-50">
-                              <tr className="divide-x divide-black">
+                              <tr className="divide-x divide-slate-300 bg-slate-100">
                                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider">Job Allocation</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Prod (FG)</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Already Loaded</th>
@@ -996,11 +1001,11 @@ export function PendingLoading() {
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider bg-indigo-50">Load Now</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-black bg-white">
+                            <tbody className="divide-y divide-slate-200 bg-white">
                               {jobs.map((job) => {
                                 const currentValue = jobSplitQtys[modalKey]?.[job.jobId] ?? "";
                                 return (
-                                  <tr key={job.jobId} className="divide-x divide-black hover:bg-slate-50 transition-colors">
+                                  <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.productionQty.toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.alreadyLoaded.toLocaleString()}</td>
@@ -1018,7 +1023,7 @@ export function PendingLoading() {
                                             [modalKey]: { ...(prev[modalKey] || {}), [job.jobId]: next },
                                           }));
                                         }}
-                                        className="w-28 rounded border-2 border-yellow-500 bg-yellow-100 px-2 py-1.5 text-right font-black text-xs text-black focus:ring-0"
+                                        className="h-9 w-28 rounded border-2 border-amber-400 bg-amber-50 px-2 py-1.5 text-right text-xs font-black text-black focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-100"
                                       />
                                     </td>
                                   </tr>
@@ -1061,9 +1066,9 @@ export function PendingLoading() {
                           { source: "PHP" as const, title: "PHP Details", rows: phpDetailsPreview, emptyLabel: "No matched PHP item" },
                           { source: "PLATE" as const, title: "Plate Details", rows: plateDetailsPreview, emptyLabel: "No matched Plate item" },
                         ].map((section) => (
-                          <div key={section.title} className="border-2 border-black rounded overflow-hidden bg-white">
+                          <div key={section.title} className="overflow-hidden rounded-xl border-2 border-slate-300 bg-white shadow-sm">
                             <div className="bg-slate-900 px-4 py-3 text-sm font-black uppercase tracking-wider text-white">{section.title}</div>
-                            <table className="min-w-full divide-y divide-black border-collapse">
+                            <table className="w-full min-w-[700px] divide-y divide-slate-300 border-collapse">
                               <thead className="sticky top-0 z-30 bg-slate-100">
                                 <tr className="divide-x divide-black">
                                   <th className="px-4 py-2 text-left text-[10px] font-black uppercase">SL</th>
@@ -1261,24 +1266,24 @@ export function PendingLoading() {
                 })()}
               </div>
 
-              <div className="flex justify-between items-center p-6 bg-slate-50 border-t-2 border-black sticky bottom-0 z-10">
+              <div className="sticky bottom-0 z-10 flex flex-col items-start justify-between gap-4 border-t-2 border-slate-950 bg-white/95 p-4 shadow-[0_-6px_16px_rgba(15,23,42,0.12)] backdrop-blur sm:flex-row sm:items-center sm:p-5">
                 <div className="flex flex-col">
                     <div className="text-[10px] font-black uppercase text-slate-500">Remaining Balance</div>
                     <div className={cn("text-2xl font-black", Math.abs(getModalValidation(loadingModal).allocatedTotal - Number(loadedQuantities[getModalKey(loadingModal.companyId, loadingModal.itemSource, loadingModal.itemId)] || 0)) < 0.0001 ? "text-emerald-600" : "text-rose-600")}>
                         {(Number(loadedQuantities[getModalKey(loadingModal.companyId, loadingModal.itemSource, loadingModal.itemId)] || 0) - getModalValidation(loadingModal).allocatedTotal).toLocaleString()}
                     </div>
                 </div>
-                <div className="flex gap-4">
+                <div className="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:gap-3">
                     <button
                     onClick={handleCloseLoad}
-                    className="px-8 py-3 border-2 border-black font-black uppercase text-xs tracking-widest hover:bg-white transition active:translate-y-[2px]"
+                    className="rounded border-2 border-slate-950 px-6 py-3 text-xs font-black uppercase tracking-widest transition hover:bg-slate-100 active:translate-y-[2px] sm:px-8"
                     >
                     Cancel
                     </button>
                     <button
                     onClick={handleSubmitLoading}
                     disabled={isSubmitting || modalHasErrors}
-                    className="px-10 py-3 bg-indigo-600 text-white border-2 border-black font-black uppercase text-xs tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-indigo-700 transition disabled:opacity-50 disabled:shadow-none active:shadow-none active:translate-x-1 active:translate-y-1"
+                    className="rounded bg-indigo-700 px-6 py-3 text-xs font-black uppercase tracking-widest text-white shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] transition hover:bg-indigo-800 disabled:opacity-50 disabled:shadow-none active:translate-x-1 active:translate-y-1 sm:px-10"
                     >
                     {isSubmitting ? <Spinner size={16} className="text-white" /> : "Confirm & Save Loading"}
                     </button>

@@ -1,3 +1,4 @@
+import { createPrintingStereoDeleteHandler } from "./printingStereoDelete.js";
 import { migrateQcPeopleToUsers } from "./qcPeopleMigration.js";
 import express from "express";
 import { createServer as createViteServer } from "vite";
@@ -806,7 +807,7 @@ const MASTER_RECORD_ENTITIES = new Set([
     "machines", "npd", "php_item_master", "plate_item_master", "users", "services", "settings",
     "boardline_qc_checks", "printing_qc_checks", "pre_dispatch_inspections", "quality_complaints",
     "qc_printing_wastage_records", "qc_update_records", "qc_file_no_masters", "special_remark_records",
-    "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters",
+    "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "printing_stereo_records",
     "qc_sample_requirements", "php_plate_in_out_records", "material_in", "material_issues",
     "material_returns", "consumptions", "orders", "orders_schedule", "productions", "production_processing",
     "dispatch_plans", "loading_slips", "material_visit", "invoices", "gate_entries", "gate_passes",
@@ -4723,6 +4724,8 @@ function entityPermissionKey(entity) {
             return "/quality/spec-card-issue-return";
         case "qc_person_masters":
             return "/quality/qc-person-master";
+        case "printing_stereo_records":
+            return "/quality/printing-stereo";
         case "qc_block_records":
             return "/quality/block-record";
         case "qc_block_location_masters":
@@ -13318,6 +13321,12 @@ app.post("/api/qc-update-records/link-control-sample", qcUpdateGuard, async (req
         conn.release();
     }
 });
+app.delete("/api/printing-stereo-records/:id", requireAuth, createPrintingStereoDeleteHandler({
+    getUser: getRequestUser,
+    canManage: canManageMasterRecords,
+    hasAccess: (user) => hasPermission(user, "/quality/printing-stereo"),
+    getPool,
+}));
 entities.forEach(entity => {
     const handlers = createHandlers(entity);
     const route = `/api/${entity.replace(/_/g, "-")}`;
