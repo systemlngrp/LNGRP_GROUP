@@ -40,6 +40,6 @@ test("job selection leaves new measurements blank and preserves saved manual val
   assert.equal(reopened.plannedQty, 400);
   assert.equal(reopened.csRequired, "190");
   assert.equal(reopened.lotNo, "old-lot");
-  assert.equal(invalidInspectionNumberField({ ...valid, bGsm: reopened.bGsm }), "B.GSM");
+  assert.equal(invalidInspectionNumberField({ ...valid, bGsm: reopened.bGsm }), undefined);
   assert.equal(invalidInspectionNumberField({ ...valid, csRequired: "old text" }), undefined);
 });

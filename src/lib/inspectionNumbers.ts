@@ -2,7 +2,6 @@ import type { PreDispatchInspection } from "../types";
 
 export const INSPECTION_NUMBER_FIELDS = [
   ["plannedQty", "Planned Quantity"],
-  ["bGsm", "B.GSM"],
   ["lengthId", "Length (ID)"],
   ["widthId", "Width (ID)"],
   ["heightId", "Height (ID)"],
