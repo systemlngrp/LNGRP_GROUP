@@ -2,12 +2,12 @@ import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
-import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft, RotateCcw } from "lucide-react";
+import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft, RotateCcw, CheckCircle2, X } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { normalizeMachineName } from "../lib/productionMachineNames";
@@ -43,6 +43,7 @@ interface MachineGroup {
 
 export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMachineName?: string; title?: string } = {}) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const filterMachineId = searchParams.get("machineId") || "";
   const fixedNormalizedMachineName = fixedMachineName ? normalizeMachineName(fixedMachineName) : "";
@@ -65,6 +66,23 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const [itemFilter, setItemFilter] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
+  const [successMessage, setSuccessMessage] = useState(() => String((location.state as { successMessage?: string } | null)?.successMessage || ""));
+
+  useEffect(() => {
+    const message = String((location.state as { successMessage?: string } | null)?.successMessage || "");
+    if (!message) return;
+    setSuccessMessage(message);
+    const timer = window.setTimeout(() => {
+      setSuccessMessage("");
+      navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, location.search, location.state, navigate]);
+
+  const dismissSuccessMessage = () => {
+    setSuccessMessage("");
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  };
 
   useEffect(() => {
     if (filterMachineId) {
@@ -259,6 +277,15 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
   return (
     <div className="space-y-6">
+      {successMessage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 px-4">
+          <div role="status" className="flex w-full max-w-xl items-center gap-3 rounded-lg border-2 border-emerald-700 bg-emerald-100 px-5 py-4 text-emerald-950 shadow-xl">
+            <CheckCircle2 className="shrink-0 text-emerald-700" size={30} />
+            <span className="flex-1 text-center text-base font-black">{successMessage}</span>
+            <button type="button" onClick={dismissSuccessMessage} aria-label="Close success message" className="rounded border border-emerald-800 bg-white p-1 text-emerald-900 hover:bg-emerald-50"><X size={18} /></button>
+          </div>
+        </div>
+      )}
       <div className="border-b border-black pb-4">
         <div className="flex min-h-[32px] items-center gap-3">
           {filterMachineId && (

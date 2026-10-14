@@ -169,7 +169,13 @@ function LockedReportForm() {
       const result = await response.json().catch(() => ({}));
       if (result.warning) alert(result.warning);
       window.dispatchEvent(new CustomEvent("sync-data-production_processing"));
-      navigate(returnTo || getProcessingBackUrl(machineId));
+      const destination = getProcessingBackUrl(machineId);
+      navigate(destination, {
+        replace: true,
+        state: {
+          successMessage: `Processing saved successfully. Job No: ${jobNo || productionId} • Machine: ${machineName || machineId} • Quantity: ${qtyNumber}`,
+        },
+      });
     } catch (error) {
       console.error("Failed to submit processing report:", error);
       alert((error as Error).message || "Failed to submit report. Please try again.");
