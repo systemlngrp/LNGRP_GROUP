@@ -1,10 +1,10 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, RotateCcw, Save } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { Select } from "../components/Select";
 import { useNpdItems } from "../hooks/useNpdItems";
-import type { QcBlockLocationMaster, QcFileNoMaster } from "../types";
+import type { QcBlockLocationMaster, QcFileNoMaster, QcUpdateRecord } from "../types";
 import { fileNoOptions } from "../lib/qcFileNo";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -16,6 +16,7 @@ export function QcUpdateForm() {
   const items = useNpdItems();
   const [locations] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
   const [fileNos] = useData<QcFileNoMaster>("qc_file_no_masters", [], { firmScope: "all" });
+  const [savedRecords] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all" });
   const displayName = useMemo(() => String(user?.name || user?.userId || user?.email || "").trim(), [user]);
   const [form, setForm] = useState(() => ({ ...initialForm, updatedBy: displayName }));
   const [message, setMessage] = useState("");
@@ -36,7 +37,28 @@ export function QcUpdateForm() {
     finally { setSaving(false); }
   };
   const npdOptions = useMemo(() => items.map((item: any) => ({ value: String(item.id || ""), label: `${item.erp || ""} - ${item.name || ""}`, searchText: `${item.erp || ""} ${item.name || ""} ${item.customer || ""}` })).filter((option) => option.value), [items]);
-  const selectNpd = (npdId: string) => { const item = items.find((value: any) => String(value.id) === npdId) as any; setForm((current) => ({ ...current, npdId, erpNo: String(item?.erp || ""), itemName: String(item?.name || "") })); };
+  const selectNpd = (npdId: string) => { const item = items.find((value: any) => String(value.id) === npdId) as any; setForm((current) => ({ ...current, npdId, erpNo: String(item?.erp || ""), itemName: String(item?.name || "") })); setError(""); };
+  useEffect(() => {
+    if (!form.npdId) return;
+    const item = items.find((value: any) => String(value.id) === form.npdId) as any;
+    const erpNo = String(item?.erp || form.erpNo || "").trim();
+    const matching = savedRecords
+      .filter((record) => String(record.npdId || "") === form.npdId || (erpNo && String(record.erpNo || "").trim().toLowerCase() === erpNo.toLowerCase()))
+      .sort((a, b) => String(b.updateTimestamp || b.updateDate || "").localeCompare(String(a.updateTimestamp || a.updateDate || "")));
+    const saved = matching[0];
+    setForm((current) => ({
+      ...current,
+      erpNo,
+      itemName: String(item?.name || current.itemName || ""),
+      fileNo: String(saved?.fileNo || ""),
+      indexNo: String(saved?.indexNo || ""),
+      zoneNo: String(saved?.zoneNo || ""),
+      location: String(saved?.location || ""),
+      sampleNo: String(saved?.sampleNo || ""),
+      remarks: String(saved?.remarks || ""),
+    }));
+    setMessage(saved ? "Saved QC update data loaded." : "");
+  }, [form.npdId, form.erpNo, items, savedRecords]);
   const fields = [["Index No.", "indexNo"], ["Zone No.", "zoneNo"]] as const;
   const locationOptions = useMemo(() => locations.filter(location => String(location.active || "").toLowerCase() === "yes").map(location => ({ value: location.name, label: location.name })), [locations]);
   const fileNoSelectOptions = useMemo(() => fileNoOptions(fileNos), [fileNos]);
