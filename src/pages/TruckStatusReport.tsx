@@ -25,7 +25,7 @@ export function TruckStatusReport() {
   const [vehicleNoFilter, setVehicleNoFilter] = useState("");
   const [partyFilter, setPartyFilter] = useState("");
   const [copyFeedback, setCopyFeedback] = useState(false);
-  const [statusLogs, setStatusLogs] = useState<TruckStatusLog[]>([]);
+  const [statusLogs] = useData<TruckStatusLog>("truck-status-logs", [], { cacheToLocalStorage: false });
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -35,15 +35,6 @@ export function TruckStatusReport() {
 
 
   
-  useEffect(() => {
-    const token = window.localStorage.getItem("authToken") || "";
-    const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    fetch("/api/truck-status-logs", { headers })
-      .then((response) => response.ok ? response.json() : [])
-      .then((data) => setStatusLogs(Array.isArray(data) ? data as TruckStatusLog[] : []))
-      .catch(() => setStatusLogs([]));
-  }, []);
-
   const activeSlipsByTruck = useMemo(() => {
     const map = new Map<string, LoadingSlip>();
     [...loadingSlips]

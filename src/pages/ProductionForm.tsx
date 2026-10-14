@@ -19,7 +19,7 @@ import { Spinner } from "../components/Spinner";
 import { generateTransactionNo, getProductionJobPrefix } from "../lib/serial";
 import { CheckCircle2, CircleHelp, X } from "lucide-react";
 import { parseProductionFormVisibleColumns } from "../lib/productionFormColumns";
-import { fetchNpdItems } from "../lib/npdItems";
+import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionMatchingFields } from "../lib/productionMatching";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
@@ -223,7 +223,7 @@ export function ProductionForm() {
   const [sampleRequests, setSampleRequests] = useData<SampleRequest>("sample_requests", []);
   const [settings] = useData<Setting>("settings", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [npdItems, setNpdItems] = useState<Item[]>([]);
+  const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
   const lastPrefilledSelectionKey = useRef("");
 
@@ -243,15 +243,6 @@ export function ProductionForm() {
     const timeoutId = window.setTimeout(() => setSaveNotice(null), 3000);
     return () => window.clearTimeout(timeoutId);
   }, [saveNotice]);
-
-  useEffect(() => {
-    fetchNpdItems()
-      .then(setNpdItems)
-      .catch((error) => {
-        console.error("Failed to fetch NPD items for Production Form:", error);
-        setNpdItems([]);
-      });
-  }, []);
 
   const consumptionByScheduleId = useMemo(
     () => buildScheduleConsumptionByScheduleId(productions, phpJobMaster, plateJobMaster),

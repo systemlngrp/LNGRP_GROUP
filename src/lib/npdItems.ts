@@ -1,5 +1,6 @@
 import { Item } from "../types";
 import { calculateInternalRapc, calculateInternalUps } from "./internalUps";
+import { loadCollection } from "./collectionLoader";
 
 
 export function normalizeConsumableValue(raw: unknown) {
@@ -16,34 +17,31 @@ export function getNpdItemDisplayName(item?: Partial<Item> | null) {
   return String(item?.name || (item as any)?.itemName || item?.erp || "").trim();
 }
 
-export async function fetchNpdItems(pageSize = 10000): Promise<Item[]> {
+export function normalizeNpdItem(row: any): Item {
+  const resolvedId = String(row?.id || row?.npdId || row?.itemId || "").trim();
+  return {
+    ...row,
+    id: resolvedId,
+    consumable: normalizeConsumableValue(row?.consumable),
+    internalUps: calculateInternalUps(row?.rapcForSingleBox),
+    internalRapc: row?.internalRapc ?? calculateInternalRapc(row),
+    itemId: resolvedId,
+    npdId: resolvedId,
+    name: getNpdItemDisplayName(row),
+  };
+}
+
+export async function fetchNpdItems(): Promise<Item[]> {
   const token = window.localStorage.getItem("authToken") || "";
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   // Firm-wise stock is required by cross-firm loading and remains compatible
   // with the normal NPD row shape because the endpoint returns the base row
   // plus firmStocks.
-  const response = await fetch(`/api/npd-firm-wise?page=1&pageSize=${pageSize}&status=all`, { headers });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Failed to fetch NPD items");
+  const task = loadCollection<any>("/api/npd-firm-wise?status=all", headers, "page", () => {});
+  try {
+    return (await task.promise).map(normalizeNpdItem);
+  } finally {
+    task.unsubscribe();
   }
-
-  const result = await response.json();
-  const rows = Array.isArray(result?.rows) ? result.rows : [];
-
-  return rows.map((row) => {
-    const resolvedId = String(row?.id || row?.npdId || row?.itemId || "").trim();
-    return {
-      ...row,
-      id: resolvedId,
-      consumable: normalizeConsumableValue(row?.consumable),
-      internalUps: calculateInternalUps(row?.rapcForSingleBox),
-      internalRapc: row?.internalRapc ?? calculateInternalRapc(row),
-      itemId: resolvedId,
-      npdId: resolvedId,
-      name: getNpdItemDisplayName(row),
-    };
-  });
 }
 

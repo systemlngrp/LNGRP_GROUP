@@ -516,14 +516,14 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     firmScope: "all",
     storageKey: "material-in-all-firms",
   });
-  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
+  const [productions, , productionsLoading] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
-  const [phpJobMaster] = useData<Production>("php_job_master", []);
-  const [plateJobMaster] = useData<Production>("plate_job_master", []);
+  const [phpJobMaster, , phpJobsLoading] = useData<Production>("php_job_master", [], { firmScope: "all" });
+  const [plateJobMaster, , plateJobsLoading] = useData<Production>("plate_job_master", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
-  const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
+  const [orders, , ordersLoading] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const npdItems = useNpdItems();
-  const { resolveOrderItem, findItemAcrossSources, itemsBySource } = useOrderItemCatalog();
+  const { resolveOrderItem, findItemAcrossSources, itemsBySource, loading: catalogLoading } = useOrderItemCatalog();
   const [consumptions] = useData<Consumption>("consumptions", []);
   const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all", storageKey: "material-issues-all-firms" });
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all", storageKey: "material-issue-lines-all-firms" });
@@ -537,9 +537,9 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const [purchaseOrders] = useData<PurchaseOrder>("purchase-orders", []);
   const [purchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
   const [gateEntries] = useData<GateEntry>("gate-entries", []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
-  const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
+  const [schedules, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
+  const [dispatchPlans, , dispatchPlansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all" });
+  const [loadingSlips, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all" });
   const [phpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
   const [plateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
   const [invoices] = useData<Invoice>("invoices", []);
@@ -671,6 +671,9 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const counts = useMemo(
     () => ({
       ...firmScopedCounts,
+      "/loading/pending": [productionsLoading, phpJobsLoading, plateJobsLoading, ordersLoading, schedulesLoading, dispatchPlansLoading, loadingSlipsLoading, catalogLoading].some(Boolean)
+        ? 0
+        : firmScopedCounts["/loading/pending"],
       "/material-receipt/approvals": approvalMaterialIn.filter((m) =>
         ["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status)
       ).length,
@@ -681,7 +684,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
         (m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in"
       ).length,
     }),
-    [approvalMaterialIn, firmScopedCounts]
+    [approvalMaterialIn, firmScopedCounts, productionsLoading, phpJobsLoading, plateJobsLoading, ordersLoading, schedulesLoading, dispatchPlansLoading, loadingSlipsLoading, catalogLoading]
   );
 
   const navigation = useMemo<NavGroup[]>(() => {

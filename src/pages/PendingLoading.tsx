@@ -40,6 +40,8 @@ import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
 import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
 import { normalizeTruckStatus } from "../lib/truckStatus";
 import { useAuth } from "../auth/AuthContext";
+import { usePageDataStatus } from "../components/DataLoadingBoundary";
+import { eligibleLoadingJobs, loadedQtyByJobId } from "../lib/pendingLoadingEligibility";
 
 interface PendingPlan extends DispatchPlan {
   firmId: string;
@@ -84,23 +86,10 @@ function createEmptyPackingRows(): PackingDetail[] {
   return [{ bundles: 0, packSize: 0, quantity: 0 }];
 }
 
-function getLoadingSlipJobAllocations(line: LoadingSlipLine): Array<{ jobId: string; jobNo: string; qty: number }> {
-  if (Array.isArray(line.allocations) && line.allocations.length > 0) {
-    return line.allocations
-      .filter((allocation): allocation is Extract<LoadingSlipAllocation, { sourceType: "job" }> => allocation.sourceType === "job")
-      .map((allocation) => ({
-        jobId: allocation.jobId,
-        jobNo: allocation.jobNo,
-        qty: Number(allocation.qty || 0),
-      }));
-  }
-
-  return [];
-}
-
 export function PendingLoading() {
   const { setActiveFirm } = useAuth();
-  const [plans, updatePlans, plansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
+  const { loading: pageLoading } = usePageDataStatus();
+  const [plans, updatePlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
   const npdItems = useNpdItems();
   const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();
@@ -164,53 +153,9 @@ export function PendingLoading() {
     return { PHP: collect(phpLoadingSlips), PLATE: collect(plateLoadingSlips) };
   }, [phpLoadingSlips, plateLoadingSlips]);
 
-  const isOpenJob = (production?: Production | null) => {
-    if (!production) return false;
-    if (production.status === "Cancelled" || production.cancelTimestamp) return false;
-    if (production.status === "Completed" || production.tallyTimestamp) return false;
-    if (production.closeDate) return false;
-    if (String(production.closeBy || "").trim().toLowerCase() === "yes") return false;
-    return true;
-  };
-
-  const getEligibleJobs = (itemSource: OrderItemSource, itemId: string, firmId: string) => {
-    const sourceJobs = itemSource === "PHP" ? phpJobs : itemSource === "PLATE" ? plateJobs : productions;
-    return sourceJobs
-      .filter((production) =>
-        production.itemId === itemId &&
-        (!String(production.orderFirmId || production.sourceFirmId || production.destinationFirmId || production.firmId || "").trim() ||
-          String(production.orderFirmId || production.sourceFirmId || production.destinationFirmId || production.firmId) === firmId) &&
-        isOpenJob(production) &&
-        Number(itemSource === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0) > 0
-      )
-      .map((production) => {
-        const productionQty = Number(itemSource === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0);
-        const alreadyLoaded = getAlreadyLoadedForJob(production.id);
-        return {
-          jobId: production.id,
-          jobNo: String(production.transactionNo || "").trim() || String(production.jobCardNo || "").trim(),
-          productionQty,
-          alreadyLoaded,
-          yetToLoad: Math.max(0, productionQty - alreadyLoaded),
-        };
-      })
-      .filter((job) => job.jobNo && job.yetToLoad > 0)
-      .sort((a, b) => b.jobNo.localeCompare(a.jobNo, undefined, { numeric: true, sensitivity: "base" }))
-      .slice(0, 3);
-  };
-
-  const existingLoadedByJobId = useMemo(() => {
-    const map = new Map<string, number>();
-    loadingSlips.forEach((slip) => {
-      if (slip.status === "Cancelled") return;
-      slip.lines.forEach((line) => {
-        getLoadingSlipJobAllocations(line).forEach((allocation) => {
-          map.set(allocation.jobId, (map.get(allocation.jobId) || 0) + allocation.qty);
-        });
-      });
-    });
-    return map;
-  }, [loadingSlips]);
+  const existingLoadedByJobId = useMemo(() => loadedQtyByJobId(loadingSlips), [loadingSlips]);
+  const getEligibleJobs = (itemSource: OrderItemSource, itemId: string, firmId: string) =>
+    eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, existingLoadedByJobId);
 
   const groupedData = useMemo(() => {
     const orderById = new Map(orders.map((order) => [order.id, order]));
@@ -240,6 +185,7 @@ export function PendingLoading() {
       const firmName = getFirmDisplayNameById(firmId, firms);
       const item = resolveOrderItem(order);
       const company = companies.find((row) => row.id === order?.companyId);
+      const itemSource = normalizeOrderItemSource(order?.itemSource || item?.source);
 
       const loadable = Boolean(order && item && company);
       const unavailableReason = !order ? "Order record unavailable" : !item ? "Item record unavailable" : !company ? "Company record unavailable" : undefined;
@@ -767,7 +713,7 @@ export function PendingLoading() {
         </div>
       </div>
 
-      {plansLoading ? (
+      {pageLoading && groupedData.length === 0 ? (
         <div className="flex justify-center p-12">
           <Spinner />
         </div>

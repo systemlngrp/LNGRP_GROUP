@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, Truck as TruckIcon } from "lucide-react";
 import { useData } from "../hooks/useData";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import type { Truck, TruckLiveStatus, TruckStatusLog } from "../types";
 import { formatTruckDateTime, normalizeTruckStatus, TRUCK_LIVE_STATUSES, TRUCK_STATUS_STYLES } from "../lib/truckStatus";
 
@@ -23,7 +24,7 @@ export function TruckLogs() {
   const [status, setStatus] = useState<TruckLiveStatus | "">("");
   const [searchTerm, setSearchTerm] = useState("");
   const [logs, setLogs] = useState<TruckStatusLog[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const authHeaders = useMemo(() => {
@@ -56,6 +57,8 @@ export function TruckLogs() {
   useEffect(() => {
     void fetchLogs();
   }, []);
+
+  useTrackPageLoading(loading && logs.length === 0, logs.length === 0 ? error || null : null, () => void fetchLogs(), logs.length);
 
   return (
     <div className="space-y-5">

@@ -8681,6 +8681,34 @@ const createHandlers = (tableName) => {
                 const firmWhere = isFirmScopedTable(tableName) && requestFirmId ? buildFirmScopeCondition("", requestFirmId) : "";
                 const firmParams = firmWhere ? [requestFirmId] : [];
                 let rows;
+                // Cursor pagination is opt-in, preserving array responses for legacy callers.
+                const customListTables = new Set([
+                    "users", "materials", "items", "invoice_line_items", "npd", "npd-firm-wise", "production_processing",
+                ]);
+                if (req.query.limit !== undefined && !customListTables.has(tableName)) {
+                    const limit = Number(req.query.limit);
+                    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+                        return res.status(400).json({ error: "limit must be an integer from 1 to 500" });
+                    }
+                    const cursor = String(req.query.cursor || "").trim();
+                    const conditions = [firmWhere, cursor ? "id > ?" : ""].filter(Boolean);
+                    const whereSql = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
+                    const params = [...firmParams, ...(cursor ? [cursor] : [])];
+                    const [batchRows] = await db.query("SELECT * FROM " + tableName + " " + whereSql + " ORDER BY id ASC LIMIT ?", [...params, limit + 1]);
+                    const batch = batchRows;
+                    const hasMore = batch.length > limit;
+                    const selected = batch.slice(0, limit);
+                    let total;
+                    if (!cursor) {
+                        const [countRows] = await db.query("SELECT COUNT(*) AS total FROM " + tableName + " " + (firmWhere ? "WHERE " + firmWhere : ""), firmParams);
+                        total = Number(countRows[0]?.total || 0);
+                    }
+                    return res.json({
+                        rows: selected.map((row) => normalizeFetchedRow(tableName, row)),
+                        ...(total === undefined ? {} : { total }),
+                        nextCursor: hasMore ? String(selected.at(-1)?.id || "") : null,
+                    });
+                }
                 if (tableName === "users") {
                     [rows] = await db.query("SELECT * FROM `users`");
                     const viewer = await getRequestUser(req);

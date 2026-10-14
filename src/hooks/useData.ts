@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useContext, useId, useRef } from "react";
 import { useAutoRefreshEffect } from "./useAutoRefresh";
 import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
+import { DataLoadingContext } from "../components/DataLoadingBoundary";
+import { CollectionHttpError, loadCollection } from "../lib/collectionLoader";
 
 type UseDataOptions = {
   cacheToLocalStorage?: boolean;
@@ -10,16 +12,10 @@ type UseDataOptions = {
   firmScope?: 'active' | 'all';
 };
 
-function safeGetLocalStorage(key: string) {
-  try {
-    return window.localStorage.getItem(key);
-  } catch (error) {
-    console.warn(`[useData] Failed to read localStorage key "${key}":`, error);
-    return null;
-  }
-}
-
 function safeSetLocalStorage(key: string, value: string) {
+  // A large collection belongs in memory, not the small synchronous storage
+  // quota shared with the session and settings.
+  if (value.length > 250_000) return false;
   try {
     window.localStorage.setItem(key, value);
     return true;
@@ -33,18 +29,7 @@ function safeSetLocalStorage(key: string, value: string) {
       );
 
     if (isQuotaError) {
-      console.warn(`[useData] LocalStorage quota exceeded while writing "${key}". Clearing caches to make room...`);
-      try {
-        const token = window.localStorage.getItem("authToken");
-        window.localStorage.clear();
-        if (token) window.localStorage.setItem("authToken", token);
-        // Try again after clearing
-        window.localStorage.setItem(key, value);
-        console.info(`[useData] Cache cleared and "${key}" successfully saved.`);
-        return true;
-      } catch (retryError) {
-        console.warn(`[useData] Even after clearing, data for "${key}" exceeds the 5MB quota. Skipping cache.`, retryError);
-      }
+      console.warn(`[useData] LocalStorage quota exceeded for "${key}". Skipping cache.`);
     } else {
       console.warn(`[useData] Failed to write localStorage key "${key}":`, error);
     }
@@ -80,12 +65,17 @@ async function getResponseError(response: Response, fallback: string) {
 }
 
 export function useData<T extends { id: string }>(entity: string, initialValue: T[], options?: UseDataOptions) {
+  const loadingRegistry = useContext(DataLoadingContext);
+  const loadId = useId();
   const [data, setDataState] = useState<T[]>(initialValue);
   const dataRef = useRef<T[]>(initialValue);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ loaded: number; total: number | null }>({ loaded: 0, total: null });
   const isFetchingRef = useRef(false);
   const pendingForcedFetchRef = useRef(false);
+  const activeLoadRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const requestGenerationRef = useRef(0);
   const lastFetchAtRef = useRef(0);
   const forbiddenUntilRef = useRef(0);
 
@@ -118,29 +108,28 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     if (!force && now - lastFetchAtRef.current < 10_000) return;
 
     isFetchingRef.current = true;
+    const generation = ++requestGenerationRef.current;
     try {
-      if (!background) setLoading(true);
-      const response = await fetch(endpoint, { headers: getAuthHeaders(options?.firmScope !== 'all') });
-      if (response.status === 401 || response.status === 403) {
-        // Sidebar counts request data from modules that a selective user may not access.
-        // Treat that expected denial as an empty dataset rather than a recurring app error.
-        forbiddenUntilRef.current = Date.now() + 5 * 60_000;
-        lastFetchAtRef.current = Date.now();
-        setDataState([]);
-        dataRef.current = [];
-        setError(response.status === 401 ? "Unauthorized" : null);
-        return;
+      if (!background) {
+        setLoading(true);
+        setError(null);
+        setProgress({ loaded: 0, total: null });
       }
-      if (!response.ok) {
-        const message = await getResponseError(response, "Failed to fetch data");
-        if (response.status === 500 && message.toLowerCase().includes("authorization failed")) {
-          forbiddenUntilRef.current = Date.now() + 5 * 60_000;
-          lastFetchAtRef.current = Date.now();
-        }
-        throw new Error(message);
+      const task = loadCollection<T>(endpoint, getAuthHeaders(includeActiveFirm), loadingRegistry ? "page" : "sidebar", (snapshot) => {
+        if (background || generation !== requestGenerationRef.current) return;
+        setDataState(snapshot.rows);
+        dataRef.current = snapshot.rows;
+        setProgress({ loaded: snapshot.loaded, total: snapshot.total });
+      });
+      activeLoadRef.current = task;
+      let finalData: T[];
+      try {
+        finalData = await task.promise;
+      } finally {
+        task.unsubscribe();
+        if (activeLoadRef.current === task) activeLoadRef.current = null;
       }
-      const result = await response.json();
-      const finalData = Array.isArray(result) ? result : (result && Array.isArray(result.rows) ? result.rows : []);
+      if (generation !== requestGenerationRef.current) return;
       setDataState(finalData);
       dataRef.current = finalData;
       forbiddenUntilRef.current = 0;
@@ -150,37 +139,19 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         safeSetLocalStorage(storageKey, JSON.stringify(finalData));
       }
     } catch (err) {
+      if (generation !== requestGenerationRef.current) return;
       console.error(`Error fetching ${entity}:`, err);
-      setError((err as Error).message);
-      if (shouldCacheToLocalStorage) {
-        const saved = safeGetLocalStorage(storageKey);
-        if (saved) {
-          try {
-            const parsed = JSON.parse(saved);
-            // Cached payloads can outlive an API/schema change. Keep the hook's
-            // public contract as T[] even when an older cache contains an
-            // object or another unexpected JSON value.
-            const cachedData = Array.isArray(parsed)
-              ? parsed
-              : parsed && Array.isArray(parsed.rows)
-                ? parsed.rows
-                : [];
-            setDataState(cachedData);
-            dataRef.current = cachedData;
-          } catch (parseError) {
-            console.warn(
-              `[useData] Invalid cached JSON for "${storageKey}". Clearing corrupted cache entry.`,
-              parseError,
-            );
-            try {
-              window.localStorage.removeItem(storageKey);
-            } catch (removeError) {
-              console.warn(`[useData] Failed to clear corrupted localStorage key "${storageKey}":`, removeError);
-            }
-          }
-        }
+      if (err instanceof CollectionHttpError && (err.status === 401 || err.status === 403) && !loadingRegistry) {
+        forbiddenUntilRef.current = Date.now() + 5 * 60_000;
+        lastFetchAtRef.current = Date.now();
+        setDataState([]);
+        dataRef.current = [];
+        setError(null);
+        return;
       }
+      setError((err as Error).message);
     } finally {
+      if (generation !== requestGenerationRef.current) return;
       if (!background) setLoading(false);
       isFetchingRef.current = false;
       if (pendingForcedFetchRef.current) {
@@ -188,7 +159,23 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         void fetchData({ background: true, force: true });
       }
     }
-  }, [endpoint, entity, includeActiveFirm, shouldCacheToLocalStorage, storageKey]);
+  }, [endpoint, entity, includeActiveFirm, loadingRegistry, shouldCacheToLocalStorage, storageKey]);
+
+  useEffect(() => {
+    if (!loadingRegistry) return;
+    loadingRegistry.register(loadId, { loading: true, error: null, loaded: 0, total: null, retry: () => void fetchData({ force: true }) });
+    return () => loadingRegistry.unregister(loadId);
+  }, [loadingRegistry, loadId, fetchData]);
+
+  useEffect(() => {
+    loadingRegistry?.update(loadId, {
+      loading,
+      error,
+      loaded: progress.loaded,
+      total: progress.total,
+      retry: () => void fetchData({ force: true }),
+    });
+  }, [loadingRegistry, loadId, loading, error, progress.loaded, progress.total, fetchData]);
 
   useEffect(() => {
     fetchData({ force: true });
@@ -200,7 +187,15 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     
     const handleFirmChange = () => {
       forbiddenUntilRef.current = 0;
-      fetchData({ background: true, force: true });
+      requestGenerationRef.current += 1;
+      activeLoadRef.current?.unsubscribe();
+      activeLoadRef.current = null;
+      isFetchingRef.current = false;
+      pendingForcedFetchRef.current = false;
+      lastFetchAtRef.current = 0;
+      setDataState([]);
+      dataRef.current = [];
+      void fetchData({ force: true });
     };
     const handleRealtimeDataChange = (event: Event) => {
       const entities = (event as CustomEvent<{ entities?: string[] }>).detail?.entities || ["*"];
@@ -214,6 +209,11 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     window.addEventListener("active-firm-changed", handleFirmChange);
     window.addEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
     return () => {
+      requestGenerationRef.current += 1;
+      activeLoadRef.current?.unsubscribe();
+      activeLoadRef.current = null;
+      isFetchingRef.current = false;
+      pendingForcedFetchRef.current = false;
       window.removeEventListener(syncEvent, handleSync);
       window.removeEventListener("active-firm-changed", handleFirmChange);
       window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
@@ -229,12 +229,14 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     const resolvedData = typeof newData === "function" ? newData(currentData) : newData;
     
     // Find what changed compared to the absolute LATEST data
-    const added = resolvedData.filter(n => !currentData.find(o => o.id === n.id));
+    const currentById = new Map(currentData.map((item) => [item.id, item]));
+    const nextById = new Set(resolvedData.map((item) => item.id));
+    const added = resolvedData.filter(n => !currentById.has(n.id));
     const modified = resolvedData.filter(n => {
-      const old = currentData.find(o => o.id === n.id);
+      const old = currentById.get(n.id);
       return old && JSON.stringify(old) !== JSON.stringify(n);
     });
-    const deleted = currentData.filter(o => !resolvedData.find(n => n.id === o.id));
+    const deleted = currentData.filter(o => !nextById.has(o.id));
 
     console.log(`[useData:${entity}] Syncing: ${added.length} added, ${modified.length} modified, ${deleted.length} deleted`);
 
@@ -377,5 +379,5 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     }
   };
 
-  return [data, updateData, loading, { refresh: fetchData, addItem, removeItem, saveItem }] as const;
+  return [data, updateData, loading, { refresh: fetchData, addItem, removeItem, saveItem, error, progress }] as const;
 }

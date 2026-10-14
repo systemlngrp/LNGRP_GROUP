@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
-import { Production, OrderSchedule, Order, Company, SampleRequest, Item, Setting } from "../types";
+import { Production, OrderSchedule, Order, Company, SampleRequest, Setting } from "../types";
 import { formatDate } from "../lib/serial";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
@@ -11,7 +11,7 @@ import { FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { exportsAllowed } from "../lib/exportPolicy";
-import { fetchNpdItems } from "../lib/npdItems";
+import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { sortProductionPlanRows } from "../lib/productionPlanSorting";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
@@ -25,19 +25,7 @@ export function ProductionPlan() {
   const [companies, , companiesLoading] = useData<Company>("companies", []);
   const [sampleRequests, , sampleRequestsLoading] = useData<SampleRequest>("sample_requests", []);
   const [settings, , settingsLoading] = useData<Setting>("settings", []);
-  const [npdItems, setNpdItems] = useState<Item[]>([]);
-  const [npdLoading, setNpdLoading] = useState(true);
-
-  useEffect(() => {
-    setNpdLoading(true);
-    fetchNpdItems()
-      .then(setNpdItems)
-      .catch((error) => {
-        console.error("Failed to fetch NPD items for Production Plan:", error);
-        setNpdItems([]);
-      })
-      .finally(() => setNpdLoading(false));
-  }, []);
+  const { items: npdItems, loading: npdLoading } = useNpdItemsWithStatus();
 
   const todayStr = useMemo(() => {
     const d = new Date();

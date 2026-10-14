@@ -10,7 +10,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
 import { useClientPagination } from "../hooks/useClientPagination";
-import { fetchNpdItems } from "../lib/npdItems";
+import { useNpdItems } from "../hooks/useNpdItems";
 import { getNextPlainNumber } from "../lib/materialNumbering";
 import { useConfirm } from "../components/ConfirmDialog";
 import { OPENING_REEL_MATERIAL_IN_ID, isOpeningReelPackingSlip } from "../lib/materialMovement";
@@ -157,12 +157,8 @@ export function Materials() {
   const [returnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [reelReturnLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
-  const [npdItems, setNpdItems] = useState<Item[]>([]);
+  const npdItems = useNpdItems();
   const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
-
-  useEffect(() => {
-    fetchNpdItems().then(setNpdItems).catch(() => setNpdItems([]));
-  }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reelMaterialFileInputRef = useRef<HTMLInputElement>(null);

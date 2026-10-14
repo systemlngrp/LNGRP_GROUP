@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { Eye, EyeOff } from "lucide-react";
+import { Spinner } from "../components/Spinner";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -82,7 +83,10 @@ export function LoginPage() {
             disabled={submitting}
             className="w-full bg-indigo-600 text-white px-4 py-2 rounded font-black hover:bg-indigo-700 transition disabled:opacity-60"
           >
-            {submitting ? "Signing in..." : "Sign In"}
+            <span className="inline-flex items-center justify-center gap-2">
+              {submitting && <Spinner size={16} className="text-white" />}
+              {submitting ? "Signing in…" : "Sign In"}
+            </span>
           </button>
         </form>
 

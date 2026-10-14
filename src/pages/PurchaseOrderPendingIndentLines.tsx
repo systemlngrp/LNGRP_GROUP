@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Search, Eye, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Spinner } from "../components/Spinner";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import { formatDate } from "../lib/serial";
 import { ExcelExport } from "../components/ExcelExport";
 import { Select } from "../components/Select";
@@ -98,6 +99,8 @@ export function PurchaseOrderPendingIndentLines() {
   useEffect(() => {
     void fetchRows();
   }, [fetchRows]);
+
+  useTrackPageLoading(loading && rows.length === 0, rows.length === 0 ? error : null, () => void fetchRows(), rows.length);
 
   useAutoRefreshEffect(() => {
     void fetchRows();

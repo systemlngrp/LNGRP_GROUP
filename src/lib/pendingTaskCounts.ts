@@ -39,6 +39,7 @@ import { isProductionPendingConsumption, isProductionPendingPH, isProductionRead
 import { withIndentTotals } from "./indentTotals";
 import { getAllReturnableReelLines } from "./materialMovement";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "./reelTransfer";
+import { countEligibleLoadingPlans } from "./pendingLoadingEligibility";
 
 type OrderCatalogItem = {
   id: string;
@@ -504,10 +505,16 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       const balance = Number(schedule.qty || 0) - alreadyPlanned;
       return !Number.isNaN(schedDate.getTime()) && schedDate <= tomorrow && balance > 0;
     }).length,
-    "/loading/pending": args.dispatchPlans.filter((plan) => {
-      const pending = Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
-      return pending > 0;
-    }).length,
+    "/loading/pending": countEligibleLoadingPlans({
+      plans: args.dispatchPlans,
+      orders: args.orders,
+      schedules: args.schedules,
+      productions: args.productions,
+      phpJobs: args.phpJobMaster,
+      plateJobs: args.plateJobMaster,
+      loadingSlips: args.loadingSlips,
+      resolveOrderItem: args.resolveOrderItem,
+    }),
     "/billing/pending": args.loadingSlips.filter((slip) => !slip.invoiceId && slip.status !== "Cancelled").length,
     "/billing/pending-tally": args.invoices.filter((invoice) => !invoice.tallyTimestamp).length,
     "/gate-pass/pending-returnable": getPendingReturnableGatePassCount(args.gatePasses, args.gateEntries, args.materialIn),

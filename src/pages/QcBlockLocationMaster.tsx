@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import type { QcBlockLocationMaster } from "../types";
 
 type LocationUsage = { count: number; details: { label: string; count: number }[] };
@@ -19,8 +20,11 @@ export function QcBlockLocationMaster() {
   const [usageLoading, setUsageLoading] = useState(true);
   const [usageError, setUsageError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [usageRetryKey, setUsageRetryKey] = useState(0);
+  useTrackPageLoading(usageLoading, usageError || null, () => setUsageRetryKey((value) => value + 1));
 
   useEffect(() => {
+    if (loading) return;
     let cancelled = false;
     setUsageLoading(true);
     const token = window.localStorage.getItem("authToken") || "";
@@ -36,7 +40,7 @@ export function QcBlockLocationMaster() {
       if (!cancelled) { setUsage({}); setUsageError(error instanceof Error ? error.message : "Unable to check location usage."); }
     }).finally(() => { if (!cancelled) setUsageLoading(false); });
     return () => { cancelled = true; };
-  }, [rows]);
+  }, [rows, loading, usageRetryKey]);
 
   const filtered = useMemo(() => rows.filter(row => {
     const active = String(row.active).toLowerCase() === "yes";

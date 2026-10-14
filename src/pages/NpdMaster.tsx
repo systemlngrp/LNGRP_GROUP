@@ -11,12 +11,13 @@ import { downloadNpdCardPdf } from "../lib/npdCardPdf";
 import { normalizeOrderCatalogItem } from "../lib/orderItems";
 import { calculateInternalRapc, calculateInternalUps } from "../lib/internalUps";
 import { useAuth } from "../auth/AuthContext";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import type { Firm, NpdFirmStock, Setting } from "../types";
 
 type NpdRecord = {
   id: string;
   firmStocks?: Record<string, NpdFirmStock>;
-  [key: string]: string | number | boolean | null | undefined;
+  [key: string]: any;
 };
 
 type RowSaveState = {
@@ -57,7 +58,7 @@ function formatStockValue(rate: NpdRecord[string], balance: NpdRecord[string]) {
 }
 
 export function NpdMaster() {
-  const { loading: authLoading, user } = useAuth();
+  const { loading: authLoading } = useAuth();
   const [rows, setRows] = useState<NpdRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -70,7 +71,8 @@ export function NpdMaster() {
   const [consumableDrafts, setConsumableDrafts] = useState<Record<string, boolean>>({});
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});
   const [rowSaveStates, setRowSaveStates] = useState<Record<string, RowSaveState>>({});
-  const [firms, setFirms] = useState<Firm[]>([]);
+  const [allFirms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const firms = useMemo(() => allFirms.filter((firm) => String(firm.active || "Yes").toLowerCase() !== "no"), [allFirms]);
   const [phpRows] = useData<any>("php_item_master", []);
   const [plateRows] = useData<any>("plate_item_master", []);
   const [settings] = useData<Setting>("settings", []);
@@ -104,14 +106,6 @@ export function NpdMaster() {
     ...tableColumns.map((column) => [column.label, row[column.key] ?? ""]),
     ...displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => [`${firm.firmName} ${column.label}`, row.firmStocks?.[firm.id]?.[column.key] ?? ""])),
   ])), [displayFirms, firmColumnsFor, page, pageSize, rows, tableColumns]);
-
-  useEffect(() => {
-    if (authLoading) return;
-    const token = window.localStorage.getItem("authToken") || "";
-    void fetch("/api/firms", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then((response) => response.json()).then((value) => setFirms(Array.isArray(value) ? value.filter((firm) => String(firm.active || "Yes").toLowerCase() !== "no") : []))
-      .catch(() => setFirms([]));
-  }, [authLoading, user]);
 
   const phpItems = useMemo(
     () => phpRows.map((row) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean),
@@ -188,6 +182,8 @@ export function NpdMaster() {
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
+
+  useTrackPageLoading(loading, loadError || null, () => void loadRows(), rows.length, total);
 
   useAutoRefreshEffect(() => {
     void loadRows(false, searchTerm);

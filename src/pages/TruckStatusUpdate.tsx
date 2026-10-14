@@ -3,6 +3,7 @@ import { Building2, CheckCircle, Clock, Phone, Truck as TruckIcon, User } from "
 import type { Truck, TruckLiveStatus } from "../types";
 import { formatTruckDateTime, formatTruckDuration, normalizeTruckStatus, TRUCK_DRIVER_UPDATE_STATUSES, TRUCK_STATUS_STYLES } from "../lib/truckStatus";
 import { Spinner } from "../components/Spinner";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 
 function getDriverSelectableStatus(value?: string | null): TruckLiveStatus | "" {
   const status = normalizeTruckStatus(value);
@@ -44,6 +45,8 @@ export function TruckStatusUpdate() {
       if (!background) setLoading(false);
     }
   };
+
+  useTrackPageLoading(loading, error || null, () => void fetchStatus());
 
   useEffect(() => {
     void fetchStatus();

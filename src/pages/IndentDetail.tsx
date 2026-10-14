@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { Spinner } from "../components/Spinner";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 
 import { TableControls } from "../components/TableControls";
 import { formatDate } from "../lib/serial";
@@ -22,6 +23,8 @@ export function IndentDetail() {
   const [detailLines, setDetailLines] = useState<IndentLine[]>([]);
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailStatus, setDetailStatus] = useState<number | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+  useTrackPageLoading(detailLoading, detailStatus && detailStatus >= 500 ? "Unable to load indent details." : null, () => setRetryKey((value) => value + 1));
 
   useEffect(() => {
     let cancelled = false;
@@ -53,7 +56,7 @@ export function IndentDetail() {
     };
     if (id) void loadDetail();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, retryKey]);
 
   // A detail route must never decide that a record is missing from a cached or
   // active-firm-scoped collection.  The API response for this immutable ID is

@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
-import { fetchNpdItems } from "../lib/npdItems";
+import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import type { Item } from "../types";
 
 type FgStockRow = {
@@ -60,31 +60,8 @@ function toRow(item: Item): FgStockRow {
 }
 
 export function FGStockReport() {
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { items, loading, error } = useNpdItemsWithStatus();
   const [searchTerm, setSearchTerm] = useState("");
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError("");
-
-    fetchNpdItems()
-      .then((rows) => {
-        if (active) setItems(rows);
-      })
-      .catch((err) => {
-        if (active) setError((err as Error).message || "Failed to fetch FG stock.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const rows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
