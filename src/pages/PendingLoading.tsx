@@ -188,7 +188,7 @@ export function PendingLoading() {
         const alreadyLoaded = getAlreadyLoadedForJob(production.id);
         return {
           jobId: production.id,
-          jobNo: String(production.transactionNo || "").trim(),
+          jobNo: String(production.transactionNo || "").trim() || String(production.jobCardNo || "").trim(),
           productionQty,
           alreadyLoaded,
           yetToLoad: Math.max(0, productionQty - alreadyLoaded),
@@ -549,7 +549,7 @@ export function PendingLoading() {
       const value = Number(qty || 0);
       if (!jobId || value <= 0) return;
       const production = productionMap.get(jobId);
-      const jobNo = String(production?.transactionNo || "").trim();
+      const jobNo = String(production?.transactionNo || "").trim() || String(production?.jobCardNo || "").trim();
       if (!jobNo) return;
       allocationPool.push({ sourceType: "job", jobId, jobNo, qty: value });
     });
