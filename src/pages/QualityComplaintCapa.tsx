@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Printer, Save } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Printer, Save, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
@@ -76,6 +76,7 @@ export function QualityComplaintCapa() {
   const [data, setData] = useState<CapaData>(empty);
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const touchedReportFields = useRef(new Set<keyof CapaData>());
   const loadedRevision = useRef("");
   const suggested = complaint ? linkedDetails(complaint) : undefined;
@@ -181,7 +182,8 @@ export function QualityComplaintCapa() {
       updateTimestamp: now,
     };
     await api.saveItem(updated);
-    setMessage("CAPA saved successfully.");
+    setMessage("");
+    setSuccessMessage(`CAPA saved successfully. CAPA No: ${updated.capaNo}`);
   };
 
   const saveTemplate = async () => {
@@ -200,6 +202,7 @@ export function QualityComplaintCapa() {
   };
 
   return <div className="min-h-screen bg-slate-100 px-3 py-5 text-black md:px-6">
+    {successMessage && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"><div role="alertdialog" className="w-full max-w-md rounded-lg border-2 border-emerald-700 bg-emerald-100 p-6 text-emerald-950 shadow-2xl"><div className="flex items-start gap-3"><CheckCircle2 className="shrink-0 text-emerald-700" size={30} /><div className="flex-1"><h3 className="text-lg font-black">Saved successfully</h3><p className="mt-1 font-semibold">{successMessage}</p></div><button type="button" aria-label="Close" onClick={() => setSuccessMessage("")} className="rounded border border-emerald-800 bg-white p-1"><X size={18} /></button></div><button type="button" onClick={() => navigate("/quality/complaints/master", { replace: true })} className="mt-5 w-full rounded bg-emerald-700 px-4 py-2.5 font-black text-white hover:bg-emerald-800">Go to Complaint Master</button></div></div>}
     <div className="mx-auto max-w-3xl space-y-4">
       <header className="rounded border-2 border-black bg-white p-4 shadow-sm md:p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
