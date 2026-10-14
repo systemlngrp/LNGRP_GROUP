@@ -277,12 +277,7 @@ const qualityItems: NavEntry[] = [
       { name: "Printing Stereo Records", href: "/quality/printing-stereo", icon: Database },
     ],
   },
-  {
-    section: "Control Records",
-    items: [
-      { name: "Control Records", href: "/quality/control-record", icon: Database },
-    ],
-  },
+
   {
     section: "Block Location",
     items: [
