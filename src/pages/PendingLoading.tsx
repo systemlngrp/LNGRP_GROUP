@@ -806,7 +806,7 @@ export function PendingLoading() {
                       {itemGroup.unavailableReason ? <p className="px-2 text-xs font-bold text-red-700">{itemGroup.unavailableReason}. Loading is unavailable until this link is repaired.</p> : null}
 
                       <div className="table-frozen-scroll border border-black">
-                        <table className="min-w-full divide-y divide-black border-collapse">
+                        <table className="w-full min-w-full divide-y divide-black border-collapse">
                           <thead className="sticky top-0 z-30 bg-slate-50">
                             <tr className="divide-x divide-black">
                               <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Order No</th>
