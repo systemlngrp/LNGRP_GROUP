@@ -5,6 +5,7 @@ import { DataLoadingContext } from "../components/DataLoadingBoundary";
 import { CollectionHttpError, loadCollection } from "../lib/collectionLoader";
 
 type UseDataOptions = {
+  enabled?: boolean;
   cacheToLocalStorage?: boolean;
   endpointOverride?: string;
   storageKey?: string;
@@ -67,9 +68,10 @@ async function getResponseError(response: Response, fallback: string) {
 export function useData<T extends { id: string }>(entity: string, initialValue: T[], options?: UseDataOptions) {
   const loadingRegistry = useContext(DataLoadingContext);
   const loadId = useId();
+  const enabled = options?.enabled !== false;
   const [data, setDataState] = useState<T[]>(initialValue);
   const dataRef = useRef<T[]>(initialValue);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ loaded: number; total: number | null }>({ loaded: 0, total: null });
   const isFetchingRef = useRef(false);
@@ -93,6 +95,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   }, [data]);
 
   const fetchData = useCallback(async (config?: { background?: boolean; force?: boolean }) => {
+    if (!enabled) return;
     const background = Boolean(config?.background);
     const force = Boolean(config?.force);
     const now = Date.now();
@@ -159,15 +162,16 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         void fetchData({ background: true, force: true });
       }
     }
-  }, [endpoint, entity, includeActiveFirm, loadingRegistry, shouldCacheToLocalStorage, storageKey]);
+  }, [enabled, endpoint, entity, includeActiveFirm, loadingRegistry, shouldCacheToLocalStorage, storageKey]);
 
   useEffect(() => {
-    if (!loadingRegistry) return;
+    if (!loadingRegistry || !enabled) return;
     loadingRegistry.register(loadId, { loading: true, error: null, loaded: 0, total: null, retry: () => void fetchData({ force: true }) });
     return () => loadingRegistry.unregister(loadId);
-  }, [loadingRegistry, loadId, fetchData]);
+  }, [enabled, loadingRegistry, loadId, fetchData]);
 
   useEffect(() => {
+    if (!enabled) return;
     loadingRegistry?.update(loadId, {
       loading,
       error,
@@ -175,9 +179,15 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       total: progress.total,
       retry: () => void fetchData({ force: true }),
     });
-  }, [loadingRegistry, loadId, loading, error, progress.loaded, progress.total, fetchData]);
+  }, [enabled, loadingRegistry, loadId, loading, error, progress.loaded, progress.total, fetchData]);
 
   useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      setError(null);
+      setProgress({ loaded: 0, total: 0 });
+      return;
+    }
     fetchData({ force: true });
 
     // Listen for sync events from other hook instances
@@ -218,7 +228,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       window.removeEventListener("active-firm-changed", handleFirmChange);
       window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
     };
-  }, [fetchData, syncEvent]);
+  }, [enabled, fetchData, syncEvent]);
 
   useAutoRefreshEffect(() => {
     void fetchData({ background: true });

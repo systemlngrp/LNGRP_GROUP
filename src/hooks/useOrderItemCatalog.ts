@@ -31,7 +31,8 @@ const getLookupKeys = (source: OrderItemSource, row: any) => {
   );
 };
 
-export function useOrderItemCatalog() {
+export function useOrderItemCatalog(options?: { includeMaterials?: boolean }) {
+  const includeMaterials = options?.includeMaterials !== false;
   const [fgRows, , fgLoading] = useData<any>("npd", [], {
     cacheToLocalStorage: false,
     endpointOverride: "/api/npd?page=1&pageSize=10000&status=all",
@@ -40,7 +41,7 @@ export function useOrderItemCatalog() {
   });
   const [phpRows, , phpLoading] = useData<any>("php_item_master", [], { firmScope: "all" });
   const [plateRows, , plateLoading] = useData<any>("plate_item_master", [], { firmScope: "all" });
-  const [materialRows, , materialLoading] = useData<Material>("materials", [], { firmScope: "all" });
+  const [materialRows, , materialLoading] = useData<Material>("materials", [], { firmScope: "all", enabled: includeMaterials });
 
   const itemsBySource = useMemo<Record<OrderItemSource, OrderCatalogItem[]>>(
     () => ({
@@ -123,7 +124,7 @@ export function useOrderItemCatalog() {
   };
 
   return {
-    loading: fgLoading || phpLoading || plateLoading || materialLoading,
+    loading: fgLoading || phpLoading || plateLoading || (includeMaterials && materialLoading),
     fgItems: itemsBySource.FG,
     phpItems: itemsBySource.PHP,
     plateItems: itemsBySource.PLATE,

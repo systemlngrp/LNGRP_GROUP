@@ -98,7 +98,7 @@ export function PendingLoading() {
   const [plans, updatePlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
   const npdItems = useNpdItems();
-  const { resolveOrderItem, findItemAcrossSources, itemsBySource } = useOrderItemCatalog();
+  const { resolveOrderItem, findItemAcrossSources, itemsBySource } = useOrderItemCatalog({ includeMaterials: false });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
