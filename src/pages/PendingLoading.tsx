@@ -893,9 +893,9 @@ export function PendingLoading() {
       )}
 
       {loadingModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border-2 border-slate-950 bg-white shadow-[10px_10px_0px_0px_rgba(15,23,42,1)]">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b-2 border-slate-950 bg-slate-950 px-5 py-4 text-white sm:px-6">
+        <div className="fixed inset-0 z-50 flex h-screen w-screen bg-slate-950/80 backdrop-blur-sm">
+          <div className="flex h-screen w-screen flex-col overflow-hidden bg-white">
+            <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b-2 border-slate-950 bg-slate-950 px-5 py-4 text-white sm:px-8">
               <div className="flex items-center gap-3">
                 <TruckIcon size={20} className="text-indigo-400" />
                 <h3 className="font-black uppercase tracking-widest text-sm">Loading Slip - {companies.find(c => c.id === loadingModal.companyId)?.name}</h3>
@@ -905,8 +905,8 @@ export function PendingLoading() {
               </button>
             </div>
 
-            <div className="flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div className="flex-1 space-y-6 overflow-y-auto bg-slate-50 p-4 sm:p-6 lg:p-8">
+              <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-slate-300 bg-slate-50 p-4 shadow-sm">
                   <div className="text-[10px] text-slate-500 uppercase font-black mb-1">Item Being Loaded</div>
                   <div className="font-bold text-black text-sm">{loadingModal.itemName}</div>
@@ -954,7 +954,7 @@ export function PendingLoading() {
                   const jobs = getEligibleJobs(loadingModal.itemSource, loadingModal.itemId, loadingModal.firmId);
 
                   return (
-                    <div className="space-y-6">
+                    <div className="w-full space-y-6">
                       <div className="overflow-hidden rounded-xl border-2 border-slate-950 shadow-sm">
                         <div className="grid grid-cols-2 gap-px bg-slate-950 text-white md:grid-cols-4">
                           <div className="px-4 py-3 border-r border-white/20">
@@ -1061,7 +1061,7 @@ export function PendingLoading() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
                         {[
                           { source: "PHP" as const, title: "PHP Details", rows: phpDetailsPreview, emptyLabel: "No matched PHP item" },
                           { source: "PLATE" as const, title: "Plate Details", rows: plateDetailsPreview, emptyLabel: "No matched Plate item" },
