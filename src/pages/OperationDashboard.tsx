@@ -51,6 +51,7 @@ import {
 } from "../lib/operationDashboard";
 import { buildPendingTaskCounts, getPendingTaskGroups } from "../lib/pendingTaskCounts";
 import { buildScrapInvoiceRows, summarizeScrapInvoiceRows } from "../lib/wastageReport";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 
 type ProcessingTotals = {
   paper: number;
@@ -201,6 +202,9 @@ export function OperationDashboard() {
   const [dateRange, setDateRange] = useState(getDefaultRange);
   const [closedJobFilter, setClosedJobFilter] = useState<ClosedJobFilter>("no");
   const [pendingJobClosureCount, setPendingJobClosureCount] = useState<number>(0);
+  const [pendingJobClosureLoading, setPendingJobClosureLoading] = useState(true);
+  const [pendingJobClosureError, setPendingJobClosureError] = useState<string | null>(null);
+  const [pendingJobClosureRetryKey, setPendingJobClosureRetryKey] = useState(0);
   const operationExportFileName =
     dateRange.from && dateRange.to
       ? `Operation_Dashboard_${dateRange.from}_${dateRange.to}`
@@ -208,6 +212,8 @@ export function OperationDashboard() {
 
   useEffect(() => {
     const refreshPendingJobClosureCount = async () => {
+      setPendingJobClosureLoading(true);
+      setPendingJobClosureError(null);
       try {
         const token = window.localStorage.getItem("authToken") || "";
         const response = await fetch("/api/get-pending-job-closure", {
@@ -223,11 +229,16 @@ export function OperationDashboard() {
         setPendingJobClosureCount(Array.isArray(rows) ? rows.length : 0);
       } catch {
         setPendingJobClosureCount(0);
+        setPendingJobClosureError("Unable to load pending job closure count.");
+      } finally {
+        setPendingJobClosureLoading(false);
       }
     };
 
     void refreshPendingJobClosureCount();
-  }, []);
+  }, [pendingJobClosureRetryKey]);
+
+  useTrackPageLoading(pendingJobClosureLoading, pendingJobClosureError, () => setPendingJobClosureRetryKey((value) => value + 1));
 
   const safeRange = useMemo(() => getSafeRange(dateRange), [dateRange]);
 

@@ -267,7 +267,7 @@ export function PendingLoading() {
       catalogItem?.erp,
     ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
     const item = npdItems.find((row) =>
-      [row.id, row.npdId, row.itemId, row.erp]
+      [row.id, (row as any).npdId, (row as any).itemId, row.erp]
         .map((value) => String(value || "").trim().toLowerCase())
         .some((key) => key && lookupKeys.includes(key))
     );

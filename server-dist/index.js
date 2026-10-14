@@ -8694,13 +8694,14 @@ const createHandlers = (tableName) => {
                     const conditions = [firmWhere, cursor ? "id > ?" : ""].filter(Boolean);
                     const whereSql = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
                     const params = [...firmParams, ...(cursor ? [cursor] : [])];
-                    const [batchRows] = await db.query("SELECT * FROM " + tableName + " " + whereSql + " ORDER BY id ASC LIMIT ?", [...params, limit + 1]);
+                    const quotedTableName = `\`${tableName.replace(/`/g, "")}\``;
+                    const [batchRows] = await db.query("SELECT * FROM " + quotedTableName + " " + whereSql + " ORDER BY id ASC LIMIT ?", [...params, limit + 1]);
                     const batch = batchRows;
                     const hasMore = batch.length > limit;
                     const selected = batch.slice(0, limit);
                     let total;
                     if (!cursor) {
-                        const [countRows] = await db.query("SELECT COUNT(*) AS total FROM " + tableName + " " + (firmWhere ? "WHERE " + firmWhere : ""), firmParams);
+                        const [countRows] = await db.query("SELECT COUNT(*) AS total FROM " + quotedTableName + " " + (firmWhere ? "WHERE " + firmWhere : ""), firmParams);
                         total = Number(countRows[0]?.total || 0);
                     }
                     return res.json({

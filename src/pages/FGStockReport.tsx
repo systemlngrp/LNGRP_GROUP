@@ -44,7 +44,7 @@ function toRow(item: Item): FgStockRow {
   const rate = numberValue(item.rate);
 
   return {
-    id: String(item.id || item.npdId || item.itemId || item.erp || item.name || crypto.randomUUID()),
+    id: String(item.id || (item as any).npdId || (item as any).itemId || item.erp || item.name || crypto.randomUUID()),
     erp: textValue(item.erp, (item as any).erpCode, (item as any).masterItemNameErpCode),
     itemName: textValue(item.name, (item as any).itemName),
     customer: textValue(item.customer, (item as any).customerName, (item as any).companyName, (item as any).partyName),

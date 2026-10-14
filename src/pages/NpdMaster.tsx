@@ -72,7 +72,7 @@ export function NpdMaster() {
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});
   const [rowSaveStates, setRowSaveStates] = useState<Record<string, RowSaveState>>({});
   const [allFirms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const firms = useMemo(() => allFirms.filter((firm) => String(firm.active || "Yes").toLowerCase() !== "no"), [allFirms]);
+  const firms = useMemo(() => allFirms.filter((firm) => String((firm as any).active || "Yes").toLowerCase() !== "no"), [allFirms]);
   const [phpRows] = useData<any>("php_item_master", []);
   const [plateRows] = useData<any>("plate_item_master", []);
   const [settings] = useData<Setting>("settings", []);
