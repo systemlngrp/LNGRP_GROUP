@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { printQualityCapaReport } from "../utils/qualityCapaPrint";
-import type { QualityComplaint, User } from "../types";
+import type { CapaQuestion, QualityComplaint, User, Setting } from "../types";
 import { isRejectionComplaint } from "../lib/complaintResponsibility";
 import { useCapaReportContext } from "../hooks/useCapaReportContext";
 
@@ -58,8 +58,23 @@ export function QualityComplaintCapa() {
   const [complaints, , loading, api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
   const [users] = useData<User>("users", []);
   const { setting, linkedDetails } = useCapaReportContext();
+  const [, , , settingsApi] = useData<Setting>("settings", []);
+  const defaultQuestions = useMemo<CapaQuestion[]>(() => [
+    { id: "defectDescription", label: "Type of Defect (SHORT DESCRIPTION)", required: true },
+    { id: "defectPercentage", label: "% of Defects", required: true },
+    { id: "rejectionDetails", label: "Details of Rejection", required: true },
+    { id: "productionFailureRootCause", label: "Root cause analysis for Production Failure", required: true },
+    { id: "detectionFailureRootCause", label: "Root cause analysis for Detection Failure", required: true },
+    { id: "correctiveAction", label: "CORRECTIVE ACTION", required: true },
+    { id: "productionPreventiveAction", label: "Preventive action for Production Failures", required: true },
+    { id: "detectionPreventiveAction", label: "Preventive action for Detection Failures", required: true },
+  ], []);
+  const [questions, setQuestions] = useState<CapaQuestion[]>(defaultQuestions);
+  const [editingQuestions, setEditingQuestions] = useState(false);
+  const [templateMessage, setTemplateMessage] = useState("");
   const complaint = complaints.find((record) => record.id === id);
   const [data, setData] = useState<CapaData>(empty);
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const touchedReportFields = useRef(new Set<keyof CapaData>());
   const loadedRevision = useRef("");
@@ -78,7 +93,15 @@ export function QualityComplaintCapa() {
     loadedRevision.current = revision;
     touchedReportFields.current.clear();
     setData(toFormData(complaint.capaData, users));
+    setCustomAnswers(complaint.capaData?.customAnswers || {});
   }, [complaint?.id, complaint?.capaUpdatedAt, users]);
+  useEffect(() => {
+    const stored = complaint?.capaData?.questionTemplate;
+    if (stored?.length) setQuestions(stored.filter((q) => !q.removed));
+    else if (setting?.capaQuestionTemplate) {
+      try { const parsed = JSON.parse(setting.capaQuestionTemplate); if (Array.isArray(parsed) && parsed.length) setQuestions(parsed); } catch { /* legacy setting */ }
+    } else setQuestions(defaultQuestions);
+  }, [complaint?.id, complaint?.capaUpdatedAt, setting?.capaQuestionTemplate, defaultQuestions]);
   useEffect(() => {
     if (!suggested) return;
     setData((current) => {
@@ -115,6 +138,7 @@ export function QualityComplaintCapa() {
     data.detectionPreventiveAction,
     data.responsiblePerson,
     data.preparedBy,
+    ...questions.filter((q) => q.required && q.id.startsWith("custom_")).map((q) => customAnswers[q.id]),
   ];
   const completedRequired = requiredValues.filter((value) => s(value).trim()).length;
 
@@ -133,6 +157,8 @@ export function QualityComplaintCapa() {
     const now = new Date().toISOString();
     const capaData: CapaData = {
       ...data,
+      questionTemplate: questions,
+      customAnswers,
       immediateContainment: data.rejectionDetails,
       rootCauseAnalysis: data.productionFailureRootCause,
       correctiveAction: data.correctiveAction,
@@ -158,6 +184,14 @@ export function QualityComplaintCapa() {
     setMessage("CAPA saved successfully.");
   };
 
+  const saveTemplate = async () => {
+    if (questions.some((q) => !q.label.trim())) { setTemplateMessage("Every question must have a heading."); return; }
+    const current = (setting || { id: "settings" }) as Setting;
+    await settingsApi.saveItem({ ...current, capaQuestionTemplate: JSON.stringify(questions), updateTimestamp: new Date().toISOString(), updatedBy: "System User" });
+    setTemplateMessage("Question template saved for future CAPAs.");
+    setEditingQuestions(false);
+  };
+
   const print = () => { void printQualityCapaReport(complaint, data, { setting, linkedDetails: suggested }).then((opened) => { if (!opened) setMessage("Printing was blocked by the browser. Please allow pop-ups and try again."); }); };
 
   const clearForm = () => {
@@ -179,6 +213,11 @@ export function QualityComplaintCapa() {
             <button type="button" onClick={print} className="inline-flex items-center gap-2 rounded border-2 border-indigo-700 bg-indigo-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-indigo-800"><Printer size={16} />Print CAPA</button>
             <button type="button" onClick={() => navigate("/quality/complaints/master")} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold transition hover:bg-slate-100"><ArrowLeft size={16} />Back</button>
           </div>
+        </div>
+        <div className="mt-4 border-t border-slate-300 pt-3">
+          <button type="button" onClick={() => setEditingQuestions((v) => !v)} className="rounded border-2 border-indigo-700 px-3 py-2 text-sm font-bold text-indigo-800">{editingQuestions ? "Close question editor" : "Edit questions"}</button>
+          {templateMessage && <span className="ml-3 text-sm font-bold text-indigo-800">{templateMessage}</span>}
+          {editingQuestions && <div className="mt-3 space-y-2 rounded border border-indigo-300 bg-indigo-50 p-3">{questions.map((q, index) => <div key={q.id} className="flex gap-2"><input className={`${field} flex-1`} value={q.label} onChange={(e) => setQuestions((all) => all.map((item, i) => i === index ? { ...item, label: e.target.value } : item))} /><label className="flex items-center gap-1 text-xs font-bold"><input type="checkbox" checked={Boolean(q.required)} onChange={(e) => setQuestions((all) => all.map((item, i) => i === index ? { ...item, required: e.target.checked } : item))} />Required</label><button type="button" onClick={() => setQuestions((all) => all.filter((_, i) => i !== index))} className="rounded border border-red-700 px-2 text-xs font-bold text-red-700">Remove</button></div>)}<div className="flex gap-2"><button type="button" onClick={() => setQuestions((all) => [...all, { id: `custom_${Date.now()}`, label: "New question", type: "text" }])} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold">Add question</button><button type="button" onClick={() => void saveTemplate()} className="rounded bg-indigo-700 px-3 py-2 text-sm font-bold text-white">Save template</button></div></div>}
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-300 pt-3 text-xs font-bold text-slate-600">
           <span>Fields marked <span className="text-red-600">*</span> are required.</span>
@@ -218,6 +257,8 @@ export function QualityComplaintCapa() {
             <div className={card}><Field label="Prepared By" required><Select value={s(data.preparedBy)} onChange={(value) => update("preparedBy", value)} options={userOptions} placeholder="Select prepared by..." /></Field></div>
           </div>
         </Section>
+
+        {questions.filter((q) => q.id.startsWith("custom_")).length > 0 && <Section title="Additional questions"><div className="space-y-3">{questions.filter((q) => q.id.startsWith("custom_")).map((q) => <div className={card} key={q.id}><Field label={q.label} required={q.required}><textarea className={textArea} value={customAnswers[q.id] || ""} onChange={(e) => setCustomAnswers((all) => ({ ...all, [q.id]: e.target.value }))} /></Field></div>)}</div></Section>}
 
         <Section title="Print report details and sign-off">
           <div className="grid gap-3 md:grid-cols-2">

@@ -1176,6 +1176,8 @@ export interface QualityComplaint {
   capaGeneratedAt?: string;
   capaStatus?: "Pending" | "Generated" | "Completed" | string;
   capaData?: {
+    questionTemplate?: CapaQuestion[];
+    customAnswers?: Record<string, string>;
     defectDescription?: string;
     defectPercentage?: string;
     rejectionDetails?: string;
@@ -1214,6 +1216,14 @@ export interface QualityComplaint {
   capaUpdatedAt?: string;
   updatedBy?: string;
   updateTimestamp?: string;
+}
+
+export interface CapaQuestion {
+  id: string;
+  label: string;
+  type?: "text";
+  required?: boolean;
+  removed?: boolean;
 }
 
 export interface QcSpecCardMovement {
@@ -1733,6 +1743,7 @@ export interface Setting {
   organizationName?: string;
   updatedBy?: string;
   updateTimestamp?: string;
+  capaQuestionTemplate?: string;
 }
 
 export interface FixedMonthlyExpenseLine {

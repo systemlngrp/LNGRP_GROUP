@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -44,12 +44,14 @@ function parseLocalYmd(dateStr?: string) {
 }
 
 export function PendingProduction() {
+  const location = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
   const [firmFilter, setFirmFilter] = useState('');
 
   const navigate = useNavigate();
+  const [successMessage, setSuccessMessage] = useState(() => String((location.state as { successMessage?: string } | null)?.successMessage || ""));
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs] = useData<Production>("php_job_master", []);
@@ -62,6 +64,17 @@ export function PendingProduction() {
   const [cancelValues, setCancelValues] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [makeConfirmId, setMakeConfirmId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    const message = String((location.state as { successMessage?: string } | null)?.successMessage || "");
+    if (!message) return;
+    setSuccessMessage(message);
+    const timer = window.setTimeout(() => {
+      setSuccessMessage("");
+      navigate(location.pathname, { replace: true, state: null });
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [location.pathname, location.state, navigate]);
 
   const cutoffDate = useMemo(() => {
     const today = new Date();
@@ -236,6 +249,7 @@ export function PendingProduction() {
       <div className="flex justify-between items-center border-b border-black pb-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Production Plan</h2>
       </div>
+      {successMessage && <div role="status" className="rounded border-2 border-emerald-700 bg-emerald-100 px-4 py-3 text-sm font-bold text-emerald-900">{successMessage}</div>}
 
       <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] xl:items-end">
         <div className="relative min-w-0">

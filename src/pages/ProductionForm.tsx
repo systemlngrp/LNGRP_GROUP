@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../lib/utils";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import {
   Company,
@@ -209,6 +209,7 @@ function createInitialFormData(initialDate: string) {
 }
 
 export function ProductionForm() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
@@ -700,7 +701,10 @@ export function ProductionForm() {
         setSelectedScheduleId("");
         setSearchParams({});
       }
-      setSaveNotice({ type: "success", message: `Plan Job saved successfully. Job No: ${txnNo}` });
+      navigate("/production/pending", {
+        replace: true,
+        state: { successMessage: `Plan Job saved successfully. Job No: ${txnNo}` },
+      });
     } catch (err) {
       console.error("Failed to save production:", err);
       setSaveNotice({ type: "error", message: err instanceof Error ? err.message : "Failed to save Plan Job." });
