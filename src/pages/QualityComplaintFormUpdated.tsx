@@ -2,12 +2,13 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
-import type { DispatchPlan, Firm, Production, ProductionProcessing, QualityComplaint, User } from "../types";
+import type { DispatchPlan, Production, ProductionProcessing, QualityComplaint, User } from "../types";
 import { qcPersonOptions } from "../utils/qcPeople";
 import { concernedPersonForJob } from "../lib/complaintResponsibility";
 
 type FormState = {
   firmId: string;
+  firmName: string;
   partyName: string;
   itemName: string;
   erpCode: string;
@@ -23,7 +24,7 @@ type FormState = {
 };
 
 const dateToday = () => new Date().toISOString().slice(0, 10);
-const blank = (): FormState => ({ firmId: "", partyName: "", itemName: "", erpCode: "", dateOfComplaint: dateToday(), natureOfComplaint: "Complaint", lotNo: "", issueDetails: "", photo1: "", photo2: "", areaOfIssue: "", concernedPersonName: "", quantity: "" });
+const blank = (): FormState => ({ firmId: "", firmName: "", partyName: "", itemName: "", erpCode: "", dateOfComplaint: dateToday(), natureOfComplaint: "Complaint", lotNo: "", issueDetails: "", photo1: "", photo2: "", areaOfIssue: "", concernedPersonName: "", quantity: "" });
 const field = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const key = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const dateValue = (value: unknown) => new Date(String(value || "")).getTime() || 0;
@@ -43,7 +44,6 @@ function fileDataUrl(file: File) {
 }
 
 export function QualityComplaintFormUpdated() {
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all" });
@@ -57,7 +57,6 @@ export function QualityComplaintFormUpdated() {
   const manuallySelectedPerson = useRef(false);
   const [uploading, setUploading] = useState<Record<"photo1" | "photo2", boolean>>({ photo1: false, photo2: false });
 
-  const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: firm.firmName })), [firms]);
   const erpOptions = useMemo(() => [...new Set(items.map((item: any) => String(item.erp || "").trim()).filter(Boolean))].map((value) => ({ value, label: value, searchText: `${value} ${items.find((item: any) => String(item.erp || "").trim() === value)?.name || ""}` })), [items]);
   const jobOptions = useMemo(() => [...new Set(productions.map((production) => String(production.transactionNo || production.jobCardNo || "").trim()).filter(Boolean))].sort().map((value) => ({ value, label: value })), [productions]);
   const suggestedPerson = useMemo(
@@ -65,7 +64,6 @@ export function QualityComplaintFormUpdated() {
     [form.lotNo, form.areaOfIssue, people, productions, processing, dispatchPlans],
   );
   const personOptions = qcPersonOptions(people, [suggestedPerson, form.concernedPersonName]);
-  const selectedFirm = firms.find((firm) => firm.id === form.firmId);
   const locked = Boolean(form.erpCode);
 
   const latestErpProduction = (erp: string) => productions.filter((production) => matchesErp(production, erp)).sort((a, b) => dateValue(b.date) - dateValue(a.date) || dateValue(b.updateTimestamp) - dateValue(a.updateTimestamp))[0];
@@ -94,6 +92,7 @@ export function QualityComplaintFormUpdated() {
       partyName: String((production as any)?.companyName || "").trim(),
       itemName: String((production as any)?.itemName || (item as any)?.name || "").trim(),
       firmId: String((production as any)?.firmId || current.firmId || ""),
+      firmName: String((production as any)?.firmName || current.firmName || "").trim(),
       lotNo: String((production as any)?.transactionNo || (production as any)?.jobCardNo || current.lotNo || ""),
       quantity: String((production as any)?.plannedQty || (production as any)?.planQty || (production as any)?.qty || current.quantity || ""),
     };
@@ -144,12 +143,12 @@ export function QualityComplaintFormUpdated() {
     event.preventDefault();
     setMessage("");
     if (uploading.photo1 || uploading.photo2) return setMessage("Please wait for photo uploads to finish.");
-    const required = [form.firmId, form.dateOfComplaint, form.partyName, form.itemName, form.erpCode, form.natureOfComplaint, form.issueDetails, form.lotNo, form.quantity];
+    const required = [form.dateOfComplaint, form.partyName, form.itemName, form.erpCode, form.natureOfComplaint, form.issueDetails, form.lotNo, form.quantity];
     if (required.some((value) => !String(value).trim())) return setMessage("Please complete all required fields.");
     const quantity = Number(form.quantity);
     if (!Number.isFinite(quantity) || quantity <= 0) return setMessage("Quantity must be greater than zero.");
     const now = new Date().toISOString();
-    const record: QualityComplaint = { id: `QC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: now, dateOfComplaint: form.dateOfComplaint, firmId: form.firmId, firmName: selectedFirm?.firmName || "", partyName: form.partyName.trim(), itemName: form.itemName.trim(), erpCode: form.erpCode.trim(), natureOfComplaint: form.natureOfComplaint, lotNo: form.lotNo.trim(), issueDetails: form.issueDetails.trim(), photo1: form.photo1, photo2: form.photo2, areaOfIssue: form.areaOfIssue, concernedPersonName: form.concernedPersonName.trim(), quantity, updatedBy: "System User", updateTimestamp: now };
+    const record: QualityComplaint = { id: `QC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: now, dateOfComplaint: form.dateOfComplaint, firmId: form.firmId, firmName: form.firmName || "", partyName: form.partyName.trim(), itemName: form.itemName.trim(), erpCode: form.erpCode.trim(), natureOfComplaint: form.natureOfComplaint, lotNo: form.lotNo.trim(), issueDetails: form.issueDetails.trim(), photo1: form.photo1, photo2: form.photo2, areaOfIssue: form.areaOfIssue, concernedPersonName: form.concernedPersonName.trim(), quantity, updatedBy: "System User", updateTimestamp: now };
     setSaving(true);
     try {
       await api.addItem(record);
@@ -165,7 +164,6 @@ export function QualityComplaintFormUpdated() {
   };
 
   return <div className="mx-auto max-w-4xl space-y-5"><h2 className="border-b border-black pb-3 text-xl font-bold uppercase">QC Complaint Form</h2>{message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}<form onSubmit={submit} className="grid grid-cols-1 gap-4 rounded border-2 border-black bg-white p-5 md:grid-cols-2">
-    <label className="space-y-1"><span className="font-bold">Firm *</span><Select value={form.firmId} onChange={(value) => setFormValue("firmId", value)} options={firmOptions} placeholder="Select Firm" disabled={locked} /></label>
     <label className="space-y-1"><span className="font-bold">Date of Complaint *</span><input type="date" className={field} value={form.dateOfComplaint} onChange={(event) => setFormValue("dateOfComplaint", event.target.value)} /></label>
     <label className="space-y-1"><span className="font-bold">Party Name *</span><Select value={form.partyName} onChange={(value) => setFormValue("partyName", value)} options={form.partyName ? [{ value: form.partyName, label: form.partyName }] : []} placeholder="Select Party" disabled={locked} /></label>
     <label className="space-y-1"><span className="font-bold">Item Name *</span><Select value={form.itemName} onChange={(value) => setFormValue("itemName", value)} options={form.itemName ? [{ value: form.itemName, label: form.itemName }] : []} placeholder="Select Item" disabled={locked} /></label>
