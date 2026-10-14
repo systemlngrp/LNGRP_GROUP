@@ -34,14 +34,18 @@ import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildLinkedLoadingDetailsFromSlip, findLinkedItemByMasterErp, getLinkedSetsPerBox } from "../lib/linkedLoading";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
 import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
 import { normalizeTruckStatus } from "../lib/truckStatus";
 import { useAuth } from "../auth/AuthContext";
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
-import { eligibleLoadingJobs, loadedQtyByJobId } from "../lib/pendingLoadingEligibility";
+import {
+  EligibleLoadingJob,
+  getLoadingJobNumber,
+  getPendingLoadingPlanProjections,
+  loadedQtyByJobId,
+} from "../lib/pendingLoadingEligibility";
 
 interface PendingPlan extends DispatchPlan {
   firmId: string;
@@ -63,6 +67,7 @@ interface GroupedPlan {
   itemId: string;
   itemName: string;
   plans: PendingPlan[];
+  eligibleJobs: EligibleLoadingJob[];
 }
 
 interface LoadingModalState {
@@ -72,6 +77,7 @@ interface LoadingModalState {
   itemId: string;
   itemName: string;
   plans: PendingPlan[];
+  eligibleJobs: EligibleLoadingJob[];
 }
 
 interface JobOption {
@@ -92,7 +98,7 @@ export function PendingLoading() {
   const [plans, updatePlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
   const npdItems = useNpdItems();
-  const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();
+  const { resolveOrderItem, findItemAcrossSources, itemsBySource } = useOrderItemCatalog();
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
@@ -154,39 +160,37 @@ export function PendingLoading() {
   }, [phpLoadingSlips, plateLoadingSlips]);
 
   const existingLoadedByJobId = useMemo(() => loadedQtyByJobId(loadingSlips), [loadingSlips]);
-  const getEligibleJobs = (itemSource: OrderItemSource, itemId: string, firmId: string) =>
-    eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, existingLoadedByJobId);
+
+  const planProjections = useMemo(
+    () => getPendingLoadingPlanProjections({
+      plans,
+      orders,
+      schedules,
+      companies,
+      firms,
+      productions,
+      phpJobs,
+      plateJobs,
+      loadingSlips,
+      resolveOrderItem,
+      findItemAcrossSources,
+    }),
+    [companies, findItemAcrossSources, firms, loadingSlips, orders, phpJobs, plateJobs, plans, productions, resolveOrderItem, schedules],
+  );
 
   const groupedData = useMemo(() => {
-    const orderById = new Map(orders.map((order) => [order.id, order]));
-    const scheduleById = new Map(schedules.map((schedule) => [schedule.id, schedule]));
-    const filtered = plans.filter((plan) => {
-      const pending = Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
-      if (pending <= 0) return false;
-
-      const order = orderById.get(plan.orderId);
-      const firmId = String(scheduleById.get(plan.scheduleId)?.firmId || order?.firmId || "");
-      if (firmFilter && firmId !== firmFilter) return false;
-      const item = resolveOrderItem(order);
-      const company = companies.find((row) => row.id === order?.companyId);
-      const itemSource = normalizeOrderItemSource(order?.itemSource || item?.source);
-      if (!getEligibleJobs(itemSource, item?.id || "", firmId).length) return false;
-
-      const firm = firms.find((row) => row.id === firmId);
-      const searchBlob = `${item?.name || ""} ${company?.name || ""} ${order?.orderNo || ""} ${plan.planNo || ""} ${getFirmDisplayNameById(firmId, firms)} ${firm?.firmName || ""}`.toLowerCase();
-      return searchBlob.includes(searchTerm.toLowerCase());
+    const filtered = planProjections.filter((projection) => {
+      if (firmFilter && projection.firmId.toLowerCase() !== firmFilter.trim().toLowerCase()) return false;
+      const firm = firms.find((row) => row.id.toLowerCase() === projection.firmId.toLowerCase());
+      const searchBlob = `${projection.item?.name || ""} ${projection.company?.name || ""} ${projection.order?.orderNo || ""} ${projection.plan.planNo || ""} ${getFirmDisplayNameById(projection.firmId, firms)} ${firm?.firmName || ""}`.toLowerCase();
+      return searchBlob.includes(searchTerm.trim().toLowerCase());
     });
 
     const map = new Map<string, GroupedPlan>();
 
-    filtered.forEach((plan) => {
-      const order = orderById.get(plan.orderId);
-      const firmId = String(scheduleById.get(plan.scheduleId)?.firmId || order?.firmId || "");
+    filtered.forEach((projection) => {
+      const { plan, order, item, company, firmId, itemSource, pendingQty, eligibleJobs } = projection;
       const firmName = getFirmDisplayNameById(firmId, firms);
-      const item = resolveOrderItem(order);
-      const company = companies.find((row) => row.id === order?.companyId);
-      const itemSource = normalizeOrderItemSource(order?.itemSource || item?.source);
-
       const loadable = Boolean(order && item && company);
       const unavailableReason = !order ? "Order record unavailable" : !item ? "Item record unavailable" : !company ? "Company record unavailable" : undefined;
       const companyId = company?.id || `missing-company-${plan.id}`;
@@ -204,6 +208,7 @@ export function PendingLoading() {
           itemId,
           itemName: item?.name || "Item unavailable",
           plans: [],
+          eligibleJobs,
         });
       }
 
@@ -215,7 +220,7 @@ export function PendingLoading() {
         companyName: company?.name || "Company unavailable",
         itemSource,
         orderNo: order?.orderNo || "N/A",
-        pendingQty: Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0),
+        pendingQty,
       });
     });
 
@@ -234,7 +239,7 @@ export function PendingLoading() {
     });
 
     return final;
-  }, [companies, firms, firmFilter, getEligibleJobs, orders, plans, resolveOrderItem, schedules, searchTerm]);
+  }, [firms, firmFilter, planProjections, searchTerm]);
 
   useEffect(() => {
     if (didInitExpand.current) return;
@@ -255,7 +260,7 @@ export function PendingLoading() {
   }, [jobSplitQtys]);
 
   const getPlanOpeningStockQty = (key: string) => Number(openingStockQtys[key] || 0);
-  const getAlreadyLoadedForJob = (jobId: string) => existingLoadedByJobId.get(jobId) || 0;
+  const getAlreadyLoadedForJob = (jobId: string) => existingLoadedByJobId.get(String(jobId || "").trim().toLowerCase()) || 0;
 
   const getFirmStockBalance = (itemId: string, firmId: string) => {
     const catalogItem = itemsBySource.FG.find((row) => row.id === itemId);
@@ -290,9 +295,8 @@ export function PendingLoading() {
     setModalTruckId("");
   }, [modalTruckId, trucks]);
 
-  const getRemainingCapacityForJob = (jobId: string, currentRowQty = 0) => {
+  const getRemainingCapacityForJob = (jobId: string, currentRowQty = 0, jobSource: OrderItemSource = "FG") => {
     const production = productionMap.get(jobId);
-    const jobSource = normalizeOrderItemSource(production?.itemSource);
     const ffg = Number(jobSource === "FG" ? production?.prodFromFFG || 0 : production?.productionOutputQty || 0);
     const alreadyLoaded = getAlreadyLoadedForJob(jobId);
     const currentAdjustments = currentAdjustmentByJobId.get(jobId) || 0;
@@ -321,7 +325,7 @@ export function PendingLoading() {
     Object.entries(byJobId).forEach(([jobId, qty]) => {
       const value = Number(qty || 0);
       if (value <= 0) return;
-      const remainingCapacity = getRemainingCapacityForJob(jobId, value);
+      const remainingCapacity = getRemainingCapacityForJob(jobId, value, modal.itemSource);
       if (value > remainingCapacity + 0.0001) {
         errors.push("Adjust Now cannot exceed Yet to Load for a job.");
       }
@@ -353,11 +357,13 @@ export function PendingLoading() {
     const firm = firms.find((row) => row.id === firmId);
     if (!firm) { alert("Original order firm could not be resolved."); return; }
     setActiveFirm(firm);
-    setLoadingModal({ firmId, companyId, itemSource, itemId, itemName, plans: itemPlans });
+    const group = groupedData
+      .flatMap((companyGroup) => companyGroup.items)
+      .find((itemGroup) => itemGroup.companyId === companyId && itemGroup.itemSource === itemSource && itemGroup.itemId === itemId && itemGroup.firmId === firmId);
+    const eligibleJobs = group?.eligibleJobs || [];
+    setLoadingModal({ firmId, companyId, itemSource, itemId, itemName, plans: itemPlans, eligibleJobs });
     const modalKey = getModalKey(companyId, itemSource, itemId);
     const totalPending = itemPlans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
-
-    const eligibleJobs = getEligibleJobs(itemSource, itemId, firmId);
 
     setLoadedQuantities({ [modalKey]: totalPending });
     setOpeningStockQtys({ [modalKey]: "" });
@@ -495,7 +501,7 @@ export function PendingLoading() {
       const value = Number(qty || 0);
       if (!jobId || value <= 0) return;
       const production = productionMap.get(jobId);
-      const jobNo = String(production?.transactionNo || "").trim() || String(production?.jobCardNo || "").trim();
+      const jobNo = production ? getLoadingJobNumber(production) : "";
       if (!jobNo) return;
       allocationPool.push({ sourceType: "job", jobId, jobNo, qty: value });
     });
@@ -720,7 +726,7 @@ export function PendingLoading() {
       ) : groupedData.length === 0 ? (
         <div className="bg-white border-2 border-dashed border-slate-300 rounded-lg p-12 text-center">
           <Package className="mx-auto h-12 w-12 text-slate-300 mb-4" />
-          <p className="text-slate-500 font-medium">No pending loading plans found.</p>
+          <p className="text-slate-500 font-medium">No eligible pending loading plans found.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -897,7 +903,7 @@ export function PendingLoading() {
                   const phpDetailsPreview = getPreviewLinkedDetails("PHP", rowLoadedQty);
                   const plateDetailsPreview = getPreviewLinkedDetails("PLATE", rowLoadedQty);
 
-                  const jobs = getEligibleJobs(loadingModal.itemSource, loadingModal.itemId, loadingModal.firmId);
+                  const jobs = loadingModal.eligibleJobs;
 
                   return (
                     <div className="w-full space-y-6">

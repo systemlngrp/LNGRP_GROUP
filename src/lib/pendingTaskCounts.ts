@@ -514,6 +514,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       plateJobs: args.plateJobMaster,
       loadingSlips: args.loadingSlips,
       resolveOrderItem: args.resolveOrderItem,
+      findItemAcrossSources: args.findItemAcrossSources,
     }),
     "/billing/pending": args.loadingSlips.filter((slip) => !slip.invoiceId && slip.status !== "Cancelled").length,
     "/billing/pending-tally": args.invoices.filter((invoice) => !invoice.tallyTimestamp).length,

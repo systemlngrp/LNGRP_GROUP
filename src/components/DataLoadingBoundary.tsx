@@ -106,7 +106,7 @@ export function DataLoadingBoundary({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-2">
             {loading && <Spinner size={16} />}
             <span>{failed.length ? `Data could not be loaded: ${failed[0].error}` :
-              allTotalsKnown && knownTotal > 0 ? `Loading records ${loaded.toLocaleString()} of ${knownTotal.toLocaleString()}…` :
+              allTotalsKnown && knownTotal > 0 ? `Loading records ${loaded.toLocaleString()} of ${knownTotal.toLocaleString()}...` :
               loaded > 0 ? `Loading more records… ${loaded.toLocaleString()} received` : "Loading data…"}</span>
           </div>
           {failed.length > 0 && (
