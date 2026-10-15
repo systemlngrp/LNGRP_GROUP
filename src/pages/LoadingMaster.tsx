@@ -576,6 +576,7 @@ export function LoadingMaster() {
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Company</th>
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Item</th>
               <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">ERP</th>
+              <th className="min-w-[180px] px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Job No / Load Qty</th>
               <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border-b border-black">Total Qty</th>
               <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border-b border-black">Actions</th>
             </tr>
@@ -583,7 +584,7 @@ export function LoadingMaster() {
           <tbody className="bg-white divide-y divide-black">
             {paginatedSlips.length === 0 ? (
               <tr>
-                <td colSpan={11} className="px-6 py-12 text-center text-slate-500 italic">No loading slips found.</td>
+                <td colSpan={12} className="px-6 py-12 text-center text-slate-500 italic">No loading slips found.</td>
               </tr>
 ) : paginatedSlips.map((slip) => (
               <tr key={slip.id} className="hover:bg-slate-50 transition-colors divide-x divide-black">
@@ -634,6 +635,22 @@ export function LoadingMaster() {
                   <div className="max-w-[100px] truncate font-bold uppercase tracking-tight" title={slip.erpCodes}>
                     {slip.erpCodes || "-"}
                   </div>
+                </td>
+                <td className="min-w-[180px] px-6 py-4 text-sm text-black align-top">
+                  {isDirectLoadingSlip(slip) ? (
+                    <span className="font-bold text-sky-700">Direct Loading</span>
+                  ) : slip.lines.flatMap((line) => line.allocations || []).filter((allocation) => allocation.sourceType === "job").length > 0 ? (
+                    <div className="space-y-1">
+                      {slip.lines.flatMap((line) => line.allocations || []).filter((allocation) => allocation.sourceType === "job").map((allocation, index) => (
+                        <div key={`${slip.id}-job-${index}`} className="whitespace-nowrap">
+                          <span className="font-bold">Job No: {allocation.jobNo || allocation.jobId || "-"}</span>
+                          <span className="ml-2 text-indigo-700">Load Qty: {Number(allocation.qty || 0).toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-slate-500">-</span>
+                  )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-indigo-600">
                   {slip.totalQty.toLocaleString()}
@@ -690,7 +707,7 @@ export function LoadingMaster() {
               const lines = getSlipLines(draft);
               return (
                 <tr key={`${slip.id}-details`} className="bg-white">
-                  <td colSpan={10} className="px-6 pb-6 pt-2 border-t border-black">
+                  <td colSpan={12} className="px-6 pb-6 pt-2 border-t border-black">
                     <div className="rounded border border-black overflow-hidden">
                       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3 border-b border-black">
                         <div className="text-sm font-bold text-black">
