@@ -24,6 +24,7 @@ import { resolveProductionErp, resolveProductionItem as resolveProductionCatalog
 import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
+import { isScrapLinkedProduction } from "../lib/productionOrigin";
 
 const firstNonBlank = (...values: unknown[]) => {
   for (const value of values) {
@@ -116,6 +117,11 @@ export function ProductionMaster() {
     void setProductions(() => normalizedRows);
   }, [productions]);
 
+  const visibleProductions = useMemo(
+    () => productions.filter((production) => !isScrapLinkedProduction(production, phpJobs, plateJobs)),
+    [plateJobs, phpJobs, productions]
+  );
+
   const ffgSummaries = useMemo(() => {
     const today = new Date().toISOString().split("T")[0];
     const yesterday = new Date();
@@ -128,7 +134,7 @@ export function ProductionMaster() {
       total: 0
     };
 
-    productions.forEach(p => {
+    visibleProductions.forEach(p => {
       const qty = Number(p.prodFromFFG || 0);
       const prodDate = p.date?.split("T")[0];
 
@@ -138,7 +144,7 @@ export function ProductionMaster() {
     });
 
     return totals;
-  }, [productions]);
+  }, [visibleProductions]);
 
   const updateCloseMeta = async (id: string, patch: Partial<Pick<Production, "closeBy" | "closeDate">>) => {
     const target = productions.find((p) => p.id === id);
@@ -245,16 +251,16 @@ export function ProductionMaster() {
 
   const jobClosureStatusMap = useMemo(() => {
     return buildJobClosureStatusMap({
-      productions: productions.map((production) => resolveProductionProcessingRoute(production, phpJobs, plateJobs)),
+      productions: visibleProductions.map((production) => resolveProductionProcessingRoute(production, phpJobs, plateJobs)),
       processing,
       mandatoryMachinesByType,
       machines,
       resolveProductionItem,
     });
-  }, [productions, phpJobs, plateJobs, processing, mandatoryMachinesByType, machines, itemsBySource]);
+  }, [visibleProductions, phpJobs, plateJobs, processing, mandatoryMachinesByType, machines, itemsBySource]);
   const erpLeastGsmMap = useMemo(() => {
     const map = new Map<string, number>();
-    productions.forEach(p => {
+    visibleProductions.forEach(p => {
       // Skip canceled jobs for least cost calculation
       if (p.status === "Cancelled" || p.cancelTimestamp) return;
       
@@ -272,7 +278,7 @@ export function ProductionMaster() {
       if (erp && gsm > 0) map.set(erp, gsm);
     });
     return map;
-  }, [itemsBySource, productions]);
+  }, [itemsBySource, visibleProductions]);
 
   const loadedQtyByProductionId = useMemo(() => {
     const map = new Map<string, number>();
@@ -410,7 +416,7 @@ export function ProductionMaster() {
   };
 
   const productionFilterRows = useMemo(() => {
-    return productions.map((production) => {
+    return visibleProductions.map((production) => {
       const schedule = schedules.find((s) => s.id === production.scheduleId);
       const order = orders.find((o) => o.id === schedule?.orderId || o.id === (production as Production & { orderId?: string }).orderId);
       const item = resolveProductionItem(production, order) || resolveOrderItem(order);
@@ -451,7 +457,7 @@ export function ProductionMaster() {
         ].join(" ").toLowerCase(),
       };
     });
-  }, [productions, schedules, orders, companies, firmMap, resolveOrderItem]);
+  }, [visibleProductions, schedules, orders, companies, firmMap, resolveOrderItem]);
 
   const companyOptions = useMemo(() => {
     const names = Array.from(new Set(productionFilterRows.map((row) => row.companyName).filter(Boolean)));

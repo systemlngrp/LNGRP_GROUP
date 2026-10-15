@@ -12,3 +12,19 @@ export function getProductionOriginSource(
   const source = String(production.itemSource || "FG").trim().toUpperCase();
   return source === "PHP" || source === "PLATE" ? source : "FG";
 }
+
+export function isScrapLinkedProduction(
+  production: Production,
+  phpJobs: readonly Production[],
+  plateJobs: readonly Production[]
+) {
+  const phpId = String(production.phpScheduledJobId || "").trim();
+  const plateId = String(production.plateScheduledJobId || "").trim();
+  if (!phpId && !plateId) return false;
+
+  const sourceJob = phpId
+    ? phpJobs.find((job) => String(job.id) === phpId)
+    : plateJobs.find((job) => String(job.id) === plateId);
+  const methodology = sourceJob?.methodology || production.methodology;
+  return String(methodology || "").trim().toUpperCase() === "SCRAP";
+}

@@ -3694,23 +3694,16 @@ async function cleanupScrapLinkedProductions(db: mysql.Pool) {
       FROM productions p
       LEFT JOIN php_job_master php ON php.id = p.phpScheduledJobId
       LEFT JOIN plate_job_master plate ON plate.id = p.plateScheduledJobId
-      WHERE UPPER(TRIM(COALESCE(p.methodology, ''))) = 'SCRAP'
-        AND UPPER(TRIM(COALESCE(p.itemSource, 'FG'))) = 'FG'
-        AND LOWER(TRIM(COALESCE(p.status, ''))) = 'pending consumption'
-        AND (
-          (
-            php.id IS NOT NULL
-            AND UPPER(TRIM(COALESCE(php.methodology, ''))) = 'SCRAP'
-            AND COALESCE(p.scheduleId, '') = COALESCE(php.scheduleId, '')
-            AND COALESCE(p.itemId, '') = COALESCE(php.itemId, '')
-          )
-          OR (
-            plate.id IS NOT NULL
-            AND UPPER(TRIM(COALESCE(plate.methodology, ''))) = 'SCRAP'
-            AND COALESCE(p.scheduleId, '') = COALESCE(plate.scheduleId, '')
-            AND COALESCE(p.itemId, '') = COALESCE(plate.itemId, '')
-          )
+      WHERE (
+        (
+          php.id IS NOT NULL
+          AND UPPER(TRIM(COALESCE(php.methodology, ''))) = 'SCRAP'
         )
+        OR (
+          plate.id IS NOT NULL
+          AND UPPER(TRIM(COALESCE(plate.methodology, ''))) = 'SCRAP'
+        )
+      )
       FOR UPDATE
     `);
     let deleted = 0;
