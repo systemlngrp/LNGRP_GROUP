@@ -175,7 +175,7 @@ const SummarySheetReport = lazy(() => import("./pages/SummarySheetReport").then(
 const QcView = lazy(() => import("./pages/QcView").then((module) => ({ default: module.QcView })));
 const PdiReport = lazy(() => import("./pages/PdiReportWithComplaints").then((module) => ({ default: module.PdiReportWithComplaints })));
 const QualityComplaintForm = lazy(() => import("./pages/QualityComplaintFormUpdated").then((module) => ({ default: module.QualityComplaintFormUpdated })));
-const QualityComplaintMaster = lazy(() => import("./pages/QualityComplaintMasterScreenshot").then((module) => ({ default: module.QualityComplaintMasterScreenshot })));
+const QualityComplaintMaster = lazy(() => import("./pages/QualityComplaintMaster").then((module) => ({ default: module.QualityComplaintMaster })));
 const QualityComplaintCapa = lazy(() => import("./pages/QualityComplaintCapa").then((module) => ({ default: module.QualityComplaintCapa })));
 const QualityCapaMaster = lazy(() => import("./pages/QualityCapaMaster").then((module) => ({ default: module.QualityCapaMaster })));
 const QualityPendingCapa = lazy(() => import("./pages/QualityPendingCapa").then((module) => ({ default: module.QualityPendingCapa })));
