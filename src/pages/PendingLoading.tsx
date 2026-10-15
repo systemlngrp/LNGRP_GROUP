@@ -985,25 +985,11 @@ export function PendingLoading() {
                                 );
                               })}
                               <tr className="divide-x divide-black bg-emerald-50/40 border-t-2 border-black">
-                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock Ã¢â‚¬â€ ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
+                                <td className="px-4 py-4 text-xs font-black uppercase text-emerald-800">{loadingModal.itemSource === "FG" ? `FG Stock - ${getFirmDisplayNameById(loadingModal.firmId, firms)}` : `${loadingModal.itemSource} Stock`}</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs text-slate-500">-</td>
                                 <td className="px-4 py-4 text-right text-xs font-black text-emerald-700">{loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId).toLocaleString() : "-"}</td>
-                                <td className="px-4 py-2 text-right">
-                                  <input
-                                    type="number"
-                                    value={openingStockQtys[modalKey] ?? ""}
-                                    min={0}
-                                    max={loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId) : undefined}
-                                    onChange={(e) =>
-                                      setOpeningStockQtys((prev) => ({
-                                        ...prev,
-                                        [modalKey]: e.target.value === "" ? "" : parseFloat(e.target.value),
-                                      }))
-                                    }
-                                    className="w-28 rounded border-2 border-yellow-500 bg-yellow-100 px-2 py-1.5 text-right font-black text-xs text-black focus:ring-0"
-                                  />
-                                </td>
+                                <td className="px-4 py-4 text-right text-xs font-black text-slate-400">-</td>
                               </tr>
                             </tbody>
                             <tfoot className="bg-slate-900 text-white font-black border-t-2 border-black">
