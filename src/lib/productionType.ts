@@ -56,6 +56,8 @@ export function getRequiredMachinesForProduction(
 ) {
   const source = getProductionEffectiveType(production, item);
   if (source === "PHP" || source === "PLATE") {
+    const linkedSourceJobId = String(production.phpScheduledJobId || production.plateScheduledJobId || "").trim();
+    if (!linkedSourceJobId) return [];
     const methodology = String(production.methodology || "").trim().toUpperCase();
     if (methodology === "CORRUGATION") {
       return [

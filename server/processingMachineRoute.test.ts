@@ -37,6 +37,8 @@ describe("production processing machine route", () => {
   it("excludes Scrap PHP/Plate jobs and preserves the regular RSC route", () => {
     assert.deepEqual(getProcessingMachineRoute({ itemSource: "PHP", methodology: "Scrap" }, mapping, normalize).requiredMachines, []);
     assert.deepEqual(getProcessingMachineRoute({ itemSource: "PLATE", methodology: "Scrap" }, mapping, normalize).requiredMachines, []);
+    assert.deepEqual(getProcessingMachineRoute({ itemSource: "PHP", methodology: "Corrugation" }, mapping, normalize).requiredMachines, []);
+    assert.deepEqual(getProcessingMachineRoute({ itemSource: "PLATE", methodology: "Corrugation" }, mapping, normalize).requiredMachines, []);
     assert.deepEqual(getProcessingMachineRoute({ itemSource: "FG", boxType: "RSC" }, mapping, normalize).requiredMachines, mapping.RSC);
   });
 });

@@ -22,6 +22,9 @@ export function getProcessingMachineRoute(
   ).trim().toUpperCase();
 
   if (source === "PHP" || source === "PLATE") {
+    if (!phpId && !plateId) {
+      return { source, methodology, requiredMachines: [] };
+    }
     const names = methodology === "CORRUGATION"
       ? ["Corrugation Liner", "Printing"]
       : [];

@@ -5,9 +5,12 @@ export function getProcessingMachineRoute(production, mandatoryByType, normalize
     const methodology = String((phpId ? production.phpMasterMethodology : plateId ? production.plateMasterMethodology : "")
         || production.methodology || "").trim().toUpperCase();
     if (source === "PHP" || source === "PLATE") {
+        if (!phpId && !plateId) {
+            return { source, methodology, requiredMachines: [] };
+        }
         const names = methodology === "CORRUGATION"
             ? ["Corrugation Liner", "Printing"]
-            : ["Corrugation Liner"];
+            : [];
         return { source, methodology, requiredMachines: names.map(normalizeMachineName) };
     }
     const typeName = String(production.boxType || "").trim();
