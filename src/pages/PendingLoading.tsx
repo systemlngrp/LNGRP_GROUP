@@ -316,12 +316,14 @@ export function PendingLoading() {
     const errors: string[] = [];
 
     const totalPending = modal.plans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
+    const firmBalance = modal.itemSource === "FG" ? getFirmStockBalance(modal.itemId, modal.firmId) : Number.POSITIVE_INFINITY;
 
     const truckNoInput = modalManualTruckNo.trim();
     if (!truckNoInput) errors.push("Please enter truck number.");
     if (modalTruckId && !isTruckAvailableForLoading(modalTruckId)) errors.push("Selected truck is not an EMPTY internal truck. Please select another truck.");
     if (rowLoadedQty <= 0) errors.push("Loaded qty must be greater than 0.");
     if (rowLoadedQty > totalPending + 0.0001) errors.push("Loaded qty cannot exceed total pending for loading.");
+    if (modal.itemSource === "FG" && rowLoadedQty > firmBalance + 0.0001) errors.push(`Load quantity cannot exceed ${firmBalance.toLocaleString()} available FG stock.`);
 
     Object.entries(byJobId).forEach(([jobId, qty]) => {
       const value = Number(qty || 0);
@@ -331,6 +333,9 @@ export function PendingLoading() {
         errors.push("Adjust Now cannot exceed Yet to Load for a job.");
       }
     });
+    if (modal.itemSource === "FG" && jobAllocatedTotal > firmBalance + 0.0001) {
+      errors.push(`Job allocations cannot exceed ${firmBalance.toLocaleString()} available FG stock.`);
+    }
 
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
     if (openingStockQty < 0) errors.push(`${stockLabel} quantity cannot be negative.`);
@@ -707,9 +712,7 @@ export function PendingLoading() {
     <div className="space-y-5">
       <div className="flex flex-col gap-4 rounded-lg border-2 border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-indigo-700">Dispatch &amp; Logistics</p>
           <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-slate-950">Pending Loading</h2>
-          <p className="mt-1 text-xs font-medium text-slate-500">Review open jobs and prepare the next loading slip.</p>
         </div>
         <div className="flex w-full flex-wrap items-end gap-3 md:w-auto">
         <FirmFilter value={firmFilter} onChange={setFirmFilter} label="Firm" className="min-w-[180px]" />
@@ -906,6 +909,8 @@ export function PendingLoading() {
                   const totalCancelled = loadingModal.plans.reduce((sum, plan) => sum + Number(plan.canceledQty || 0), 0);
                   const totalPending = loadingModal.plans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
                   const rowLoadedQty = Number(loadedQuantities[modalKey] || 0);
+                  const fgAvailable = loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId) : Number.POSITIVE_INFINITY;
+                  const maxLoadable = Math.min(totalPending, fgAvailable);
                   const validation = getModalValidation(loadingModal);
                   const phpDetailsPreview = getPreviewLinkedDetails("PHP", rowLoadedQty);
                   const plateDetailsPreview = getPreviewLinkedDetails("PLATE", rowLoadedQty);
@@ -936,10 +941,10 @@ export function PendingLoading() {
                                 const nextValue = e.target.value === "" ? 0 : parseFloat(e.target.value);
                                 setLoadedQuantities((prev) => ({
                                   ...prev,
-                                  [modalKey]: Math.min(Math.max(nextValue, 0), totalPending),
+                                  [modalKey]: Math.min(Math.max(nextValue, 0), maxLoadable),
                                 }));
                               }}
-                              max={totalPending}
+                              max={maxLoadable}
                               min={0}
                               className="mt-1 w-full rounded bg-yellow-100 px-2 py-1 border-2 border-yellow-400 text-xl font-black text-black focus:outline-none"
                             />
@@ -966,6 +971,13 @@ export function PendingLoading() {
                             <tbody className="divide-y divide-slate-200 bg-white">
                               {jobs.map((job) => {
                                 const currentValue = jobSplitQtys[modalKey]?.[job.jobId] ?? "";
+                                const otherJobAllocations = Object.entries(jobSplitQtys[modalKey] || {})
+                                  .filter(([jobId]) => jobId !== job.jobId)
+                                  .reduce((sum, [, qty]) => sum + Number(qty || 0), 0);
+                                const remainingFgCapacity = loadingModal.itemSource === "FG"
+                                  ? Math.max(0, fgAvailable - otherJobAllocations)
+                                  : Number.POSITIVE_INFINITY;
+                                const jobMax = Math.min(job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP, remainingFgCapacity);
                                 return (
                                   <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
@@ -977,9 +989,9 @@ export function PendingLoading() {
                                         type="number"
                                         value={currentValue}
                                         min={0}
-                                        max={Math.min(job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP)}
+                                        max={jobMax}
                                         onChange={(e) => {
-                                          const next = e.target.value === "" ? "" : Math.min(parseFloat(e.target.value), job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP);
+                                          const next = e.target.value === "" ? "" : Math.min(parseFloat(e.target.value), job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP, remainingFgCapacity);
                                           setJobSplitQtys((prev) => ({
                                             ...prev,
                                             [modalKey]: { ...(prev[modalKey] || {}), [job.jobId]: next },
