@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { getProductionWastageTotals } from "../lib/wastageCalculations";
+import { buildJobLoadingRecords } from "../lib/jobLoadingRecords";
 import { ClientPagination } from "../components/ClientPagination";
 import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, Production, ProductionProcessing, Truck } from "../types";
 
@@ -63,44 +64,21 @@ export function SummarySheetReport() {
       if (slip?.invoiceId) current.invoiceIds.add(slip.invoiceId);
       dispatchByProduction.set(productionId, current);
     };
-    const loadedByPlan = new Map<string, { qty: number; date: string; slips: LoadingSlip[] }>();
-    slips.filter((slip) => slip.status !== "Cancelled").forEach((slip) => {
-      slip.lines.forEach((line) => {
-        const plan = plans.find((item) => item.id === line.dispatchPlanId);
-        if (plan?.productionId) {
-          const current = loadedByPlan.get(plan.id) || { qty: 0, date: "", slips: [] };
-          current.qty += n(line.loadedQty);
-          current.date = current.date || dateText(slip.date);
-          if (!current.slips.some((item) => item.id === slip.id)) current.slips.push(slip);
-          loadedByPlan.set(plan.id, current);
+    const loadingByJob = buildJobLoadingRecords(productions, slips, plans);
+    const slipPlanIds = new Set(slips.flatMap((slip) => (slip.lines || []).map((line) => line.dispatchPlanId)));
+    loadingByJob.forEach((records, productionId) => records.forEach(({ slip, qty, itemIds }) => {
+      addDispatch(productionId, qty, dateText(slip.date), slip);
+      const dispatch = dispatchByProduction.get(productionId);
+      invoiceLinesBySlip.get(slip.id)?.forEach((line) => {
+        if (line.invoiceId && (!line.itemId || !itemIds.length || itemIds.includes(s(line.itemId).toLowerCase()))) {
+          dispatch?.invoiceIds.add(line.invoiceId);
         }
-        line.allocations?.forEach((allocation) => {
-          if (allocation.sourceType !== "job" || plan) return;
-          addDispatch(allocation.jobId, n(allocation.qty), dateText(slip.date), slip);
-        });
       });
-    });
+    }));
     plans.forEach((plan) => {
-      if (!plan.productionId) return;
-      const loaded = loadedByPlan.get(plan.id);
-      const qty = Math.max(n(plan.loadedQty), loaded?.qty || 0);
-      addDispatch(plan.productionId, qty, loaded?.date || dateText(plan.date));
-      if (loaded) {
-        const current = dispatchByProduction.get(plan.productionId);
-        loaded.slips.forEach((slip) => {
-          if (current && !current.slips.some((item) => item.id === slip.id)) current.slips.push(slip);
-          if (current && slip.invoiceId) current.invoiceIds.add(slip.invoiceId);
-        });
+      if (plan.productionId && !slipPlanIds.has(plan.id)) {
+        addDispatch(plan.productionId, n(plan.loadedQty), dateText(plan.date));
       }
-      const relatedSlips = slips.filter((slip) => slip.status !== "Cancelled" && slip.lines.some((line) => line.dispatchPlanId === plan.id));
-      relatedSlips.forEach((slip) => {
-        invoiceLinesBySlip.get(slip.id)?.forEach((line) => {
-          if (line.invoiceId) {
-            const current = dispatchByProduction.get(plan.productionId!);
-            if (current) current.invoiceIds.add(line.invoiceId);
-          }
-        });
-      });
     });
     const query = search.trim().toLowerCase();
     return productions.filter((production) => {
@@ -130,21 +108,13 @@ export function SummarySheetReport() {
       relatedInvoices.sort((a, b) => dateText(a.tallyInvDate || a.date).localeCompare(dateText(b.tallyInvDate || b.date)));
       const invoiceValues = relatedInvoices.map((invoice) => money(n(invoice.totalAfterGst || invoice.totalBeforeGst)));
       const invoiceDates = relatedInvoices.map((invoice) => dateText(invoice.tallyInvDate || invoice.date));
-      const productionPlanIds = new Set(plans.filter((plan) => plan.productionId === production.id).map((plan) => plan.id));
-      const loadingBySlip = new Map<string, { slipNo: string; date: string; qty: number; vehicle: string }>();
-      dispatch.slips.forEach((slip) => {
-        if (s(slip.status).toLowerCase() === "cancelled") return;
-        let qty = 0;
-        slip.lines.forEach((line) => {
-          if (productionPlanIds.has(line.dispatchPlanId)) {
-            qty += n(line.loadedQty);
-            return;
-          }
-          qty += (line.allocations || []).filter((allocation) => allocation.sourceType === "job" && allocation.jobId === production.id).reduce((sum, allocation) => sum + n(allocation.qty), 0);
-        });
-        if (qty > 0) loadingBySlip.set(slip.id, { slipNo: s(slip.slipNo), date: dateText(slip.date), qty: money(qty), vehicle: s(slip.truckNo || truckMap.get(slip.truckId)?.truckNo) });
-      });
-      const loadingRecords = Array.from(loadingBySlip.values()).sort((a, b) => a.date.localeCompare(b.date) || a.slipNo.localeCompare(b.slipNo, undefined, { numeric: true }));      const vehicle = Array.from(new Set(dispatch.slips.map((slip) => s(slip.truckNo || truckMap.get(slip.truckId)?.truckNo)).filter(Boolean))).join(", ");
+      const loadingRecords = (loadingByJob.get(production.id) || []).map(({ slip, qty }) => ({
+        slipNo: s(slip.slipNo),
+        date: dateText(slip.date),
+        qty: money(qty),
+        vehicle: s(slip.truckNo || truckMap.get(slip.truckId)?.truckNo),
+      }));
+      const vehicle = Array.from(new Set(loadingRecords.map((record) => record.vehicle).filter(Boolean))).join(", ");
       const planned = n(production.plannedQty || production.qty || schedule?.qty);
       const pprUsed = n(production.actualPaperUsed);
       const jobWeight = n(production.totalWeightOfSet) * planned;
