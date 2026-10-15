@@ -991,11 +991,22 @@ export function PendingLoading() {
                                         min={0}
                                         max={jobMax}
                                         onChange={(e) => {
-                                          const next = e.target.value === "" ? "" : Math.min(parseFloat(e.target.value), job.yetToLoad, remainingFgCapacity);
-                                          setJobSplitQtys((prev) => ({
-                                            ...prev,
-                                            [modalKey]: { ...(prev[modalKey] || {}), [job.jobId]: next },
-                                          }));
+                                          const rawValue = e.target.value;
+                                          setJobSplitQtys((prev) => {
+                                            const currentRows = prev[modalKey] || {};
+                                            if (rawValue === "") return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: "" } };
+                                            const parsedValue = Number(rawValue);
+                                            if (!Number.isFinite(parsedValue)) return prev;
+                                            const otherAllocations = Object.entries(currentRows)
+                                              .filter(([jobId]) => jobId !== job.jobId)
+                                              .reduce((sum, [, qty]) => sum + Number(qty || 0), 0);
+                                            const latestFgCapacity = loadingModal.itemSource === "FG"
+                                              ? Math.max(0, fgAvailable - otherAllocations)
+                                              : Number.POSITIVE_INFINITY;
+                                            const latestMax = Math.min(job.yetToLoad, latestFgCapacity);
+                                            const next = Math.max(0, Math.min(parsedValue, latestMax));
+                                            return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: next } };
+                                          });
                                         }}
                                         className="h-9 w-28 rounded border-2 border-amber-400 bg-amber-50 px-2 py-1.5 text-right text-xs font-black text-black focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-100"
                                       />
