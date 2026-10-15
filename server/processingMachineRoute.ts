@@ -24,7 +24,7 @@ export function getProcessingMachineRoute(
   if (source === "PHP" || source === "PLATE") {
     const names = methodology === "CORRUGATION"
       ? ["Corrugation Liner", "Printing"]
-      : ["Corrugation Liner"];
+      : [];
     return { source, methodology, requiredMachines: names.map(normalizeMachineName) };
   }
 

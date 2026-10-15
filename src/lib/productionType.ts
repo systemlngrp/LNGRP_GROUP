@@ -63,7 +63,7 @@ export function getRequiredMachinesForProduction(
         normalizeMachineName("Printing"),
       ];
     }
-    return [normalizeMachineName("Corrugation Liner")];
+    return [];
   }
   return getRequiredMachinesForType(mapping, getProductionEffectiveType(production, item));
 }

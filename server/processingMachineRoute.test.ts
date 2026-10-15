@@ -34,8 +34,9 @@ describe("production processing machine route", () => {
     assert.equal(route.requiredMachines.includes("Pasting"), false);
   });
 
-  it("preserves other PHP methodologies and the regular RSC route", () => {
-    assert.deepEqual(getProcessingMachineRoute({ itemSource: "PHP", methodology: "Scrap" }, mapping, normalize).requiredMachines, ["Corrugation Liner"]);
+  it("excludes Scrap PHP/Plate jobs and preserves the regular RSC route", () => {
+    assert.deepEqual(getProcessingMachineRoute({ itemSource: "PHP", methodology: "Scrap" }, mapping, normalize).requiredMachines, []);
+    assert.deepEqual(getProcessingMachineRoute({ itemSource: "PLATE", methodology: "Scrap" }, mapping, normalize).requiredMachines, []);
     assert.deepEqual(getProcessingMachineRoute({ itemSource: "FG", boxType: "RSC" }, mapping, normalize).requiredMachines, mapping.RSC);
   });
 });

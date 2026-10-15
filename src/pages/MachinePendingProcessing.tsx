@@ -163,6 +163,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             .filter(Boolean)
         )
       );
+      if (!requiredMachines.length) return;
       const currentMachineName = getCurrentProcessingMachine(processing, p.id, requiredMachines);
       
       requiredMachines.forEach(machineName => {
