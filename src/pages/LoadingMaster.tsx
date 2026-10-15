@@ -36,7 +36,7 @@ import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { isDirectLoadingSlip, resolveLoadingSlipLineContext, summarizeLoadingSlip } from "../lib/loadingSlipContext";
-import { getJobAllocationLimitError, MAX_JOB_LOAD_QTY_PER_SLIP } from "../lib/loadingValidation";
+import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
 import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
@@ -245,7 +245,7 @@ export function LoadingMaster() {
   const validateSlipDraft = (draft: LoadingSlip) => {
     const errors: string[] = [];
     const lines = getSlipLines(draft);
-    const allocationLimitError = getJobAllocationLimitError(lines.flatMap((line) => line.allocations || []));
+    const allocationLimitError = getJobLoadingSlipLimitError(lines.flatMap((line) => line.allocations || []), loadingSlips, draft.id);
     if (allocationLimitError) errors.push(allocationLimitError);
     lines.forEach((line, index) => {
       const loadedQty = Number(line.loadedQty || 0);
@@ -797,11 +797,10 @@ export function LoadingMaster() {
                                               <input
                                                 type="number"
                                                 min={0}
-                                                max={a.sourceType === "job" ? MAX_JOB_LOAD_QTY_PER_SLIP : undefined}
                                                 value={Number(a.qty || 0)}
                                                 onChange={(e) => {
                                                   const rawQty = e.target.value === "" ? 0 : Math.max(0, Number(e.target.value));
-                                                  const nextQty = a.sourceType === "job" ? Math.min(MAX_JOB_LOAD_QTY_PER_SLIP, rawQty) : rawQty;
+                                                  const nextQty = rawQty;
                                                   setDraftBySlipId((prev) => {
                                                     const draftSlip = prev[slip.id];
                                                     if (!draftSlip) return prev;

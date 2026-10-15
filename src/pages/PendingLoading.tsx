@@ -40,7 +40,7 @@ import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../li
 import { normalizeTruckStatus } from "../lib/truckStatus";
 import { useAuth } from "../auth/AuthContext";
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
-import { getJobAllocationLimitError, MAX_JOB_LOAD_QTY_PER_SLIP } from "../lib/loadingValidation";
+import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
 import {
   EligibleLoadingJob,
   getLoadingJobNumber,
@@ -524,9 +524,9 @@ export function PendingLoading() {
       });
     }
 
-    const allocationLimitError = getJobAllocationLimitError(allocationPool);
-    if (allocationLimitError) {
-      alert(allocationLimitError);
+    const loadingSlipLimitError = getJobLoadingSlipLimitError(allocationPool, loadingSlips);
+    if (loadingSlipLimitError) {
+      alert(loadingSlipLimitError);
       return;
     }
 
@@ -977,7 +977,7 @@ export function PendingLoading() {
                                 const remainingFgCapacity = loadingModal.itemSource === "FG"
                                   ? Math.max(0, fgAvailable - otherJobAllocations)
                                   : Number.POSITIVE_INFINITY;
-                                const jobMax = Math.min(job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP, remainingFgCapacity);
+                                const jobMax = Math.min(job.yetToLoad, remainingFgCapacity);
                                 return (
                                   <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
@@ -991,7 +991,7 @@ export function PendingLoading() {
                                         min={0}
                                         max={jobMax}
                                         onChange={(e) => {
-                                          const next = e.target.value === "" ? "" : Math.min(parseFloat(e.target.value), job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP, remainingFgCapacity);
+                                          const next = e.target.value === "" ? "" : Math.min(parseFloat(e.target.value), job.yetToLoad, remainingFgCapacity);
                                           setJobSplitQtys((prev) => ({
                                             ...prev,
                                             [modalKey]: { ...(prev[modalKey] || {}), [job.jobId]: next },
