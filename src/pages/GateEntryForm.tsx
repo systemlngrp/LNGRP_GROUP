@@ -364,7 +364,6 @@ export function GateEntryForm() {
                     {slot.uploading ? (
                       <div className="flex flex-col items-center gap-3 text-indigo-700">
                         <Loader2 className="animate-spin" size={22} />
-                        <span className="text-sm font-semibold">Uploading...</span>
                       </div>
                     ) : slot.filename ? (
                       <div className="flex flex-col items-center gap-3 text-slate-700">

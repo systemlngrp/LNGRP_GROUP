@@ -1,6 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Spinner } from "./Spinner";
 import { releaseSidebarRequests } from "../lib/collectionLoader";
 
 export type DataLoadState = {
@@ -50,7 +49,6 @@ export function useTrackPageLoading(loading: boolean, error: string | null, retr
 export function DataLoadingBoundary({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<Record<string, DataLoadState>>({});
   const [mounted, setMounted] = useState(false);
-  const [showProgress, setShowProgress] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   const register = useCallback((id: string, state: DataLoadState) => {
@@ -85,38 +83,10 @@ export function DataLoadingBoundary({ children }: { children: ReactNode }) {
     if (mounted && (!loading || failed.length > 0)) releaseSidebarRequests();
   }, [mounted, loading, failed.length]);
 
-  useLayoutEffect(() => {
-    if (contentRef.current) contentRef.current.inert = blocked;
-  }, [blocked]);
-
-  useEffect(() => {
-    if (!blocked) {
-      setShowProgress(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setShowProgress(true), 150);
-    return () => window.clearTimeout(timer);
-  }, [blocked]);
-
   return (
     <DataLoadingContext.Provider value={registry}>
     <PageDataStatusContext.Provider value={{ loading: blocked }}>
-      {blocked && showProgress && (
-        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-950 shadow-sm" role="status" aria-live="polite">
-          <div className="flex items-center gap-2">
-            {loading && <Spinner size={16} />}
-            <span>{failed.length ? `Data could not be loaded: ${failed[0].error}` :
-              allTotalsKnown && knownTotal > 0 ? `Loading records ${loaded.toLocaleString()} of ${knownTotal.toLocaleString()}...` :
-              loaded > 0 ? `Loading more records… ${loaded.toLocaleString()} received` : "Loading data…"}</span>
-          </div>
-          {failed.length > 0 && (
-            <button type="button" className="rounded border border-indigo-400 bg-white px-3 py-1 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600" onClick={() => failed.forEach((state) => state.retry())}>
-              Retry
-            </button>
-          )}
-        </div>
-      )}
-      <div ref={contentRef} aria-busy={loading} className={loading && loaded === 0 ? "min-h-[40vh] opacity-40" : undefined}>
+      <div ref={contentRef}>
         {children}
       </div>
     </PageDataStatusContext.Provider>

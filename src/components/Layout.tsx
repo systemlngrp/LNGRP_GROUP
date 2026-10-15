@@ -2,7 +2,6 @@ import { Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { DataLoadingBoundary, RouteMountMarker } from "./DataLoadingBoundary";
-import { Spinner } from "./Spinner";
 import { AlertCircle, Menu, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
@@ -257,7 +256,7 @@ export function Layout() {
         <div className="app-view-content flex-1 overflow-auto bg-white">
           <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
             <DataLoadingBoundary key={location.pathname}>
-              <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center gap-3 text-sm font-semibold text-slate-600" role="status"><Spinner /> Opening page…</div>}>
+              <Suspense fallback={null}>
                 <RouteMountMarker />
                 <Outlet />
               </Suspense>

@@ -513,7 +513,7 @@ function SearchToolbar({
         {loading && <div className="traceability-search-empty">Loading traceability records…</div>}
       </div>}
     </div>
-    <div className="traceability-search-hint">{loading ? "Loading data…" : query ? `${suggestions.length} matching record${suggestions.length === 1 ? "" : "s"}` : "Start typing to search traceability records"}</div>
+    <div className="traceability-search-hint">{query ? `${suggestions.length} matching record${suggestions.length === 1 ? "" : "s"}` : "Start typing to search traceability records"}</div>
   </div>;
 }
 

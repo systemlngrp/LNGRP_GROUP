@@ -152,7 +152,7 @@ export function TruckLogs() {
               {logs.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="px-6 py-8 text-center text-sm font-bold text-slate-500">
-                    {loading ? "Loading logs..." : "No status logs found."}
+                    No status logs found.
                   </td>
                 </tr>
               ) : logs.map((log, index) => {

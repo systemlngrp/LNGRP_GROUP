@@ -1133,7 +1133,7 @@ export function Items() {
                         ) : (
                           <label className="flex items-center justify-center gap-2 bg-white border-2 border-dashed border-black rounded p-2 cursor-pointer hover:bg-slate-50 transition-colors flex-1">
                             {isUploading ? <Spinner size={16} /> : <FileUp size={16} />}
-                            <span className="text-xs font-bold uppercase">{isUploading ? "Uploading..." : "Upload Artwork"}</span>
+                            <span className="text-xs font-bold uppercase">Upload Artwork</span>
                             <input type="file" className="hidden" onChange={handleFileChange} accept="image/*,application/pdf" />
                           </label>
                         )}
