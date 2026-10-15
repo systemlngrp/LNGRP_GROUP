@@ -14,6 +14,7 @@ import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
+import { getDispatchPlanPendingQty } from "../lib/dispatchPlanBalances";
 
 export function DispatchPlansMaster() {
   const { user, setActiveFirm } = useAuth();
@@ -164,7 +165,7 @@ export function DispatchPlansMaster() {
       const itemName = String(item?.name || "").trim();
       const itemErp = String(order?.erpCode || item?.erp || "").trim();
       const itemKey = itemName || itemErp ? `${itemName}::${itemErp}` : "";
-      const pending = Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
+      const pending = getDispatchPlanPendingQty(plan, plan.loadedQty || 0);
       return {
         plan,
         companyName,

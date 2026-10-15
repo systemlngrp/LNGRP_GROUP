@@ -15,6 +15,7 @@ import { ArrowUpDown, Save } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useAuth } from "../auth/AuthContext";
+import { getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty } from "../lib/dispatchPlanBalances";
 
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "companyName" | "itemName" | "pendingQty";
 
@@ -114,9 +115,7 @@ export function PendingDispatchPlanning() {
       const itemId = itemIdByScheduleId.get(plan.scheduleId) || "";
       if (!itemId) return;
 
-      const effectivePlanned = Math.max(0, Number(plan.plannedQty || 0) - Number(plan.canceledQty || 0));
-      const loaded = Math.max(0, Number(loadedQtyByDispatchPlanId.get(plan.id) || 0));
-      const remaining = Math.max(0, effectivePlanned - loaded);
+      const remaining = getDispatchPlanPendingQty(plan, loadedQtyByDispatchPlanId.get(plan.id) || 0);
       if (remaining <= 0) return;
 
       map.set(itemId, (map.get(itemId) || 0) + remaining);
@@ -129,7 +128,7 @@ export function PendingDispatchPlanning() {
     dispatchPlans.forEach((plan) => {
       const scheduleId = String(plan.scheduleId || "").trim();
       if (!scheduleId) return;
-      const effective = Math.max(0, Number(plan.plannedQty || 0) - Number(plan.canceledQty || 0));
+      const effective = getEffectiveDispatchPlanQty(plan);
       if (effective <= 0) return;
       map.set(scheduleId, (map.get(scheduleId) || 0) + effective);
     });
@@ -163,7 +162,7 @@ export function PendingDispatchPlanning() {
       if (isNaN(scheduledDate.getTime())) return false;
       
       const effectivePlanned = getEffectivePlannedForSchedule(s.id);
-      const balance = Number(s.qty || 0) - Number(s.canceledQty || 0) - effectivePlanned;
+      const balance = getScheduleAvailableQty(s, dispatchPlans);
       return scheduledDate <= tomorrow && balance > 0;
     }).sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
   }, [schedules, tomorrow, getEffectivePlannedForSchedule]);
@@ -278,7 +277,7 @@ export function PendingDispatchPlanning() {
       filteredSchedules.forEach((schedule) => {
         if (nextRowPlannedQty[schedule.id] !== undefined) return;
         const effectivePlanned = getEffectivePlannedForSchedule(schedule.id);
-        const balance = Math.max(0, Number(schedule.qty || 0) - Number(schedule.canceledQty || 0) - effectivePlanned);
+        const balance = getScheduleAvailableQty(schedule, dispatchPlans);
         nextRowPlannedQty[schedule.id] = balance;
       });
       setRowPlannedQty(nextRowPlannedQty);
@@ -297,7 +296,7 @@ export function PendingDispatchPlanning() {
         const schedule = schedules.find((row) => row.id === id);
         if (schedule) {
           const effectivePlanned = getEffectivePlannedForSchedule(id);
-          const balance = Math.max(0, Number(schedule.qty || 0) - Number(schedule.canceledQty || 0) - effectivePlanned);
+          const balance = getScheduleAvailableQty(schedule, dispatchPlans);
           setRowPlannedQty((prev) => ({ ...prev, [id]: balance }));
         }
       }
@@ -312,7 +311,7 @@ export function PendingDispatchPlanning() {
       if (!schedule) return sum;
       
       const effectivePlanned = getEffectivePlannedForSchedule(id);
-      const balance = Number(schedule.qty || 0) - Number(schedule.canceledQty || 0) - effectivePlanned;
+      const balance = getScheduleAvailableQty(schedule, dispatchPlans);
       
       const currentPlanned = rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : balance;
       return sum + Number(currentPlanned || 0);
@@ -329,7 +328,7 @@ export function PendingDispatchPlanning() {
       if (!itemId) return;
 
       const effectivePlanned = getEffectivePlannedForSchedule(scheduleId);
-      const schedulePendingQty = schedule ? Math.max(0, Number(schedule.qty || 0) - Number(schedule.canceledQty || 0) - effectivePlanned) : 0;
+      const schedulePendingQty = schedule ? getScheduleAvailableQty(schedule, dispatchPlans) : 0;
 
       const plannedQty = rowPlannedQty[scheduleId] !== undefined ? rowPlannedQty[scheduleId] : schedulePendingQty;
       map.set(itemId, (map.get(itemId) || 0) + Number(plannedQty || 0));
@@ -384,7 +383,7 @@ export function PendingDispatchPlanning() {
 
     basePendingSchedules.forEach(s => {
       const effectivePlanned = getEffectivePlannedForSchedule(s.id);
-      const balance = Number(s.qty || 0) - Number(s.canceledQty || 0) - effectivePlanned;
+      const balance = getScheduleAvailableQty(s, dispatchPlans);
       totalPendingQty += Math.max(0, balance);
       
       const schedDate = new Date(s.scheduledDate);
@@ -432,7 +431,7 @@ export function PendingDispatchPlanning() {
         if (!orderFirm) throw new Error(`Original order firm could not be resolved for schedule ${schedule.scheduleNo || id}.`);
         setActiveFirm(orderFirm);
         const effectivePlanned = getEffectivePlannedForSchedule(id);
-        const balance = Number(schedule.qty || 0) - Number(schedule.canceledQty || 0) - effectivePlanned;
+        const balance = getScheduleAvailableQty(schedule, dispatchPlans);
         
         return {
           id: crypto.randomUUID(),
@@ -646,7 +645,7 @@ export function PendingDispatchPlanning() {
                   const isOverdue = schedDate < today;
                   
                   const effectivePlanned = getEffectivePlannedForSchedule(s.id);
-                  const balance = Number(s.qty || 0) - Number(s.canceledQty || 0) - effectivePlanned;
+                  const balance = getScheduleAvailableQty(s, dispatchPlans);
                   
                   return (
                     <tr key={s.id} className={cn(
