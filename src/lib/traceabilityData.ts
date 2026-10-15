@@ -265,7 +265,9 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
   const invoice = rows(input.invoices).find((candidate) => key(candidate.id) === key(latestSlip?.invoiceId));
   const invoiceLine = rows(input.invoiceLineItems).find((line) => key(line.invoiceId) === key(invoice?.id) && (key(line.npdId) === key(production.npdId) || key(line.itemId) === key(production.itemId)));
   const truck = rows(input.trucks).find((candidate) => key(candidate.id) === key(latestSlip?.truckId));
-  const complaintLots = rows(input.complaints).filter((complaint) => key(complaint.erpCode) === key(erpCode)).map((complaint) => text(complaint.lotNo));
+  const complaintLots = rows(input.complaints)
+    .filter((complaint) => key(complaint.erpCode) === key(erpCode) && sameJob(complaint.lotNo, jobNo))
+    .map((complaint) => text(complaint.lotNo));
   const lotNumbers = [...new Set([text(inspection?.lotNo), text(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
   const planQuantity = resolvePlanQuantity(production.plannedQty, production.qty, board?.planQty, printing?.planQty, inspection?.plannedQty, plans.reduce((sum, plan) => sum + Number(plan.plannedQty || 0), 0));
   const plannedPaperValue = plannedPaper(production);

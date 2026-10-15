@@ -294,6 +294,32 @@ test("traceability search shows one result per normalized Job No. while preservi
   assert.deepEqual(filterTraceabilityRecords(records, "10430").map((record) => record.id), ["production-1"]);
 });
 
+test("traceability keeps same-ERP lots linked to their own Job No.", () => {
+  const job11 = "LNCB-2/JOB/26-27/11";
+  const job12 = "LNCB-2/JOB/26-27/12";
+  const records = buildTraceabilityRecords({
+    ...baseInput,
+    productions: [
+      production({ id: "job-11", transactionNo: job11 }),
+      production({ id: "job-12", transactionNo: job12 }),
+    ],
+    complaints: [
+      { id: "complaint-11", erpCode: "12345678", lotNo: job11 } as any,
+      { id: "complaint-12", erpCode: "12345678", lotNo: job12 } as any,
+      { id: "complaint-other-erp", erpCode: "99999999", lotNo: "OTHER" } as any,
+    ],
+  });
+
+  const record11 = records.find((record) => record.id === "job-11");
+  const record12 = records.find((record) => record.id === "job-12");
+  assert.equal(record11?.jobNo, job11);
+  assert.equal(record11?.lotNo, job11);
+  assert.equal(record12?.jobNo, job12);
+  assert.equal(record12?.lotNo, job12);
+  assert.deepEqual(filterTraceabilityRecords(records, "/11").map((record) => record.id), ["job-11"]);
+  assert.deepEqual(filterTraceabilityRecords(records, "/12").map((record) => record.id), ["job-12"]);
+});
+
 test("missing source values remain blank instead of being fabricated", () => {
   const record = buildTraceabilityRecord(production({ erpCode: "", companyName: "" }), { productions: [], items: [] });
   assert.equal(record.erpCode, "");
