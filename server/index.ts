@@ -9463,14 +9463,10 @@ const createHandlers = (tableName: string) => {
           data.capaNo = capaNo || null;
           if (capaNo) {
             const [existingRows] = await db.query(
-              "SELECT natureOfComplaint, capaNo, capaGeneratedAt FROM `quality_complaints` WHERE id = ? LIMIT 1",
+              "SELECT capaNo, capaGeneratedAt FROM `quality_complaints` WHERE id = ? LIMIT 1",
               [String(data.id || "")]
             );
             const existingComplaint = (existingRows as any[])[0];
-            const complaintNature = String(existingComplaint?.natureOfComplaint || data.natureOfComplaint || "").trim().toLowerCase();
-            if (complaintNature !== "rejection") {
-              return res.status(403).json({ error: "CAPA can only be generated for Rejection complaints." });
-            }
             const [duplicateRows] = await db.query(
               "SELECT id FROM `quality_complaints` WHERE LOWER(TRIM(capaNo)) = LOWER(TRIM(?)) AND id <> ? LIMIT 1",
               [capaNo, String(data.id || "")]
