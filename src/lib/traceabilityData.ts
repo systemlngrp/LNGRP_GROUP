@@ -403,6 +403,15 @@ export function buildTraceabilityRecords(input: TraceabilityInputs) {
 export function filterTraceabilityRecords(records: TraceabilityRecord[], search: string) {
   const query = key(search);
   const searchableRecords = records.filter((record) => record.status !== "JOB CANCELLED");
-  if (!query) return searchableRecords;
-  return searchableRecords.filter((record) => record.searchText.includes(query));
+  const matchingRecords = query
+    ? searchableRecords.filter((record) => record.searchText.includes(query))
+    : searchableRecords;
+  const seenJobs = new Set<string>();
+  return matchingRecords.filter((record) => {
+    const job = normalizedJob(record.jobNo);
+    if (!job) return true;
+    if (seenJobs.has(job)) return false;
+    seenJobs.add(job);
+    return true;
+  });
 }

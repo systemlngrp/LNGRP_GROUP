@@ -273,6 +273,27 @@ test("traceability search excludes cancelled jobs and returns all active jobs wh
   assert.equal(records.find((record) => record.id === "cancelled")?.status, "JOB CANCELLED");
 });
 
+test("traceability search shows one result per normalized Job No. while preserving field search", () => {
+  const records = buildTraceabilityRecords({
+    ...baseInput,
+    productions: [
+      production(),
+      production({ id: "duplicate", transactionNo: "10430", companyName: "Duplicate Party", erpCode: "99999999" }),
+      production({ id: "different", transactionNo: "10431", companyName: "Different Party" }),
+      production({ id: "cancelled-duplicate", transactionNo: "10430", status: "Cancelled", companyName: "Cancelled Party" }),
+    ],
+    inspections: [
+      ...baseInput.inspections,
+      inspection({ id: "duplicate-inspection", productionId: "duplicate", lotNo: "LOT-DUPLICATE" }),
+    ],
+  });
+
+  assert.deepEqual(filterTraceabilityRecords(records, "").map((record) => record.id), ["production-1", "different"]);
+  assert.deepEqual(filterTraceabilityRecords(records, "LOT-DUPLICATE").map((record) => record.id), ["duplicate"]);
+  assert.deepEqual(filterTraceabilityRecords(records, "Duplicate Party").map((record) => record.id), ["duplicate"]);
+  assert.deepEqual(filterTraceabilityRecords(records, "10430").map((record) => record.id), ["production-1"]);
+});
+
 test("missing source values remain blank instead of being fabricated", () => {
   const record = buildTraceabilityRecord(production({ erpCode: "", companyName: "" }), { productions: [], items: [] });
   assert.equal(record.erpCode, "");
