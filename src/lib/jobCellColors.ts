@@ -44,3 +44,13 @@ export const jobNumberCellClass = (date: unknown, result: unknown, now = new Dat
 };
 
 export const qcResultCellClass = (result: unknown): string => ["QC PASS", "QC FAIL"].includes(normalizeQcResult(result)) ? "bg-[#006100] text-white font-bold" : "";
+
+export const realizationCellClass = (value: unknown, target: unknown): string => {
+  if (value == null || String(value).trim() === "" || target == null || String(target).trim() === "") return "";
+  const realization = Number(value);
+  const minimum = Number(target);
+  if (!Number.isFinite(realization) || !Number.isFinite(minimum)) return "";
+  if (realization < minimum) return "bg-[#ff0000] text-slate-950 font-bold";
+  if (realization <= minimum + 6) return "bg-[#b6d7a8] text-slate-950 font-bold";
+  return "bg-[#00ff00] text-slate-950 font-bold";
+};

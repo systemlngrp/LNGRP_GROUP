@@ -1,6 +1,6 @@
 ﻿import { test } from "node:test";
 import assert from "node:assert/strict";
-import { dateKey, jobDateCellClass, jobNumberCellClass, normalizeQcResult, qcResultCellClass } from "./jobCellColors";
+import { dateKey, jobDateCellClass, jobNumberCellClass, normalizeQcResult, qcResultCellClass, realizationCellClass } from "./jobCellColors";
 
 const today = new Date(2026, 9, 9, 12);
 
@@ -26,4 +26,14 @@ test("QC results override the Job No. date color", () => {
   assert.match(jobNumberCellClass("2026-10-08", "", today), /bg-\[#ffff00\]/);
   assert.match(jobNumberCellClass("2026-10-09", "", today), /bg-\[#00ffff\]/);
   assert.equal(jobNumberCellClass("invalid", "", today), "");
+});
+
+test("realization values use the configured target bands", () => {
+  assert.match(realizationCellClass(43, 44), /bg-\[#ff0000\]/);
+  assert.match(realizationCellClass(44, 44), /bg-\[#b6d7a8\]/);
+  assert.match(realizationCellClass(50, 44), /bg-\[#b6d7a8\]/);
+  assert.match(realizationCellClass(51, 44), /bg-\[#00ff00\]/);
+  assert.equal(realizationCellClass("", 44), "");
+  assert.equal(realizationCellClass("invalid", 44), "");
+  assert.equal(realizationCellClass(44, ""), "");
 });
