@@ -202,7 +202,9 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
     }
 
     let fgCreationMessage = "";
-    {
+    if (String(methodology).trim().toUpperCase() !== "CORRUGATION") {
+      fgCreationMessage = " PHP/Plate jobs using this methodology remain standalone; no linked FG production was created.";
+    } else {
       const sourceItem = selectedItem;
       const linkField = selectedJob.jobSource === "PHP" ? "phpScheduledJobId" : "plateScheduledJobId";
       const existingLinkedProduction = productions.find((production) => String((production as any)[linkField] || "").trim() === selectedJob.id);

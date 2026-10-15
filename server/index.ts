@@ -3685,55 +3685,75 @@ async function backfillLinkedProductionSources(db: mysql.Pool) {
   return repaired;
 }
 
-async function backfillScrapScheduledProductions(db: mysql.Pool) {
-  const [rows] = await db.query(`
-    SELECT j.*, os.scheduleNo
-    FROM (
-      SELECT id, 'PHP' AS source, transactionNo, date, scheduleId, itemId, qty, uom, remarks, status,
-             firmId, firmName, companyName, erpCode, plannedQty, scheduledDate, shift,
-             methodology, jobType, sequence, id AS phpScheduledJobId, NULL AS plateScheduledJobId
-      FROM php_job_master
-      UNION ALL
-      SELECT id, 'PLATE' AS source, transactionNo, date, scheduleId, itemId, qty, uom, remarks, status,
-             firmId, firmName, companyName, erpCode, plannedQty, scheduledDate, shift,
-             methodology, jobType, sequence, NULL AS phpScheduledJobId, id AS plateScheduledJobId
-      FROM plate_job_master
-    ) j
-    LEFT JOIN orders_schedule os ON os.id = j.scheduleId
-    LEFT JOIN productions p ON (j.source = 'PHP' AND p.phpScheduledJobId = j.id)
-                            OR (j.source = 'PLATE' AND p.plateScheduledJobId = j.id)
-    WHERE UPPER(TRIM(COALESCE(j.methodology, ''))) = 'SCRAP'
-      AND COALESCE(TRIM(j.scheduledDate), '') <> ''
-      AND COALESCE(j.plannedQty, 0) > 0
-      AND LOWER(TRIM(COALESCE(j.status, ''))) NOT IN ('cancelled', 'canceled')
-      AND p.id IS NULL
-    ORDER BY j.scheduledDate, j.id
-  `);
-  const skipped: string[] = [];
-  let created = 0;
-  for (const row of rows as any[]) {
-    if (!row.itemId || !row.scheduleId) { skipped.push(String(row.id)); continue; }
-    const id = crypto.randomUUID();
-    const transactionNo = await generateProductionJobNumber(db, row.scheduledDate || row.date);
-    await db.query(`INSERT INTO productions
-      (id, transactionNo, date, scheduleId, planningId, itemId, itemSource, qty, plannedQty, uom,
-       remarks, status, firmId, firmName, companyName, erpCode, scheduledDate, shift, methodology,
-       jobType, sequence, phpScheduledJobId, plateScheduledJobId, updatedBy, updateTimestamp)
-      VALUES (?, ?, ?, ?, ?, ?, 'FG', ?, ?, ?, ?, 'Pending Consumption', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-      id, transactionNo, row.scheduledDate || row.date, row.scheduleId,
-      row.scheduleNo || row.planningId || row.scheduleId, row.itemId,
-      Number(row.plannedQty || row.qty || 0), Number(row.plannedQty || row.qty || 0), row.uom || '',
-      row.remarks || '', row.firmId || null, row.firmName || null, row.companyName || null,
-      row.erpCode || null, row.scheduledDate, row.shift || null, row.methodology,
-      row.jobType || null, row.sequence || null, row.phpScheduledJobId || null,
-      row.plateScheduledJobId || null, 'System User', new Date().toISOString(),
-    ]);
-    created++;
+async function cleanupScrapLinkedProductions(db: mysql.Pool) {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(`
+      SELECT p.id, p.transactionNo, p.linkedGateEntryId, p.linkedMrrId, p.sourceTransactionId
+      FROM productions p
+      LEFT JOIN php_job_master php ON php.id = p.phpScheduledJobId
+      LEFT JOIN plate_job_master plate ON plate.id = p.plateScheduledJobId
+      WHERE UPPER(TRIM(COALESCE(p.methodology, ''))) = 'SCRAP'
+        AND UPPER(TRIM(COALESCE(p.itemSource, 'FG'))) = 'FG'
+        AND LOWER(TRIM(COALESCE(p.status, ''))) = 'pending consumption'
+        AND (
+          (
+            php.id IS NOT NULL
+            AND UPPER(TRIM(COALESCE(php.methodology, ''))) = 'SCRAP'
+            AND COALESCE(p.scheduleId, '') = COALESCE(php.scheduleId, '')
+            AND COALESCE(p.itemId, '') = COALESCE(php.itemId, '')
+          )
+          OR (
+            plate.id IS NOT NULL
+            AND UPPER(TRIM(COALESCE(plate.methodology, ''))) = 'SCRAP'
+            AND COALESCE(p.scheduleId, '') = COALESCE(plate.scheduleId, '')
+            AND COALESCE(p.itemId, '') = COALESCE(plate.itemId, '')
+          )
+        )
+      FOR UPDATE
+    `);
+    let deleted = 0;
+    const skipped: string[] = [];
+    for (const row of rows as any[]) {
+      const productionId = String(row.id || '').trim();
+      if (!productionId) continue;
+      const [dependencyRows] = await conn.query(`
+        SELECT (
+          (SELECT COUNT(*) FROM production_processing WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM material_issues WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM material_returns WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM consumptions WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM dispatch_plans WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM pre_dispatch_inspections WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM qc_spec_card_movements WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM qc_printing_wastage_records WHERE productionId = ?) +
+          (SELECT COUNT(*) FROM inter_firm_pending_invoices WHERE sourceTransactionId = ?) +
+          (SELECT COUNT(*) FROM invoices WHERE sourceTransactionId = ?) +
+          (SELECT COUNT(*) FROM invoice_line_items WHERE sourceTransactionId = ?) +
+          (SELECT COUNT(*) FROM gate_entries WHERE sourceTransactionId = ?)
+        ) AS dependencyCount
+      `, Array(12).fill(productionId));
+      const dependencyCount = Number((dependencyRows as any[])[0]?.dependencyCount || 0);
+      const hasLinkedArtifacts = [row.linkedGateEntryId, row.linkedMrrId, row.sourceTransactionId]
+        .some((value) => String(value || '').trim());
+      if (dependencyCount > 0 || hasLinkedArtifacts) {
+        skipped.push(String(row.transactionNo || productionId));
+        continue;
+      }
+      await conn.query('DELETE FROM productions WHERE id = ?', [productionId]);
+      deleted++;
+    }
+    await conn.commit();
+    if (deleted || skipped.length) console.log(`[DB] Scrap-linked FG cleanup: ${deleted} deleted; skipped ${skipped.length}: ${skipped.join(', ')}`);
+    return { deleted, skipped };
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
   }
-  if (created || skipped.length) console.log(`[DB] SCRAP production backfill: ${created} created; skipped ${skipped.length}: ${skipped.join(', ')}`);
-  return { created, skipped };
 }
-
 async function validateLnkiPrintingComponents(db: mysql.Pool | mysql.PoolConnection, processing: any) {
   if (String(processing.completionStatus || "").trim().toLowerCase() !== "full") return;
   if (normalizeMachineName(String(processing.machineName || "")) !== "Printing") return;
@@ -8730,7 +8750,7 @@ await db.query(`
       await backfillInterFirmProductionProcessing(db);
       await backfillIndentRequisitionNumbers(db);
       await backfillLinkedProductionSources(db);
-      await backfillScrapScheduledProductions(db);
+      await cleanupScrapLinkedProductions(db);
       await backfillCorrugationLinerOutput(db);
       await backfillPrintingOutput(db);
 
@@ -10439,6 +10459,18 @@ const createHandlers = (tableName: string) => {
         if (["productions", "php_job_master", "plate_job_master"].includes(tableName)) {
           try {
             if (tableName === "productions" && (String(data.phpScheduledJobId || "").trim() || String(data.plateScheduledJobId || "").trim())) {
+              const phpId = String(data.phpScheduledJobId || "").trim();
+              const plateId = String(data.plateScheduledJobId || "").trim();
+              const [sourceRows] = await db.query(
+                phpId
+                  ? "SELECT methodology FROM php_job_master WHERE id = ? LIMIT 1"
+                  : "SELECT methodology FROM plate_job_master WHERE id = ? LIMIT 1",
+                [phpId || plateId]
+              );
+              const sourceMethodology = String((sourceRows as any[])[0]?.methodology || "").trim().toUpperCase();
+              if (sourceMethodology === "SCRAP") {
+                return res.status(400).json({ error: "Scrap PHP/Plate jobs cannot be linked to an FG Production job." });
+              }
               data.itemSource = "FG";
             }
             const productionId = String(data.id || "").trim();
