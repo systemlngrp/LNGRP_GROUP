@@ -4,7 +4,6 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
 import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft, RotateCcw, CheckCircle2, X } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
-import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -276,17 +275,17 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   }, [filterMachineId, fixedNormalizedMachineName, machineGroups]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {successMessage && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/20 px-4">
-          <div role="status" className="flex w-full max-w-xl items-center gap-3 rounded-lg border-2 border-emerald-700 bg-emerald-100 px-5 py-4 text-emerald-950 shadow-xl">
+        <div className="pointer-events-none fixed right-4 top-20 z-[100] w-[calc(100vw-2rem)] max-w-md sm:right-6 sm:top-24">
+          <div role="status" className="pointer-events-auto flex items-start gap-3 rounded-lg border-2 border-emerald-700 bg-emerald-100 px-4 py-3 text-emerald-950 shadow-xl">
             <CheckCircle2 className="shrink-0 text-emerald-700" size={30} />
-            <span className="flex-1 text-center text-base font-black">{successMessage}</span>
+            <span className="min-w-0 flex-1 break-words text-sm font-black leading-5">{successMessage}</span>
             <button type="button" onClick={dismissSuccessMessage} aria-label="Close success message" className="rounded border border-emerald-800 bg-white p-1 text-emerald-900 hover:bg-emerald-50"><X size={18} /></button>
           </div>
         </div>
       )}
-      <div className="border-b border-black pb-4">
+      <div className="border-b border-black pb-2">
         <div className="flex min-h-[32px] items-center gap-3">
           {filterMachineId && (
             <button 
@@ -337,9 +336,9 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
           </button>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {machineGroups.length === 0 ? (
-          <div className="bg-white border-2 border-dashed border-slate-300 rounded-lg p-12 text-center text-slate-500 font-medium italic">
+          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center text-sm font-medium italic text-slate-500">
             No pending processing jobs found {fixedNormalizedMachineName ? `for ${fixedNormalizedMachineName}` : filterMachineId ? `for ${selectedMachineName}` : ""}.
           </div>
         ) : (

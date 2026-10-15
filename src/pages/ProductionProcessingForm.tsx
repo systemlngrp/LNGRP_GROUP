@@ -174,7 +174,7 @@ function LockedReportForm() {
       navigate(destination, {
         replace: true,
         state: {
-          successMessage: `Processing saved successfully. Job No: ${jobNo || productionId} Ã¢â‚¬Â¢ Machine: ${machineName || machineId} Ã¢â‚¬Â¢ Quantity: ${qtyNumber}`,
+          successMessage: `Processing saved successfully. Job No: ${jobNo || productionId} \u2022 Machine: ${machineName || machineId} \u2022 Quantity: ${qtyNumber}`,
         },
       });
     } catch (error) {
