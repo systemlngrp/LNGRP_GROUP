@@ -36,6 +36,7 @@ import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { isDirectLoadingSlip, resolveLoadingSlipLineContext, summarizeLoadingSlip } from "../lib/loadingSlipContext";
+import { getJobAllocationLimitError, MAX_JOB_LOAD_QTY_PER_SLIP } from "../lib/loadingValidation";
 import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
@@ -244,6 +245,8 @@ export function LoadingMaster() {
   const validateSlipDraft = (draft: LoadingSlip) => {
     const errors: string[] = [];
     const lines = getSlipLines(draft);
+    const allocationLimitError = getJobAllocationLimitError(lines.flatMap((line) => line.allocations || []));
+    if (allocationLimitError) errors.push(allocationLimitError);
     lines.forEach((line, index) => {
       const loadedQty = Number(line.loadedQty || 0);
       if (loadedQty < 0) errors.push(`Line ${index + 1}: Loaded qty cannot be negative.`);
@@ -743,7 +746,7 @@ export function LoadingMaster() {
                               <th className="px-4 py-2 text-left text-xs font-bold uppercase border border-black">Item</th>
                               <th className="px-4 py-2 text-right text-xs font-bold uppercase border border-black">Planned</th>
                               <th className="px-4 py-2 text-right text-xs font-bold uppercase border border-black">Loaded</th>
-                              <th className="px-4 py-2 text-left text-xs font-bold uppercase border border-black">Allocations</th>
+                              <th className="px-4 py-2 text-left text-xs font-bold uppercase border border-black">Job No / Load Qty</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-black bg-white">
@@ -789,16 +792,16 @@ export function LoadingMaster() {
                                       <div className="space-y-1">
                                         {line.allocations.map((a, aidx) => (
                                           <div key={aidx} className="flex items-center gap-2">
-                                            <span className="font-bold">
-                                              {a.sourceType === "job" ? a.jobNo : (a as any).sourceRef}
-                                            </span>
+                                            <span className="font-bold">{a.sourceType === "job" ? `Job No: ${a.jobNo}` : (a as any).sourceRef}</span>
                                             {isEditing ? (
                                               <input
                                                 type="number"
                                                 min={0}
+                                                max={a.sourceType === "job" ? MAX_JOB_LOAD_QTY_PER_SLIP : undefined}
                                                 value={Number(a.qty || 0)}
                                                 onChange={(e) => {
-                                                  const nextQty = e.target.value === "" ? 0 : Math.max(0, Number(e.target.value));
+                                                  const rawQty = e.target.value === "" ? 0 : Math.max(0, Number(e.target.value));
+                                                  const nextQty = a.sourceType === "job" ? Math.min(MAX_JOB_LOAD_QTY_PER_SLIP, rawQty) : rawQty;
                                                   setDraftBySlipId((prev) => {
                                                     const draftSlip = prev[slip.id];
                                                     if (!draftSlip) return prev;
@@ -811,7 +814,7 @@ export function LoadingMaster() {
                                                 className="w-20 rounded border border-black bg-yellow-200 px-2 py-1 text-xs text-right font-bold"
                                               />
                                             ) : (
-                                              <span className="text-slate-700">{Number(a.qty || 0).toLocaleString()}</span>
+                                              <span className="text-slate-700">Load Qty: {Number(a.qty || 0).toLocaleString()}</span>
                                             )}
                                           </div>
                                         ))}

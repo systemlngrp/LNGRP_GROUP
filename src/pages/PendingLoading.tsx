@@ -40,6 +40,7 @@ import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../li
 import { normalizeTruckStatus } from "../lib/truckStatus";
 import { useAuth } from "../auth/AuthContext";
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
+import { getJobAllocationLimitError, MAX_JOB_LOAD_QTY_PER_SLIP } from "../lib/loadingValidation";
 import {
   EligibleLoadingJob,
   getLoadingJobNumber,
@@ -518,6 +519,12 @@ export function PendingLoading() {
       });
     }
 
+    const allocationLimitError = getJobAllocationLimitError(allocationPool);
+    if (allocationLimitError) {
+      alert(allocationLimitError);
+      return;
+    }
+
     const sortedPlans = [...loadingModal.plans].sort((a, b) =>
       (a.planNo || "").localeCompare(b.planNo || "", undefined, { numeric: true, sensitivity: "base" })
     );
@@ -949,7 +956,7 @@ export function PendingLoading() {
                           <table className="w-full min-w-[680px] divide-y divide-slate-300 border-collapse">
                             <thead className="sticky top-0 z-30 bg-slate-50">
                               <tr className="divide-x divide-slate-300 bg-slate-100">
-                                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider">Job Allocation</th>
+                                <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider">Job No</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Prod (FG)</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Already Loaded</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider text-emerald-700">Available</th>
@@ -970,9 +977,9 @@ export function PendingLoading() {
                                         type="number"
                                         value={currentValue}
                                         min={0}
-                                        max={job.yetToLoad}
+                                        max={Math.min(job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP)}
                                         onChange={(e) => {
-                                          const next = e.target.value === "" ? "" : Math.min(parseFloat(e.target.value), job.yetToLoad);
+                                          const next = e.target.value === "" ? "" : Math.min(parseFloat(e.target.value), job.yetToLoad, MAX_JOB_LOAD_QTY_PER_SLIP);
                                           setJobSplitQtys((prev) => ({
                                             ...prev,
                                             [modalKey]: { ...(prev[modalKey] || {}), [job.jobId]: next },
