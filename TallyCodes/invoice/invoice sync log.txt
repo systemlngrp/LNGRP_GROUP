@@ -108,3 +108,25 @@ Tally Inv No   :
 Tally Inv Date : 
 Tally Inv ID   : 
 Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-10-16 16:43:53
+Stage          : PRECHECK
+Invoice ID     : 733ae812-c44c-48e8-a5cb-c01f8b89a095
+Invoice No     : LNCB-2/26-27/00001
+Company Name   : LAXMI NARAYAN KRAFT INDUSTRIES
+Message        : Tally is unavailable on http://127.0.0.1:9002: HTTPConnectionPool(host='127.0.0.1', port=9002): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9002): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-10-16 16:45:38
+Stage          : PRECHECK
+Invoice ID     : 17df4cac-4ebc-48ca-ab34-ea5087546383
+Invoice No     : LNCB-2/INV/26-27/00003
+Company Name   : UNITED SPIRITS LIMITED
+Message        : Stock Item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' not found in Tally response. Debug XML: d:\LNGRP\TallyCodes\invoice\Log\tally_debug\stock_item_missing_node_20261016_164538_OC-MCDLUXTTN-BLD-G180-_8.64-WP2P-KT3P7V13.xml
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py

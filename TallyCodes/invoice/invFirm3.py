@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post Firm-3 to LNKI inter-firm invoices to Firm-3 Tally."""
+"""Post Firm-3 (LNKI) invoices to the LNKI Tally company."""
 
 import sys
 
@@ -10,13 +10,13 @@ except ModuleNotFoundError:
     from TallyCodes.invoice import invFirm1 as invoice_engine
 
 
-def resolve_source_firm3(conn):
-    """Resolve Firm-3 and configure it as the Tally posting company."""
+def resolve_source_lnki(conn):
+    """Resolve Firm-3, which is LNKI, as the Tally posting company."""
     firm = invoice_engine.resolve_firm(
         conn,
         "Firm-3",
-        ("unitiii", "unit3", "firmiii", "firm3"),
-        ("LNCB-3", "UNIT-3", "UNIT3", "FIRM-3", "FIRM3"),
+        ("laxminarayankraftindustries", "lnki"),
+        ("LNKI",),
     )
     invoice_engine.UNIT1_FIRM_ID = firm["id"]
     invoice_engine.UNIT1_FIRM_NAME = firm["firmName"]
@@ -35,7 +35,7 @@ def resolve_destination_lnki(conn):
 
 
 def preserve_actual_item_lines(item_lines, source_firm_id, destination_firm_id):
-    """Keep the original ERP item name for Firm-3 -> LNKI billing."""
+    """Keep the original ERP item name for LNKI billing."""
     preserved = []
     for line in item_lines or []:
         copied = dict(line)
@@ -44,16 +44,16 @@ def preserve_actual_item_lines(item_lines, source_firm_id, destination_firm_id):
         if copied["originalItemName"]:
             invoice_engine.log_terminal(
                 "MAPPING",
-                f"Item retained: {copied['originalItemName']} (Firm-3 -> LNKI)",
+                f"Item retained: {copied['originalItemName']} (LNKI billing)",
             )
         preserved.append(copied)
     return preserved
 
 
-# Reconfigure the shared, tested engine for Firm-3 -> LNKI. The engine's
+# Reconfigure the shared, tested engine for Firm-3/LNKI billing. The engine's
 # sync function resolves these callables from its own module globals, so the
 # replacements apply to the complete precheck/posting lifecycle.
-invoice_engine.resolve_unit1_firm = resolve_source_firm3
+invoice_engine.resolve_unit1_firm = resolve_source_lnki
 invoice_engine.resolve_unit2_firm = resolve_destination_lnki
 invoice_engine.map_unit1_to_unit2_invoice_lines = preserve_actual_item_lines
 
