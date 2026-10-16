@@ -1,1 +1,0 @@
-import{j as o}from"./index-YHWdqoOL.js";import{S as r}from"./StandaloneLoadingMaster-B6FmKAZj.js";import"./TableControls-D49jnR6D.js";import"./ClientPagination-CnKt3Tdy.js";import"./useClientPagination-z4msVOEW.js";function n(){return o.jsx(r,{source:"PLATE"})}export{n as PlateLoadingMaster};
