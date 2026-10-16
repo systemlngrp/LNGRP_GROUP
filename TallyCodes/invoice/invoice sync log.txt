@@ -97,3 +97,14 @@ Tally Inv No   :
 Tally Inv Date : 
 Tally Inv ID   : 
 Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py
+================================================================================
+Timestamp      : 2026-10-16 16:03:35
+Stage          : RUNTIME
+Invoice ID     : 
+Invoice No     : 
+Company Name   : 
+Message        : Firm-3 was not found in the firms table
+Tally Inv No   : 
+Tally Inv Date : 
+Tally Inv ID   : 
+Runtime Path   : d:\LNGRP\TallyCodes\invoice\invFirm1.py
