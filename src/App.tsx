@@ -173,6 +173,7 @@ const TruckStatusReport = lazy(() => import("./pages/TruckStatusReport").then((m
 const WastageReport = lazy(() => import("./pages/WastageReport").then((module) => ({ default: module.WastageReport })));
 const SummarySheetReport = lazy(() => import("./pages/SummarySheetReport").then((module) => ({ default: module.SummarySheetReport })));
 const QcView = lazy(() => import("./pages/QcView").then((module) => ({ default: module.QcView })));
+const QcScore = lazy(() => import("./pages/QcScore").then((module) => ({ default: module.QcScore })));
 const PdiReport = lazy(() => import("./pages/PdiReportWithComplaints").then((module) => ({ default: module.PdiReportWithComplaints })));
 const QualityComplaintForm = lazy(() => import("./pages/QualityComplaintFormUpdated").then((module) => ({ default: module.QualityComplaintFormUpdated })));
 const QualityComplaintMaster = lazy(() => import("./pages/QualityComplaintMaster").then((module) => ({ default: module.QualityComplaintMaster })));
@@ -407,6 +408,7 @@ export default function App() {
           <Route path="quality/printing-stereo" element={<PrintingStereoMaster />} />
           <Route path="quality/block-record/form" element={<QcBlockRecordForm />} />
           <Route path="quality/qc-view" element={<QcView />} />
+          <Route path="quality/qc-score" element={<QcScore />} />
            <Route path="quality/traceability" element={<TraceabilitySystem />} />
            <Route path="quality/traceability/:productionId" element={<TraceabilitySystem />} />
           <Route path="quality/pdi-report" element={<PdiReport />} />

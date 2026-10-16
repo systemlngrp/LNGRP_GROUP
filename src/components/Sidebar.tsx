@@ -239,6 +239,7 @@ const qualityItems: NavEntry[] = [
       { name: "File No. Master", href: "/quality/qc-update/file-no-master", icon: Database },
       { name: "QC Master Data", href: "/quality/qc-master-data", icon: Database },
       { name: "QC View", href: "/quality/qc-view", icon: BarChart3 },
+      { name: "QC Score", href: "/quality/qc-score", icon: BarChart3 },
       { name: "Traceability System", href: "/quality/traceability", icon: FileText },
     ],
   },
