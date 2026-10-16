@@ -276,12 +276,6 @@ const qualityItems: NavEntry[] = [
     items: [
       { name: "Block Record Form", href: "/quality/block-record/form", icon: ClipboardList },
       { name: "Printing Stereo Records", href: "/quality/printing-stereo", icon: Database },
-    ],
-  },
-
-  {
-    section: "Block Location",
-    items: [
       { name: "Block Location Master", href: "/quality/block-location-master", icon: Database },
     ],
   },
