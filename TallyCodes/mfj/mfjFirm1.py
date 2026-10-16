@@ -141,15 +141,29 @@ def post_tally(port, payload, company, job_no, date_value, timeout):
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", errors="replace")
         root = ET.fromstring(body)
-        errors = root.findtext(".//ERRORS") or "0"
-        created = root.findtext(".//CREATED") or "0"
+        errors = _first_text(root, ("ERRORS",)) or "0"
+        created = _first_text(root, ("CREATED",)) or "0"
         altered = _first_text(root, ("ALTERED",)) or "0"
-        error = root.findtext(".//LINEERROR") or root.findtext(".//ERROR")
+        exceptions = _first_text(root, ("EXCEPTIONS",)) or "0"
+        ignored = _first_text(root, ("IGNORED",)) or "0"
+        header = root.find("HEADER")
+        status = _first_text(header, ("STATUS",)) if header is not None else None
+        error = _first_text(root, ("LINEERROR", "ERROR"))
+        if not error:
+            data = root.find(".//DATA")
+            error = (data.text or "").strip() if data is not None else None
         voucher = _first_text(root, ("VOUCHERNUMBER", "VOUCHERNO", "LASTVOUCHERNO", "NUMBER"))
-        if errors != "0" or (created == "0" and altered == "0" and not error):
-            return {"status": "Failed", "voucher": voucher, "error": error or f"Tally did not create the voucher. CREATED={created}, ALTERED={altered}, ERRORS={errors}"}
-        if created == "0" and error:
-            return {"status": "Failed", "voucher": voucher, "error": error}
+        if status == "0" or errors != "0" or exceptions != "0" or ignored != "0" or error or (created == "0" and altered == "0"):
+            summary = f"CREATED={created}, ALTERED={altered}, ERRORS={errors}, EXCEPTIONS={exceptions}, IGNORED={ignored}"
+            if exceptions != "0":
+                detail = "Check TallyPrime: Alt+O > Import > Exceptions for the underlying voucher exception"
+            else:
+                detail = "Tally did not create or alter the voucher"
+            if error:
+                detail = f"{error} | {detail}" if exceptions != "0" else error
+            if status == "0":
+                summary += ", STATUS=0"
+            return {"status": "Failed", "voucher": voucher, "error": f"{detail} ({summary})"}
         if not voucher:
             voucher = fetch_voucher_number(port, company, job_no, date_value, timeout)
         return {"status": "Posted", "voucher": voucher or job_no, "error": None}

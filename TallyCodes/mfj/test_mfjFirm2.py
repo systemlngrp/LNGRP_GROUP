@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
+import mfjFirm1
 import mfjFirm2
 
 
@@ -26,6 +27,13 @@ def register_response(vouchers="", status="1"):
 
 
 class Firm2JournalTests(unittest.TestCase):
+    def post_response(self, response):
+        with patch.object(mfjFirm1.urllib.request, "urlopen", return_value=io.BytesIO(response.encode())), \
+             patch.object(mfjFirm1, "fetch_voucher_number") as fetch:
+            result = mfjFirm1.post_tally(9002, "<ENVELOPE/>", "Unit-2", JOB, ROW["date"], 1)
+        fetch.assert_not_called()
+        return result
+
     def lookup(self, response):
         with patch.object(mfjFirm2.urllib.request, "urlopen", return_value=io.BytesIO(response.encode())) as urlopen:
             result = mfjFirm2.find_existing_voucher(9002, "Unit-2", JOB, ROW["date"], 1)
@@ -56,6 +64,29 @@ class Firm2JournalTests(unittest.TestCase):
             with self.subTest(response=response):
                 with self.assertRaises(RuntimeError):
                     self.lookup(response)
+
+    def test_import_exception_reports_tally_exception_instead_of_zero_error(self):
+        response = (
+            "<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><IMPORTRESULT>"
+            "<CREATED>0</CREATED><ALTERED>0</ALTERED><ERRORS>0</ERRORS>"
+            "<EXCEPTIONS>1</EXCEPTIONS></IMPORTRESULT></DATA></BODY></ENVELOPE>"
+        )
+        result = self.post_response(response)
+        self.assertEqual(result["status"], "Failed")
+        self.assertIn("EXCEPTIONS=1", result["error"])
+        self.assertIn("Import > Exceptions", result["error"])
+
+    def test_import_status_and_data_error_are_not_hidden(self):
+        response = "<ENVELOPE><HEADER><STATUS>0</STATUS></HEADER><BODY><DATA>DESC not found</DATA></BODY></ENVELOPE>"
+        result = self.post_response(response)
+        self.assertEqual(result["status"], "Failed")
+        self.assertIn("DESC not found", result["error"])
+        self.assertIn("STATUS=0", result["error"])
+
+    def test_successful_import_keeps_posted_status(self):
+        result = self.post_response("<RESPONSE><CREATED>1</CREATED><ALTERED>0</ALTERED>"
+                                    "<ERRORS>0</ERRORS><VOUCHERNUMBER>MJ-42</VOUCHERNUMBER></RESPONSE>")
+        self.assertEqual(result, {"status": "Posted", "voucher": "MJ-42", "error": None})
 
     def test_create_and_alter_xml_use_full_printing_value(self):
         for existing, action in (({}, "Create"), ({"voucher": "MJ-42", "MASTERID": "42"}, "Alter")):
