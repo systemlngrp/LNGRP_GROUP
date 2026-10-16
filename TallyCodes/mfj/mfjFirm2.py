@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import os
+import re
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -18,12 +19,16 @@ from mfjFirm1 import (
     ensure_stock_items,
     load_env,
     post_tally,
-    tally_date,
+    print_posting_result,
 )
 
 
 def _money(value):
     return format(Decimal(str(value or "0")).quantize(Decimal("0.01")), "f")
+
+
+def tally_xml_date(value):
+    return dt.datetime.strptime(str(value)[:10], "%Y-%m-%d").strftime("%Y%m%d")
 
 
 def _local_name(tag):
@@ -38,9 +43,29 @@ def _first_text(element, names):
     return None
 
 
+def _valid_xml_character(codepoint):
+    return codepoint in (0x09, 0x0A, 0x0D) or (
+        0x20 <= codepoint <= 0xD7FF
+        or 0xE000 <= codepoint <= 0xFFFD
+        or 0x10000 <= codepoint <= 0x10FFFF
+    )
+
+
+def clean_tally_register_xml(response_text):
+    """Remove XML 1.0-invalid characters and numeric references from Tally exports."""
+    cleaned = "".join(char for char in response_text if _valid_xml_character(ord(char)))
+
+    def clean_reference(match):
+        value = match.group(1)
+        codepoint = int(value[1:], 16) if value.lower().startswith("x") else int(value)
+        return match.group(0) if _valid_xml_character(codepoint) else ""
+
+    return re.sub(r"&#(x[0-9a-fA-F]+|[0-9]+);", clean_reference, cleaned, flags=re.IGNORECASE)
+
+
 def find_existing_voucher(port, company, job_no, date_value, timeout):
-    """Find the existing Manufacturing Journal and return its alter identity."""
-    tally_day = tally_date(date_value)
+    """Find the matching journal; return None only after a readable register query."""
+    tally_day = tally_xml_date(date_value)
     request_xml = f'''<ENVELOPE><HEADER><TALLYREQUEST>Export Data</TALLYREQUEST></HEADER><BODY><EXPORTDATA><REQUESTDESC><REPORTNAME>Voucher Register</REPORTNAME><STATICVARIABLES><SVCURRENTCOMPANY>{escape(company)}</SVCURRENTCOMPANY><SVFROMDATE>{tally_day}</SVFROMDATE><SVTODATE>{tally_day}</SVTODATE><SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT></STATICVARIABLES></REQUESTDESC><REQUESTDATA></REQUESTDATA></EXPORTDATA></BODY></ENVELOPE>'''
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}", data=request_xml.encode("utf-8"),
@@ -48,7 +73,16 @@ def find_existing_voucher(port, company, job_no, date_value, timeout):
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            root = ET.fromstring(response.read().decode("utf-8", errors="replace"))
+            response_text = response.read().decode("utf-8", errors="replace")
+        root = ET.fromstring(clean_tally_register_xml(response_text))
+        if _local_name(root.tag) != "ENVELOPE" or root.find("BODY") is None:
+            raise RuntimeError("Tally Voucher Register returned an unexpected response")
+        header = root.find("HEADER")
+        if header is not None and _first_text(header, ("STATUS",)) == "0":
+            raise RuntimeError("Tally Voucher Register rejected the query")
+        error = _first_text(root, ("LINEERROR", "ERROR"))
+        if error:
+            raise RuntimeError(f"Tally Voucher Register rejected the query: {error}")
     except (urllib.error.URLError, TimeoutError, OSError, ET.ParseError) as exc:
         raise RuntimeError(f"Unable to query Tally Voucher Register: {exc}") from exc
 
@@ -74,7 +108,7 @@ def find_existing_voucher(port, company, job_no, date_value, timeout):
             candidates.append(candidate)
     if candidates:
         return candidates[0]
-    raise RuntimeError(f"Existing Manufacturing Journal voucher not found for job {wanted_job}")
+    return None
 
 
 def voucher_xml(row, company, existing):
@@ -101,9 +135,10 @@ def voucher_xml(row, company, existing):
         f"<ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY>"
         f"<RATE>{item_rate}/{escape(uom)}</RATE><AMOUNT>{amount}</AMOUNT></BATCHALLOCATIONS.LIST></INVENTORYENTRIESOUT.LIST>"
     )
+    action = "Alter" if existing else "Create"
     identity = " ".join(f'{key}=\"{escape(value)}\"' for key, value in existing.items() if key in {"REMOTEID", "VCHKEY", "MASTERID", "ALTERID"} and value)
     voucher_number = existing.get("voucher") or job
-    return f"""<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME><STATICVARIABLES><SVCURRENTCOMPANY>{escape(company)}</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA><TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER ACTION=\"Alter\" VCHTYPE=\"Manufacturing Journal\" OBJVIEW=\"Multi Consumption Voucher View\"{(' ' + identity) if identity else ''}><DATE>{tally_date(row.get('date'))}</DATE><VOUCHERNUMBER>{escape(voucher_number)}</VOUCHERNUMBER><VOUCHERTYPENAME>Manufacturing Journal</VOUCHERTYPENAME><PERSISTEDVIEW>Consumption Voucher View</PERSISTEDVIEW><NARRATION>{escape(narration)}</NARRATION><REFERENCE>{escape(job)}</REFERENCE><ISINVOICE>No</ISINVOICE>{component}<INVENTORYENTRIESIN.LIST><STOCKITEMNAME>{escape(item)}</STOCKITEMNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><ISTRACKCOMPONENT>No</ISTRACKCOMPONENT><ISTRACKPRODUCTION>Yes</ISTRACKPRODUCTION><ISPRIMARYITEM>Yes</ISPRIMARYITEM><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY><BATCHALLOCATIONS.LIST><GODOWNNAME>Main Location</GODOWNNAME><BATCHNAME>{escape(job)}</BATCHNAME><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY></BATCHALLOCATIONS.LIST></INVENTORYENTRIESIN.LIST></VOUCHER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"""
+    return f"""<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME><STATICVARIABLES><SVCURRENTCOMPANY>{escape(company)}</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA><TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER ACTION=\"{action}\" VCHTYPE=\"Manufacturing Journal\" OBJVIEW=\"Multi Consumption Voucher View\"{(' ' + identity) if identity else ''}><DATE>{tally_xml_date(row.get('date'))}</DATE><VOUCHERNUMBER>{escape(voucher_number)}</VOUCHERNUMBER><VOUCHERTYPENAME>Manufacturing Journal</VOUCHERTYPENAME><PERSISTEDVIEW>Consumption Voucher View</PERSISTEDVIEW><NARRATION>{escape(narration)}</NARRATION><REFERENCE>{escape(job)}</REFERENCE><ISINVOICE>No</ISINVOICE>{component}<INVENTORYENTRIESIN.LIST><STOCKITEMNAME>{escape(item)}</STOCKITEMNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><ISTRACKCOMPONENT>No</ISTRACKCOMPONENT><ISTRACKPRODUCTION>Yes</ISTRACKPRODUCTION><ISPRIMARYITEM>Yes</ISPRIMARYITEM><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY><BATCHALLOCATIONS.LIST><GODOWNNAME>Main Location</GODOWNNAME><BATCHNAME>{escape(job)}</BATCHNAME><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY></BATCHALLOCATIONS.LIST></INVENTORYENTRIESIN.LIST></VOUCHER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"""
 
 
 def resolve_item(connection, row):
@@ -185,7 +220,7 @@ def main():
                 existing = None if args.dry_run else find_existing_voucher(port, company, row.get("jobNo"), row.get("date"), args.timeout)
                 payload = voucher_xml(row, company, existing or {})
                 if args.dry_run:
-                    print(f"DRY-RUN job={row.get('jobNo')}\n{payload}")
+                    print(f"[DRY-RUN] Firm-2 | Job: {row.get('jobNo') or '-'}\n{payload}")
                     continue
                 ensure_stock_items(port, company, {"uom": row.get("uom"), "components": [{"materialName": "Corrugated Board"}]}, args.timeout)
                 try:
@@ -195,11 +230,11 @@ def main():
                         raise
                 result = post_tally(port, payload, company, row.get("jobNo"), row.get("date"), args.timeout)
                 save_result(connection, row["id"], result, dt.datetime.now(dt.timezone.utc).isoformat())
-                print(f"job={row.get('jobNo')} status={result['status']} voucher={result.get('voucher') or '-'} error={result.get('error') or '-'}")
+                print_posting_result("Firm-2", row, result)
             except Exception as exc:
                 if not args.dry_run:
                     save_result(connection, row["id"], {"status": "Failed", "voucher": None, "error": str(exc)}, dt.datetime.now(dt.timezone.utc).isoformat())
-                print(f"job={row.get('jobNo')} status=Failed error={exc}")
+                print(f"[FAILED] Firm-2 | Job: {row.get('jobNo') or '-'} | {exc}")
     finally:
         connection.close()
 

@@ -310,6 +310,18 @@ def save_result(connection, row_id, result, timestamp):
     connection.commit(); cursor.close()
 
 
+def print_posting_result(firm_label, row, result):
+    """Print a consistent terminal message for one MFJ posting attempt."""
+    job = str(row.get("jobNo") or "-").strip()
+    status = str(result.get("status") or "Failed").strip()
+    voucher = str(result.get("voucher") or "-").strip()
+    error = str(result.get("error") or "Tally did not post the voucher").strip()
+    if status.lower() == "posted":
+        print(f"[SUCCESS] {firm_label} | Job: {job} | Manufacturing Journal posted | Voucher: {voucher}")
+    else:
+        print(f"[FAILED] {firm_label} | Job: {job} | {error}")
+
+
 def main():
     load_env()
     parser = argparse.ArgumentParser(description="Post Firm-1 Corrugation Liner entries to Tally")
@@ -329,16 +341,16 @@ def main():
                 row["components"] = get_components(connection, row)
                 payload = voucher_xml(row, company)
                 if args.dry_run:
-                    print(f"DRY-RUN job={row.get('jobNo')}\n{payload}")
+                    print(f"[DRY-RUN] Firm-1 | Job: {row.get('jobNo') or '-'}\n{payload}")
                     continue
                 ensure_stock_items(port, company, row, args.timeout)
                 result = post_tally(port, payload, company, row.get("jobNo"), row.get("date"), args.timeout)
                 save_result(connection, row["id"], result, dt.datetime.now(dt.timezone.utc).isoformat())
-                print(f"job={row.get('jobNo')} status={result['status']} voucher={result.get('voucher') or '-'} error={result.get('error') or '-'}")
+                print_posting_result("Firm-1", row, result)
             except Exception as exc:
                 if not args.dry_run:
                     save_result(connection, row["id"], {"status": "Failed", "voucher": None, "error": str(exc)}, dt.datetime.now(dt.timezone.utc).isoformat())
-                print(f"job={row.get('jobNo')} status=Failed error={exc}")
+                print(f"[FAILED] Firm-1 | Job: {row.get('jobNo') or '-'} | {exc}")
     finally:
         connection.close()
 
