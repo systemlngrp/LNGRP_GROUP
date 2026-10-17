@@ -638,10 +638,6 @@ export function MaterialIssueForm() {
       alert("The selected firm was not found.");
       return;
     }
-    if (isWithoutJobIssue(issueType) && generalIssuesForDate.length > 0) {
-      alert("Daily Consumables already exists for this firm and date. Open the existing issue instead of creating another one.");
-      return;
-    }
     if (issueType === "Job" && !productionId) return;
     if (isWithoutJobIssue(issueType) && !remarks.trim()) {
       alert("Remarks are mandatory for Without Job material issue.");
@@ -664,23 +660,25 @@ export function MaterialIssueForm() {
     setIsSubmitting(true);
     try {
       const timestamp = new Date().toISOString();
-      const issueId = crypto.randomUUID();
-      const issueNo = generateTransactionNo(
+      const existingDailyIssue = isWithoutJobIssue(issueType) ? generalIssuesForDate[0] : undefined;
+      const issueId = existingDailyIssue?.id || crypto.randomUUID();
+      const issueNo = existingDailyIssue?.issueNo || generateTransactionNo(
         "MIS",
         materialIssues.map((row) => ({ transactionNo: row.issueNo, date: row.date })),
         date
       );
       const consumptionTransactionNo = isWithoutJobIssue(issueType)
-        ? generateTransactionNo(
-            "CON",
-            materialIssues
-              .filter((row) => isWithoutJobIssue(row.issueType))
-              .map((row) => ({ transactionNo: row.consumptionTransactionNo, date: row.date })),
-            date
-          )
+        ? existingDailyIssue?.consumptionTransactionNo || generateTransactionNo(
+          "CON",
+          materialIssues
+            .filter((row) => isWithoutJobIssue(row.issueType))
+            .map((row) => ({ transactionNo: row.consumptionTransactionNo, date: row.date })),
+          date
+        )
         : undefined;
 
       const issue: MaterialIssue = {
+        ...(existingDailyIssue || {}),
         id: issueId,
         firmId: isWithoutJobIssue(issueType)
           ? (requestedFirm?.id || unitTwoFirm?.id)
@@ -696,6 +694,7 @@ export function MaterialIssueForm() {
         jobNo: issueType === "Job" ? (selectedProduction?.transactionNo || "") : undefined,
         remarks: remarks.trim() || undefined,
         tallyPostingStatus: isWithoutJobIssue(issueType) ? "Pending" : undefined,
+        notApplicable: isWithoutJobIssue(issueType) && existingDailyIssue ? "No" : existingDailyIssue?.notApplicable,
         updatedBy: "System User",
         updateTimestamp: timestamp,
       };
@@ -764,13 +763,15 @@ export function MaterialIssueForm() {
         }
       });
 
-      await setMaterialIssues([issue, ...materialIssues]);
+      const nextMaterialIssues = existingDailyIssue
+        ? materialIssues.map((row) => (row.id === issue.id ? issue : row))
+        : [issue, ...materialIssues];
+      await setMaterialIssues(nextMaterialIssues);
       await setMaterialIssueLines([...materialIssueLines, ...nextLines]);
       if (nextReelLines.length > 0) {
         await setMaterialIssueReelLines([...materialIssueReelLines, ...nextReelLines]);
       }
       if (issueType === "Job" && productionId) {
-        const nextMaterialIssues = [issue, ...materialIssues];
         const nextIssueLines = [...materialIssueLines, ...nextLines];
         const usageMap = buildProductionMaterialUsageMap(
           nextMaterialIssues,
@@ -808,8 +809,8 @@ export function MaterialIssueForm() {
       setSelectedReels({});
       alert(
         isWithoutJobIssue(issueType) && consumptionTransactionNo
-          ? `Material Issue created with Issue No: ${issueNo} | Consumption No: ${consumptionTransactionNo}`
-          : `Material Issue created with Issue No: ${issueNo}`
+          ? `Material Issue ${existingDailyIssue ? "updated" : "created"} with Issue No: ${issueNo} | Consumption No: ${consumptionTransactionNo}`
+          : `Material Issue ${existingDailyIssue ? "updated" : "created"} with Issue No: ${issueNo}`
       );
 
       // Redirect back to relevant pending view
