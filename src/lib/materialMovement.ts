@@ -4,6 +4,7 @@ import {
   MaterialInPackingSlip,
   MaterialIssueLine,
   MaterialIssueReelLine,
+  MaterialFirmOpening,
   MaterialReturnLine,
   MaterialReturnReelLine,
   Production,
@@ -94,11 +95,22 @@ export function resolveMaterialIssueRate(
   materials: Pick<Material, "id" | "openingRate">[],
   materialIn: MaterialIn[],
   qty: number,
-  options?: { useLatestRateAsOpeningRate?: boolean }
+  options?: {
+    useLatestRateAsOpeningRate?: boolean;
+    firmId?: string;
+    firmOpenings?: Pick<MaterialFirmOpening, "materialId" | "firmId" | "openingRate">[];
+  }
 ) {
   const material = materials.find((entry) => entry.id === materialId);
-  const openingRate = round2(Number(material?.openingRate || 0));
+  const firmId = String(options?.firmId || "").trim();
+  const firmOpening = firmId
+    ? options?.firmOpenings?.find(
+        (opening) => opening.materialId === materialId && String(opening.firmId || "").trim() === firmId
+      )
+    : undefined;
+  const openingRate = round2(Number(firmOpening?.openingRate ?? material?.openingRate ?? 0));
   const latestPurchaseLine = materialIn
+    .filter((entry) => !firmId || String(entry.firmId || "").trim() === firmId)
     .flatMap((entry) =>
       entry.lines
         .filter((line) => line.itemId === materialId)
@@ -185,7 +197,8 @@ export function getNonReelAvailableQty(
   materialId: string,
   materialIn: MaterialIn[],
   issueLines: MaterialIssueLine[],
-  returnLines: MaterialReturnLine[]
+  returnLines: MaterialReturnLine[],
+  openingQty = 0
 ) {
   const received = materialIn.reduce(
     (sum, entry) =>
@@ -193,7 +206,7 @@ export function getNonReelAvailableQty(
       entry.lines
         .filter((line) => line.itemId === materialId)
         .reduce((lineSum, line) => lineSum + Number(line.qty || 0), 0),
-    0
+    round2(Number(openingQty || 0))
   );
   const issued = issueLines
     .filter((line) => line.materialId === materialId)

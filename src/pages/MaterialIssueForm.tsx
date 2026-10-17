@@ -13,6 +13,7 @@ import {
   MaterialReturn,
   MaterialReturnReelLine,
   Firm,
+  MaterialFirmOpening,
   Production,
   Setting,
 } from "../types";
@@ -166,14 +167,19 @@ export function MaterialIssueForm() {
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  const [materialFirmOpenings] = useData<MaterialFirmOpening>("material-firm-openings", [], {
+    endpointOverride: "/api/material-firm-openings?firmId=all",
+    firmScope: "all",
+    cacheToLocalStorage: false,
+  });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
-  const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
+  const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
   const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
   const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
-  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
+  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all" });
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
   const npdItems = useNpdItems();
 
@@ -200,6 +206,29 @@ export function MaterialIssueForm() {
     if (requestedIssueTypeRaw && isWithoutJobIssue(requestedIssueTypeRaw)) return "Without Job";
     return "Without Job";
   });
+  const issueFirmId = isWithoutJobIssue(issueType)
+    ? requestedFirmId || String(unitTwoFirm?.id || "")
+    : String(unitTwoFirm?.id || "");
+  const firmMaterialIn = useMemo(
+    () => materialIn.filter((entry) => String(entry.firmId || "").trim() === issueFirmId),
+    [issueFirmId, materialIn]
+  );
+  const firmIssueIds = useMemo(
+    () => new Set(materialIssues.filter((issue) => String(issue.firmId || "").trim() === issueFirmId).map((issue) => issue.id)),
+    [issueFirmId, materialIssues]
+  );
+  const firmReturnIds = useMemo(
+    () => new Set(materialReturns.filter((entry) => String(entry.firmId || "").trim() === issueFirmId).map((entry) => entry.id)),
+    [issueFirmId, materialReturns]
+  );
+  const firmMaterialIssueLines = useMemo(
+    () => materialIssueLines.filter((line) => firmIssueIds.has(line.materialIssueId)),
+    [firmIssueIds, materialIssueLines]
+  );
+  const firmMaterialReturnLines = useMemo(
+    () => materialReturnLines.filter((line) => firmReturnIds.has(line.materialReturnId)),
+    [firmReturnIds, materialReturnLines]
+  );
   const [productionId, setProductionId] = useState(requestedProductionId);
   const [remarks, setRemarks] = useState("");
   const [currentMaterialId, setCurrentMaterialId] = useState("");
@@ -362,6 +391,10 @@ export function MaterialIssueForm() {
   const issueLinesTotalAmount = lines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
 
   const getMaterial = (materialId: string) => issueMaterials.find((material) => material.id === materialId);
+  const getFirmOpening = (materialId: string) =>
+    materialFirmOpenings.find(
+      (opening) => opening.materialId === materialId && String(opening.firmId || "").trim() === issueFirmId
+    );
   const isNpdConsumableOption = (materialIdOrOption: string | IssueMaterialOption | undefined | null) => {
     if (!materialIdOrOption) return false;
     const material =
@@ -390,14 +423,22 @@ export function MaterialIssueForm() {
       const qty = Number(currentQty || 0);
       if (qty <= 0) return;
       if (issueType === "Job" && !isNpdConsumable) {
-        const availableQty = getNonReelAvailableQty(currentMaterialId, materialIn, materialIssueLines, materialReturnLines);
+        const availableQty = getNonReelAvailableQty(
+          currentMaterialId,
+          firmMaterialIn,
+          firmMaterialIssueLines,
+          firmMaterialReturnLines,
+          getFirmOpening(currentMaterialId)?.openingQty
+        );
         if (qty > availableQty) {
           alert(`Available quantity is only ${availableQty}.`);
           return;
         }
       }
-      const baseValuation = resolveMaterialIssueRate(currentMaterialId, materials, materialIn, qty, {
+      const baseValuation = resolveMaterialIssueRate(currentMaterialId, materials, firmMaterialIn, qty, {
         useLatestRateAsOpeningRate: isWithoutJobIssue(issueType),
+        firmId: issueFirmId,
+        firmOpenings: materialFirmOpenings,
       });
       const npdRate = isNpdConsumable ? round2(Number(material.rate || 0)) : 0;
       const valuation = baseValuation.rate > 0 || npdRate <= 0
@@ -664,7 +705,8 @@ export function MaterialIssueForm() {
         let savedRate = round2(Number(line.rate || 0));
         let savedAmount = calculateMaterialIssueAmount(savedQty, savedRate);
         let savedLastPurchaseRate = round2(Number(line.lastPurchaseRate || 0));
-        const savedOpeningRate = round2(Number(line.openingRate || getMaterial(line.materialId)?.openingRate || 0));
+        const firmOpeningRate = getFirmOpening(line.materialId)?.openingRate;
+        const savedOpeningRate = round2(Number(line.openingRate || firmOpeningRate || getMaterial(line.materialId)?.openingRate || 0));
 
         if (line.isReel) {
           const reelIds = selectedReels[line.id] || [];
@@ -973,7 +1015,15 @@ export function MaterialIssueForm() {
                 <tbody className="divide-y divide-black">
                   {lines.map((line, index) => {
                     const material = getMaterial(line.materialId);
-                    const availableQty = !line.isReel ? getNonReelAvailableQty(line.materialId, materialIn, materialIssueLines, materialReturnLines) : null;
+                    const availableQty = !line.isReel
+                      ? getNonReelAvailableQty(
+                          line.materialId,
+                          firmMaterialIn,
+                          firmMaterialIssueLines,
+                          firmMaterialReturnLines,
+                          getFirmOpening(line.materialId)?.openingQty
+                        )
+                      : null;
                     const isConsumableNpdMaterial = isNpdConsumableOption(material);
                     const availableReels = line.isReel ? getLineAvailableReels(line.id, line.materialId) : [];
                     const selectedIds = selectedReels[line.id] || [];
