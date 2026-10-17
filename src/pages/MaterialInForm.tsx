@@ -70,7 +70,6 @@ type AiMrrLine = {
   color?: string;
   reels?: Array<{ supplierReelNo?: string; weightKg?: number; supplierPoNo?: string }>;
   confidence?: number;
-  mrrSubType?: string;
 };
 
 type AiMrrDraft = {
@@ -79,6 +78,7 @@ type AiMrrDraft = {
   invoiceDate?: string;
   mrrDate?: string;
   mrrType?: MaterialIn["mrrType"] | string;
+  mrrSubType?: string;
   invoiceCurrency?: InvoiceCurrency | string;
   exchangeRate?: number | null;
   lines?: AiMrrLine[];
@@ -192,6 +192,7 @@ export function MaterialInForm() {
   const [invoiceCurrency, setInvoiceCurrency] = useState<InvoiceCurrency>("INR");
   const [exchangeRate, setExchangeRate] = useState<number | "">("");
   const [mrrType, setMrrType] = useState<MaterialIn["mrrType"]>("Others");
+  const [mrrSubType, setMrrSubType] = useState("");
   const [insurance, setInsurance] = useState<number | "">("");
   const [otherCharges, setOtherCharges] = useState<number | "">("");
   const [expenseCGST, setExpenseCGST] = useState<number | "">("");
@@ -205,7 +206,6 @@ export function MaterialInForm() {
   const [currentQty, setCurrentQty] = useState<number | "">("");
   const [currentReceiptQty, setCurrentReceiptQty] = useState<number | "">("");
   const [currentInvoiceRate, setCurrentInvoiceRate] = useState<number | "">("");
-  const [currentMrrSubType, setCurrentMrrSubType] = useState("");
   const [currentPoLineId, setCurrentPoLineId] = useState("");
   const [packingSlipDrafts, setPackingSlipDrafts] = useState<Record<string, PackingSlipDraft[]>>({});
   const hasAutoFilledServiceReturnRef = useRef(false);
@@ -409,6 +409,7 @@ export function MaterialInForm() {
     setInvoiceCurrency(loadedCurrency);
     setExchangeRate(loadedExchangeRate as number | "");
     setMrrType(editingEntry.mrrType || "Others");
+    setMrrSubType(normalizeMaterialInSubType(editingEntry.mrrSubType));
     setInsurance(editingEntry.insurance ?? "");
     setOtherCharges(editingEntry.otherCharges ?? "");
     setExpenseCGST(editingEntry.expenseCGST ?? "");
@@ -1143,7 +1144,6 @@ export function MaterialInForm() {
     setCurrentQty("");
     setCurrentReceiptQty("");
     setCurrentInvoiceRate("");
-    setCurrentMrrSubType("");
     setCurrentPoLineId("");
   };
 
@@ -1171,6 +1171,7 @@ export function MaterialInForm() {
 
   const handleMrrTypeChange = (value: any) => {
     setMrrType(value);
+    if (value !== "Others") setMrrSubType("");
     if (value === "Reel") {
       if (!unitOneFirm) {
         alert("Unit-I is not configured in Firm Master. Reel receipts cannot be saved.");
@@ -1248,12 +1249,6 @@ export function MaterialInForm() {
     }
     if ((mrrType === "Others" || mrrType === "FG Purchase") && (!resolvedInvoiceRateInput || resolvedInvoiceRateInput <= 0)) return;
 
-    const normalizedMrrSubType = normalizeMaterialInSubType(currentMrrSubType);
-    if (mrrType === "Others" && !isValidMaterialInSubType(normalizedMrrSubType)) {
-      alert("Sub Type is required when MRR Type is Others.");
-      return;
-    }
-
     const material = getMaterial(currentItemId);
     if (!material) return;
     if (mrrType === "Others" && (currentQty === "" || Number(currentQty) <= 0)) return;
@@ -1268,10 +1263,6 @@ export function MaterialInForm() {
       id: crypto.randomUUID(),
       itemId: currentItemId,
       itemName: material.name,
-      ...(mrrType === "Others" ? {
-        mrrSubType: normalizedMrrSubType,
-        tallyLedgerName: getMaterialInSubTypeLedger(normalizedMrrSubType),
-      } : {}),
       qty,
       uom: mrrType === "Reel" ? "KG" : ("uom" in material ? material.uom || "" : ""),
       poId: selectedPo?.id,
@@ -2095,6 +2086,9 @@ export function MaterialInForm() {
     setInvDate(normalizeAiDate(aiDraft.invoiceDate));
     setDate(normalizeAiDate(aiDraft.mrrDate) || new Date().toISOString().slice(0, 10));
     setMrrType(nextMrrType);
+    setMrrSubType(nextMrrType === "Others" && isValidMaterialInSubType(aiDraft.mrrSubType)
+      ? normalizeMaterialInSubType(aiDraft.mrrSubType)
+      : "");
     setInvoiceCurrency(nextCurrency);
     setExchangeRate(nextExchangeRate as number | "");
 
@@ -2131,12 +2125,6 @@ export function MaterialInForm() {
           : { invoiceRate, rate: invoiceRate, value: qty * invoiceRate }),
         actualQty: qty,
         gstRate: resolveMaterialGstRate(match.line.materialId),
-        ...(nextMrrType === "Others" && isValidMaterialInSubType(match.line.mrrSubType)
-          ? {
-              mrrSubType: normalizeMaterialInSubType(match.line.mrrSubType),
-              tallyLedgerName: getMaterialInSubTypeLedger(match.line.mrrSubType),
-            }
-          : {}),
         cgstRate: 0,
         sgstRate: 0,
         igstRate: 0,
@@ -2218,9 +2206,6 @@ export function MaterialInForm() {
           })
         : lines.map((line) => recalculateMaterialLine({
             ...line,
-            ...(mrrType === "Others" && isValidMaterialInSubType(line.mrrSubType)
-              ? { mrrSubType: normalizeMaterialInSubType(line.mrrSubType), tallyLedgerName: getMaterialInSubTypeLedger(line.mrrSubType) }
-              : {}),
             invoiceCurrency: normalizedInvoiceCurrency,
             exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
           }, {
@@ -2239,9 +2224,8 @@ export function MaterialInForm() {
     }
 
     if (mrrType === "Others") {
-      const invalidLine = linesForSubmit.find((line) => !isValidMaterialInSubType(line.mrrSubType));
-      if (invalidLine) {
-        alert("Sub Type is required and must be Other RM, Spare parts, or Others for every Others MRR line.");
+      if (!isValidMaterialInSubType(mrrSubType)) {
+        alert("Sub Type is required and must be Other RM, Spare parts, or Others.");
         return;
       }
     }
@@ -2347,6 +2331,10 @@ export function MaterialInForm() {
           firmName: selectedFirm.firmName,
           transactionNo,
           mrrType,
+          ...(mrrType === "Others" ? {
+            mrrSubType: normalizeMaterialInSubType(mrrSubType),
+            tallyLedgerName: getMaterialInSubTypeLedger(mrrSubType),
+          } : {}),
           gateEntryId: editingEntry?.gateEntryId || linkedGateEntry?.id,
           gateEntryNo: editingEntry?.gateEntryNo || linkedGateEntry?.gateEntryNo,
           sourceGatePassId: editingEntry?.sourceGatePassId || linkedGateEntry?.sourceGatePassId,
@@ -2450,6 +2438,7 @@ export function MaterialInForm() {
       setSupplierId("");
       setInvoiceCurrency("INR");
       setExchangeRate("");
+      setMrrSubType("");
       setInsurance("");
       setOtherCharges("");
       setExpenseCGST("");
@@ -2854,6 +2843,20 @@ export function MaterialInForm() {
             ) : (
               <Select options={mrrTypeOptions} value={mrrType} onChange={handleMrrTypeChange} required />
             )}
+            {mrrType === "Others" ? (
+              <>
+                <label className="mt-3 font-bold text-black">
+                  Sub Type <span className="text-red-500">*</span>
+                </label>
+                <Select
+                  options={MATERIAL_IN_SUB_TYPES.map((value) => ({ value, label: value }))}
+                  value={mrrSubType}
+                  onChange={setMrrSubType}
+                  placeholder="Select Sub Type..."
+                  required
+                />
+              </>
+            ) : null}
           </div>
           <div className="flex flex-col space-y-1">
             <label className="font-bold text-black">Invoice Currency</label>
@@ -3025,17 +3028,6 @@ export function MaterialInForm() {
                 />
               </div>
             ) : null}
-            {mrrType === "Others" ? (
-              <div className="flex flex-col space-y-1 w-full md:w-56">
-                <label className="text-sm font-bold text-black">Sub Type <span className="text-red-600">*</span></label>
-                <Select
-                  options={MATERIAL_IN_SUB_TYPES.map((value) => ({ value, label: value }))}
-                  value={currentMrrSubType}
-                  onChange={setCurrentMrrSubType}
-                  placeholder="Select Sub Type..."
-                />
-              </div>
-            ) : null}
             {isServiceReturn ? (
               <div className="flex flex-col space-y-1 w-full md:w-24">
                 <label className="text-sm font-bold text-black">Return Qty</label>
@@ -3083,7 +3075,6 @@ export function MaterialInForm() {
                     <tr className="divide-x divide-black">
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Service" : isFgType ? "Item" : "Material"}</th>
                       {isServiceReturn ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Returned Item</th> : null}
-                      {mrrType === "Others" ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Sub Type</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Our PO No.</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">PO Rate</th> : null}
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
@@ -3115,19 +3106,6 @@ export function MaterialInForm() {
                             ) : materialName}
                           </td>
                           {isServiceReturn ? <td className="px-4 py-3 text-sm text-black border border-black">{line.sourceGatePassItemDescription || "-"}</td> : null}
-                          {mrrType === "Others" ? (
-                            <td className="px-4 py-3 text-sm text-black border border-black min-w-[160px]">
-                              <Select
-                                options={MATERIAL_IN_SUB_TYPES.map((value) => ({ value, label: value }))}
-                                value={normalizeMaterialInSubType(line.mrrSubType)}
-                                onChange={(value) => updateLine(line.id, {
-                                  mrrSubType: normalizeMaterialInSubType(value),
-                                  tallyLedgerName: getMaterialInSubTypeLedger(value),
-                                })}
-                                placeholder="Select Sub Type..."
-                              />
-                            </td>
-                          ) : null}
                           {showPoLineSelection ? (
                             <td className="px-4 py-3 text-sm text-black border border-black min-w-[220px]">
                               <Select

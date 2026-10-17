@@ -33,6 +33,44 @@ function getMaterialInSubTypeLedger(value) {
 function isValidMaterialInSubType(value) {
     return MATERIAL_IN_SUB_TYPES.includes(normalizeMaterialInSubType(value));
 }
+async function backfillMaterialInSubTypes(db) {
+    const [rows] = await db.query("SELECT id, mrrType, mrrSubType, lines FROM `material_in`");
+    for (const row of rows) {
+        const lines = Array.isArray(row.lines) ? row.lines : (() => {
+            try {
+                return JSON.parse(String(row.lines || "[]"));
+            }
+            catch {
+                return [];
+            }
+        })();
+        if (!Array.isArray(lines))
+            continue;
+        const existingParent = normalizeMaterialInSubType(row.mrrSubType);
+        const legacyValues = [...new Set(lines
+                .map((line) => normalizeMaterialInSubType(line?.mrrSubType))
+                .filter(Boolean))];
+        const nextParent = existingParent || (legacyValues.length === 1 && isValidMaterialInSubType(legacyValues[0]) ? legacyValues[0] : "");
+        const cleanedLines = lines.map((line) => {
+            const { mrrSubType, tallyLedgerName, ...rest } = line || {};
+            return rest;
+        });
+        const changed = JSON.stringify(cleanedLines) !== JSON.stringify(lines) || nextParent !== existingParent;
+        if (!changed)
+            continue;
+        await db.query("UPDATE `material_in` SET `mrrSubType` = ?, `lines` = ? WHERE `id` = ?", [
+            nextParent || null,
+            JSON.stringify(cleanedLines),
+            row.id,
+        ]);
+        if (!existingParent && legacyValues.length > 1) {
+            console.warn(`[DB] Could not backfill parent MRR Sub Type for ${row.id}: conflicting line values.`);
+        }
+        else if (!existingParent && legacyValues.length === 1 && !isValidMaterialInSubType(legacyValues[0])) {
+            console.warn(`[DB] Could not backfill parent MRR Sub Type for ${row.id}: invalid legacy value.`);
+        }
+    }
+}
 function normalizeStoredProductionJobNumber(value) {
     const raw = String(value ?? "").trim();
     if (!raw)
@@ -1162,6 +1200,7 @@ Return only valid JSON with this exact shape:
   "invoiceDate": "YYYY-MM-DD or blank",
   "mrrDate": "YYYY-MM-DD or blank",
   "mrrType": "Reel or Others",
+  "mrrSubType": "Other RM, Spare parts, Others, or blank",
   "invoiceCurrency": "INR or USD",
   "exchangeRate": null,
   "lines": [
@@ -1179,7 +1218,6 @@ Return only valid JSON with this exact shape:
       "gsm": null,
       "bf": null,
       "color": "",
-      "mrrSubType": "Other RM, Spare parts, Others, or blank",
       "reels": [
         { "supplierReelNo": "", "weightKg": 0, "supplierPoNo": "" }
       ],
@@ -1187,7 +1225,7 @@ Return only valid JSON with this exact shape:
     }
   ]
 }
-Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, extract only the original color printed on the invoice or packing slip, and only when it is exactly one of these values: NS, Natural, LG, Duplex. Search item descriptions, color fields, PO/order text, and packing slip rows for those exact tokens. Do not infer, translate, map, or suggest colors from words like kraft, brown, white, or any unsupported code. If NS, Natural, LG, or Duplex is not explicitly visible, return color as blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. For non-reel lines, populate mrrSubType only when the invoice explicitly identifies one of Other RM, Spare parts, or Others; otherwise leave it blank. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
+Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, extract only the original color printed on the invoice or packing slip, and only when it is exactly one of these values: NS, Natural, LG, Duplex. Search item descriptions, color fields, PO/order text, and packing slip rows for those exact tokens. Do not infer, translate, map, or suggest colors from words like kraft, brown, white, or any unsupported code. If NS, Natural, LG, or Duplex is not explicitly visible, return color as blank. For non-reel MRRs, populate the parent-level mrrSubType only when the invoice explicitly identifies one of Other RM, Spare parts, or Others; otherwise leave it blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
         }];
     for (const photo of photos) {
         const base64Raw = String(photo?.base64 || "");
@@ -2222,16 +2260,13 @@ function normalizeFetchedRow(tableName, row) {
     if (tableName === "material_in" && Array.isArray(newRow.lines)) {
         newRow.lines = newRow.lines.map((line) => {
             const normalizedLine = normalizeMaterialLineNpdLink(line);
-            if (String(newRow.mrrType || "").trim() === "Others") {
-                const mrrSubType = normalizeMaterialInSubType(normalizedLine.mrrSubType);
-                return {
-                    ...normalizedLine,
-                    mrrSubType: mrrSubType || normalizedLine.mrrSubType,
-                    tallyLedgerName: getMaterialInSubTypeLedger(mrrSubType),
-                };
-            }
-            return normalizedLine;
+            const { mrrSubType, tallyLedgerName, ...cleanLine } = normalizedLine;
+            return cleanLine;
         });
+        newRow.mrrSubType = normalizeMaterialInSubType(newRow.mrrSubType) || undefined;
+        if (String(newRow.mrrType || "").trim() === "Others") {
+            newRow.tallyLedgerName = getMaterialInSubTypeLedger(newRow.mrrSubType);
+        }
     }
     if (tableName === "orders") {
         newRow.itemSource = normalizeOrderItemSourceValue(newRow.itemSource);
@@ -6171,6 +6206,7 @@ async function initDb(retries = 5) {
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`transactionNo\` VARCHAR(100) NOT NULL,
           \`mrrType\` VARCHAR(50),
+          \`mrrSubType\` VARCHAR(50),
           \`gateEntryId\` VARCHAR(36),
           \`gateEntryNo\` VARCHAR(100),
           \`sourceGatePassId\` VARCHAR(36),
@@ -7594,6 +7630,7 @@ async function initDb(retries = 5) {
                 { table: "services", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "material_in", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
                 { table: "material_in", column: "mrrType", type: "VARCHAR(50)" },
+                { table: "material_in", column: "mrrSubType", type: "VARCHAR(50)" },
                 { table: "material_in", column: "gateEntryId", type: "VARCHAR(36)" },
                 { table: "material_in", column: "gateEntryNo", type: "VARCHAR(100)" },
                 { table: "material_in", column: "sourceGatePassId", type: "VARCHAR(36)" },
@@ -8456,6 +8493,7 @@ async function initDb(retries = 5) {
                 await ensureTruckStatusLogSchema(db, database);
                 await ensureReelMovementOwnershipSchema(db, database);
                 await ensureAuditColumnsForAllTables(db, database);
+                await backfillMaterialInSubTypes(db);
             }
             catch (err) {
                 console.warn("[DB] Could not ensure companies schema columns:", err.message);
@@ -9786,27 +9824,23 @@ const createHandlers = (tableName) => {
                 }
                 if (tableName === "material_in") {
                     const normalizedMrrType = String(data.mrrType || "").trim();
+                    const normalizedMrrSubType = normalizeMaterialInSubType(data.mrrSubType);
+                    if (normalizedMrrType === "Others") {
+                        if (!isValidMaterialInSubType(normalizedMrrSubType)) {
+                            return res.status(400).json({ error: "Sub Type is required and must be Other RM, Spare parts, or Others." });
+                        }
+                        data.mrrSubType = normalizedMrrSubType;
+                        data.tallyLedgerName = getMaterialInSubTypeLedger(normalizedMrrSubType);
+                    }
+                    else {
+                        delete data.mrrSubType;
+                        delete data.tallyLedgerName;
+                    }
                     if (Array.isArray(data.lines)) {
-                        if (normalizedMrrType === "Others") {
-                            const invalidLine = data.lines.find((line) => !isValidMaterialInSubType(line?.mrrSubType));
-                            if (invalidLine) {
-                                return res.status(400).json({ error: "Sub Type is required and must be Other RM, Spare parts, or Others for every Others MRR line." });
-                            }
-                            data.lines = data.lines.map((line) => {
-                                const mrrSubType = normalizeMaterialInSubType(line.mrrSubType);
-                                return {
-                                    ...line,
-                                    mrrSubType,
-                                    tallyLedgerName: getMaterialInSubTypeLedger(mrrSubType),
-                                };
-                            });
-                        }
-                        else {
-                            data.lines = data.lines.map((line) => {
-                                const { mrrSubType, tallyLedgerName, ...rest } = line || {};
-                                return rest;
-                            });
-                        }
+                        data.lines = data.lines.map((line) => {
+                            const { mrrSubType, tallyLedgerName, ...rest } = line || {};
+                            return rest;
+                        });
                     }
                     if (String(data.mrrType || "").trim().toLowerCase() === "reel") {
                         const unitOne = await getUnitOneFirm(db);

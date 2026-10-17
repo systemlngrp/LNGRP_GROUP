@@ -17,6 +17,7 @@ from mfjFirm1 import (
     create_stock_item,
     dict_rows,
     ensure_stock_items,
+    ensure_voucher_type,
     load_env,
     post_tally,
     print_posting_result,
@@ -138,7 +139,7 @@ def voucher_xml(row, company, existing):
     action = "Alter" if existing else "Create"
     identity = " ".join(f'{key}=\"{escape(value)}\"' for key, value in existing.items() if key in {"REMOTEID", "VCHKEY", "MASTERID", "ALTERID"} and value)
     voucher_number = existing.get("voucher") or job
-    return f"""<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME><STATICVARIABLES><SVCURRENTCOMPANY>{escape(company)}</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA><TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER ACTION=\"{action}\" VCHTYPE=\"Manufacturing Journal\" OBJVIEW=\"Multi Consumption Voucher View\"{(' ' + identity) if identity else ''}><DATE>{tally_xml_date(row.get('date'))}</DATE><VOUCHERNUMBER>{escape(voucher_number)}</VOUCHERNUMBER><VOUCHERTYPENAME>Manufacturing Journal</VOUCHERTYPENAME><PERSISTEDVIEW>Consumption Voucher View</PERSISTEDVIEW><NARRATION>{escape(narration)}</NARRATION><REFERENCE>{escape(job)}</REFERENCE><ISINVOICE>No</ISINVOICE>{component}<INVENTORYENTRIESIN.LIST><STOCKITEMNAME>{escape(item)}</STOCKITEMNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><ISTRACKCOMPONENT>No</ISTRACKCOMPONENT><ISTRACKPRODUCTION>Yes</ISTRACKPRODUCTION><ISPRIMARYITEM>Yes</ISPRIMARYITEM><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY><BATCHALLOCATIONS.LIST><GODOWNNAME>Main Location</GODOWNNAME><BATCHNAME>{escape(job)}</BATCHNAME><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY></BATCHALLOCATIONS.LIST></INVENTORYENTRIESIN.LIST></VOUCHER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"""
+    return f"""<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA><REQUESTDESC><REPORTNAME>Vouchers</REPORTNAME><STATICVARIABLES><SVCURRENTCOMPANY>{escape(company)}</SVCURRENTCOMPANY></STATICVARIABLES></REQUESTDESC><REQUESTDATA><TALLYMESSAGE xmlns:UDF=\"TallyUDF\"><VOUCHER ACTION=\"{action}\" VCHTYPE=\"Manufacturing Journal\" OBJVIEW=\"Multi Consumption Voucher View\"{(' ' + identity) if identity else ''}><DATE>{tally_xml_date(row.get('date'))}</DATE><VOUCHERNUMBER>{escape(voucher_number)}</VOUCHERNUMBER><VOUCHERTYPENAME>Manufacturing Journal</VOUCHERTYPENAME><PERSISTEDVIEW>Consumption Voucher View</PERSISTEDVIEW><NARRATION>{escape(narration)}</NARRATION><REFERENCE>{escape(job)}</REFERENCE><ISINVOICE>No</ISINVOICE><ISINVENTORYVOUCHER>Yes</ISINVENTORYVOUCHER>{component}<INVENTORYENTRIESIN.LIST><STOCKITEMNAME>{escape(item)}</STOCKITEMNAME><ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE><ISTRACKCOMPONENT>No</ISTRACKCOMPONENT><ISTRACKPRODUCTION>Yes</ISTRACKPRODUCTION><ISPRIMARYITEM>Yes</ISPRIMARYITEM><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY><BATCHALLOCATIONS.LIST><GODOWNNAME>Main Location</GODOWNNAME><BATCHNAME>{escape(job)}</BATCHNAME><ACTUALQTY>{quantity} {escape(uom)}</ACTUALQTY><BILLEDQTY>{quantity} {escape(uom)}</BILLEDQTY></BATCHALLOCATIONS.LIST></INVENTORYENTRIESIN.LIST></VOUCHER></TALLYMESSAGE></REQUESTDATA></IMPORTDATA></BODY></ENVELOPE>"""
 
 
 def resolve_item(connection, row):
@@ -222,6 +223,7 @@ def main():
                 if args.dry_run:
                     print(f"[DRY-RUN] Firm-2 | Job: {row.get('jobNo') or '-'}\n{payload}")
                     continue
+                ensure_voucher_type(port, company, "Manufacturing Journal", args.timeout)
                 ensure_stock_items(port, company, {"uom": row.get("uom"), "components": [{"materialName": "Corrugated Board"}]}, args.timeout)
                 try:
                     create_stock_item(port, company, row.get("itemName") or row.get("erpCode"), row.get("uom") or "PCS", args.timeout)

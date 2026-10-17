@@ -132,8 +132,6 @@ export interface MaterialLine {
   itemName?: string;
   npdId?: string;
   lineType?: "Material" | "Service";
-  mrrSubType?: "Other RM" | "Spare parts" | "Others" | string;
-  tallyLedgerName?: string;
   serviceId?: string;
   serviceName?: string;
   sourceGatePassId?: string;
@@ -748,6 +746,8 @@ export interface MaterialIn {
   firmName?: string;
   transactionNo: string;
   mrrType?: "Reel" | "Others" | "Rejection In" | "FG Purchase" | "Service Return";
+  mrrSubType?: "Other RM" | "Spare parts" | "Others" | string;
+  tallyLedgerName?: string;
   gateEntryId?: string;
   gateEntryNo?: string;
   sourceGatePassId?: string;

@@ -76,6 +76,17 @@ class Firm2JournalTests(unittest.TestCase):
         self.assertIn("EXCEPTIONS=1", result["error"])
         self.assertIn("Import > Exceptions", result["error"])
 
+    def test_accounting_entry_exception_preserves_tally_message(self):
+        response = (
+            "<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA>"
+            "<LINEERROR>No accounting entries are available</LINEERROR>"
+            "</DATA></BODY></ENVELOPE>"
+        )
+        result = self.post_response(response)
+        self.assertEqual(result["status"], "Failed")
+        self.assertIn("No accounting entries are available", result["error"])
+
+
     def test_import_status_and_data_error_are_not_hidden(self):
         response = "<ENVELOPE><HEADER><STATUS>0</STATUS></HEADER><BODY><DATA>DESC not found</DATA></BODY></ENVELOPE>"
         result = self.post_response(response)
@@ -96,6 +107,7 @@ class Firm2JournalTests(unittest.TestCase):
                 self.assertEqual(voucher.attrib["ACTION"], action)
                 self.assertEqual(voucher.findtext("DATE"), "20261016")
                 self.assertEqual(voucher.findtext("REFERENCE"), JOB)
+                self.assertEqual(voucher.findtext("ISINVENTORYVOUCHER"), "Yes")
                 self.assertEqual(voucher.findtext(".//INVENTORYENTRIESOUT.LIST/AMOUNT"), "100.00")
                 self.assertEqual(voucher.findtext(".//INVENTORYENTRIESOUT.LIST/RATE"), "8.00/PCS")
                 self.assertEqual(voucher.findtext("VOUCHERNUMBER"), existing.get("voucher") or JOB)
@@ -148,6 +160,7 @@ class Firm2JournalTests(unittest.TestCase):
                      patch.object(mfjFirm2, "get_port_and_company", return_value=("9002", "Unit-2")), \
                      patch.object(mfjFirm2, "get_rows", return_value=[ROW.copy()]), \
                      patch.object(mfjFirm2, "find_existing_voucher", return_value=existing), \
+                     patch.object(mfjFirm2, "ensure_voucher_type"), \
                      patch.object(mfjFirm2, "ensure_stock_items"), \
                      patch.object(mfjFirm2, "create_stock_item"), \
                      patch.object(mfjFirm2, "post_tally", return_value={"status": "Posted", "voucher": "MJ-42"}) as post, \
