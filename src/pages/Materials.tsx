@@ -2150,7 +2150,7 @@ export function Materials() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => navigate(-1)}
+                    onClick={() => navigate("/masters/materials")}
                     className="px-4 py-2 border border-black rounded text-xs font-bold hover:bg-slate-50 transition uppercase shadow-sm"
                   >
                     Back
@@ -2184,14 +2184,14 @@ export function Materials() {
                   </tr>
                   <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
                     {Array.from({ length: typeFilter === "Other" ? 6 : 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
-                    {displayFirms.map((firm) => ["Opening", "Opening Rate", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
+                    {displayFirms.map((firm) => ["Opening", "Rate", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
                     <th /><th />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={(typeFilter === "Other" ? 8 : 12) + displayFirms.length * 6} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={(typeFilter === "Other" ? 8 : 12) + displayFirms.length * 7} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
