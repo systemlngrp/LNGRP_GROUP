@@ -38,7 +38,7 @@ function safeSetLocalStorage(key: string, value: string) {
   }
 }
 
-function getAuthHeaders(_includeActiveFirm = true) {
+export function getDataAuthHeaders(_includeActiveFirm = true) {
   const token = window.localStorage.getItem("authToken") || "";
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -118,7 +118,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         setError(null);
         setProgress({ loaded: 0, total: null });
       }
-      const task = loadCollection<T>(endpoint, getAuthHeaders(includeActiveFirm), loadingRegistry ? "page" : "sidebar", (snapshot) => {
+      const task = loadCollection<T>(endpoint, getDataAuthHeaders(includeActiveFirm), loadingRegistry ? "page" : "sidebar", (snapshot) => {
         if (background || generation !== requestGenerationRef.current) return;
         setDataState(snapshot.rows);
         dataRef.current = snapshot.rows;
@@ -263,7 +263,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     // Send to server
     let hasError = false;
     let lastErrorMessage = "";
-    const authHeaders = getAuthHeaders(includeActiveFirm);
+    const authHeaders = getDataAuthHeaders(includeActiveFirm);
 
     try {
       for (const item of [...added, ...modified]) {
@@ -328,7 +328,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       setDataState(nextData);
       dataRef.current = nextData;
       if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
-      const authHeaders = getAuthHeaders(includeActiveFirm);
+      const authHeaders = getDataAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
@@ -352,7 +352,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       setDataState(nextData);
       dataRef.current = nextData;
       if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
-      const authHeaders = getAuthHeaders(includeActiveFirm);
+      const authHeaders = getDataAuthHeaders(includeActiveFirm);
       const response = await fetch(`${endpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
       if (!response.ok) {
         throw new Error("Failed to delete item");
@@ -371,7 +371,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       setDataState(nextData);
       dataRef.current = nextData;
       if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
-      const authHeaders = getAuthHeaders(includeActiveFirm);
+      const authHeaders = getDataAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },

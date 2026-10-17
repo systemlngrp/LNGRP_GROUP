@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Camera, Plus, Trash2, X } from "lucide-react";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import {
   Material,
   MaterialIn,
@@ -175,9 +175,9 @@ export function MaterialIssueForm() {
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
-  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
-  const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
-  const [materialIssueReelLines, setMaterialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
+  const [materialIssues, setMaterialIssues, , { refresh: refreshMaterialIssues }] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
+  const [materialIssueLines, setMaterialIssueLines, , { refresh: refreshMaterialIssueLines }] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
+  const [materialIssueReelLines, setMaterialIssueReelLines, , { refresh: refreshMaterialIssueReelLines }] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
   const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
   const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all" });
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
@@ -762,6 +762,38 @@ export function MaterialIssueForm() {
             });
         }
       });
+
+      if (isWithoutJobIssue(issueType)) {
+        const response = await fetch("/api/material-issues/daily-upsert", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getDataAuthHeaders(false) },
+          body: JSON.stringify({ issue, lines: nextLines, reelLines: nextReelLines }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(String(body?.error || "Failed to save Daily Consumables."));
+        }
+        const result = await response.json() as { created?: boolean; issue?: MaterialIssue };
+        await Promise.all([
+          refreshMaterialIssues({ force: true }),
+          refreshMaterialIssueLines({ force: true }),
+          refreshMaterialIssueReelLines({ force: true }),
+        ]);
+
+        if (!lockDate) setDate(new Date().toISOString().split("T")[0]);
+        if (!lockIssueType) setIssueType(requestedProductionId ? "Job" : "Without Job");
+        setProductionId(requestedProductionId);
+        setRemarks("");
+        setCurrentMaterialId("");
+        setCurrentQty("");
+        setLines([]);
+        setSelectedReels({});
+        const savedIssueNo = result.issue?.issueNo || issueNo;
+        const savedConsumptionNo = result.issue?.consumptionTransactionNo || consumptionTransactionNo;
+        alert(`Material Issue ${result.created ? "created" : "updated"} with Issue No: ${savedIssueNo} | Consumption No: ${savedConsumptionNo}`);
+        navigate("/material-movement/pending-non-job-issue");
+        return;
+      }
 
       const nextMaterialIssues = existingDailyIssue
         ? materialIssues.map((row) => (row.id === issue.id ? issue : row))
