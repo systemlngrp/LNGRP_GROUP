@@ -638,6 +638,10 @@ export function MaterialIssueForm() {
       alert("The selected firm was not found.");
       return;
     }
+    if (isWithoutJobIssue(issueType) && generalIssuesForDate.length > 0) {
+      alert("Daily Consumables already exists for this firm and date. Open the existing issue instead of creating another one.");
+      return;
+    }
     if (issueType === "Job" && !productionId) return;
     if (isWithoutJobIssue(issueType) && !remarks.trim()) {
       alert("Remarks are mandatory for Without Job material issue.");
@@ -816,7 +820,7 @@ export function MaterialIssueForm() {
       }
     } catch (error) {
       console.error("Failed to save material issue:", error);
-      alert("Failed to save material issue.");
+      alert(error instanceof Error ? error.message : "Failed to save material issue.");
     } finally {
       setIsSubmitting(false);
     }
