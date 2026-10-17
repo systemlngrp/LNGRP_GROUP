@@ -21,7 +21,7 @@ type ActiveValue = NonNullable<Material["active"]>;
 type MaterialSortKey = "updated" | "size" | "gsm";
 type SortDirection = "asc" | "desc";
 type MaterialDisplayRow = Material & { isVirtualReceiptItem?: boolean; receiptQty?: number; receiptValue?: number };
-type MaterialFirmStock = { openingQty: number; openingValue: number; receipts: number; receiptValue: number; issues: number; issueValue: number; returns: number; returnValue: number };
+type MaterialFirmStock = { openingQty: number; openingRate: number; openingValue: number; receipts: number; receiptValue: number; issues: number; issueValue: number; returns: number; returnValue: number };
 type OpeningReelDraft = {
   id: string;
   existingSlipId?: string;
@@ -194,12 +194,12 @@ export function Materials() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   const movementSummaryMap = useMemo(() => {
-    const createEmptyMovement = (): MaterialFirmStock => ({ openingQty: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
+    const createEmptyMovement = (): MaterialFirmStock => ({ openingQty: 0, openingRate: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
     const map = new Map<string, MaterialFirmStock>();
     const materialTypeMap = new Map(materials.map(m => [m.id, m.type]));
     materialFirmOpenings.forEach((row) => {
       const key = `${row.materialId}::${row.firmId}`;
-      map.set(key, { openingQty: Number(row.openingQty || 0), openingValue: Number(row.openingValue ?? Number(row.openingQty || 0) * Number(row.openingRate || 0)), receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
+      map.set(key, { openingQty: Number(row.openingQty || 0), openingRate: Number(row.openingRate || 0), openingValue: Number(row.openingValue ?? Number(row.openingQty || 0) * Number(row.openingRate || 0)), receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 });
     });
 
     const getMovement = (materialId: string, firmId?: string) => {
@@ -417,9 +417,10 @@ export function Materials() {
   }, [colorFilter, gsmFilter, materialDisplayRows, searchTerm, sizeFilter, sortDirection, sortKey, typeFilter]);
 
   const getMaterialStockValues = (material: MaterialDisplayRow, firmId?: string) => {
-    const movement = movementSummaryMap.get(`${material.id}::${String(firmId || "")}`) || { openingQty: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 };
+    const movement = movementSummaryMap.get(`${material.id}::${String(firmId || "")}`) || { openingQty: 0, openingRate: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 };
     const openingQty = Number(movement.openingQty || (firmId ? 0 : material.openingQty || 0));
-    const openingRate = openingQty !== 0 ? Number(movement.openingValue || 0) / openingQty : Number(material.openingRate || 0);
+    const hasFirmOpening = Boolean(firmId) && materialFirmOpenings.some((row) => row.materialId === material.id && String(row.firmId || "") === String(firmId));
+    const openingRate = hasFirmOpening ? Number(movement.openingRate || 0) : Number(material.openingRate || 0);
     const openingValue = Number(movement.openingValue || (firmId ? 0 : material.openingValue ?? (openingQty * openingRate)));
     const receiptQty = Number(movement.receipts || 0);
     const receiptValue = Number(movement.receiptValue || (receiptQty * openingRate));
@@ -433,6 +434,7 @@ export function Materials() {
 
     return {
       openingQty,
+      openingRate,
       openingValue,
       receiptQty,
       receiptValue,
@@ -2176,13 +2178,13 @@ export function Materials() {
                     {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">BF</th>}
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">GST Rate (%)</th>
                     {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Color</th>}
-                    {displayFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={6} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
+                    {displayFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={7} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">UOM</th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
                   </tr>
                   <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
                     {Array.from({ length: typeFilter === "Other" ? 6 : 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
-                    {displayFirms.map((firm) => ["Opening", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
+                    {displayFirms.map((firm) => ["Opening", "Opening Rate", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
                     <th /><th />
                   </tr>
                 </thead>
@@ -2209,7 +2211,7 @@ export function Materials() {
                           <td className="px-4 py-3 text-black text-xs font-semibold">{Number(material.gstRate ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs font-bold">{material.color || "-"}</td>}
                           {getMaterialFirmStocks(material).filter(({ firm }) => displayFirms.some((displayFirm) => String(displayFirm.id) === String(firm.id))).map(({ firm, values: firmValues }) => <React.Fragment key={`${material.id}-${firm.id}`}>
-                            {[firmValues.openingQty, firmValues.receiptQty, firmValues.issueQty, firmValues.returnQty, firmValues.balance, firmValues.closingValue].map((value, fieldIndex) => <td key={fieldIndex} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${fieldIndex === 0 ? "bg-slate-50" : fieldIndex === 1 ? "text-emerald-700 bg-emerald-50/30" : fieldIndex === 2 ? "text-rose-700 bg-rose-50/30" : fieldIndex === 3 ? "text-indigo-700 bg-indigo-50/30" : fieldIndex === 4 ? "text-slate-900 bg-amber-50/50" : "text-violet-700 bg-violet-50/30"}`}>{Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: fieldIndex >= 4 ? 2 : 0, maximumFractionDigits: 2 })}</td>)}
+                            {[firmValues.openingQty, firmValues.openingRate, firmValues.receiptQty, firmValues.issueQty, firmValues.returnQty, firmValues.balance, firmValues.closingValue].map((value, fieldIndex) => <td key={fieldIndex} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${fieldIndex === 0 ? "bg-slate-50" : fieldIndex === 1 ? "text-cyan-700 bg-cyan-50/30" : fieldIndex === 2 ? "text-emerald-700 bg-emerald-50/30" : fieldIndex === 3 ? "text-rose-700 bg-rose-50/30" : fieldIndex === 4 ? "text-indigo-700 bg-indigo-50/30" : fieldIndex === 5 ? "text-slate-900 bg-amber-50/50" : "text-violet-700 bg-violet-50/30"}`}>{Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: fieldIndex === 1 || fieldIndex >= 5 ? 2 : 0, maximumFractionDigits: 2 })}</td>)}
                           </React.Fragment>)}
                           <td className="px-4 py-3 text-black text-[10px] font-black uppercase">{material.uom || "-"}</td>
                           <td className="px-4 py-3 whitespace-nowrap">

@@ -3952,7 +3952,9 @@ async function buildMaterialValuationMaps(db) {
 }
 function resolveBackfillMaterialRate(materialId, maps, firmId = "") {
     const firmKey = firmMaterialRateKey(firmId, materialId);
-    const lastPurchaseRate = maps.latestPurchaseByFirmMaterial.get(firmKey)?.rate || maps.latestPurchaseByMaterial.get(materialId)?.rate || 0;
+    const lastPurchaseRate = firmId
+        ? maps.latestPurchaseByFirmMaterial.get(firmKey)?.rate || 0
+        : maps.latestPurchaseByMaterial.get(materialId)?.rate || 0;
     const openingRate = maps.openingRateByFirmMaterial.has(firmKey)
         ? maps.openingRateByFirmMaterial.get(firmKey) || 0
         : maps.openingRateByMaterial.get(materialId) || 0;
@@ -4002,7 +4004,7 @@ async function backfillNonJobMaterialIssueValuation(db) {
         if (!issueDateTime)
             return 0;
         const firmRates = purchaseRatesByFirmMaterial.get(firmMaterialRateKey(firmId, materialId));
-        const rates = firmRates && firmRates.length > 0 ? firmRates : purchaseRatesByMaterial.get(materialId) || [];
+        const rates = firmId ? firmRates || [] : purchaseRatesByMaterial.get(materialId) || [];
         return (rates
             .filter((entry) => entry.receiptDateTime <= issueDateTime)
             .sort((a, b) => b.sortTime - a.sortTime)[0]?.rate || 0);
@@ -4064,7 +4066,7 @@ async function applyMaterialIssueLineValuation(db, data) {
     if (!materialIssueId || !materialId)
         return;
     const [contextRows] = await db.query(`
-    SELECT mi.firmId, mi.date AS issueDate, m.type,
+    SELECT mi.firmId, m.type,
            m.openingRate AS materialOpeningRate,
            mfo.openingRate AS firmOpeningRate,
            mfo.materialId AS firmOpeningMaterialId
