@@ -14714,17 +14714,17 @@ app.post("/api/material-issues/daily-upsert", requireAuth, async (req, res) => {
       await conn.query(
         `UPDATE \`material_issues\`
          SET issueNo = ?, consumptionTransactionNo = ?, date = ?, issueType = 'Without Job',
-             firmId = ?, firmName = ?, productionId = NULL, jobNo = NULL, remarks = ?,
+             firmId = ?, productionId = NULL, jobNo = NULL, remarks = ?,
              notApplicable = 'No', tallyPostingStatus = 'Pending', updatedBy = ?, updateTimestamp = ?
          WHERE id = ?`,
-        [issueNo, consumptionNo, issueDate, firmId, String(firm.firmName || ""), remarks, updatedBy, now, issueId]
+        [issueNo, consumptionNo, issueDate, firmId, remarks, updatedBy, now, issueId]
       );
     } else {
       await conn.query(
         `INSERT INTO \`material_issues\`
-         (id, issueNo, consumptionTransactionNo, date, issueType, productionId, jobNo, firmId, firmName, remarks, notApplicable, tallyPostingStatus, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, ?, 'Without Job', NULL, NULL, ?, ?, ?, 'No', 'Pending', ?, ?)`,
-        [issueId, issueNo, consumptionNo, issueDate, firmId, String(firm.firmName || ""), remarks, updatedBy, now]
+         (id, issueNo, consumptionTransactionNo, date, issueType, productionId, jobNo, firmId, remarks, notApplicable, tallyPostingStatus, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, 'Without Job', NULL, NULL, ?, ?, 'No', 'Pending', ?, ?)`,
+        [issueId, issueNo, consumptionNo, issueDate, firmId, remarks, updatedBy, now]
       );
     }
 
