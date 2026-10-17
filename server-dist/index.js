@@ -3867,9 +3867,17 @@ function isTruthyDbValue(value) {
     const normalized = String(value || "").trim().toLowerCase();
     return new Set(["1", "true", "yes", "y", "on"]).has(normalized);
 }
+function firmMaterialRateKey(firmId, materialId) {
+    return `${String(firmId || "").trim()}::${String(materialId || "").trim()}`;
+}
 async function buildMaterialValuationMaps(db) {
     const [materialRows] = await db.query("SELECT id, openingRate FROM `materials`");
     const openingRateByMaterial = new Map(materialRows.map((row) => [String(row.id || ""), roundCurrency(Number(row.openingRate || 0))]));
+    const [firmOpeningRows] = await db.query("SELECT materialId, firmId, openingRate FROM `material_firm_openings`");
+    const openingRateByFirmMaterial = new Map(firmOpeningRows.map((row) => [
+        firmMaterialRateKey(row.firmId, row.materialId),
+        roundCurrency(Number(row.openingRate || 0)),
+    ]));
     const [itemRows] = await db.query("SELECT id, rate, consumable FROM `items`");
     const npdRateByMaterialId = new Map();
     for (const item of itemRows) {
@@ -3895,8 +3903,9 @@ async function buildMaterialValuationMaps(db) {
             npdRateByMaterialId.set(`npd:${normalized}`, rate);
         }
     }
-    const [materialInRows] = await db.query("SELECT id, date, timestamp, `lines` FROM `material_in`");
+    const [materialInRows] = await db.query("SELECT id, firmId, date, timestamp, `lines` FROM `material_in`");
     const latestPurchaseByMaterial = new Map();
+    const latestPurchaseByFirmMaterial = new Map();
     for (const receipt of materialInRows) {
         const time = new Date(receipt.timestamp || receipt.date || 0).getTime() || 0;
         for (const line of parseJsonArray(receipt.lines)) {
@@ -3909,6 +3918,11 @@ async function buildMaterialValuationMaps(db) {
             const existing = latestPurchaseByMaterial.get(materialId);
             if (!existing || time > existing.time) {
                 latestPurchaseByMaterial.set(materialId, { rate, time });
+            }
+            const firmKey = firmMaterialRateKey(receipt.firmId, materialId);
+            const existingFirm = latestPurchaseByFirmMaterial.get(firmKey);
+            if (!existingFirm || time > existingFirm.time) {
+                latestPurchaseByFirmMaterial.set(firmKey, { rate, time });
             }
         }
     }
@@ -3927,11 +3941,21 @@ async function buildMaterialValuationMaps(db) {
         if (rate > 0)
             receiptRateByPackingSlip.set(String(slip.id || ""), rate);
     }
-    return { openingRateByMaterial, latestPurchaseByMaterial, npdRateByMaterialId, receiptRateByPackingSlip };
+    return {
+        openingRateByMaterial,
+        openingRateByFirmMaterial,
+        latestPurchaseByMaterial,
+        latestPurchaseByFirmMaterial,
+        npdRateByMaterialId,
+        receiptRateByPackingSlip,
+    };
 }
-function resolveBackfillMaterialRate(materialId, maps) {
-    const lastPurchaseRate = maps.latestPurchaseByMaterial.get(materialId)?.rate || 0;
-    const openingRate = maps.openingRateByMaterial.get(materialId) || 0;
+function resolveBackfillMaterialRate(materialId, maps, firmId = "") {
+    const firmKey = firmMaterialRateKey(firmId, materialId);
+    const lastPurchaseRate = maps.latestPurchaseByFirmMaterial.get(firmKey)?.rate || maps.latestPurchaseByMaterial.get(materialId)?.rate || 0;
+    const openingRate = maps.openingRateByFirmMaterial.has(firmKey)
+        ? maps.openingRateByFirmMaterial.get(firmKey) || 0
+        : maps.openingRateByMaterial.get(materialId) || 0;
     const npdRate = maps.npdRateByMaterialId.get(materialId) || 0;
     const rate = lastPurchaseRate > 0 ? lastPurchaseRate : openingRate > 0 ? openingRate : npdRate;
     return { lastPurchaseRate: lastPurchaseRate || npdRate, openingRate, rate };
@@ -3947,8 +3971,9 @@ async function backfillNonJobMaterialIssueValuation(db) {
         const parsed = new Date(`${dateValue}${suffix}`).getTime();
         return Number.isNaN(parsed) ? 0 : parsed;
     };
-    const [materialInRows] = await db.query("SELECT id, date, timestamp, `lines` FROM `material_in`");
+    const [materialInRows] = await db.query("SELECT id, firmId, date, timestamp, `lines` FROM `material_in`");
     const purchaseRatesByMaterial = new Map();
+    const purchaseRatesByFirmMaterial = new Map();
     for (const receipt of materialInRows) {
         const receiptDateTime = getDateTime(receipt.date || receipt.timestamp);
         if (!receiptDateTime)
@@ -3965,21 +3990,34 @@ async function backfillNonJobMaterialIssueValuation(db) {
                 ...(purchaseRatesByMaterial.get(materialId) || []),
                 { rate, receiptDateTime, sortTime },
             ]);
+            const firmKey = firmMaterialRateKey(receipt.firmId, materialId);
+            purchaseRatesByFirmMaterial.set(firmKey, [
+                ...(purchaseRatesByFirmMaterial.get(firmKey) || []),
+                { rate, receiptDateTime, sortTime },
+            ]);
         }
     }
-    const getLatestPurchaseRateAsOf = (materialId, issueDate) => {
+    const getLatestPurchaseRateAsOf = (materialId, issueDate, firmId = "") => {
         const issueDateTime = getDateTime(issueDate, true);
         if (!issueDateTime)
             return 0;
-        return ((purchaseRatesByMaterial.get(materialId) || [])
+        const firmRates = purchaseRatesByFirmMaterial.get(firmMaterialRateKey(firmId, materialId));
+        const rates = firmRates && firmRates.length > 0 ? firmRates : purchaseRatesByMaterial.get(materialId) || [];
+        return (rates
             .filter((entry) => entry.receiptDateTime <= issueDateTime)
             .sort((a, b) => b.sortTime - a.sortTime)[0]?.rate || 0);
     };
     const [lineRows] = await db.query(`
-    SELECT mil.id, mil.materialId, mil.qty, mil.lastPurchaseRate, mil.openingRate, mil.rate, mil.amount, mi.date AS issueDate, m.openingRate AS materialOpeningRate
+    SELECT mil.id, mil.materialId, mil.qty, mil.lastPurchaseRate, mil.openingRate, mil.rate, mil.amount,
+           mi.date AS issueDate, mi.firmId,
+           m.openingRate AS materialOpeningRate,
+           mfo.openingRate AS firmOpeningRate,
+           mfo.materialId AS firmOpeningMaterialId
     FROM \`material_issue_lines\` mil
     JOIN \`material_issues\` mi ON mi.id = mil.materialIssueId
     JOIN \`materials\` m ON m.id = mil.materialId
+    LEFT JOIN \`material_firm_openings\` mfo
+      ON mfo.materialId = mil.materialId AND mfo.firmId = mi.firmId
     WHERE LOWER(TRIM(COALESCE(mi.issueType, ''))) IN ('without job', 'general', 'withoutjob', 'without_job')
       AND m.type = 'Other'
       AND (
@@ -3997,8 +4035,12 @@ async function backfillNonJobMaterialIssueValuation(db) {
         const existingOpeningRate = roundCurrency(Number(line.openingRate || 0));
         const existingRate = roundCurrency(Number(line.rate || 0));
         const existingAmount = roundCurrency(Number(line.amount || 0));
-        const issuePurchaseRate = getLatestPurchaseRateAsOf(materialId, line.issueDate);
-        const materialOpeningRate = openingRateByMaterial.get(materialId) || roundCurrency(Number(line.materialOpeningRate || 0));
+        const firmId = String(line.firmId || "").trim();
+        const issuePurchaseRate = getLatestPurchaseRateAsOf(materialId, line.issueDate, firmId);
+        const hasFirmOpening = String(line.firmOpeningMaterialId || "").trim() !== "";
+        const materialOpeningRate = hasFirmOpening
+            ? roundCurrency(Number(line.firmOpeningRate || 0))
+            : openingRateByMaterial.get(materialId) || roundCurrency(Number(line.materialOpeningRate || 0));
         const computedRate = roundCurrency(issuePurchaseRate > 0 ? issuePurchaseRate : materialOpeningRate);
         const finalRate = existingRate > 0 ? existingRate : computedRate;
         const finalAmount = existingAmount > 0 ? existingAmount : roundCurrency(qty * finalRate);
@@ -4012,6 +4054,68 @@ async function backfillNonJobMaterialIssueValuation(db) {
     if (updatedCount > 0) {
         console.log(`[DB] Backfilled non-job material issue valuation for ${updatedCount} line(s).`);
     }
+}
+function calculateMaterialIssueAmountServer(qty, rate) {
+    return roundCurrency(roundCurrency(qty) * roundCurrency(rate));
+}
+async function applyMaterialIssueLineValuation(db, data) {
+    const materialIssueId = String(data.materialIssueId || "").trim();
+    const materialId = String(data.materialId || "").trim();
+    if (!materialIssueId || !materialId)
+        return;
+    const [contextRows] = await db.query(`
+    SELECT mi.firmId, mi.date AS issueDate, m.type,
+           m.openingRate AS materialOpeningRate,
+           mfo.openingRate AS firmOpeningRate,
+           mfo.materialId AS firmOpeningMaterialId
+    FROM \`material_issues\` mi
+    JOIN \`materials\` m ON m.id = ?
+    LEFT JOIN \`material_firm_openings\` mfo
+      ON mfo.materialId = m.id AND mfo.firmId = mi.firmId
+    WHERE mi.id = ?
+    LIMIT 1
+  `, [materialId, materialIssueId]);
+    const context = contextRows[0];
+    if (!context || String(context.type || "").trim().toLowerCase() === "reel")
+        return;
+    const firmId = String(context.firmId || "").trim();
+    const hasFirmOpening = String(context.firmOpeningMaterialId || "").trim() !== "";
+    const openingRate = hasFirmOpening
+        ? roundCurrency(Number(context.firmOpeningRate || 0))
+        : roundCurrency(Number(context.materialOpeningRate || 0));
+    const [receiptRows] = await db.query(firmId
+        ? "SELECT firmId, date, timestamp, `lines` FROM `material_in` WHERE firmId = ?"
+        : "SELECT firmId, date, timestamp, `lines` FROM `material_in`", firmId ? [firmId] : []);
+    let lastPurchaseRate = 0;
+    let latestPurchaseTime = -1;
+    for (const receipt of receiptRows) {
+        const time = new Date(receipt.timestamp || receipt.date || 0).getTime() || 0;
+        for (const line of parseJsonArray(receipt.lines)) {
+            if (String(line?.itemId || "").trim() !== materialId)
+                continue;
+            const rate = roundCurrency(getMaterialInJsonLineRate(line));
+            if (rate > 0 && time >= latestPurchaseTime) {
+                latestPurchaseTime = time;
+                lastPurchaseRate = rate;
+            }
+        }
+    }
+    const submittedOpeningRate = roundCurrency(Number(data.openingRate || 0));
+    const submittedLastPurchaseRate = roundCurrency(Number(data.lastPurchaseRate || 0));
+    const submittedRate = roundCurrency(Number(data.rate || 0));
+    const submittedAmount = roundCurrency(Number(data.amount || 0));
+    const qty = roundCurrency(Number(data.qty || 0));
+    const resolvedOpeningRate = submittedOpeningRate > 0 ? submittedOpeningRate : openingRate;
+    const resolvedLastPurchaseRate = submittedLastPurchaseRate > 0 ? submittedLastPurchaseRate : lastPurchaseRate;
+    const resolvedRate = submittedRate > 0
+        ? submittedRate
+        : resolvedLastPurchaseRate > 0
+            ? resolvedLastPurchaseRate
+            : resolvedOpeningRate;
+    data.openingRate = resolvedOpeningRate;
+    data.lastPurchaseRate = resolvedLastPurchaseRate;
+    data.rate = resolvedRate;
+    data.amount = submittedAmount > 0 ? submittedAmount : calculateMaterialIssueAmountServer(qty, resolvedRate);
 }
 async function backfillOldJobMaterialIssueReturnValuation(db) {
     const maps = await buildMaterialValuationMaps(db);
@@ -9853,6 +9957,9 @@ const createHandlers = (tableName) => {
                     if (!String(data.transactionNo || "").trim()) {
                         data.transactionNo = await generateLockedMrrNo(db, String(data.date || new Date().toISOString().slice(0, 10)), String(data.firmId || requestFirmId || ""));
                     }
+                }
+                if (tableName === "material_issue_lines") {
+                    await applyMaterialIssueLineValuation(db, data);
                 }
                 if (["productions", "php_job_master", "plate_job_master"].includes(tableName)) {
                     try {
