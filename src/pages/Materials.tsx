@@ -428,8 +428,11 @@ export function Materials() {
     const returnQty = Number(movement.returns || 0);
     const issueValue = Number(movement.issueValue || 0);
     const returnValue = Number(movement.returnValue || 0);
-    const balance = openingQty + receiptQty + returnQty - issueQty;
-    const closingValue = openingValue + receiptValue + returnValue - issueValue;
+    const includeReturns = material.type === "Reel";
+    const displayedReturnQty = includeReturns ? returnQty : 0;
+    const displayedReturnValue = includeReturns ? returnValue : 0;
+    const balance = openingQty + receiptQty + displayedReturnQty - issueQty;
+    const closingValue = openingValue + receiptValue + displayedReturnValue - issueValue;
     const effectiveRate = balance !== 0 ? closingValue / balance : openingRate;
 
     return {
@@ -440,7 +443,7 @@ export function Materials() {
       receiptValue,
       issueQty,
       issueValue,
-      returnQty,
+      returnQty: displayedReturnQty,
       balance,
       closingValue,
       effectiveRate,
@@ -449,6 +452,8 @@ export function Materials() {
 
   const visibleFirms = useMemo(() => firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)), [firms]);
   const displayFirms = useMemo(() => typeFilter === "Reel" ? visibleFirms.filter((firm) => String(firm.id) === String(unitOneFirm?.id || "")) : visibleFirms, [typeFilter, unitOneFirm?.id, visibleFirms]);
+  const showReturnsColumn = typeFilter !== "Other";
+  const firmColumnCount = showReturnsColumn ? 7 : 6;
   const getMaterialFirmStocks = (material: MaterialDisplayRow) => {
     return visibleFirms.map((firm) => ({
       firm,
@@ -1538,11 +1543,12 @@ export function Materials() {
       }
       getMaterialFirmStocks(material).forEach(({ firm, values }) => {
         const prefix = firm.firmName;
-        row[`${prefix} - Opening`] = Number(values.openingQty || 0);
-        row[`${prefix} - Receipts`] = Number(values.receiptQty || 0);
-        row[`${prefix} - Issues`] = Number(values.issueQty || 0);
-        row[`${prefix} - Returns`] = Number(values.returnQty || 0);
-        row[`${prefix} - Closing Stock`] = Number(values.balance || 0);
+        row[`${prefix} - Opening Qty`] = Number(values.openingQty || 0);
+        row[`${prefix} - Opening Rate`] = Number(values.openingRate || 0);
+        row[`${prefix} - Receipts Qty`] = Number(values.receiptQty || 0);
+        row[`${prefix} - Issues Qty`] = Number(values.issueQty || 0);
+        if (material.type === "Reel") row[`${prefix} - Returns Qty`] = Number(values.returnQty || 0);
+        row[`${prefix} - Closing Stock Qty`] = Number(values.balance || 0);
         row[`${prefix} - Closing Value`] = Number(values.closingValue || 0);
       });
       return row;
@@ -2184,14 +2190,14 @@ export function Materials() {
                   </tr>
                   <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
                     {Array.from({ length: typeFilter === "Other" ? 6 : 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
-                    {displayFirms.map((firm) => ["Opening", "Rate", "Receipts", "Issues", "Returns", "Closing Stock", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
+                    {displayFirms.map((firm) => ["Opening Qty", "Opening Rate", "Receipts Qty", "Issues Qty", ...(showReturnsColumn ? ["Returns Qty"] : []), "Closing Stock Qty", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
                     <th /><th />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={(typeFilter === "Other" ? 8 : 12) + displayFirms.length * 7} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={(typeFilter === "Other" ? 8 : 12) + displayFirms.length * firmColumnCount} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2211,7 +2217,7 @@ export function Materials() {
                           <td className="px-4 py-3 text-black text-xs font-semibold">{Number(material.gstRate ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs font-bold">{material.color || "-"}</td>}
                           {getMaterialFirmStocks(material).filter(({ firm }) => displayFirms.some((displayFirm) => String(displayFirm.id) === String(firm.id))).map(({ firm, values: firmValues }) => <React.Fragment key={`${material.id}-${firm.id}`}>
-                            {[firmValues.openingQty, firmValues.openingRate, firmValues.receiptQty, firmValues.issueQty, firmValues.returnQty, firmValues.balance, firmValues.closingValue].map((value, fieldIndex) => <td key={fieldIndex} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${fieldIndex === 0 ? "bg-slate-50" : fieldIndex === 1 ? "text-cyan-700 bg-cyan-50/30" : fieldIndex === 2 ? "text-emerald-700 bg-emerald-50/30" : fieldIndex === 3 ? "text-rose-700 bg-rose-50/30" : fieldIndex === 4 ? "text-indigo-700 bg-indigo-50/30" : fieldIndex === 5 ? "text-slate-900 bg-amber-50/50" : "text-violet-700 bg-violet-50/30"}`}>{Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: fieldIndex === 1 || fieldIndex >= 5 ? 2 : 0, maximumFractionDigits: 2 })}</td>)}
+                            {[firmValues.openingQty, firmValues.openingRate, firmValues.receiptQty, firmValues.issueQty, ...(showReturnsColumn ? [firmValues.returnQty] : []), firmValues.balance, firmValues.closingValue].map((value, fieldIndex) => <td key={fieldIndex} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${fieldIndex === 0 ? "bg-slate-50" : fieldIndex === 1 ? "text-cyan-700 bg-cyan-50/30" : fieldIndex === 2 ? "text-emerald-700 bg-emerald-50/30" : fieldIndex === 3 ? "text-rose-700 bg-rose-50/30" : fieldIndex === 4 && showReturnsColumn ? "text-indigo-700 bg-indigo-50/30" : fieldIndex === (showReturnsColumn ? 5 : 4) ? "text-slate-900 bg-amber-50/50" : "text-violet-700 bg-violet-50/30"}`}>{Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: fieldIndex === 1 || fieldIndex >= (showReturnsColumn ? 5 : 4) ? 2 : 0, maximumFractionDigits: 2 })}</td>)}
                           </React.Fragment>)}
                           <td className="px-4 py-3 text-black text-[10px] font-black uppercase">{material.uom || "-"}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
