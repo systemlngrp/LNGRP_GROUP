@@ -917,6 +917,13 @@ export function Materials() {
     const gstRateInput = parseNumericInput(formData.gstRate);
     const gstRate = gstRateInput === "" ? 0 : Number(gstRateInput);
     const openingValue = openingValueInput !== "" ? Number(openingValueInput) : openingQty !== "" && openingRate !== "" ? Number(openingQty) * Number(openingRate) : undefined;
+    if (firmId && normalizedType === "Other") {
+      const openingInputs = [openingQty, openingRate, openingValue].filter((value) => value !== "");
+      if (openingInputs.some((value) => !Number.isFinite(Number(value)) || Number(value) < 0)) {
+        alert("Opening Qty, Opening Rate, and Opening Value must be valid non-negative numbers.");
+        return;
+      }
+    }
     if (normalizedType === "Reel" && (size === "" || gsm === "" || bf === "" || !color)) {
       alert("Size, GSM, BF, and Color are required for Reel.");
       return;
@@ -1571,7 +1578,7 @@ export function Materials() {
             <button
               type="button"
               onClick={() => resetForm()}
-              className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition"
+              className="px-3 py-1 rounded border border-black text-xs text-black font-bold hover:bg-slate-50 transition"
             >
               Back
             </button>
@@ -1781,39 +1788,47 @@ export function Materials() {
               )}
             </div>
 
-            {(formData.type === "Reel" ? unitOneFirm?.id : formData.firmId) ? (
+            {(formData.type === "Other" || (formData.type === "Reel" ? unitOneFirm?.id : formData.firmId)) ? (
               <>
+            {formData.type === "Other" && !formData.firmId ? (
+              <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                Select a firm to enter or edit firm-specific opening stock.
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Opening Qty</label>
                 <input
                   value={hasOpeningReelRows ? String(openingReelTotals.openingQty) : formData.openingQty}
-                  readOnly={hasOpeningReelRows}
+                  readOnly={hasOpeningReelRows || (formData.type === "Other" && !formData.firmId)}
+                  disabled={formData.type === "Other" && !formData.firmId}
                   onChange={(e) => setFormData((prev) => ({ ...prev, openingQty: e.target.value }))}
-                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
+                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows || (formData.type === "Other" && !formData.firmId) ? "bg-slate-100" : ""}`}
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Opening Rate</label>
                 <input
                   value={hasOpeningReelRows ? String(openingReelTotals.openingRate) : formData.openingRate}
-                  readOnly={hasOpeningReelRows}
+                  readOnly={hasOpeningReelRows || (formData.type === "Other" && !formData.firmId)}
+                  disabled={formData.type === "Other" && !formData.firmId}
                   onChange={(e) => setFormData((prev) => ({ ...prev, openingRate: e.target.value }))}
-                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
+                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows || (formData.type === "Other" && !formData.firmId) ? "bg-slate-100" : ""}`}
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-blue-700 font-bold">Opening Value</label>
                 <input
                   value={hasOpeningReelRows ? String(openingReelTotals.openingValue) : formData.openingValue}
-                  readOnly={hasOpeningReelRows}
+                  readOnly={hasOpeningReelRows || (formData.type === "Other" && !formData.firmId)}
+                  disabled={formData.type === "Other" && !formData.firmId}
                   onChange={(e) => setFormData((prev) => ({ ...prev, openingValue: e.target.value }))}
                   placeholder={
                     !hasOpeningReelRows && formData.openingQty && formData.openingRate && !formData.openingValue
                       ? String(Number(formData.openingQty || 0) * Number(formData.openingRate || 0))
                       : ""
                   }
-                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows ? "bg-slate-100" : ""}`}
+                  className={`w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 ${hasOpeningReelRows || (formData.type === "Other" && !formData.firmId) ? "bg-slate-100" : ""}`}
                 />
               </div>
             </div>
