@@ -38,6 +38,7 @@ import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/mat
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { formatOurReelNo as formatReelNo, getNextNumber } from "../lib/materialNumbering";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
+import { MATERIAL_IN_SUB_TYPES, getMaterialInSubTypeLedger, isValidMaterialInSubType, normalizeMaterialInSubType } from "../lib/materialInSubTypes";
 
 type PackingSlipDraft = {
   id: string;
@@ -69,6 +70,7 @@ type AiMrrLine = {
   color?: string;
   reels?: Array<{ supplierReelNo?: string; weightKg?: number; supplierPoNo?: string }>;
   confidence?: number;
+  mrrSubType?: string;
 };
 
 type AiMrrDraft = {
@@ -203,6 +205,7 @@ export function MaterialInForm() {
   const [currentQty, setCurrentQty] = useState<number | "">("");
   const [currentReceiptQty, setCurrentReceiptQty] = useState<number | "">("");
   const [currentInvoiceRate, setCurrentInvoiceRate] = useState<number | "">("");
+  const [currentMrrSubType, setCurrentMrrSubType] = useState("");
   const [currentPoLineId, setCurrentPoLineId] = useState("");
   const [packingSlipDrafts, setPackingSlipDrafts] = useState<Record<string, PackingSlipDraft[]>>({});
   const hasAutoFilledServiceReturnRef = useRef(false);
@@ -1140,6 +1143,7 @@ export function MaterialInForm() {
     setCurrentQty("");
     setCurrentReceiptQty("");
     setCurrentInvoiceRate("");
+    setCurrentMrrSubType("");
     setCurrentPoLineId("");
   };
 
@@ -1244,6 +1248,12 @@ export function MaterialInForm() {
     }
     if ((mrrType === "Others" || mrrType === "FG Purchase") && (!resolvedInvoiceRateInput || resolvedInvoiceRateInput <= 0)) return;
 
+    const normalizedMrrSubType = normalizeMaterialInSubType(currentMrrSubType);
+    if (mrrType === "Others" && !isValidMaterialInSubType(normalizedMrrSubType)) {
+      alert("Sub Type is required when MRR Type is Others.");
+      return;
+    }
+
     const material = getMaterial(currentItemId);
     if (!material) return;
     if (mrrType === "Others" && (currentQty === "" || Number(currentQty) <= 0)) return;
@@ -1258,6 +1268,10 @@ export function MaterialInForm() {
       id: crypto.randomUUID(),
       itemId: currentItemId,
       itemName: material.name,
+      ...(mrrType === "Others" ? {
+        mrrSubType: normalizedMrrSubType,
+        tallyLedgerName: getMaterialInSubTypeLedger(normalizedMrrSubType),
+      } : {}),
       qty,
       uom: mrrType === "Reel" ? "KG" : ("uom" in material ? material.uom || "" : ""),
       poId: selectedPo?.id,
@@ -2117,6 +2131,12 @@ export function MaterialInForm() {
           : { invoiceRate, rate: invoiceRate, value: qty * invoiceRate }),
         actualQty: qty,
         gstRate: resolveMaterialGstRate(match.line.materialId),
+        ...(nextMrrType === "Others" && isValidMaterialInSubType(match.line.mrrSubType)
+          ? {
+              mrrSubType: normalizeMaterialInSubType(match.line.mrrSubType),
+              tallyLedgerName: getMaterialInSubTypeLedger(match.line.mrrSubType),
+            }
+          : {}),
         cgstRate: 0,
         sgstRate: 0,
         igstRate: 0,
@@ -2198,6 +2218,9 @@ export function MaterialInForm() {
           })
         : lines.map((line) => recalculateMaterialLine({
             ...line,
+            ...(mrrType === "Others" && isValidMaterialInSubType(line.mrrSubType)
+              ? { mrrSubType: normalizeMaterialInSubType(line.mrrSubType), tallyLedgerName: getMaterialInSubTypeLedger(line.mrrSubType) }
+              : {}),
             invoiceCurrency: normalizedInvoiceCurrency,
             exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
           }, {
@@ -2213,6 +2236,14 @@ export function MaterialInForm() {
     if (linesForSubmit.some((line) => Number(line.invoiceRate ?? line.rate ?? 0) <= 0)) {
       alert("Invoice rate must be greater than 0 for every MRR line.");
       return;
+    }
+
+    if (mrrType === "Others") {
+      const invalidLine = linesForSubmit.find((line) => !isValidMaterialInSubType(line.mrrSubType));
+      if (invalidLine) {
+        alert("Sub Type is required and must be Other RM, Spare parts, or Others for every Others MRR line.");
+        return;
+      }
     }
 
     if (isServiceReturn) {
@@ -2994,6 +3025,17 @@ export function MaterialInForm() {
                 />
               </div>
             ) : null}
+            {mrrType === "Others" ? (
+              <div className="flex flex-col space-y-1 w-full md:w-56">
+                <label className="text-sm font-bold text-black">Sub Type <span className="text-red-600">*</span></label>
+                <Select
+                  options={MATERIAL_IN_SUB_TYPES.map((value) => ({ value, label: value }))}
+                  value={currentMrrSubType}
+                  onChange={setCurrentMrrSubType}
+                  placeholder="Select Sub Type..."
+                />
+              </div>
+            ) : null}
             {isServiceReturn ? (
               <div className="flex flex-col space-y-1 w-full md:w-24">
                 <label className="text-sm font-bold text-black">Return Qty</label>
@@ -3041,6 +3083,7 @@ export function MaterialInForm() {
                     <tr className="divide-x divide-black">
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Service" : isFgType ? "Item" : "Material"}</th>
                       {isServiceReturn ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Returned Item</th> : null}
+                      {mrrType === "Others" ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Sub Type</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Our PO No.</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">PO Rate</th> : null}
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
@@ -3072,6 +3115,19 @@ export function MaterialInForm() {
                             ) : materialName}
                           </td>
                           {isServiceReturn ? <td className="px-4 py-3 text-sm text-black border border-black">{line.sourceGatePassItemDescription || "-"}</td> : null}
+                          {mrrType === "Others" ? (
+                            <td className="px-4 py-3 text-sm text-black border border-black min-w-[160px]">
+                              <Select
+                                options={MATERIAL_IN_SUB_TYPES.map((value) => ({ value, label: value }))}
+                                value={normalizeMaterialInSubType(line.mrrSubType)}
+                                onChange={(value) => updateLine(line.id, {
+                                  mrrSubType: normalizeMaterialInSubType(value),
+                                  tallyLedgerName: getMaterialInSubTypeLedger(value),
+                                })}
+                                placeholder="Select Sub Type..."
+                              />
+                            </td>
+                          ) : null}
                           {showPoLineSelection ? (
                             <td className="px-4 py-3 text-sm text-black border border-black min-w-[220px]">
                               <Select

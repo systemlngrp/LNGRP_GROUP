@@ -31,6 +31,26 @@ import {
 
 const execPromise = util.promisify(exec);
 
+const MATERIAL_IN_SUB_TYPES = ["Other RM", "Spare parts", "Others"] as const;
+const MATERIAL_IN_SUB_TYPE_LEDGER: Record<(typeof MATERIAL_IN_SUB_TYPES)[number], string> = {
+  "Other RM": "PURCHASE - OTHER RM",
+  "Spare parts": "PURCHASE - SPARE PARTS",
+  Others: "PURCHASE - OTHERS",
+};
+
+function normalizeMaterialInSubType(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function getMaterialInSubTypeLedger(value: unknown): string {
+  const normalized = normalizeMaterialInSubType(value) as (typeof MATERIAL_IN_SUB_TYPES)[number];
+  return MATERIAL_IN_SUB_TYPE_LEDGER[normalized] || MATERIAL_IN_SUB_TYPE_LEDGER["Other RM"];
+}
+
+function isValidMaterialInSubType(value: unknown): boolean {
+  return MATERIAL_IN_SUB_TYPES.includes(normalizeMaterialInSubType(value) as (typeof MATERIAL_IN_SUB_TYPES)[number]);
+}
+
 function normalizeStoredProductionJobNumber(value: unknown): string {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
@@ -1218,6 +1238,7 @@ Return only valid JSON with this exact shape:
       "gsm": null,
       "bf": null,
       "color": "",
+      "mrrSubType": "Other RM, Spare parts, Others, or blank",
       "reels": [
         { "supplierReelNo": "", "weightKg": 0, "supplierPoNo": "" }
       ],
@@ -1225,7 +1246,7 @@ Return only valid JSON with this exact shape:
     }
   ]
 }
-Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, extract only the original color printed on the invoice or packing slip, and only when it is exactly one of these values: NS, Natural, LG, Duplex. Search item descriptions, color fields, PO/order text, and packing slip rows for those exact tokens. Do not infer, translate, map, or suggest colors from words like kraft, brown, white, or any unsupported code. If NS, Natural, LG, or Duplex is not explicitly visible, return color as blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
+Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, extract only the original color printed on the invoice or packing slip, and only when it is exactly one of these values: NS, Natural, LG, Duplex. Search item descriptions, color fields, PO/order text, and packing slip rows for those exact tokens. Do not infer, translate, map, or suggest colors from words like kraft, brown, white, or any unsupported code. If NS, Natural, LG, or Duplex is not explicitly visible, return color as blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. For non-reel lines, populate mrrSubType only when the invoice explicitly identifies one of Other RM, Spare parts, or Others; otherwise leave it blank. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
   }];
 
   for (const photo of photos) {
@@ -2393,7 +2414,18 @@ function normalizeFetchedRow(tableName: string, row: any) {
   }
 
   if (tableName === "material_in" && Array.isArray(newRow.lines)) {
-    newRow.lines = newRow.lines.map((line: any) => normalizeMaterialLineNpdLink(line));
+    newRow.lines = newRow.lines.map((line: any) => {
+      const normalizedLine = normalizeMaterialLineNpdLink(line);
+      if (String(newRow.mrrType || "").trim() === "Others") {
+        const mrrSubType = normalizeMaterialInSubType(normalizedLine.mrrSubType);
+        return {
+          ...normalizedLine,
+          mrrSubType: mrrSubType || normalizedLine.mrrSubType,
+          tallyLedgerName: getMaterialInSubTypeLedger(mrrSubType),
+        };
+      }
+      return normalizedLine;
+    });
   }
 
   if (tableName === "orders") {
@@ -10433,6 +10465,28 @@ const createHandlers = (tableName: string) => {
         }
 
         if (tableName === "material_in") {
+          const normalizedMrrType = String(data.mrrType || "").trim();
+          if (Array.isArray(data.lines)) {
+            if (normalizedMrrType === "Others") {
+              const invalidLine = data.lines.find((line: any) => !isValidMaterialInSubType(line?.mrrSubType));
+              if (invalidLine) {
+                return res.status(400).json({ error: "Sub Type is required and must be Other RM, Spare parts, or Others for every Others MRR line." });
+              }
+              data.lines = data.lines.map((line: any) => {
+                const mrrSubType = normalizeMaterialInSubType(line.mrrSubType);
+                return {
+                  ...line,
+                  mrrSubType,
+                  tallyLedgerName: getMaterialInSubTypeLedger(mrrSubType),
+                };
+              });
+            } else {
+              data.lines = data.lines.map((line: any) => {
+                const { mrrSubType, tallyLedgerName, ...rest } = line || {};
+                return rest;
+              });
+            }
+          }
           if (String(data.mrrType || "").trim().toLowerCase() === "reel") {
             const unitOne = await getUnitOneFirm(db);
             if (!unitOne?.id) return res.status(400).json({ error: "Unit-I firm is not configured. Reel receipts must belong to Unit-I." });

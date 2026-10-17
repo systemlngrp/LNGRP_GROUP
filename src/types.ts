@@ -132,6 +132,8 @@ export interface MaterialLine {
   itemName?: string;
   npdId?: string;
   lineType?: "Material" | "Service";
+  mrrSubType?: "Other RM" | "Spare parts" | "Others" | string;
+  tallyLedgerName?: string;
   serviceId?: string;
   serviceName?: string;
   sourceGatePassId?: string;
