@@ -126,6 +126,25 @@ export function QualityComplaintFormUpdated() {
     setHint(`Job details loaded successfully.`);
   };
 
+  const hasLinkedSelection = Boolean(form.lotNo || form.partyName || form.erpCode || form.itemName);
+  const clearLinkedSelection = () => {
+    const preserveConcernedPerson = manuallySelectedPerson.current;
+    manuallySelectedPerson.current = false;
+    setForm((current) => ({
+      ...current,
+      firmId: "",
+      firmName: "",
+      partyName: "",
+      itemName: "",
+      erpCode: "",
+      lotNo: "",
+      quantity: "",
+      concernedPersonName: preserveConcernedPerson ? current.concernedPersonName : "",
+    }));
+    setHint("");
+    setMessage("");
+  };
+
   const uploadPhoto = async (name: "photo1" | "photo2", file?: File) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) return setMessage("Photo must be 10 MB or smaller.");
@@ -175,6 +194,18 @@ export function QualityComplaintFormUpdated() {
     <label className="space-y-1"><span className="font-bold">ERP Code *</span><Select value={form.erpCode} onChange={chooseErp} options={erpOptions} placeholder="Select ERP Code" /></label>
     <label className="space-y-1"><span className="font-bold">Nature of Complaint *</span><Select value={form.natureOfComplaint} onChange={(value) => setFormValue("natureOfComplaint", value)} options={[{ value: "Complaint", label: "Complaint" }, { value: "Rejection", label: "Rejection" }]} placeholder="Select Nature" /></label>
     <label className="space-y-1"><span className="font-bold">Job No. *</span><Select value={form.lotNo} onChange={chooseJob} options={jobOptions} placeholder="Select Job No." disabled={locked} />{hint && <span className="block text-xs font-bold text-amber-700">{hint}</span>}</label>
+    <div className="flex items-end justify-end md:col-span-2">
+      <button
+        type="button"
+        onClick={clearLinkedSelection}
+        disabled={!hasLinkedSelection}
+        aria-label="Clear Job, Company, ERP, and Item selection"
+        className="inline-flex items-center gap-2 rounded border-2 border-slate-700 bg-slate-100 px-4 py-2 font-bold text-slate-900 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <X size={16} strokeWidth={3} />
+        Clear Job / Company / ERP / Item
+      </button>
+    </div>
     <label className="space-y-1"><span className="font-bold">Quantity *</span><input type="number" min="0" className={field} value={form.quantity} onChange={(event) => setFormValue("quantity", event.target.value)} /></label>
     <label className="space-y-1"><span className="font-bold">Area of Issue</span><Select value={form.areaOfIssue} onChange={(value) => setFormValue("areaOfIssue", value)} options={[{ value: "Boardline", label: "Boardline" }, { value: "Printing", label: "Printing" }, { value: "Dispatch", label: "Dispatch" }]} placeholder="Select Area" /></label>
     <label className="space-y-1"><span className="font-bold">Concerned Person Name</span><Select value={form.concernedPersonName} onChange={(value) => setFormValue("concernedPersonName", value)} options={personOptions} placeholder="Select Person" /></label>
