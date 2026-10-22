@@ -1,4 +1,4 @@
-export const QC_REPORT_COLUMN_COUNTS = { "qc-view": 57, "pdi-report": 36 } as const;
+export const QC_REPORT_COLUMN_COUNTS = { "qc-view": 57, "pdi-report": 34 } as const;
 export type QcReportKey = keyof typeof QC_REPORT_COLUMN_COUNTS;
 
 export function validQcColumnSelection(value: unknown, count: number): value is number[] {
@@ -7,12 +7,15 @@ export function validQcColumnSelection(value: unknown, count: number): value is 
     new Set(value).size === value.length;
 }
 
-export function parseQcColumnSelection(value: unknown, count: number): number[] {
+export function parseQcColumnSelection(value: unknown, count: number, schemaVersion?: number): number[] {
   const all = Array.from({ length: count }, (_, index) => index);
   if (!value) return all;
   try {
     const parsed = typeof value === "string" ? JSON.parse(value) : value;
-    return validQcColumnSelection(parsed, count) ? parsed.slice().sort((a, b) => a - b) : all;
+    const columns = schemaVersion
+      ? parsed && !Array.isArray(parsed) && parsed.schemaVersion === schemaVersion ? parsed.columns : undefined
+      : parsed;
+    return validQcColumnSelection(columns, count) ? columns.slice().sort((a, b) => a - b) : all;
   } catch {
     return all;
   }

@@ -1,11 +1,11 @@
 import type { QcReportKey } from "./qcColumnLayout";
 
-export async function saveQcColumnLayout(report: QcReportKey, columns: number[]): Promise<void> {
+export async function saveQcColumnLayout(report: QcReportKey, columns: number[], schemaVersion?: number): Promise<void> {
   const token = localStorage.getItem("authToken") || "";
   const response = await fetch(`/api/qc-report-columns/${report}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ columns }),
+    body: JSON.stringify({ columns, schemaVersion }),
   });
   if (!response.ok) {
     const result = await response.json().catch(() => ({}));

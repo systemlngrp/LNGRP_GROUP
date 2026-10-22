@@ -13857,7 +13857,7 @@ entities.forEach(entity => {
 // mysql2 handles objects/arrays as JSON if specified in the query.
 const QC_REPORT_COLUMN_RULES = {
     "qc-view": { count: 57, permission: "/quality/qc-view", setting: "qcViewVisibleColumns" },
-    "pdi-report": { count: 36, permission: "/quality/pdi-report", setting: "pdiReportVisibleColumns" },
+    "pdi-report": { count: 34, permission: "/quality/pdi-report", setting: "pdiReportVisibleColumns" },
 };
 app.put("/api/qc-report-columns/:report", async (req, res) => {
     const user = await getRequestUser(req);
@@ -13882,14 +13882,17 @@ app.put("/api/qc-report-columns/:report", async (req, res) => {
             return res.status(500).json({ error: "DB connection not available" });
         const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
         const id = String(rows[0]?.id || "");
-        const value = JSON.stringify([...columns].sort((a, b) => a - b));
+        const normalizedColumns = [...columns].sort((a, b) => a - b);
+        const value = report === "pdi-report" && Number(req.body?.schemaVersion) === 2
+            ? JSON.stringify({ schemaVersion: 2, columns: normalizedColumns })
+            : JSON.stringify(normalizedColumns);
         if (id) {
             await db.query("UPDATE `settings` SET `" + rule.setting + "` = ? WHERE id = ?", [value, id]);
         }
         else {
             await db.query("INSERT INTO `settings` (`id`, `" + rule.setting + "`) VALUES (?, ?)", [crypto.randomUUID(), value]);
         }
-        return res.json({ columns: JSON.parse(value) });
+        return res.json({ columns: normalizedColumns });
     }
     catch (error) {
         console.error("[QC_COLUMNS] Save failed:", error);

@@ -74,12 +74,10 @@ test("uses NPD specifications and saved inspection values for the report", () =>
   assert.equal(row.Result, "QC FAIL");
   assert.equal(row["QC Person Name"], "Inspector");
   assert.equal(row["PDI TIME"], inspection.inspectionDate);
-  assert.equal(row["CS Act / CS STD"], "185 / 180");
+  assert.equal(row["CS Actual"], 185);
+  assert.equal(row["CS Standard"], 180);
   assert.equal(row["Box Weight (Grams)"], 440);
   assert.equal(row.Ply, 5);
-  assert.equal(row["Standard CS"], 180);
-  assert.equal(row["STD CS"], 180);
-  assert.equal(row["Actual CS"], 185);
 });
 
 test("leaves inspection data and invalid dimension ranges empty", () => {
@@ -88,13 +86,13 @@ test("leaves inspection data and invalid dimension ranges empty", () => {
   assert.equal(row["Printing Artwork Check"], "");
   assert.equal(row["Box Photo [FRONT]"], "");
   assert.equal(row.Result, "");
-  assert.equal(row["Actual CS"], "");
-  assert.equal(row["CS Act / CS STD"], "");
+  assert.equal(row["CS Actual"], "");
+  assert.equal(row["CS Standard"], 180);
   assert.equal(row["Box Weight (Grams)"], "");
   const withoutStandard = buildPdiReportRow(production, undefined, inspection);
-  assert.equal(withoutStandard["CS Act / CS STD"], "185");
+  assert.equal(withoutStandard["CS Actual"], 185);
+  assert.equal(withoutStandard["CS Standard"], 999);
   assert.equal(withoutStandard["Box Weight (Grams)"], 440);
-  assert.equal(buildPdiReportRow(production, undefined, inspection)["STD CS"], 0);
   assert.deepEqual(dimensionRange("430", ""), { min: "", max: "" });
   assert.deepEqual(dimensionRange("invalid", 5), { min: "", max: "" });
 });

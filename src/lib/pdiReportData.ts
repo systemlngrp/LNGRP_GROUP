@@ -1,5 +1,6 @@
 import type { Item, PreDispatchInspection, PrintingQcCheck, Production, QualityComplaint } from "../types";
 import { normalizeQcResult } from "./jobCellColors";
+import { derivePdiResult, resolveCsStandard } from "./pdiResult";
 
 export type NpdPdiItem = Item & {
   lengthId?: number | string;
@@ -92,7 +93,7 @@ export function buildPdiReportRow(
   const widthRange = dimensionRange(requiredWidth, item?.ply);
   const heightRange = dimensionRange(requiredHeight, item?.ply);
   const achievedCs = text(inspection?.csAchieved);
-  const standardCs = text(item?.csKgStd);
+  const standardCs = resolveCsStandard(item?.csKgStd, inspection?.csRequired);
 
   return {
     "Job. No.": text(production.transactionNo || production.jobCardNo),
@@ -113,7 +114,8 @@ export function buildPdiReportRow(
     "Achieved Height": displayNumber(inspection?.heightId),
     "Height Min": heightRange.min,
     "Height Max": heightRange.max,
-    "CS Act / CS STD": achievedCs ? (standardCs ? achievedCs + " / " + standardCs : achievedCs) : "",
+    "CS Actual": displayNumber(achievedCs),
+    "CS Standard": standardCs ?? "",
     "Box Weight (Grams)": displayNumber(inspection?.boxWeightGrams),
     Artwork: text(item?.artwork),
     "Printing Artwork Check": text(inspection?.printingArtworkCheck),
@@ -124,12 +126,9 @@ export function buildPdiReportRow(
     "Remarks [IF ANY]": text(inspection?.remarks),
     "Box Photo [FRONT]": photoPath(inspection?.frontPhoto),
     "Box Photo [BACK]": photoPath(inspection?.backPhoto),
-    Result: normalizeQcResult(inspection?.result),
+    Result: inspection ? derivePdiResult(inspection, standardCs) : normalizeQcResult(inspection?.result),
     "QC Person Name": text(inspection?.qcPerson),
     "PDI TIME": text(inspection?.inspectionDate),
     Ply: displayNumber(item?.ply),
-    "Standard CS": displayNumber(item?.csKgStd),
-    "STD CS": text(item?.csKgStd) ? displayNumber(item?.csKgStd) : 0,
-    "Actual CS": displayNumber(inspection?.csAchieved),
   };
 }
