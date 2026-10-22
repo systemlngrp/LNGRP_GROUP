@@ -70,6 +70,9 @@ const PlateItemMaster = lazy(() => import("./pages/PlateItemMaster").then((modul
 const PhpPlateInOut = lazy(() => import("./pages/PhpPlateInOut").then((module) => ({ default: module.PhpPlateInOut })));
 const QcPhpPlateInOutForm = lazy(() => import("./pages/QcPhpPlateInOut").then((module) => ({ default: module.QcPhpPlateInOutForm })));
 const QcPhpPlateInOutMaster = lazy(() => import("./pages/QcPhpPlateInOut").then((module) => ({ default: module.QcPhpPlateInOutMaster })));
+const CoaForm = lazy(() => import("./pages/CoaForm").then((module) => ({ default: module.CoaForm })));
+const CoaMaster = lazy(() => import("./pages/CoaMaster").then((module) => ({ default: module.CoaMaster })));
+const CoaTemplateMaster = lazy(() => import("./pages/CoaTemplateMaster").then((module) => ({ default: module.CoaTemplateMaster })));
 const MaterialInForm = lazy(() => import("./pages/MaterialInForm").then((module) => ({ default: module.MaterialInForm })));
 const MrrApprovals = lazy(() => import("./pages/MrrApprovals").then((module) => ({ default: module.MrrApprovals })));
 const MaterialInMaster = lazy(() => import("./pages/MaterialInMaster").then((module) => ({ default: module.MaterialInMaster })));
@@ -421,6 +424,10 @@ export default function App() {
           <Route path="quality/spec-card-issue-return/form" element={<QcSpecCardIssueReturnForm />} />          <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
           <Route path="quality/pre-dispatch-inspection" element={<PreDispatchInspection />} />
           <Route path="quality/pre-dispatch-inspection/form" element={<PreDispatchInspectionForm />} />
+          <Route path="quality/coa/form" element={<CoaForm />} />
+          <Route path="quality/coa/form/:id" element={<CoaForm />} />
+          <Route path="quality/coa/master" element={<CoaMaster />} />
+          <Route path="quality/coa/templates" element={<CoaTemplateMaster />} />
           <Route path="quality/sample-requirement" element={<QcSampleRequirement />} />
           <Route path="quality/sample-requirement/master" element={<QcSampleRequirementMaster />} />
           <Route path="quality/sample-requirement/master/form" element={<QcSampleRequirementForm />} />

@@ -1344,6 +1344,95 @@ export interface PreDispatchInspection {
   updateTimestamp?: string;
 }
 
+export type CoaTemplateStatus = "Draft" | "Active" | "Archived";
+export type CoaRecordStatus = "Draft" | "Final";
+export type CoaCellInputType = "text" | "number" | "date" | "textarea" | "select";
+export type CoaCellKind = "static" | "binding" | "input";
+
+export interface CoaTemplateCell {
+  id: string;
+  label?: string;
+  kind: CoaCellKind;
+  binding?: string;
+  inputType?: CoaCellInputType;
+  defaultValue?: string;
+  unit?: string;
+  required?: boolean;
+  options?: string[];
+  colSpan?: number;
+  rowSpan?: number;
+  background?: string;
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  align?: "left" | "center" | "right";
+}
+
+export interface CoaTemplateRow {
+  id: string;
+  cells: CoaTemplateCell[];
+  height?: number;
+}
+
+export interface CoaTemplateLayout {
+  title: string;
+  subtitle?: string;
+  logoEnabled?: boolean;
+  columns: number;
+  metadataRows: CoaTemplateRow[];
+  parameterRows: CoaTemplateRow[];
+  footerRows: CoaTemplateRow[];
+}
+
+export interface CoaTemplate {
+  id: string;
+  templateKey: string;
+  companyId: string;
+  companyName: string;
+  templateName: string;
+  version: number;
+  status: CoaTemplateStatus;
+  effectiveFrom?: string;
+  layout: CoaTemplateLayout;
+  createdBy?: string;
+  createdTimestamp?: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
+export interface CoaCellValue {
+  value: string;
+  sourceValue?: string;
+  source?: "auto" | "manual" | "default";
+}
+
+export interface CoaRecord {
+  id: string;
+  coaNo: string;
+  templateId: string;
+  templateVersion: number;
+  templateSnapshot: CoaTemplateLayout;
+  companyId: string;
+  companyName: string;
+  firmId?: string;
+  firmName?: string;
+  productionId: string;
+  jobNo: string;
+  erpCode?: string;
+  itemName?: string;
+  invoiceNo?: string;
+  invoiceQty?: number | string;
+  batchNo?: string;
+  coaDate: string;
+  headerData: Record<string, string>;
+  cellValues: Record<string, CoaCellValue>;
+  status: CoaRecordStatus;
+  createdBy?: string;
+  createdTimestamp?: string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface QcSampleRequirement {
   id: string;
   firmId?: string;

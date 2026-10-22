@@ -2427,7 +2427,7 @@ function normalizeNpdRowForItemConsumers(row: any) {
 function normalizeFetchedRow(tableName: string, row: any) {
   const newRow = normalizeWorkflowStatus(tableName, row);
 
-  const jsonColumns = new Set(["lines", "packingDetails", "phpDetails", "plateDetails", "capaData", "filledFields"]);
+  const jsonColumns = new Set(["lines", "packingDetails", "phpDetails", "plateDetails", "capaData", "filledFields", "layout", "templateSnapshot", "headerData", "cellValues"]);
   Object.keys(newRow).forEach((key) => {
     if (jsonColumns.has(key) && typeof newRow[key] === "string") {
       try {
@@ -6679,6 +6679,52 @@ async function initDb(retries = 5) {
         \`printingArtworkCheck\` VARCHAR(20), \`printingColorCheck\` VARCHAR(20), \`boxSquaringCheck\` VARCHAR(20), \`flapGapCheck\` VARCHAR(20), \`jointPastingDelaminationCheck\` VARCHAR(20),
         \`remarks\` TEXT, \`frontPhoto\` TEXT, \`backPhoto\` TEXT, \`result\` VARCHAR(20) NOT NULL DEFAULT 'Pending', \`qcPerson\` VARCHAR(255), \`inspectionDate\` VARCHAR(50), \`updatedBy\` VARCHAR(255), \`updateTimestamp\` VARCHAR(255),
         UNIQUE KEY \`uk_pre_dispatch_production\` (\`productionId\`)
+      )`);
+      await db.query(`CREATE TABLE IF NOT EXISTS \`coa_templates\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`templateKey\` VARCHAR(100) NOT NULL,
+        \`companyId\` VARCHAR(100) NOT NULL,
+        \`companyName\` VARCHAR(255) NOT NULL,
+        \`templateName\` VARCHAR(255) NOT NULL,
+        \`version\` INT NOT NULL DEFAULT 1,
+        \`status\` VARCHAR(20) NOT NULL DEFAULT 'Draft',
+        \`effectiveFrom\` VARCHAR(50),
+        \`layout\` JSON NOT NULL,
+        \`createdBy\` VARCHAR(255),
+        \`createdTimestamp\` VARCHAR(255),
+        \`updatedBy\` VARCHAR(255),
+        \`updateTimestamp\` VARCHAR(255),
+        UNIQUE KEY \`uk_coa_template_version\` (\`templateKey\`, \`version\`),
+        INDEX \`idx_coa_template_company_status\` (\`companyId\`, \`status\`)
+      )`);
+      await db.query(`CREATE TABLE IF NOT EXISTS \`coa_records\` (
+        \`id\` VARCHAR(100) PRIMARY KEY,
+        \`coaNo\` VARCHAR(100) NOT NULL,
+        \`templateId\` VARCHAR(100) NOT NULL,
+        \`templateVersion\` INT NOT NULL,
+        \`templateSnapshot\` JSON NOT NULL,
+        \`companyId\` VARCHAR(100) NOT NULL,
+        \`companyName\` VARCHAR(255) NOT NULL,
+        \`firmId\` VARCHAR(100),
+        \`firmName\` VARCHAR(255),
+        \`productionId\` VARCHAR(100) NOT NULL,
+        \`jobNo\` VARCHAR(100) NOT NULL,
+        \`erpCode\` VARCHAR(100),
+        \`itemName\` TEXT,
+        \`invoiceNo\` VARCHAR(100),
+        \`invoiceQty\` VARCHAR(100),
+        \`batchNo\` VARCHAR(100),
+        \`coaDate\` VARCHAR(50) NOT NULL,
+        \`headerData\` JSON NOT NULL,
+        \`cellValues\` JSON NOT NULL,
+        \`status\` VARCHAR(20) NOT NULL DEFAULT 'Draft',
+        \`createdBy\` VARCHAR(255),
+        \`createdTimestamp\` VARCHAR(255),
+        \`updatedBy\` VARCHAR(255),
+        \`updateTimestamp\` VARCHAR(255),
+        INDEX \`idx_coa_record_job\` (\`jobNo\`),
+        INDEX \`idx_coa_record_company\` (\`companyId\`),
+        INDEX \`idx_coa_record_status\` (\`status\`)
       )`);
       await db.query(`CREATE TABLE IF NOT EXISTS \`qc_update_records\` (
         \`id\` VARCHAR(100) PRIMARY KEY, \`npdId\` VARCHAR(100) NOT NULL, \`erpNo\` VARCHAR(100) NOT NULL,
@@ -14824,6 +14870,159 @@ app.post("/api/material-issues/daily-upsert", requireAuth, async (req, res) => {
     conn.release();
   }
 });
+
+function coaActor(user: AuthUser | null) {
+  return String(user?.userId || user?.name || user?.email || "System User").trim() || "System User";
+}
+
+function coaManager(user: AuthUser | null) {
+  return Boolean(user && canManageMasterRecords(user));
+}
+
+function coaPermission(user: AuthUser | null, permission: string) {
+  return Boolean(user && (user.role === "Admin" || hasPermission(user, permission)));
+}
+
+function normalizeCoaPayload(payload: any) {
+  const now = new Date().toISOString();
+  return {
+    ...payload,
+    layout: typeof payload.layout === "string" ? JSON.parse(payload.layout) : (payload.layout || {}),
+    templateSnapshot: typeof payload.templateSnapshot === "string" ? JSON.parse(payload.templateSnapshot) : (payload.templateSnapshot || {}),
+    headerData: typeof payload.headerData === "string" ? JSON.parse(payload.headerData) : (payload.headerData || {}),
+    cellValues: typeof payload.cellValues === "string" ? JSON.parse(payload.cellValues) : (payload.cellValues || {}),
+    updatedBy: String(payload.updatedBy || "System User"),
+    updateTimestamp: String(payload.updateTimestamp || now),
+  };
+}
+
+app.get("/api/coa-templates", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || (!coaPermission(user, "/quality/coa") && !coaPermission(user, "/quality/coa/templates"))) return res.status(403).json({ error: "Forbidden" });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  try {
+    const [rows] = await db.query("SELECT * FROM `coa_templates` ORDER BY companyName ASC, version DESC");
+    return res.json((rows as any[]).map((row) => normalizeFetchedRow("coa_templates", row)));
+  } catch (error) {
+    return res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+app.post("/api/coa-templates", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !coaManager(user) || !coaPermission(user, "/quality/coa/templates")) return res.status(403).json({ error: "Only Admin or QC Manager can manage COA templates." });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  try {
+    const body = normalizeCoaPayload(req.body || {});
+    const companyId = String(body.companyId || "").trim();
+    const companyName = String(body.companyName || "").trim();
+    const templateName = String(body.templateName || "").trim();
+    const templateKey = String(body.templateKey || companyId).trim();
+    if (!companyId || !companyName || !templateName || !templateKey || !body.layout || typeof body.layout !== "object") return res.status(400).json({ error: "Company, template name, and layout are required." });
+    const requestedId = String(body.id || "").trim();
+    const now = new Date().toISOString();
+    const actor = coaActor(user);
+    if (requestedId) {
+      const [existingRows] = await db.query("SELECT id, status FROM `coa_templates` WHERE id = ? LIMIT 1", [requestedId]);
+      const existing = (existingRows as any[])[0];
+      if (!existing) return res.status(404).json({ error: "COA template not found." });
+      if (String(existing.status) === "Active") return res.status(409).json({ error: "Active templates are immutable. Create a new version instead." });
+      await db.query("UPDATE `coa_templates` SET companyId = ?, companyName = ?, templateName = ?, layout = ?, effectiveFrom = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [companyId, companyName, templateName, JSON.stringify(body.layout), body.effectiveFrom || null, actor, now, requestedId]);
+      const [savedRows] = await db.query("SELECT * FROM `coa_templates` WHERE id = ? LIMIT 1", [requestedId]);
+      return res.json(normalizeFetchedRow("coa_templates", (savedRows as any[])[0]));
+    }
+    const [versionRows] = await db.query("SELECT COALESCE(MAX(version), 0) AS version FROM `coa_templates` WHERE templateKey = ?", [templateKey]);
+    const version = Number((versionRows as any[])[0]?.version || 0) + 1;
+    const id = crypto.randomUUID();
+    await db.query("INSERT INTO `coa_templates` (id, templateKey, companyId, companyName, templateName, version, status, effectiveFrom, layout, createdBy, createdTimestamp, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, 'Draft', ?, ?, ?, ?, ?, ?)", [id, templateKey, companyId, companyName, templateName, version, body.effectiveFrom || null, JSON.stringify(body.layout), actor, now, actor, now]);
+    const [savedRows] = await db.query("SELECT * FROM `coa_templates` WHERE id = ? LIMIT 1", [id]);
+    return res.status(201).json(normalizeFetchedRow("coa_templates", (savedRows as any[])[0]));
+  } catch (error) {
+    return res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+app.post("/api/coa-templates/:id/activate", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !coaManager(user) || !coaPermission(user, "/quality/coa/templates")) return res.status(403).json({ error: "Forbidden" });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query("SELECT id, companyId FROM `coa_templates` WHERE id = ? LIMIT 1 FOR UPDATE", [req.params.id]);
+    const template = (rows as any[])[0];
+    if (!template) { await conn.rollback(); return res.status(404).json({ error: "COA template not found." }); }
+    await conn.query("UPDATE `coa_templates` SET status = 'Archived', updatedBy = ?, updateTimestamp = ? WHERE companyId = ? AND status = 'Active'", [coaActor(user), new Date().toISOString(), template.companyId]);
+    await conn.query("UPDATE `coa_templates` SET status = 'Active', effectiveFrom = COALESCE(effectiveFrom, ?), updatedBy = ?, updateTimestamp = ? WHERE id = ?", [new Date().toISOString().slice(0, 10), coaActor(user), new Date().toISOString(), req.params.id]);
+    await conn.commit();
+    const [savedRows] = await db.query("SELECT * FROM `coa_templates` WHERE id = ? LIMIT 1", [req.params.id]);
+    return res.json(normalizeFetchedRow("coa_templates", (savedRows as any[])[0]));
+  } catch (error) {
+    await conn.rollback();
+    return res.status(500).json({ error: (error as Error).message });
+  } finally { conn.release(); }
+});
+
+app.post("/api/coa-templates/:id/archive", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !coaManager(user) || !coaPermission(user, "/quality/coa/templates")) return res.status(403).json({ error: "Forbidden" });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  await db.query("UPDATE `coa_templates` SET status = 'Archived', updatedBy = ?, updateTimestamp = ? WHERE id = ?", [coaActor(user), new Date().toISOString(), req.params.id]);
+  const [rows] = await db.query("SELECT * FROM `coa_templates` WHERE id = ? LIMIT 1", [req.params.id]);
+  return res.json(normalizeFetchedRow("coa_templates", (rows as any[])[0]));
+});
+
+app.get("/api/coa-records", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !coaPermission(user, "/quality/coa")) return res.status(403).json({ error: "Forbidden" });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  try {
+    const [rows] = await db.query("SELECT * FROM `coa_records` ORDER BY updateTimestamp DESC, coaNo DESC");
+    return res.json((rows as any[]).map((row) => normalizeFetchedRow("coa_records", row)));
+  } catch (error) { return res.status(500).json({ error: (error as Error).message }); }
+});
+
+app.post("/api/coa-records", async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !coaPermission(user, "/quality/coa")) return res.status(403).json({ error: "Forbidden" });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  try {
+    const body = normalizeCoaPayload(req.body || {});
+    const id = String(body.id || crypto.randomUUID()).trim();
+    const [existingRows] = await db.query("SELECT id, status, createdBy FROM `coa_records` WHERE id = ? LIMIT 1", [id]);
+    const existing = (existingRows as any[])[0];
+    const manager = coaManager(user);
+    const actor = coaActor(user);
+    if (existing?.status === "Final" && !manager) return res.status(409).json({ error: "Final COAs can only be changed by Admin or QC Manager." });
+    if (existing && !manager && String(existing.createdBy || "") !== actor) return res.status(403).json({ error: "Only the draft creator or a manager can edit this COA." });
+    const required = [body.templateId, body.templateVersion, body.templateSnapshot, body.companyId, body.companyName, body.productionId, body.jobNo, body.coaDate, body.headerData, body.cellValues];
+    if (required.some((value) => value === undefined || value === null || value === "")) return res.status(400).json({ error: "Template, company, Job No., date, and COA values are required." });
+    const now = new Date().toISOString();
+    const values = [id, String(body.coaNo || `COA-${new Date().getFullYear()}-${Date.now()}`), body.templateId, Number(body.templateVersion || 1), JSON.stringify(body.templateSnapshot), body.companyId, body.companyName, body.firmId || null, body.firmName || null, body.productionId, body.jobNo, body.erpCode || null, body.itemName || null, body.invoiceNo || null, body.invoiceQty ?? null, body.batchNo || null, body.coaDate, JSON.stringify(body.headerData), JSON.stringify(body.cellValues), manager && body.status === "Final" ? "Final" : "Draft", existing?.createdBy || actor, body.createdTimestamp || existing?.createdTimestamp || now, actor, now];
+    await db.query("INSERT INTO `coa_records` (id, coaNo, templateId, templateVersion, templateSnapshot, companyId, companyName, firmId, firmName, productionId, jobNo, erpCode, itemName, invoiceNo, invoiceQty, batchNo, coaDate, headerData, cellValues, status, createdBy, createdTimestamp, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE coaNo=VALUES(coaNo), templateId=VALUES(templateId), templateVersion=VALUES(templateVersion), templateSnapshot=VALUES(templateSnapshot), companyId=VALUES(companyId), companyName=VALUES(companyName), firmId=VALUES(firmId), firmName=VALUES(firmName), jobNo=VALUES(jobNo), erpCode=VALUES(erpCode), itemName=VALUES(itemName), invoiceNo=VALUES(invoiceNo), invoiceQty=VALUES(invoiceQty), batchNo=VALUES(batchNo), coaDate=VALUES(coaDate), headerData=VALUES(headerData), cellValues=VALUES(cellValues), status=VALUES(status), updatedBy=VALUES(updatedBy), updateTimestamp=VALUES(updateTimestamp)", values);
+    const [savedRows] = await db.query("SELECT * FROM `coa_records` WHERE id = ? LIMIT 1", [id]);
+    return res.json(normalizeFetchedRow("coa_records", (savedRows as any[])[0]));
+  } catch (error) { return res.status(500).json({ error: (error as Error).message }); }
+});
+
+for (const action of ["finalize", "reopen"] as const) {
+  app.post(`/api/coa-records/:id/${action}`, async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user || !coaManager(user) || !coaPermission(user, "/quality/coa")) return res.status(403).json({ error: "Only Admin or QC Manager can change COA status." });
+    const db = await getPool();
+    if (!db) return res.status(500).json({ error: "DB connection not available" });
+    const nextStatus = action === "finalize" ? "Final" : "Draft";
+    await db.query("UPDATE `coa_records` SET status = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [nextStatus, coaActor(user), new Date().toISOString(), req.params.id]);
+    const [rows] = await db.query("SELECT * FROM `coa_records` WHERE id = ? LIMIT 1", [req.params.id]);
+    return res.json(normalizeFetchedRow("coa_records", (rows as any[])[0]));
+  });
+}
 
 entities.forEach(entity => {
   const handlers = createHandlers(entity);
