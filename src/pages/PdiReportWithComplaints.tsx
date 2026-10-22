@@ -4,11 +4,12 @@ import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import type { PreDispatchInspection, PrintingQcCheck, Production, QualityComplaint, Setting } from "../types";
 import { buildPdiReportRow, findLatestInspection, findLatestPreviousComplaint, formatPreviousComplaint, type NpdPdiItem, type PdiReportRow } from "../lib/pdiReportData";
-import { jobDateCellClass, jobNumberCellClass, qcResultCellClass } from "../lib/jobCellColors";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { QC_REPORT_COLUMN_COUNTS } from "../lib/qcColumnLayout";
 import { useQcColumnLayout } from "../hooks/useQcColumnLayout";
+
+const jobNumberCellClass = (..._args: unknown[]) => "";
 
 const COLUMNS = ["Job. No.", "Date", "Party Name", "Item Name", "ERP Code", "Previous Customer Complaint", "Required Length", "Achieved Length", "Min length", "Max Length", "Required Width", "Achieved Width", "Width Min", "Width Max", "Required Height", "Achieved Height", "Height Min", "Height Max", "CS Actual", "CS Standard", "Box Weight (Grams)", "Artwork", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Remarks [IF ANY]", "Box Photo [FRONT]", "Box Photo [BACK]", "Result", "QC Person Name", "PDI TIME", "Ply"] as const;
 const GROUPS = [{ label: "PROGRAM", start: 0, end: 5, color: "bg-[#244b13] text-white" }, { label: "TARGET SIZE Vs ACTUAL", start: 6, end: 17, color: "bg-[#201249] text-white" }, { label: "Technical Checks", start: 18, end: 20, color: "bg-[#4b1230] text-white" }, { label: "VISUAL CHECKS", start: 21, end: 29, color: "bg-[#a000f5] text-white" }, { label: "SUMMARY REPORT", start: 30, end: 33, color: "bg-[#ffff00] text-black" }] as const;

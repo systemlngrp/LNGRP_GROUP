@@ -4,10 +4,11 @@ import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import type { PreDispatchInspection, PrintingQcCheck, Production } from "../types";
 import { buildPdiReportRow, findLatestInspection, type NpdPdiItem, type PdiReportRow } from "../lib/pdiReportData";
-import { jobDateCellClass, jobNumberCellClass, qcResultCellClass } from "../lib/jobCellColors";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import type { Setting } from "../types";
+
+const jobNumberCellClass = (..._args: unknown[]) => "";
 
 const COLUMNS = ["Job. No.", "Date", "Party Name", "Item Name", "ERP Code", "Previous Customer Complaint", "Required Length", "Achieved Length", "Min length", "Max Length", "Required Width", "Achieved Width", "Width Min", "Width Max", "Required Height", "Achieved Height", "Height Min", "Height Max", "CS Act / CS STD", "Box Weight (Grams)", "Artwork", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Remarks [IF ANY]", "Box Photo [FRONT]", "Box Photo [BACK]", "Result", "QC Person Name", "PDI TIME", "Ply", "Standard CS", "STD CS", "Actual CS"] as const;
 const GROUPS = [
