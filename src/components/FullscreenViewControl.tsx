@@ -13,16 +13,16 @@ export function FullscreenViewControl() {
   const eligible = isFullscreenEligible(location.pathname);
 
   useEffect(() => {
-    const content = document.querySelector<HTMLElement>(".app-view-content");
-    if (!content) return;
+    const shell = document.querySelector<HTMLElement>(".app-main-shell");
+    if (!shell) return;
 
-    const syncState = () => setIsFullscreen(document.fullscreenElement === content);
+    const syncState = () => setIsFullscreen(document.fullscreenElement === shell);
     const handleFullscreenError = () => setIsFullscreen(false);
     document.addEventListener("fullscreenchange", syncState);
     document.addEventListener("fullscreenerror", handleFullscreenError);
     syncState();
 
-    if (!eligible && document.fullscreenElement === content) {
+    if (!eligible && document.fullscreenElement === shell) {
       void document.exitFullscreen().catch(() => setIsFullscreen(false));
     }
 
@@ -35,14 +35,14 @@ export function FullscreenViewControl() {
   if (!eligible) return null;
 
   const toggleFullscreen = async () => {
-    const content = document.querySelector<HTMLElement>(".app-view-content");
-    if (!content || !document.fullscreenEnabled) return;
+    const shell = document.querySelector<HTMLElement>(".app-main-shell");
+    if (!shell || !document.fullscreenEnabled) return;
 
     try {
-      if (document.fullscreenElement === content) {
+      if (document.fullscreenElement === shell) {
         await document.exitFullscreen();
       } else {
-        await content.requestFullscreen();
+        await shell.requestFullscreen();
       }
     } catch {
       setIsFullscreen(false);

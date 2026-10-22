@@ -185,7 +185,7 @@ export function Layout() {
         />
       )}
 
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <main className="app-main-shell flex-1 flex flex-col min-w-0 overflow-hidden">
         {currentAlert !== undefined ? (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/10 px-4" role="presentation">
             <div
@@ -225,6 +225,8 @@ export function Layout() {
                  >
                     {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                  </button>
+                 <BackNavigationControl />
+                 <FullscreenViewControl />
                </div>
                <div className="flex shrink-0 min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
                   {user && (
@@ -258,10 +260,6 @@ export function Layout() {
         </header>
         <div className="app-view-content flex-1 overflow-auto bg-white">
           <ResizableTables />
-          <div className="app-view-controls fixed bottom-4 right-4 z-[90] flex items-center gap-2">
-            <BackNavigationControl />
-            <FullscreenViewControl />
-          </div>
           <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
             <DataLoadingBoundary key={location.pathname}>
               <Suspense fallback={null}>

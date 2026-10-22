@@ -254,20 +254,17 @@ body.app-table-dragging {
   min-width: max-content;
 }
 
-.app-view-content:fullscreen {
+.app-main-shell:fullscreen {
   background: #ffffff;
   min-height: 100vh;
   width: 100vw;
   height: 100vh;
+  overflow: hidden;
+}
+
+.app-main-shell:fullscreen .app-view-content {
+  min-height: 0;
   overflow: auto;
-}
-
-.app-view-controls {
-  pointer-events: none;
-}
-
-.app-view-controls > * {
-  pointer-events: auto;
 }
 
 table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]) {
