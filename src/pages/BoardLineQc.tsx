@@ -415,6 +415,7 @@ export function BoardLineQcForm() {
   const { user } = useAuth();
   const [form, setForm] = useState<Partial<BoardLineQcCheck>>(createInitialForm);
   const [selectedProductionId, setSelectedProductionId] = useState("");
+  const [editedChunkFields, setEditedChunkFields] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const qcPersonName = currentUserDisplayName(user);
   const existingGroup = useMemo(() => {
@@ -424,25 +425,24 @@ export function BoardLineQcForm() {
   }, [checks, form.jobNo, form.checkNo]);
   const lockedChunkFields = useMemo(() => {
     const fields = new Set<string>();
-    existingGroup?.chunks.forEach((chunk) => {
-      const chunkFields = chunk.filledFields?.length
-        ? chunk.filledFields
-        : getChunkFilledFields(chunk as Record<string, unknown>, [...BOARDLINE_CHUNK_FIELD_KEYS]);
-      chunkFields.forEach((field) => {
-        if (BOARDLINE_CHUNK_FIELD_KEYS.includes(field as typeof BOARDLINE_CHUNK_FIELD_KEYS[number])) fields.add(field);
-      });
+    BOARDLINE_CHUNK_FIELD_KEYS.forEach((field) => {
+      const value = existingGroup?.[field];
+      if (value === undefined || value === null || value === "") return;
+      const numericValue = numberFields.has(field as keyof BoardLineQcCheck);
+      if (numericValue ? Number(value) > 0 : String(value).trim() !== "") fields.add(field);
     });
     return fields;
   }, [existingGroup]);
   const displayedForm = useMemo(() => {
     if (!existingGroup) return form;
     const merged = { ...form } as Partial<BoardLineQcCheck>;
-    lockedChunkFields.forEach((field) => {
+    BOARDLINE_CHUNK_FIELD_KEYS.forEach((field) => {
+      if (editedChunkFields.has(field)) return;
       const key = field as keyof BoardLineQcCheck;
       if (existingGroup[key] !== undefined && existingGroup[key] !== null && existingGroup[key] !== "") merged[key] = existingGroup[key] as never;
     });
     return merged;
-  }, [existingGroup, form, lockedChunkFields]);
+  }, [existingGroup, form, editedChunkFields]);
   const nextBqcNo = useMemo(() => nextQcNo(checks, "bqcNo", "BQC"), [checks]);
   const qcPersonOptions = useMemo(() => {
     const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
@@ -492,6 +492,10 @@ export function BoardLineQcForm() {
   );
 
   const setField = (key: keyof BoardLineQcCheck, value: string | number | "") => {
+    if (key === "checkNo") setEditedChunkFields(new Set());
+    if (BOARDLINE_CHUNK_FIELD_KEYS.includes(key as typeof BOARDLINE_CHUNK_FIELD_KEYS[number])) {
+      setEditedChunkFields((prev) => new Set(prev).add(String(key)));
+    }
     setForm((prev) => {
       const next = { ...prev, [key]: value };
       if (key === "checkNo" && String(prev.checkNo || "") !== String(value || "")) {
@@ -510,6 +514,7 @@ export function BoardLineQcForm() {
         BOARDLINE_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
         return next;
       });
+      setEditedChunkFields(new Set());
       return;
     }
 
@@ -555,6 +560,7 @@ export function BoardLineQcForm() {
       BOARDLINE_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
       return calculateBoardLineForm(next, settings[0]);
     });
+    setEditedChunkFields(new Set());
   };
 
   const canSubmit =
@@ -600,6 +606,7 @@ export function BoardLineQcForm() {
       await setChecks((prev) => [...prev, payload]);
       setSelectedProductionId("");
       setForm(createInitialForm());
+      setEditedChunkFields(new Set());
       alert("Board Line QC check saved successfully.");
     } catch (error) {
       console.error("Failed to save Board Line QC check:", error);

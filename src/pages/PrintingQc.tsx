@@ -416,6 +416,7 @@ export function PrintingQcForm() {
   const { user } = useAuth();
   const [form, setForm] = useState<Partial<PrintingQcCheck>>(createInitialForm);
   const [selectedProductionId, setSelectedProductionId] = useState("");
+  const [editedChunkFields, setEditedChunkFields] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const qcPersonName = currentUserDisplayName(user);
   const existingGroup = useMemo(() => {
@@ -425,25 +426,24 @@ export function PrintingQcForm() {
   }, [checks, form.jobNo, form.checkNo]);
   const lockedChunkFields = useMemo(() => {
     const fields = new Set<string>();
-    existingGroup?.chunks.forEach((chunk) => {
-      const chunkFields = chunk.filledFields?.length
-        ? chunk.filledFields
-        : getChunkFilledFields(chunk as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]);
-      chunkFields.forEach((field) => {
-        if (PRINTING_CHUNK_FIELD_KEYS.includes(field as typeof PRINTING_CHUNK_FIELD_KEYS[number])) fields.add(field);
-      });
+    PRINTING_CHUNK_FIELD_KEYS.forEach((field) => {
+      const value = existingGroup?.[field];
+      if (value === undefined || value === null || value === "") return;
+      const numericValue = numberFields.has(field as keyof PrintingQcCheck);
+      if (numericValue ? Number(value) > 0 : String(value).trim() !== "") fields.add(field);
     });
     return fields;
   }, [existingGroup]);
   const displayedForm = useMemo(() => {
     if (!existingGroup) return form;
     const merged = { ...form } as Partial<PrintingQcCheck>;
-    lockedChunkFields.forEach((field) => {
+    PRINTING_CHUNK_FIELD_KEYS.forEach((field) => {
+      if (editedChunkFields.has(field)) return;
       const key = field as keyof PrintingQcCheck;
       if (existingGroup[key] !== undefined && existingGroup[key] !== null && existingGroup[key] !== "") merged[key] = existingGroup[key] as never;
     });
     return merged;
-  }, [existingGroup, form, lockedChunkFields]);
+  }, [existingGroup, form, editedChunkFields]);
   const nextPqcNo = useMemo(() => nextQcNo(checks, "pqcNo", "PQC"), [checks]);
   const qcPersonOptions = useMemo(() => {
     const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
@@ -504,6 +504,10 @@ export function PrintingQcForm() {
   );
 
   const setField = (key: keyof PrintingQcCheck, value: string | number | "") => {
+    if (key === "checkNo") setEditedChunkFields(new Set());
+    if (PRINTING_CHUNK_FIELD_KEYS.includes(key as typeof PRINTING_CHUNK_FIELD_KEYS[number])) {
+      setEditedChunkFields((prev) => new Set(prev).add(String(key)));
+    }
     setForm((prev) => {
       const next = { ...prev, [key]: value };
       if (key === "checkNo" && String(prev.checkNo || "") !== String(value || "")) {
@@ -522,6 +526,7 @@ export function PrintingQcForm() {
         PRINTING_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
         return next;
       });
+      setEditedChunkFields(new Set());
       return;
     }
 
@@ -570,6 +575,7 @@ export function PrintingQcForm() {
       PRINTING_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
       return calculatePrintingQcForm(next, settings[0]);
     });
+    setEditedChunkFields(new Set());
   };
 
   const canSubmit =
@@ -615,6 +621,7 @@ export function PrintingQcForm() {
       await setChecks((prev) => [...prev, payload]);
       setSelectedProductionId("");
       setForm(createInitialForm());
+      setEditedChunkFields(new Set());
       alert("Printing QC check saved successfully.");
     } catch (error) {
       console.error("Failed to save Printing QC check:", error);
