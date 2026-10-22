@@ -57,29 +57,29 @@ const sections: FieldSection[] = [
   {
     title: "Job Details",
     fields: [
-      { key: "timestamp", label: "Timestamp", type: "datetime-local", required: true },
+      { key: "timestamp", label: "Timestamp", type: "datetime-local" },
       { key: "bqcNo", label: "BQC No", readOnly: true },
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "partyName", label: "Company", required: true, readOnly: true },
-      { key: "itemName", label: "Item Name", required: true, wide: true, readOnly: true },
-      { key: "checkNo", label: "Check No.", required: true },
+      { key: "partyName", label: "Company", readOnly: true },
+      { key: "itemName", label: "Item Name", wide: true, readOnly: true },
+      { key: "checkNo", label: "Check No." },
       { key: "standard", label: "Standard", readOnly: true },
-      { key: "qcPerson", label: "QC Person", required: true },
+      { key: "qcPerson", label: "QC Person" },
       { key: "erp", label: "ERP", readOnly: true },
     ],
   },
   {
     title: "Specification",
     fields: [
-      { key: "flapHeightFlapOperatorSide", label: "Flap - Height - Flap (Operator Side)", required: true },
-      { key: "flapHeightFlapDriveSide", label: "Flap - Height - Flap (Drive Side)", required: true },
+      { key: "flapHeightFlapOperatorSide", label: "Flap - Height - Flap (Operator Side)" },
+      { key: "flapHeightFlapDriveSide", label: "Flap - Height - Flap (Drive Side)" },
       { key: "cuttingSizeRequired", label: "Cutting Size (Req.)", type: "number", readOnly: true },
-      { key: "cuttingSizeMm", label: "Cutting Size (mm)", type: "number", required: true },
-      { key: "boardGsm", label: "B.GSM", type: "number", required: true },
-      { key: "typeOfFlute", label: "Type of Flute", required: true },
-      { key: "boardThickness", label: "Board Thickness", type: "number", required: true },
-      { key: "moisture", label: "Moisture", type: "number", required: true },
-      { key: "sheetWeightGrams", label: "Sheet Weight (Grams)", type: "number", required: true },
+      { key: "cuttingSizeMm", label: "Cutting Size (mm)", type: "number" },
+      { key: "boardGsm", label: "B.GSM", type: "number" },
+      { key: "typeOfFlute", label: "Type of Flute" },
+      { key: "boardThickness", label: "Board Thickness", type: "number" },
+      { key: "moisture", label: "Moisture", type: "number" },
+      { key: "sheetWeightGrams", label: "Sheet Weight (Grams)", type: "number" },
     ],
   },
   {
@@ -136,21 +136,21 @@ const formSections: FieldSection[] = [
     title: "Job Details",
     fields: [
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "checkNo", label: "Check No.", required: true },
-      { key: "qcPerson", label: "QC Person", required: true },
+      { key: "checkNo", label: "Check No." },
+      { key: "qcPerson", label: "QC Person" },
     ],
   },
   {
     title: "Specification",
     fields: [
-      { key: "flapHeightFlapOperatorSide", label: "Flap - Height - Flap (Operator Side)", required: true },
-      { key: "flapHeightFlapDriveSide", label: "Flap - Height - Flap (Drive Side)", required: true },
-      { key: "cuttingSizeMm", label: "Cutting Size (mm)", type: "number", required: true },
-      { key: "boardGsm", label: "B.GSM", type: "number", required: true },
-      { key: "typeOfFlute", label: "Type of Flute", required: true },
-      { key: "boardThickness", label: "Board Thickness", type: "number", required: true },
-      { key: "moisture", label: "Moisture", type: "number", required: true },
-      { key: "sheetWeightGrams", label: "Sheet Weight (Grams)", type: "number", required: true },
+      { key: "flapHeightFlapOperatorSide", label: "Flap - Height - Flap (Operator Side)" },
+      { key: "flapHeightFlapDriveSide", label: "Flap - Height - Flap (Drive Side)" },
+      { key: "cuttingSizeMm", label: "Cutting Size (mm)", type: "number" },
+      { key: "boardGsm", label: "B.GSM", type: "number" },
+      { key: "typeOfFlute", label: "Type of Flute" },
+      { key: "boardThickness", label: "Board Thickness", type: "number" },
+      { key: "moisture", label: "Moisture", type: "number" },
+      { key: "sheetWeightGrams", label: "Sheet Weight (Grams)", type: "number" },
     ],
   },
   {
@@ -500,27 +500,7 @@ export function BoardLineQcForm() {
     );
   };
 
-  const requiredInputFields: Array<keyof BoardLineQcCheck> = [
-    "flapHeightFlapOperatorSide",
-    "flapHeightFlapDriveSide",
-    "cuttingSizeMm",
-    "boardGsm",
-    "typeOfFlute",
-    "boardThickness",
-    "moisture",
-    "sheetWeightGrams",
-  ];
-
-  const canSubmit = Boolean(
-    hasFormValue(form.timestamp) &&
-      hasFormValue(form.jobNo) &&
-      hasFormValue(form.partyName) &&
-      hasFormValue(form.itemName) &&
-      hasFormValue(form.checkNo) &&
-      FLUTE_OPTIONS.some((option) => option.value === String(form.typeOfFlute || "")) &&
-      requiredInputFields.every((key) => hasFormValue(form[key])) &&
-      hasFormValue(form.qcPerson)
-  );
+  const canSubmit = hasFormValue(form.jobNo);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -759,14 +739,12 @@ export function BoardLineQcMaster() {
     setEditForm((prev) => calculateBoardLineForm({ ...prev, jobNo, partyName, itemName, erp, heightOd: height, width, length, ply, part, typeOfFlute: firstText(production.flute, production.fluteType, rawItem.flute), boardGsm, sheetWeightGrams: toOptionalNumber(production.sheetWeight, rawItem.sheetWeightGrams, rawItem.calculatedWeightPerBox), planQty: toOptionalNumber(production.plannedQty, production.qty, rawItem.planQty, rawItem.orderQuantity), printingArtwork: firstText(rawItem.artwork, rawItem.artworkUpload, prev.printingArtwork) }, settings[0]));
   };
 
-  const requiredEditFields: Array<keyof BoardLineQcCheck> = ["flapHeightFlapOperatorSide", "flapHeightFlapDriveSide", "cuttingSizeMm", "boardGsm", "typeOfFlute", "boardThickness", "moisture", "sheetWeightGrams"];
-
   const updateEditField = (key: keyof BoardLineQcCheck, value: string | number | "") => {
     setEditForm((prev) => calculateBoardLineForm({ ...prev, [key]: value }, settings[0]));
   };
 
   const saveEdit = async () => {
-    if (!editingRow || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !FLUTE_OPTIONS.some((option) => option.value === String(editForm.typeOfFlute || "")) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))) return;
+    if (!editingRow || !hasFormValue(editForm.jobNo)) return;
     setIsSaving(true);
     try {
       const updatedBy = currentUserDisplayName(user);
@@ -940,7 +918,7 @@ export function BoardLineQcMaster() {
             ))}
             <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
-              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !FLUTE_OPTIONS.some((option) => option.value === String(editForm.typeOfFlute || "")) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.jobNo)} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
             </div>
           </div>
         </div>

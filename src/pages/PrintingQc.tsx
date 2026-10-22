@@ -55,14 +55,14 @@ const sections: FieldSection[] = [
   {
     title: "Job Details",
     fields: [
-      { key: "timestamp", label: "Timestamp", type: "datetime-local", required: true },
+      { key: "timestamp", label: "Timestamp", type: "datetime-local" },
       { key: "pqcNo", label: "PQC No", readOnly: true },
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "partyName", label: "Party Name", required: true },
-      { key: "itemName", label: "Item Name", required: true, wide: true },
+      { key: "partyName", label: "Party Name" },
+      { key: "itemName", label: "Item Name", wide: true },
       { key: "erp", label: "ERP", readOnly: true },
-      { key: "checkNo", label: "Check No.", required: true },
-      { key: "qcPerson", label: "QC Person", required: true },
+      { key: "checkNo", label: "Check No." },
+      { key: "qcPerson", label: "QC Person" },
     ],
   },
   {
@@ -132,29 +132,29 @@ const formSections: FieldSection[] = [
     title: "Job Details",
     fields: [
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "checkNo", label: "Check No.", required: true },
-      { key: "qcPerson", label: "QC Person", required: true },
+      { key: "checkNo", label: "Check No." },
+      { key: "qcPerson", label: "QC Person" },
     ],
   },
   {
     title: "Box Size",
     fields: [
-      { key: "lengthId", label: "LENGTH (ID)", type: "number", required: true },
-      { key: "widthId", label: "WIDTH (ID)", type: "number", required: true },
-      { key: "heightId", label: "HEIGHT (ID)", type: "number", required: true },
+      { key: "lengthId", label: "LENGTH (ID)", type: "number" },
+      { key: "widthId", label: "WIDTH (ID)", type: "number" },
+      { key: "heightId", label: "HEIGHT (ID)", type: "number" },
     ],
   },
   {
     title: "Printing Details",
     fields: [
-      { key: "boardThickness", label: "Board Thickness", type: "number", required: true },
-      { key: "csAchieved", label: "CS Achieved", type: "number", required: true },
-      { key: "bsAchieved", label: "BS Achieved", type: "number", required: true },
-      { key: "boxWeightGrams", label: "Box weight (Grams)", type: "number", required: true },
-      { key: "colour1Actual", label: "Colour 1 (Actual)", required: true },
-      { key: "colour2Actual", label: "Colour 2 (Actual)", required: true },
-      { key: "operatorName", label: "Operator Name", required: true },
-      { key: "lotNoPrinted", label: "Lot No Printed", required: true },
+      { key: "boardThickness", label: "Board Thickness", type: "number" },
+      { key: "csAchieved", label: "CS Achieved", type: "number" },
+      { key: "bsAchieved", label: "BS Achieved", type: "number" },
+      { key: "boxWeightGrams", label: "Box weight (Grams)", type: "number" },
+      { key: "colour1Actual", label: "Colour 1 (Actual)" },
+      { key: "colour2Actual", label: "Colour 2 (Actual)" },
+      { key: "operatorName", label: "Operator Name" },
+      { key: "lotNoPrinted", label: "Lot No Printed" },
     ],
   },
 ];
@@ -511,29 +511,7 @@ export function PrintingQcForm() {
     );
   };
 
-  const requiredInputFields: Array<keyof PrintingQcCheck> = [
-    "lengthId",
-    "widthId",
-    "heightId",
-    "boardThickness",
-    "csAchieved",
-    "bsAchieved",
-    "boxWeightGrams",
-    "colour1Actual",
-    "colour2Actual",
-    "operatorName",
-    "lotNoPrinted",
-  ];
-
-  const canSubmit = Boolean(
-    hasFormValue(form.timestamp) &&
-      hasFormValue(form.jobNo) &&
-      hasFormValue(form.partyName) &&
-      hasFormValue(form.itemName) &&
-      hasFormValue(form.checkNo) &&
-      requiredInputFields.every((key) => hasFormValue(form[key])) &&
-      hasFormValue(form.qcPerson)
-  );
+  const canSubmit = hasFormValue(form.jobNo);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -791,14 +769,12 @@ export function PrintingQcMaster() {
     setEditForm((prev) => calculatePrintingQcForm({ ...prev, jobNo, partyName, itemName, erp, lengthSpec, widthSpec, heightSpec, standardBoxSize: buildBoxSize(lengthSpec, widthSpec, heightSpec), csStandard: csSpec, bsStandard: bsSpec, qcMasterCsSpec: csSpec, npdSheetCsSpec: csSpec, qcMasterBsSpec: bsSpec, npdSheetBsSpec: bsSpec, boxWeightGrams: toOptionalNumber(production.weightPerPcSetReq, production.sheetWeight, rawItem.boxWeightGrams), printingColor1Standard: color1, printingColour2Standard: color2, standardArtwork: firstText(rawItem.artwork, rawItem.artworkUpload, rawItem.standardArtwork), planQty: toOptionalNumber(production.plannedQty, production.qty) }, settings[0]));
   };
 
-  const requiredEditFields: Array<keyof PrintingQcCheck> = ["lengthId", "widthId", "heightId", "boardThickness", "csAchieved", "bsAchieved", "boxWeightGrams", "colour1Actual", "colour2Actual", "operatorName", "lotNoPrinted"];
-
   const updateEditField = (key: keyof PrintingQcCheck, value: string | number | "") => {
     setEditForm((prev) => calculatePrintingQcForm({ ...prev, [key]: value }, settings[0]));
   };
 
   const saveEdit = async () => {
-    if (!editingRow || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))) return;
+    if (!editingRow || !hasFormValue(editForm.jobNo)) return;
     setIsSaving(true);
     try {
       const updatedBy = currentUserDisplayName(user);
@@ -965,7 +941,7 @@ export function PrintingQcMaster() {
             ))}
             <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
-              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.timestamp) || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.partyName) || !hasFormValue(editForm.itemName) || !hasFormValue(editForm.checkNo) || !hasFormValue(editForm.qcPerson) || !requiredEditFields.every((key) => hasFormValue(editForm[key]))} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.jobNo)} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
             </div>
           </div>
         </div>
