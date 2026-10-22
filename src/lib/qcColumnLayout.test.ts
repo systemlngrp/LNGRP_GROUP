@@ -14,9 +14,11 @@ test("missing or invalid saved layout shows all columns", () => {
   }
 });
 
-test("PDI schema version ignores legacy layouts and accepts versioned layouts", () => {
+test("versioned QC layouts ignore legacy selections and accept current selections", () => {
   assert.deepEqual(parseQcColumnSelection("[0,1,18]", 34, 2), Array.from({ length: 34 }, (_, index) => index));
+  assert.deepEqual(parseQcColumnSelection("[0,1,18]", 57, 2), Array.from({ length: 57 }, (_, index) => index));
   assert.deepEqual(parseQcColumnSelection(JSON.stringify({ schemaVersion: 2, columns: [3, 1] }), 34, 2), [1, 3]);
+  assert.deepEqual(parseQcColumnSelection(JSON.stringify({ schemaVersion: 2, columns: [3, 1] }), 57, 2), [1, 3]);
 });
 
 test("save selection rejects empty, duplicate, and out-of-range columns", () => {

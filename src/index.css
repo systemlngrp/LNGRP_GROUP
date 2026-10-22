@@ -173,6 +173,10 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   position: relative;
 }
 
+.app-view-content table.qc-view-table tbody td {
+  vertical-align: top;
+}
+
 .app-table-column-resizer {
   position: absolute;
   inset-block: 0;

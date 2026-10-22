@@ -14950,7 +14950,7 @@ app.put("/api/qc-report-columns/:report", async (req, res) => {
     const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
     const id = String((rows as any[])[0]?.id || "");
     const normalizedColumns = [...columns].sort((a: number, b: number) => a - b);
-    const value = report === "pdi-report" && Number(req.body?.schemaVersion) === 2
+    const value = Number(req.body?.schemaVersion) === 2
       ? JSON.stringify({ schemaVersion: 2, columns: normalizedColumns })
       : JSON.stringify(normalizedColumns);
     if (id) {

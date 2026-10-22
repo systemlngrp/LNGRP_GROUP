@@ -1,4 +1,5 @@
 export const QC_REPORT_COLUMN_COUNTS = { "qc-view": 57, "pdi-report": 34 } as const;
+export const QC_REPORT_COLUMN_SCHEMA_VERSIONS = { "qc-view": 2, "pdi-report": 2 } as const;
 export type QcReportKey = keyof typeof QC_REPORT_COLUMN_COUNTS;
 
 export function validQcColumnSelection(value: unknown, count: number): value is number[] {
