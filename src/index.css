@@ -154,6 +154,52 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   flex-shrink: 0;
 }
 
+/* Consistent on-screen table presentation. Generated PDF/print HTML is outside this scope. */
+.app-view-content table.app-enhanced-table {
+  table-layout: fixed;
+}
+
+.app-view-content table.app-enhanced-table th,
+.app-view-content table.app-enhanced-table td {
+  text-align: center;
+  font-weight: 700;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: middle;
+}
+
+.app-view-content table.app-enhanced-table th {
+  position: relative;
+}
+
+.app-table-column-resizer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: -4px;
+  z-index: 10;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.app-table-column-resizer:hover,
+.app-resizing-table-column .app-table-column-resizer {
+  background: #4f46e5;
+}
+
+.app-resizing-table-column {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.app-view-content table.app-enhanced-table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]),
+.app-view-content table.app-enhanced-table td .table-action-cell {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
 table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]) {
   min-width: max-content;
   white-space: nowrap;
