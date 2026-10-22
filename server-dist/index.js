@@ -2239,7 +2239,7 @@ function normalizeNpdRowForItemConsumers(row) {
 }
 function normalizeFetchedRow(tableName, row) {
     const newRow = normalizeWorkflowStatus(tableName, row);
-    const jsonColumns = new Set(["lines", "packingDetails", "phpDetails", "plateDetails", "capaData"]);
+    const jsonColumns = new Set(["lines", "packingDetails", "phpDetails", "plateDetails", "capaData", "filledFields"]);
     Object.keys(newRow).forEach((key) => {
         if (jsonColumns.has(key) && typeof newRow[key] === "string") {
             try {
@@ -5480,7 +5480,14 @@ async function initDb(retries = 5) {
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`name\` VARCHAR(255) NOT NULL,
           \`updatedBy\` VARCHAR(255),
-          \`updateTimestamp\` VARCHAR(255)
+          \`updateTimestamp\` VARCHAR(255),
+          \`qcFormType\` VARCHAR(30),
+          \`groupKey\` VARCHAR(255),
+          \`chunkNo\` INT,
+          \`chunkStatus\` VARCHAR(20) DEFAULT 'Draft',
+          \`filledFields\` JSON,
+          \`createdBy\` VARCHAR(255),
+          \`createdTimestamp\` VARCHAR(255)
         )
       `);
             await db.query(`
@@ -6018,7 +6025,14 @@ async function initDb(retries = 5) {
           \`samplingPlanQty\` DECIMAL(15,2),
           \`samplingCheckNo\` VARCHAR(255),
           \`updatedBy\` VARCHAR(255),
-          \`updateTimestamp\` VARCHAR(255)
+          \`updateTimestamp\` VARCHAR(255),
+          \`qcFormType\` VARCHAR(30),
+          \`groupKey\` VARCHAR(255),
+          \`chunkNo\` INT,
+          \`chunkStatus\` VARCHAR(20) DEFAULT 'Draft',
+          \`filledFields\` JSON,
+          \`createdBy\` VARCHAR(255),
+          \`createdTimestamp\` VARCHAR(255)
         )
       `);
             await db.query(`
@@ -8322,8 +8336,22 @@ async function initDb(retries = 5) {
                 { table: "users", column: "menuAccess", type: "JSON" },
                 { table: "boardline_qc_checks", column: "samplingCheckNo", type: "VARCHAR(255)" },
                 { table: "boardline_qc_checks", column: "bqcNo", type: "VARCHAR(50)" },
+                { table: "boardline_qc_checks", column: "qcFormType", type: "VARCHAR(30)" },
+                { table: "boardline_qc_checks", column: "groupKey", type: "VARCHAR(255)" },
+                { table: "boardline_qc_checks", column: "chunkNo", type: "INT" },
+                { table: "boardline_qc_checks", column: "chunkStatus", type: "VARCHAR(20) DEFAULT 'Draft'" },
+                { table: "boardline_qc_checks", column: "filledFields", type: "JSON" },
+                { table: "boardline_qc_checks", column: "createdBy", type: "VARCHAR(255)" },
+                { table: "boardline_qc_checks", column: "createdTimestamp", type: "VARCHAR(255)" },
                 { table: "printing_qc_checks", column: "samplingCheckNo", type: "VARCHAR(255)" },
                 { table: "printing_qc_checks", column: "pqcNo", type: "VARCHAR(50)" },
+                { table: "printing_qc_checks", column: "qcFormType", type: "VARCHAR(30)" },
+                { table: "printing_qc_checks", column: "groupKey", type: "VARCHAR(255)" },
+                { table: "printing_qc_checks", column: "chunkNo", type: "INT" },
+                { table: "printing_qc_checks", column: "chunkStatus", type: "VARCHAR(20) DEFAULT 'Draft'" },
+                { table: "printing_qc_checks", column: "filledFields", type: "JSON" },
+                { table: "printing_qc_checks", column: "createdBy", type: "VARCHAR(255)" },
+                { table: "printing_qc_checks", column: "createdTimestamp", type: "VARCHAR(255)" },
                 { table: "material_in", column: "phTimestamp", type: "VARCHAR(255)" },
                 { table: "material_in", column: "phEmailId", type: "VARCHAR(255)" },
                 { table: "material_in", column: "plant_head_remark", type: "TEXT" },
@@ -9060,6 +9088,21 @@ const createHandlers = (tableName) => {
             const data = applyAuditFields(normalizeNpdLinkedPayload(tableName, normalizeWorkflowStatus(tableName, req.body)), requestUser);
             let materialOpening = null;
             try {
+                if (["boardline_qc_checks", "printing_qc_checks"].includes(tableName) && data.qcFormType) {
+                    const expectedFormType = tableName === "boardline_qc_checks" ? "boardline" : "printing";
+                    const jobNo = String(data.jobNo || "").trim();
+                    const groupKey = String(data.groupKey || "").trim();
+                    const checkNo = String(data.checkNo || "").trim();
+                    const filledFields = Array.isArray(data.filledFields) ? data.filledFields.filter((field) => String(field || "").trim()) : [];
+                    if (String(data.qcFormType) !== expectedFormType || !jobNo || !groupKey || !checkNo)
+                        return res.status(400).json({ error: "Job No. and Check No. are required for chunked QC entry." });
+                    if (filledFields.length === 0)
+                        return res.status(400).json({ error: "Enter at least one QC field before saving this chunk." });
+                    const [completeRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE groupKey = ? AND id <> ? AND chunkStatus = 'Complete' LIMIT 1`, [groupKey, String(data.id || "")]);
+                    if (completeRows.length > 0 && !canManageMasterRecords(requestUser)) {
+                        return res.status(409).json({ error: "This QC group is complete. Ask an Admin or QC Manager to reopen it." });
+                    }
+                }
                 if (tableName === "quality_complaints") {
                     const capaNo = String(data.capaNo || "").trim();
                     data.capaNo = capaNo || null;

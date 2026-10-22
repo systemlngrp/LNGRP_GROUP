@@ -1041,6 +1041,13 @@ export interface BoardLineQcCheck {
   samplingCheckNo?: string;
   updatedBy?: string;
   updateTimestamp?: string;
+  qcFormType?: "boardline" | string;
+  groupKey?: string;
+  chunkNo?: number;
+  chunkStatus?: "Draft" | "Complete" | string;
+  filledFields?: string[];
+  createdBy?: string;
+  createdTimestamp?: string;
 }
 
 export interface QcUpdateRecord {
@@ -1155,6 +1162,13 @@ export interface PrintingQcCheck {
   samplingCheckNo?: string;
   updatedBy?: string;
   updateTimestamp?: string;
+  qcFormType?: "printing" | string;
+  groupKey?: string;
+  chunkNo?: number;
+  chunkStatus?: "Draft" | "Complete" | string;
+  filledFields?: string[];
+  createdBy?: string;
+  createdTimestamp?: string;
 }
 
 export interface QualityComplaint {

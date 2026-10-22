@@ -10,6 +10,7 @@ import { ColorMaster, PrintingQcCheck, Production, Setting, User } from "../type
 import { formatDate, formatTime } from "../lib/utils";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
+import { createQcGroupKey, getChunkFilledFields, getChunkTimestamp, getQcGroupKey, nextQcChunkNo, type QcChunkStatus } from "../lib/qcChunks";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
 
@@ -61,7 +62,7 @@ const sections: FieldSection[] = [
       { key: "partyName", label: "Party Name" },
       { key: "itemName", label: "Item Name", wide: true },
       { key: "erp", label: "ERP", readOnly: true },
-      { key: "checkNo", label: "Check No." },
+      { key: "checkNo", label: "Check No.", required: true },
       { key: "qcPerson", label: "QC Person" },
     ],
   },
@@ -126,13 +127,27 @@ const sections: FieldSection[] = [
   },
 ];
 
+const PRINTING_CHUNK_FIELD_KEYS = [
+  "lengthId",
+  "widthId",
+  "heightId",
+  "boardThickness",
+  "csAchieved",
+  "bsAchieved",
+  "boxWeightGrams",
+  "colour1Actual",
+  "colour2Actual",
+  "operatorName",
+  "lotNoPrinted",
+] as const;
+
 const allFields = sections.flatMap((section) => section.fields);
 const formSections: FieldSection[] = [
   {
     title: "Job Details",
     fields: [
       { key: "jobNo", label: "Job No.", required: true },
-      { key: "checkNo", label: "Check No." },
+      { key: "checkNo", label: "Check No.", required: true },
       { key: "qcPerson", label: "QC Person" },
     ],
   },
@@ -326,6 +341,11 @@ function buildPayload(form: Partial<PrintingQcCheck>, updatedBy: string, setting
     updateTimestamp: new Date().toISOString(),
   };
 
+  ["qcFormType", "groupKey", "chunkNo", "chunkStatus", "filledFields", "createdBy", "createdTimestamp"].forEach((key) => {
+    const value = (calculatedForm as Record<string, unknown>)[key];
+    if (value !== undefined && value !== null && value !== "") payload[key] = value;
+  });
+
   allFields.forEach((field) => {
     if (["timestamp", "jobNo", "partyName", "itemName", "checkNo", "qcPerson"].includes(String(field.key))) return;
     const raw = calculatedForm[field.key];
@@ -511,16 +531,45 @@ export function PrintingQcForm() {
     );
   };
 
-  const canSubmit = hasFormValue(form.jobNo);
+  const canSubmit =
+    hasFormValue(form.jobNo) &&
+    hasFormValue(form.checkNo) &&
+    getChunkFilledFields(form as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]).length > 0;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      alert("Select a Job No. and Check No., then enter at least one QC field before saving.");
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       const updatedBy = qcPersonName;
-      const payload = buildPayload({ ...form, qcPerson: String(form.qcPerson || "").trim(), pqcNo: nextPqcNo }, updatedBy, settings[0]);
+      const normalizedJobNo = normalizeProductionJobNumber(form.jobNo);
+      const normalizedCheckNo = String(form.checkNo || "").trim();
+      const groupKey = createQcGroupKey("printing", normalizedJobNo, normalizedCheckNo);
+      const filledFields = getChunkFilledFields(form as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]);
+      const existingGroup = checks.find((row) => getQcGroupKey(row, "printing") === groupKey);
+      if (existingGroup?.chunkStatus === "Complete" && !canManageMasterRecords(user?.role)) {
+        alert("This QC group is complete. Ask an Admin or QC Manager to reopen it.");
+        return;
+      }
+      const now = new Date().toISOString();
+      const payload = buildPayload({
+        ...form,
+        jobNo: normalizedJobNo,
+        checkNo: normalizedCheckNo,
+        qcPerson: String(form.qcPerson || "").trim(),
+        pqcNo: nextPqcNo,
+        qcFormType: "printing",
+        groupKey,
+        chunkNo: nextQcChunkNo(checks, groupKey),
+        chunkStatus: "Draft",
+        filledFields,
+        createdBy: updatedBy,
+        createdTimestamp: now,
+      }, updatedBy, settings[0]);
       await setChecks((prev) => [...prev, payload]);
       setSelectedProductionId("");
       setForm(createInitialForm());
@@ -624,6 +673,44 @@ export function PrintingQcForm() {
   );
 }
 
+type PrintingQcGroup = PrintingQcCheck & {
+  groupKey: string;
+  chunks: PrintingQcCheck[];
+  chunkCount: number;
+  qcPeople: string[];
+  groupStatus: QcChunkStatus;
+};
+
+function groupPrintingChecks(checks: PrintingQcCheck[]): PrintingQcGroup[] {
+  const grouped = new Map<string, PrintingQcCheck[]>();
+  checks.forEach((row) => {
+    const key = getQcGroupKey(row, "printing");
+    grouped.set(key, [...(grouped.get(key) || []), row]);
+  });
+
+  return Array.from(grouped.entries()).map(([groupKey, rawChunks]) => {
+    const chunks = [...rawChunks].sort((a, b) => getChunkTimestamp(a) - getChunkTimestamp(b));
+    const merged: Record<string, unknown> = { ...(chunks[0] || {}) };
+    chunks.forEach((chunk) => {
+      allFields.forEach((field) => {
+        const value = chunk[field.key];
+        if (value !== undefined && value !== null && String(value).trim() !== "") merged[field.key] = value;
+      });
+    });
+    const qcPeople = uniqueOptions(chunks.map((chunk) => chunk.qcPerson));
+    const groupStatus: QcChunkStatus = chunks.length > 0 && chunks.every((chunk) => chunk.chunkStatus === "Complete") ? "Complete" : "Draft";
+    return {
+      ...(merged as unknown as PrintingQcCheck),
+      id: `group:${groupKey}`,
+      groupKey,
+      chunks,
+      chunkCount: chunks.length,
+      qcPeople,
+      groupStatus,
+    };
+  });
+}
+
 const masterColumns: FieldConfig[] = [
   { key: "timestamp", label: "Timestamp" },
   { key: "pqcNo", label: "PQC No" },
@@ -710,6 +797,7 @@ export function PrintingQcMaster() {
   const [editForm, setEditForm] = useState<Partial<PrintingQcCheck>>({});
   const [editSelectedProductionId, setEditSelectedProductionId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [historyGroup, setHistoryGroup] = useState<PrintingQcGroup | null>(null);
 
   const editJobOptions = useMemo(
     () =>
@@ -774,11 +862,26 @@ export function PrintingQcMaster() {
   };
 
   const saveEdit = async () => {
-    if (!editingRow || !hasFormValue(editForm.jobNo)) return;
+    const filledFields = getChunkFilledFields(editForm as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]);
+    if (!editingRow || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.checkNo) || filledFields.length === 0) {
+      alert("Job No., Check No., and at least one QC field are required.");
+      return;
+    }
     setIsSaving(true);
     try {
       const updatedBy = currentUserDisplayName(user);
-      const updated = buildPayload({ ...editForm, qcPerson: String(editForm.qcPerson || "").trim() }, updatedBy, settings[0], editingRow.id);
+      const updated = buildPayload({
+        ...editForm,
+        checkNo: String(editForm.checkNo || "").trim(),
+        qcPerson: String(editForm.qcPerson || "").trim(),
+        qcFormType: editForm.qcFormType || "printing",
+        groupKey: editForm.groupKey || createQcGroupKey("printing", editForm.jobNo, editForm.checkNo),
+        chunkNo: editForm.chunkNo || 1,
+        chunkStatus: editForm.chunkStatus || "Draft",
+        filledFields,
+        createdBy: editForm.createdBy || updatedBy,
+        createdTimestamp: editForm.createdTimestamp || new Date().toISOString(),
+      }, updatedBy, settings[0], editingRow.id);
       await setChecks((prev) => prev.map((row) => (row.id === editingRow.id ? updated : row)));
       setEditingRow(null);
       setEditForm({});
@@ -786,6 +889,14 @@ export function PrintingQcMaster() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const toggleGroupStatus = async (group: PrintingQcGroup) => {
+    if (!canManage) return;
+    const nextStatus: QcChunkStatus = group.groupStatus === "Complete" ? "Draft" : "Complete";
+    const updatedBy = currentUserDisplayName(user);
+    const updateTimestamp = new Date().toISOString();
+    await setChecks((prev) => prev.map((row) => getQcGroupKey(row, "printing") === group.groupKey ? { ...row, chunkStatus: nextStatus, updatedBy, updateTimestamp } : row));
   };
 
   useEffect(() => {
@@ -803,7 +914,7 @@ export function PrintingQcMaster() {
 
   const rows = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();
-    return [...checks]
+    const filteredChunks = [...checks]
       .sort((a, b) => {
         const timeA = new Date(a.timestamp || "").getTime() || 0;
         const timeB = new Date(b.timestamp || "").getTime() || 0;
@@ -836,6 +947,7 @@ export function PrintingQcMaster() {
           .toLowerCase()
           .includes(search);
       });
+    return groupPrintingChecks(filteredChunks);
   }, [checks, jobFilter, partyFilter, qcPersonFilter, searchTerm, warningFilter]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
@@ -884,14 +996,17 @@ export function PrintingQcMaster() {
                     {column.label}
                   </th>
                 ))}
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap">Chunks</th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap">Status</th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[160px]">QC People</th>
                 <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {loading ? (
-                <tr><td colSpan={masterColumns.length + 2} className="px-6 py-8 text-center text-black">Loading Printing QC checks...</td></tr>
+                <tr><td colSpan={masterColumns.length + 5} className="px-6 py-8 text-center text-black">Loading Printing QC checks...</td></tr>
               ) : pagedRows.length === 0 ? (
-                <tr><td colSpan={masterColumns.length + 2} className="px-6 py-8 text-center font-medium italic text-black">No Printing QC checks found.</td></tr>
+                <tr><td colSpan={masterColumns.length + 5} className="px-6 py-8 text-center font-medium italic text-black">No Printing QC checks found.</td></tr>
               ) : (
                 pagedRows.map((row) => (
                   <tr key={row.id} className="divide-x divide-black transition-colors hover:bg-slate-50">
@@ -901,8 +1016,15 @@ export function PrintingQcMaster() {
                         {column.key === "timestamp" ? formatTime(row.timestamp) : displayValue(row[column.key])}
                       </td>
                     ))}
+                    <td className="border border-black px-3 py-2 text-sm text-black align-top">{row.chunkCount}</td>
+                    <td className="border border-black px-3 py-2 text-sm font-bold text-black align-top">{row.groupStatus}</td>
+                    <td className="border border-black px-3 py-2 text-sm text-black align-top">{row.qcPeople.join(", ") || "-"}</td>
                     <td className="border border-black px-3 py-2 text-sm text-black align-top whitespace-nowrap">
-                      {canManage ? <button type="button" onClick={() => openEdit(row)} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button> : null}
+                      <div className="flex flex-wrap gap-1">
+                        <button type="button" onClick={() => setHistoryGroup(row)} className="rounded border border-black px-2 py-1 font-bold">History</button>
+                        {canManage ? <button type="button" onClick={() => openEdit(row.chunks[row.chunks.length - 1])} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button> : null}
+                        {canManage ? <button type="button" onClick={() => void toggleGroupStatus(row)} className="rounded bg-emerald-700 px-2 py-1 font-bold text-white">{row.groupStatus === "Complete" ? "Reopen" : "Complete"}</button> : null}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -941,7 +1063,28 @@ export function PrintingQcMaster() {
             ))}
             <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
-              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.jobNo)} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.checkNo) || getChunkFilledFields(editForm as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]).length === 0} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {historyGroup ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true" aria-label="Printing QC chunk history">
+          <div className="max-h-[85vh] w-full max-w-5xl overflow-y-auto rounded border-2 border-black bg-white p-5 text-black shadow-xl">
+            <div className="mb-4 flex items-center justify-between border-b border-black pb-3">
+              <h3 className="text-lg font-black uppercase">Chunk History · Job {displayValue(historyGroup.jobNo)} · Check {displayValue(historyGroup.checkNo)}</h3>
+              <button type="button" onClick={() => setHistoryGroup(null)} className="rounded border border-black px-3 py-1 font-bold">Close</button>
+            </div>
+            <div className="space-y-3">
+              {historyGroup.chunks.map((chunk) => (
+                <div key={chunk.id} className="rounded border border-black p-3">
+                  <div className="flex flex-wrap justify-between gap-2 font-bold">
+                    <span>Chunk {chunk.chunkNo || "Legacy"} · {chunk.qcPerson || "-"}</span>
+                    <span>{chunk.chunkStatus || "Draft"} · {formatDate(chunk.updateTimestamp || chunk.timestamp)}</span>
+                  </div>
+                  <div className="mt-2 text-sm">Fields: {chunk.filledFields?.join(", ") || "Legacy record / fields not tagged"}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
