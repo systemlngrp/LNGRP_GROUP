@@ -200,6 +200,18 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   word-break: normal;
 }
 
+.app-view-content:fullscreen {
+  background: #ffffff;
+  min-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  overflow: auto;
+}
+
+.app-view-content:fullscreen .app-fullscreen-control {
+  position: fixed;
+}
+
 table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]) {
   min-width: max-content;
   white-space: nowrap;
