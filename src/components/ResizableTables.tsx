@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 
 const STORAGE_PREFIX = "table-column-widths:v1:";
 const MIN_COLUMN_WIDTH = 80;
+const ACTION_COLUMN_MIN_WIDTH = 160;
 const TABLE_SCROLL_READY = "tableScrollReady";
 const DRAG_THRESHOLD = 4;
 const KEY_SCROLL_STEP = 40;
@@ -80,6 +81,84 @@ function getColumnCount(headerRow: HTMLTableRowElement) {
   return Array.from(headerRow.cells).reduce((count, cell) => count + Math.max(1, cell.colSpan || 1), 0);
 }
 
+type CellRange = {
+  cell: HTMLTableCellElement;
+  start: number;
+  end: number;
+};
+
+function getCellRanges(rows: HTMLTableRowElement[], maxColumns?: number) {
+  const occupiedUntil: number[] = [];
+  const ranges: CellRange[] = [];
+
+  rows.forEach((row, rowIndex) => {
+    let column = 0;
+    Array.from(row.cells).forEach((cell) => {
+      while ((occupiedUntil[column] || 0) > rowIndex) column += 1;
+      const start = column;
+      const span = Math.max(1, cell.colSpan || 1);
+      const end = maxColumns === undefined ? start + span : Math.min(maxColumns, start + span);
+      ranges.push({ cell, start, end });
+      const rowEnd = rowIndex + Math.max(1, cell.rowSpan || 1);
+      for (let index = start; index < end; index += 1) occupiedUntil[index] = rowEnd;
+      column += span;
+    });
+  });
+
+  return ranges;
+}
+
+function normalizedCellText(cell: HTMLTableCellElement) {
+  return (cell.textContent || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+export function isActionHeaderLabel(value: string) {
+  return /^(action|actions|operation|operations|control|controls)$/.test(value.replace(/\s+/g, " ").trim().toLowerCase());
+}
+
+function isActionHeader(cell: HTMLTableCellElement) {
+  return isActionHeaderLabel(normalizedCellText(cell));
+}
+
+function getActionColumnIndexes(table: HTMLTableElement, count: number) {
+  const actionColumns = new Set<number>();
+  const headerRows = Array.from(table.querySelectorAll<HTMLTableRowElement>("thead tr"));
+  const headerRanges = getCellRanges(headerRows, count);
+
+  headerRanges.forEach(({ cell, start, end }) => {
+    if (!isActionHeader(cell)) return;
+    for (let index = start; index < end; index += 1) actionColumns.add(index);
+  });
+
+  if (actionColumns.size === 0) {
+    const bodyRows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tbody tr"));
+    getCellRanges(bodyRows, count).forEach(({ cell, start, end }) => {
+      if (cell.colSpan > 1 || !cell.querySelector("button, [data-action], .table-action-cell")) return;
+      for (let index = start; index < end; index += 1) actionColumns.add(index);
+    });
+  }
+
+  return actionColumns;
+}
+
+function markActionColumns(table: HTMLTableElement, actionColumns: Set<number>, count: number) {
+  if (actionColumns.size === 0) return;
+
+  const markRanges = (rows: HTMLTableRowElement[], skipSpanningCells = false) => {
+    getCellRanges(rows, count).forEach(({ cell, start, end }) => {
+      if (skipSpanningCells && cell.colSpan > 1) return;
+      const isAction = Array.from(actionColumns).some((index) => index >= start && index < end);
+      cell.classList.toggle("app-table-action-column", isAction);
+      if (isAction) cell.setAttribute("data-table-action-column", "true");
+      else cell.removeAttribute("data-table-action-column");
+    });
+  };
+
+  markRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("thead tr")));
+  markRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("tbody tr")), true);
+  markRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("tfoot tr")), true);
+}
+
 function getColumnWidths(table: HTMLTableElement, headerRow: HTMLTableRowElement, count: number) {
   const saved = readWidths(table.dataset.tableResizeKey || "");
   if (saved && saved.length >= count) return saved.slice(0, count);
@@ -109,14 +188,34 @@ function ensureColGroup(table: HTMLTableElement, count: number) {
   return Array.from(colGroup.children) as HTMLTableColElement[];
 }
 
-function applyColumnWidths(table: HTMLTableElement, widths: number[]) {
+function applyColumnWidths(table: HTMLTableElement, widths: number[], actionColumns = new Set<number>()) {
   const columns = ensureColGroup(table, widths.length);
   columns.forEach((column, index) => {
+    column.classList.toggle("app-table-action-column", actionColumns.has(index));
     column.style.width = `${Math.max(MIN_COLUMN_WIDTH, widths[index] || MIN_COLUMN_WIDTH)}px`;
   });
   const totalWidth = widths.reduce((sum, width) => sum + Math.max(MIN_COLUMN_WIDTH, width || MIN_COLUMN_WIDTH), 0);
   const parentWidth = table.parentElement?.clientWidth || 0;
   table.style.width = `${Math.max(totalWidth, parentWidth)}px`;
+}
+
+function getActionColumnWidths(table: HTMLTableElement, widths: number[], actionColumns: Set<number>) {
+  const nextWidths = [...widths];
+  const ranges = [
+    ...getCellRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("thead tr")), widths.length),
+    ...getCellRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("tbody tr")), widths.length),
+    ...getCellRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("tfoot tr")), widths.length),
+  ];
+  actionColumns.forEach((index) => {
+    let width = ACTION_COLUMN_MIN_WIDTH;
+    ranges.forEach(({ cell, start, end }) => {
+      if (index < start || index >= end || !cell.classList.contains("app-table-action-column")) return;
+      const contentWidth = Math.max(cell.scrollWidth, Math.ceil(cell.getBoundingClientRect().width));
+      width = Math.max(width, contentWidth + 24);
+    });
+    nextWidths[index] = width;
+  });
+  return nextWidths;
 }
 
 function tableKey(pathname: string, table: HTMLTableElement, index: number) {
@@ -241,7 +340,6 @@ function enhanceScrollContainer(container: HTMLElement) {
 }
 
 function addResizeHandles(table: HTMLTableElement, pathname: string, index: number) {
-  if (table.dataset.tableResizeReady === "true") return;
   table.classList.add("app-enhanced-table");
 
   const content = table.closest<HTMLElement>(".app-view-content");
@@ -249,13 +347,25 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
 
   const headerRow = table.querySelector("thead tr:first-child") as HTMLTableRowElement | null;
   if (!headerRow || headerRow.cells.length === 0) return;
+  const columnCount = getColumnCount(headerRow);
+  const actionColumns = getActionColumnIndexes(table, columnCount);
+  markActionColumns(table, actionColumns, columnCount);
+
+  if (table.dataset.tableResizeReady === "true") {
+    const currentWidths = Array.from(table.querySelectorAll<HTMLTableColElement>("colgroup[data-resizable-columns] col"))
+      .map((column) => Number.parseFloat(column.style.width) || MIN_COLUMN_WIDTH);
+    if (currentWidths.length >= columnCount) {
+      applyColumnWidths(table, getActionColumnWidths(table, currentWidths.slice(0, columnCount), actionColumns), actionColumns);
+    }
+    return;
+  }
+
   table.dataset.tableResizeReady = "true";
 
   const key = tableKey(pathname, table, index);
   table.dataset.tableResizeKey = key;
-  const columnCount = getColumnCount(headerRow);
-  const widths = getColumnWidths(table, headerRow, columnCount);
-  applyColumnWidths(table, widths);
+  const widths = getActionColumnWidths(table, getColumnWidths(table, headerRow, columnCount), actionColumns);
+  applyColumnWidths(table, widths, actionColumns);
 
   let columnIndex = 0;
   Array.from(headerRow.cells).forEach((cell) => {
@@ -265,6 +375,10 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
       return;
     }
     const currentColumn = columnIndex;
+    if (actionColumns.has(currentColumn)) {
+      columnIndex += 1;
+      return;
+    }
     cell.classList.add("app-resizable-header");
     const handle = document.createElement("span");
     handle.className = "app-table-column-resizer";
@@ -278,7 +392,7 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
       const activeColumn = currentColumn;
       const move = (moveEvent: PointerEvent) => {
         widths[activeColumn] = Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + moveEvent.clientX - startX));
-        applyColumnWidths(table, widths);
+        applyColumnWidths(table, widths, actionColumns);
       };
       const up = () => {
         saveWidths(key, widths);

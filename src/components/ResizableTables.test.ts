@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getTableScrollAction } from "./ResizableTables";
+import { getTableScrollAction, isActionHeaderLabel } from "./ResizableTables";
 
 const metrics = {
   clientHeight: 500,
@@ -26,4 +26,11 @@ test("table keyboard scrolling maps Home and End to horizontal or vertical edges
 
 test("unsupported keys do not move the table", () => {
   assert.equal(getTableScrollAction("Enter", false, metrics), null);
+});
+
+test("action header labels are recognized for fixed action columns", () => {
+  assert.equal(isActionHeaderLabel("Action"), true);
+  assert.equal(isActionHeaderLabel(" ACTIONS "), true);
+  assert.equal(isActionHeaderLabel("Operations"), true);
+  assert.equal(isActionHeaderLabel("Status"), false);
 });

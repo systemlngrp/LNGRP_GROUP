@@ -224,6 +224,36 @@ body.app-table-dragging {
   word-break: normal;
 }
 
+/* Action columns are measured and fixed by ResizableTables. Keep every control in
+   the column on one line, including tables that do not use TableActionCell. */
+.app-view-content table.app-enhanced-table th.app-table-action-column,
+.app-view-content table.app-enhanced-table td.app-table-action-column {
+  min-width: 160px;
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  vertical-align: middle;
+}
+
+.app-view-content table.app-enhanced-table td.app-table-action-column > *,
+.app-view-content table.app-enhanced-table td.app-table-action-column button,
+.app-view-content table.app-enhanced-table td.app-table-action-column a,
+.app-view-content table.app-enhanced-table td.app-table-action-column input,
+.app-view-content table.app-enhanced-table td.app-table-action-column select {
+  flex-shrink: 0;
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+}
+
+.app-view-content table.app-enhanced-table td.app-table-action-column > div {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: max-content;
+}
+
 .app-view-content:fullscreen {
   background: #ffffff;
   min-height: 100vh;
@@ -232,8 +262,12 @@ body.app-table-dragging {
   overflow: auto;
 }
 
-.app-view-content:fullscreen .app-fullscreen-control {
-  position: fixed;
+.app-view-controls {
+  pointer-events: none;
+}
+
+.app-view-controls > * {
+  pointer-events: auto;
 }
 
 table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]) {
