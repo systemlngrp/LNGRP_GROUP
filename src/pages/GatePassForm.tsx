@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
+import { Plus, Save, Trash2 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
@@ -276,10 +276,6 @@ export function GatePassForm() {
           <h2 className="text-xl font-bold uppercase tracking-tight text-black">{editingGatePass ? "Edit Gate Pass" : isReturnable ? "Returnable Gate Pass Form" : "Gate Pass Form"}</h2>
           <p className="text-sm text-slate-500">{isReturnable ? "Manual gate pass for items going out on returnable basis." : "Invoice-linked non-returnable gate pass."}</p>
         </div>
-        <button type="button" onClick={() => navigate("/gate-pass/master")} className="inline-flex items-center gap-2 rounded border border-black px-4 py-2 text-sm font-bold hover:bg-slate-50">
-          <ArrowLeft size={16} />
-          Back
-        </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

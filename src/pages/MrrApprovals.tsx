@@ -3,13 +3,12 @@ import { useData } from "../hooks/useData";
 import { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Service, Supplier, Setting } from "../types";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
-import { Search, ChevronRight, ChevronDown, ArrowLeft, Download, QrCode, ArrowUp, ArrowDown, ThumbsUp, ThumbsDown, MessageSquareText, X } from "lucide-react";
+import { Search, ChevronRight, ChevronDown, Download, QrCode, ArrowUp, ArrowDown, ThumbsUp, ThumbsDown, MessageSquareText, X } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { buildMrrReelLabelData } from "../lib/mrrReelLabelData";
-import { useNavigate } from "react-router-dom";
 import { useConfirm } from "../components/ConfirmDialog";
 import { Select as FirmSelect } from "../components/Select";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
@@ -20,7 +19,6 @@ type SortDirection = "asc" | "desc";
 
 export function MrrApprovals() {
   const confirm = useConfirm();
-  const navigate = useNavigate();
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
     firmScope: "all",
     storageKey: "material-in-all-firms",
@@ -659,13 +657,7 @@ export function MrrApprovals() {
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t-2 border-black flex items-center justify-between px-8 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-40">
-        <button 
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 px-4 py-2 border border-black rounded font-bold text-xs uppercase hover:bg-slate-50 transition-all"
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
+      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t-2 border-black flex items-center justify-end px-8 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-40">
 
         <div className="flex items-center gap-8">
           <label className="flex items-center gap-2 font-bold text-xs uppercase cursor-pointer">

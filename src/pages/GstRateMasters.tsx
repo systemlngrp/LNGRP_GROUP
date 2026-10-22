@@ -96,7 +96,7 @@ export function GstRateMasters() {
             <h2 className="text-3xl font-black text-blue-700">{editingId ? "Edit GST Rate" : "New GST Rate"}</h2>
             <div className="flex items-center gap-3">
               <button type="button" onClick={closeForm} className="px-8 py-3 rounded-2xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition">
-                Back
+                Cancel
               </button>
               <button type="submit" form="gst-rate-form" disabled={isSubmitting} className="px-8 py-3 rounded-2xl bg-indigo-700 text-white font-bold hover:bg-indigo-800 transition disabled:opacity-50">
                 {isSubmitting ? <Spinner size={18} className="text-white" /> : "Save"}

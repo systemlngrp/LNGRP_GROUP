@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { ArrowUpDown, Save } from "lucide-react";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
@@ -184,7 +183,6 @@ function buildPlannedProduction({
 }
 
 function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlanningProps) {
-  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [selectedItemId, setSelectedItemId] = useState("");
@@ -493,12 +491,6 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 {isSubmitting ? "Saving..." : `Create Jobs (${selectedIds.size})`}
               </button>
             )}
-            <button
-              onClick={() => navigate(-1)}
-              className="px-4 py-2 border-2 border-black rounded-xl text-xs font-bold bg-white hover:bg-slate-50 transition uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-            >
-              Back
-            </button>
           </div>
         </div>
 

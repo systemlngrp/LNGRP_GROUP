@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { Firm, Indent, IndentLine, Material, Setting } from "../types";
@@ -13,7 +13,6 @@ import { withIndentTotals } from "../lib/indentTotals";
 export function IndentDetail() {
   const [searchTerm, setSearchTerm] = useState('');
 
-  const navigate = useNavigate();
   const { id = "" } = useParams();
   const [materials] = useData<Material>("materials", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
@@ -166,7 +165,6 @@ export function IndentDetail() {
       <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Indent Detail</h2>
         <p className="text-black font-medium">You are not authorized to view this indent.</p>
-        <button type="button" onClick={() => navigate(-1)} className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition">Back</button>
       </div>
     );
   }
@@ -179,13 +177,6 @@ export function IndentDetail() {
         <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-4">
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Indent Detail</h2>
           <p className="text-black font-medium">{detailStatus === 404 ? "Indent not found." : "Unable to load this indent. Please try again."}</p>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition"
-          >
-            Back
-          </button>
         </div>
       </>
     );
@@ -202,13 +193,6 @@ export function IndentDetail() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition"
-            >
-              Back
-            </button>
             {canEdit ? (
               <button
                 type="button"

@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CheckCircle2, Printer, Save, X } from "lucide-react";
+import { CheckCircle2, Printer, Save, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
@@ -214,7 +214,6 @@ export function QualityComplaintCapa() {
           <div className="flex flex-wrap gap-2">
             <span className="inline-flex items-center rounded border-2 border-indigo-700 bg-indigo-50 px-3 py-2 text-xs font-bold uppercase text-indigo-800">{complaint.capaStatus || "Pending"}</span>
             <button type="button" onClick={print} className="inline-flex items-center gap-2 rounded border-2 border-indigo-700 bg-indigo-700 px-3 py-2 text-sm font-bold text-white transition hover:bg-indigo-800"><Printer size={16} />Print CAPA</button>
-            <button type="button" onClick={() => navigate("/quality/complaints/master")} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold transition hover:bg-slate-100"><ArrowLeft size={16} />Back</button>
           </div>
         </div>
         <div className="mt-4 border-t border-slate-300 pt-3">

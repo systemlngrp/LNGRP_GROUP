@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
-import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, ArrowLeft, RotateCcw, CheckCircle2, X } from "lucide-react";
+import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, RotateCcw, CheckCircle2, X } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
@@ -288,14 +288,6 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       )}
       <div className="border-b border-black pb-2">
         <div className="flex min-h-[32px] items-center gap-3">
-          {filterMachineId && (
-            <button 
-              onClick={() => navigate("/production/pending-machine-processing")}
-              className="p-2 hover:bg-slate-100 rounded-full transition-colors border border-black"
-            >
-              <ArrowLeft size={18} />
-            </button>
-          )}
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">
             {title || (filterMachineId ? `${selectedMachineName} - Pending Jobs` : "Pending Processing")}
           </h2>

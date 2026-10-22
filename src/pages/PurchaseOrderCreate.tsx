@@ -331,13 +331,6 @@ export function PurchaseOrderCreate() {
         <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Create Purchase Order</h2>
         <p className="text-black font-medium">Approved indent not found.</p>
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition"
-        >
-          Back
-        </button>
         </div>
       </>
     );
@@ -353,13 +346,6 @@ export function PurchaseOrderCreate() {
               Select suppliers line-wise. The system will create separate purchase orders supplier-wise in one click.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition"
-          >
-            Back
-          </button>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-4">

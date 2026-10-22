@@ -6,8 +6,7 @@ import { Spinner } from "../components/Spinner";
 import { MaterialReceiptFilters } from "../components/MaterialReceiptFilters";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
-import { CheckCircle, ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { CheckCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -21,7 +20,6 @@ export function PendingTallyEntry() {
   const [supplierFilter, setSupplierFilter] = useState('');
   const [mrrFilter, setMrrFilter] = useState('');
 
-  const navigate = useNavigate();
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
@@ -313,13 +311,7 @@ export function PendingTallyEntry() {
       </div>
 
       {/* Footer / Bulk Actions */}
-      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t-2 border-black flex items-center justify-between px-8 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-40">
-        <button 
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 px-4 py-2 border border-black rounded font-bold text-xs uppercase hover:bg-slate-50 transition-all"
-        >
-          <ArrowLeft size={16} /> Back
-        </button>
+      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t-2 border-black flex items-center justify-end px-8 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-40">
 
         {canPostTally ? (
           <div className="flex items-center gap-8">

@@ -1588,7 +1588,7 @@ export function Materials() {
               onClick={() => resetForm()}
               className="px-3 py-1 rounded border border-black text-xs text-black font-bold hover:bg-slate-50 transition"
             >
-              Back
+              Cancel
             </button>
           </div>
 
@@ -2153,13 +2153,6 @@ export function Materials() {
                     className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded transition uppercase"
                   >
                     Reset All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => navigate("/masters/materials")}
-                    className="px-4 py-2 border border-black rounded text-xs font-bold hover:bg-slate-50 transition uppercase shadow-sm"
-                  >
-                    Back
                   </button>
                 </div>
               </div>

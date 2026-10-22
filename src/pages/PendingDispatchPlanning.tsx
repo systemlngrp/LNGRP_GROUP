@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { TableControls } from "../components/TableControls";
 import { FirmFilter } from "../components/FirmFilter";
@@ -20,7 +19,6 @@ import { getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvai
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "companyName" | "itemName" | "pendingQty";
 
 export function PendingDispatchPlanning() {
-  const navigate = useNavigate();
   const { setActiveFirm } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -481,12 +479,6 @@ export function PendingDispatchPlanning() {
                 {isSubmitting ? "Saving..." : `Submit Plan (${selectedIds.size})`}
               </button>
             )}
-            <button
-              onClick={() => navigate(-1)}
-              className="px-4 py-2 border-2 border-black rounded-xl text-xs font-bold bg-white hover:bg-slate-50 transition uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-            >
-              Back
-            </button>
           </div>
         </div>
 

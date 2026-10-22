@@ -91,7 +91,7 @@ export function Units() {
                 onClick={closeForm}
                 className="px-8 py-3 rounded-2xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition"
               >
-                Back
+                Cancel
               </button>
               <button
                 type="submit"

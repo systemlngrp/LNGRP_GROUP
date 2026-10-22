@@ -279,9 +279,6 @@ export function GateEntryForm() {
             <h2 className="text-3xl font-black text-blue-700">{isEditing ? "Edit Gate Entry" : "Add Gate Entry"}</h2>
             <p className="mt-1 text-sm text-slate-500">Use `Returnable Receipt` only when items are coming back against a returnable gate pass.</p>
           </div>
-          <button type="button" onClick={() => navigate("/gate-entry/master")} className="rounded-2xl border border-slate-300 px-6 py-3 font-bold text-indigo-700 transition hover:bg-slate-50">
-            Back
-          </button>
         </div>
 
         {sourceGatePass ? (

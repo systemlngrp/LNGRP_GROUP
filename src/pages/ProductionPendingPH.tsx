@@ -276,7 +276,7 @@ export function ProductionPendingPH() {
                         onClick={() => { setCancelingId(null); setCancelRemarks(""); }}
                         className="w-full bg-slate-200 text-black border-2 border-black py-2 rounded font-bold text-xs uppercase"
                       >
-                        Go Back
+                        Cancel
                       </button>
                     )}
                   </div>
@@ -396,7 +396,7 @@ export function ProductionPendingPH() {
                             onClick={() => { setCancelingId(null); setCancelRemarks(""); }}
                             className="bg-slate-200 text-black border border-black px-4 py-2 rounded font-bold text-xs uppercase"
                           >
-                            Back
+                            Cancel
                           </button>
                         )}
                       </div>

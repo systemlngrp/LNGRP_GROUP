@@ -201,13 +201,6 @@ export function IndentForm() {
       <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-6">
       <div className="flex items-start justify-between gap-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">New Indent</h2>
-        <button
-          type="button"
-          onClick={() => navigate(-1)}
-          className="px-5 py-2 rounded border border-black text-black font-bold hover:bg-slate-50 transition"
-        >
-          Back
-        </button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

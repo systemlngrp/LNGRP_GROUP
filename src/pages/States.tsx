@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { StateMaster } from "../types";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
@@ -9,7 +8,6 @@ import { Spinner } from "../components/Spinner";
 export function States() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
-  const navigate = useNavigate();
   const [states, setStates] = useData<StateMaster>("states", []);
   const [searchTerm, setSearchTerm] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -93,7 +91,7 @@ export function States() {
                 onClick={closeForm}
                 className="px-8 py-3 rounded-2xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition"
               >
-                Back
+                Cancel
               </button>
               <button
                 type="submit"
@@ -144,13 +142,6 @@ export function States() {
                 placeholder="Search state"
                 className="w-[280px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className="px-7 py-3 rounded-2xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50 transition"
-              >
-                Back
-              </button>
               <button
                 type="button"
                 onClick={openCreate}
