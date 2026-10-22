@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getTableScrollAction, isActionHeaderLabel } from "./ResizableTables";
+import { getTablePageRange, getTableScrollAction, isActionHeaderLabel, TABLE_PAGE_SIZE_OPTIONS } from "./ResizableTables";
 
 const metrics = {
   clientHeight: 500,
@@ -33,4 +33,15 @@ test("action header labels are recognized for fixed action columns", () => {
   assert.equal(isActionHeaderLabel(" ACTIONS "), true);
   assert.equal(isActionHeaderLabel("Operations"), true);
   assert.equal(isActionHeaderLabel("Status"), false);
+});
+
+test("table pagination calculates stable ranges and clamps invalid pages", () => {
+  assert.deepEqual(getTablePageRange(0, 1, 25), { start: 0, end: 0, totalPages: 1 });
+  assert.deepEqual(getTablePageRange(26, 1, 25), { start: 1, end: 25, totalPages: 2 });
+  assert.deepEqual(getTablePageRange(26, 9, 25), { start: 26, end: 26, totalPages: 2 });
+  assert.deepEqual(getTablePageRange(26, 0, 50), { start: 1, end: 26, totalPages: 1 });
+});
+
+test("shared pagination exposes the requested page-size options", () => {
+  assert.deepEqual(TABLE_PAGE_SIZE_OPTIONS, [25, 50, 100, 250]);
 });

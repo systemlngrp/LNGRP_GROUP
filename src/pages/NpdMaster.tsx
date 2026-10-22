@@ -357,7 +357,7 @@ export function NpdMaster() {
         </div>
 
         <div className="table-sticky-scroll">
-          <table className="min-w-max divide-y divide-black border-collapse border border-black">
+          <table data-table-pagination-external="true" className="min-w-max divide-y divide-black border-collapse border border-black">
             <thead className="bg-slate-100 divide-x divide-black sticky top-0 z-10">
               <tr className="divide-x divide-black">
                 <th rowSpan={2} className="border border-black px-3 py-3 text-right text-xs font-bold uppercase text-black align-top min-w-[72px] whitespace-nowrap">SL No</th>

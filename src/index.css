@@ -199,6 +199,69 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
 
 .app-table-scroll-container {
   overscroll-behavior: contain;
+  max-width: 100%;
+}
+
+.app-table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  border: 1px solid #000;
+  background: #f8fafc;
+  padding: 0.75rem;
+  color: #000;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.app-table-pagination[hidden] {
+  display: none;
+}
+
+.app-table-pagination-summary {
+  min-width: 0;
+}
+
+.app-table-pagination-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.app-table-pagination-controls button,
+.app-table-pagination-controls select {
+  min-height: 2rem;
+  border: 1px solid #000;
+  background: #fff;
+  padding: 0.25rem 0.75rem;
+  color: #000;
+  font: inherit;
+}
+
+.app-table-pagination-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.app-table-pagination-rows {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.app-table-pagination-page {
+  min-width: 5.5rem;
+  text-align: center;
+  white-space: nowrap;
+}
+
+[data-table-pagination-hidden="true"] {
+  display: none !important;
 }
 
 .app-table-scroll-container:not(.app-view-content),
@@ -281,6 +344,27 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   gap: 0.5rem;
   min-width: max-content;
   white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .app-table-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-table-pagination-controls {
+    justify-content: flex-start;
+  }
+}
+
+@media print {
+  .app-table-pagination {
+    display: none !important;
+  }
+
+  [data-table-pagination-hidden="true"] {
+    display: table-row !important;
+  }
 }
 
 .table-action-cell > [data-action="approve"],

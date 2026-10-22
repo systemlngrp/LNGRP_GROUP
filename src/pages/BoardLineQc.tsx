@@ -1011,7 +1011,7 @@ export function BoardLineQcMaster() {
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse divide-y divide-black border border-black">
+          <table data-table-pagination-external="true" className="min-w-full border-collapse divide-y divide-black border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr>
                 <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[110px] whitespace-nowrap">Date</th>

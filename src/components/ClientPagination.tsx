@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 type ClientPaginationProps = {
   page: number;
@@ -17,13 +17,46 @@ export function ClientPagination({
   onPageSizeChange,
   pageSizeOptions = [25, 50, 100, 250],
 }: ClientPaginationProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safePage = Math.min(Math.max(page, 1), totalPages);
   const start = totalItems === 0 ? 0 : (safePage - 1) * pageSize + 1;
   const end = totalItems === 0 ? 0 : Math.min(totalItems, safePage * pageSize);
 
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    let table: HTMLTableElement | null = null;
+    let current: Element | null = root.previousElementSibling;
+    while (current && !table) {
+      if (current.matches("table")) {
+        table = current as HTMLTableElement;
+      } else {
+        const tables = current.querySelectorAll<HTMLTableElement>("table");
+        table = tables[tables.length - 1] || null;
+      }
+      current = current.previousElementSibling;
+    }
+    if (!table) {
+      const tables = root.parentElement?.querySelectorAll<HTMLTableElement>("table");
+      table = tables?.[tables.length - 1] || null;
+    }
+    if (!table) return;
+
+    const wasMarked = table.dataset.tablePaginationExternal === "true";
+    table.dataset.tablePaginationExternal = "true";
+    return () => {
+      if (!wasMarked && table) delete table.dataset.tablePaginationExternal;
+    };
+  }, []);
+
   return (
-    <div className="flex flex-col gap-3 border border-black bg-slate-50 px-3 py-3 md:flex-row md:items-center md:justify-between">
+    <div
+      ref={rootRef}
+      data-table-pagination="external"
+      className="flex flex-col gap-3 border border-black bg-slate-50 px-3 py-3 md:flex-row md:items-center md:justify-between"
+    >
       <div className="text-sm font-medium text-black">
         Showing {start}-{end} of {totalItems}
       </div>
