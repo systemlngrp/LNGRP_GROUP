@@ -211,7 +211,7 @@ export function Layout() {
         <header className="bg-white shadow-sm relative z-10 border-b border-black">
           <div className="w-full px-3 py-3 sm:px-4 lg:px-5">
              <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-               <div className="flex items-center gap-4">
+               <div className="flex shrink-0 items-center gap-4">
                  <button 
                     className="md:hidden p-2 -ml-2 text-black"
                     onClick={() => setSidebarOpen(true)}
@@ -226,7 +226,10 @@ export function Layout() {
                     {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                  </button>
                </div>
-               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
+               <div className="flex min-w-0 flex-1 items-center justify-center px-2">
+                 <BackNavigationControl />
+               </div>
+               <div className="flex shrink-0 min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
                   {user && (
                     <div className="hidden lg:flex flex-col items-end leading-tight rounded border border-slate-300 bg-slate-50 px-3 py-1">
                       <div className="text-[10px] font-black uppercase text-slate-500">
@@ -258,7 +261,6 @@ export function Layout() {
         </header>
         <div className="app-view-content flex-1 overflow-auto bg-white">
           <ResizableTables />
-          <BackNavigationControl />
           <FullscreenViewControl />
           <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
             <DataLoadingBoundary key={location.pathname}>
