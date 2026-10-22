@@ -197,6 +197,26 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   user-select: none;
 }
 
+.app-table-scroll-container {
+  overscroll-behavior: contain;
+}
+
+.app-table-scroll-container:not(.app-view-content),
+.app-table-scroll-container.app-view-content table {
+  cursor: grab;
+}
+
+.app-table-scroll-container:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: -2px;
+}
+
+.app-table-scroll-container.app-table-dragging,
+body.app-table-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .app-view-content table.app-enhanced-table td:has(button[title*="approve" i], button[title*="edit" i], button[title*="reject" i], button[title*="delete" i], button[aria-label*="approve" i], button[aria-label*="edit" i], button[aria-label*="reject" i], button[aria-label*="delete" i]),
 .app-view-content table.app-enhanced-table td .table-action-cell {
   white-space: nowrap;
