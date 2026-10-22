@@ -258,9 +258,9 @@ export function Layout() {
         </header>
         <div className="app-view-content flex-1 overflow-auto bg-white">
           <ResizableTables />
+          <BackNavigationControl />
           <FullscreenViewControl />
           <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
-            <BackNavigationControl />
             <DataLoadingBoundary key={location.pathname}>
               <Suspense fallback={null}>
                 <RouteMountMarker />

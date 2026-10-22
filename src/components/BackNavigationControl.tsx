@@ -24,18 +24,16 @@ export function BackNavigationControl() {
   };
 
   return (
-    <div className="mb-3 flex justify-start">
-      <button
-        type="button"
-        onClick={goBack}
-        disabled={!canGoBack && location.pathname === APP_BACK_FALLBACK}
-        aria-label="Go back"
-        title="Back"
-        className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <ArrowLeft size={16} aria-hidden="true" />
-        Back
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={goBack}
+      disabled={!canGoBack && location.pathname === APP_BACK_FALLBACK}
+      aria-label="Go back"
+      title="Back"
+      className="fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded border-2 border-black bg-white px-4 py-2 text-sm font-bold text-black shadow-lg transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-slate-300"
+    >
+      <ArrowLeft size={16} aria-hidden="true" />
+      Back
+    </button>
   );
 }

@@ -53,7 +53,7 @@ export function FullscreenViewControl() {
     <button
       type="button"
       onClick={() => void toggleFullscreen()}
-      className="app-fullscreen-control fixed bottom-4 right-4 z-[90] inline-flex items-center gap-2 rounded border-2 border-black bg-indigo-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-lg transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+      className="app-fullscreen-control fixed bottom-16 right-4 z-[90] inline-flex items-center gap-2 rounded border-2 border-black bg-indigo-700 px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow-lg transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-300"
       aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
       title={isFullscreen ? "Exit Full Screen" : "Full Screen"}
     >
