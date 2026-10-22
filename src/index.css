@@ -236,17 +236,19 @@ body.app-table-dragging {
 }
 
 .app-view-content table.app-enhanced-table td.app-table-action-column > *,
+.app-view-content table.app-enhanced-table td.app-table-action-column *,
 .app-view-content table.app-enhanced-table td.app-table-action-column button,
 .app-view-content table.app-enhanced-table td.app-table-action-column a,
 .app-view-content table.app-enhanced-table td.app-table-action-column input,
-.app-view-content table.app-enhanced-table td.app-table-action-column select {
+.app-view-content table.app-enhanced-table td.app-table-action-column select,
+.app-view-content table.app-enhanced-table td.app-table-action-column textarea {
   flex-shrink: 0;
   white-space: nowrap !important;
   overflow-wrap: normal !important;
   word-break: normal !important;
 }
 
-.app-view-content table.app-enhanced-table td.app-table-action-column > div {
+.app-view-content table.app-enhanced-table td.app-table-action-column > * {
   display: inline-flex;
   flex-wrap: nowrap;
   align-items: center;

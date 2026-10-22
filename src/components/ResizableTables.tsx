@@ -133,7 +133,9 @@ function getActionColumnIndexes(table: HTMLTableElement, count: number) {
   if (actionColumns.size === 0) {
     const bodyRows = Array.from(table.querySelectorAll<HTMLTableRowElement>("tbody tr"));
     getCellRanges(bodyRows, count).forEach(({ cell, start, end }) => {
-      if (cell.colSpan > 1 || !cell.querySelector("button, [data-action], .table-action-cell")) return;
+      if (cell.colSpan > 1 || !cell.querySelector(
+        "button, a, input, select, textarea, [role=button], [data-action], .table-action-cell"
+      )) return;
       for (let index = start; index < end; index += 1) actionColumns.add(index);
     });
   }
@@ -201,6 +203,7 @@ function applyColumnWidths(table: HTMLTableElement, widths: number[], actionColu
 
 function getActionColumnWidths(table: HTMLTableElement, widths: number[], actionColumns: Set<number>) {
   const nextWidths = [...widths];
+  const columns = ensureColGroup(table, widths.length);
   const ranges = [
     ...getCellRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("thead tr")), widths.length),
     ...getCellRanges(Array.from(table.querySelectorAll<HTMLTableRowElement>("tbody tr")), widths.length),
@@ -208,11 +211,17 @@ function getActionColumnWidths(table: HTMLTableElement, widths: number[], action
   ];
   actionColumns.forEach((index) => {
     let width = ACTION_COLUMN_MIN_WIDTH;
+    const column = columns[index];
+    const savedOrCurrentWidth = column?.style.width || "";
+    if (column) column.style.width = `${ACTION_COLUMN_MIN_WIDTH}px`;
+    // Force layout at the minimum width so an old saved width cannot influence
+    // the intrinsic action-control measurement.
+    void table.offsetWidth;
     ranges.forEach(({ cell, start, end }) => {
       if (index < start || index >= end || !cell.classList.contains("app-table-action-column")) return;
-      const contentWidth = Math.max(cell.scrollWidth, Math.ceil(cell.getBoundingClientRect().width));
-      width = Math.max(width, contentWidth + 24);
+      width = Math.max(width, cell.scrollWidth + 24);
     });
+    if (column) column.style.width = savedOrCurrentWidth;
     nextWidths[index] = width;
   });
   return nextWidths;
