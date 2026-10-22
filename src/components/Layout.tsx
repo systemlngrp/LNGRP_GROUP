@@ -225,8 +225,6 @@ export function Layout() {
                  >
                     {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                  </button>
-               </div>
-               <div className="flex min-w-0 flex-1 items-center justify-center px-2">
                  <BackNavigationControl />
                </div>
                <div className="flex shrink-0 min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
