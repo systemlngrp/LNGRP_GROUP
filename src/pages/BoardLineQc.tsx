@@ -365,11 +365,14 @@ function FieldInput({
   field,
   value,
   onChange,
+  readOnly = false,
 }: {
   field: FieldConfig;
   value: unknown;
   onChange: (key: keyof BoardLineQcCheck, value: string | number | "") => void;
+  readOnly?: boolean;
 }) {
+  const isReadOnly = field.readOnly || readOnly;
   const commonClass =
     "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full read-only:bg-gray-400 read-only:text-gray-900";
   const stringValue = value === undefined || value === null ? "" : String(value);
@@ -383,20 +386,20 @@ function FieldInput({
         <textarea
           value={stringValue}
           onChange={(event) => onChange(field.key, event.target.value)}
-          readOnly={field.readOnly}
+          readOnly={isReadOnly}
           required={field.required}
           rows={3}
-          className={`${commonClass} min-h-[88px] resize-y`} style={field.readOnly ? { backgroundColor: "#9ca3af", color: "#111827" } : undefined}
+          className={`${commonClass} min-h-[88px] resize-y`} style={isReadOnly ? { backgroundColor: "#9ca3af", color: "#111827" } : undefined}
         />
       ) : (
         <input
           type={field.type || "text"}
           value={stringValue}
           onChange={(event) => onChange(field.key, field.type === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value)}
-          readOnly={field.readOnly}
+          readOnly={isReadOnly}
           required={field.required}
           step={field.type === "number" ? "any" : undefined}
-          className={commonClass}
+          className={commonClass} style={isReadOnly ? { backgroundColor: "#9ca3af", color: "#111827" } : undefined}
         />
       )}
     </div>
@@ -414,6 +417,32 @@ export function BoardLineQcForm() {
   const [selectedProductionId, setSelectedProductionId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const qcPersonName = currentUserDisplayName(user);
+  const existingGroup = useMemo(() => {
+    if (!hasFormValue(form.jobNo) || !hasFormValue(form.checkNo)) return null;
+    const groupKey = createQcGroupKey("boardline", form.jobNo, form.checkNo);
+    return groupBoardLineChecks(checks).find((group) => group.groupKey === groupKey) || null;
+  }, [checks, form.jobNo, form.checkNo]);
+  const lockedChunkFields = useMemo(() => {
+    const fields = new Set<string>();
+    existingGroup?.chunks.forEach((chunk) => {
+      const chunkFields = chunk.filledFields?.length
+        ? chunk.filledFields
+        : getChunkFilledFields(chunk as Record<string, unknown>, [...BOARDLINE_CHUNK_FIELD_KEYS]);
+      chunkFields.forEach((field) => {
+        if (BOARDLINE_CHUNK_FIELD_KEYS.includes(field as typeof BOARDLINE_CHUNK_FIELD_KEYS[number])) fields.add(field);
+      });
+    });
+    return fields;
+  }, [existingGroup]);
+  const displayedForm = useMemo(() => {
+    if (!existingGroup) return form;
+    const merged = { ...form } as Partial<BoardLineQcCheck>;
+    lockedChunkFields.forEach((field) => {
+      const key = field as keyof BoardLineQcCheck;
+      if (existingGroup[key] !== undefined && existingGroup[key] !== null && existingGroup[key] !== "") merged[key] = existingGroup[key] as never;
+    });
+    return merged;
+  }, [existingGroup, form, lockedChunkFields]);
   const nextBqcNo = useMemo(() => nextQcNo(checks, "bqcNo", "BQC"), [checks]);
   const qcPersonOptions = useMemo(() => {
     const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
@@ -463,14 +492,24 @@ export function BoardLineQcForm() {
   );
 
   const setField = (key: keyof BoardLineQcCheck, value: string | number | "") => {
-    setForm((prev) => calculateBoardLineForm({ ...prev, [key]: value }, settings[0]));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "checkNo" && String(prev.checkNo || "") !== String(value || "")) {
+        BOARDLINE_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
+      }
+      return calculateBoardLineForm(next, settings[0]);
+    });
   };
 
   const handleJobSelect = (productionId: string) => {
     setSelectedProductionId(productionId);
     const production = productionById.get(productionId);
     if (!production) {
-      setForm((prev) => ({ ...prev, jobNo: "", checkNo: "" }));
+      setForm((prev) => {
+        const next = { ...prev, jobNo: "", checkNo: "" };
+        BOARDLINE_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
+        return next;
+      });
       return;
     }
 
@@ -494,8 +533,8 @@ export function BoardLineQcForm() {
     const part = firstText(rawItem.part, rawItem.noOfParts, production.noOfParts);
     const boardGsm = toOptionalNumber(production.boardGsmReq, production.gsm, rawItem.boardGsmReq, rawItem.gsm, rawItem.calculatedBGsm, rawItem.standardBGsm);
 
-    setForm((prev) =>
-      calculateBoardLineForm({
+    setForm((prev) => {
+      const next = {
         ...prev,
         jobNo,
         checkNo: String(prev.checkNo || ""),
@@ -512,8 +551,10 @@ export function BoardLineQcForm() {
         sheetWeightGrams: toOptionalNumber(production.sheetWeight, rawItem.sheetWeightGrams, rawItem.calculatedWeightPerBox),
         planQty: toOptionalNumber(production.plannedQty, production.qty, rawItem.planQty, rawItem.orderQuantity),
         printingArtwork: firstText(rawItem.artwork, rawItem.artworkUpload, prev.printingArtwork),
-      })
-    );
+      };
+      BOARDLINE_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
+      return calculateBoardLineForm(next, settings[0]);
+    });
   };
 
   const canSubmit =
@@ -534,15 +575,16 @@ export function BoardLineQcForm() {
       const normalizedJobNo = normalizeProductionJobNumber(form.jobNo);
       const normalizedCheckNo = String(form.checkNo || "").trim();
       const groupKey = createQcGroupKey("boardline", normalizedJobNo, normalizedCheckNo);
-      const filledFields = getChunkFilledFields(form as Record<string, unknown>, [...BOARDLINE_CHUNK_FIELD_KEYS]);
-      const existingGroup = checks.find((row) => getQcGroupKey(row, "boardline") === groupKey);
-      if (existingGroup?.chunkStatus === "Complete" && !canManageMasterRecords(user?.role)) {
+      const chunkForm = { ...form } as Partial<BoardLineQcCheck>;
+      lockedChunkFields.forEach((field) => { chunkForm[field as keyof BoardLineQcCheck] = ""; });
+      const filledFields = getChunkFilledFields(chunkForm as Record<string, unknown>, [...BOARDLINE_CHUNK_FIELD_KEYS]);
+      if (existingGroup?.groupStatus === "Complete" && !canManageMasterRecords(user?.role)) {
         alert("This QC group is complete. Ask an Admin or QC Manager to reopen it.");
         return;
       }
       const now = new Date().toISOString();
       const payload = buildPayload({
-        ...form,
+        ...chunkForm,
         jobNo: normalizedJobNo,
         checkNo: normalizedCheckNo,
         qcPerson: String(form.qcPerson || "").trim(),
@@ -602,9 +644,10 @@ export function BoardLineQcForm() {
                     </label>
                     <Select
                       options={FLUTE_OPTIONS}
-                      value={String(form[field.key] || "")}
+                      value={String(displayedForm[field.key] || "")}
                       onChange={(value) => setField(field.key, value)}
                       required={field.required}
+                      disabled={lockedChunkFields.has(String(field.key))}
                       placeholder="Choose"
                     />
                   </div>
@@ -615,14 +658,15 @@ export function BoardLineQcForm() {
                     </label>
                     <Select
                       options={field.key === "checkNo" ? CHECK_NO_OPTIONS : qcPersonOptions}
-                      value={String(form[field.key] || "")}
+                      value={String(displayedForm[field.key] || "")}
                       onChange={(value) => setField(field.key, value)}
                       required={field.required}
+                      disabled={lockedChunkFields.has(String(field.key))}
                       placeholder="Choose"
                     />
                   </div>
                 ) : (
-                  <FieldInput key={String(field.key)} field={field} value={field.key === "bqcNo" ? nextBqcNo : form[field.key]} onChange={setField} />
+                  <FieldInput key={String(field.key)} field={field} value={field.key === "bqcNo" ? nextBqcNo : displayedForm[field.key]} onChange={setField} readOnly={lockedChunkFields.has(String(field.key))} />
                 )
               )}
             </div>

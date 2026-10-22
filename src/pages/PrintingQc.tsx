@@ -365,11 +365,14 @@ function FieldInput({
   field,
   value,
   onChange,
+  readOnly = false,
 }: {
   field: FieldConfig;
   value: unknown;
   onChange: (key: keyof PrintingQcCheck, value: string | number | "") => void;
+  readOnly?: boolean;
 }) {
+  const isReadOnly = field.readOnly || readOnly;
   const commonClass =
     "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full read-only:bg-gray-400 read-only:text-gray-900";
   const stringValue = value === undefined || value === null ? "" : String(value);
@@ -383,20 +386,20 @@ function FieldInput({
         <textarea
           value={stringValue}
           onChange={(event) => onChange(field.key, event.target.value)}
-          readOnly={field.readOnly}
+          readOnly={isReadOnly}
           required={field.required}
           rows={3}
-          className={`${commonClass} min-h-[88px] resize-y`} style={field.readOnly ? { backgroundColor: "#9ca3af", color: "#111827" } : undefined}
+          className={`${commonClass} min-h-[88px] resize-y`} style={isReadOnly ? { backgroundColor: "#9ca3af", color: "#111827" } : undefined}
         />
       ) : (
         <input
           type={field.type || "text"}
           value={stringValue}
           onChange={(event) => onChange(field.key, field.type === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value)}
-          readOnly={field.readOnly}
+          readOnly={isReadOnly}
           required={field.required}
           step={field.type === "number" ? "any" : undefined}
-          className={commonClass}
+          className={commonClass} style={isReadOnly ? { backgroundColor: "#9ca3af", color: "#111827" } : undefined}
         />
       )}
     </div>
@@ -415,6 +418,32 @@ export function PrintingQcForm() {
   const [selectedProductionId, setSelectedProductionId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const qcPersonName = currentUserDisplayName(user);
+  const existingGroup = useMemo(() => {
+    if (!hasFormValue(form.jobNo) || !hasFormValue(form.checkNo)) return null;
+    const groupKey = createQcGroupKey("printing", form.jobNo, form.checkNo);
+    return groupPrintingChecks(checks).find((group) => group.groupKey === groupKey) || null;
+  }, [checks, form.jobNo, form.checkNo]);
+  const lockedChunkFields = useMemo(() => {
+    const fields = new Set<string>();
+    existingGroup?.chunks.forEach((chunk) => {
+      const chunkFields = chunk.filledFields?.length
+        ? chunk.filledFields
+        : getChunkFilledFields(chunk as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]);
+      chunkFields.forEach((field) => {
+        if (PRINTING_CHUNK_FIELD_KEYS.includes(field as typeof PRINTING_CHUNK_FIELD_KEYS[number])) fields.add(field);
+      });
+    });
+    return fields;
+  }, [existingGroup]);
+  const displayedForm = useMemo(() => {
+    if (!existingGroup) return form;
+    const merged = { ...form } as Partial<PrintingQcCheck>;
+    lockedChunkFields.forEach((field) => {
+      const key = field as keyof PrintingQcCheck;
+      if (existingGroup[key] !== undefined && existingGroup[key] !== null && existingGroup[key] !== "") merged[key] = existingGroup[key] as never;
+    });
+    return merged;
+  }, [existingGroup, form, lockedChunkFields]);
   const nextPqcNo = useMemo(() => nextQcNo(checks, "pqcNo", "PQC"), [checks]);
   const qcPersonOptions = useMemo(() => {
     const active = users.filter((row) => row.status !== "Inactive" && row.name.trim()).map((row) => ({ value: row.name, label: row.name }));
@@ -475,14 +504,24 @@ export function PrintingQcForm() {
   );
 
   const setField = (key: keyof PrintingQcCheck, value: string | number | "") => {
-    setForm((prev) => calculatePrintingQcForm({ ...prev, [key]: value }, settings[0]));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "checkNo" && String(prev.checkNo || "") !== String(value || "")) {
+        PRINTING_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
+      }
+      return calculatePrintingQcForm(next, settings[0]);
+    });
   };
 
   const handleJobSelect = (productionId: string) => {
     setSelectedProductionId(productionId);
     const production = productionById.get(productionId);
     if (!production) {
-      setForm((prev) => ({ ...prev, jobNo: "", checkNo: "" }));
+      setForm((prev) => {
+        const next = { ...prev, jobNo: "", checkNo: "" };
+        PRINTING_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
+        return next;
+      });
       return;
     }
 
@@ -504,8 +543,8 @@ export function PrintingQcForm() {
     const color1 = firstText(production.color1, rawItem.printingColour1, rawItem.color1);
     const color2 = firstText(production.color2, rawItem.printingColour2, rawItem.color2);
 
-    setForm((prev) =>
-      calculatePrintingQcForm({
+    setForm((prev) => {
+      const next = {
         ...prev,
         jobNo,
         checkNo: String(prev.checkNo || ""),
@@ -527,8 +566,10 @@ export function PrintingQcForm() {
         printingColour2Standard: color2,
         standardArtwork: firstText(rawItem.artwork, rawItem.artworkUpload, rawItem.standardArtwork),
         planQty: toOptionalNumber(production.plannedQty, production.qty),
-      })
-    );
+      };
+      PRINTING_CHUNK_FIELD_KEYS.forEach((field) => { next[field] = ""; });
+      return calculatePrintingQcForm(next, settings[0]);
+    });
   };
 
   const canSubmit =
@@ -549,15 +590,16 @@ export function PrintingQcForm() {
       const normalizedJobNo = normalizeProductionJobNumber(form.jobNo);
       const normalizedCheckNo = String(form.checkNo || "").trim();
       const groupKey = createQcGroupKey("printing", normalizedJobNo, normalizedCheckNo);
-      const filledFields = getChunkFilledFields(form as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]);
-      const existingGroup = checks.find((row) => getQcGroupKey(row, "printing") === groupKey);
-      if (existingGroup?.chunkStatus === "Complete" && !canManageMasterRecords(user?.role)) {
+      const chunkForm = { ...form } as Partial<PrintingQcCheck>;
+      lockedChunkFields.forEach((field) => { chunkForm[field as keyof PrintingQcCheck] = ""; });
+      const filledFields = getChunkFilledFields(chunkForm as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]);
+      if (existingGroup?.groupStatus === "Complete" && !canManageMasterRecords(user?.role)) {
         alert("This QC group is complete. Ask an Admin or QC Manager to reopen it.");
         return;
       }
       const now = new Date().toISOString();
       const payload = buildPayload({
-        ...form,
+        ...chunkForm,
         jobNo: normalizedJobNo,
         checkNo: normalizedCheckNo,
         qcPerson: String(form.qcPerson || "").trim(),
@@ -617,9 +659,10 @@ export function PrintingQcForm() {
                     </label>
                     <Select
                       options={colorOptions}
-                      value={String(form[field.key] || "")}
+                      value={String(displayedForm[field.key] || "")}
                       onChange={(value) => setField(field.key, value)}
                       required={field.required}
+                      disabled={lockedChunkFields.has(String(field.key))}
                       placeholder="Choose"
                       wrapLabels
                     />
@@ -631,9 +674,10 @@ export function PrintingQcForm() {
                     </label>
                     <Select
                       options={operatorOptions}
-                      value={String(form.operatorName || "")}
+                      value={String(displayedForm.operatorName || "")}
                       onChange={(value) => setField("operatorName", value)}
                       required={field.required}
+                      disabled={lockedChunkFields.has(String(field.key))}
                       placeholder="Choose"
                       wrapLabels
                     />
@@ -645,14 +689,15 @@ export function PrintingQcForm() {
                     </label>
                     <Select
                       options={field.key === "checkNo" ? CHECK_NO_OPTIONS : qcPersonOptions}
-                      value={String(form[field.key] || "")}
+                      value={String(displayedForm[field.key] || "")}
                       onChange={(value) => setField(field.key, value)}
                       required={field.required}
+                      disabled={lockedChunkFields.has(String(field.key))}
                       placeholder="Choose"
                     />
                   </div>
                 ) : (
-                  <FieldInput key={String(field.key)} field={field} value={field.key === "pqcNo" ? nextPqcNo : form[field.key]} onChange={setField} />
+                  <FieldInput key={String(field.key)} field={field} value={field.key === "pqcNo" ? nextPqcNo : displayedForm[field.key]} onChange={setField} readOnly={lockedChunkFields.has(String(field.key))} />
                 )
               )}
             </div>
