@@ -12,6 +12,7 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useRealtimeDataSync } from "../hooks/useRealtimeDataSync";
 import { ResizableTables } from "./ResizableTables";
 import { FullscreenViewControl } from "./FullscreenViewControl";
+import { BackNavigationControl } from "./BackNavigationControl";
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -259,6 +260,7 @@ export function Layout() {
           <ResizableTables />
           <FullscreenViewControl />
           <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
+            <BackNavigationControl />
             <DataLoadingBoundary key={location.pathname}>
               <Suspense fallback={null}>
                 <RouteMountMarker />
