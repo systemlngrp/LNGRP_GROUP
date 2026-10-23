@@ -6,6 +6,8 @@ import type {
   InvoiceLineItem,
   Item,
   LoadingSlip,
+  Material,
+  MaterialIssueReelLine,
   Order,
   OrderSchedule,
   PreDispatchInspection,
@@ -14,6 +16,7 @@ import type {
   ProductionProcessing,
   QcUpdateRecord,
   QualityComplaint,
+  MaterialReturnReelLine,
   Truck,
 } from "../types";
 import { findLatestInspection, photoPath } from "./pdiReportData";
@@ -22,6 +25,15 @@ import { resolvePlanQuantity } from "./samplingPlanQty";
 
 export type TraceabilityStatus = "JOB OPEN" | "JOB CLOSED" | "JOB CANCELLED";
 export type TraceabilityValue = string | number | "";
+
+export type TraceabilityReelIssue = {
+  reelNo: string;
+  reelSize: TraceabilityValue;
+  gsm: TraceabilityValue;
+  bf: TraceabilityValue;
+  netIssue: TraceabilityValue;
+  issueTimestamp: string;
+};
 
 export type TraceabilityRecord = {
   id: string;
@@ -34,6 +46,7 @@ export type TraceabilityRecord = {
   partyName: string;
   erpCode: string;
   status: TraceabilityStatus;
+  paperIssue: TraceabilityReelIssue[];
   planning: {
     planQuantity: TraceabilityValue;
     plannedDate: string;
@@ -138,6 +151,9 @@ export type TraceabilityInputs = {
   trucks?: Truck[];
   qcUpdates?: QcUpdateRecord[];
   complaints?: QualityComplaint[];
+  materials?: Material[];
+  materialIssueReelLines?: MaterialIssueReelLine[];
+  materialReturnReelLines?: MaterialReturnReelLine[];
 };
 
 const text = (value: unknown) => String(value ?? "").trim();
@@ -160,6 +176,11 @@ const dateText = (value: unknown) => text(value).slice(0, 19);
 const formatDate = (value: unknown) => text(value).slice(0, 10);
 const normalizedJob = (value: unknown) => key(value).replace(/^0+(?=\d)/, "");
 const sameJob = (left: unknown, right: unknown) => normalizedJob(left) === normalizedJob(right);
+const reelIdentity = (line: Pick<MaterialIssueReelLine, "id" | "packingSlipId" | "ourReelNo">) => {
+  const packingSlipId = key(line.packingSlipId);
+  const reelNo = key(line.ourReelNo);
+  return packingSlipId || reelNo ? `${packingSlipId}|${reelNo}` : key(line.id);
+};
 const joinSize = (...values: unknown[]) => {
   const parts = values.map(text);
   return parts.some(Boolean) ? parts.join(" x ") : "";
@@ -244,6 +265,48 @@ function processingLineIncharge(rows: ProductionProcessing[]) {
   )?.operatorName);
 }
 
+export function buildTraceabilityPaperIssueDetails(
+  production: Production,
+  jobNo: string,
+  materials: Material[] = [],
+  issueReelLines: MaterialIssueReelLine[] = [],
+  returnReelLines: MaterialReturnReelLine[] = [],
+): TraceabilityReelIssue[] {
+  const belongsToProduction = (line: { productionId?: string; jobNo?: string }) =>
+    (text(line.productionId) && key(line.productionId) === key(production.id)) ||
+    (text(line.jobNo) && sameJob(line.jobNo, jobNo));
+  const eligibleIssues = rows(issueReelLines).filter((line) => belongsToProduction(line) && Number(line.weightKg || 0) > 0);
+  const returnedWeights = new Map<string, number>();
+  rows(returnReelLines).filter((line) => belongsToProduction(line) && Number(line.weightKg || 0) > 0).forEach((line) => {
+    const identity = reelIdentity(line);
+    returnedWeights.set(identity, (returnedWeights.get(identity) || 0) + Number(line.weightKg || 0));
+  });
+
+  const grouped = new Map<string, { line: MaterialIssueReelLine; issuedWeight: number }>();
+  eligibleIssues.forEach((line) => {
+    const identity = reelIdentity(line);
+    const existing = grouped.get(identity);
+    if (existing) existing.issuedWeight += Number(line.weightKg || 0);
+    else grouped.set(identity, { line, issuedWeight: Number(line.weightKg || 0) });
+  });
+
+  const materialById = new Map(rows(materials).map((material) => [key(material.id), material]));
+  return Array.from(grouped.entries())
+    .map(([identity, entry]) => {
+      const material = materialById.get(key(entry.line.materialId));
+      const netIssue = Math.max(0, Number((entry.issuedWeight - (returnedWeights.get(identity) || 0)).toFixed(2)));
+      return {
+        reelNo: text(entry.line.ourReelNo),
+        reelSize: numberValue(material?.size),
+        gsm: numberValue(material?.gsm),
+        bf: numberValue(material?.bf),
+        netIssue: numberValue(netIssue),
+        issueTimestamp: text(entry.line.updateTimestamp),
+      };
+    })
+    .sort((left, right) => left.issueTimestamp.localeCompare(right.issueTimestamp) || left.reelNo.localeCompare(right.reelNo));
+}
+
 export function buildTraceabilityRecord(production: Production, input: TraceabilityInputs): TraceabilityRecord {
   const jobNo = firstText(production.transactionNo, production.jobCardNo);
   const board = latestByJob(rows(input.boardline), jobNo);
@@ -296,6 +359,13 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
   const actualPdiDate = inspection?.inspectionDate || inspection?.updateTimestamp || "";
   const normalizedPrintingColors = joinNonEmpty(" / ", printing?.printingColor1Standard, printing?.printingColour2Standard);
   const actualPrintingColors = joinNonEmpty(" / ", printing?.colour1Actual, printing?.colour2Actual);
+  const paperIssue = buildTraceabilityPaperIssueDetails(
+    production,
+    jobNo,
+    rows(input.materials),
+    rows(input.materialIssueReelLines),
+    rows(input.materialReturnReelLines),
+  );
 
   return {
     id: production.id,
@@ -308,6 +378,7 @@ export function buildTraceabilityRecord(production: Production, input: Traceabil
     partyName,
     erpCode,
     status: statusOf(production),
+    paperIssue,
     planning: {
       planQuantity,
       plannedDate: formatDate(plannedDate),

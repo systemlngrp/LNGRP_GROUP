@@ -991,6 +991,89 @@ table td button:focus-visible {
   font-weight: 900;
 }
 
+.traceability-reel-grid {
+  min-width: 720px;
+}
+
+.traceability-reel-row {
+  display: grid;
+  grid-template-columns: 1.35fr 1.15fr 1fr 1fr 1.35fr;
+}
+
+.traceability-reel-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 40px;
+  border-right: 1px solid #000;
+  border-bottom: 1px solid #000;
+  padding: 7px 8px;
+  color: #000;
+  font-size: 11px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.traceability-reel-cell:last-child {
+  border-right: 0;
+}
+
+.traceability-reel-header .traceability-reel-cell {
+  min-height: 34px;
+  background: #d9d2e9;
+  text-transform: uppercase;
+}
+
+.traceability-print-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  max-width: 1240px;
+  padding: 10px 0 2px;
+}
+
+.traceability-paper-issue-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #000;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.traceability-paper-issue-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: #244b8b;
+}
+
+.traceability-print-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 96px;
+  border: 2px solid #000;
+  background: #244b8b;
+  padding: 8px 14px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.traceability-print-button:hover:not(:disabled) {
+  background: #102f5d;
+}
+
+.traceability-print-button:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+
 @media (max-width: 720px) {
   .traceability-search-heading {
     align-items: flex-start;
@@ -999,6 +1082,15 @@ table td button:focus-visible {
 
   .traceability-search-toolbar {
     padding: 12px;
+  }
+
+  .traceability-print-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .traceability-print-button {
+    width: 100%;
   }
 
 }
@@ -1020,6 +1112,7 @@ table td button:focus-visible {
   body:has(.traceability-print-root) .traceability-lot-clear,
   body:has(.traceability-print-root) .traceability-lot-results,
   body:has(.traceability-print-root) .traceability-mode-toggle,
+  body:has(.traceability-print-root) .traceability-print-controls,
   body:has(.traceability-print-root) .traceability-not-found,
   body:has(.traceability-print-root) .traceability-empty-sheet-prompt {
     display: none !important;
@@ -1049,6 +1142,16 @@ table td button:focus-visible {
     border-width: 1px;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .traceability-reel-grid {
+    min-width: 0;
+  }
+
+  .traceability-reel-cell {
+    min-height: 22px;
+    padding: 3px 4px;
+    font-size: 7px;
   }
 
   .traceability-company-header {

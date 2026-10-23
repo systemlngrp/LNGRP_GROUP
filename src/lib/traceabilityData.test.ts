@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { BoardLineQcCheck, DispatchPlan, Item, LoadingSlip, PreDispatchInspection, PrintingQcCheck, Production, ProductionProcessing, Truck } from "../types";
-import { buildTraceabilityRecord, buildTraceabilityRecords, filterTraceabilityRecords } from "./traceabilityData";
+import type { BoardLineQcCheck, DispatchPlan, Item, LoadingSlip, Material, MaterialIssueReelLine, MaterialReturnReelLine, PreDispatchInspection, PrintingQcCheck, Production, ProductionProcessing, Truck } from "../types";
+import { buildTraceabilityPaperIssueDetails, buildTraceabilityRecord, buildTraceabilityRecords, filterTraceabilityRecords } from "./traceabilityData";
 
 const production = (overrides: Partial<Production> = {}): Production => ({
   id: "production-1",
@@ -332,4 +332,57 @@ test("record builder tolerates unavailable dataset arrays while data loads", () 
   assert.equal(record.jobNo, "0010430");
   assert.equal(record.itemName, "");
   assert.equal(record.pdi.result, "");
+});
+
+test("traceability builds grouped reel issue details with net returned weight", () => {
+  const material: Material = { id: "material-reel-1", type: "Reel", name: "Kraft Reel", size: 178, gsm: 140, bf: 18 };
+  const issueOne: MaterialIssueReelLine = {
+    id: "issue-reel-1",
+    materialIssueId: "issue-1",
+    materialIssueLineId: "issue-line-1",
+    materialId: material.id,
+    packingSlipId: "packing-slip-1",
+    ourReelNo: "R-1001",
+    weightKg: 100,
+    productionId: "production-1",
+    jobNo: "10430",
+    updateTimestamp: "2026-10-10T10:00:00Z",
+  };
+  const issueTwo = { ...issueOne, id: "issue-reel-2", weightKg: 20, updateTimestamp: "2026-10-10T11:00:00Z" };
+  const returned: MaterialReturnReelLine = {
+    id: "return-reel-1",
+    materialReturnId: "return-1",
+    materialReturnLineId: "return-line-1",
+    materialId: material.id,
+    packingSlipId: "packing-slip-1",
+    ourReelNo: "R-1001",
+    weightKg: 12,
+    productionId: "production-1",
+    jobNo: "10430",
+  };
+
+  const rows = buildTraceabilityPaperIssueDetails(production(), "0010430", [material], [issueOne, issueTwo], [returned]);
+  assert.deepEqual(rows, [{
+    reelNo: "R-1001",
+    reelSize: 178,
+    gsm: 140,
+    bf: 18,
+    netIssue: 108,
+    issueTimestamp: "2026-10-10T10:00:00Z",
+  }]);
+});
+
+test("traceability ignores reel issue rows belonging to another job", () => {
+  const issue = {
+    id: "other-issue",
+    materialIssueId: "issue-other",
+    materialIssueLineId: "issue-line-other",
+    materialId: "missing-material",
+    packingSlipId: "other-slip",
+    ourReelNo: "OTHER-REEL",
+    weightKg: 50,
+    productionId: "other-production",
+    jobNo: "OTHER-JOB",
+  } as MaterialIssueReelLine;
+  assert.deepEqual(buildTraceabilityPaperIssueDetails(production(), "0010430", [], [issue], []), []);
 });

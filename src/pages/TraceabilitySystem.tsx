@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ExternalLink, FileText, Search, X } from "lucide-react";
+import { ExternalLink, FileText, Printer, Search, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
@@ -11,6 +11,9 @@ import type {
   InvoiceLineItem,
   Item,
   LoadingSlip,
+  Material,
+  MaterialIssueReelLine,
+  MaterialReturnReelLine,
   Order,
   OrderSchedule,
   PreDispatchInspection,
@@ -43,6 +46,7 @@ const EMPTY_TRACEABILITY_RECORD: TraceabilityRecord = {
   partyName: "",
   erpCode: "",
   status: "JOB OPEN",
+  paperIssue: [],
   planning: {
     planQuantity: "",
     plannedDate: "",
@@ -178,6 +182,23 @@ function PdiResultBadge({ result }: { result: string }) {
   return <span className={`traceability-status-badge ${color}`}>{display(result)}</span>;
 }
 
+function PaperIssueSection({ rows }: { rows: TraceabilityRecord["paperIssue"] }) {
+  return <SheetSection title="PAPER ISSUE INFO">
+    {rows.length ? <div className="traceability-reel-grid">
+      <div className="traceability-reel-row traceability-reel-header">
+        {['REEL NO.', 'REEL SIZE', 'GSM', 'BF', 'NET ISSUE (KG)'].map((heading) => <div key={heading} className="traceability-reel-cell">{heading}</div>)}
+      </div>
+      {rows.map((row, index) => <div className="traceability-reel-row" key={`${row.reelNo || "reel"}-${index}`}>
+        <div className="traceability-reel-cell">{display(row.reelNo)}</div>
+        <div className="traceability-reel-cell">{display(row.reelSize)}</div>
+        <div className="traceability-reel-cell">{display(row.gsm)}</div>
+        <div className="traceability-reel-cell">{display(row.bf)}</div>
+        <div className="traceability-reel-cell">{display(row.netIssue)}</div>
+      </div>)}
+    </div> : <div className="traceability-empty-sheet-prompt">No reel issue details available for this Job No.</div>}
+  </SheetSection>;
+}
+
 function traceabilityInputs(
   productions: Production[],
   items: Item[],
@@ -195,8 +216,11 @@ function traceabilityInputs(
   trucks: Truck[],
   qcUpdates: QcUpdateRecord[],
   complaints: QualityComplaint[],
+  materials: Material[],
+  materialIssueReelLines: MaterialIssueReelLine[],
+  materialReturnReelLines: MaterialReturnReelLine[],
 ) {
-  return { productions, items, companies, orders, schedules, processing, boardline, printing, inspections, dispatchPlans, loadingSlips, invoices, invoiceLineItems, trucks, qcUpdates, complaints };
+  return { productions, items, companies, orders, schedules, processing, boardline, printing, inspections, dispatchPlans, loadingSlips, invoices, invoiceLineItems, trucks, qcUpdates, complaints, materials, materialIssueReelLines, materialReturnReelLines };
 }
 
 function LotSearchInput({
@@ -286,10 +310,12 @@ function DetailView({
 }) {
   const data = record || EMPTY_TRACEABILITY_RECORD;
   const [showPlannedPaper, setShowPlannedPaper] = useState(true);
+  const [includePaperIssueInfo, setIncludePaperIssueInfo] = useState(false);
   const field = (label: string, value: TraceabilityValue | ReactNode, span?: number, options: Omit<SheetField, "label" | "value" | "span"> = {}) => ({ label, value, span, ...options });
 
   useEffect(() => {
     setShowPlannedPaper(true);
+    setIncludePaperIssueInfo(false);
   }, [record?.id]);
 
   const paperModeLabel = showPlannedPaper ? "PLANNED PAPER" : "LINE - INCHARGE";
@@ -338,6 +364,8 @@ function DetailView({
             field("CUSTOMER SPECIFICATION", data.planning.customerArtwork, 1, { link: true }),
           ]} />
         </SheetSection>
+
+        {includePaperIssueInfo && <PaperIssueSection rows={data.paperIssue} />}
 
         <SheetSection title="BOARDLINE INFORMATION">
           <SheetRow fields={[
@@ -444,6 +472,16 @@ function DetailView({
         </SheetSection>
       </div>
     </div>
+    <div className="traceability-print-controls" aria-label="Traceability print controls">
+      <label className="traceability-paper-issue-checkbox">
+        <input type="checkbox" checked={includePaperIssueInfo} onChange={(event) => setIncludePaperIssueInfo(event.target.checked)} />
+        <span>Include Paper Issue Info</span>
+      </label>
+      <button type="button" className="traceability-print-button" disabled={!record} onClick={() => window.print()}>
+        <Printer size={16} aria-hidden="true" />
+        Print
+      </button>
+    </div>
   </div>;
 }
 
@@ -538,6 +576,9 @@ export function TraceabilitySystem() {
   const [trucks, , trucksLoading] = useData<Truck>("trucks", [], { firmScope: "all", storageKey: "traceability-trucks" });
   const [qcUpdates, , qcUpdatesLoading] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all", storageKey: "traceability-updates" });
   const [complaints, , complaintsLoading] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all", storageKey: "traceability-complaints" });
+  const [materials, , materialsLoading] = useData<Material>("materials", [], { firmScope: "all", storageKey: "traceability-materials" });
+  const [materialIssueReelLines, , materialIssueReelLinesLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", storageKey: "traceability-material-issue-reels" });
+  const [materialReturnReelLines, , materialReturnReelLinesLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", storageKey: "traceability-material-return-reels" });
 
   const records = useMemo(() => buildTraceabilityRecords(traceabilityInputs(
     productions,
@@ -556,10 +597,13 @@ export function TraceabilitySystem() {
     trucks,
     qcUpdates,
     complaints,
-  )), [boardline, complaints, companies, dispatchPlans, inspections, invoiceLineItems, invoices, items, loadingSlips, orders, printing, processing, productions, qcUpdates, schedules, trucks]);
+    materials,
+    materialIssueReelLines,
+    materialReturnReelLines,
+  )), [boardline, complaints, companies, dispatchPlans, inspections, invoiceLineItems, invoices, items, loadingSlips, materialIssueReelLines, materialReturnReelLines, materials, orders, printing, processing, productions, qcUpdates, schedules, trucks]);
   const selected = productionId ? records.find((record) => record.id === productionId) : undefined;
   const suggestions = useMemo(() => filterTraceabilityRecords(records, search), [records, search]);
-  const loading = [productionsLoading, companiesLoading, ordersLoading, schedulesLoading, processingLoading, boardlineLoading, printingLoading, inspectionsLoading, dispatchPlansLoading, loadingSlipsLoading, invoicesLoading, invoiceLineItemsLoading, trucksLoading, qcUpdatesLoading, complaintsLoading].some(Boolean);
+  const loading = [productionsLoading, companiesLoading, ordersLoading, schedulesLoading, processingLoading, boardlineLoading, printingLoading, inspectionsLoading, dispatchPlansLoading, loadingSlipsLoading, invoicesLoading, invoiceLineItemsLoading, trucksLoading, qcUpdatesLoading, complaintsLoading, materialsLoading, materialIssueReelLinesLoading, materialReturnReelLinesLoading].some(Boolean);
   const notFound = Boolean(productionId && !selected && !loading);
 
   useEffect(() => {
