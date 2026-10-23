@@ -1,8 +1,13 @@
+import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-const PDF_WIDTH_MM = 285;
 const PDF_MARGIN_MM = 6;
 const PDF_RENDER_WIDTH_PX = 1120;
+
+export type TraceabilityPdfSlice = {
+  sourceY: number;
+  sourceHeight: number;
+};
 
 export function traceabilityPdfFileName(jobNo: string) {
   const safeJobNo = String(jobNo || "traceability")
@@ -10,6 +15,26 @@ export function traceabilityPdfFileName(jobNo: string) {
     .replace(/[^a-z0-9._-]+/gi, "_")
     .replace(/^_+|_+$/g, "") || "traceability";
   return `Traceability_${safeJobNo}.pdf`;
+}
+
+export function calculateTraceabilityPdfSlices(
+  canvasWidth: number,
+  canvasHeight: number,
+  pageWidthMm: number,
+  pageHeightMm: number,
+): TraceabilityPdfSlice[] {
+  if (!Number.isFinite(canvasWidth) || !Number.isFinite(canvasHeight) || canvasWidth <= 0 || canvasHeight <= 0) return [];
+  if (!Number.isFinite(pageWidthMm) || !Number.isFinite(pageHeightMm) || pageWidthMm <= 0 || pageHeightMm <= 0) return [];
+
+  const sourcePageHeight = Math.max(1, Math.floor((canvasWidth * pageHeightMm) / pageWidthMm));
+  const slices: TraceabilityPdfSlice[] = [];
+  for (let sourceY = 0; sourceY < canvasHeight;) {
+    const sourceHeight = Math.min(sourcePageHeight, canvasHeight - sourceY);
+    if (sourceHeight <= 0) break;
+    slices.push({ sourceY, sourceHeight });
+    sourceY += sourceHeight;
+  }
+  return slices;
 }
 
 function replaceWithText(element: Element, value: string) {
@@ -24,6 +49,7 @@ function prepareTraceabilityClone(source: HTMLElement) {
   clone.style.width = `${PDF_RENDER_WIDTH_PX}px`;
   clone.style.minWidth = `${PDF_RENDER_WIDTH_PX}px`;
   clone.style.maxWidth = "none";
+  clone.style.height = "auto";
   clone.style.overflow = "visible";
 
   clone.querySelectorAll<HTMLElement>(
@@ -40,6 +66,30 @@ function prepareTraceabilityClone(source: HTMLElement) {
   });
   clone.querySelectorAll<HTMLElement>("button, input, select, textarea").forEach((element) => element.remove());
   return clone;
+}
+
+async function waitForCloneResources(clone: HTMLElement) {
+  if (typeof document.fonts?.ready?.then === "function") await document.fonts.ready;
+  const images = Array.from(clone.querySelectorAll<HTMLImageElement>("img"));
+  await Promise.all(images.map((image) => {
+    if (image.complete) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      image.addEventListener("load", () => resolve(), { once: true });
+      image.addEventListener("error", () => resolve(), { once: true });
+    });
+  }));
+}
+
+function createCanvasSlice(source: HTMLCanvasElement, slice: TraceabilityPdfSlice) {
+  const canvas = document.createElement("canvas");
+  canvas.width = source.width;
+  canvas.height = slice.sourceHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("Unable to create a PDF canvas slice.");
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.drawImage(source, 0, slice.sourceY, source.width, slice.sourceHeight, 0, 0, source.width, slice.sourceHeight);
+  return canvas;
 }
 
 export async function downloadTraceabilityPdf(element: HTMLElement, jobNo: string): Promise<void> {
@@ -59,32 +109,35 @@ export async function downloadTraceabilityPdf(element: HTMLElement, jobNo: strin
   document.body.appendChild(host);
 
   try {
-    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
-    await new Promise<void>((resolve, reject) => {
-      try {
-        pdf.html(clone, {
-          x: PDF_MARGIN_MM,
-          y: PDF_MARGIN_MM,
-          width: PDF_WIDTH_MM,
-          windowWidth: PDF_RENDER_WIDTH_PX,
-          autoPaging: "slice",
-          margin: PDF_MARGIN_MM,
-          html2canvas: {
-            scale: 2,
-            useCORS: true,
-            backgroundColor: "#ffffff",
-            scrollX: 0,
-            scrollY: 0,
-          },
-          callback: (completedPdf) => {
-            completedPdf.save(traceabilityPdfFileName(jobNo));
-            resolve();
-          },
-        });
-      } catch (error) {
-        reject(error);
-      }
+    await waitForCloneResources(clone);
+    const renderWidth = Math.max(PDF_RENDER_WIDTH_PX, clone.scrollWidth);
+    const renderHeight = Math.max(1, clone.scrollHeight);
+    const canvas = await html2canvas(clone, {
+      backgroundColor: "#ffffff",
+      height: renderHeight,
+      logging: false,
+      scale: 2,
+      useCORS: true,
+      width: renderWidth,
+      windowHeight: renderHeight,
+      windowWidth: renderWidth,
+      scrollX: 0,
+      scrollY: 0,
     });
+
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = pdf.internal.pageSize.getWidth() - (PDF_MARGIN_MM * 2);
+    const pageHeight = pdf.internal.pageSize.getHeight() - (PDF_MARGIN_MM * 2);
+    const slices = calculateTraceabilityPdfSlices(canvas.width, canvas.height, pageWidth, pageHeight);
+    if (!slices.length) throw new Error("The traceability sheet produced no printable content.");
+
+    slices.forEach((slice, index) => {
+      if (index > 0) pdf.addPage();
+      const sliceCanvas = createCanvasSlice(canvas, slice);
+      const imageHeight = (slice.sourceHeight * pageWidth) / canvas.width;
+      pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", PDF_MARGIN_MM, PDF_MARGIN_MM, pageWidth, imageHeight, undefined, "FAST");
+    });
+    pdf.save(traceabilityPdfFileName(jobNo));
   } finally {
     host.remove();
   }
