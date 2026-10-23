@@ -9,7 +9,7 @@ interface TableControlsProps {
 
 export function TableControls({ searchTerm, onSearchChange, placeholder = "Search..." }: TableControlsProps) {
   return (
-    <div className="relative w-full max-w-sm">
+    <div className="relative w-full min-w-0 max-w-sm">
       <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
       <input
         type="text"
