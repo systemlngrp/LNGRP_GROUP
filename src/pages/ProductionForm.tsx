@@ -748,7 +748,7 @@ export function ProductionForm() {
       </div>
 
       <div className="bg-white p-4 rounded shadow-sm border border-black w-full">
-        <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-5 text-[13px]">
+        <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-5 text-[15px]">
           {selectedSchedule && selectedOrder && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-black p-4 rounded">
               <InfoTile label="Schedule No" value={selectedSchedule.scheduleNo || "-"} />
@@ -773,7 +773,7 @@ export function ProductionForm() {
                 min={todayStr}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 required
-                className="w-full border-2 border-black rounded p-2 text-[13px] text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
+                className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
               />
             </ProductionFieldRow>}
 
@@ -860,7 +860,7 @@ export function ProductionForm() {
                   required
                   placeholder={isSampleItem ? "Auto-filled from sample request" : "Enter planned quantity"}
                   className={cn(
-                    "w-full border-2 border-black rounded p-2 text-[13px] text-black shadow-sm",
+                    "w-full border-2 border-black rounded p-2 text-[15px] text-black shadow-sm",
                     isSampleItem
                       ? "bg-slate-100 cursor-not-allowed focus:outline-none"
                       : quantityDeviationError || maximumAllowedProductionError
@@ -871,12 +871,12 @@ export function ProductionForm() {
                 {selectedItem && <span className="absolute right-3 top-2.5 text-black font-bold opacity-60">{selectedItem.uom}</span>}
               </div>
               {maximumAllowedProductionError && (
-                <span className="text-red-600 text-[13px] font-bold">
+                <span className="text-red-600 text-[15px] font-bold">
                   Planned Quantity cannot be greater than Maximum Allowed Production.
                 </span>
               )}
               {quantityDeviationError && (
-                <span className="text-red-600 text-[13px] font-bold">
+                <span className="text-red-600 text-[15px] font-bold">
                   Planned Quantity cannot exceed {maximumDeviationQty.toLocaleString()} based on Last Plan Qty and Deviation Allowed.
                 </span>
               )}
@@ -890,7 +890,7 @@ export function ProductionForm() {
               type="text"
               value={formData.remarks}
               onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              className="w-full border-2 border-black rounded p-2 text-[13px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
+              className="w-full border-2 border-black rounded p-2 text-[15px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
             />
             </ProductionFieldRow>
           </div>}
@@ -922,7 +922,7 @@ export function ProductionForm() {
               {showField("Printing Color") ? <FormInput label="Printing Color" value={formData.printingColor} readOnly helpText="Auto-calculated by combining Color 1 and Color 2 for the selected item." /> : null}
             </div>
             {gsmValidationError && (
-              <div className="mt-2 text-red-600 text-[13px] font-bold">
+              <div className="mt-2 text-red-600 text-[15px] font-bold">
                 GSM cannot exceed Least GSM when the current item is different from the last produced item.
               </div>
             )}
@@ -987,7 +987,7 @@ export function ProductionForm() {
                 maximumAllowedProductionError ||
                 gsmValidationError
               }
-              className="flex items-center justify-center min-w-[120px] bg-emerald-600 text-white px-6 py-2 rounded text-[13px] font-bold hover:bg-emerald-700 transition disabled:opacity-50 border border-black shadow"
+              className="flex items-center justify-center min-w-[120px] bg-emerald-600 text-white px-6 py-2 rounded text-[15px] font-bold hover:bg-emerald-700 transition disabled:opacity-50 border border-black shadow"
             >
               {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit Entry"}
             </button>
@@ -1037,7 +1037,7 @@ function ProductionFieldRow({
 }) {
   return (
     <div className="grid grid-cols-[minmax(150px,0.8fr)_minmax(0,2fr)] items-center gap-x-4 gap-y-1">
-      <div className="text-[13px] font-black text-slate-600">
+      <div className="text-[15px] font-black text-slate-600">
         {helpText ? <LabelWithHelp label={label} helpText={helpText} required={required} /> : <span>{label} {required ? <span className="text-red-500">*</span> : null}</span>}
       </div>
       <div className="min-w-0">{children}</div>
@@ -1077,7 +1077,7 @@ function FormInput({
         value={value}
         onChange={(e) => onChange?.(type === "number" ? (e.target.value === "" ? "" : parseFloat(e.target.value)) : e.target.value)}
         className={cn(
-          "w-full border border-black rounded px-2 py-2 text-[13px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600",
+          "w-full border border-black rounded px-2 py-2 text-[15px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600",
           readOnly ? "bg-slate-100 cursor-not-allowed" : "bg-yellow-100",
           inputClassName
         )}
@@ -1105,7 +1105,7 @@ function ReadOnlyNumberField({
           type="number"
           value={value}
           readOnly
-          className="w-full border-2 border-black rounded p-2 text-[13px] text-black bg-slate-100 focus:outline-none shadow-sm"
+          className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-slate-100 focus:outline-none shadow-sm"
         />
         {suffix ? <span className="absolute right-3 top-2.5 text-black font-bold opacity-60">{suffix}</span> : null}
       </div>
@@ -1129,7 +1129,7 @@ function ReadOnlyTextField({
         type="text"
         value={value}
         readOnly
-        className="w-full border-2 border-black rounded p-2 text-[13px] text-black bg-slate-100 focus:outline-none shadow-sm"
+        className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-slate-100 focus:outline-none shadow-sm"
       />
     </ProductionFieldRow>
   );
