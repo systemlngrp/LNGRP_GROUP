@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Search } from "lucide-react";
+import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
@@ -32,6 +33,7 @@ function Table({ headers, rows, headerClass = "bg-slate-200" }: { headers: strin
 }
 
 export function NewSpec() {
+  const { user, loading: authLoading } = useAuth();
   const npdItems = useNpdItems();
   const [phpRows] = useData<any>("php_item_master", []);
   const [plateRows] = useData<any>("plate_item_master", []);
@@ -49,6 +51,7 @@ export function NewSpec() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadName, setDownloadName] = useState("NPD_Card.pdf");
   const downloadUrlRef = useRef<string | null>(null);
+  const approvedBy = [user?.name, user?.userId, user?.email].map(text).find(Boolean) || "System User";
   const queryErp = useMemo(() => {
     const direct = new URLSearchParams(window.location.search).get("erp");
     if (direct) return direct.trim();
@@ -89,7 +92,7 @@ export function NewSpec() {
       const nextSpecialRemark = [...specialRemarkRecords]
         .filter((record) => text(record.erpCode).toLowerCase() === normalizedErpKey)
         .sort((a, b) => text(b.updateTimestamp || b.updateDate).localeCompare(text(a.updateTimestamp || a.updateDate)))[0]?.specialRemarks?.trim() || "";
-      const doc = await buildNpdCardPdf({ npdRow, phpRow: nextPhp, plateRow: nextPlate, qcFileNo: nextFileNo, specialRemarks: nextSpecialRemark, setting: settings[0] || null });
+      const doc = await buildNpdCardPdf({ npdRow, phpRow: nextPhp, plateRow: nextPlate, qcFileNo: nextFileNo, specialRemarks: nextSpecialRemark, setting: settings[0] || null, approvedBy });
       const nextUrl = URL.createObjectURL(doc.output("blob"));
       if (downloadUrlRef.current) URL.revokeObjectURL(downloadUrlRef.current);
       downloadUrlRef.current = nextUrl;
@@ -111,7 +114,7 @@ export function NewSpec() {
   };
 
   useEffect(() => {
-    if (autoRequestedRef.current || !queryErp || !npdItems.length) return;
+    if (authLoading || autoRequestedRef.current || !queryErp || !npdItems.length) return;
     autoRequestedRef.current = true;
     const match = npdItems.find((row) => text(row.erp).toLowerCase() === queryErp.toLowerCase());
     if (!match) {
@@ -122,7 +125,7 @@ export function NewSpec() {
     const matchedErp = text(match.erp);
     setErp(matchedErp);
     void showSpec(matchedErp, true);
-  }, [npdItems, queryErp]);
+  }, [authLoading, npdItems, queryErp]);
 
   const downloadSpec = () => { if (!downloadUrl) return; const link = document.createElement("a"); link.href = downloadUrl; link.download = downloadName; link.click(); };
   const issueDate = new Date().toLocaleDateString("en-GB");
@@ -156,7 +159,7 @@ export function NewSpec() {
         <div className="mt-3"><Bar className="bg-slate-700 text-white">Layers / GSM / BF / UPS</Bar><Table headers={["Layers", "GSM", "BF", "1 UPS", "2 UPS", "3 UPS", "4 UPS", "5 UPS"]} rows={layerRows.map((row) => [...row, ...[1, 2, 3, 4, 5].map((ups) => ups === Number(value(selected, "ups", "noOfUps")) && row[0].startsWith("Backing 1") ? "X" : "-")])} /></div>
         <div className="mt-3"><div className="grid grid-cols-2"><Bar>PHP</Bar><Bar className="bg-amber-600 text-white">Plate</Bar></div><div className="grid grid-cols-1 border-x border-black lg:grid-cols-2"><div><Table headers={["Length", "Width", "Height"]} rows={[[value(phpRow, "length"), value(phpRow, "breadth", "width"), value(phpRow, "height")]]} /><Table headers={["Ply", "BS", "Holes L", "Holes W", "Qty/Box", "Flute"]} rows={[[value(phpRow, "noOfPly"), value(phpRow, "brustingStrengthReq"), value(phpRow, "holesOrientationL", "numberOfHolesInPhp"), value(phpRow, "holesOrientationW"), value(phpRow, "numberOfSetsPerBox"), value(phpRow, "fluteType")]]} /></div><Table headers={["Type", "ERP", "Length", "Width", "Ply", "Flute", "BS", "Qty/Box"]} headerClass="bg-amber-300" rows={[[value(plateRow, "typeOfPlate"), value(plateRow, "erpItemCode", "erp"), value(plateRow, "length"), value(plateRow, "breadth", "width"), value(plateRow, "noOfPly"), value(plateRow, "fluteType"), value(plateRow, "brustingStrengthReq"), value(plateRow, "numberOfSetsPerBox")]]} /></div></div>
         <div className="mt-3 grid grid-cols-1 border border-black md:grid-cols-3"><Cell label="Remarks" className="min-h-20 md:col-span-2"><span className="whitespace-pre-wrap">{specialRemarks || "-"}</span></Cell><Cell label="Creaser / Plate Notes" className="min-h-20">CREASER<br />Z PLATE / U PLATE / O PLATE</Cell></div>
-        <div className="mt-3"><Table headers={["Revision", "Description of revision", "Reason for Revision"]} rows={[["4 / 2/25/2026", "Auto calculated sheet weight / B.S. GSM added.", "For better accuracy."]]} /><div className="grid grid-cols-1 border-x border-b border-black sm:grid-cols-3"><Cell>PREPARED BY</Cell><Cell className="text-blue-700">MASTER COPY</Cell><Cell className="text-red-700">APPROVED BY</Cell></div></div>
+        <div className="mt-3"><Table headers={["Revision", "Description of revision", "Reason for Revision"]} rows={[["4 / 2/25/2026", "Auto calculated sheet weight / B.S. GSM added.", "For better accuracy."]]} /><div className="grid grid-cols-1 border-x border-b border-black sm:grid-cols-3"><Cell>PREPARED BY</Cell><Cell className="text-blue-700">MASTER COPY</Cell><Cell label="Approved By" className="text-red-700">{approvedBy}</Cell></div></div>
         <div className="mt-4 border-t-2 border-black pt-3"><span className="text-xs font-bold text-slate-500">Generated from NPD Master</span></div>
       </div>
     </section> : null}

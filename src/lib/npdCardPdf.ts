@@ -13,6 +13,7 @@ type DownloadNpdCardPdfArgs = {
   qcFileNo?: string;
   specialRemarks?: string;
   setting?: Setting | null;
+  approvedBy?: string;
 };
 
 type CellOptions = {
@@ -435,7 +436,7 @@ function drawPhpPlateSection(doc: jsPDF, y: number, phpRow?: RowRecord | null, p
   return y + 5.5;
 }
 
-function drawRevisionFooter(doc: jsPDF, y: number) {
+function drawRevisionFooter(doc: jsPDF, y: number, approvedBy?: string) {
   cell(doc, SHEET_X, y, 39, 7, "REMARK", { bold: true, fontSize: FONT_BODY_12PX });
   cell(doc, SHEET_X + 39, y, 157, 7, "", { fontSize: FONT_BODY_12PX });
   y += 7;
@@ -456,10 +457,10 @@ function drawRevisionFooter(doc: jsPDF, y: number) {
 
   cell(doc, SHEET_X, y, 39, 9, "PREPARED BY", { bold: true, fontSize: FONT_HEADING_14PX });
   cell(doc, SHEET_X + 39, y, 67, 9, "MASTER COPY", { bold: true, textColor: BLUE, fontSize: FONT_HEADING_14PX });
-  cell(doc, SHEET_X + 106, y, 90, 9, "APPROVED BY", { bold: true, textColor: RED, fontSize: FONT_HEADING_14PX });
+  cell(doc, SHEET_X + 106, y, 90, 9, `APPROVED BY\n${approvedBy || "System User"}`, { bold: true, textColor: RED, fontSize: FONT_HEADING_14PX });
 }
 
-export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, qcFileNo, specialRemarks, setting }: DownloadNpdCardPdfArgs) {
+export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, qcFileNo, specialRemarks, setting, approvedBy }: DownloadNpdCardPdfArgs) {
   const doc = new jsPDF("p", "mm", "a4");
 
   doc.setProperties({
@@ -471,7 +472,7 @@ export async function buildNpdCardPdf({ npdRow, phpRow, plateRow, qcFileNo, spec
   y = drawSpecBlock(doc, y, npdRow);
   y = drawLayersAndUps(doc, y, npdRow);
   y = drawPhpPlateSection(doc, y, phpRow, plateRow);
-  drawRevisionFooter(doc, y);
+  drawRevisionFooter(doc, y, approvedBy);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(FONT_MICRO);
