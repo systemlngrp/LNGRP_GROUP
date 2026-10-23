@@ -8,7 +8,7 @@ import { RefreshCw } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useConfirm } from "../components/ConfirmDialog";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 export function CanceledProductions() {

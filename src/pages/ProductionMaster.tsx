@@ -21,7 +21,7 @@ import { getProductionMatchingFields, hasProductionMatchingFieldChanges } from "
 import { downloadJobCardPdf } from "../lib/jobCardPdf";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { resolveProductionErp, resolveProductionItem as resolveProductionCatalogItem, resolveProductionSource } from "../lib/productionErp";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { isScrapLinkedProduction } from "../lib/productionOrigin";

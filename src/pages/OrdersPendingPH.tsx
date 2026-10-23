@@ -9,7 +9,7 @@ import { formatDate } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ChevronUp, ChevronDown, CheckCircle, XCircle, Edit } from "lucide-react";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { Firm } from "../types";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { TableActionCell } from "../components/TableActionCell";

@@ -10,7 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 function getPendingProductionQty(schedule: OrderSchedule, consumedQty: number) {

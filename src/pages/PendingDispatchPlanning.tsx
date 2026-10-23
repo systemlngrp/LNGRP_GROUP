@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 
 import { TableControls } from "../components/TableControls";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -513,7 +513,7 @@ export function PendingDispatchPlanning() {
               <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search by Job, Order, Item, Company, Firm..." />
             </div>
 
-            <FirmFilter value={selectedFirmId} onChange={(firmId) => { setSelectedFirmId(firmId); setSelectedIds(new Set()); }} label="Filter by Firm" className="min-w-[180px]" />
+            <FirmFilter value={selectedFirmId} onChange={(firmId) => { setSelectedFirmId(firmId); setSelectedIds(new Set()); }} className="min-w-[180px]" />
 
             <div className="space-y-1">
               <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Company</div>

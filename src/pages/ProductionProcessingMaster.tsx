@@ -13,7 +13,7 @@ import { CorrugationWastageFields } from "../components/CorrugationWastageFields
 import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, wastageDraftFromEntry, type CorrugationWastageDraft } from "../lib/corrugationWastage";
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, printingWastageDraftFromEntry, type PrintingWastageDraft } from "../lib/printingWastage";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type EditDraft = {

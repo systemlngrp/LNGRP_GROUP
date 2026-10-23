@@ -12,7 +12,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/serial";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 

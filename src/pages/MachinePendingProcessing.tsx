@@ -15,7 +15,7 @@ import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage"
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { resolveProductionErp, resolveProductionItem } from "../lib/productionErp";
 import { getProductionOriginSource } from "../lib/productionOrigin";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 
 interface PendingMachineJob {
   production: Production;

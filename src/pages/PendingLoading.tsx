@@ -16,7 +16,7 @@ import {
   OrderSchedule,
   Firm,
 } from "../types";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import {
   Truck as TruckIcon,
@@ -715,7 +715,7 @@ export function PendingLoading() {
           <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-slate-950">Pending Loading</h2>
         </div>
         <div className="flex w-full flex-wrap items-end gap-3 md:w-auto">
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} label="Firm" className="min-w-[180px]" />
+        <FirmFilter value={firmFilter} onChange={setFirmFilter} className="min-w-[180px]" />
         <div className="relative w-full md:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input

@@ -6,7 +6,7 @@ import { normalizeOrderItemSource } from "../lib/orderItems";
 import { Company, Firm, Order, OrderSchedule } from "../types";
 import { formatDate } from "../lib/serial";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
-import { FirmFilter } from "../components/FirmFilter";
+import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 export function PendingNpd() {
