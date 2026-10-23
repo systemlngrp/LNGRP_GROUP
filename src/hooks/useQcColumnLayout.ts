@@ -17,5 +17,9 @@ export function useQcColumnLayout(report: QcReportKey, count: number, savedValue
     if (!canManage || columns.length === 0) return;
     publisher.current?.publish(columns);
   };
-  return { visible, status, publish };
+  const reset = () => {
+    if (!canManage) return;
+    publisher.current?.reset();
+  };
+  return { visible, status, publish, reset };
 }

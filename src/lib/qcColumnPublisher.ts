@@ -41,5 +41,9 @@ export function createQcColumnPublisher(
       desired = [...columns];
       onColumns(desired);
     },
+    reset() {
+      desired = [...confirmed];
+      onColumns(desired);
+    },
   };
 }

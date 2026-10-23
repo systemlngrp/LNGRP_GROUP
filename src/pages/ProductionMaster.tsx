@@ -25,6 +25,8 @@ import { FirmFilter } from "../components/FirmFilter";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { isScrapLinkedProduction } from "../lib/productionOrigin";
+import { useQcColumnLayout } from "../hooks/useQcColumnLayout";
+import { QC_REPORT_COLUMN_COUNTS, QC_REPORT_COLUMN_SCHEMA_VERSIONS } from "../lib/qcColumnLayout";
 
 const firstNonBlank = (...values: unknown[]) => {
   for (const value of values) {
@@ -48,6 +50,15 @@ const formatDecimal = (value: unknown) => {
     maximumFractionDigits: 2,
   });
 };
+
+const PRODUCTION_MASTER_COLUMN_LABELS = [
+  "Sr. No.", "Job No.", "Order No.", "ERP Code", "Firm", "Company", "Plan Date", "Item Name", "Sample", "Type", "Mandatory", "Planned Qty", "Remarks", "UPS", "No. of Parts", "Loaded Qty",
+  "Paper", "Liner", "Warpage (Boxes)", "Warpage (Kgs)", "Delamination (Boxes)", "Delamination (Kgs)", "Misalignment (Boxes)", "Misalignment (Kgs)", "2PLY & Paper (Kgs)", "Deckel Wastage", "Sheer Cutter (Boxes)", "Sheer Cutter (Kgs)",
+  "Print", "Slotting", "Delamination Printing", "Misalignment Printing", "Dry Sheets", "Warp", "Misprinting", "Job Setting", "Paste", "Stitch", "Punch", "Glue",
+  "L", "B", "H", "L (OD)", "W (OD)", "H (OD)", "Ply", "Flute", "ID to OD", "ID to OD 2", "Take-up Factor", "L1", "F1", "L2", "F2", "L3", "GSM", "Least GSM",
+  "Color 1", "Color 2", "Printing Color", "Total Wt", "Real/KG", "Reel (Calc)", "Cutting UPS (Plates)", "Reel Trim", "Cutting Trim", "Planned Prod (M)", "Sheet Wt", "Plate/PHP Wt", "Total Wt of Set", "Flute Batch", "Rate", "Value",
+  "Production Sheet Plant", "Production FFG", "Production (M)", "Actual Paper (KG)", "Job Closer", "Close Date",
+] as const;
 
 export function ProductionMaster() {
   const confirm = useConfirm();
@@ -80,6 +91,26 @@ export function ProductionMaster() {
   const [cancelRemarks, setCancelRemarks] = useState("");
   const [cancelError, setCancelError] = useState("");
   const [cancelSubmittingId, setCancelSubmittingId] = useState<string | null>(null);
+  const [showColumnPanel, setShowColumnPanel] = useState(false);
+  const [columnSearch, setColumnSearch] = useState("");
+  const { visible: visibleColumnIndexes, status: columnSaveState, publish: publishVisibleColumns, reset: resetVisibleColumns } = useQcColumnLayout(
+    "production-master",
+    QC_REPORT_COLUMN_COUNTS["production-master"],
+    settings[0]?.productionMasterVisibleColumns,
+    canManage,
+    QC_REPORT_COLUMN_SCHEMA_VERSIONS["production-master"],
+  );
+  const visibleDataColumnSet = useMemo(() => new Set(visibleColumnIndexes), [visibleColumnIndexes]);
+  const visibleTableColumnCount = visibleColumnIndexes.length + 1;
+  const hiddenTableColumnsCss = useMemo(
+    () => visibleColumnIndexes.length === PRODUCTION_MASTER_COLUMN_LABELS.length
+      ? ""
+      : PRODUCTION_MASTER_COLUMN_LABELS
+          .map((_, index) => visibleDataColumnSet.has(index) ? "" : `.production-master-table > thead > tr > th:nth-child(${index + 1}), .production-master-table > tbody > tr:not(.production-master-empty-row) > td:nth-child(${index + 1})`)
+          .filter(Boolean)
+          .join(",\n"),
+    [visibleColumnIndexes.length, visibleDataColumnSet],
+  );
 
   const resolveProductionItem = (production?: Production | null, order?: Order | null) => {
     if (!production) return undefined;
@@ -121,30 +152,6 @@ export function ProductionMaster() {
     () => productions.filter((production) => !isScrapLinkedProduction(production, phpJobs, plateJobs)),
     [plateJobs, phpJobs, productions]
   );
-
-  const ffgSummaries = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
-
-    const totals = {
-      today: 0,
-      yesterday: 0,
-      total: 0
-    };
-
-    visibleProductions.forEach(p => {
-      const qty = Number(p.prodFromFFG || 0);
-      const prodDate = p.date?.split("T")[0];
-
-      if (prodDate === today) totals.today += qty;
-      if (prodDate === yesterdayStr) totals.yesterday += qty;
-      totals.total += qty;
-    });
-
-    return totals;
-  }, [visibleProductions]);
 
   const updateCloseMeta = async (id: string, patch: Partial<Pick<Production, "closeBy" | "closeDate">>) => {
     const target = productions.find((p) => p.id === id);
@@ -557,22 +564,6 @@ export function ProductionMaster() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production Master</h2>
       </div>
 
-      {/* FFG Summaries */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
-          <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">FFG Produced Today</div>
-          <div className="text-2xl font-black text-indigo-700">{ffgSummaries.today.toLocaleString()} <span className="text-sm font-bold text-slate-400">PCS</span></div>
-        </div>
-        <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
-          <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">FFG Produced Yesterday</div>
-          <div className="text-2xl font-black text-amber-700">{ffgSummaries.yesterday.toLocaleString()} <span className="text-sm font-bold text-slate-400">PCS</span></div>
-        </div>
-        <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
-          <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total FFG Produced</div>
-          <div className="text-2xl font-black text-emerald-700">{ffgSummaries.total.toLocaleString()} <span className="text-sm font-bold text-slate-400">PCS</span></div>
-        </div>
-      </div>
-
       <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -610,7 +601,56 @@ export function ProductionMaster() {
             Clear Filters
           </button>
         ) : null}
+        {canManage ? (
+          <button
+            type="button"
+            onClick={() => setShowColumnPanel((value) => !value)}
+            className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
+          >
+            Hide Columns
+          </button>
+        ) : null}
       </div>
+      {canManage && showColumnPanel ? (
+        <div className="rounded border-2 border-black bg-slate-50 p-3">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <label className="min-w-60 flex-1 text-xs font-bold" htmlFor="production-master-column-search">
+              Search columns
+              <input
+                id="production-master-column-search"
+                aria-label="Search Production Master columns"
+                value={columnSearch}
+                onChange={(event) => setColumnSearch(event.target.value)}
+                placeholder="Search column names"
+                className="mt-1 h-[34px] w-full rounded border-2 border-black bg-white px-2 text-sm font-normal"
+              />
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => publishVisibleColumns(PRODUCTION_MASTER_COLUMN_LABELS.map((_, index) => index))} className="rounded border border-black bg-white px-2 py-1 text-xs font-bold">Show All</button>
+              <button type="button" onClick={resetVisibleColumns} className="rounded border border-black bg-white px-2 py-1 text-xs font-bold">Reset</button>
+              {columnSaveState ? <span className="text-xs font-bold">{columnSaveState}</span> : null}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+            {PRODUCTION_MASTER_COLUMN_LABELS
+              .map((label, index) => ({ label, index }))
+              .filter(({ label }) => label.toLowerCase().includes(columnSearch.trim().toLowerCase()))
+              .map(({ label, index }) => (
+                <label key={label} className="flex items-center gap-2 rounded border border-slate-300 bg-white px-2 py-1 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={visibleDataColumnSet.has(index)}
+                    onChange={() => publishVisibleColumns(visibleDataColumnSet.has(index) ? visibleColumnIndexes.filter((value) => value !== index) : [...visibleColumnIndexes, index].sort((a, b) => a - b))}
+                  />
+                  {label}
+                </label>
+              ))}
+          </div>
+          {columnSearch.trim() && !PRODUCTION_MASTER_COLUMN_LABELS.some((label) => label.toLowerCase().includes(columnSearch.trim().toLowerCase())) ? <p className="mt-2 text-sm font-semibold text-slate-600">No columns match your search.</p> : null}
+          <p className="mt-2 text-xs font-semibold text-slate-600">Actions always remains visible.</p>
+        </div>
+      ) : null}
+      {hiddenTableColumnsCss ? <style>{hiddenTableColumnsCss + " { display: none; }"}</style> : null}
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4 p-2">
@@ -723,7 +763,7 @@ export function ProductionMaster() {
             })}
         </div>
         <div className="table-sticky-scroll hidden md:block pb-2">
-          <table className="min-w-max w-full divide-y divide-black border-collapse border border-black">
+          <table className="production-master-table min-w-max w-full divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Sr. No.</th>
@@ -808,8 +848,8 @@ export function ProductionMaster() {
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
-                <tr>
-                  <td colSpan={90} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
+                <tr className="production-master-empty-row">
+                  <td colSpan={visibleTableColumnCount} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
                 </tr>
               ) : (
                 paginatedList.map((p, idx) => {

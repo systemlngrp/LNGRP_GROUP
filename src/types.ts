@@ -1834,6 +1834,7 @@ export interface Setting {
   productionFormVisibleColumns?: string;
   pdiReportVisibleColumns?: string;
   qcViewVisibleColumns?: string;
+  productionMasterVisibleColumns?: string;
   poMandatoryMrrTypes?: string;
   realizationPerKgTargets?: string;
   invoiceNumberSeries?: string;
