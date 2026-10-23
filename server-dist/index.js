@@ -7245,6 +7245,7 @@ async function initDb(retries = 5) {
           \`productionFormVisibleColumns\` LONGTEXT,
           \`pdiReportVisibleColumns\` LONGTEXT,
           \`qcViewVisibleColumns\` LONGTEXT,
+          \`productionMasterVisibleColumns\` LONGTEXT,
           \`poMandatoryMrrTypes\` LONGTEXT,
           \`realizationPerKgTargets\` LONGTEXT,
           \`invoiceNumberSeries\` LONGTEXT,
@@ -8330,6 +8331,7 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "productionFormVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "pdiReportVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "qcViewVisibleColumns", type: "LONGTEXT" },
+                { table: "settings", column: "productionMasterVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
                 { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
                 { table: "settings", column: "mandatoryMachinesByType", type: "LONGTEXT" },
@@ -14081,6 +14083,7 @@ entities.forEach(entity => {
 const QC_REPORT_COLUMN_RULES = {
     "qc-view": { count: 57, permission: "/quality/qc-view", setting: "qcViewVisibleColumns" },
     "pdi-report": { count: 34, permission: "/quality/pdi-report", setting: "pdiReportVisibleColumns" },
+    "production-master": { count: 80, permission: "/production/master", setting: "productionMasterVisibleColumns" },
 };
 app.put("/api/qc-report-columns/:report", async (req, res) => {
     const user = await getRequestUser(req);
@@ -14089,7 +14092,7 @@ app.put("/api/qc-report-columns/:report", async (req, res) => {
     const report = String(req.params.report || "");
     const rule = QC_REPORT_COLUMN_RULES[report];
     if (!rule)
-        return res.status(404).json({ error: "Unknown QC report." });
+        return res.status(404).json({ error: "Unknown report." });
     if (!canManageMasterRecords(user) || !hasPermission(user, rule.permission)) {
         return res.status(403).json({ error: "Forbidden" });
     }
