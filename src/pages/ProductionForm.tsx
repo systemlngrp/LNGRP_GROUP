@@ -400,6 +400,21 @@ export function ProductionForm() {
       ? Number((lastPlanQty + deviationLimit).toFixed(2))
       : 0;
 
+  const handleFormKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== "Enter") return;
+    const target = event.target as HTMLElement;
+    if (!target.matches("input, select, textarea") || target.tagName === "TEXTAREA") return;
+
+    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-production-field='true']"))
+      .filter((control) => !control.hasAttribute("disabled") && control.offsetParent !== null);
+    const currentIndex = controls.indexOf(target);
+    const nextControl = currentIndex >= 0 ? controls[currentIndex + 1] : undefined;
+    if (!nextControl) return;
+
+    event.preventDefault();
+    nextControl.focus();
+  };
+
   const quantityDeviationError =
     !isSampleItem &&
     isSameAsLastItem &&
@@ -733,7 +748,7 @@ export function ProductionForm() {
       </div>
 
       <div className="bg-white p-4 rounded shadow-sm border border-black w-full">
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-5 text-[13px]">
           {selectedSchedule && selectedOrder && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-black p-4 rounded">
               <InfoTile label="Schedule No" value={selectedSchedule.scheduleNo || "-"} />
@@ -745,22 +760,22 @@ export function ProductionForm() {
               <InfoTile label="Schedule Qty" value={`${selectedSchedule.qty || 0}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}`} />
             </div>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {showField("Production Date") && <div className="flex flex-col space-y-1">
-              <LabelWithHelp
-                label="Production Date"
-                required
-                helpText="Production date defaults to today. Only today or a future date is allowed; earlier dates are not permitted."
-              />
+          <div className="max-w-4xl space-y-3">
+            {showField("Production Date") && <ProductionFieldRow
+              label="Production Date"
+              required
+              helpText="Production date defaults to today. Only today or a future date is allowed; earlier dates are not permitted."
+            >
               <input
+                data-production-field="true"
                 type="date"
                 value={formData.date}
                 min={todayStr}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
                 required
-                className="border-2 border-black rounded p-2 text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
+                className="w-full border-2 border-black rounded p-2 text-[13px] text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
               />
-            </div>}
+            </ProductionFieldRow>}
 
             {showField("Pending Order Quantity") && <ReadOnlyNumberField
               label="Pending Order Quantity"
@@ -823,14 +838,14 @@ export function ProductionForm() {
               helpText="Company-wise deviation percentage from Companies Master. If company value is blank, fallback 25 is used."
             />}
 
-            {showField("Planned Quantity") && <div className="flex flex-col space-y-1">
-              <LabelWithHelp
+            {showField("Planned Quantity") && <ProductionFieldRow
                 label="Planned Quantity"
                 required
                 helpText="If this item has a pending sample request, quantity is auto-filled from sample quantity and becomes read-only. Otherwise it stays manual. If the current item is same as the last produced item, deviation validation is applied."
-              />
+            >
               <div className="relative">
                 <input
+                  data-production-field="true"
                   type="number"
                   step="any"
                   min={0}
@@ -845,7 +860,7 @@ export function ProductionForm() {
                   required
                   placeholder={isSampleItem ? "Auto-filled from sample request" : "Enter planned quantity"}
                   className={cn(
-                    "w-full border-2 border-black rounded p-2 text-black shadow-sm",
+                    "w-full border-2 border-black rounded p-2 text-[13px] text-black shadow-sm",
                     isSampleItem
                       ? "bg-slate-100 cursor-not-allowed focus:outline-none"
                       : quantityDeviationError || maximumAllowedProductionError
@@ -856,32 +871,34 @@ export function ProductionForm() {
                 {selectedItem && <span className="absolute right-3 top-2.5 text-black font-bold opacity-60">{selectedItem.uom}</span>}
               </div>
               {maximumAllowedProductionError && (
-                <span className="text-red-600 text-xs font-bold">
+                <span className="text-red-600 text-[13px] font-bold">
                   Planned Quantity cannot be greater than Maximum Allowed Production.
                 </span>
               )}
               {quantityDeviationError && (
-                <span className="text-red-600 text-xs font-bold">
+                <span className="text-red-600 text-[13px] font-bold">
                   Planned Quantity cannot exceed {maximumDeviationQty.toLocaleString()} based on Last Plan Qty and Deviation Allowed.
                 </span>
               )}
-            </div>}
+            </ProductionFieldRow>}
           </div>
 
-          {showField("Remarks") && <div className="flex flex-col space-y-1">
-            <LabelWithHelp label="Remarks" helpText="Optional notes for this production entry." />
+          {showField("Remarks") && <div className="max-w-4xl">
+            <ProductionFieldRow label="Remarks" helpText="Optional notes for this production entry.">
             <input
+              data-production-field="true"
               type="text"
               value={formData.remarks}
               onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
+              className="w-full border-2 border-black rounded p-2 text-[13px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
             />
+            </ProductionFieldRow>
           </div>}
 
           <div className="border-t border-black pt-4 mt-6">
             <h3 className="font-black uppercase text-xs text-slate-500 mb-4">Detailed Specifications</h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="max-w-4xl space-y-3">
               {showField("No. of Parts") ? <FormInput label="No. of Parts" value={formData.noOfParts} readOnly type="number" helpText="Auto-fetched from Item Master for the selected item." /> : null}
               {showField("UPS") ? <FormInput label="UPS" value={formData.ups} onChange={(v) => setFormData({ ...formData, ups: v })} type="number" helpText="Default value comes from Item Master for the selected item. You can adjust it here if needed." /> : null}
 
@@ -905,12 +922,12 @@ export function ProductionForm() {
               {showField("Printing Color") ? <FormInput label="Printing Color" value={formData.printingColor} readOnly helpText="Auto-calculated by combining Color 1 and Color 2 for the selected item." /> : null}
             </div>
             {gsmValidationError && (
-              <div className="mt-2 text-red-600 text-xs font-bold">
+              <div className="mt-2 text-red-600 text-[13px] font-bold">
                 GSM cannot exceed Least GSM when the current item is different from the last produced item.
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mt-4">
+            <div className="max-w-4xl space-y-3 mt-4">
               {showField("L1") ? <FormInput label="L1" value={formData.l1} onChange={(v) => setFormData({ ...formData, l1: v })} type="number" required={isLayerRequired("L1")} helpText="Default value comes from Item Master for the selected item. It is used in the GSM calculation." /> : null}
               {showField("F1") ? <FormInput label="F1" value={formData.f1} onChange={(v) => setFormData({ ...formData, f1: v })} type="number" required={isLayerRequired("F1")} helpText="Default value comes from Item Master for the selected item. It is used in the GSM calculation." /> : null}
               {showField("L2") ? <FormInput label="L2" value={formData.l2} onChange={(v) => setFormData({ ...formData, l2: v })} type="number" required={isLayerRequired("L2")} helpText="Default value comes from Item Master for the selected item. It is used in the GSM calculation." /> : null}
@@ -918,7 +935,7 @@ export function ProductionForm() {
               {showField("L3") ? <FormInput label="L3" value={formData.l3} onChange={(v) => setFormData({ ...formData, l3: v })} type="number" required={isLayerRequired("L3")} helpText="Default value comes from Item Master for the selected item. It is used in the GSM calculation." /> : null}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
+            <div className="max-w-4xl space-y-3 mt-4">
               {showField("Reel Per Calc") ? <FormInput label="Reel as per the calculation (RAPC)" value={formData.reelAsPerCalc} readOnly helpText={getReelAsPerCalculationHelpText()} /> : null}
               {showField("No. of ups in Cutting (For Plates)") && !isSelectedPlateItem ? <FormInput
                 label="No. of ups in Cutting (For Plates)"
@@ -933,10 +950,8 @@ export function ProductionForm() {
               {showField("Plate/PHP Weight") ? <FormInput label="Plate/PHP Weight" value={Number(formData.plateWeight || 0).toFixed(3)} readOnly type="number" step="0.001" helpText="Auto-fetched directly from NPD Master for the selected item. Value is treated as KG and displayed to 3 decimals." /> : null}
               {showField("Total Paper Wt") ? <FormInput label="Total Paper Wt" value={formData.totalPaperWeight} readOnly helpText="Spreadsheet format: displayed 3-decimal Sheet Weight x Planned Quantity, displayed to 2 decimals." /> : null}
 
-              {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Spreadsheet format: the staged 2-decimal sheet weight plus Plate/PHP Weight, displayed to 3 decimals." /> : null}
-              {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field derived from Material Issue minus Material Return against the job." /> : null}
-
               {showField("Rate") ? <FormInput label="Rate" value={formData.rate} readOnly type="number" helpText="Auto-fetched from the selected order." /> : null}
+              {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Spreadsheet format: the staged 2-decimal sheet weight plus Plate/PHP Weight, displayed to 3 decimals." /> : null}
               {showField("Realization/KG") ? <FormInput
                 label="Realization/KG"
                 value={formData.realizationPerKg}
@@ -946,12 +961,13 @@ export function ProductionForm() {
               /> : null}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mt-4">
+            <div className="max-w-4xl space-y-3 mt-4">
               {showField("Prod (Sheet Plant)") ? <FormInput label="Prod (Sheet Plant)" value={formData.prodFromSheetPlant} onChange={(v) => setFormData({ ...formData, prodFromSheetPlant: v })} type="number" helpText="Temporarily editable for formula testing." /> : null}
               {showField("Prod (FFG)") ? <FormInput label="Prod (FFG)" value={formData.prodFromFFG} readOnly type="number" helpText="Workflow-managed field updated from the Pending FFG view." /> : null}
 
               {showField("Prod (Meter)") ? <FormInput label="Prod (Meter)" value={formData.productionInMeter} readOnly helpText="Formula: ((Cutting Trim x Quantity) / 1000) / UPS." /> : null}
               {showField("Planned Prod (Mtr)") ? <FormInput label="Planned Prod (Mtr)" value={formData.plannedProductionInMeter} readOnly type="number" helpText="Formula: ((Cutting Trim x Plan Qty) / 1000) / UPS. If Cutting Trim or Plan Qty is blank, this stays blank." /> : null}
+              {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field derived from Material Issue minus Material Return against the job." /> : null}
 
               {showField("Least GSM") ? <FormInput label="Least GSM" value={formData.leastGsm} readOnly type="number" step="0.00001" helpText="Read-only least GSM reference from production history for the current ERP code." /> : null}
               {showField("Flute Batches") ? <FormInput label="Flute Batches" value={formData.fluteBatches} readOnly helpText="Derived from Flute using this mapping: A=1, B=2, B+C=3, C=4, E=5. Any other value stays blank." /> : null}
@@ -971,7 +987,7 @@ export function ProductionForm() {
                 maximumAllowedProductionError ||
                 gsmValidationError
               }
-              className="flex items-center justify-center min-w-[120px] bg-emerald-600 text-white px-6 py-2 rounded font-bold hover:bg-emerald-700 transition disabled:opacity-50 border border-black shadow"
+              className="flex items-center justify-center min-w-[120px] bg-emerald-600 text-white px-6 py-2 rounded text-[13px] font-bold hover:bg-emerald-700 transition disabled:opacity-50 border border-black shadow"
             >
               {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit Entry"}
             </button>
@@ -1008,6 +1024,27 @@ function LabelWithHelp({ label, helpText, required = false }: { label: string; h
   );
 }
 
+function ProductionFieldRow({
+  label,
+  helpText,
+  required = false,
+  children,
+}: {
+  label: string;
+  helpText?: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[minmax(150px,0.8fr)_minmax(0,2fr)] items-center gap-x-4 gap-y-1">
+      <div className="text-[13px] font-black text-slate-600">
+        {helpText ? <LabelWithHelp label={label} helpText={helpText} required={required} /> : <span>{label} {required ? <span className="text-red-500">*</span> : null}</span>}
+      </div>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
 function FormInput({
   label,
   value,
@@ -1030,12 +1067,9 @@ function FormInput({
   helpText?: string;
 }) {
   return (
-    <div className="flex flex-col space-y-1">
-      <div className="text-[10px] font-black text-slate-500 uppercase inline-flex items-center gap-1">
-        <span>{label} {required ? <span className="text-red-500">*</span> : null}</span>
-        {helpText ? <TooltipIcon helpText={helpText} size={12} /> : null}
-      </div>
+    <ProductionFieldRow label={label} helpText={helpText} required={required}>
       <input
+        data-production-field="true"
         readOnly={readOnly}
         required={required}
         type={type}
@@ -1043,12 +1077,12 @@ function FormInput({
         value={value}
         onChange={(e) => onChange?.(type === "number" ? (e.target.value === "" ? "" : parseFloat(e.target.value)) : e.target.value)}
         className={cn(
-          "border border-black rounded px-2 py-1 text-sm text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600",
+          "w-full border border-black rounded px-2 py-2 text-[13px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600",
           readOnly ? "bg-slate-100 cursor-not-allowed" : "bg-yellow-100",
           inputClassName
         )}
       />
-    </div>
+    </ProductionFieldRow>
   );
 }
 
@@ -1064,18 +1098,18 @@ function ReadOnlyNumberField({
   helpText: string;
 }) {
   return (
-    <div className="flex flex-col space-y-1">
-      <LabelWithHelp label={label} helpText={helpText} />
+    <ProductionFieldRow label={label} helpText={helpText}>
       <div className="relative">
         <input
+          data-production-field="true"
           type="number"
           value={value}
           readOnly
-          className="w-full border-2 border-black rounded p-2 text-black bg-slate-100 focus:outline-none shadow-sm"
+          className="w-full border-2 border-black rounded p-2 text-[13px] text-black bg-slate-100 focus:outline-none shadow-sm"
         />
         {suffix ? <span className="absolute right-3 top-2.5 text-black font-bold opacity-60">{suffix}</span> : null}
       </div>
-    </div>
+    </ProductionFieldRow>
   );
 }
 
@@ -1089,15 +1123,15 @@ function ReadOnlyTextField({
   helpText: string;
 }) {
   return (
-    <div className="flex flex-col space-y-1">
-      <LabelWithHelp label={label} helpText={helpText} />
+    <ProductionFieldRow label={label} helpText={helpText}>
       <input
+        data-production-field="true"
         type="text"
         value={value}
         readOnly
-        className="w-full border-2 border-black rounded p-2 text-black bg-slate-100 focus:outline-none shadow-sm"
+        className="w-full border-2 border-black rounded p-2 text-[13px] text-black bg-slate-100 focus:outline-none shadow-sm"
       />
-    </div>
+    </ProductionFieldRow>
   );
 }
 
