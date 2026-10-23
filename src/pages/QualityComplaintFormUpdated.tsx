@@ -145,6 +145,19 @@ export function QualityComplaintFormUpdated() {
     setMessage("");
   };
 
+  const linkedClearButton = (fieldName: string) => (
+    <button
+      type="button"
+      onClick={clearLinkedSelection}
+      disabled={!hasLinkedSelection}
+      aria-label={`Clear ${fieldName} selection and all linked fields`}
+      className="inline-flex h-[42px] shrink-0 items-center justify-center gap-1 rounded border-2 border-slate-700 bg-slate-100 px-3 font-bold text-slate-900 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <X size={15} strokeWidth={3} />
+      Clear
+    </button>
+  );
+
   const uploadPhoto = async (name: "photo1" | "photo2", file?: File) => {
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) return setMessage("Photo must be 10 MB or smaller.");
@@ -189,23 +202,11 @@ export function QualityComplaintFormUpdated() {
 
   return <div className="mx-auto max-w-4xl space-y-5">{successMessage && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4"><div role="alertdialog" className="w-full max-w-md rounded-lg border-2 border-emerald-700 bg-emerald-100 p-6 text-emerald-950 shadow-2xl"><div className="flex items-start gap-3"><CheckCircle2 className="shrink-0 text-emerald-700" size={30} /><div className="flex-1"><h3 className="text-lg font-black">Saved successfully</h3><p className="mt-1 font-semibold">{successMessage}</p></div><button type="button" aria-label="Close" onClick={() => setSuccessMessage("")} className="rounded border border-emerald-800 bg-white p-1"><X size={18} /></button></div><button type="button" onClick={() => navigate("/quality/complaints/master", { replace: true })} className="mt-5 w-full rounded bg-emerald-700 px-4 py-2.5 font-black text-white hover:bg-emerald-800">Go to Complaint Master</button></div></div>}<h2 className="border-b border-black pb-3 text-xl font-bold uppercase">QC Complaint Form</h2>{message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}<form onSubmit={submit} className="grid grid-cols-1 gap-4 rounded border-2 border-black bg-white p-5 md:grid-cols-2">
     <label className="space-y-1"><span className="font-bold">Date of Complaint *</span><input type="date" className={field} value={form.dateOfComplaint} onChange={(event) => setFormValue("dateOfComplaint", event.target.value)} /></label>
-    <label className="space-y-1"><span className="font-bold">Party Name *</span><Select value={form.partyName} onChange={(value) => setFormValue("partyName", value)} options={form.partyName ? [{ value: form.partyName, label: form.partyName }] : []} placeholder="Select Party" disabled={locked} /></label>
-    <label className="space-y-1"><span className="font-bold">Item Name *</span><Select value={form.itemName} onChange={(value) => setFormValue("itemName", value)} options={form.itemName ? [{ value: form.itemName, label: form.itemName }] : []} placeholder="Select Item" disabled={locked} /></label>
-    <label className="space-y-1"><span className="font-bold">ERP Code *</span><Select value={form.erpCode} onChange={chooseErp} options={erpOptions} placeholder="Select ERP Code" /></label>
+    <div className="flex items-end gap-2"><label className="min-w-0 flex-1 space-y-1"><span className="font-bold">Party Name *</span><Select value={form.partyName} onChange={(value) => setFormValue("partyName", value)} options={form.partyName ? [{ value: form.partyName, label: form.partyName }] : []} placeholder="Select Party" disabled={locked} /></label>{linkedClearButton("Company")}</div>
+    <div className="flex items-end gap-2"><label className="min-w-0 flex-1 space-y-1"><span className="font-bold">Item Name *</span><Select value={form.itemName} onChange={(value) => setFormValue("itemName", value)} options={form.itemName ? [{ value: form.itemName, label: form.itemName }] : []} placeholder="Select Item" disabled={locked} /></label>{linkedClearButton("Item")}</div>
+    <div className="flex items-end gap-2"><label className="min-w-0 flex-1 space-y-1"><span className="font-bold">ERP Code *</span><Select value={form.erpCode} onChange={chooseErp} options={erpOptions} placeholder="Select ERP Code" /></label>{linkedClearButton("ERP")}</div>
     <label className="space-y-1"><span className="font-bold">Nature of Complaint *</span><Select value={form.natureOfComplaint} onChange={(value) => setFormValue("natureOfComplaint", value)} options={[{ value: "Complaint", label: "Complaint" }, { value: "Rejection", label: "Rejection" }]} placeholder="Select Nature" /></label>
-    <label className="space-y-1"><span className="font-bold">Job No. *</span><Select value={form.lotNo} onChange={chooseJob} options={jobOptions} placeholder="Select Job No." disabled={locked} />{hint && <span className="block text-xs font-bold text-amber-700">{hint}</span>}</label>
-    <div className="flex items-end justify-end md:col-span-2">
-      <button
-        type="button"
-        onClick={clearLinkedSelection}
-        disabled={!hasLinkedSelection}
-        aria-label="Clear Job, Company, ERP, and Item selection"
-        className="inline-flex items-center gap-2 rounded border-2 border-slate-700 bg-slate-100 px-4 py-2 font-bold text-slate-900 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <X size={16} strokeWidth={3} />
-        Clear Job / Company / ERP / Item
-      </button>
-    </div>
+    <div className="flex items-end gap-2"><label className="min-w-0 flex-1 space-y-1"><span className="font-bold">Job No. *</span><Select value={form.lotNo} onChange={chooseJob} options={jobOptions} placeholder="Select Job No." disabled={locked} />{hint && <span className="block text-xs font-bold text-amber-700">{hint}</span>}</label>{linkedClearButton("Job")}</div>
     <label className="space-y-1"><span className="font-bold">Quantity *</span><input type="number" min="0" className={field} value={form.quantity} onChange={(event) => setFormValue("quantity", event.target.value)} /></label>
     <label className="space-y-1"><span className="font-bold">Area of Issue</span><Select value={form.areaOfIssue} onChange={(value) => setFormValue("areaOfIssue", value)} options={[{ value: "Boardline", label: "Boardline" }, { value: "Printing", label: "Printing" }, { value: "Dispatch", label: "Dispatch" }]} placeholder="Select Area" /></label>
     <label className="space-y-1"><span className="font-bold">Concerned Person Name</span><Select value={form.concernedPersonName} onChange={(value) => setFormValue("concernedPersonName", value)} options={personOptions} placeholder="Select Person" /></label>
