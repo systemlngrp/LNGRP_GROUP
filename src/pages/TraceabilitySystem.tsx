@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ExternalLink, FileText, Printer, Search, X } from "lucide-react";
+import { Download, ExternalLink, FileText, Search, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
@@ -30,6 +30,7 @@ import {
   type TraceabilityRecord,
   type TraceabilityValue,
 } from "../lib/traceabilityData";
+import { downloadTraceabilityPdf } from "../lib/traceabilityPdf";
 
 const text = (value: unknown) => String(value ?? "").trim();
 const display = (value: unknown) => text(value) || "—";
@@ -309,14 +310,32 @@ function DetailView({
   onSelect: (record: TraceabilityRecord) => void;
 }) {
   const data = record || EMPTY_TRACEABILITY_RECORD;
+  const sheetRef = useRef<HTMLDivElement>(null);
   const [showPlannedPaper, setShowPlannedPaper] = useState(true);
   const [includePaperIssueInfo, setIncludePaperIssueInfo] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState("");
   const field = (label: string, value: TraceabilityValue | ReactNode, span?: number, options: Omit<SheetField, "label" | "value" | "span"> = {}) => ({ label, value, span, ...options });
 
   useEffect(() => {
     setShowPlannedPaper(true);
     setIncludePaperIssueInfo(false);
+    setPdfError("");
   }, [record?.id]);
+
+  const downloadPdf = async () => {
+    if (!record || !sheetRef.current || isDownloadingPdf) return;
+    setIsDownloadingPdf(true);
+    setPdfError("");
+    try {
+      await downloadTraceabilityPdf(sheetRef.current, record.jobNo);
+    } catch (error) {
+      console.error("Traceability PDF generation failed", error);
+      setPdfError("Unable to generate the PDF. Please try again.");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
 
   const paperModeLabel = showPlannedPaper ? "PLANNED PAPER" : "LINE - INCHARGE";
   const paperModeValue = showPlannedPaper ? data.boardline.plannedPaper : data.boardline.lineIncharge;
@@ -324,18 +343,29 @@ function DetailView({
   return <div className="traceability-detail">
     {notFound && <div className="traceability-not-found">Traceability record not found. Search by job number, lot number, ERP code, party, or item.</div>}
     <div className="traceability-sheet-scroll">
-      <div className="traceability-sheet">
+      <div ref={sheetRef} className="traceability-sheet">
         <div className={`traceability-company-header ${showPlannedPaper ? "is-planned-paper" : "is-line-incharge"}`}>
           <span>{display(data.firmName || "LAXMI NARAYAN CORRUGATED BOARDS LLP.")}</span>
-          <button
-            type="button"
-            className="traceability-mode-toggle"
-            aria-label={showPlannedPaper ? "Showing planned paper. Click to show line in charge." : "Showing line in charge. Click to show planned paper."}
-            aria-pressed={showPlannedPaper}
-            onClick={() => setShowPlannedPaper((current) => !current)}
-          >
-            <span aria-hidden="true" className="traceability-mode-checkbox">{showPlannedPaper ? "✓" : ""}</span>
-          </button>
+          <div className="traceability-header-toggles">
+            <button
+              type="button"
+              className="traceability-mode-toggle"
+              aria-label={showPlannedPaper ? "Showing planned paper. Click to show line in charge." : "Showing line in charge. Click to show planned paper."}
+              aria-pressed={showPlannedPaper}
+              onClick={() => setShowPlannedPaper((current) => !current)}
+            >
+              <span aria-hidden="true" className="traceability-mode-checkbox">{showPlannedPaper ? "✓" : ""}</span>
+            </button>
+            <label className={`traceability-paper-issue-toggle ${includePaperIssueInfo ? "is-checked" : ""}`} title="Include Paper Issue Info">
+              <input
+                type="checkbox"
+                checked={includePaperIssueInfo}
+                aria-label="Include Paper Issue Info"
+                onChange={(event) => setIncludePaperIssueInfo(event.target.checked)}
+              />
+              <span aria-hidden="true" className="traceability-mode-checkbox">{includePaperIssueInfo ? "✓" : ""}</span>
+            </label>
+          </div>
         </div>
         <div className="traceability-document-title">TRACEABILITY SYSTEM</div>
 
@@ -472,14 +502,11 @@ function DetailView({
         </SheetSection>
       </div>
     </div>
-    <div className="traceability-print-controls" aria-label="Traceability print controls">
-      <label className="traceability-paper-issue-checkbox">
-        <input type="checkbox" checked={includePaperIssueInfo} onChange={(event) => setIncludePaperIssueInfo(event.target.checked)} />
-        <span>Include Paper Issue Info</span>
-      </label>
-      <button type="button" className="traceability-print-button" disabled={!record} onClick={() => window.print()}>
-        <Printer size={16} aria-hidden="true" />
-        Print
+    <div className="traceability-print-controls" aria-label="Traceability PDF controls">
+      {pdfError && <span className="traceability-pdf-error" role="alert">{pdfError}</span>}
+      <button type="button" className="traceability-print-button" disabled={!record || isDownloadingPdf} onClick={downloadPdf}>
+        <Download size={16} aria-hidden="true" />
+        {isDownloadingPdf ? "Generating PDF..." : "Download PDF"}
       </button>
     </div>
   </div>;

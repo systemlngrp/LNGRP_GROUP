@@ -657,13 +657,21 @@ table td button:focus-visible {
   background: #0b3842;
   color: #fff;
   font-size: 18px;
-  padding-right: 42px;
+  padding-right: 72px;
 }
 
-.traceability-mode-toggle {
+.traceability-header-toggles {
   position: absolute;
   top: 0;
   right: 0;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.traceability-mode-toggle,
+.traceability-paper-issue-toggle {
+  position: static;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -675,6 +683,29 @@ table td button:focus-visible {
   background: #111;
   color: #fff;
   cursor: pointer;
+}
+
+.traceability-paper-issue-toggle {
+  background: #111;
+}
+
+.traceability-paper-issue-toggle.is-checked {
+  background: #00f000;
+  color: #000;
+}
+
+.traceability-paper-issue-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.traceability-paper-issue-toggle:focus-within .traceability-mode-checkbox,
+.traceability-mode-toggle:focus-visible .traceability-mode-checkbox {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 .traceability-company-header.is-planned-paper .traceability-mode-toggle {
@@ -798,6 +829,19 @@ table td button:focus-visible {
   width: 100%;
   height: 100%;
   min-height: 43px;
+}
+
+.traceability-pdf-static-value {
+  display: inline-block;
+}
+
+.traceability-identity-lot .traceability-pdf-static-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 43px;
+  text-align: center;
 }
 
 .traceability-lot-input {
@@ -1035,19 +1079,10 @@ table td button:focus-visible {
   padding: 10px 0 2px;
 }
 
-.traceability-paper-issue-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
+.traceability-pdf-error {
   color: #000;
   font-size: 12px;
   font-weight: 800;
-}
-
-.traceability-paper-issue-checkbox input {
-  width: 16px;
-  height: 16px;
-  accent-color: #244b8b;
 }
 
 .traceability-print-button {
@@ -1111,6 +1146,7 @@ table td button:focus-visible {
   body:has(.traceability-print-root) .traceability-lot-search-icon,
   body:has(.traceability-print-root) .traceability-lot-clear,
   body:has(.traceability-print-root) .traceability-lot-results,
+  body:has(.traceability-print-root) .traceability-header-toggles,
   body:has(.traceability-print-root) .traceability-mode-toggle,
   body:has(.traceability-print-root) .traceability-print-controls,
   body:has(.traceability-print-root) .traceability-not-found,
@@ -1170,7 +1206,12 @@ table td button:focus-visible {
     font-size: 12px;
   }
 
-  .traceability-mode-toggle {
+  .traceability-header-toggles {
+    display: none;
+  }
+
+  .traceability-mode-toggle,
+  .traceability-paper-issue-toggle {
     width: 22px;
   }
 
