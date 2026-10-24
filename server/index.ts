@@ -14,7 +14,7 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { WHATSAPP_COMPLAINT_MENU, sendWhatsappComplaintMessage } from "./whatsappSender.js";
+import { DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_COMPLAINT_MENU, sendWhatsappComplaintMessage } from "./whatsappSender.js";
 import { GoogleGenAI } from "@google/genai";
 import {
   APP_BUILD_MARKER,
@@ -9015,6 +9015,21 @@ await db.query(`
         } catch (err) {
           console.warn(`[DB] Could not ensure column ${m.column} in ${m.table}:`, (err as Error).message);
         }
+      }
+
+      try {
+        const [legacyWhatsappRows] = await db.query(
+          "SELECT id, message FROM `whatsapp_configs` WHERE menu = ? AND active = 'Yes' ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+          [WHATSAPP_COMPLAINT_MENU]
+        );
+        const legacyWhatsapp = (legacyWhatsappRows as any[])[0];
+        const existingMessage = String(legacyWhatsapp?.message || "").trim();
+        if (legacyWhatsapp?.id && /on\s+c\s*date/i.test(existingMessage) && /issue\s*(details|deatils)/i.test(existingMessage) && /photos/i.test(existingMessage)) {
+          await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_QC_COMPLAINT_MESSAGE, legacyWhatsapp.id]);
+          console.log(`[DB] Updated legacy QC Complaint WhatsApp message template for ${legacyWhatsapp.id}.`);
+        }
+      } catch (error) {
+        console.warn("[DB] Could not update legacy QC Complaint WhatsApp message template:", (error as Error).message);
       }
 
       await ensureInterFirmSchema(db, database);

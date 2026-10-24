@@ -27,6 +27,20 @@ export type WhatsappSendResult = {
 
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
+export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
+
+*Complaint Date:* {{dateOfComplaint}}
+*Job / Lot No.:* {{lotNo}}
+*Party:* {{partyName}}
+*Item:* {{itemName}}
+*ERP Code:* {{erpCode}}
+*Nature:* {{natureOfComplaint}}
+*Quantity:* {{quantity}}
+*Area:* {{areaOfIssue}}
+*Issue Details:* {{issueDetails}}
+*Photos:* {{photo1}} {{photo2}}
+
+Please review this complaint and take the necessary action.`;
 
 const text = (value: unknown) => String(value ?? "").trim();
 
