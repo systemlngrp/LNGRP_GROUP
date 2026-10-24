@@ -1188,6 +1188,9 @@ export interface QualityComplaint {
   areaOfIssue?: "Boardline" | "Printing" | "Dispatch" | string;
   concernedPersonName: string;
   quantity: number;
+  whatsappSendStatus?: "Sent" | "Failed" | "Not Configured" | string;
+  whatsappSendError?: string;
+  whatsappSentAt?: string;
   capaNo?: string;
   capaGeneratedAt?: string;
   capaStatus?: "Pending" | "Generated" | "Completed" | string;

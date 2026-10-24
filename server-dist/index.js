@@ -14,6 +14,7 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
+import { WHATSAPP_COMPLAINT_MENU, sendWhatsappComplaintMessage } from "./whatsappSender.js";
 import { GoogleGenAI } from "@google/genai";
 import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
 const execPromise = util.promisify(exec);
@@ -6122,6 +6123,9 @@ async function initDb(retries = 5) {
           \`areaOfIssue\` VARCHAR(100),
           \`concernedPersonName\` VARCHAR(255),
           \`quantity\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`whatsappSendStatus\` VARCHAR(30),
+          \`whatsappSendError\` TEXT,
+          \`whatsappSentAt\` VARCHAR(255),
           \`capaNo\` VARCHAR(100),
           \`capaGeneratedAt\` VARCHAR(255),
           \`capaStatus\` VARCHAR(50),
@@ -7528,6 +7532,9 @@ async function initDb(retries = 5) {
                 { table: "quality_complaints", column: "areaOfIssue", type: "VARCHAR(100)" },
                 { table: "quality_complaints", column: "concernedPersonName", type: "VARCHAR(255)" },
                 { table: "quality_complaints", column: "quantity", type: "DECIMAL(15,2) DEFAULT 0" },
+                { table: "quality_complaints", column: "whatsappSendStatus", type: "VARCHAR(30)" },
+                { table: "quality_complaints", column: "whatsappSendError", type: "TEXT" },
+                { table: "quality_complaints", column: "whatsappSentAt", type: "VARCHAR(255)" },
                 { table: "quality_complaints", column: "capaNo", type: "VARCHAR(100)" },
                 { table: "quality_complaints", column: "capaGeneratedAt", type: "VARCHAR(255)" },
                 { table: "quality_complaints", column: "capaStatus", type: "VARCHAR(50)" },
@@ -9167,7 +9174,13 @@ const createHandlers = (tableName) => {
             const requestFirmId = getRequestFirmId(req);
             const data = applyAuditFields(normalizeNpdLinkedPayload(tableName, normalizeWorkflowStatus(tableName, req.body)), requestUser);
             let materialOpening = null;
+            let qualityComplaintIsNew = false;
+            let whatsappDelivery;
             try {
+                if (tableName === "quality_complaints") {
+                    const [existingComplaintRows] = await db.query("SELECT id FROM `quality_complaints` WHERE id = ? LIMIT 1", [String(data.id || "")]);
+                    qualityComplaintIsNew = existingComplaintRows.length === 0;
+                }
                 if (tableName === "whatsapp_configs") {
                     const id = String(data.id || "").trim();
                     const loginId = String(data.loginId || "").trim();
@@ -10532,6 +10545,33 @@ const createHandlers = (tableName) => {
                 else {
                     await db.query(query, values);
                 }
+                if (tableName === "quality_complaints" && qualityComplaintIsNew) {
+                    try {
+                        const [configRows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC LIMIT 1", [WHATSAPP_COMPLAINT_MENU]);
+                        const config = configRows[0];
+                        if (!config) {
+                            whatsappDelivery = { status: "Not Configured", error: "No active WhatsApp configuration was found." };
+                        }
+                        else {
+                            whatsappDelivery = await sendWhatsappComplaintMessage({
+                                loginId: String(config.loginId || ""),
+                                pass: String(config.pass || ""),
+                                groupId: String(config.groupId || ""),
+                                message: String(config.message || ""),
+                            }, data);
+                        }
+                    }
+                    catch (error) {
+                        console.warn("[WHATSAPP] Complaint delivery preparation failed:", error.message);
+                        whatsappDelivery = { status: "Failed", error: "WhatsApp message could not be prepared." };
+                    }
+                    try {
+                        await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = ? WHERE id = ?", [whatsappDelivery.status, whatsappDelivery.error || null, whatsappDelivery.sentAt || null, String(data.id || "")]);
+                    }
+                    catch (error) {
+                        console.warn("[WHATSAPP] Could not store complaint delivery status:", error.message);
+                    }
+                }
                 if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
                     const pendingId = String(data.sourceTransactionId || "").trim();
                     if (pendingId) {
@@ -10559,7 +10599,7 @@ const createHandlers = (tableName) => {
                         }
                     }
                 }
-                res.json({ success: true });
+                res.json({ success: true, ...(whatsappDelivery ? { whatsapp: whatsappDelivery } : {}) });
             }
             catch (error) {
                 console.error(`[DB] Error upserting to ${tableName}:`, error);

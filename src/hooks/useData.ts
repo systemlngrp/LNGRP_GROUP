@@ -338,7 +338,9 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || "Failed to add item");
       }
+      const result = await response.json().catch(() => ({}));
       window.dispatchEvent(new CustomEvent(syncEvent));
+      return result;
     } catch (err) {
       console.error("Error adding item:", err);
       fetchData();

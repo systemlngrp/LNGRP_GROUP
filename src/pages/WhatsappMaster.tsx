@@ -8,6 +8,22 @@ import { WhatsappConfig } from "../types";
 
 type MenuOption = { label: string; value: string };
 
+const QC_COMPLAINT_MENU = "/quality/complaints/form";
+const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
+
+*Complaint Date:* {{dateOfComplaint}}
+*Job / Lot No.:* {{lotNo}}
+*Party:* {{partyName}}
+*Item:* {{itemName}}
+*ERP Code:* {{erpCode}}
+*Nature:* {{natureOfComplaint}}
+*Quantity:* {{quantity}}
+*Area:* {{areaOfIssue}}
+*Issue Details:* {{issueDetails}}
+*Photos:* {{photo1}} {{photo2}}
+
+Please review this complaint and take the necessary action.`;
+
 function collectMenuOptions(groups: NavGroup[]): MenuOption[] {
   const options: MenuOption[] = [];
   const seen = new Set<string>();
@@ -52,8 +68,8 @@ export function WhatsappMaster() {
     setLoginId("");
     setPass("");
     setGroupId("");
-    setMenu("");
-    setMessage("");
+    setMenu(QC_COMPLAINT_MENU);
+    setMessage(DEFAULT_QC_COMPLAINT_MESSAGE);
     setActive("Yes");
     setIsFormOpen(false);
   };
@@ -63,8 +79,8 @@ export function WhatsappMaster() {
     setLoginId("");
     setPass("");
     setGroupId("");
-    setMenu("");
-    setMessage("");
+    setMenu(QC_COMPLAINT_MENU);
+    setMessage(DEFAULT_QC_COMPLAINT_MESSAGE);
     setActive("Yes");
     setIsFormOpen(true);
   };
