@@ -240,6 +240,24 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   vertical-align: top;
 }
 
+.app-view-content table.qc-view-table .qc-view-long-cell {
+  max-height: 72px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  scrollbar-width: thin;
+}
+
+.app-view-content table.qc-view-table .qc-view-long-cell::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-view-content table.qc-view-table .qc-view-long-cell::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
 .app-table-column-resizer {
   position: absolute;
   inset-block: 0;
