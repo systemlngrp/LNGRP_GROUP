@@ -104,6 +104,21 @@ function getColumnCount(headerRow: HTMLTableRowElement) {
   return Array.from(headerRow.cells).reduce((count, cell) => count + Math.max(1, cell.colSpan || 1), 0);
 }
 
+function getResizeHeaderRow(table: HTMLTableElement) {
+  const rows = table.tHead ? Array.from(table.tHead.rows) : [];
+  if (rows.length === 0) return null;
+
+  // Group headers commonly use colSpan, so the first row may represent only
+  // a handful of visual bands rather than the table's actual columns. Pick
+  // the deepest row with the most effective columns for resizing.
+  return rows.reduce((selected, row) => {
+    if (!selected) return row;
+    const rowColumnCount = getColumnCount(row);
+    const selectedColumnCount = getColumnCount(selected);
+    return rowColumnCount >= selectedColumnCount ? row : selected;
+  }, null as HTMLTableRowElement | null);
+}
+
 type CellRange = {
   cell: HTMLTableCellElement;
   start: number;
@@ -561,7 +576,7 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
   if (content) enhanceScrollContainer(findScrollableAncestor(table, content));
   if (content) enhanceTablePagination(table, content, pathname, index);
 
-  const headerRow = table.tHead?.rows[0] || null;
+  const headerRow = getResizeHeaderRow(table);
   if (!headerRow || headerRow.cells.length === 0) return;
   const columnCount = getColumnCount(headerRow);
   const actionColumns = getActionColumnIndexes(table, columnCount);
