@@ -1,5 +1,6 @@
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
+export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
@@ -48,6 +49,39 @@ export const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
 
 *PRINTING ARTWORK*
 {{printingArtwork}}`;
+export const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
+
+*Job No.:* {{jobNo}}
+*Party Name:* {{partyName}}
+*Item Name:* {{itemName}}
+*ERP:* {{erp}}
+
+*Sampling Plan Qty.:* {{samplingPlanQty}}
+*Check No.:* {{samplingCheckNo}}
+
+*Box Size Details*
+*Standard Box Size (L x W x H):* {{standardBoxSize}}
+*Box Size Achieved (L x W x H):* {{boxSizeAchieved}}
+
+*CS / BS Details*
+*CS (Standard):* {{csStandard}}
+*BS (Standard):* {{bsStandard}}
+*BS Achieved:* {{bsAchieved}}
+
+*Board Details*
+*Board Thickness (Before):* {{boardThicknessBefore}}
+*Board Thickness:* {{boardThickness}}
+*Box Weight (Grams):* {{boxWeightGrams}}
+
+*Printing Colour Details*
+*Printing Colour 1 (Standard):* {{printingColor1Standard}}
+*Colour 1 (Actual):* {{colour1Actual}}
+
+*STANDARD ARTWORK*
+{{standardArtwork}}
+
+*QC Person:* {{qcPerson}}
+*Operator Name:* {{operatorName}}`;
 const text = (value) => String(value ?? "").trim();
 export function resolveWhatsappTemplate(template, complaint, appPublicUrl) {
     const values = {
@@ -75,6 +109,17 @@ export function buildWhatsappBoardlinePayload(config, record) {
     return {
         recipientIds: [text(config.groupId)],
         message: [resolveWhatsappBoardlineTemplate(config.message, record)],
+    };
+}
+export function resolveWhatsappPrintingTemplate(template, record) {
+    const values = Object.fromEntries(Object.entries(record).map(([key, value]) => [key, text(value)]));
+    values.samplingCheckNo = text(record.samplingCheckNo) || text(record.checkNo);
+    return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => values[key] ?? "");
+}
+export function buildWhatsappPrintingPayload(config, record) {
+    return {
+        recipientIds: [text(config.groupId)],
+        message: [resolveWhatsappPrintingTemplate(config.message, record)],
     };
 }
 export function buildPhotoUrl(value, appPublicUrl) {
@@ -131,6 +176,9 @@ async function sendWhatsappPayload(config, payload, options = {}) {
 }
 export function sendWhatsappBoardlineMessage(config, record, options = {}) {
     return sendWhatsappPayload(config, buildWhatsappBoardlinePayload(config, record), options);
+}
+export function sendWhatsappPrintingMessage(config, record, options = {}) {
+    return sendWhatsappPayload(config, buildWhatsappPrintingPayload(config, record), options);
 }
 export async function sendWhatsappComplaintStage(config, complaint, stage, options = {}) {
     const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";

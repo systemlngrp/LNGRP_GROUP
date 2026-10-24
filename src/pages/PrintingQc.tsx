@@ -407,7 +407,7 @@ function FieldInput({
 }
 
 export function PrintingQcForm() {
-  const [checks, setChecks] = useData<PrintingQcCheck>("printing_qc_checks", []);
+  const [checks, , , checksApi] = useData<PrintingQcCheck>("printing_qc_checks", []);
   const [settings] = useData<Setting>("settings", []);
   const [productions] = useData<Production>("productions", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
@@ -618,11 +618,22 @@ export function PrintingQcForm() {
         createdBy: updatedBy,
         createdTimestamp: now,
       }, updatedBy, settings[0]);
-      await setChecks((prev) => [...prev, payload]);
+      const response = await checksApi.addItem(payload);
       setSelectedProductionId("");
       setForm(createInitialForm());
       setEditedChunkFields(new Set());
-      alert("Printing QC check saved successfully.");
+      const delivery = response?.whatsapp;
+      if (delivery?.status === "Sent") {
+        alert("Printing QC check saved and WhatsApp message sent.");
+      } else if (delivery?.status === "Not Configured") {
+        alert("Printing QC check saved, but no active Printing QC WhatsApp configuration was found.");
+      } else if (delivery?.status === "Failed") {
+        alert("Printing QC check saved, but WhatsApp message could not be sent. It will retry automatically after 60 seconds.");
+      } else if (delivery?.status === "Already Sent") {
+        alert("Printing QC check saved. WhatsApp message was already sent.");
+      } else {
+        alert("Printing QC check saved successfully.");
+      }
     } catch (error) {
       console.error("Failed to save Printing QC check:", error);
       alert((error as Error).message || "Failed to save Printing QC check.");

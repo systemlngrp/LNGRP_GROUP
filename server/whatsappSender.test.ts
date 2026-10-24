@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildPhotoUrl, buildWhatsappBoardlinePayload, buildWhatsappPayload, resolveWhatsappBoardlineTemplate, resolveWhatsappTemplate, sendWhatsappBoardlineMessage, sendWhatsappComplaintMessage } from "./whatsappSender.js";
+import { buildPhotoUrl, buildWhatsappBoardlinePayload, buildWhatsappPayload, buildWhatsappPrintingPayload, resolveWhatsappBoardlineTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappTemplate, sendWhatsappBoardlineMessage, sendWhatsappComplaintMessage, sendWhatsappPrintingMessage } from "./whatsappSender.js";
 
 const complaint = {
   id: "QC-1792839256252-tolgrr",
@@ -138,6 +138,51 @@ describe("WhatsApp complaint sender", () => {
       },
     });
     assert.equal(result.status, "Sent");
+    assert.doesNotMatch(String(request?.body), /secret/);
+  });
+
+  it("resolves and sends the Printing QC template with artwork as text", async () => {
+    const printing = {
+      jobNo: "10612",
+      partyName: "BRITANNIA INDUSTRIES LIMITED",
+      itemName: "CBB 5PLY MARIE GOLD EAST 384G 2011199",
+      erp: "99970074",
+      samplingPlanQty: 3,
+      samplingCheckNo: "1 / 3",
+      standardBoxSize: "401 x 260 x 330",
+      boxSizeAchieved: "400 x 257 x 334",
+      csStandard: 244,
+      bsStandard: 10.56,
+      bsAchieved: 7.5,
+      boardThicknessBefore: 7.08,
+      boardThickness: 5.04,
+      boxWeightGrams: 562,
+      printingColor1Standard: "Black",
+      colour1Actual: "BLACK",
+      standardArtwork: "https://drive.google.com/file/d/example/view",
+      qcPerson: "Sahil",
+      operatorName: "Shah Alam",
+    };
+    const template = "{{jobNo}} {{partyName}} {{samplingCheckNo}} {{standardBoxSize}} {{standardArtwork}} {{operatorName}}";
+    const printingConfig = { ...config, message: template };
+    const message = resolveWhatsappPrintingTemplate(template, printing);
+    assert.match(message, /10612/);
+    assert.match(message, /1 \/ 3/);
+    assert.match(message, /drive.google.com/);
+    assert.deepEqual(buildWhatsappPrintingPayload(printingConfig, printing), {
+      recipientIds: ["group@g.us"],
+      message: [message],
+    });
+    let request: RequestInit | undefined;
+    const result = await sendWhatsappPrintingMessage(printingConfig, printing, {
+      endpoint: "https://sender.test/message",
+      fetchImpl: async (_url, init) => {
+        request = init;
+        return new Response("{}", { status: 200 });
+      },
+    });
+    assert.equal(result.status, "Sent");
+    assert.doesNotMatch(String(request?.body), /filePathUrl/);
     assert.doesNotMatch(String(request?.body), /secret/);
   });
 });

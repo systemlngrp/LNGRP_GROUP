@@ -57,9 +57,45 @@ const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
 
 *PRINTING ARTWORK*
 {{printingArtwork}}`;
+const PRINTING_QC_MENU = "/quality/printing-qc/form";
+const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
+
+*Job No.:* {{jobNo}}
+*Party Name:* {{partyName}}
+*Item Name:* {{itemName}}
+*ERP:* {{erp}}
+
+*Sampling Plan Qty.:* {{samplingPlanQty}}
+*Check No.:* {{samplingCheckNo}}
+
+*Box Size Details*
+*Standard Box Size (L x W x H):* {{standardBoxSize}}
+*Box Size Achieved (L x W x H):* {{boxSizeAchieved}}
+
+*CS / BS Details*
+*CS (Standard):* {{csStandard}}
+*BS (Standard):* {{bsStandard}}
+*BS Achieved:* {{bsAchieved}}
+
+*Board Details*
+*Board Thickness (Before):* {{boardThicknessBefore}}
+*Board Thickness:* {{boardThickness}}
+*Box Weight (Grams):* {{boxWeightGrams}}
+
+*Printing Colour Details*
+*Printing Colour 1 (Standard):* {{printingColor1Standard}}
+*Colour 1 (Actual):* {{colour1Actual}}
+
+*STANDARD ARTWORK*
+{{standardArtwork}}
+
+*QC Person:* {{qcPerson}}
+*Operator Name:* {{operatorName}}`;
 
 function defaultMessageForMenu(menu: string) {
-  return menu === BOARDLINE_QC_MENU ? DEFAULT_BOARDLINE_QC_MESSAGE : DEFAULT_QC_COMPLAINT_MESSAGE;
+  if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
+  if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
+  return DEFAULT_QC_COMPLAINT_MESSAGE;
 }
 
 function collectMenuOptions(groups: NavGroup[]): MenuOption[] {

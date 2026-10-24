@@ -36,6 +36,29 @@ export type WhatsappBoardlineRecord = {
   printingArtwork?: unknown;
 };
 
+export type WhatsappPrintingRecord = {
+  jobNo?: unknown;
+  partyName?: unknown;
+  itemName?: unknown;
+  erp?: unknown;
+  samplingPlanQty?: unknown;
+  samplingCheckNo?: unknown;
+  checkNo?: unknown;
+  standardBoxSize?: unknown;
+  boxSizeAchieved?: unknown;
+  csStandard?: unknown;
+  bsStandard?: unknown;
+  bsAchieved?: unknown;
+  boardThicknessBefore?: unknown;
+  boardThickness?: unknown;
+  boxWeightGrams?: unknown;
+  printingColor1Standard?: unknown;
+  colour1Actual?: unknown;
+  standardArtwork?: unknown;
+  qcPerson?: unknown;
+  operatorName?: unknown;
+};
+
 export type WhatsappSenderConfig = {
   loginId: string;
   pass: string;
@@ -54,6 +77,7 @@ export type WhatsappSendResult = {
 
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
+export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
@@ -102,6 +126,39 @@ export const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
 
 *PRINTING ARTWORK*
 {{printingArtwork}}`;
+export const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
+
+*Job No.:* {{jobNo}}
+*Party Name:* {{partyName}}
+*Item Name:* {{itemName}}
+*ERP:* {{erp}}
+
+*Sampling Plan Qty.:* {{samplingPlanQty}}
+*Check No.:* {{samplingCheckNo}}
+
+*Box Size Details*
+*Standard Box Size (L x W x H):* {{standardBoxSize}}
+*Box Size Achieved (L x W x H):* {{boxSizeAchieved}}
+
+*CS / BS Details*
+*CS (Standard):* {{csStandard}}
+*BS (Standard):* {{bsStandard}}
+*BS Achieved:* {{bsAchieved}}
+
+*Board Details*
+*Board Thickness (Before):* {{boardThicknessBefore}}
+*Board Thickness:* {{boardThickness}}
+*Box Weight (Grams):* {{boxWeightGrams}}
+
+*Printing Colour Details*
+*Printing Colour 1 (Standard):* {{printingColor1Standard}}
+*Colour 1 (Actual):* {{colour1Actual}}
+
+*STANDARD ARTWORK*
+{{standardArtwork}}
+
+*QC Person:* {{qcPerson}}
+*Operator Name:* {{operatorName}}`;
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -135,6 +192,21 @@ export function buildWhatsappBoardlinePayload(config: WhatsappSenderConfig, reco
   return {
     recipientIds: [text(config.groupId)],
     message: [resolveWhatsappBoardlineTemplate(config.message, record)],
+  };
+}
+
+export function resolveWhatsappPrintingTemplate(template: string, record: WhatsappPrintingRecord) {
+  const values: Record<string, string> = Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, text(value)])
+  );
+  values.samplingCheckNo = text(record.samplingCheckNo) || text(record.checkNo);
+  return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+export function buildWhatsappPrintingPayload(config: WhatsappSenderConfig, record: WhatsappPrintingRecord) {
+  return {
+    recipientIds: [text(config.groupId)],
+    message: [resolveWhatsappPrintingTemplate(config.message, record)],
   };
 }
 
@@ -199,6 +271,14 @@ export function sendWhatsappBoardlineMessage(
   options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
 ) {
   return sendWhatsappPayload(config, buildWhatsappBoardlinePayload(config, record), options);
+}
+
+export function sendWhatsappPrintingMessage(
+  config: WhatsappSenderConfig,
+  record: WhatsappPrintingRecord,
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+) {
+  return sendWhatsappPayload(config, buildWhatsappPrintingPayload(config, record), options);
 }
 
 export async function sendWhatsappComplaintStage(
