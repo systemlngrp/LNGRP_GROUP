@@ -297,6 +297,11 @@ function getActionColumnWidths(table: HTMLTableElement, widths: number[], action
 }
 
 function tableKey(pathname: string, table: HTMLTableElement, index: number) {
+  // QC View can have different visible columns per user. Its resize key must
+  // remain stable so a width saved by one user is reused by every other user.
+  if (pathname === "/quality/qc-view") {
+    return encodeURIComponent(`${pathname}|qc-view|${index}`);
+  }
   const headerRow = table.tHead?.rows[0];
   const headers = Array.from(headerRow?.cells || [])
     .map((cell) => (cell.textContent || "").replace(/\s+/g, " ").trim().toLowerCase())
