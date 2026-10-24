@@ -1191,6 +1191,7 @@ export interface QualityComplaint {
   whatsappSendStatus?: "Sent" | "Failed" | "Not Configured" | string;
   whatsappSendError?: string;
   whatsappSentAt?: string;
+  whatsappSendStartedAt?: string;
   capaNo?: string;
   capaGeneratedAt?: string;
   capaStatus?: "Pending" | "Generated" | "Completed" | string;

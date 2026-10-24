@@ -200,6 +200,10 @@ export function QualityComplaintFormUpdated() {
             ? "QC complaint saved, but no active WhatsApp configuration was found."
             : whatsappStatus === "Failed"
               ? "QC complaint saved, but WhatsApp message could not be sent."
+              : whatsappStatus === "Already Sent"
+                ? "QC complaint saved. WhatsApp message was already sent earlier."
+                : whatsappStatus === "In Progress"
+                  ? "QC complaint saved. WhatsApp message delivery is already in progress."
               : "QC complaint saved successfully."
       );
     } catch (error) {
