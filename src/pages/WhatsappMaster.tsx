@@ -24,6 +24,43 @@ const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 *Photos:* Attached separately.
 
 Please review this complaint and take the necessary action.`;
+const BOARDLINE_QC_MENU = "/quality/boardline-qc/form";
+const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
+
+*Job No.:* {{jobNo}}
+*Party Name:* {{partyName}}
+*Item Name:* {{itemName}}
+*ERP Code:* {{erp}}
+
+*Sampling Plan Qty.:* {{samplingPlanQty}}
+*Check No.:* {{samplingCheckNo}}
+
+*Size Details*
+*Standard (Flap - Height - Flap):* {{standard}}
+*Actual - Operator Side:* {{flapHeightFlapOperatorSide}}
+*Actual - Drive Side:* {{flapHeightFlapDriveSide}}
+
+*Cutting Size Required:* {{cuttingSizeRequired}}
+*Cutting Size Achieved:* {{cuttingSizeMm}}
+
+*Board Details*
+*B.GSM:* {{boardGsm}}
+*Type of Flute:* {{typeOfFlute}}
+*Board Thickness:* {{boardThickness}}
+*Moisture:* {{moisture}}
+*Sheet Weight:* {{sheetWeightGrams}}
+
+*BOARDLINE REMARKS*
+{{boardlineRemarks}}
+
+*QC Person:* {{qcPerson}}
+
+*PRINTING ARTWORK*
+{{printingArtwork}}`;
+
+function defaultMessageForMenu(menu: string) {
+  return menu === BOARDLINE_QC_MENU ? DEFAULT_BOARDLINE_QC_MESSAGE : DEFAULT_QC_COMPLAINT_MESSAGE;
+}
 
 function collectMenuOptions(groups: NavGroup[]): MenuOption[] {
   const options: MenuOption[] = [];
@@ -70,7 +107,7 @@ export function WhatsappMaster() {
     setPass("");
     setGroupId("");
     setMenu(QC_COMPLAINT_MENU);
-    setMessage(DEFAULT_QC_COMPLAINT_MESSAGE);
+    setMessage(defaultMessageForMenu(QC_COMPLAINT_MENU));
     setActive("Yes");
     setIsFormOpen(false);
   };
@@ -81,7 +118,7 @@ export function WhatsappMaster() {
     setPass("");
     setGroupId("");
     setMenu(QC_COMPLAINT_MENU);
-    setMessage(DEFAULT_QC_COMPLAINT_MESSAGE);
+    setMessage(defaultMessageForMenu(QC_COMPLAINT_MENU));
     setActive("Yes");
     setIsFormOpen(true);
   };
@@ -179,7 +216,7 @@ export function WhatsappMaster() {
             <label className="space-y-2"><span className="text-blue-700 font-bold">LoginID <span className="text-red-500">*</span></span><input value={loginId} onChange={(e) => setLoginId(e.target.value)} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></label>
             <label className="space-y-2"><span className="text-blue-700 font-bold">Pass <span className="text-red-500">{editingId ? "" : "*"}</span></span><input type="password" value={pass} onChange={(e) => setPass(e.target.value)} required={!editingId} placeholder={editingId ? "Leave blank to keep current password" : "Enter password"} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></label>
             <label className="space-y-2"><span className="text-blue-700 font-bold">GroupId <span className="text-red-500">*</span></span><input value={groupId} onChange={(e) => setGroupId(e.target.value)} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></label>
-            <label className="space-y-2"><span className="text-blue-700 font-bold">Menu <span className="text-red-500">*</span></span><select value={menu} onChange={(e) => setMenu(e.target.value)} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Select menu</option>{menuOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+            <label className="space-y-2"><span className="text-blue-700 font-bold">Menu <span className="text-red-500">*</span></span><select value={menu} onChange={(e) => { const nextMenu = e.target.value; setMenu(nextMenu); if (!editingId) setMessage(defaultMessageForMenu(nextMenu)); }} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Select menu</option>{menuOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
             <label className="space-y-2 md:col-span-2"><span className="text-blue-700 font-bold">Auto-message template <span className="text-red-500">*</span></span><textarea value={message} onChange={(e) => setMessage(e.target.value)} required rows={5} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /></label>
             <label className="space-y-2"><span className="text-blue-700 font-bold">Status</span><select value={active} onChange={(e) => setActive(e.target.value === "No" ? "No" : "Yes")} className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"><option value="Yes">Active</option><option value="No">Inactive</option></select></label>
           </form>

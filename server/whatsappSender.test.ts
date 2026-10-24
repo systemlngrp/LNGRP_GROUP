@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildPhotoUrl, buildWhatsappPayload, resolveWhatsappTemplate, sendWhatsappComplaintMessage } from "./whatsappSender.js";
+import { buildPhotoUrl, buildWhatsappBoardlinePayload, buildWhatsappPayload, resolveWhatsappBoardlineTemplate, resolveWhatsappTemplate, sendWhatsappBoardlineMessage, sendWhatsappComplaintMessage } from "./whatsappSender.js";
 
 const complaint = {
   id: "QC-1792839256252-tolgrr",
@@ -95,5 +95,49 @@ describe("WhatsApp complaint sender", () => {
     });
     assert.equal(result.status, "Sent");
     assert.equal(requests.length, 1);
+  });
+
+  it("resolves and sends the Boardline QC template", async () => {
+    const boardline = {
+      jobNo: "10626",
+      partyName: "HOMTEK INDIA AGRO INDUSTRIES",
+      itemName: "CHITTCHORE RICE BRAN OIL 700 GM",
+      erp: "99970092",
+      samplingPlanQty: 3,
+      samplingCheckNo: "1 / 3",
+      standard: "114 - 253 - 114",
+      flapHeightFlapOperatorSide: "114-253-114",
+      flapHeightFlapDriveSide: "114-253-114",
+      cuttingSizeRequired: 1086,
+      cuttingSizeMm: 1085,
+      boardGsm: 442,
+      typeOfFlute: "B",
+      boardThickness: 3.15,
+      moisture: "6.8-7.7%",
+      sheetWeightGrams: 0,
+      boardlineRemarks: "Ok",
+      qcPerson: "Nabajyoti",
+      printingArtwork: "https://drive.google.com/file/d/example/view",
+    };
+    const template = "Job {{jobNo}} {{partyName}} {{samplingCheckNo}} {{printingArtwork}}";
+    const boardlineConfig = { ...config, message: template };
+    const message = resolveWhatsappBoardlineTemplate(template, boardline);
+    assert.match(message, /10626/);
+    assert.match(message, /1 \/ 3/);
+    assert.match(message, /drive.google.com/);
+    assert.deepEqual(buildWhatsappBoardlinePayload(boardlineConfig, boardline), {
+      recipientIds: ["group@g.us"],
+      message: [message],
+    });
+    let request: RequestInit | undefined;
+    const result = await sendWhatsappBoardlineMessage(boardlineConfig, boardline, {
+      endpoint: "https://sender.test/message",
+      fetchImpl: async (_url, init) => {
+        request = init;
+        return new Response("{}", { status: 200 });
+      },
+    });
+    assert.equal(result.status, "Sent");
+    assert.doesNotMatch(String(request?.body), /secret/);
   });
 });

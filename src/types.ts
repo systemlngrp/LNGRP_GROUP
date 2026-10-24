@@ -1048,6 +1048,10 @@ export interface BoardLineQcCheck {
   filledFields?: string[];
   createdBy?: string;
   createdTimestamp?: string;
+  whatsappSendStatus?: "Sent" | "Failed" | "Not Configured" | string;
+  whatsappSendError?: string;
+  whatsappSentAt?: string;
+  whatsappSendStartedAt?: string;
 }
 
 export interface QcUpdateRecord {

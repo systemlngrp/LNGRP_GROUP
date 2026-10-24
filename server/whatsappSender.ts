@@ -13,6 +13,29 @@ export type WhatsappComplaintRecord = {
   photo2?: unknown;
 };
 
+export type WhatsappBoardlineRecord = {
+  jobNo?: unknown;
+  partyName?: unknown;
+  itemName?: unknown;
+  erp?: unknown;
+  samplingPlanQty?: unknown;
+  samplingCheckNo?: unknown;
+  checkNo?: unknown;
+  standard?: unknown;
+  flapHeightFlapOperatorSide?: unknown;
+  flapHeightFlapDriveSide?: unknown;
+  cuttingSizeRequired?: unknown;
+  cuttingSizeMm?: unknown;
+  boardGsm?: unknown;
+  typeOfFlute?: unknown;
+  boardThickness?: unknown;
+  moisture?: unknown;
+  sheetWeightGrams?: unknown;
+  boardlineRemarks?: unknown;
+  qcPerson?: unknown;
+  printingArtwork?: unknown;
+};
+
 export type WhatsappSenderConfig = {
   loginId: string;
   pass: string;
@@ -30,6 +53,7 @@ export type WhatsappSendResult = {
 };
 
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
+export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
@@ -46,6 +70,38 @@ export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 *Photos:* Attached separately.
 
 Please review this complaint and take the necessary action.`;
+export const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
+
+*Job No.:* {{jobNo}}
+*Party Name:* {{partyName}}
+*Item Name:* {{itemName}}
+*ERP Code:* {{erp}}
+
+*Sampling Plan Qty.:* {{samplingPlanQty}}
+*Check No.:* {{samplingCheckNo}}
+
+*Size Details*
+*Standard (Flap - Height - Flap):* {{standard}}
+*Actual - Operator Side:* {{flapHeightFlapOperatorSide}}
+*Actual - Drive Side:* {{flapHeightFlapDriveSide}}
+
+*Cutting Size Required:* {{cuttingSizeRequired}}
+*Cutting Size Achieved:* {{cuttingSizeMm}}
+
+*Board Details*
+*B.GSM:* {{boardGsm}}
+*Type of Flute:* {{typeOfFlute}}
+*Board Thickness:* {{boardThickness}}
+*Moisture:* {{moisture}}
+*Sheet Weight:* {{sheetWeightGrams}}
+
+*BOARDLINE REMARKS*
+{{boardlineRemarks}}
+
+*QC Person:* {{qcPerson}}
+
+*PRINTING ARTWORK*
+{{printingArtwork}}`;
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -65,6 +121,21 @@ export function resolveWhatsappTemplate(template: string, complaint: WhatsappCom
     photo2: "",
   };
   return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+export function resolveWhatsappBoardlineTemplate(template: string, record: WhatsappBoardlineRecord) {
+  const values: Record<string, string> = Object.fromEntries(
+    Object.entries(record).map(([key, value]) => [key, text(value)])
+  );
+  values.samplingCheckNo = text(record.samplingCheckNo) || text(record.checkNo);
+  return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+export function buildWhatsappBoardlinePayload(config: WhatsappSenderConfig, record: WhatsappBoardlineRecord) {
+  return {
+    recipientIds: [text(config.groupId)],
+    message: [resolveWhatsappBoardlineTemplate(config.message, record)],
+  };
 }
 
 export function buildPhotoUrl(value: unknown, appPublicUrl: string) {
@@ -92,6 +163,44 @@ function safeErrorMessage(value: unknown) {
   return message.slice(0, 500) || "WhatsApp sender request failed.";
 }
 
+async function sendWhatsappPayload(
+  config: WhatsappSenderConfig,
+  payload: Record<string, unknown>,
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<WhatsappSendResult> {
+  const fetchImpl = options.fetchImpl || fetch;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
+  try {
+    const authorization = Buffer.from(`${config.loginId}:${config.pass}`).toString("base64");
+    const response = await fetchImpl(options.endpoint || MESSAGE_AUTO_SENDER_URL, {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "Content-Type": "application/json",
+        Authorization: `Basic ${authorization}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) return { status: "Failed", error: `WhatsApp sender returned ${response.status}.` };
+    return { status: "Sent", sentAt: new Date().toISOString() };
+  } catch (error) {
+    const message = error instanceof Error && error.name === "AbortError" ? "WhatsApp sender request timed out." : safeErrorMessage(error instanceof Error ? error.message : error);
+    return { status: "Failed", error: message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export function sendWhatsappBoardlineMessage(
+  config: WhatsappSenderConfig,
+  record: WhatsappBoardlineRecord,
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+) {
+  return sendWhatsappPayload(config, buildWhatsappBoardlinePayload(config, record), options);
+}
+
 export async function sendWhatsappComplaintStage(
   config: WhatsappSenderConfig,
   complaint: WhatsappComplaintRecord,
@@ -102,32 +211,7 @@ export async function sendWhatsappComplaintStage(
   if (stage !== "text" && !buildPhotoUrl(stage === "photo1" ? complaint.photo1 : complaint.photo2, appPublicUrl)) {
     return { status: "Sent", sentAt: new Date().toISOString() };
   }
-  const fetchImpl = options.fetchImpl || fetch;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
-  try {
-    const authorization = Buffer.from(`${config.loginId}:${config.pass}`).toString("base64");
-    const endpoint = options.endpoint || MESSAGE_AUTO_SENDER_URL;
-    const response = await fetchImpl(endpoint, {
-      method: "POST",
-      headers: {
-      accept: "application/json",
-      "Content-Type": "application/json",
-      Authorization: `Basic ${authorization}`,
-      },
-      body: JSON.stringify(buildWhatsappPayload(config, complaint, appPublicUrl, stage)),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      return { status: "Failed", error: `WhatsApp sender returned ${response.status}.` };
-    }
-    return { status: "Sent", sentAt: new Date().toISOString() };
-  } catch (error) {
-    const message = error instanceof Error && error.name === "AbortError" ? "WhatsApp sender request timed out." : safeErrorMessage(error instanceof Error ? error.message : error);
-    return { status: "Failed", error: message };
-  } finally {
-    clearTimeout(timeout);
-  }
+  return sendWhatsappPayload(config, buildWhatsappPayload(config, complaint, appPublicUrl, stage), options);
 }
 
 export async function sendWhatsappComplaintMessage(

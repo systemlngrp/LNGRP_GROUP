@@ -14,7 +14,7 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_COMPLAINT_MENU, sendWhatsappComplaintStage, type WhatsappSendStage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, type WhatsappSendStage } from "./whatsappSender.js";
 import { GoogleGenAI } from "@google/genai";
 import {
   APP_BUILD_MARKER,
@@ -5944,7 +5944,11 @@ async function initDb(retries = 5) {
           \`chunkStatus\` VARCHAR(20) DEFAULT 'Draft',
           \`filledFields\` JSON,
           \`createdBy\` VARCHAR(255),
-          \`createdTimestamp\` VARCHAR(255)
+          \`createdTimestamp\` VARCHAR(255),
+          \`whatsappSendStatus\` VARCHAR(30),
+          \`whatsappSendError\` TEXT,
+          \`whatsappSentAt\` VARCHAR(255),
+          \`whatsappSendStartedAt\` VARCHAR(255)
         )
       `);
 
@@ -8972,6 +8976,10 @@ await db.query(`
         { table: "boardline_qc_checks", column: "filledFields", type: "JSON" },
         { table: "boardline_qc_checks", column: "createdBy", type: "VARCHAR(255)" },
         { table: "boardline_qc_checks", column: "createdTimestamp", type: "VARCHAR(255)" },
+        { table: "boardline_qc_checks", column: "whatsappSendStatus", type: "VARCHAR(30)" },
+        { table: "boardline_qc_checks", column: "whatsappSendError", type: "TEXT" },
+        { table: "boardline_qc_checks", column: "whatsappSentAt", type: "VARCHAR(255)" },
+        { table: "boardline_qc_checks", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
         { table: "printing_qc_checks", column: "samplingCheckNo", type: "VARCHAR(255)" },
         { table: "printing_qc_checks", column: "pqcNo", type: "VARCHAR(50)" },
         { table: "printing_qc_checks", column: "qcFormType", type: "VARCHAR(30)" },
@@ -9038,6 +9046,20 @@ await db.query(`
         }
       } catch (error) {
         console.warn("[DB] Could not update legacy QC Complaint WhatsApp message template:", (error as Error).message);
+      }
+
+      try {
+        const [boardlineWhatsappRows] = await db.query(
+          "SELECT id, message FROM `whatsapp_configs` WHERE menu = ? AND active = 'Yes' ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+          [WHATSAPP_BOARDLINE_MENU]
+        );
+        const boardlineWhatsapp = (boardlineWhatsappRows as any[])[0];
+        if (boardlineWhatsapp?.id && !/\{\{\s*jobNo\s*\}\}/i.test(String(boardlineWhatsapp.message || ""))) {
+          await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_BOARDLINE_QC_MESSAGE, boardlineWhatsapp.id]);
+          console.log(`[DB] Updated Boardline QC WhatsApp message template for ${boardlineWhatsapp.id}.`);
+        }
+      } catch (error) {
+        console.warn("[DB] Could not update Boardline QC WhatsApp message template:", (error as Error).message);
       }
 
       await ensureInterFirmSchema(db, database);
@@ -9659,6 +9681,57 @@ async function processWhatsappComplaintDelivery(db: mysql.Pool, complaintId: str
   }
 }
 
+async function processBoardlineWhatsappDelivery(db: mysql.Pool, checkId: string): Promise<WhatsappComplaintDelivery> {
+  const nowIso = new Date().toISOString();
+  const staleBeforeIso = new Date(Date.now() - 60_000).toISOString();
+  try {
+    const [claimResult] = await db.query(
+      "UPDATE `boardline_qc_checks` SET whatsappSendStatus = 'Sending', whatsappSendError = NULL, whatsappSendStartedAt = ? WHERE id = ? AND COALESCE(TRIM(whatsappSentAt), '') = '' AND (COALESCE(whatsappSendStatus, '') <> 'Sending' OR COALESCE(whatsappSendStartedAt, '') < ?)",
+      [nowIso, checkId, staleBeforeIso]
+    );
+    if (Number((claimResult as any)?.affectedRows || 0) === 0) {
+      const [rows] = await db.query("SELECT whatsappSentAt FROM `boardline_qc_checks` WHERE id = ? LIMIT 1", [checkId]);
+      return String((rows as any[])[0]?.whatsappSentAt || "").trim() ? { status: "Already Sent" } : { status: "In Progress" };
+    }
+
+    const [configRows] = await db.query(
+      "SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC LIMIT 1",
+      [WHATSAPP_BOARDLINE_MENU]
+    );
+    const config = (configRows as any[])[0];
+    if (!config) {
+      const delivery: WhatsappComplaintDelivery = { status: "Not Configured", error: "No active Boardline WhatsApp configuration was found." };
+      await db.query("UPDATE `boardline_qc_checks` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.status, delivery.error, checkId, nowIso]);
+      return delivery;
+    }
+
+    const [checkRows] = await db.query("SELECT * FROM `boardline_qc_checks` WHERE id = ? LIMIT 1", [checkId]);
+    const check = (checkRows as any[])[0] || {};
+    const result = await sendWhatsappBoardlineMessage(
+      { loginId: String(config.loginId || ""), pass: String(config.pass || ""), groupId: String(config.groupId || ""), message: String(config.message || "") },
+      check,
+    );
+    if (result.status !== "Sent") {
+      const delivery: WhatsappComplaintDelivery = { status: "Failed", error: result.error || "Boardline WhatsApp message could not be sent." };
+      await db.query("UPDATE `boardline_qc_checks` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.status, delivery.error, checkId, nowIso]);
+      return delivery;
+    }
+
+    const delivery: WhatsappComplaintDelivery = { status: "Sent", sentAt: result.sentAt || new Date().toISOString() };
+    await db.query("UPDATE `boardline_qc_checks` SET whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.sentAt, checkId, nowIso]);
+    return delivery;
+  } catch (error) {
+    console.warn("[WHATSAPP] Boardline delivery failed:", (error as Error).message);
+    const delivery: WhatsappComplaintDelivery = { status: "Failed", error: "Boardline WhatsApp message could not be sent." };
+    try {
+      await db.query("UPDATE `boardline_qc_checks` SET whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL WHERE id = ?", [delivery.error, checkId]);
+    } catch (statusError) {
+      console.warn("[WHATSAPP] Could not store Boardline delivery status:", (statusError as Error).message);
+    }
+    return delivery;
+  }
+}
+
 async function retryPendingWhatsappComplaints() {
   if (whatsappRetryRunning) return;
   whatsappRetryRunning = true;
@@ -9672,6 +9745,15 @@ async function retryPendingWhatsappComplaints() {
       const result = await processWhatsappComplaintDelivery(db, String(row.id || "").trim());
       if (result.status === "Failed" || result.status === "Not Configured") {
         console.warn(`[WHATSAPP] Automatic retry pending for complaint ${String(row.id || "")}: ${result.failedStage || result.status}`);
+      }
+    }
+    const [boardlineRows] = await db.query(
+      "SELECT id FROM `boardline_qc_checks` WHERE COALESCE(TRIM(whatsappSentAt), '') = '' ORDER BY updateTimestamp ASC LIMIT 50"
+    );
+    for (const row of boardlineRows as any[]) {
+      const result = await processBoardlineWhatsappDelivery(db, String(row.id || "").trim());
+      if (result.status === "Failed" || result.status === "Not Configured") {
+        console.warn(`[WHATSAPP] Automatic Boardline retry pending for check ${String(row.id || "")}: ${result.status}`);
       }
     }
   } catch (error) {
@@ -11430,6 +11512,9 @@ const createHandlers = (tableName: string) => {
         }
         if (tableName === "quality_complaints") {
           whatsappDelivery = await processWhatsappComplaintDelivery(db, String(data.id || "").trim());
+        }
+        if (tableName === "boardline_qc_checks") {
+          whatsappDelivery = await processBoardlineWhatsappDelivery(db, String(data.id || "").trim());
         }
         if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
           const pendingId = String(data.sourceTransactionId || "").trim();
