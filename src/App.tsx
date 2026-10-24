@@ -124,6 +124,7 @@ const QcPrintingWastageForm = lazy(() => import("./pages/QcPrintingWastage").the
 const QcPrintingWastageMaster = lazy(() => import("./pages/QcPrintingWastage").then((module) => ({ default: module.QcPrintingWastageMaster })));
 const Users = lazy(() => import("./pages/Users").then((module) => ({ default: module.Users })));
 const Services = lazy(() => import("./pages/Services").then((module) => ({ default: module.Services })));
+const WhatsappMaster = lazy(() => import("./pages/WhatsappMaster").then((module) => ({ default: module.WhatsappMaster })));
 const PlantHeadUnified = lazy(() => import("./pages/PlantHeadUnified").then((module) => ({ default: module.PlantHeadUnified })));
 const OrderForm = lazy(() => import("./pages/OrderForm").then((module) => ({ default: module.OrderForm })));
 const OrdersPendingPH = lazy(() => import("./pages/OrdersPendingPH").then((module) => ({ default: module.OrdersPendingPH })));
@@ -283,6 +284,7 @@ export default function App() {
           <Route path="masters/plate-item-master" element={<PlateItemMaster />} />
           <Route path="masters/users" element={<Users />} />
           <Route path="masters/services" element={<Services />} />
+          <Route path="masters/whatsapp" element={<WhatsappMaster />} />
           <Route path="masters/settings" element={<SettingsPage />} />
           <Route path="masters/firms" element={<FirmMaster />} />
 

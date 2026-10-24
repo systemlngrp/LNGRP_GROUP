@@ -859,7 +859,7 @@ const USER_ROLE_MAX_LENGTH = 20;
 const MASTER_RECORD_ENTITIES = new Set([
     "item_groups", "material_groups", "items", "materials", "suppliers", "states", "units",
     "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "trucks",
-    "machines", "npd", "php_item_master", "plate_item_master", "users", "services", "settings",
+    "machines", "npd", "php_item_master", "plate_item_master", "users", "services", "whatsapp_configs", "settings",
     "boardline_qc_checks", "printing_qc_checks", "pre_dispatch_inspections", "quality_complaints",
     "qc_printing_wastage_records", "qc_update_records", "qc_file_no_masters", "special_remark_records",
     "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "printing_stereo_records",
@@ -4860,6 +4860,8 @@ function entityPermissionKey(entity) {
             return "/masters/settings";
         case "services":
             return "/masters/services";
+        case "whatsapp_configs":
+            return "/masters/whatsapp";
         case "material_in":
         case "material_in_packing_slips":
             return "/material-in";
@@ -6980,6 +6982,19 @@ async function initDb(retries = 5) {
           \`updateTimestamp\` VARCHAR(255)
         )
       `);
+            await db.query(`
+        CREATE TABLE IF NOT EXISTS \`whatsapp_configs\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`loginId\` VARCHAR(255) NOT NULL,
+          \`pass\` VARCHAR(255) NOT NULL,
+          \`groupId\` VARCHAR(255) NOT NULL,
+          \`menu\` VARCHAR(500) NOT NULL,
+          \`message\` TEXT NOT NULL,
+          \`active\` VARCHAR(10) NOT NULL DEFAULT 'Yes',
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
             try {
                 const [existingServiceRows] = await db.query("SELECT COUNT(*) as count FROM `services`");
                 const existingServiceCount = Number(existingServiceRows[0]?.count || 0);
@@ -7797,6 +7812,14 @@ async function initDb(retries = 5) {
                 { table: "services", column: "active", type: "VARCHAR(10) DEFAULT 'Yes'" },
                 { table: "services", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "services", column: "updateTimestamp", type: "VARCHAR(255)" },
+                { table: "whatsapp_configs", column: "loginId", type: "VARCHAR(255) NOT NULL" },
+                { table: "whatsapp_configs", column: "pass", type: "VARCHAR(255) NOT NULL" },
+                { table: "whatsapp_configs", column: "groupId", type: "VARCHAR(255) NOT NULL" },
+                { table: "whatsapp_configs", column: "menu", type: "VARCHAR(500) NOT NULL" },
+                { table: "whatsapp_configs", column: "message", type: "TEXT NOT NULL" },
+                { table: "whatsapp_configs", column: "active", type: "VARCHAR(10) NOT NULL DEFAULT 'Yes'" },
+                { table: "whatsapp_configs", column: "updatedBy", type: "VARCHAR(255)" },
+                { table: "whatsapp_configs", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "material_in", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
                 { table: "material_in", column: "mrrType", type: "VARCHAR(50)" },
                 { table: "material_in", column: "mrrSubType", type: "VARCHAR(50)" },
@@ -8952,6 +8975,7 @@ const createHandlers = (tableName) => {
                 // Cursor pagination is opt-in, preserving array responses for legacy callers.
                 const customListTables = new Set([
                     "users", "materials", "items", "invoice_line_items", "npd", "npd-firm-wise", "production_processing",
+                    "whatsapp_configs",
                 ]);
                 if (req.query.limit !== undefined && !customListTables.has(tableName)) {
                     const limit = Number(req.query.limit);
@@ -8994,6 +9018,10 @@ const createHandlers = (tableName) => {
                         return isAdminViewer ? { ...rest, menuAccess: normalizeMenuAccess(menuAccess) } : { ...rest };
                     });
                     return res.json(sanitized);
+                }
+                if (tableName === "whatsapp_configs") {
+                    const [whatsappRows] = await db.query("SELECT id, loginId, groupId, menu, message, active, updatedBy, updateTimestamp, CASE WHEN pass IS NULL OR pass = '' THEN '' ELSE '********' END AS pass FROM `whatsapp_configs` ORDER BY updateTimestamp DESC, loginId ASC");
+                    return res.json(whatsappRows.map((row) => normalizeFetchedRow(tableName, row)));
                 }
                 if (tableName === "materials" && requestFirmId) {
                     await assertRequestFirm(db, requestFirmId);
@@ -9140,6 +9168,31 @@ const createHandlers = (tableName) => {
             const data = applyAuditFields(normalizeNpdLinkedPayload(tableName, normalizeWorkflowStatus(tableName, req.body)), requestUser);
             let materialOpening = null;
             try {
+                if (tableName === "whatsapp_configs") {
+                    const id = String(data.id || "").trim();
+                    const loginId = String(data.loginId || "").trim();
+                    const groupId = String(data.groupId || "").trim();
+                    const menu = String(data.menu || "").trim();
+                    const message = String(data.message || "").trim();
+                    const active = String(data.active || "Yes").trim() === "No" ? "No" : "Yes";
+                    if (!loginId || !groupId || !menu || !message) {
+                        return res.status(400).json({ error: "LoginID, GroupId, Menu, and Message are required." });
+                    }
+                    const [duplicateRows] = await db.query("SELECT id FROM `whatsapp_configs` WHERE LOWER(TRIM(loginId)) = LOWER(TRIM(?)) AND LOWER(TRIM(groupId)) = LOWER(TRIM(?)) AND menu = ? AND id <> ? LIMIT 1", [loginId, groupId, menu, id]);
+                    if (duplicateRows[0]) {
+                        return res.status(409).json({ error: "A WhatsApp configuration already exists for this LoginID, GroupId, and Menu." });
+                    }
+                    data.loginId = loginId;
+                    data.groupId = groupId;
+                    data.menu = menu;
+                    data.message = message;
+                    data.active = active;
+                    const submittedPass = String(data.pass || "");
+                    if (id && !submittedPass)
+                        delete data.pass;
+                    if (!id && !submittedPass)
+                        return res.status(400).json({ error: "Pass is required for a new WhatsApp configuration." });
+                }
                 if (["boardline_qc_checks", "printing_qc_checks"].includes(tableName) && data.qcFormType) {
                     const expectedFormType = tableName === "boardline_qc_checks" ? "boardline" : "printing";
                     const jobNo = String(data.jobNo || "").trim();
@@ -11598,7 +11651,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
         conn.release();
     }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 app.get("/api/tally-sync-debug", (req, res) => {
     const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
     return res.json({

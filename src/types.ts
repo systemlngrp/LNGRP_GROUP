@@ -1755,6 +1755,18 @@ export interface Service {
   updateTimestamp?: string;
 }
 
+export interface WhatsappConfig {
+  id: string;
+  loginId: string;
+  pass?: string;
+  groupId: string;
+  menu: string;
+  message: string;
+  active?: "Yes" | "No";
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface Firm {
   id: string;
   firmName: string;
