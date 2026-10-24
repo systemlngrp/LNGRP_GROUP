@@ -141,6 +141,22 @@ describe("WhatsApp complaint sender", () => {
     assert.doesNotMatch(String(request?.body), /secret/);
   });
 
+  it("returns a safe 401 failure and permits a later Boardline retry", async () => {
+    let attempts = 0;
+    const boardlineConfig = { ...config, message: "Job {{jobNo}}" };
+    const fetchImpl: typeof fetch = async () => {
+      attempts += 1;
+      return new Response("credential details should stay private", { status: attempts === 1 ? 401 : 200 });
+    };
+    const first = await sendWhatsappBoardlineMessage(boardlineConfig, { jobNo: "10626" }, { fetchImpl });
+    const second = await sendWhatsappBoardlineMessage(boardlineConfig, { jobNo: "10626" }, { fetchImpl });
+    assert.deepEqual(first, { status: "Failed", error: "WhatsApp sender returned 401." });
+    assert.equal(second.status, "Sent");
+    assert.ok(second.sentAt);
+    assert.equal(attempts, 2);
+    assert.doesNotMatch(JSON.stringify([first, second]), /secret|credential details/);
+  });
+
   it("resolves and sends the Printing QC template with artwork as text", async () => {
     const printing = {
       jobNo: "10612",

@@ -15,6 +15,7 @@ import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_PRINTING_MENU, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappPrintingMessage } from "./whatsappSender.js";
+import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { GoogleGenAI } from "@google/genai";
 import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
 const execPromise = util.promisify(exec);
@@ -9440,11 +9441,17 @@ const createHandlers = (tableName) => {
                     data.menu = menu;
                     data.message = message;
                     data.active = active;
-                    const submittedPass = String(data.pass || "");
-                    if (id && !submittedPass)
+                    const [existingConfigRows] = id
+                        ? await db.query("SELECT pass FROM `whatsapp_configs` WHERE id = ? LIMIT 1", [id])
+                        : [[]];
+                    const existingConfig = existingConfigRows[0];
+                    const passwordDecision = resolveWhatsappConfigPassword(data.pass, existingConfig ? existingConfig.pass : undefined);
+                    if (passwordDecision.error)
+                        return res.status(400).json({ error: passwordDecision.error });
+                    if (passwordDecision.pass === undefined)
                         delete data.pass;
-                    if (!id && !submittedPass)
-                        return res.status(400).json({ error: "Pass is required for a new WhatsApp configuration." });
+                    else
+                        data.pass = passwordDecision.pass;
                 }
                 if (["boardline_qc_checks", "printing_qc_checks"].includes(tableName) && data.qcFormType) {
                     const expectedFormType = tableName === "boardline_qc_checks" ? "boardline" : "printing";
@@ -10824,6 +10831,10 @@ const createHandlers = (tableName) => {
                 res.json({ success: true, ...(whatsappDelivery ? { whatsapp: whatsappDelivery } : {}) });
             }
             catch (error) {
+                if (tableName === "whatsapp_configs") {
+                    console.error("[DB] Error saving WhatsApp configuration.");
+                    return res.status(500).json({ error: "Failed to save WhatsApp configuration." });
+                }
                 console.error(`[DB] Error upserting to ${tableName}:`, error);
                 res.status(Number(error?.statusCode || 500)).json({ error: error.message });
             }

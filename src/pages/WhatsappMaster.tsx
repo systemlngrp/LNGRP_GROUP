@@ -183,6 +183,10 @@ export function WhatsappMaster() {
       alert("LoginID, Pass, GroupId, Menu, and Message are required.");
       return;
     }
+    if (normalized.pass.trim() === "********") {
+      alert("Enter the real Pass; the masked value cannot be saved as a password.");
+      return;
+    }
     const duplicate = configs.some((config) =>
       config.id !== editingId &&
       config.loginId.trim().toLowerCase() === normalized.loginId.toLowerCase() &&
@@ -196,11 +200,9 @@ export function WhatsappMaster() {
     setIsSubmitting(true);
     try {
       const timestamp = new Date().toISOString();
-      const existing = editingId ? configs.find((config) => config.id === editingId) : undefined;
       const nextConfig: WhatsappConfig = {
         id: editingId || crypto.randomUUID(),
         loginId: normalized.loginId,
-        pass: "********",
         groupId: normalized.groupId,
         menu: normalized.menu,
         message: normalized.message,
@@ -208,7 +210,7 @@ export function WhatsappMaster() {
         updatedBy: user?.name || user?.email || "System User",
         updateTimestamp: timestamp,
       };
-      const payload: WhatsappConfig = { ...nextConfig, ...(normalized.pass ? { pass: normalized.pass } : {}) };
+      const payload: WhatsappConfig = normalized.pass ? { ...nextConfig, pass: normalized.pass } : nextConfig;
       const response = await fetch("/api/whatsapp-configs", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...getDataAuthHeaders() },
@@ -222,7 +224,13 @@ export function WhatsappMaster() {
       resetForm();
     } catch (error) {
       console.error("Failed to save WhatsApp configuration:", error);
-      alert("Failed to save WhatsApp configuration.");
+      const message = (error as Error).message;
+      const safeValidationMessages = new Set([
+        "Pass is required for a new WhatsApp configuration.",
+        "Enter the real Pass; the masked value cannot be saved as a password.",
+        "The stored Pass must be replaced. Enter the current Message Auto Sender password.",
+      ]);
+      alert(safeValidationMessages.has(message) ? message : "Failed to save WhatsApp configuration.");
     } finally {
       setIsSubmitting(false);
     }

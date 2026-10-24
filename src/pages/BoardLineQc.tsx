@@ -10,6 +10,7 @@ import { BoardLineQcCheck, Production, Setting, User } from "../types";
 import { formatDate, formatTime } from "../lib/utils";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
+import { boardlineWhatsappSaveMessage } from "../lib/boardlineWhatsappFeedback";
 import { createQcGroupKey, getChunkFilledFields, getChunkTimestamp, getQcGroupKey, nextQcChunkNo, type QcChunkStatus } from "../lib/qcChunks";
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
@@ -603,17 +604,11 @@ export function BoardLineQcForm() {
         createdBy: updatedBy,
         createdTimestamp: now,
       }, updatedBy, settings[0]);
-      const result = await checksApi.addItem(payload) as { whatsapp?: { status?: string } };
+      const result = await checksApi.addItem(payload) as { whatsapp?: { status?: string; error?: string } };
       setSelectedProductionId("");
       setForm(createInitialForm());
       setEditedChunkFields(new Set());
-      alert(result?.whatsapp?.status === "Sent"
-        ? "Board Line QC check saved and WhatsApp message sent successfully."
-        : result?.whatsapp?.status === "Not Configured"
-          ? "Board Line QC check saved, but no active WhatsApp configuration was found."
-          : result?.whatsapp?.status === "Failed"
-            ? "Board Line QC check saved, but WhatsApp message could not be sent. It will retry automatically."
-            : "Board Line QC check saved successfully.");
+      alert(boardlineWhatsappSaveMessage(result?.whatsapp));
     } catch (error) {
       console.error("Failed to save Board Line QC check:", error);
       alert((error as Error).message || "Failed to save Board Line QC check.");
