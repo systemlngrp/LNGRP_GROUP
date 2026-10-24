@@ -11,6 +11,7 @@ type MenuOption = { label: string; value: string };
 const QC_COMPLAINT_MENU = "/quality/complaints/form";
 const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
+*Complaint No.:* {{complaintNo}}
 *Complaint Date:* {{dateOfComplaint}}
 *Job / Lot No.:* {{lotNo}}
 *Party:* {{partyName}}
@@ -20,7 +21,7 @@ const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 *Quantity:* {{quantity}}
 *Area:* {{areaOfIssue}}
 *Issue Details:* {{issueDetails}}
-*Photos:* {{photo1}} {{photo2}}
+*Photos:* Attached separately.
 
 Please review this complaint and take the necessary action.`;
 

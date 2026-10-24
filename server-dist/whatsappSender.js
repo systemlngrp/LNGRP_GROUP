@@ -2,6 +2,7 @@ export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
+*Complaint No.:* {{complaintNo}}
 *Complaint Date:* {{dateOfComplaint}}
 *Job / Lot No.:* {{lotNo}}
 *Party:* {{partyName}}
@@ -11,12 +12,13 @@ export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 *Quantity:* {{quantity}}
 *Area:* {{areaOfIssue}}
 *Issue Details:* {{issueDetails}}
-*Photos:* {{photo1}} {{photo2}}
+*Photos:* Attached separately.
 
 Please review this complaint and take the necessary action.`;
 const text = (value) => String(value ?? "").trim();
 export function resolveWhatsappTemplate(template, complaint, appPublicUrl) {
     const values = {
+        complaintNo: text(complaint.id),
         dateOfComplaint: text(complaint.dateOfComplaint),
         lotNo: text(complaint.lotNo),
         partyName: text(complaint.partyName),
@@ -26,8 +28,8 @@ export function resolveWhatsappTemplate(template, complaint, appPublicUrl) {
         quantity: text(complaint.quantity),
         areaOfIssue: text(complaint.areaOfIssue),
         issueDetails: text(complaint.issueDetails),
-        photo1: buildPhotoUrl(complaint.photo1, appPublicUrl),
-        photo2: buildPhotoUrl(complaint.photo2, appPublicUrl),
+        photo1: "",
+        photo2: "",
     };
     return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => values[key] ?? "");
 }
@@ -39,54 +41,44 @@ export function buildPhotoUrl(value, appPublicUrl) {
         return filename;
     return `${text(appPublicUrl).replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
 }
-export function buildWhatsappPayload(config, complaint, appPublicUrl, includePhotos = true) {
-    const filePathUrl = [buildPhotoUrl(complaint.photo1, appPublicUrl), buildPhotoUrl(complaint.photo2, appPublicUrl)].filter(Boolean);
+export function buildWhatsappPayload(config, complaint, appPublicUrl, stage = "text") {
+    const photoUrl = stage === "photo1"
+        ? buildPhotoUrl(complaint.photo1, appPublicUrl)
+        : stage === "photo2"
+            ? buildPhotoUrl(complaint.photo2, appPublicUrl)
+            : "";
     return {
         recipientIds: [text(config.groupId)],
-        message: [resolveWhatsappTemplate(config.message, complaint, appPublicUrl)],
-        ...(includePhotos && filePathUrl.length ? { filePathUrl } : {}),
+        message: [stage === "text" ? resolveWhatsappTemplate(config.message, complaint, appPublicUrl) : ""],
+        ...(photoUrl ? { filePathUrl: [photoUrl] } : {}),
     };
 }
 function safeErrorMessage(value) {
     const message = text(value).replace(/authorization\s*:\s*basic\s+[^\s]+/gi, "authorization: [redacted]");
     return message.slice(0, 500) || "WhatsApp sender request failed.";
 }
-export async function sendWhatsappComplaintMessage(config, complaint, options = {}) {
+export async function sendWhatsappComplaintStage(config, complaint, stage, options = {}) {
+    const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";
+    if (stage !== "text" && !buildPhotoUrl(stage === "photo1" ? complaint.photo1 : complaint.photo2, appPublicUrl)) {
+        return { status: "Sent", sentAt: new Date().toISOString() };
+    }
     const fetchImpl = options.fetchImpl || fetch;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
     try {
         const authorization = Buffer.from(`${config.loginId}:${config.pass}`).toString("base64");
-        const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";
         const endpoint = options.endpoint || MESSAGE_AUTO_SENDER_URL;
-        const headers = {
-            accept: "application/json",
-            "Content-Type": "application/json",
-            Authorization: `Basic ${authorization}`,
-        };
-        const request = (includePhotos) => fetchImpl(endpoint, {
+        const response = await fetchImpl(endpoint, {
             method: "POST",
-            headers,
-            body: JSON.stringify(buildWhatsappPayload(config, complaint, appPublicUrl, includePhotos)),
+            headers: {
+                accept: "application/json",
+                "Content-Type": "application/json",
+                Authorization: `Basic ${authorization}`,
+            },
+            body: JSON.stringify(buildWhatsappPayload(config, complaint, appPublicUrl, stage)),
             signal: controller.signal,
         });
-        const payload = buildWhatsappPayload(config, complaint, appPublicUrl);
-        const response = await request(true);
         if (!response.ok) {
-            if (response.status === 424 && "filePathUrl" in payload) {
-                const fallbackResponse = await request(false);
-                if (fallbackResponse.ok) {
-                    return {
-                        status: "Sent",
-                        warning: "WhatsApp message sent, but photo attachments could not be delivered.",
-                        sentAt: new Date().toISOString(),
-                    };
-                }
-                return {
-                    status: "Failed",
-                    error: `WhatsApp sender returned ${fallbackResponse.status} after photo fallback.`,
-                };
-            }
             return { status: "Failed", error: `WhatsApp sender returned ${response.status}.` };
         }
         return { status: "Sent", sentAt: new Date().toISOString() };
@@ -98,4 +90,12 @@ export async function sendWhatsappComplaintMessage(config, complaint, options = 
     finally {
         clearTimeout(timeout);
     }
+}
+export async function sendWhatsappComplaintMessage(config, complaint, options = {}) {
+    for (const stage of ["text", "photo1", "photo2"]) {
+        const result = await sendWhatsappComplaintStage(config, complaint, stage, options);
+        if (result.status !== "Sent")
+            return { ...result, failedStage: stage };
+    }
+    return { status: "Sent", sentAt: new Date().toISOString() };
 }

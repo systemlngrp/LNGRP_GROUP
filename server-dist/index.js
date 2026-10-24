@@ -14,7 +14,7 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_COMPLAINT_MENU, sendWhatsappComplaintMessage } from "./whatsappSender.js";
+import { DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_COMPLAINT_MENU, sendWhatsappComplaintStage } from "./whatsappSender.js";
 import { GoogleGenAI } from "@google/genai";
 import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
 const execPromise = util.promisify(exec);
@@ -6125,6 +6125,9 @@ async function initDb(retries = 5) {
           \`quantity\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`whatsappSendStatus\` VARCHAR(30),
           \`whatsappSendError\` TEXT,
+          \`whatsappTextSentAt\` VARCHAR(255),
+          \`whatsappPhoto1SentAt\` VARCHAR(255),
+          \`whatsappPhoto2SentAt\` VARCHAR(255),
           \`whatsappSentAt\` VARCHAR(255),
           \`whatsappSendStartedAt\` VARCHAR(255),
           \`capaNo\` VARCHAR(100),
@@ -7535,6 +7538,9 @@ async function initDb(retries = 5) {
                 { table: "quality_complaints", column: "quantity", type: "DECIMAL(15,2) DEFAULT 0" },
                 { table: "quality_complaints", column: "whatsappSendStatus", type: "VARCHAR(30)" },
                 { table: "quality_complaints", column: "whatsappSendError", type: "TEXT" },
+                { table: "quality_complaints", column: "whatsappTextSentAt", type: "VARCHAR(255)" },
+                { table: "quality_complaints", column: "whatsappPhoto1SentAt", type: "VARCHAR(255)" },
+                { table: "quality_complaints", column: "whatsappPhoto2SentAt", type: "VARCHAR(255)" },
                 { table: "quality_complaints", column: "whatsappSentAt", type: "VARCHAR(255)" },
                 { table: "quality_complaints", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
                 { table: "quality_complaints", column: "capaNo", type: "VARCHAR(100)" },
@@ -8478,7 +8484,7 @@ async function initDb(retries = 5) {
                 const [legacyWhatsappRows] = await db.query("SELECT id, message FROM `whatsapp_configs` WHERE menu = ? AND active = 'Yes' ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_COMPLAINT_MENU]);
                 const legacyWhatsapp = legacyWhatsappRows[0];
                 const existingMessage = String(legacyWhatsapp?.message || "").trim();
-                if (legacyWhatsapp?.id && /on\s+c\s*date/i.test(existingMessage) && /issue\s*(details|deatils)/i.test(existingMessage) && /photos/i.test(existingMessage)) {
+                if (legacyWhatsapp?.id && ((/on\s+c\s*date/i.test(existingMessage) && /issue\s*(details|deatils)/i.test(existingMessage) && /photos/i.test(existingMessage)) || /\{\{\s*photo[12]\s*\}\}/i.test(existingMessage))) {
                     await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_QC_COMPLAINT_MESSAGE, legacyWhatsapp.id]);
                     console.log(`[DB] Updated legacy QC Complaint WhatsApp message template for ${legacyWhatsapp.id}.`);
                 }
@@ -10563,43 +10569,68 @@ const createHandlers = (tableName) => {
                         const [claimResult] = await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = 'Sending', whatsappSendError = NULL, whatsappSendStartedAt = ? WHERE id = ? AND COALESCE(TRIM(whatsappSentAt), '') = '' AND (COALESCE(whatsappSendStatus, '') <> 'Sending' OR COALESCE(whatsappSendStartedAt, '') < ?)", [nowIso, complaintId, staleBeforeIso]);
                         const claimed = Number(claimResult?.affectedRows || 0) > 0;
                         if (!claimed) {
-                            const [currentRows] = await db.query("SELECT whatsappSentAt, whatsappSendStatus FROM `quality_complaints` WHERE id = ? LIMIT 1", [complaintId]);
+                            const [currentRows] = await db.query("SELECT whatsappSentAt FROM `quality_complaints` WHERE id = ? LIMIT 1", [complaintId]);
                             const current = currentRows[0] || {};
                             whatsappDelivery = String(current.whatsappSentAt || "").trim()
                                 ? { status: "Already Sent" }
                                 : { status: "In Progress" };
                         }
                         else {
-                            try {
-                                const [configRows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC LIMIT 1", [WHATSAPP_COMPLAINT_MENU]);
-                                const config = configRows[0];
-                                if (!config) {
-                                    whatsappDelivery = { status: "Not Configured", error: "No active WhatsApp configuration was found." };
+                            const [configRows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC LIMIT 1", [WHATSAPP_COMPLAINT_MENU]);
+                            const config = configRows[0];
+                            if (!config) {
+                                whatsappDelivery = { status: "Not Configured", error: "No active WhatsApp configuration was found." };
+                                await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [whatsappDelivery.status, whatsappDelivery.error, complaintId, nowIso]);
+                            }
+                            else {
+                                const [stageRows] = await db.query("SELECT photo1, photo2, whatsappTextSentAt, whatsappPhoto1SentAt, whatsappPhoto2SentAt FROM `quality_complaints` WHERE id = ? LIMIT 1", [complaintId]);
+                                const current = stageRows[0] || {};
+                                const senderConfig = {
+                                    loginId: String(config.loginId || ""),
+                                    pass: String(config.pass || ""),
+                                    groupId: String(config.groupId || ""),
+                                    message: String(config.message || ""),
+                                };
+                                const stages = [
+                                    { stage: "text", timestampColumn: "whatsappTextSentAt" },
+                                    { stage: "photo1", timestampColumn: "whatsappPhoto1SentAt", photoField: "photo1" },
+                                    { stage: "photo2", timestampColumn: "whatsappPhoto2SentAt", photoField: "photo2" },
+                                ];
+                                let failed;
+                                for (const item of stages) {
+                                    if (String(current[item.timestampColumn] || "").trim())
+                                        continue;
+                                    if (item.photoField && !String(current[item.photoField] || "").trim())
+                                        continue;
+                                    const result = await sendWhatsappComplaintStage(senderConfig, { ...data, id: complaintId, photo1: current.photo1, photo2: current.photo2 }, item.stage);
+                                    if (result.status !== "Sent") {
+                                        failed = { error: result.error || `WhatsApp ${item.stage} delivery failed.`, stage: item.stage };
+                                        break;
+                                    }
+                                    const stageSentAt = result.sentAt || new Date().toISOString();
+                                    await db.query(`UPDATE \`quality_complaints\` SET \`${item.timestampColumn}\` = ?, whatsappSendError = NULL WHERE id = ? AND whatsappSendStartedAt = ?`, [stageSentAt, complaintId, nowIso]);
+                                    current[item.timestampColumn] = stageSentAt;
+                                }
+                                if (failed) {
+                                    whatsappDelivery = { status: "Failed", error: failed.error, failedStage: failed.stage };
+                                    await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [whatsappDelivery.status, whatsappDelivery.error, complaintId, nowIso]);
                                 }
                                 else {
-                                    whatsappDelivery = await sendWhatsappComplaintMessage({
-                                        loginId: String(config.loginId || ""),
-                                        pass: String(config.pass || ""),
-                                        groupId: String(config.groupId || ""),
-                                        message: String(config.message || ""),
-                                    }, data);
+                                    whatsappDelivery = { status: "Sent", sentAt: new Date().toISOString() };
+                                    await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [whatsappDelivery.sentAt, complaintId, nowIso]);
                                 }
-                            }
-                            catch (error) {
-                                console.warn("[WHATSAPP] Complaint delivery preparation failed:", error.message);
-                                whatsappDelivery = { status: "Failed", error: "WhatsApp message could not be prepared." };
-                            }
-                            try {
-                                await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = ?, whatsappSendStartedAt = NULL WHERE id = ?", [whatsappDelivery.status, whatsappDelivery.error || whatsappDelivery.warning || null, whatsappDelivery.sentAt || null, complaintId]);
-                            }
-                            catch (error) {
-                                console.warn("[WHATSAPP] Could not store complaint delivery status:", error.message);
                             }
                         }
                     }
                     catch (error) {
-                        console.warn("[WHATSAPP] Could not claim complaint delivery:", error.message);
-                        whatsappDelivery = { status: "Failed", error: "WhatsApp message could not be prepared." };
+                        console.warn("[WHATSAPP] Complaint delivery failed:", error.message);
+                        whatsappDelivery = { status: "Failed", error: "WhatsApp message could not be sent." };
+                        try {
+                            await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL WHERE id = ?", [whatsappDelivery.error, complaintId]);
+                        }
+                        catch (statusError) {
+                            console.warn("[WHATSAPP] Could not store complaint delivery status:", statusError.message);
+                        }
                     }
                 }
                 if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {

@@ -1190,6 +1190,9 @@ export interface QualityComplaint {
   quantity: number;
   whatsappSendStatus?: "Sent" | "Failed" | "Not Configured" | string;
   whatsappSendError?: string;
+  whatsappTextSentAt?: string;
+  whatsappPhoto1SentAt?: string;
+  whatsappPhoto2SentAt?: string;
   whatsappSentAt?: string;
   whatsappSendStartedAt?: string;
   capaNo?: string;
