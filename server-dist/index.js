@@ -10590,7 +10590,7 @@ const createHandlers = (tableName) => {
                                 whatsappDelivery = { status: "Failed", error: "WhatsApp message could not be prepared." };
                             }
                             try {
-                                await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = ?, whatsappSendStartedAt = NULL WHERE id = ?", [whatsappDelivery.status, whatsappDelivery.error || null, whatsappDelivery.sentAt || null, complaintId]);
+                                await db.query("UPDATE `quality_complaints` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = ?, whatsappSendStartedAt = NULL WHERE id = ?", [whatsappDelivery.status, whatsappDelivery.error || whatsappDelivery.warning || null, whatsappDelivery.sentAt || null, complaintId]);
                             }
                             catch (error) {
                                 console.warn("[WHATSAPP] Could not store complaint delivery status:", error.message);

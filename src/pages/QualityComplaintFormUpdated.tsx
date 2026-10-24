@@ -187,7 +187,7 @@ export function QualityComplaintFormUpdated() {
     const record: QualityComplaint = { id: `QC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, timestamp: now, dateOfComplaint: form.dateOfComplaint, firmId: form.firmId, firmName: form.firmName || "", partyName: form.partyName.trim(), itemName: form.itemName.trim(), erpCode: form.erpCode.trim(), natureOfComplaint: form.natureOfComplaint, lotNo: form.lotNo.trim(), issueDetails: form.issueDetails.trim(), photo1: form.photo1, photo2: form.photo2, areaOfIssue: form.areaOfIssue, concernedPersonName: form.concernedPersonName.trim(), quantity, updatedBy: "System User", updateTimestamp: now };
     setSaving(true);
     try {
-      const result = await api.addItem(record) as { whatsapp?: { status?: string } };
+      const result = await api.addItem(record) as { whatsapp?: { status?: string; warning?: string } };
       manuallySelectedPerson.current = false;
       setForm(blank());
       setHint("");
@@ -195,7 +195,9 @@ export function QualityComplaintFormUpdated() {
       const whatsappStatus = result?.whatsapp?.status;
       setSuccessMessage(
         whatsappStatus === "Sent"
-          ? "QC complaint saved and WhatsApp message sent."
+          ? result?.whatsapp?.warning
+            ? `QC complaint saved. ${result.whatsapp.warning}`
+            : "QC complaint saved and WhatsApp message sent."
           : whatsappStatus === "Not Configured"
             ? "QC complaint saved, but no active WhatsApp configuration was found."
             : whatsappStatus === "Failed"

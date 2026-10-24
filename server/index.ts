@@ -9775,7 +9775,7 @@ const createHandlers = (tableName: string) => {
         requestUser
       );
       let materialOpening: null | { firmId: string; qty: number; rate: number; value: number } = null;
-      let whatsappDelivery: { status: "Sent" | "Failed" | "Not Configured" | "Already Sent" | "In Progress"; error?: string; sentAt?: string } | undefined;
+      let whatsappDelivery: { status: "Sent" | "Failed" | "Not Configured" | "Already Sent" | "In Progress"; error?: string; warning?: string; sentAt?: string } | undefined;
       try {
         if (tableName === "whatsapp_configs") {
           const id = String(data.id || "").trim();
@@ -11341,7 +11341,7 @@ const createHandlers = (tableName: string) => {
               try {
                 await db.query(
                   "UPDATE `quality_complaints` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = ?, whatsappSendStartedAt = NULL WHERE id = ?",
-                  [whatsappDelivery.status, whatsappDelivery.error || null, whatsappDelivery.sentAt || null, complaintId]
+                  [whatsappDelivery.status, whatsappDelivery.error || whatsappDelivery.warning || null, whatsappDelivery.sentAt || null, complaintId]
                 );
               } catch (error) {
                 console.warn("[WHATSAPP] Could not store complaint delivery status:", (error as Error).message);

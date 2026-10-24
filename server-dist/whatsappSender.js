@@ -39,12 +39,12 @@ export function buildPhotoUrl(value, appPublicUrl) {
         return filename;
     return `${text(appPublicUrl).replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
 }
-export function buildWhatsappPayload(config, complaint, appPublicUrl) {
+export function buildWhatsappPayload(config, complaint, appPublicUrl, includePhotos = true) {
     const filePathUrl = [buildPhotoUrl(complaint.photo1, appPublicUrl), buildPhotoUrl(complaint.photo2, appPublicUrl)].filter(Boolean);
     return {
         recipientIds: [text(config.groupId)],
         message: [resolveWhatsappTemplate(config.message, complaint, appPublicUrl)],
-        ...(filePathUrl.length ? { filePathUrl } : {}),
+        ...(includePhotos && filePathUrl.length ? { filePathUrl } : {}),
     };
 }
 function safeErrorMessage(value) {
@@ -57,19 +57,37 @@ export async function sendWhatsappComplaintMessage(config, complaint, options = 
     const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
     try {
         const authorization = Buffer.from(`${config.loginId}:${config.pass}`).toString("base64");
-        const response = await fetchImpl(options.endpoint || MESSAGE_AUTO_SENDER_URL, {
+        const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";
+        const endpoint = options.endpoint || MESSAGE_AUTO_SENDER_URL;
+        const headers = {
+            accept: "application/json",
+            "Content-Type": "application/json",
+            Authorization: `Basic ${authorization}`,
+        };
+        const request = (includePhotos) => fetchImpl(endpoint, {
             method: "POST",
-            headers: {
-                accept: "application/json",
-                "Content-Type": "application/json",
-                Authorization: `Basic ${authorization}`,
-            },
-            body: JSON.stringify(buildWhatsappPayload(config, complaint, options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in")),
+            headers,
+            body: JSON.stringify(buildWhatsappPayload(config, complaint, appPublicUrl, includePhotos)),
             signal: controller.signal,
         });
+        const payload = buildWhatsappPayload(config, complaint, appPublicUrl);
+        const response = await request(true);
         if (!response.ok) {
-            const responseText = await response.text().catch(() => "");
-            return { status: "Failed", error: `WhatsApp sender returned ${response.status}: ${safeErrorMessage(responseText || response.statusText)}` };
+            if (response.status === 424 && "filePathUrl" in payload) {
+                const fallbackResponse = await request(false);
+                if (fallbackResponse.ok) {
+                    return {
+                        status: "Sent",
+                        warning: "WhatsApp message sent, but photo attachments could not be delivered.",
+                        sentAt: new Date().toISOString(),
+                    };
+                }
+                return {
+                    status: "Failed",
+                    error: `WhatsApp sender returned ${fallbackResponse.status} after photo fallback.`,
+                };
+            }
+            return { status: "Failed", error: `WhatsApp sender returned ${response.status}.` };
         }
         return { status: "Sent", sentAt: new Date().toISOString() };
     }
