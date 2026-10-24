@@ -1,0 +1,1 @@
+import{j as o}from"./index-DbTi-dil.js";import{S as r}from"./StandaloneLoadingMaster-BIrjfJ7t.js";import"./TableControls-CrnPF6Uc.js";import"./ClientPagination-D2kUONWS.js";import"./useClientPagination-BbairKy3.js";function p(){return o.jsx(r,{source:"PHP"})}export{p as PhpLoadingMaster};
