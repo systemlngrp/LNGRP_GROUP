@@ -1831,6 +1831,8 @@ export interface Setting {
   flapAsPerCalculation?: string;
   allowInvoiceTallyEdit?: string;
   allowInvoiceTallyEditUsers?: string;
+  tableColumnWidths?: string;
+  tableColumnResizeUsers?: string;
   productionFormVisibleColumns?: string;
   pdiReportVisibleColumns?: string;
   qcViewVisibleColumns?: string;

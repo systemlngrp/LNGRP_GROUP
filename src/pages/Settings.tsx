@@ -408,6 +408,22 @@ export function SettingsPage() {
     }
   }, [currentSetting?.allowInvoiceTallyEditUsers]);
 
+  const allowedTableResizeUsers = useMemo(() => {
+    if (!currentSetting?.tableColumnResizeUsers) return [] as string[];
+    try {
+      const parsed = JSON.parse(currentSetting.tableColumnResizeUsers);
+      return Array.isArray(parsed)
+        ? Array.from(new Set(parsed.map((value) => String(value || "").trim()).filter(Boolean)))
+        : [];
+    } catch {
+      return [];
+    }
+  }, [currentSetting?.tableColumnResizeUsers]);
+
+  const selectableTableResizeUsers = useMemo(() => users
+    .filter((row) => String(row.status || "Active") !== "Inactive")
+    .sort((a, b) => String(a.name || a.userId || "").localeCompare(String(b.name || b.userId || ""))), [users]);
+
   const selectableInvoiceEditUsers = useMemo(() => {
     return users
       .filter((row) => String(row.email || "").trim())
@@ -709,6 +725,8 @@ export function SettingsPage() {
         flapAsPerCalculation: currentSetting?.flapAsPerCalculation || FLAP_FORMULA_OPTIONS[0].value,
         allowInvoiceTallyEdit: currentSetting?.allowInvoiceTallyEdit || "No",
         allowInvoiceTallyEditUsers: currentSetting?.allowInvoiceTallyEditUsers || JSON.stringify([]),
+        tableColumnWidths: currentSetting?.tableColumnWidths || JSON.stringify({}),
+        tableColumnResizeUsers: currentSetting?.tableColumnResizeUsers || JSON.stringify([]),
         productionFormVisibleColumns: currentSetting?.productionFormVisibleColumns || JSON.stringify(PRODUCTION_FORM_COLUMN_OPTIONS),
         poMandatoryMrrTypes: currentSetting?.poMandatoryMrrTypes || JSON.stringify(["Reel"]),
         realizationPerKgTargets: currentSetting?.realizationPerKgTargets || JSON.stringify([]),
@@ -975,6 +993,44 @@ export function SettingsPage() {
           </button>
         </div>
       </div>
+
+      {user?.role === "Admin" && (
+        <div className="max-w-3xl space-y-4 rounded border-2 border-indigo-700 bg-indigo-50 p-6">
+          <div>
+            <h3 className="text-sm font-black uppercase text-indigo-900">Global Table Resize Access</h3>
+            <p className="mt-1 text-sm leading-6 text-black">
+              Selected users can resize table columns. Their saved widths are shared with every user of the system. Admins always retain access.
+            </p>
+          </div>
+          <div className="max-h-64 space-y-2 overflow-y-auto rounded border border-black bg-white p-3">
+            {selectableTableResizeUsers.length === 0 ? (
+              <div className="text-sm text-slate-500">No active users found.</div>
+            ) : selectableTableResizeUsers.map((row) => {
+              const checked = allowedTableResizeUsers.includes(String(row.id));
+              return (
+                <label key={row.id} className="flex items-center gap-3 text-sm text-black">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={loading || saving}
+                    onChange={(event) => {
+                      const id = String(row.id);
+                      const next = event.target.checked
+                        ? Array.from(new Set([...allowedTableResizeUsers, id]))
+                        : allowedTableResizeUsers.filter((value) => value !== id);
+                      void handleChange({ tableColumnResizeUsers: JSON.stringify(next) });
+                    }}
+                    className="h-4 w-4 border-black"
+                  />
+                  <span className="font-semibold">{row.name || row.userId}</span>
+                  <span className="text-slate-500">({row.userId})</span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-600">Selected users: {allowedTableResizeUsers.length}</p>
+        </div>
+      )}
 
       {user?.role === "Admin" && (
         <div className="max-w-3xl space-y-4 rounded border-2 border-red-700 bg-red-50 p-6">

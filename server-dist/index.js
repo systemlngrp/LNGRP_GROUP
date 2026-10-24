@@ -7242,6 +7242,8 @@ async function initDb(retries = 5) {
           \`gsmAsPerCalculation\` TEXT,
           \`allowInvoiceTallyEdit\` VARCHAR(10),
           \`allowInvoiceTallyEditUsers\` LONGTEXT,
+          \`tableColumnWidths\` LONGTEXT,
+          \`tableColumnResizeUsers\` LONGTEXT,
           \`productionFormVisibleColumns\` LONGTEXT,
           \`pdiReportVisibleColumns\` LONGTEXT,
           \`qcViewVisibleColumns\` LONGTEXT,
@@ -8328,6 +8330,8 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "gsmAsPerCalculation", type: "TEXT" },
                 { table: "settings", column: "allowInvoiceTallyEdit", type: "VARCHAR(10)" },
                 { table: "settings", column: "allowInvoiceTallyEditUsers", type: "LONGTEXT" },
+                { table: "settings", column: "tableColumnWidths", type: "LONGTEXT" },
+                { table: "settings", column: "tableColumnResizeUsers", type: "LONGTEXT" },
                 { table: "settings", column: "productionFormVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "pdiReportVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "qcViewVisibleColumns", type: "LONGTEXT" },
@@ -14123,6 +14127,57 @@ app.put("/api/qc-report-columns/:report", async (req, res) => {
     catch (error) {
         console.error("[QC_COLUMNS] Save failed:", error);
         return res.status(500).json({ error: "Unable to save QC columns." });
+    }
+});
+app.post("/api/table-column-widths", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    const key = String(req.body?.key || "").trim();
+    const widths = req.body?.widths;
+    if (!key || key.length > 500 || !Array.isArray(widths) || widths.length === 0 || widths.length > 300 ||
+        !widths.every((value) => Number.isFinite(Number(value)) && Number(value) >= 80 && Number(value) <= 10000)) {
+        return res.status(400).json({ error: "Invalid table column widths." });
+    }
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const [rows] = await db.query("SELECT id, tableColumnWidths, tableColumnResizeUsers FROM `settings` LIMIT 1");
+        const current = rows[0] || {};
+        let allowedUsers = [];
+        try {
+            const parsed = JSON.parse(String(current.tableColumnResizeUsers || "[]"));
+            allowedUsers = Array.isArray(parsed) ? parsed.map((value) => String(value || "").trim()).filter(Boolean) : [];
+        }
+        catch {
+            allowedUsers = [];
+        }
+        if (user.role !== "Admin" && !allowedUsers.includes(String(user.id))) {
+            return res.status(403).json({ error: "You are not allowed to resize shared tables." });
+        }
+        let tableWidths = {};
+        try {
+            const parsed = JSON.parse(String(current.tableColumnWidths || "{}"));
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+                tableWidths = parsed;
+        }
+        catch {
+            tableWidths = {};
+        }
+        tableWidths[key] = widths.map((value) => Math.round(Number(value)));
+        const serialized = JSON.stringify(tableWidths);
+        if (current.id) {
+            await db.query("UPDATE `settings` SET `tableColumnWidths` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?", [serialized, user.name || user.userId, new Date().toISOString(), current.id]);
+        }
+        else {
+            await db.query("INSERT INTO `settings` (`id`, `tableColumnWidths`, `tableColumnResizeUsers`, `updatedBy`, `updateTimestamp`) VALUES (?, ?, ?, ?, ?)", [crypto.randomUUID(), serialized, JSON.stringify([]), user.name || user.userId, new Date().toISOString()]);
+        }
+        return res.json({ key, widths: tableWidths[key] });
+    }
+    catch (error) {
+        console.error("[TABLE_WIDTHS] Save failed:", error);
+        return res.status(500).json({ error: "Unable to save shared table widths." });
     }
 });
 registerSalesOrderSync(app, getPool);

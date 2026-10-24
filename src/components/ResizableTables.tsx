@@ -1,5 +1,8 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
+import type { Setting } from "../types";
 
 const STORAGE_PREFIX = "table-column-widths:v1:";
 const MIN_COLUMN_WIDTH = 80;
@@ -11,6 +14,7 @@ const TABLE_PAGE_SIZE = 25;
 export const TABLE_PAGE_SIZE_OPTIONS = [25, 50, 100, 250] as const;
 const DRAG_THRESHOLD = 4;
 const KEY_SCROLL_STEP = 40;
+type SharedTableWidths = Record<string, number[]>;
 
 type ScrollDirection = "left" | "right" | "up" | "down";
 
@@ -97,6 +101,31 @@ function saveWidths(key: string, widths: number[]) {
     window.localStorage.setItem(`${STORAGE_PREFIX}${key}`, JSON.stringify(widths));
   } catch {
     // Width persistence is optional when storage is unavailable or restricted.
+  }
+}
+
+function parseSharedTableWidths(raw: string | undefined): SharedTableWidths {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).flatMap(([key, value]) => {
+      if (!Array.isArray(value)) return [];
+      const widths = value.map((item) => Number(item)).filter((item) => Number.isFinite(item) && item >= MIN_COLUMN_WIDTH);
+      return widths.length ? [[key, widths]] : [];
+    }));
+  } catch {
+    return {};
+  }
+}
+
+function parseResizeUsers(raw: string | undefined) {
+  if (!raw) return new Set<string>();
+  try {
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? parsed.map((value) => String(value || "").trim()).filter(Boolean) : []);
+  } catch {
+    return new Set<string>();
   }
 }
 
@@ -199,7 +228,9 @@ function markActionColumns(table: HTMLTableElement, actionColumns: Set<number>, 
   markRanges(table.tFoot ? Array.from(table.tFoot.rows) : [], true);
 }
 
-function getColumnWidths(table: HTMLTableElement, headerRow: HTMLTableRowElement, count: number) {
+function getColumnWidths(table: HTMLTableElement, headerRow: HTMLTableRowElement, count: number, sharedWidths?: SharedTableWidths) {
+  const shared = sharedWidths?.[table.dataset.tableResizeKey || ""];
+  if (shared && shared.length >= count) return shared.slice(0, count);
   const saved = readWidths(table.dataset.tableResizeKey || "");
   if (saved && saved.length >= count) return saved.slice(0, count);
   const widths: number[] = [];
@@ -271,6 +302,11 @@ function tableKey(pathname: string, table: HTMLTableElement, index: number) {
     .map((cell) => (cell.textContent || "").replace(/\s+/g, " ").trim().toLowerCase())
     .join("|");
   return encodeURIComponent(`${pathname}|${headers || "no-header"}|${index}`);
+}
+
+function removeResizeHandles(table: HTMLTableElement) {
+  table.querySelectorAll<HTMLElement>(".app-table-column-resizer").forEach((handle) => handle.remove());
+  table.querySelectorAll<HTMLElement>(".app-resizable-header").forEach((header) => header.classList.remove("app-resizable-header"));
 }
 
 function getDirectTableRows(table: HTMLTableElement) {
@@ -569,7 +605,14 @@ function enhanceScrollContainer(container: HTMLElement) {
   container.addEventListener("keydown", (event) => handleTableKeyDown(event, container));
 }
 
-function addResizeHandles(table: HTMLTableElement, pathname: string, index: number) {
+function addResizeHandles(
+  table: HTMLTableElement,
+  pathname: string,
+  index: number,
+  sharedWidths: SharedTableWidths,
+  canResize: boolean,
+  onResize: (key: string, widths: number[]) => void,
+) {
   table.classList.add("app-enhanced-table");
 
   const content = table.closest<HTMLElement>(".app-view-content");
@@ -578,6 +621,8 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
 
   const headerRow = getResizeHeaderRow(table);
   if (!headerRow || headerRow.cells.length === 0) return;
+  const key = tableKey(pathname, table, index);
+  table.dataset.tableResizeKey = key;
   const columnCount = getColumnCount(headerRow);
   const actionColumns = getActionColumnIndexes(table, columnCount);
   markActionColumns(table, actionColumns, columnCount);
@@ -585,19 +630,36 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
   if (table.dataset.tableResizeReady === "true") {
     const currentWidths = Array.from(table.querySelectorAll<HTMLTableColElement>("colgroup[data-resizable-columns] col"))
       .map((column) => Number.parseFloat(column.style.width) || MIN_COLUMN_WIDTH);
-    if (currentWidths.length >= columnCount) {
-      applyColumnWidths(table, getActionColumnWidths(table, currentWidths.slice(0, columnCount), actionColumns), actionColumns);
+    const widths = getActionColumnWidths(
+      table,
+      getColumnWidths(table, headerRow, columnCount, sharedWidths).length >= columnCount
+        ? getColumnWidths(table, headerRow, columnCount, sharedWidths)
+        : currentWidths.slice(0, columnCount),
+      actionColumns,
+    );
+    if (widths.length >= columnCount) applyColumnWidths(table, widths, actionColumns);
+    if (!canResize) removeResizeHandles(table);
+    else if (!table.querySelector(".app-table-column-resizer")) {
+      installResizeHandles(table, headerRow, widths, actionColumns, key, onResize);
     }
     return;
   }
 
   table.dataset.tableResizeReady = "true";
 
-  const key = tableKey(pathname, table, index);
-  table.dataset.tableResizeKey = key;
-  const widths = getActionColumnWidths(table, getColumnWidths(table, headerRow, columnCount), actionColumns);
+  const widths = getActionColumnWidths(table, getColumnWidths(table, headerRow, columnCount, sharedWidths), actionColumns);
   applyColumnWidths(table, widths, actionColumns);
+  if (canResize) installResizeHandles(table, headerRow, widths, actionColumns, key, onResize);
+}
 
+function installResizeHandles(
+  table: HTMLTableElement,
+  headerRow: HTMLTableRowElement,
+  widths: number[],
+  actionColumns: Set<number>,
+  key: string,
+  onResize: (key: string, widths: number[]) => void,
+) {
   let columnIndex = 0;
   Array.from(headerRow.cells).forEach((cell) => {
     const span = Math.max(1, cell.colSpan || 1);
@@ -619,14 +681,17 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
       event.preventDefault();
       event.stopPropagation();
       const startX = event.clientX;
-      const startWidth = widths[currentColumn] || Math.round(cell.getBoundingClientRect().width);
+      const activeWidths = Array.from(table.querySelectorAll<HTMLTableColElement>("colgroup[data-resizable-columns] col"))
+        .map((column) => Number.parseFloat(column.style.width) || MIN_COLUMN_WIDTH);
+      const startWidth = activeWidths[currentColumn] || widths[currentColumn] || Math.round(cell.getBoundingClientRect().width);
       const activeColumn = currentColumn;
       const move = (moveEvent: PointerEvent) => {
-        widths[activeColumn] = Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + moveEvent.clientX - startX));
-        applyColumnWidths(table, widths, actionColumns);
+        activeWidths[activeColumn] = Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + moveEvent.clientX - startX));
+        applyColumnWidths(table, activeWidths, actionColumns);
       };
       const up = () => {
-        saveWidths(key, widths);
+        saveWidths(key, activeWidths);
+        onResize(key, activeWidths);
         document.removeEventListener("pointermove", move);
         document.removeEventListener("pointerup", up);
         document.body.classList.remove("app-resizing-table-column");
@@ -642,6 +707,27 @@ function addResizeHandles(table: HTMLTableElement, pathname: string, index: numb
 
 export function ResizableTables() {
   const location = useLocation();
+  const { user } = useAuth();
+  const [settings] = useData<Setting>("settings", []);
+  const setting = settings[0];
+  const sharedWidths = parseSharedTableWidths(setting?.tableColumnWidths);
+  const resizeUsers = parseResizeUsers(setting?.tableColumnResizeUsers);
+  const canResize = user?.role === "Admin" || resizeUsers.has(String(user?.id || ""));
+
+  const saveSharedWidths = async (key: string, widths: number[]) => {
+    if (!canResize) return;
+    try {
+      const response = await fetch("/api/table-column-widths", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders() },
+        body: JSON.stringify({ key, widths }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      window.dispatchEvent(new Event("sync-data-settings"));
+    } catch (error) {
+      console.warn("Failed to publish shared table width:", error);
+    }
+  };
 
   useEffect(() => {
     const content = document.querySelector<HTMLElement>(".app-view-content");
@@ -649,7 +735,7 @@ export function ResizableTables() {
 
     const enhance = () => {
       const tables = Array.from(content.querySelectorAll<HTMLTableElement>("table"));
-      tables.forEach((table, index) => addResizeHandles(table, location.pathname, index));
+      tables.forEach((table, index) => addResizeHandles(table, location.pathname, index, sharedWidths, canResize, (key, widths) => { void saveSharedWidths(key, widths); }));
     };
 
     enhance();
@@ -661,7 +747,7 @@ export function ResizableTables() {
       attributeFilter: ["data-table-pagination-external"],
     });
     return () => observer.disconnect();
-  }, [location.pathname]);
+  }, [canResize, location.pathname, setting?.tableColumnWidths]);
 
   return null;
 }
