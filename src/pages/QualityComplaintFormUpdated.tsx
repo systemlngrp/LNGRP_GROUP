@@ -199,7 +199,7 @@ export function QualityComplaintFormUpdated() {
           : whatsappStatus === "Not Configured"
             ? "QC complaint saved, but no active WhatsApp configuration was found."
             : whatsappStatus === "Failed"
-              ? `QC complaint saved. WhatsApp ${result?.whatsapp?.failedStage === "photo1" ? "Photo 1" : result?.whatsapp?.failedStage === "photo2" ? "Photo 2" : result?.whatsapp?.failedStage === "text" ? "text" : "message"} is pending and will retry on the next save.`
+              ? `QC complaint saved. WhatsApp ${result?.whatsapp?.failedStage === "photo1" ? "Photo 1" : result?.whatsapp?.failedStage === "photo2" ? "Photo 2" : result?.whatsapp?.failedStage === "text" ? "text" : "message"} is pending and will retry automatically in about 60 seconds.`
               : whatsappStatus === "Already Sent"
                 ? "QC complaint saved. WhatsApp message was already sent earlier."
                 : whatsappStatus === "In Progress"
