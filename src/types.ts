@@ -1630,6 +1630,11 @@ export interface LoadingSlip {
   tallyVoucherType?: string;
   tallyPostedBy?: string;
   tallyPostingRemark?: string;
+  whatsappSendStatus?: "Sending" | "Sent" | "Failed" | "Not Configured" | string;
+  whatsappSendError?: string;
+  whatsappSentAt?: string;
+  whatsappSendStartedAt?: string;
+  whatsappPdfFilename?: string;
   updatedBy?: string;
   updateTimestamp?: string;
 }

@@ -263,6 +263,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     // Send to server
     let hasError = false;
     let lastErrorMessage = "";
+    let lastResponseBody: any = {};
     const authHeaders = getDataAuthHeaders(includeActiveFirm);
 
     try {
@@ -272,8 +273,9 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
           headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify(item),
         });
+        lastResponseBody = await response.json().catch(() => ({}));
         if (!response.ok) {
-          let msg = await getResponseError(response, response.statusText);
+          let msg = String(lastResponseBody?.error || response.statusText);
 
           // A few legacy deployments do not yet have the standard audit
           // columns on production_processing. Retry only that entity without
@@ -313,6 +315,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       await fetchData();
       // Emit sync event again after server confirmation
       window.dispatchEvent(new CustomEvent(syncEvent));
+      return lastResponseBody;
     } catch (err) {
       console.error(`[useData:${entity}] Sync error:`, err);
       fetchData(); // Re-sync with server on error

@@ -653,7 +653,7 @@ export function PendingLoading() {
         return;
       }
 
-      await updateLoadingSlips((prev) => [...prev, newSlip]);
+      const loadingSaveResult = await updateLoadingSlips((prev) => [...prev, newSlip]);
       await updatePhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: phpDetails, source: "PHP" }));
       await updatePlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: plateDetails, source: "PLATE" }));
 
@@ -670,6 +670,11 @@ export function PendingLoading() {
           };
         })
       );
+
+      const whatsapp = (loadingSaveResult as any)?.whatsapp;
+      if (whatsapp?.status === "Sent") alert("Loading Slip saved and WhatsApp message sent.");
+      else if (whatsapp?.status === "Not Configured") alert("Loading Slip saved, but no active Loading Slip WhatsApp configuration was found.");
+      else if (whatsapp?.status === "Failed") alert("Loading Slip saved, but WhatsApp PDF could not be sent. It will retry automatically.");
 
       handleCloseLoad();
     } catch (err) {

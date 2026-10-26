@@ -68,6 +68,19 @@ export type WhatsappSenderConfig = {
 
 export type WhatsappSendStage = "text" | "photo1" | "photo2";
 
+export type WhatsappLoadingSlipRecord = {
+  slipNo?: unknown;
+  date?: unknown;
+  customer?: unknown;
+  companyName?: unknown;
+  itemName?: unknown;
+  erpCode?: unknown;
+  truckNo?: unknown;
+  totalQty?: unknown;
+  loadingSource?: unknown;
+  whatsappPdfUrl?: unknown;
+};
+
 export type WhatsappSendResult = {
   status: "Sent" | "Failed" | "Not Configured";
   error?: string;
@@ -78,7 +91,20 @@ export type WhatsappSendResult = {
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
 export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
+export const WHATSAPP_LOADING_MENU = "/loading/master";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
+export const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
+
+*Slip No.:* {{slipNo}}
+*Date:* {{date}}
+*Customer:* {{customer}}
+*Item:* {{itemName}}
+*ERP Code:* {{erpCode}}
+*Truck No.:* {{truckNo}}
+*Total Quantity:* {{totalQty}}
+*Loading Source:* {{loadingSource}}
+
+📄 Loading Slip PDF attached.`;
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
 *Complaint No.:* {{complaintNo}}
@@ -210,6 +236,29 @@ export function buildWhatsappPrintingPayload(config: WhatsappSenderConfig, recor
   };
 }
 
+export function resolveWhatsappLoadingSlipTemplate(template: string, record: WhatsappLoadingSlipRecord) {
+  const values: Record<string, string> = {
+    slipNo: text(record.slipNo),
+    date: text(record.date),
+    customer: text(record.customer) || text(record.companyName),
+    itemName: text(record.itemName),
+    erpCode: text(record.erpCode),
+    truckNo: text(record.truckNo),
+    totalQty: text(record.totalQty),
+    loadingSource: text(record.loadingSource),
+  };
+  return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+export function buildWhatsappLoadingSlipPayload(config: WhatsappSenderConfig, record: WhatsappLoadingSlipRecord) {
+  const pdfUrl = text(record.whatsappPdfUrl);
+  return {
+    recipientIds: [text(config.groupId)],
+    message: [resolveWhatsappLoadingSlipTemplate(config.message, record)],
+    ...(pdfUrl ? { filePathUrl: [pdfUrl] } : {}),
+  };
+}
+
 export function buildPhotoUrl(value: unknown, appPublicUrl: string) {
   const filename = text(value);
   if (!filename) return "";
@@ -287,6 +336,14 @@ export function sendWhatsappTextMessage(
   options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
 ) {
   return sendWhatsappPayload(config, { recipientIds: [config.groupId], message: [message] }, options);
+}
+
+export function sendWhatsappLoadingSlipMessage(
+  config: WhatsappSenderConfig,
+  record: WhatsappLoadingSlipRecord,
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+) {
+  return sendWhatsappPayload(config, buildWhatsappLoadingSlipPayload(config, record), options);
 }
 
 export async function sendWhatsappComplaintStage(

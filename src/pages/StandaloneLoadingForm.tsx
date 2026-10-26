@@ -114,7 +114,7 @@ export function StandaloneLoadingForm({ source }: StandaloneLoadingFormProps) {
         lines: [{ dispatchPlanId: row.plan.id, loadedQty: loadQty, allocations: [allocation] }],
       };
 
-      await setLoadingSlips((prev) => [...prev, newSlip]);
+      const loadingSaveResult = await setLoadingSlips((prev) => [...prev, newSlip]);
       await setDispatchPlans((prev) =>
         prev.map((plan) => {
           if (plan.id !== row.plan.id) return plan;
@@ -140,7 +140,11 @@ export function StandaloneLoadingForm({ source }: StandaloneLoadingFormProps) {
         delete next[row.plan.id];
         return next;
       });
-      alert("Loading slip saved successfully!");
+      const whatsapp = (loadingSaveResult as any)?.whatsapp;
+      if (whatsapp?.status === "Sent") alert("Loading Slip saved and WhatsApp message sent.");
+      else if (whatsapp?.status === "Not Configured") alert("Loading Slip saved, but no active Loading Slip WhatsApp configuration was found.");
+      else if (whatsapp?.status === "Failed") alert("Loading Slip saved, but WhatsApp PDF could not be sent. It will retry automatically.");
+      else alert("Loading slip saved successfully!");
     } catch (error) {
       console.error("Failed to save loading slip:", error);
       alert("Failed to save loading slip.");

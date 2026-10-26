@@ -14,9 +14,10 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_PRINTING_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappPrintingTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_PRINTING_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappPrintingTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
+import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { GoogleGenAI } from "@google/genai";
 import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
@@ -6773,6 +6774,11 @@ async function initDb(retries = 5) {
           \`tallyVoucherType\` VARCHAR(100),
           \`tallyPostedBy\` VARCHAR(255),
           \`tallyPostingRemark\` TEXT,
+          \`whatsappSendStatus\` VARCHAR(50),
+          \`whatsappSendError\` TEXT,
+          \`whatsappSentAt\` VARCHAR(255),
+          \`whatsappSendStartedAt\` VARCHAR(255),
+          \`whatsappPdfFilename\` VARCHAR(255),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -6930,6 +6936,11 @@ async function initDb(retries = 5) {
           \`tallyVoucherType\` VARCHAR(100),
           \`tallyPostedBy\` VARCHAR(255),
           \`tallyPostingRemark\` TEXT,
+          \`whatsappSendStatus\` VARCHAR(50),
+          \`whatsappSendError\` TEXT,
+          \`whatsappSentAt\` VARCHAR(255),
+          \`whatsappSendStartedAt\` VARCHAR(255),
+          \`whatsappPdfFilename\` VARCHAR(255),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -6961,6 +6972,11 @@ async function initDb(retries = 5) {
           \`tallyVoucherType\` VARCHAR(100),
           \`tallyPostedBy\` VARCHAR(255),
           \`tallyPostingRemark\` TEXT,
+          \`whatsappSendStatus\` VARCHAR(50),
+          \`whatsappSendError\` TEXT,
+          \`whatsappSentAt\` VARCHAR(255),
+          \`whatsappSendStartedAt\` VARCHAR(255),
+          \`whatsappPdfFilename\` VARCHAR(255),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -8281,6 +8297,21 @@ async function initDb(retries = 5) {
                 { table: "loading_slips", column: "phpDetails", type: "JSON" },
                 { table: "loading_slips", column: "plateDetails", type: "JSON" },
                 { table: "loading_slips", column: "extraItemsQty", type: "DECIMAL(15,2)" },
+                { table: "loading_slips", column: "whatsappSendStatus", type: "VARCHAR(50)" },
+                { table: "loading_slips", column: "whatsappSendError", type: "TEXT" },
+                { table: "loading_slips", column: "whatsappSentAt", type: "VARCHAR(255)" },
+                { table: "loading_slips", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
+                { table: "loading_slips", column: "whatsappPdfFilename", type: "VARCHAR(255)" },
+                { table: "php_loading_slips", column: "whatsappSendStatus", type: "VARCHAR(50)" },
+                { table: "php_loading_slips", column: "whatsappSendError", type: "TEXT" },
+                { table: "php_loading_slips", column: "whatsappSentAt", type: "VARCHAR(255)" },
+                { table: "php_loading_slips", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
+                { table: "php_loading_slips", column: "whatsappPdfFilename", type: "VARCHAR(255)" },
+                { table: "plate_loading_slips", column: "whatsappSendStatus", type: "VARCHAR(50)" },
+                { table: "plate_loading_slips", column: "whatsappSendError", type: "TEXT" },
+                { table: "plate_loading_slips", column: "whatsappSentAt", type: "VARCHAR(255)" },
+                { table: "plate_loading_slips", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
+                { table: "plate_loading_slips", column: "whatsappPdfFilename", type: "VARCHAR(255)" },
                 { table: "invoices", column: "invoiceNo", type: "VARCHAR(100) NOT NULL" },
                 { table: "invoices", column: "date", type: "VARCHAR(50) NOT NULL" },
                 { table: "invoices", column: "companyId", type: "VARCHAR(36) NOT NULL" },
@@ -8552,6 +8583,17 @@ async function initDb(retries = 5) {
             }
             catch (error) {
                 console.warn("[DB] Could not update Printing QC WhatsApp message template:", error.message);
+            }
+            try {
+                const [loadingWhatsappRows] = await db.query("SELECT id, message FROM `whatsapp_configs` WHERE menu = ? AND active = 'Yes' ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_LOADING_MENU]);
+                const loadingWhatsapp = loadingWhatsappRows[0];
+                if (loadingWhatsapp?.id && !/\{\{\s*slipNo\s*\}\}/i.test(String(loadingWhatsapp.message || ""))) {
+                    await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_LOADING_SLIP_MESSAGE, loadingWhatsapp.id]);
+                    console.log(`[DB] Updated Loading Slip WhatsApp message template for ${loadingWhatsapp.id}.`);
+                }
+            }
+            catch (error) {
+                console.warn("[DB] Could not update Loading Slip WhatsApp message template:", error.message);
             }
             await ensureInterFirmSchema(db, database);
             try {
@@ -9193,6 +9235,91 @@ async function processPrintingWhatsappDelivery(db, checkId) {
         return delivery;
     }
 }
+async function processLoadingSlipWhatsappDelivery(db, tableName, slipId) {
+    const nowIso = new Date().toISOString();
+    const staleBeforeIso = new Date(Date.now() - 60_000).toISOString();
+    try {
+        const [claimResult] = await db.query(`UPDATE \`${tableName}\` SET whatsappSendStatus = 'Sending', whatsappSendError = NULL, whatsappSendStartedAt = ? WHERE id = ? AND COALESCE(TRIM(whatsappSentAt), '') = '' AND (COALESCE(whatsappSendStatus, '') <> 'Sending' OR COALESCE(whatsappSendStartedAt, '') < ?)`, [nowIso, slipId, staleBeforeIso]);
+        if (Number(claimResult?.affectedRows || 0) === 0) {
+            const [rows] = await db.query(`SELECT whatsappSentAt FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [slipId]);
+            return String(rows[0]?.whatsappSentAt || "").trim() ? { status: "Already Sent" } : { status: "In Progress" };
+        }
+        const [configRows] = await db.query("SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_LOADING_MENU]);
+        const config = configRows[0];
+        if (!config || !config.loginId || !config.pass || config.pass === "********" || !config.groupId) {
+            const delivery = { status: "Not Configured", error: "No active Loading Slip WhatsApp configuration with valid credentials was found." };
+            await db.query(`UPDATE \`${tableName}\` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?`, [delivery.status, delivery.error, slipId, nowIso]);
+            return delivery;
+        }
+        const [slipRows] = await db.query(`SELECT * FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [slipId]);
+        const slip = slipRows[0] || {};
+        const parseRows = (value) => {
+            if (Array.isArray(value))
+                return value;
+            try {
+                const parsed = JSON.parse(String(value || "[]"));
+                return Array.isArray(parsed) ? parsed : [];
+            }
+            catch {
+                return [];
+            }
+        };
+        const lines = parseRows(slip.lines || slip.items);
+        const firstLine = lines[0] || {};
+        const totalQty = lines.reduce((sum, line) => sum + Number(line?.loadedQty || 0), 0);
+        let resolvedLine = firstLine;
+        if ((!resolvedLine.itemName || !resolvedLine.erpCode || !slip.companyName) && resolvedLine.dispatchPlanId) {
+            const [contextRows] = await db.query(`SELECT p.companyName, o.erpCode, n.name AS itemName, n.erp AS itemErp
+         FROM dispatch_plans p
+         LEFT JOIN orders o ON o.id = p.orderId
+         LEFT JOIN npd n ON n.id = o.itemId
+         WHERE p.id = ? LIMIT 1`, [String(resolvedLine.dispatchPlanId)]);
+            const context = contextRows[0] || {};
+            resolvedLine = { ...resolvedLine, ...context };
+            if (!slip.companyName && context.companyName)
+                slip.companyName = context.companyName;
+        }
+        const filename = String(slip.whatsappPdfFilename || `loading-slip-${tableName}-${slipId}.pdf`).replace(/[^a-zA-Z0-9._-]/g, "_");
+        const uploadsDir = path.join(process.cwd(), "uploads");
+        if (!fs.existsSync(uploadsDir))
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        const pdfPath = path.join(uploadsDir, filename);
+        if (!fs.existsSync(pdfPath)) {
+            await writeLoadingSlipPdf({ ...slip, lines, totalQty, itemName: resolvedLine.itemName, erpCode: resolvedLine.erpCode || resolvedLine.itemErp }, pdfPath);
+        }
+        const publicUrl = `${(process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
+        const record = {
+            ...slip,
+            lines,
+            itemName: resolvedLine.itemName || "",
+            erpCode: resolvedLine.erpCode || resolvedLine.itemErp || "",
+            customer: slip.companyName || "",
+            totalQty,
+            whatsappPdfUrl: publicUrl,
+        };
+        const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: String(config.message || DEFAULT_LOADING_SLIP_MESSAGE) };
+        const result = await sendWhatsappLoadingSlipMessage(senderConfig, record);
+        if (result.status !== "Sent") {
+            const delivery = { status: "Failed", error: result.error || "Loading Slip WhatsApp message could not be sent." };
+            await db.query(`UPDATE \`${tableName}\` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?`, [delivery.status, delivery.error, filename, slipId, nowIso]);
+            return delivery;
+        }
+        const delivery = { status: "Sent", sentAt: result.sentAt || new Date().toISOString() };
+        await db.query(`UPDATE \`${tableName}\` SET whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?`, [delivery.sentAt, filename, slipId, nowIso]);
+        return delivery;
+    }
+    catch (error) {
+        console.warn(`[WHATSAPP] ${tableName} delivery failed:`, error.message);
+        const delivery = { status: "Failed", error: "Loading Slip WhatsApp message could not be sent." };
+        try {
+            await db.query(`UPDATE \`${tableName}\` SET whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL WHERE id = ?`, [delivery.error, slipId]);
+        }
+        catch (statusError) {
+            console.warn(`[WHATSAPP] Could not store ${tableName} delivery status:`, statusError.message);
+        }
+        return delivery;
+    }
+}
 async function retryPendingWhatsappComplaints() {
     if (whatsappRetryRunning)
         return;
@@ -9220,6 +9347,14 @@ async function retryPendingWhatsappComplaints() {
             const result = await processPrintingWhatsappDelivery(db, String(row.id || "").trim());
             if (result.status === "Failed" || result.status === "Not Configured") {
                 console.warn(`[WHATSAPP] Automatic Printing QC retry pending for check ${String(row.id || "")}: ${result.status}`);
+            }
+        }
+        for (const tableName of ["loading_slips", "php_loading_slips", "plate_loading_slips"]) {
+            const [loadingRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE COALESCE(TRIM(whatsappSentAt), '') = '' ORDER BY updateTimestamp ASC LIMIT 50`);
+            for (const row of loadingRows) {
+                const result = await processLoadingSlipWhatsappDelivery(db, tableName, String(row.id || "").trim());
+                if (result.status === "Failed" || result.status === "Not Configured")
+                    console.warn(`[WHATSAPP] Automatic ${tableName} retry pending for loading slip ${String(row.id || "")}: ${result.status}`);
             }
         }
     }
@@ -10715,6 +10850,11 @@ const createHandlers = (tableName) => {
                         { column: "phpDetails", type: "LONGTEXT" },
                         { column: "plateDetails", type: "LONGTEXT" },
                         { column: "extraItemsQty", type: "DECIMAL(15,2) DEFAULT 0" },
+                        { column: "whatsappSendStatus", type: "VARCHAR(50)" },
+                        { column: "whatsappSendError", type: "TEXT" },
+                        { column: "whatsappSentAt", type: "VARCHAR(255)" },
+                        { column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
+                        { column: "whatsappPdfFilename", type: "VARCHAR(255)" },
                         { column: "status", type: "VARCHAR(20) DEFAULT 'Active'" },
                         { column: "cancelReason", type: "TEXT" },
                         { column: "cancelledAt", type: "VARCHAR(255)" },
@@ -11056,6 +11196,9 @@ const createHandlers = (tableName) => {
                 }
                 if (tableName === "printing_qc_checks") {
                     whatsappDelivery = await processPrintingWhatsappDelivery(db, String(data.id || "").trim());
+                }
+                if (["loading_slips", "php_loading_slips", "plate_loading_slips"].includes(tableName)) {
+                    whatsappDelivery = await processLoadingSlipWhatsappDelivery(db, tableName, String(data.id || "").trim());
                 }
                 if (tableName === "invoices" && String(data.interFirmFlow || "").trim().toLowerCase() === "yes") {
                     const pendingId = String(data.sourceTransactionId || "").trim();

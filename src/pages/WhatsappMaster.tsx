@@ -65,12 +65,25 @@ const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
 {{printingArtwork}}`;
 const PRINTING_QC_MENU = "/quality/printing-qc/form";
 const PRINTING_SHIFT_MENU = "/reports/printing-shift";
+const LOADING_SLIP_MENU = "/loading/master";
 const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
 
 {{jobLines}}
 
 *Total Qty in Shift:* {{totalQty}}
 *Boxes Per Hour:* {{boxesPerHour}}`;
+const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
+
+*Slip No.:* {{slipNo}}
+*Date:* {{date}}
+*Customer:* {{customer}}
+*Item:* {{itemName}}
+*ERP Code:* {{erpCode}}
+*Truck No.:* {{truckNo}}
+*Total Quantity:* {{totalQty}}
+*Loading Source:* {{loadingSource}}
+
+📄 Loading Slip PDF attached.`;
 const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 
 *Job No.:* {{jobNo}}
@@ -108,6 +121,7 @@ const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 function defaultMessageForMenu(menu: string) {
   if (menu === QC_SCORE_MENU) return DEFAULT_QC_SCORE_MESSAGE;
   if (menu === PRINTING_SHIFT_MENU) return DEFAULT_PRINTING_SHIFT_MESSAGE;
+  if (menu === LOADING_SLIP_MENU) return DEFAULT_LOADING_SLIP_MESSAGE;
   if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
   if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
   return DEFAULT_QC_COMPLAINT_MESSAGE;

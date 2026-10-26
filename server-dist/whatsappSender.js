@@ -1,7 +1,20 @@
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
 export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
+export const WHATSAPP_LOADING_MENU = "/loading/master";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
+export const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
+
+*Slip No.:* {{slipNo}}
+*Date:* {{date}}
+*Customer:* {{customer}}
+*Item:* {{itemName}}
+*ERP Code:* {{erpCode}}
+*Truck No.:* {{truckNo}}
+*Total Quantity:* {{totalQty}}
+*Loading Source:* {{loadingSource}}
+
+📄 Loading Slip PDF attached.`;
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
 *Complaint No.:* {{complaintNo}}
@@ -122,6 +135,27 @@ export function buildWhatsappPrintingPayload(config, record) {
         message: [resolveWhatsappPrintingTemplate(config.message, record)],
     };
 }
+export function resolveWhatsappLoadingSlipTemplate(template, record) {
+    const values = {
+        slipNo: text(record.slipNo),
+        date: text(record.date),
+        customer: text(record.customer) || text(record.companyName),
+        itemName: text(record.itemName),
+        erpCode: text(record.erpCode),
+        truckNo: text(record.truckNo),
+        totalQty: text(record.totalQty),
+        loadingSource: text(record.loadingSource),
+    };
+    return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => values[key] ?? "");
+}
+export function buildWhatsappLoadingSlipPayload(config, record) {
+    const pdfUrl = text(record.whatsappPdfUrl);
+    return {
+        recipientIds: [text(config.groupId)],
+        message: [resolveWhatsappLoadingSlipTemplate(config.message, record)],
+        ...(pdfUrl ? { filePathUrl: [pdfUrl] } : {}),
+    };
+}
 export function buildPhotoUrl(value, appPublicUrl) {
     const filename = text(value);
     if (!filename)
@@ -182,6 +216,9 @@ export function sendWhatsappPrintingMessage(config, record, options = {}) {
 }
 export function sendWhatsappTextMessage(config, message, options = {}) {
     return sendWhatsappPayload(config, { recipientIds: [config.groupId], message: [message] }, options);
+}
+export function sendWhatsappLoadingSlipMessage(config, record, options = {}) {
+    return sendWhatsappPayload(config, buildWhatsappLoadingSlipPayload(config, record), options);
 }
 export async function sendWhatsappComplaintStage(config, complaint, stage, options = {}) {
     const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";

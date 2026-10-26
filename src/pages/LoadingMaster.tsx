@@ -505,11 +505,15 @@ export function LoadingMaster() {
         alert(buildPhpPlateStockAlertMessage(shortages));
         return;
       }
-      await setLoadingSlips((prev) => [newSlip, ...prev]);
+      const loadingSaveResult = await setLoadingSlips((prev) => [newSlip, ...prev]);
       await setPhpLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: phpDetails || [], source: "PHP" }));
       await setPlateLoadingSlips((prev) => upsertFgLinkedChildSlip({ prevSlips: prev, parentSlip: newSlip, details: plateDetails || [], source: "PLATE" }));
       setIsDirectModalOpen(false);
-      alert("Direct loading slip created successfully.");
+      const whatsapp = (loadingSaveResult as any)?.whatsapp;
+      if (whatsapp?.status === "Sent") alert("Loading Slip saved and WhatsApp message sent.");
+      else if (whatsapp?.status === "Not Configured") alert("Loading Slip saved, but no active Loading Slip WhatsApp configuration was found.");
+      else if (whatsapp?.status === "Failed") alert("Loading Slip saved, but WhatsApp PDF could not be sent. It will retry automatically.");
+      else alert("Direct loading slip created successfully.");
     } catch (error) {
       console.error("Failed to save direct loading slip:", error);
       alert("Failed to save direct loading slip.");
