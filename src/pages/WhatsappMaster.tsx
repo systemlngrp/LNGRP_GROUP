@@ -138,6 +138,8 @@ export function WhatsappMaster() {
   const [message, setMessage] = useState("");
   const [active, setActive] = useState<"Yes" | "No">("Yes");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [sendingConfigId, setSendingConfigId] = useState<string | null>(null);
+  const [sendNotice, setSendNotice] = useState("");
   const menuOptions = useMemo(() => collectMenuOptions(NAVIGATION), []);
 
   const filteredConfigs = useMemo(() => {
@@ -246,6 +248,28 @@ export function WhatsappMaster() {
     }
   };
 
+  const sendCurrent = async (config: WhatsappConfig) => {
+    if (config.active === "No" || sendingConfigId) return;
+    setSendingConfigId(config.id);
+    setSendNotice("");
+    try {
+      const response = await fetch(`/api/whatsapp-configs/${encodeURIComponent(config.id)}/send-current`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders() },
+      });
+      const result = await response.json().catch(() => ({}));
+      const status = String(result.status || "Failed");
+      if (status === "Sent") setSendNotice(`Current ${menuOptions.find((option) => option.value === config.menu)?.label || config.menu} message sent successfully.`);
+      else if (status === "No Current Data") setSendNotice(result.error || "No current data is available for this template.");
+      else if (status === "Not Configured") setSendNotice(result.error || "This WhatsApp configuration is not active or configured.");
+      else setSendNotice(result.error || "Current WhatsApp message could not be sent.");
+    } catch {
+      setSendNotice("Current WhatsApp message could not be sent.");
+    } finally {
+      setSendingConfigId(null);
+    }
+  };
+
   if (!canManage) {
     return <div className="rounded-2xl border border-red-200 bg-red-50 p-6 font-bold text-red-700">You do not have permission to manage WhatsApp configurations.</div>;
   }
@@ -278,7 +302,8 @@ export function WhatsappMaster() {
       ) : (
         <>
           <div className="flex flex-wrap justify-between items-center gap-4"><h2 className="text-3xl font-black text-blue-700">WhatsApp Master</h2><div className="flex flex-wrap items-center gap-3"><input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search WhatsApp configuration" className="w-[360px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /><button type="button" onClick={openCreate} className="px-7 py-3 rounded-2xl bg-indigo-700 text-white font-bold hover:bg-indigo-800">+ WhatsApp</button></div></div>
-          <div className="bg-white rounded-[22px] border border-slate-300 overflow-hidden"><div className="px-4 py-3 text-slate-600">Showing {filteredConfigs.length} entries</div><div className="table-sticky-scroll"><table className="min-w-full border-collapse"><thead className="sticky top-0 z-30"><tr className="bg-indigo-700 text-white"><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">LoginID</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Pass</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">GroupId</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Menu</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Message</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Status</th><th className="px-4 py-4 text-right text-sm font-bold border-2 border-black">Action</th></tr></thead><tbody>{filteredConfigs.length === 0 ? <tr><td colSpan={7} className="px-6 py-10 text-center border-2 border-black">No WhatsApp configurations found.</td></tr> : filteredConfigs.map((config) => <tr key={config.id}><td className="px-4 py-4 font-bold border-2 border-black">{config.loginId}</td><td className="px-4 py-4 border-2 border-black tracking-widest">********</td><td className="px-4 py-4 border-2 border-black">{config.groupId}</td><td className="px-4 py-4 border-2 border-black">{menuOptions.find((option) => option.value === config.menu)?.label || config.menu}</td><td className="px-4 py-4 border-2 border-black whitespace-pre-wrap max-w-[360px]">{config.message}</td><td className="px-4 py-4 border-2 border-black">{config.active === "No" ? "Inactive" : "Active"}</td><td className="px-4 py-3 text-right border-2 border-black"><button type="button" onClick={() => openEdit(config)} className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50">Open</button></td></tr>)}</tbody></table></div></div>
+          {sendNotice ? <div role="status" className="rounded-2xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700">{sendNotice}</div> : null}
+          <div className="bg-white rounded-[22px] border border-slate-300 overflow-hidden"><div className="px-4 py-3 text-slate-600">Showing {filteredConfigs.length} entries</div><div className="table-sticky-scroll"><table className="min-w-full border-collapse"><thead className="sticky top-0 z-30"><tr className="bg-indigo-700 text-white"><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">LoginID</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Pass</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">GroupId</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Menu</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Message</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Status</th><th className="px-4 py-4 text-right text-sm font-bold border-2 border-black">Action</th></tr></thead><tbody>{filteredConfigs.length === 0 ? <tr><td colSpan={7} className="px-6 py-10 text-center border-2 border-black">No WhatsApp configurations found.</td></tr> : filteredConfigs.map((config) => <tr key={config.id}><td className="px-4 py-4 font-bold border-2 border-black">{config.loginId}</td><td className="px-4 py-4 border-2 border-black tracking-widest">********</td><td className="px-4 py-4 border-2 border-black">{config.groupId}</td><td className="px-4 py-4 border-2 border-black">{menuOptions.find((option) => option.value === config.menu)?.label || config.menu}</td><td className="px-4 py-4 border-2 border-black whitespace-pre-wrap max-w-[360px]">{config.message}</td><td className="px-4 py-4 border-2 border-black">{config.active === "No" ? "Inactive" : "Active"}</td><td className="px-4 py-3 text-right border-2 border-black"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => void sendCurrent(config)} disabled={config.active === "No" || Boolean(sendingConfigId)} className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{sendingConfigId === config.id ? "Sending..." : "Send Current"}</button><button type="button" onClick={() => openEdit(config)} className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50">Open</button></div></td></tr>)}</tbody></table></div></div>
         </>
       )}
     </div>

@@ -14,8 +14,8 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_PRINTING_MENU, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
-import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_PRINTING_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappPrintingTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
+import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { GoogleGenAI } from "@google/genai";
@@ -10000,6 +10000,68 @@ app.post("/api/reports/qc-score/whatsapp", requireAuth, async (req, res) => {
     return res.json(result.status === "Sent" ? { status: "Sent" } : { status: "Failed", error: result.error || "QC Score WhatsApp message could not be sent." });
   } catch {
     return res.status(500).json({ status: "Failed", error: "QC Score WhatsApp message could not be sent." });
+  }
+});
+
+app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !canManageMasterRecords(user) || !hasPermission(user, "/masters/whatsapp")) return res.status(403).json({ error: "Forbidden" });
+  const configId = String(req.params.id || "").trim();
+  if (!configId) return res.status(400).json({ status: "Failed", error: "WhatsApp configuration was not specified." });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ status: "Failed", error: "Database unavailable." });
+    const [configRows] = await db.query("SELECT id, loginId, pass, groupId, menu, message, active FROM `whatsapp_configs` WHERE id = ? LIMIT 1", [configId]);
+    const config = (configRows as any[])[0];
+    if (!config || String(config.active || "Yes") === "No") return res.json({ status: "Not Configured", error: "This WhatsApp configuration is inactive." });
+    if (!config.loginId || !config.pass || config.pass === "********" || !config.groupId) return res.json({ status: "Not Configured", error: "This WhatsApp configuration does not have valid credentials." });
+
+    const menu = String(config.menu || "").trim();
+    const messageTemplate = String(config.message || "");
+    let message = "";
+    let hasCurrentData = true;
+    const currentDate = indiaNowParts(new Date()).date;
+
+    if (menu === WHATSAPP_COMPLAINT_MENU) {
+      const [rows] = await db.query("SELECT * FROM `quality_complaints` ORDER BY COALESCE(updateTimestamp, timestamp) DESC, timestamp DESC LIMIT 1");
+      const record = (rows as any[])[0];
+      hasCurrentData = Boolean(record);
+      if (record) message = resolveWhatsappTemplate(messageTemplate, record, process.env.APP_PUBLIC_URL || "https://system.lngr.in");
+    } else if (menu === WHATSAPP_BOARDLINE_MENU) {
+      const [rows] = await db.query("SELECT * FROM `boardline_qc_checks` ORDER BY COALESCE(updateTimestamp, timestamp) DESC, timestamp DESC LIMIT 1");
+      const record = (rows as any[])[0];
+      hasCurrentData = Boolean(record);
+      if (record) message = resolveWhatsappBoardlineTemplate(messageTemplate, record);
+    } else if (menu === WHATSAPP_PRINTING_MENU) {
+      const [rows] = await db.query("SELECT * FROM `printing_qc_checks` ORDER BY COALESCE(updateTimestamp, timestamp) DESC, timestamp DESC LIMIT 1");
+      const record = (rows as any[])[0];
+      hasCurrentData = Boolean(record);
+      if (record) message = resolveWhatsappPrintingTemplate(messageTemplate, record);
+    } else if (menu === PRINTING_SHIFT_MENU) {
+      const [sentRows] = await db.query("SELECT shiftDate, shift FROM `printing_shift_reports` WHERE shiftDate = ? AND COALESCE(TRIM(whatsappSentAt), '') <> '' ORDER BY whatsappSentAt DESC LIMIT 1", [currentDate]);
+      const sent = (sentRows as any[])[0];
+      hasCurrentData = Boolean(sent);
+      if (sent) {
+        const output = await getPrintingShiftOutput(db, currentDate, String(sent.shift) === "Night" ? "Night" : "Day");
+        message = renderPrintingShiftMessage(messageTemplate, currentDate, String(sent.shift) === "Night" ? "Night" : "Day", output);
+      }
+    } else if (menu === QC_SCORE_MENU) {
+      const previousDate = new Date(Date.parse(`${currentDate}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+      const [processingRows] = await db.query("SELECT productionId, jobNo, machineName, qty, date FROM `production_processing` WHERE LEFT(date, 10) IN (?, ?)", [previousDate, currentDate]);
+      const [boardlineRows] = await db.query("SELECT timestamp FROM `boardline_qc_checks` WHERE LEFT(timestamp, 10) IN (?, ?)", [previousDate, currentDate]);
+      const [printingRows] = await db.query("SELECT timestamp FROM `printing_qc_checks` WHERE LEFT(timestamp, 10) IN (?, ?)", [previousDate, currentDate]);
+      hasCurrentData = (processingRows as any[]).length > 0 || (boardlineRows as any[]).length > 0 || (printingRows as any[]).length > 0;
+      if (hasCurrentData) message = renderQcScoreWhatsappTemplate(messageTemplate, buildQcScoreForDate(currentDate, processingRows as any[], boardlineRows as any[], printingRows as any[]));
+    } else {
+      hasCurrentData = false;
+    }
+
+    if (!hasCurrentData) return res.json({ status: "No Current Data", error: "No current data is available for this template." });
+    if (!message.trim() || /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/.test(message)) return res.json({ status: "Failed", error: "The template contains unsupported placeholders." });
+    const result = await sendWhatsappTextMessage({ loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: messageTemplate }, message);
+    return res.json(result.status === "Sent" ? { status: "Sent" } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
+  } catch {
+    return res.status(500).json({ status: "Failed", error: "Current WhatsApp message could not be sent." });
   }
 });
 
