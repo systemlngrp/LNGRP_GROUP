@@ -16,6 +16,7 @@ import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processi
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_PRINTING_MENU, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
+import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -9951,6 +9952,56 @@ async function retryPrintingShiftReports() {
     printingShiftWorkerRunning = false;
   }
 }
+
+async function getQcScoreWhatsappConfig(db: mysql.Pool) {
+  const [rows] = await db.query(
+    "SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+    [QC_SCORE_MENU]
+  );
+  const config = (rows as any[])[0] as { loginId: string; pass: string; groupId: string; message: string } | undefined;
+  return config?.loginId && config.pass && config.pass !== "********" && config.groupId && config.message ? config : null;
+}
+
+app.get("/api/reports/qc-score/whatsapp-config", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !hasPermission(user, QC_SCORE_MENU)) return res.status(403).json({ error: "Forbidden" });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "Database unavailable." });
+    return res.json({ configured: Boolean(await getQcScoreWhatsappConfig(db)) });
+  } catch {
+    return res.status(500).json({ error: "Could not check QC Score WhatsApp configuration." });
+  }
+});
+
+app.post("/api/reports/qc-score/whatsapp", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !hasPermission(user, QC_SCORE_MENU)) return res.status(403).json({ error: "Forbidden" });
+  const date = String(req.body?.date || "").trim();
+  if (!validQcScoreDate(date)) return res.status(400).json({ error: "Select a valid QC Score date." });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "Database unavailable." });
+    const config = await getQcScoreWhatsappConfig(db);
+    if (!config) return res.json({ status: "Not Configured" });
+    const previousDate = new Date(Date.parse(`${date}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+    const firmId = getRequestFirmId(req);
+    if (firmId) await assertRequestFirm(db, firmId);
+    const processingWhere = firmId ? `AND ${buildFirmScopeCondition("pp", firmId)}` : "";
+    const [processingRows] = await db.query(
+      `SELECT pp.productionId, pp.jobNo, pp.machineName, pp.qty, pp.date FROM \`production_processing\` pp WHERE LEFT(pp.date, 10) IN (?, ?) ${processingWhere}`,
+      firmId ? [previousDate, date, firmId] : [previousDate, date]
+    );
+    const [boardlineRows] = await db.query("SELECT timestamp FROM `boardline_qc_checks` WHERE LEFT(timestamp, 10) IN (?, ?)", [previousDate, date]);
+    const [printingRows] = await db.query("SELECT timestamp FROM `printing_qc_checks` WHERE LEFT(timestamp, 10) IN (?, ?)", [previousDate, date]);
+    const score = buildQcScoreForDate(date, processingRows as any[], boardlineRows as any[], printingRows as any[]);
+    const message = renderQcScoreWhatsappTemplate(config.message, score);
+    const result = await sendWhatsappTextMessage(config, message);
+    return res.json(result.status === "Sent" ? { status: "Sent" } : { status: "Failed", error: result.error || "QC Score WhatsApp message could not be sent." });
+  } catch {
+    return res.status(500).json({ status: "Failed", error: "QC Score WhatsApp message could not be sent." });
+  }
+});
 
 app.get("/api/reports/printing-shift", requireAuth, async (req, res) => {
   const user = await getRequestUser(req);

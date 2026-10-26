@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MessageCircle } from "lucide-react";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import type { BoardLineQcCheck, PrintingQcCheck, ProductionProcessing } from "../types";
 import {
   buildQcScoreRows,
@@ -37,6 +37,10 @@ export function QcScore() {
   const initialRange = useMemo(() => currentMonthRange(), []);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
+  const [whatsappConfig, setWhatsappConfig] = useState<"checking" | "configured" | "missing" | "error">("checking");
+  const [sendingDate, setSendingDate] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState("");
+  const [manualShareUrl, setManualShareUrl] = useState("");
   const [processing, , processingLoading] = useData<ProductionProcessing>("production_processing", []);
   const [boardlineChecks, , boardlineLoading] = useData<BoardLineQcCheck>("boardline_qc_checks", []);
   const [printingChecks, , printingLoading] = useData<PrintingQcCheck>("printing_qc_checks", []);
@@ -48,14 +52,62 @@ export function QcScore() {
     [boardlineChecks, fromDate, invalidRange, printingChecks, processing, toDate]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    const checkConfig = async () => {
+      try {
+        const response = await fetch("/api/reports/qc-score/whatsapp-config", { headers: getDataAuthHeaders(false) });
+        if (!response.ok) throw new Error("Could not check WhatsApp configuration.");
+        const result = await response.json();
+        if (!cancelled) setWhatsappConfig(result.configured ? "configured" : "missing");
+      } catch {
+        if (!cancelled) setWhatsappConfig("error");
+      }
+    };
+    void checkConfig();
+    const timer = window.setInterval(() => void checkConfig(), 60_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, []);
+
   const resetRange = () => {
     const range = currentMonthRange();
     setFromDate(range.from);
     setToDate(range.to);
   };
 
-  const shareOnWhatsApp = (row: (typeof rows)[number]) => {
-    window.open(buildQcScoreWhatsAppUrl(row), "_blank", "noopener,noreferrer");
+  const shareOnWhatsApp = async (row: (typeof rows)[number]) => {
+    setShareNotice("");
+    setManualShareUrl("");
+    if (whatsappConfig === "missing") {
+      window.open(buildQcScoreWhatsAppUrl(row), "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (whatsappConfig !== "configured") {
+      setShareNotice("Could not check the WhatsApp setup. Please try again shortly.");
+      return;
+    }
+    setSendingDate(row.date);
+    try {
+      const response = await fetch("/api/reports/qc-score/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders() },
+        body: JSON.stringify({ date: row.date }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (result.status === "Not Configured") {
+        setWhatsappConfig("missing");
+        setShareNotice("No active QC Score WhatsApp configuration was found. Open WhatsApp to share manually.");
+        setManualShareUrl(buildQcScoreWhatsAppUrl(row));
+      } else if (response.ok && result.status === "Sent") {
+        setShareNotice(`QC Score for ${displayDate(row.date)} sent to the configured WhatsApp group.`);
+      } else {
+        setShareNotice(result.error || "QC Score WhatsApp message could not be sent.");
+      }
+    } catch {
+      setShareNotice("QC Score WhatsApp message could not be sent.");
+    } finally {
+      setSendingDate(null);
+    }
   };
 
   return (
@@ -81,6 +133,7 @@ export function QcScore() {
       </div>
 
       {invalidRange ? <div role="alert" className="rounded border-2 border-red-700 bg-red-50 p-3 font-bold text-red-800">From Date cannot be after To Date.</div> : null}
+      {shareNotice ? <div role="status" className="rounded border border-slate-300 bg-white p-3 font-semibold">{shareNotice}{manualShareUrl ? <a href={manualShareUrl} target="_blank" rel="noreferrer" className="ml-2 text-blue-700 underline">Open WhatsApp</a> : null}</div> : null}
 
       <div className="overflow-hidden rounded border-2 border-black bg-white">
         <div className="border-b-2 border-black bg-[#fff2cc] px-4 py-3 text-center text-sm font-black uppercase tracking-wide">
@@ -121,8 +174,8 @@ export function QcScore() {
                   <td className={`${cellClass} ${scoreClass(row.printingScore)}`}>{formatQcScorePercent(row.printingScore)}</td>
                   <td className={`${cellClass} ${scoreClass(row.totalScore)}`}>{formatQcScorePercent(row.totalScore)}</td>
                   <td className={cellClass}>
-                    <button type="button" onClick={() => shareOnWhatsApp(row)} className="inline-flex items-center gap-2 rounded bg-[#128c7e] px-3 py-2 text-xs font-black text-white hover:bg-[#075e54]" aria-label={`Share QC score for ${displayDate(row.date)} on WhatsApp`}>
-                      <MessageCircle size={16} /> Share
+                    <button type="button" onClick={() => void shareOnWhatsApp(row)} disabled={Boolean(sendingDate) || whatsappConfig === "checking"} className="inline-flex items-center gap-2 rounded bg-[#128c7e] px-3 py-2 text-xs font-black text-white hover:bg-[#075e54] disabled:opacity-50" aria-label={`Share QC score for ${displayDate(row.date)} on WhatsApp`}>
+                      <MessageCircle size={16} /> {sendingDate === row.date ? "Sending..." : "Share"}
                     </button>
                   </td>
                 </tr>

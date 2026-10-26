@@ -161,27 +161,44 @@ function messageScore(value: number | null) {
   return value == null ? "N/A" : `${value.toFixed(2)}%`;
 }
 
+export const QC_SCORE_MENU = "/quality/qc-score";
+export const DEFAULT_QC_SCORE_MESSAGE = `*QC ONLINE CHECKING SCORE CARD REPORT*
+
+*Date* - {{date}}
+
+*Boardline QC*
+*Total No. of Boardline Checks Required* - {{boardlineChecksRequired}}
+*Total No. of Boardline Checks Performed* - {{boardlineChecksPerformed}}
+*Total Boardline QC Inspection Score* - {{boardlineScore}}
+
+*Printing QC*
+*Total No. of Printing Checks Required* - {{printingChecksRequired}}
+*Total No. of Printing Checks Performed* - {{printingChecksPerformed}}
+*Total Printing QC Inspection Score* - {{printingScore}}
+
+*Overall QC*
+*Total No. of Checks Required* - {{totalChecksRequired}}
+*Total No. of Checks Performed* - {{totalChecksPerformed}}
+*Total QC Inspection Score* - {{totalScore}}`;
+
+export function resolveQcScoreTemplate(template: string, row: QcScoreRow) {
+  const values: Record<string, string> = {
+    date: displayDate(row.date),
+    boardlineChecksRequired: String(row.boardlineChecksRequired),
+    boardlineChecksPerformed: String(row.boardlineChecksPerformed),
+    boardlineScore: messageScore(row.boardlineScore),
+    printingChecksRequired: String(row.printingChecksRequired),
+    printingChecksPerformed: String(row.printingChecksPerformed),
+    printingScore: messageScore(row.printingScore),
+    totalChecksRequired: String(row.totalChecksRequired),
+    totalChecksPerformed: String(row.totalChecksPerformed),
+    totalScore: messageScore(row.totalScore),
+  };
+  return template.replace(/\{\{\s*(date|boardlineChecksRequired|boardlineChecksPerformed|boardlineScore|printingChecksRequired|printingChecksPerformed|printingScore|totalChecksRequired|totalChecksPerformed|totalScore)\s*\}\}/g, (_, key: string) => values[key]);
+}
+
 export function buildQcScoreWhatsAppMessage(row: QcScoreRow) {
-  return [
-    "*QC ONLINE CHECKING SCORE CARD REPORT*",
-    "",
-    `*Date* - ${displayDate(row.date)}`,
-    "",
-    "*Boardline QC*",
-    `*Total No. of Boardline Checks Required* - ${row.boardlineChecksRequired}`,
-    `*Total No. of Boardline Checks Performed* - ${row.boardlineChecksPerformed}`,
-    `*Total Boardline QC Inspection Score* - ${messageScore(row.boardlineScore)}`,
-    "",
-    "*Printing QC*",
-    `*Total No. of Printing Checks Required* - ${row.printingChecksRequired}`,
-    `*Total No. of Printing Checks Performed* - ${row.printingChecksPerformed}`,
-    `*Total Printing QC Inspection Score* - ${messageScore(row.printingScore)}`,
-    "",
-    "*Overall QC*",
-    `*Total No. of Checks Required* - ${row.totalChecksRequired}`,
-    `*Total No. of Checks Performed* - ${row.totalChecksPerformed}`,
-    `*Total QC Inspection Score* - ${messageScore(row.totalScore)}`,
-  ].join("\n");
+  return resolveQcScoreTemplate(DEFAULT_QC_SCORE_MESSAGE, row);
 }
 
 export function buildQcScoreWhatsAppUrl(row: QcScoreRow) {

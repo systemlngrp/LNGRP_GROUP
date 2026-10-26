@@ -5,6 +5,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { NAVIGATION, NavEntry, NavGroup } from "../components/Sidebar";
 import { Spinner } from "../components/Spinner";
 import { WhatsappConfig } from "../types";
+import { DEFAULT_QC_SCORE_MESSAGE, QC_SCORE_MENU } from "../lib/qcScore";
 
 type MenuOption = { label: string; value: string };
 
@@ -100,6 +101,7 @@ const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 *Operator Name:* {{operatorName}}`;
 
 function defaultMessageForMenu(menu: string) {
+  if (menu === QC_SCORE_MENU) return DEFAULT_QC_SCORE_MESSAGE;
   if (menu === PRINTING_SHIFT_MENU) return DEFAULT_PRINTING_SHIFT_MESSAGE;
   if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
   if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
