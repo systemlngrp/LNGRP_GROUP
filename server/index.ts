@@ -14,10 +14,11 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_PRINTING_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappPrintingTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
+import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -6935,6 +6936,11 @@ async function initDb(retries = 5) {
           \`mdEmailId\` VARCHAR(255),
           \`md_approval_remark\` TEXT,
           \`tallyTimestamp\` VARCHAR(255),
+          \`whatsappSendStatus\` VARCHAR(50),
+          \`whatsappSendError\` TEXT,
+          \`whatsappSentAt\` VARCHAR(255),
+          \`whatsappSendStartedAt\` VARCHAR(255),
+          \`whatsappPdfFilenames\` LONGTEXT,
           \`status\` VARCHAR(50) NOT NULL DEFAULT 'Pending PH',
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
@@ -8461,6 +8467,11 @@ await db.query(`
         { table: "material_in", column: "creditTallySync", type: "VARCHAR(255)" },
         { table: "material_in", column: "creditTallyTimestamp", type: "VARCHAR(255)" },
         { table: "material_in", column: "creditRemarkTally", type: "TEXT" },
+        { table: "material_in", column: "whatsappSendStatus", type: "VARCHAR(50)" },
+        { table: "material_in", column: "whatsappSendError", type: "TEXT" },
+        { table: "material_in", column: "whatsappSentAt", type: "VARCHAR(255)" },
+        { table: "material_in", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
+        { table: "material_in", column: "whatsappPdfFilenames", type: "LONGTEXT" },
         { table: "material_in", column: "status", type: "VARCHAR(50) NOT NULL DEFAULT 'Pending PH'" },
         { table: "productions", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
         { table: "productions", column: "date", type: "VARCHAR(50) NOT NULL" },
@@ -9150,6 +9161,20 @@ await db.query(`
         }
       } catch (error) {
         console.warn("[DB] Could not update Loading Slip WhatsApp message template:", (error as Error).message);
+      }
+
+      try {
+        const [mrrWhatsappRows] = await db.query(
+          "SELECT id, message FROM `whatsapp_configs` WHERE menu = ? AND active = 'Yes' ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+          [WHATSAPP_MRR_MENU]
+        );
+        const mrrWhatsapp = (mrrWhatsappRows as any[])[0];
+        if (mrrWhatsapp?.id && !/\{\{\s*transactionNo\s*\}\}/i.test(String(mrrWhatsapp.message || ""))) {
+          await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_MRR_MESSAGE, mrrWhatsapp.id]);
+          console.log(`[DB] Updated MRR WhatsApp message template for ${mrrWhatsapp.id}.`);
+        }
+      } catch (error) {
+        console.warn("[DB] Could not update MRR WhatsApp message template:", (error as Error).message);
       }
 
       await ensureInterFirmSchema(db, database);
@@ -9963,6 +9988,61 @@ async function processLoadingSlipWhatsappDelivery(db: mysql.Pool, tableName: Loa
   }
 }
 
+async function processMrrWhatsappDelivery(db: mysql.Pool, mrrId: string): Promise<WhatsappComplaintDelivery> {
+  const nowIso = new Date().toISOString();
+  const staleBeforeIso = new Date(Date.now() - 60_000).toISOString();
+  try {
+    const [claimResult] = await db.query(
+      "UPDATE `material_in` SET whatsappSendStatus = 'Sending', whatsappSendError = NULL, whatsappSendStartedAt = ? WHERE id = ? AND COALESCE(TRIM(whatsappSentAt), '') = '' AND (COALESCE(whatsappSendStatus, '') <> 'Sending' OR COALESCE(whatsappSendStartedAt, '') < ?)",
+      [nowIso, mrrId, staleBeforeIso]
+    );
+    if (Number((claimResult as any)?.affectedRows || 0) === 0) {
+      const [rows] = await db.query("SELECT whatsappSentAt FROM `material_in` WHERE id = ? LIMIT 1", [mrrId]);
+      return String((rows as any[])[0]?.whatsappSentAt || "").trim() ? { status: "Already Sent" } : { status: "In Progress" };
+    }
+
+    const [configRows] = await db.query(
+      "SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+      [WHATSAPP_MRR_MENU]
+    );
+    const config = (configRows as any[])[0];
+    if (!config || !config.loginId || !config.pass || config.pass === "********" || !config.groupId) {
+      const delivery: WhatsappComplaintDelivery = { status: "Not Configured", error: "No active MRR WhatsApp configuration with valid credentials was found." };
+      await db.query("UPDATE `material_in` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.status, delivery.error, mrrId, nowIso]);
+      return delivery;
+    }
+
+    const [mrrRows] = await db.query("SELECT * FROM `material_in` WHERE id = ? LIMIT 1", [mrrId]);
+    const mrr = (mrrRows as any[])[0] || {};
+    const parseRows = (value: unknown): any[] => { try { const parsed = JSON.parse(String(value || "[]")); return Array.isArray(parsed) ? parsed : []; } catch { return []; } };
+    const lines = parseRows(mrr.lines);
+    const [packingRows] = await db.query("SELECT ps.*, m.name AS materialName FROM `material_in_packing_slips` ps LEFT JOIN `materials` m ON m.id = ps.materialId WHERE ps.materialInId = ? ORDER BY ps.materialLineId, ps.ourReelNo", [mrrId]);
+    const packingSlips = packingRows as any[];
+    const [supplierRows] = await db.query("SELECT name FROM `suppliers` WHERE id = ? LIMIT 1", [mrr.supplierId]);
+    const supplierName = String((supplierRows as any[])[0]?.name || mrr.supplierId || "");
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    const filenames = await writeMrrWhatsappPdfs({ ...mrr, lines, supplierName }, packingSlips, uploadsDir);
+    const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+    const urls = filenames.map((filename) => `${publicBase}/uploads/${encodeURIComponent(filename)}`);
+    const totalQty = lines.reduce((sum: number, line: any) => sum + Number(line?.qty ?? line?.invoiceQty ?? line?.actualQty ?? 0), 0);
+    const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: String(config.message || DEFAULT_MRR_MESSAGE) };
+    const result = await sendWhatsappMrrMessage(senderConfig, { ...mrr, supplier: supplierName, totalQty, reelCount: packingSlips.length, whatsappPdfUrls: urls });
+    if (result.status !== "Sent") {
+      const delivery: WhatsappComplaintDelivery = { status: "Failed", error: result.error || "MRR WhatsApp PDF delivery failed." };
+      await db.query("UPDATE `material_in` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSendStartedAt = NULL, whatsappPdfFilenames = ? WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.status, delivery.error, JSON.stringify(filenames), mrrId, nowIso]);
+      return delivery;
+    }
+    const delivery: WhatsappComplaintDelivery = { status: "Sent", sentAt: result.sentAt || new Date().toISOString() };
+    await db.query("UPDATE `material_in` SET whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL, whatsappPdfFilenames = ? WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.sentAt, JSON.stringify(filenames), mrrId, nowIso]);
+    return delivery;
+  } catch (error) {
+    console.warn("[WHATSAPP] MRR delivery failed:", (error as Error).message);
+    const delivery: WhatsappComplaintDelivery = { status: "Failed", error: "MRR WhatsApp PDF delivery failed." };
+    try { await db.query("UPDATE `material_in` SET whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL WHERE id = ?", [delivery.error, mrrId]); } catch {}
+    return delivery;
+  }
+}
+
 async function retryPendingWhatsappComplaints() {
   if (whatsappRetryRunning) return;
   whatsappRetryRunning = true;
@@ -10002,6 +10082,11 @@ async function retryPendingWhatsappComplaints() {
         const result = await processLoadingSlipWhatsappDelivery(db, tableName, String(row.id || "").trim());
         if (result.status === "Failed" || result.status === "Not Configured") console.warn(`[WHATSAPP] Automatic ${tableName} retry pending for loading slip ${String(row.id || "")}: ${result.status}`);
       }
+    }
+    const [mrrRows] = await db.query("SELECT id FROM `material_in` WHERE COALESCE(TRIM(whatsappSentAt), '') = '' ORDER BY updateTimestamp ASC LIMIT 50");
+    for (const row of mrrRows as any[]) {
+      const result = await processMrrWhatsappDelivery(db, String(row.id || "").trim());
+      if (result.status === "Failed" || result.status === "Not Configured") console.warn(`[WHATSAPP] Automatic MRR retry pending for ${String(row.id || "")}: ${result.status}`);
     }
   } catch (error) {
     console.warn("[WHATSAPP] Automatic retry worker failed:", (error as Error).message);
@@ -10145,6 +10230,21 @@ app.post("/api/reports/qc-score/whatsapp", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/api/material-in/:id/whatsapp", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !hasPermission(user, "/material-in/master")) return res.status(403).json({ error: "Forbidden" });
+  const id = String(req.params.id || "").trim();
+  if (!id) return res.status(400).json({ status: "Failed", error: "MRR ID is required." });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ status: "Failed", error: "Database unavailable." });
+    const result = await processMrrWhatsappDelivery(db, id);
+    return res.json(result);
+  } catch {
+    return res.status(500).json({ status: "Failed", error: "MRR WhatsApp PDF delivery failed." });
+  }
+});
+
 app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res) => {
   const user = await getRequestUser(req);
   if (!user || !canManageMasterRecords(user) || !hasPermission(user, "/masters/whatsapp")) return res.status(403).json({ error: "Forbidden" });
@@ -10180,6 +10280,15 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
       const record = (rows as any[])[0];
       hasCurrentData = Boolean(record);
       if (record) message = resolveWhatsappPrintingTemplate(messageTemplate, record);
+    } else if (menu === WHATSAPP_MRR_MENU) {
+      const [rows] = await db.query("SELECT mi.*, s.name AS supplier FROM `material_in` mi LEFT JOIN `suppliers` s ON s.id = mi.supplierId ORDER BY COALESCE(mi.updateTimestamp, mi.timestamp) DESC LIMIT 1");
+      const record = (rows as any[])[0];
+      hasCurrentData = Boolean(record);
+      if (record) {
+        const [packingRows] = await db.query("SELECT id FROM `material_in_packing_slips` WHERE materialInId = ?", [record.id]);
+        const lines = (() => { try { const parsed = JSON.parse(String(record.lines || "[]")); return Array.isArray(parsed) ? parsed : []; } catch { return []; } })();
+        message = resolveWhatsappMrrTemplate(messageTemplate, { ...record, totalQty: lines.reduce((sum: number, line: any) => sum + Number(line?.qty ?? line?.invoiceQty ?? 0), 0), reelCount: (packingRows as any[]).length });
+      }
     } else if (menu === PRINTING_SHIFT_MENU) {
       const [sentRows] = await db.query("SELECT shiftDate, shift FROM `printing_shift_reports` WHERE shiftDate = ? AND COALESCE(TRIM(whatsappSentAt), '') <> '' ORDER BY whatsappSentAt DESC LIMIT 1", [currentDate]);
       const sent = (sentRows as any[])[0];

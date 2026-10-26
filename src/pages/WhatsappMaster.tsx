@@ -66,6 +66,7 @@ const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
 const PRINTING_QC_MENU = "/quality/printing-qc/form";
 const PRINTING_SHIFT_MENU = "/reports/printing-shift";
 const LOADING_SLIP_MENU = "/loading/master";
+const MRR_MENU = "/material-in/master";
 const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
 
 {{jobLines}}
@@ -84,6 +85,19 @@ const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
 *Loading Source:* {{loadingSource}}
 
 📄 Loading Slip PDF attached.`;
+const DEFAULT_MRR_MESSAGE = `📦 *MATERIAL RECEIPT REPORT (MRR)*
+
+*MRR No.:* {{transactionNo}}
+*MRR Date:* {{date}}
+*Supplier:* {{supplier}}
+*Invoice No.:* {{invoiceNo}}
+*Invoice Date:* {{invDate}}
+*MRR Type:* {{mrrType}}
+*Total Quantity:* {{totalQty}}
+*Total Amount:* {{totalAmount}}
+*Reel Count:* {{reelCount}}
+
+📄 MRR PDF and applicable Reel Label PDFs are attached.`;
 const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 
 *Job No.:* {{jobNo}}
@@ -122,6 +136,7 @@ function defaultMessageForMenu(menu: string) {
   if (menu === QC_SCORE_MENU) return DEFAULT_QC_SCORE_MESSAGE;
   if (menu === PRINTING_SHIFT_MENU) return DEFAULT_PRINTING_SHIFT_MESSAGE;
   if (menu === LOADING_SLIP_MENU) return DEFAULT_LOADING_SLIP_MESSAGE;
+  if (menu === MRR_MENU) return DEFAULT_MRR_MESSAGE;
   if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
   if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
   return DEFAULT_QC_COMPLAINT_MESSAGE;

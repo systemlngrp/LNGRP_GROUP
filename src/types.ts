@@ -808,6 +808,11 @@ export interface MaterialIn {
   md_approval_remark?: string;
   tallyTimestamp?: string;
   tallySyncRemark?: string;
+  whatsappSendStatus?: "Sending" | "Sent" | "Failed" | "Not Configured" | string;
+  whatsappSendError?: string;
+  whatsappSentAt?: string;
+  whatsappSendStartedAt?: string;
+  whatsappPdfFilenames?: string[] | string;
   status: "Pending PH" | "Pending Accounts" | "Pending MD" | "Pending Tally" | "Completed";
   updatedBy?: string;
   updateTimestamp?: string;

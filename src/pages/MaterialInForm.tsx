@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, FileText, Plus, Trash2, Upload, Download, Wand2, X } from "lucide-react";
 import { useConfirm } from "../components/ConfirmDialog";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import {
   Company,
   GateEntry,
@@ -2417,6 +2417,17 @@ export function MaterialInForm() {
         await setPackingSlips((prev) => prev.filter((row) => row.materialInId !== materialInId));
       }
 
+      let whatsappResult: { status?: string; error?: string } = {};
+      try {
+        const whatsappResponse = await fetch(`/api/material-in/${encodeURIComponent(materialInId)}/whatsapp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getDataAuthHeaders(false) },
+        });
+        whatsappResult = await whatsappResponse.json().catch(() => ({}));
+      } catch {
+        whatsappResult = { status: "Failed" };
+      }
+
       if (!editingEntry && linkedGateEntry) {
         await setGateEntries(
           gateEntries.map((entry) =>
@@ -2449,11 +2460,11 @@ export function MaterialInForm() {
       setPackingSlipDrafts({});
       setCurrentPoLineId("");
       setCurrentInvoiceRate("");
-      alert(
-        editingEntry
-          ? `MRR updated: ${transactionNo}`
-          : `MRR created with MRR No: ${transactionNo}`
-      );
+      const saveText = editingEntry ? `MRR updated: ${transactionNo}` : `MRR created with MRR No: ${transactionNo}`;
+      if (whatsappResult.status === "Sent") alert(`${saveText}. MRR saved and WhatsApp message with PDF sent.`);
+      else if (whatsappResult.status === "Not Configured") alert(`${saveText}. MRR saved, but no active MRR WhatsApp configuration was found.`);
+      else if (whatsappResult.status === "Failed") alert(`${saveText}. MRR saved, but WhatsApp PDF delivery failed. It will retry automatically.`);
+      else alert(`${saveText}. WhatsApp delivery is still processing and will retry automatically if needed.`);
 
       if (!editingEntry && savedEntry) {
         const shouldDownloadPdf = await confirm(
