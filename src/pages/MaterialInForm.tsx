@@ -1296,33 +1296,38 @@ export function MaterialInForm() {
   };
 
   const updateLine = (lineId: string, patch: Partial<MaterialLine>) => {
+    // Line CGST/SGST are derived from the selected GST rate for intra-state
+    // MRRs. Ignore any attempted manual patch to those fields.
+    const safePatch = isInterState
+      ? patch
+      : (({ cgstRate: _cgstRate, sgstRate: _sgstRate, ...rest }) => rest)(patch);
     setLines((prev) =>
       prev.map((line) => {
         if (line.id !== lineId) return line;
-        const poLineId = patch.poLineId ?? line.poLineId;
+        const poLineId = safePatch.poLineId ?? line.poLineId;
         const poLine = poLineId ? getPurchaseOrderLine(poLineId) : undefined;
         const po = poLine ? getPurchaseOrder(poLine.purchaseOrderId) : undefined;
-        const selectedService = isServiceReturn && patch.itemId
-          ? services.find((entry) => entry.id === String(patch.itemId))
+        const selectedService = isServiceReturn && safePatch.itemId
+          ? services.find((entry) => entry.id === String(safePatch.itemId))
           : undefined;
         const nextLine = recalculateMaterialLine({
           ...line,
-          ...patch,
-          itemId: selectedService?.id || patch.itemId || line.itemId,
-          itemName: selectedService?.name || patch.itemName || line.itemName,
-          serviceId: selectedService?.id || patch.serviceId || line.serviceId,
-          serviceName: selectedService?.name || patch.serviceName || line.serviceName,
+          ...safePatch,
+          itemId: selectedService?.id || safePatch.itemId || line.itemId,
+          itemName: selectedService?.name || safePatch.itemName || line.itemName,
+          serviceId: selectedService?.id || safePatch.serviceId || line.serviceId,
+          serviceName: selectedService?.name || safePatch.serviceName || line.serviceName,
           poLineId,
           poId: po?.id,
           poNo: po?.poNo,
-          poRate: poLine ? Number(poLine.rate || 0) : Number(patch.poRate ?? line.poRate ?? 0),
+          poRate: poLine ? Number(poLine.rate || 0) : Number(safePatch.poRate ?? line.poRate ?? 0),
           invoiceCurrency: normalizedInvoiceCurrency,
           exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
         }, {
           invoiceCurrency: normalizedInvoiceCurrency,
           exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
         });
-        if (Object.prototype.hasOwnProperty.call(patch, "gstRate")) {
+        if (Object.prototype.hasOwnProperty.call(safePatch, "gstRate")) {
           return applySupplyTypeTaxRates(nextLine, isInterState ? "INTER_STATE" : "INTRA_STATE", {
             forceFromGstRate: true,
             invoiceCurrency: normalizedInvoiceCurrency,
@@ -1330,6 +1335,7 @@ export function MaterialInForm() {
           });
         }
         return applySupplyTypeTaxRates(nextLine, isInterState ? "INTER_STATE" : "INTRA_STATE", {
+          forceFromGstRate: !isInterState,
           invoiceCurrency: normalizedInvoiceCurrency,
           exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
         });
@@ -2191,7 +2197,7 @@ export function MaterialInForm() {
             const totalWeight = Number(
               (packingSlipDrafts[line.id] || []).reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0).toFixed(2)
             );
-            return recalculateMaterialLine({
+            const recalculatedLine = recalculateMaterialLine({
               ...line,
               qty: totalWeight,
               invoiceQty: totalWeight,
@@ -2203,15 +2209,27 @@ export function MaterialInForm() {
               invoiceCurrency: normalizedInvoiceCurrency,
               exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
             });
+            return applySupplyTypeTaxRates(recalculatedLine, isInterState ? "INTER_STATE" : "INTRA_STATE", {
+              forceFromGstRate: !isInterState,
+              invoiceCurrency: normalizedInvoiceCurrency,
+              exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+            });
           })
-        : lines.map((line) => recalculateMaterialLine({
-            ...line,
-            invoiceCurrency: normalizedInvoiceCurrency,
-            exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
-          }, {
-            invoiceCurrency: normalizedInvoiceCurrency,
-            exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
-          }));
+        : lines.map((line) => {
+            const recalculatedLine = recalculateMaterialLine({
+              ...line,
+              invoiceCurrency: normalizedInvoiceCurrency,
+              exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+            }, {
+              invoiceCurrency: normalizedInvoiceCurrency,
+              exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+            });
+            return applySupplyTypeTaxRates(recalculatedLine, isInterState ? "INTER_STATE" : "INTRA_STATE", {
+              forceFromGstRate: !isInterState,
+              invoiceCurrency: normalizedInvoiceCurrency,
+              exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+            });
+          });
 
     if (isUsdInvoice && (!numericExchangeRate || numericExchangeRate <= 0)) {
       alert("Exchange rate must be greater than 0 for USD invoices.");
@@ -3165,12 +3183,12 @@ export function MaterialInForm() {
                           <td className="px-4 py-3 text-sm font-medium text-black border border-black">{Number(line.invoiceValue || 0).toFixed(2)}</td>
                           {!isInterState ? (
                             <td className="px-4 py-3 text-sm text-black border border-black">
-                              <input type="number" min="0" step="0.01" value={Number(line.cgstRate || 0) > 0 ? line.cgstRate : ""} onChange={(e) => updateLine(line.id, { cgstRate: Number(e.target.value || 0) })} className="w-20 rounded border border-slate-300 px-2 py-1 text-sm" />
+                              <input type="number" min="0" step="0.01" value={Number(line.cgstRate || 0) > 0 ? line.cgstRate : ""} readOnly disabled className="w-20 rounded border border-slate-300 bg-slate-100 px-2 py-1 text-sm text-slate-600 cursor-not-allowed" />
                             </td>
                           ) : null}
                           {!isInterState ? (
                             <td className="px-4 py-3 text-sm text-black border border-black">
-                              <input type="number" min="0" step="0.01" value={Number(line.sgstRate || 0) > 0 ? line.sgstRate : ""} onChange={(e) => updateLine(line.id, { sgstRate: Number(e.target.value || 0) })} className="w-20 rounded border border-slate-300 px-2 py-1 text-sm" />
+                              <input type="number" min="0" step="0.01" value={Number(line.sgstRate || 0) > 0 ? line.sgstRate : ""} readOnly disabled className="w-20 rounded border border-slate-300 bg-slate-100 px-2 py-1 text-sm text-slate-600 cursor-not-allowed" />
                             </td>
                           ) : null}
                           {isInterState ? (
