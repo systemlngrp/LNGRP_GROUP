@@ -261,6 +261,11 @@ export interface MaterialReturn {
   remarks?: string;
   updatedBy?: string;
   updateTimestamp?: string;
+  whatsappSendStatus?: "Sending" | "Sent" | "Failed" | "Not Configured" | string;
+  whatsappSendError?: string | null;
+  whatsappSentAt?: string | null;
+  whatsappSendStartedAt?: string | null;
+  whatsappPdfFilename?: string | null;
 }
 
 export interface MaterialReturnLine {

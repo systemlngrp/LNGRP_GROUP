@@ -94,6 +94,16 @@ export type WhatsappMrrRecord = {
   whatsappPdfUrls?: unknown;
 };
 
+export type WhatsappReelReturnRecord = {
+  returnNo?: unknown;
+  date?: unknown;
+  jobNo?: unknown;
+  totalReels?: unknown;
+  totalWeightKg?: unknown;
+  remarks?: unknown;
+  whatsappPdfUrl?: unknown;
+};
+
 export type WhatsappSendResult = {
   status: "Sent" | "Failed" | "Not Configured";
   error?: string;
@@ -106,6 +116,7 @@ export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
 export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
 export const WHATSAPP_LOADING_MENU = "/loading/master";
 export const WHATSAPP_MRR_MENU = "/material-in/master";
+export const WHATSAPP_REEL_RETURN_MENU = "/material-movement/reel-return";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
 export const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
 
@@ -132,6 +143,16 @@ export const DEFAULT_MRR_MESSAGE = `📦 *MATERIAL RECEIPT REPORT (MRR)*
 *Reel Count:* {{reelCount}}
 
 📄 MRR PDF and applicable Reel Label PDFs are attached.`;
+export const DEFAULT_REEL_RETURN_MESSAGE = `🔁 *REEL RETURN*
+
+*Return No.:* {{returnNo}}
+*Date:* {{date}}
+*Job No.:* {{jobNo}}
+*Total Reels:* {{totalReels}}
+*Total Weight:* {{totalWeightKg}} KG
+*Remarks:* {{remarks}}
+
+📄 Reel Return PDF attached.`;
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
 *Complaint No.:* {{complaintNo}}
@@ -300,6 +321,20 @@ export function buildWhatsappMrrPayload(config: WhatsappSenderConfig, record: Wh
   };
 }
 
+export function resolveWhatsappReelReturnTemplate(template: string, record: WhatsappReelReturnRecord) {
+  const values: Record<string, string> = Object.fromEntries(Object.entries(record).map(([key, value]) => [key, text(value)]));
+  return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
+}
+
+export function buildWhatsappReelReturnPayload(config: WhatsappSenderConfig, record: WhatsappReelReturnRecord) {
+  const pdfUrl = text(record.whatsappPdfUrl);
+  return {
+    recipientIds: [text(config.groupId)],
+    message: [resolveWhatsappReelReturnTemplate(config.message, record)],
+    ...(pdfUrl ? { filePathUrl: [pdfUrl] } : {}),
+  };
+}
+
 export function buildPhotoUrl(value: unknown, appPublicUrl: string) {
   const filename = text(value);
   if (!filename) return "";
@@ -393,6 +428,14 @@ export function sendWhatsappMrrMessage(
   options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
 ) {
   return sendWhatsappPayload(config, buildWhatsappMrrPayload(config, record), options);
+}
+
+export function sendWhatsappReelReturnMessage(
+  config: WhatsappSenderConfig,
+  record: WhatsappReelReturnRecord,
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+) {
+  return sendWhatsappPayload(config, buildWhatsappReelReturnPayload(config, record), options);
 }
 
 export async function sendWhatsappComplaintStage(

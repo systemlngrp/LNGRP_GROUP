@@ -14,11 +14,12 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
 import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
+import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -6289,6 +6290,11 @@ async function initDb(retries = 5) {
           \`productionId\` VARCHAR(36),
           \`jobNo\` VARCHAR(100),
           \`remarks\` TEXT,
+          \`whatsappSendStatus\` VARCHAR(30),
+          \`whatsappSendError\` TEXT,
+          \`whatsappSentAt\` VARCHAR(255),
+          \`whatsappSendStartedAt\` VARCHAR(255),
+          \`whatsappPdfFilename\` VARCHAR(255),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -8343,6 +8349,11 @@ await db.query(`
         { table: "material_returns", column: "jobNo", type: "VARCHAR(100)" },
         { table: "material_returns", column: "firmId", type: "VARCHAR(36)" },
         { table: "material_returns", column: "remarks", type: "TEXT" },
+        { table: "material_returns", column: "whatsappSendStatus", type: "VARCHAR(30)" },
+        { table: "material_returns", column: "whatsappSendError", type: "TEXT" },
+        { table: "material_returns", column: "whatsappSentAt", type: "VARCHAR(255)" },
+        { table: "material_returns", column: "whatsappSendStartedAt", type: "VARCHAR(255)" },
+        { table: "material_returns", column: "whatsappPdfFilename", type: "VARCHAR(255)" },
         { table: "material_returns", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "material_returns", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "material_return_lines", column: "materialReturnId", type: "VARCHAR(36) NOT NULL" },
@@ -9175,6 +9186,20 @@ await db.query(`
         }
       } catch (error) {
         console.warn("[DB] Could not update MRR WhatsApp message template:", (error as Error).message);
+      }
+
+      try {
+        const [reelReturnWhatsappRows] = await db.query(
+          "SELECT id, message FROM `whatsapp_configs` WHERE menu = ? AND active = 'Yes' ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+          [WHATSAPP_REEL_RETURN_MENU]
+        );
+        const reelReturnWhatsapp = (reelReturnWhatsappRows as any[])[0];
+        if (reelReturnWhatsapp?.id && !/\{\{\s*returnNo\s*\}\}/i.test(String(reelReturnWhatsapp.message || ""))) {
+          await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_REEL_RETURN_MESSAGE, reelReturnWhatsapp.id]);
+          console.log(`[DB] Updated Reel Return WhatsApp message template for ${reelReturnWhatsapp.id}.`);
+        }
+      } catch (error) {
+        console.warn("[DB] Could not update Reel Return WhatsApp message template:", (error as Error).message);
       }
 
       await ensureInterFirmSchema(db, database);
@@ -10043,6 +10068,71 @@ async function processMrrWhatsappDelivery(db: mysql.Pool, mrrId: string): Promis
   }
 }
 
+async function processReelReturnWhatsappDelivery(db: mysql.Pool, returnId: string): Promise<WhatsappComplaintDelivery> {
+  const nowIso = new Date().toISOString();
+  const staleBeforeIso = new Date(Date.now() - 60_000).toISOString();
+  try {
+    const [claimResult] = await db.query(
+      "UPDATE `material_returns` SET whatsappSendStatus = 'Sending', whatsappSendError = NULL, whatsappSendStartedAt = ? WHERE id = ? AND COALESCE(TRIM(whatsappSentAt), '') = '' AND (COALESCE(whatsappSendStatus, '') <> 'Sending' OR COALESCE(whatsappSendStartedAt, '') < ?)",
+      [nowIso, returnId, staleBeforeIso]
+    );
+    if (Number((claimResult as any)?.affectedRows || 0) === 0) {
+      const [rows] = await db.query("SELECT whatsappSentAt FROM `material_returns` WHERE id = ? LIMIT 1", [returnId]);
+      return String((rows as any[])[0]?.whatsappSentAt || "").trim() ? { status: "Already Sent" } : { status: "In Progress" };
+    }
+    const [configRows] = await db.query(
+      "SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+      [WHATSAPP_REEL_RETURN_MENU]
+    );
+    const config = (configRows as any[])[0];
+    if (!config || !config.loginId || !config.pass || config.pass === "********" || !config.groupId) {
+      const delivery: WhatsappComplaintDelivery = { status: "Not Configured", error: "No active Reel Return WhatsApp configuration with valid credentials was found." };
+      await db.query("UPDATE `material_returns` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.status, delivery.error, returnId, nowIso]);
+      return delivery;
+    }
+    const [returnRows] = await db.query("SELECT * FROM `material_returns` WHERE id = ? LIMIT 1", [returnId]);
+    const returnRecord = (returnRows as any[])[0];
+    if (!returnRecord) throw new Error("Return record not found.");
+    const [reelRows] = await db.query(
+      `SELECT r.*, m.name AS materialName, m.erpCode AS materialCode,
+        CONCAT(COALESCE(m.gsm, '-'), ' GSM / ', COALESCE(m.bf, '-'), ' BF / ', COALESCE(m.size, '-')) AS specs
+       FROM material_return_reel_lines r LEFT JOIN materials m ON m.id = r.materialId
+       WHERE r.materialReturnId = ? ORDER BY r.ourReelNo`,
+      [returnId]
+    );
+    const reels = reelRows as any[];
+    if (!reels.length) throw new Error("No returned reels were found.");
+    const uploadsDir = path.join(process.cwd(), "uploads");
+    const filename = String(returnRecord.whatsappPdfFilename || "").trim() || await writeReelReturnWhatsappPdf(returnRecord, reels, uploadsDir);
+    const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+    const pdfUrl = `${publicBase}/uploads/${encodeURIComponent(filename)}`;
+    const totalWeightKg = reels.reduce((sum, row) => sum + Number(row.weightKg || 0), 0).toFixed(2);
+    const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: String(config.message || DEFAULT_REEL_RETURN_MESSAGE) };
+    const result = await sendWhatsappReelReturnMessage(senderConfig, {
+      returnNo: returnRecord.returnNo,
+      date: returnRecord.date,
+      jobNo: returnRecord.jobNo,
+      totalReels: reels.length,
+      totalWeightKg,
+      remarks: returnRecord.remarks,
+      whatsappPdfUrl: pdfUrl,
+    });
+    if (result.status !== "Sent") {
+      const delivery: WhatsappComplaintDelivery = { status: "Failed", error: result.error || "Reel Return WhatsApp PDF delivery failed." };
+      await db.query("UPDATE `material_returns` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.status, delivery.error, filename, returnId, nowIso]);
+      return delivery;
+    }
+    const delivery: WhatsappComplaintDelivery = { status: "Sent", sentAt: result.sentAt || new Date().toISOString() };
+    await db.query("UPDATE `material_returns` SET whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.sentAt, filename, returnId, nowIso]);
+    return delivery;
+  } catch (error) {
+    console.warn("[WHATSAPP] Reel Return delivery failed:", (error as Error).message);
+    const delivery: WhatsappComplaintDelivery = { status: "Failed", error: "Reel Return WhatsApp PDF delivery failed." };
+    try { await db.query("UPDATE `material_returns` SET whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL WHERE id = ?", [delivery.error, returnId]); } catch {}
+    return delivery;
+  }
+}
+
 async function retryPendingWhatsappComplaints() {
   if (whatsappRetryRunning) return;
   whatsappRetryRunning = true;
@@ -10087,6 +10177,11 @@ async function retryPendingWhatsappComplaints() {
     for (const row of mrrRows as any[]) {
       const result = await processMrrWhatsappDelivery(db, String(row.id || "").trim());
       if (result.status === "Failed" || result.status === "Not Configured") console.warn(`[WHATSAPP] Automatic MRR retry pending for ${String(row.id || "")}: ${result.status}`);
+    }
+    const [reelReturnRows] = await db.query("SELECT id FROM `material_returns` WHERE EXISTS (SELECT 1 FROM material_return_reel_lines r WHERE r.materialReturnId = material_returns.id) AND COALESCE(TRIM(whatsappSentAt), '') = '' ORDER BY updateTimestamp ASC LIMIT 50");
+    for (const row of reelReturnRows as any[]) {
+      const result = await processReelReturnWhatsappDelivery(db, String(row.id || "").trim());
+      if (result.status === "Failed" || result.status === "Not Configured") console.warn(`[WHATSAPP] Automatic Reel Return retry pending for ${String(row.id || "")}: ${result.status}`);
     }
   } catch (error) {
     console.warn("[WHATSAPP] Automatic retry worker failed:", (error as Error).message);
@@ -10245,6 +10340,20 @@ app.post("/api/material-in/:id/whatsapp", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/api/material-returns/:id/reel-whatsapp", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !hasPermission(user, "/material-movement/reel-return")) return res.status(403).json({ error: "Forbidden" });
+  const id = String(req.params.id || "").trim();
+  if (!id) return res.status(400).json({ status: "Failed", error: "Reel Return ID is required." });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ status: "Failed", error: "Database unavailable." });
+    return res.json(await processReelReturnWhatsappDelivery(db, id));
+  } catch {
+    return res.status(500).json({ status: "Failed", error: "Reel Return WhatsApp PDF delivery failed." });
+  }
+});
+
 app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res) => {
   const user = await getRequestUser(req);
   if (!user || !canManageMasterRecords(user) || !hasPermission(user, "/masters/whatsapp")) return res.status(403).json({ error: "Forbidden" });
@@ -10263,6 +10372,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
     let message = "";
     let hasCurrentData = true;
     let sentTemplateFallback = false;
+    let currentAttachmentUrl = "";
     const currentDate = indiaNowParts(new Date()).date;
 
     if (menu === WHATSAPP_COMPLAINT_MENU) {
@@ -10289,6 +10399,18 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         const lines = (() => { try { const parsed = JSON.parse(String(record.lines || "[]")); return Array.isArray(parsed) ? parsed : []; } catch { return []; } })();
         message = resolveWhatsappMrrTemplate(messageTemplate, { ...record, totalQty: lines.reduce((sum: number, line: any) => sum + Number(line?.qty ?? line?.invoiceQty ?? 0), 0), reelCount: (packingRows as any[]).length });
       }
+    } else if (menu === WHATSAPP_REEL_RETURN_MENU) {
+      const [rows] = await db.query("SELECT * FROM `material_returns` WHERE EXISTS (SELECT 1 FROM material_return_reel_lines r WHERE r.materialReturnId = material_returns.id) ORDER BY COALESCE(updateTimestamp, '') DESC, date DESC LIMIT 1");
+      const record = (rows as any[])[0];
+      hasCurrentData = Boolean(record);
+      if (record) {
+        const [reelRows] = await db.query("SELECT r.*, m.name AS materialName, m.erpCode AS materialCode, CONCAT(COALESCE(m.gsm, '-'), ' GSM / ', COALESCE(m.bf, '-'), ' BF / ', COALESCE(m.size, '-')) AS specs FROM material_return_reel_lines r LEFT JOIN materials m ON m.id = r.materialId WHERE r.materialReturnId = ? ORDER BY r.ourReelNo", [record.id]);
+        const reels = reelRows as any[];
+        const filename = String(record.whatsappPdfFilename || "").trim() || await writeReelReturnWhatsappPdf(record, reels, path.join(process.cwd(), "uploads"));
+        if (!record.whatsappPdfFilename) await db.query("UPDATE material_returns SET whatsappPdfFilename = ? WHERE id = ?", [filename, record.id]);
+        currentAttachmentUrl = `${(process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
+        message = resolveWhatsappReelReturnTemplate(messageTemplate, { ...record, totalReels: reels.length, totalWeightKg: reels.reduce((sum, row) => sum + Number(row.weightKg || 0), 0).toFixed(2) });
+      }
     } else if (menu === PRINTING_SHIFT_MENU) {
       const [sentRows] = await db.query("SELECT shiftDate, shift FROM `printing_shift_reports` WHERE shiftDate = ? AND COALESCE(TRIM(whatsappSentAt), '') <> '' ORDER BY whatsappSentAt DESC LIMIT 1", [currentDate]);
       const sent = (sentRows as any[])[0];
@@ -10314,7 +10436,10 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
     }
     if (!message.trim()) return res.json({ status: "Failed", error: "The saved WhatsApp template is empty." });
     if (!sentTemplateFallback && /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/.test(message)) return res.json({ status: "Failed", error: "The template contains unsupported placeholders." });
-    const result = await sendWhatsappTextMessage({ loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: messageTemplate }, message);
+    const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
+    const result = menu === WHATSAPP_REEL_RETURN_MENU && currentAttachmentUrl
+      ? await sendWhatsappReelReturnMessage(senderConfig, { whatsappPdfUrl: currentAttachmentUrl })
+      : await sendWhatsappTextMessage(senderConfig, message);
     return res.json(result.status === "Sent" ? { status: "Sent", templateFallback: sentTemplateFallback } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
   } catch {
     return res.status(500).json({ status: "Failed", error: "Current WhatsApp message could not be sent." });

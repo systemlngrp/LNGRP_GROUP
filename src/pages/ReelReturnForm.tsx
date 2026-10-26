@@ -3,7 +3,7 @@ import { ArrowLeft, Camera, PackageCheck, X } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { getAllReturnableReelLines } from "../lib/materialMovement";
 import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 import { buildProductionCorrugatedSheetUsageMap, buildProductionMaterialUsageMap, syncProductionWorkflowFromUsage } from "../lib/productionMaterialUsage";
@@ -203,7 +203,19 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
       const remainingForJob = getAllReturnableReelLines(issueReelLines, nextReturnReelLines, productions)
         .filter((row) => row.productionId === productionId);
       setDraft({}); setRemarks("");
-      alert(`${validated.length} reel return${validated.length === 1 ? "" : "s"} saved successfully.`);
+      let deliveryMessage = "Reel Return saved, but WhatsApp PDF delivery failed. It will retry automatically.";
+      try {
+        const response = await fetch(`/api/material-returns/${encodeURIComponent(returnId)}/reel-whatsapp`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getDataAuthHeaders(false) },
+        });
+        const result = await response.json().catch(() => ({}));
+        if (result.status === "Sent") deliveryMessage = "Reel Return saved and WhatsApp PDF sent.";
+        else if (result.status === "Not Configured") deliveryMessage = "Reel Return saved, but no active Reel Return WhatsApp configuration was found.";
+      } catch {
+        // The return remains saved and the retry worker will handle delivery.
+      }
+      alert(deliveryMessage);
       if (returnTo || remainingForJob.length === 0) navigate(returnTo || "/production/pending-material-return");
     } catch (error) { console.error("Failed to save reel returns:", error); alert(error instanceof Error ? error.message : "Failed to save reel returns."); }
     finally { setIsSubmitting(false); }

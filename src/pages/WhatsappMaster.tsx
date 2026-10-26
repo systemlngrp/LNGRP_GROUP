@@ -67,6 +67,7 @@ const PRINTING_QC_MENU = "/quality/printing-qc/form";
 const PRINTING_SHIFT_MENU = "/reports/printing-shift";
 const LOADING_SLIP_MENU = "/loading/master";
 const MRR_MENU = "/material-in/master";
+const REEL_RETURN_MENU = "/material-movement/reel-return";
 const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
 
 {{jobLines}}
@@ -98,6 +99,16 @@ const DEFAULT_MRR_MESSAGE = `📦 *MATERIAL RECEIPT REPORT (MRR)*
 *Reel Count:* {{reelCount}}
 
 📄 MRR PDF and applicable Reel Label PDFs are attached.`;
+const DEFAULT_REEL_RETURN_MESSAGE = `🔁 *REEL RETURN*
+
+*Return No.:* {{returnNo}}
+*Date:* {{date}}
+*Job No.:* {{jobNo}}
+*Total Reels:* {{totalReels}}
+*Total Weight:* {{totalWeightKg}} KG
+*Remarks:* {{remarks}}
+
+📄 Reel Return PDF attached.`;
 const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 
 *Job No.:* {{jobNo}}
@@ -137,6 +148,7 @@ function defaultMessageForMenu(menu: string) {
   if (menu === PRINTING_SHIFT_MENU) return DEFAULT_PRINTING_SHIFT_MESSAGE;
   if (menu === LOADING_SLIP_MENU) return DEFAULT_LOADING_SLIP_MESSAGE;
   if (menu === MRR_MENU) return DEFAULT_MRR_MESSAGE;
+  if (menu === REEL_RETURN_MENU) return DEFAULT_REEL_RETURN_MESSAGE;
   if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
   if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
   return DEFAULT_QC_COMPLAINT_MESSAGE;

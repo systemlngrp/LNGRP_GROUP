@@ -3,6 +3,7 @@ export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
 export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
 export const WHATSAPP_LOADING_MENU = "/loading/master";
 export const WHATSAPP_MRR_MENU = "/material-in/master";
+export const WHATSAPP_REEL_RETURN_MENU = "/material-movement/reel-return";
 export const MESSAGE_AUTO_SENDER_URL = "https://app.messageautosender.com/api/v1/message/create";
 export const DEFAULT_LOADING_SLIP_MESSAGE = `🚚 *LOADING SLIP*
 
@@ -29,6 +30,16 @@ export const DEFAULT_MRR_MESSAGE = `📦 *MATERIAL RECEIPT REPORT (MRR)*
 *Reel Count:* {{reelCount}}
 
 📄 MRR PDF and applicable Reel Label PDFs are attached.`;
+export const DEFAULT_REEL_RETURN_MESSAGE = `🔁 *REEL RETURN*
+
+*Return No.:* {{returnNo}}
+*Date:* {{date}}
+*Job No.:* {{jobNo}}
+*Total Reels:* {{totalReels}}
+*Total Weight:* {{totalWeightKg}} KG
+*Remarks:* {{remarks}}
+
+📄 Reel Return PDF attached.`;
 export const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
 
 *Complaint No.:* {{complaintNo}}
@@ -182,6 +193,18 @@ export function buildWhatsappMrrPayload(config, record) {
         ...(urls.length ? { filePathUrl: urls } : {}),
     };
 }
+export function resolveWhatsappReelReturnTemplate(template, record) {
+    const values = Object.fromEntries(Object.entries(record).map(([key, value]) => [key, text(value)]));
+    return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => values[key] ?? "");
+}
+export function buildWhatsappReelReturnPayload(config, record) {
+    const pdfUrl = text(record.whatsappPdfUrl);
+    return {
+        recipientIds: [text(config.groupId)],
+        message: [resolveWhatsappReelReturnTemplate(config.message, record)],
+        ...(pdfUrl ? { filePathUrl: [pdfUrl] } : {}),
+    };
+}
 export function buildPhotoUrl(value, appPublicUrl) {
     const filename = text(value);
     if (!filename)
@@ -248,6 +271,9 @@ export function sendWhatsappLoadingSlipMessage(config, record, options = {}) {
 }
 export function sendWhatsappMrrMessage(config, record, options = {}) {
     return sendWhatsappPayload(config, buildWhatsappMrrPayload(config, record), options);
+}
+export function sendWhatsappReelReturnMessage(config, record, options = {}) {
+    return sendWhatsappPayload(config, buildWhatsappReelReturnPayload(config, record), options);
 }
 export async function sendWhatsappComplaintStage(config, complaint, stage, options = {}) {
     const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";
