@@ -8654,7 +8654,9 @@ async function initDb(retries = 5) {
             try {
                 const [mrrWhatsappRows] = await db.query("SELECT id, message FROM `whatsapp_configs` WHERE menu = ? AND active = 'Yes' ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [WHATSAPP_MRR_MENU]);
                 const mrrWhatsapp = mrrWhatsappRows[0];
-                if (mrrWhatsapp?.id && !/\{\{\s*transactionNo\s*\}\}/i.test(String(mrrWhatsapp.message || ""))) {
+                const mrrMessage = String(mrrWhatsapp?.message || "");
+                const isLegacyMrrTemplate = mrrMessage.includes("MRR PDF and applicable Reel Label PDFs are attached.");
+                if (mrrWhatsapp?.id && (isLegacyMrrTemplate || !/\{\{\s*transactionNo\s*\}\}/i.test(mrrMessage))) {
                     await db.query("UPDATE `whatsapp_configs` SET message = ? WHERE id = ?", [DEFAULT_MRR_MESSAGE, mrrWhatsapp.id]);
                     console.log(`[DB] Updated MRR WhatsApp message template for ${mrrWhatsapp.id}.`);
                 }
@@ -9424,7 +9426,7 @@ async function processMrrWhatsappDelivery(db, mrrId) {
             return [];
         } };
         const lines = parseRows(mrr.lines);
-        const [packingRows] = await db.query("SELECT ps.*, m.name AS materialName FROM `material_in_packing_slips` ps LEFT JOIN `materials` m ON m.id = ps.materialId WHERE ps.materialInId = ? ORDER BY ps.materialLineId, ps.ourReelNo", [mrrId]);
+        const [packingRows] = await db.query("SELECT ps.*, m.name AS materialName, m.erpCode AS materialCode, m.size AS sizeCm, m.gsm, m.bf FROM `material_in_packing_slips` ps LEFT JOIN `materials` m ON m.id = ps.materialId WHERE ps.materialInId = ? ORDER BY ps.materialLineId, ps.ourReelNo", [mrrId]);
         const packingSlips = packingRows;
         const [supplierRows] = await db.query("SELECT name FROM `suppliers` WHERE id = ? LIMIT 1", [mrr.supplierId]);
         const supplierName = String(supplierRows[0]?.name || mrr.supplierId || "");
@@ -9797,7 +9799,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
             const record = rows[0];
             hasCurrentData = Boolean(record);
             if (record) {
-                const [packingRows] = await db.query("SELECT ps.*, m.name AS materialName FROM `material_in_packing_slips` ps LEFT JOIN materials m ON m.id = ps.materialId WHERE ps.materialInId = ? ORDER BY ps.materialLineId, ps.ourReelNo", [record.id]);
+                const [packingRows] = await db.query("SELECT ps.*, m.name AS materialName, m.erpCode AS materialCode, m.size AS sizeCm, m.gsm, m.bf FROM `material_in_packing_slips` ps LEFT JOIN materials m ON m.id = ps.materialId WHERE ps.materialInId = ? ORDER BY ps.materialLineId, ps.ourReelNo", [record.id]);
                 const lines = (() => { try {
                     const parsed = JSON.parse(String(record.lines || "[]"));
                     return Array.isArray(parsed) ? parsed : [];

@@ -98,7 +98,8 @@ const DEFAULT_MRR_MESSAGE = `📦 *MATERIAL RECEIPT REPORT (MRR)*
 *Total Amount:* {{totalAmount}}
 *Reel Count:* {{reelCount}}
 
-📄 MRR PDF and applicable Reel Label PDFs are attached.`;
+📄 MRR PDF attached.
+📄 QC Reel Labels A4 and A3 attached for Reel MRR.`;
 const DEFAULT_REEL_RETURN_MESSAGE = `🔁 *REEL RETURN*
 
 *Return No.:* {{returnNo}}
