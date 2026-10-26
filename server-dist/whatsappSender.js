@@ -206,12 +206,19 @@ export function buildWhatsappReelReturnPayload(config, record) {
     };
 }
 export function buildPhotoUrl(value, appPublicUrl) {
-    const filename = text(value);
-    if (!filename)
+    const storedValue = text(value);
+    if (!storedValue)
         return "";
-    if (/^https?:\/\//i.test(filename))
-        return filename;
-    return `${text(appPublicUrl).replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
+    if (/^https?:\/\//i.test(storedValue))
+        return storedValue;
+    const publicBase = text(appPublicUrl).replace(/\/$/, "");
+    // Complaint records may contain either a filename from uploaded_files,
+    // an absolute /uploads path, or a relative uploads path from the PHP host.
+    // Preserve the path form instead of encoding its slashes into the filename.
+    if (/^\/?uploads\//i.test(storedValue)) {
+        return `${publicBase}/${storedValue.replace(/^\//, "")}`;
+    }
+    return `${publicBase}/uploads/${encodeURIComponent(storedValue)}`;
 }
 export function buildWhatsappPayload(config, complaint, appPublicUrl, stage = "text") {
     const photoUrl = stage === "photo1"
