@@ -210,7 +210,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
           headers: { "Content-Type": "application/json", ...getDataAuthHeaders(false) },
         });
         const result = await response.json().catch(() => ({}));
-        if (result.status === "Sent") deliveryMessage = "Reel Return saved and WhatsApp PDF sent.";
+        if (result.status === "Sent") deliveryMessage = result.warning || "Reel Return saved and WhatsApp PDF sent.";
         else if (result.status === "Not Configured") deliveryMessage = "Reel Return saved, but no active Reel Return WhatsApp configuration was found.";
       } catch {
         // The return remains saved and the retry worker will handle delivery.

@@ -107,6 +107,7 @@ export type WhatsappReelReturnRecord = {
 export type WhatsappSendResult = {
   status: "Sent" | "Failed" | "Not Configured";
   error?: string;
+  httpStatus?: number;
   failedStage?: WhatsappSendStage;
   sentAt?: string;
 };
@@ -380,7 +381,7 @@ async function sendWhatsappPayload(
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
-    if (!response.ok) return { status: "Failed", error: `WhatsApp sender returned ${response.status}.` };
+    if (!response.ok) return { status: "Failed", httpStatus: response.status, error: `WhatsApp sender returned ${response.status}.` };
     return { status: "Sent", sentAt: new Date().toISOString() };
   } catch (error) {
     const message = error instanceof Error && error.name === "AbortError" ? "WhatsApp sender request timed out." : safeErrorMessage(error instanceof Error ? error.message : error);

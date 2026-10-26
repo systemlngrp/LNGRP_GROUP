@@ -246,7 +246,7 @@ async function sendWhatsappPayload(config, payload, options = {}) {
             signal: controller.signal,
         });
         if (!response.ok)
-            return { status: "Failed", error: `WhatsApp sender returned ${response.status}.` };
+            return { status: "Failed", httpStatus: response.status, error: `WhatsApp sender returned ${response.status}.` };
         return { status: "Sent", sentAt: new Date().toISOString() };
     }
     catch (error) {

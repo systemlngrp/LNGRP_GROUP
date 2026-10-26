@@ -9453,7 +9453,7 @@ async function processReelReturnWhatsappDelivery(db, returnId) {
         const pdfUrl = `${publicBase}/uploads/${encodeURIComponent(filename)}`;
         const totalWeightKg = reels.reduce((sum, row) => sum + Number(row.weightKg || 0), 0).toFixed(2);
         const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: String(config.message || DEFAULT_REEL_RETURN_MESSAGE) };
-        const result = await sendWhatsappReelReturnMessage(senderConfig, {
+        let result = await sendWhatsappReelReturnMessage(senderConfig, {
             returnNo: returnRecord.returnNo,
             date: returnRecord.date,
             jobNo: returnRecord.jobNo,
@@ -9462,12 +9462,30 @@ async function processReelReturnWhatsappDelivery(db, returnId) {
             remarks: returnRecord.remarks,
             whatsappPdfUrl: pdfUrl,
         });
+        let warning = "";
+        if (result.status === "Failed" && result.httpStatus === 424) {
+            const textOnlyResult = await sendWhatsappReelReturnMessage(senderConfig, {
+                returnNo: returnRecord.returnNo,
+                date: returnRecord.date,
+                jobNo: returnRecord.jobNo,
+                totalReels: reels.length,
+                totalWeightKg,
+                remarks: returnRecord.remarks,
+            });
+            if (textOnlyResult.status === "Sent") {
+                result = textOnlyResult;
+                warning = "WhatsApp message sent, but the Reel Return PDF attachment could not be delivered.";
+            }
+            else {
+                result = textOnlyResult;
+            }
+        }
         if (result.status !== "Sent") {
             const delivery = { status: "Failed", error: result.error || "Reel Return WhatsApp PDF delivery failed." };
             await db.query("UPDATE `material_returns` SET whatsappSendStatus = ?, whatsappSendError = ?, whatsappSentAt = NULL, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.status, delivery.error, filename, returnId, nowIso]);
             return delivery;
         }
-        const delivery = { status: "Sent", sentAt: result.sentAt || new Date().toISOString() };
+        const delivery = { status: "Sent", warning, sentAt: result.sentAt || new Date().toISOString() };
         await db.query("UPDATE `material_returns` SET whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL, whatsappPdfFilename = ? WHERE id = ? AND whatsappSendStartedAt = ?", [delivery.sentAt, filename, returnId, nowIso]);
         return delivery;
     }
