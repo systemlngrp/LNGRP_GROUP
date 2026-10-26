@@ -154,11 +154,7 @@ export function formatQcScorePercent(value: number | null) {
 }
 
 function displayDate(date: string) {
-  return `${date.slice(8, 10)}-${date.slice(5, 7)}-${date.slice(0, 4)}`;
-}
-
-function peopleLabel(names: string[]) {
-  return names.length ? names.join(", ") : "-";
+  return `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`;
 }
 
 function messageScore(value: number | null) {
@@ -167,10 +163,24 @@ function messageScore(value: number | null) {
 
 export function buildQcScoreWhatsAppMessage(row: QcScoreRow) {
   return [
-    `QC Score - ${displayDate(row.date)}`,
-    `Boardline: ${row.boardlineChecksPerformed}/${row.boardlineChecksRequired} checks (${messageScore(row.boardlineScore)}) | QC: ${peopleLabel(row.boardlineQcPeople)}`,
-    `Printing: ${row.printingChecksPerformed}/${row.printingChecksRequired} checks (${messageScore(row.printingScore)}) | QC: ${peopleLabel(row.printingQcPeople)}`,
-    `Total: ${row.totalChecksPerformed}/${row.totalChecksRequired} checks (${messageScore(row.totalScore)})`,
+    "*QC ONLINE CHECKING SCORE CARD REPORT*",
+    "",
+    `*Date* - ${displayDate(row.date)}`,
+    "",
+    "*Boardline QC*",
+    `*Total No. of Boardline Checks Required* - ${row.boardlineChecksRequired}`,
+    `*Total No. of Boardline Checks Performed* - ${row.boardlineChecksPerformed}`,
+    `*Total Boardline QC Inspection Score* - ${messageScore(row.boardlineScore)}`,
+    "",
+    "*Printing QC*",
+    `*Total No. of Printing Checks Required* - ${row.printingChecksRequired}`,
+    `*Total No. of Printing Checks Performed* - ${row.printingChecksPerformed}`,
+    `*Total Printing QC Inspection Score* - ${messageScore(row.printingScore)}`,
+    "",
+    "*Overall QC*",
+    `*Total No. of Checks Required* - ${row.totalChecksRequired}`,
+    `*Total No. of Checks Performed* - ${row.totalChecksPerformed}`,
+    `*Total QC Inspection Score* - ${messageScore(row.totalScore)}`,
   ].join("\n");
 }
 

@@ -65,7 +65,7 @@ test("groups timestamps in India while preserving date-only values", () => {
   assert.equal(qcScoreDateKey("invalid"), "");
 });
 
-test("creates the WhatsApp summary and encoded share URL", () => {
+test("creates the full WhatsApp score card and encoded share URL", () => {
   const [row] = buildQcScoreRows({
     fromDate: "2026-10-10",
     toDate: "2026-10-10",
@@ -74,8 +74,33 @@ test("creates the WhatsApp summary and encoded share URL", () => {
     printingChecks: [],
   });
   const message = buildQcScoreWhatsAppMessage(row);
-  assert.match(message, /QC Score - 10-10-2026/);
-  assert.match(message, /Boardline: 1\/1 checks \(100\.00%\) \| QC: Asha/);
-  assert.match(message, /Printing: 0\/0 checks \(N\/A\) \| QC: -/);
+  assert.match(message, /^\*QC ONLINE CHECKING SCORE CARD REPORT\*\n\n\*Date\* - 10\/10\/2026/);
+  assert.match(message, /\*Total No\. of Boardline Checks Required\* - 1\n\*Total No\. of Boardline Checks Performed\* - 1\n\*Total Boardline QC Inspection Score\* - 100\.00%/);
+  assert.match(message, /\*Total No\. of Printing Checks Required\* - 0\n\*Total No\. of Printing Checks Performed\* - 0\n\*Total Printing QC Inspection Score\* - N\/A/);
+  assert.match(message, /\*Total No\. of Checks Required\* - 1\n\*Total No\. of Checks Performed\* - 1\n\*Total QC Inspection Score\* - 100\.00%$/);
+  assert.doesNotMatch(message, /Asha/);
   assert.equal(buildQcScoreWhatsAppUrl(row), `https://wa.me/?text=${encodeURIComponent(message)}`);
+});
+
+test("formats the supplied Boardline score example", () => {
+  const row = {
+    date: "2026-07-21",
+    boardlineChecksRequired: 48,
+    boardlineChecksPerformed: 16,
+    boardlineScore: 16 / 48 * 100,
+    boardlineQcPeople: [],
+    printingChecksRequired: 0,
+    printingChecksPerformed: 0,
+    printingScore: null,
+    printingQcPeople: [],
+    totalChecksRequired: 48,
+    totalChecksPerformed: 16,
+    totalScore: 16 / 48 * 100,
+  };
+  const message = buildQcScoreWhatsAppMessage(row);
+  assert.match(message, /\*Date\* - 21\/07\/2026/);
+  assert.match(message, /\*Total No\. of Boardline Checks Required\* - 48/);
+  assert.match(message, /\*Total No\. of Boardline Checks Performed\* - 16/);
+  assert.match(message, /\*Total Boardline QC Inspection Score\* - 33\.33%/);
+  assert.match(message, /\*Total Printing QC Inspection Score\* - N\/A/);
 });
