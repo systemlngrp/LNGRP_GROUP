@@ -14,7 +14,7 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
 import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
@@ -9733,11 +9733,14 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         let hasCurrentData = true;
         let sentTemplateFallback = false;
         let currentAttachmentUrl = "";
+        let currentAttachmentUrls = [];
+        let currentComplaint = null;
         const currentDate = indiaNowParts(new Date()).date;
         if (menu === WHATSAPP_COMPLAINT_MENU) {
             const [rows] = await db.query("SELECT * FROM `quality_complaints` ORDER BY COALESCE(updateTimestamp, timestamp) DESC, timestamp DESC LIMIT 1");
             const record = rows[0];
             hasCurrentData = Boolean(record);
+            currentComplaint = record || null;
             if (record)
                 message = resolveWhatsappTemplate(messageTemplate, record, process.env.APP_PUBLIC_URL || "https://system.lngr.in");
         }
@@ -9760,7 +9763,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
             const record = rows[0];
             hasCurrentData = Boolean(record);
             if (record) {
-                const [packingRows] = await db.query("SELECT id FROM `material_in_packing_slips` WHERE materialInId = ?", [record.id]);
+                const [packingRows] = await db.query("SELECT ps.*, m.name AS materialName FROM `material_in_packing_slips` ps LEFT JOIN materials m ON m.id = ps.materialId WHERE ps.materialInId = ? ORDER BY ps.materialLineId, ps.ourReelNo", [record.id]);
                 const lines = (() => { try {
                     const parsed = JSON.parse(String(record.lines || "[]"));
                     return Array.isArray(parsed) ? parsed : [];
@@ -9768,7 +9771,46 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
                 catch {
                     return [];
                 } })();
+                const uploadsDir = path.join(process.cwd(), "uploads");
+                const filenames = await writeMrrWhatsappPdfs({ ...record, lines, supplierName: record.supplier }, packingRows, uploadsDir);
+                const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+                currentAttachmentUrls = filenames.map((filename) => `${publicBase}/uploads/${encodeURIComponent(filename)}`);
                 message = resolveWhatsappMrrTemplate(messageTemplate, { ...record, totalQty: lines.reduce((sum, line) => sum + Number(line?.qty ?? line?.invoiceQty ?? 0), 0), reelCount: packingRows.length });
+            }
+        }
+        else if (menu === WHATSAPP_LOADING_MENU) {
+            const loadingCandidates = [];
+            for (const tableName of ["loading_slips", "php_loading_slips", "plate_loading_slips"]) {
+                const [rows] = await db.query(`SELECT * FROM \`${tableName}\` ORDER BY COALESCE(updateTimestamp, timestamp, date) DESC LIMIT 1`);
+                const row = rows[0];
+                if (row)
+                    loadingCandidates.push({ tableName, row });
+            }
+            loadingCandidates.sort((a, b) => String(b.row.updateTimestamp || b.row.timestamp || b.row.date || "").localeCompare(String(a.row.updateTimestamp || a.row.timestamp || a.row.date || "")));
+            const latest = loadingCandidates[0];
+            hasCurrentData = Boolean(latest);
+            if (latest) {
+                const slip = latest.row;
+                const parseRows = (value) => { try {
+                    const parsed = JSON.parse(String(value || "[]"));
+                    return Array.isArray(parsed) ? parsed : [];
+                }
+                catch {
+                    return [];
+                } };
+                const lines = parseRows(slip.lines || slip.items);
+                const firstLine = lines[0] || {};
+                const totalQty = lines.reduce((sum, line) => sum + Number(line?.loadedQty || 0), 0);
+                const filename = String(slip.whatsappPdfFilename || `loading-slip-${latest.tableName}-${slip.id}.pdf`).replace(/[^a-zA-Z0-9._-]/g, "_");
+                const uploadsDir = path.join(process.cwd(), "uploads");
+                if (!fs.existsSync(uploadsDir))
+                    fs.mkdirSync(uploadsDir, { recursive: true });
+                const pdfPath = path.join(uploadsDir, filename);
+                if (!fs.existsSync(pdfPath))
+                    await writeLoadingSlipPdf({ ...slip, lines, totalQty, itemName: firstLine.itemName, erpCode: firstLine.erpCode }, pdfPath);
+                const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+                currentAttachmentUrls = [`${publicBase}/uploads/${encodeURIComponent(filename)}`];
+                message = resolveWhatsappLoadingSlipTemplate(messageTemplate, { ...slip, totalQty, itemName: firstLine.itemName, erpCode: firstLine.erpCode, whatsappPdfUrl: currentAttachmentUrls[0] });
             }
         }
         else if (menu === WHATSAPP_REEL_RETURN_MENU) {
@@ -9782,6 +9824,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
                 if (!record.whatsappPdfFilename)
                     await db.query("UPDATE material_returns SET whatsappPdfFilename = ? WHERE id = ?", [filename, record.id]);
                 currentAttachmentUrl = `${(process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
+                currentAttachmentUrls = [currentAttachmentUrl];
                 message = resolveWhatsappReelReturnTemplate(messageTemplate, { ...record, totalReels: reels.length, totalWeightKg: reels.reduce((sum, row) => sum + Number(row.weightKg || 0), 0).toFixed(2) });
             }
         }
@@ -9815,21 +9858,48 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         if (!sentTemplateFallback && /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/.test(message))
             return res.json({ status: "Failed", error: "The template contains unsupported placeholders." });
         const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
-        let result = menu === WHATSAPP_REEL_RETURN_MENU && currentAttachmentUrl
-            ? await sendWhatsappReelReturnMessage(senderConfig, { whatsappPdfUrl: currentAttachmentUrl })
-            : await sendWhatsappTextMessage(senderConfig, message);
         let warning = "";
-        if (menu === WHATSAPP_REEL_RETURN_MENU && currentAttachmentUrl && result.status === "Failed" && result.httpStatus === 424) {
+        let result;
+        if (menu === WHATSAPP_COMPLAINT_MENU && currentComplaint) {
+            result = await sendWhatsappComplaintStage(senderConfig, currentComplaint, "text");
+            if (result.status === "Sent") {
+                for (const stage of ["photo1", "photo2"]) {
+                    const photoResult = await sendWhatsappComplaintStage(senderConfig, currentComplaint, stage);
+                    if (photoResult.status === "Failed" && photoResult.httpStatus === 424) {
+                        warning = "Message sent, but one or more complaint photos could not be delivered.";
+                        continue;
+                    }
+                    if (photoResult.status !== "Sent") {
+                        result = photoResult;
+                        break;
+                    }
+                }
+            }
+        }
+        else if (menu === WHATSAPP_MRR_MENU && currentAttachmentUrls.length) {
+            result = await sendWhatsappMrrMessage(senderConfig, { whatsappPdfUrls: currentAttachmentUrls });
+        }
+        else if (menu === WHATSAPP_LOADING_MENU && currentAttachmentUrls.length) {
+            result = await sendWhatsappLoadingSlipMessage(senderConfig, { whatsappPdfUrl: currentAttachmentUrls[0] });
+        }
+        else if (menu === WHATSAPP_REEL_RETURN_MENU && currentAttachmentUrl) {
+            result = await sendWhatsappReelReturnMessage(senderConfig, { whatsappPdfUrl: currentAttachmentUrl });
+        }
+        else {
+            result = await sendWhatsappTextMessage(senderConfig, message);
+        }
+        if (currentAttachmentUrls.length && result.status === "Failed" && result.httpStatus === 424) {
             const textOnlyResult = await sendWhatsappTextMessage(senderConfig, message);
             if (textOnlyResult.status === "Sent") {
                 result = textOnlyResult;
-                warning = "Message sent, but the Reel Return PDF attachment could not be delivered.";
+                warning = "Message sent, but one or more attachments could not be delivered.";
             }
             else {
                 result = textOnlyResult;
             }
         }
-        return res.json(result.status === "Sent" ? { status: "Sent", templateFallback: sentTemplateFallback, ...(warning ? { warning } : {}) } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
+        const attachmentsExpected = Boolean(currentAttachmentUrls.length || (currentComplaint && (String(currentComplaint.photo1 || "").trim() || String(currentComplaint.photo2 || "").trim())));
+        return res.json(result.status === "Sent" ? { status: "Sent", templateFallback: sentTemplateFallback, attachmentsSent: attachmentsExpected && !warning, ...(warning ? { warning } : {}) } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
     }
     catch {
         return res.status(500).json({ status: "Failed", error: "Current WhatsApp message could not be sent." });
