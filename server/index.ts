@@ -10455,10 +10455,20 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
     if (!message.trim()) return res.json({ status: "Failed", error: "The saved WhatsApp template is empty." });
     if (!sentTemplateFallback && /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/.test(message)) return res.json({ status: "Failed", error: "The template contains unsupported placeholders." });
     const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message };
-    const result = menu === WHATSAPP_REEL_RETURN_MENU && currentAttachmentUrl
+    let result = menu === WHATSAPP_REEL_RETURN_MENU && currentAttachmentUrl
       ? await sendWhatsappReelReturnMessage(senderConfig, { whatsappPdfUrl: currentAttachmentUrl })
       : await sendWhatsappTextMessage(senderConfig, message);
-    return res.json(result.status === "Sent" ? { status: "Sent", templateFallback: sentTemplateFallback } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
+    let warning = "";
+    if (menu === WHATSAPP_REEL_RETURN_MENU && currentAttachmentUrl && result.status === "Failed" && result.httpStatus === 424) {
+      const textOnlyResult = await sendWhatsappTextMessage(senderConfig, message);
+      if (textOnlyResult.status === "Sent") {
+        result = textOnlyResult;
+        warning = "Message sent, but the Reel Return PDF attachment could not be delivered.";
+      } else {
+        result = textOnlyResult;
+      }
+    }
+    return res.json(result.status === "Sent" ? { status: "Sent", templateFallback: sentTemplateFallback, ...(warning ? { warning } : {}) } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
   } catch {
     return res.status(500).json({ status: "Failed", error: "Current WhatsApp message could not be sent." });
   }
