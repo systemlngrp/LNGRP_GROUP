@@ -8,6 +8,11 @@ import { WhatsappConfig } from "../types";
 import { DEFAULT_QC_SCORE_MESSAGE, QC_SCORE_MENU } from "../lib/qcScore";
 
 type MenuOption = { label: string; value: string };
+type SendResult = {
+  kind: "sending" | "success" | "failure" | "not-configured" | "no-current-data";
+  menuLabel: string;
+  message?: string;
+};
 
 const QC_COMPLAINT_MENU = "/quality/complaints/form";
 const DEFAULT_QC_COMPLAINT_MESSAGE = `🚨 *QC Complaint Alert*
@@ -139,7 +144,7 @@ export function WhatsappMaster() {
   const [active, setActive] = useState<"Yes" | "No">("Yes");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sendingConfigId, setSendingConfigId] = useState<string | null>(null);
-  const [sendNotice, setSendNotice] = useState("");
+  const [sendResult, setSendResult] = useState<SendResult | null>(null);
   const menuOptions = useMemo(() => collectMenuOptions(NAVIGATION), []);
 
   const filteredConfigs = useMemo(() => {
@@ -251,7 +256,8 @@ export function WhatsappMaster() {
   const sendCurrent = async (config: WhatsappConfig) => {
     if (config.active === "No" || sendingConfigId) return;
     setSendingConfigId(config.id);
-    setSendNotice("");
+    const menuLabel = menuOptions.find((option) => option.value === config.menu)?.label || config.menu;
+    setSendResult({ kind: "sending", menuLabel });
     try {
       const response = await fetch(`/api/whatsapp-configs/${encodeURIComponent(config.id)}/send-current`, {
         method: "POST",
@@ -259,12 +265,12 @@ export function WhatsappMaster() {
       });
       const result = await response.json().catch(() => ({}));
       const status = String(result.status || "Failed");
-      if (status === "Sent") setSendNotice(`Current ${menuOptions.find((option) => option.value === config.menu)?.label || config.menu} message sent successfully.`);
-      else if (status === "No Current Data") setSendNotice(result.error || "No current data is available for this template.");
-      else if (status === "Not Configured") setSendNotice(result.error || "This WhatsApp configuration is not active or configured.");
-      else setSendNotice(result.error || "Current WhatsApp message could not be sent.");
+      if (status === "Sent") setSendResult({ kind: "success", menuLabel, message: "Message sent successfully." });
+      else if (status === "No Current Data") setSendResult({ kind: "no-current-data", menuLabel, message: "No current data is available for this template." });
+      else if (status === "Not Configured") setSendResult({ kind: "not-configured", menuLabel, message: "No active WhatsApp configuration or valid credentials found." });
+      else setSendResult({ kind: "failure", menuLabel, message: result.error || "Message sending failed." });
     } catch {
-      setSendNotice("Current WhatsApp message could not be sent.");
+      setSendResult({ kind: "failure", menuLabel, message: "Message sending failed. Please try again." });
     } finally {
       setSendingConfigId(null);
     }
@@ -302,7 +308,10 @@ export function WhatsappMaster() {
       ) : (
         <>
           <div className="flex flex-wrap justify-between items-center gap-4"><h2 className="text-3xl font-black text-blue-700">WhatsApp Master</h2><div className="flex flex-wrap items-center gap-3"><input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search WhatsApp configuration" className="w-[360px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" /><button type="button" onClick={openCreate} className="px-7 py-3 rounded-2xl bg-indigo-700 text-white font-bold hover:bg-indigo-800">+ WhatsApp</button></div></div>
-          {sendNotice ? <div role="status" className="rounded-2xl border border-slate-300 bg-white px-5 py-3 font-semibold text-slate-700">{sendNotice}</div> : null}
+          {sendResult ? <div role={sendResult.kind === "failure" ? "alert" : "status"} className={`flex items-center justify-between gap-4 rounded-2xl border px-5 py-3 font-semibold ${sendResult.kind === "success" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : sendResult.kind === "failure" ? "border-red-300 bg-red-50 text-red-800" : sendResult.kind === "sending" ? "border-blue-300 bg-blue-50 text-blue-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}>
+            <span>{sendResult.kind === "sending" ? `Sending current ${sendResult.menuLabel} message...` : `${sendResult.menuLabel}: ${sendResult.message}`}</span>
+            {sendResult.kind !== "sending" ? <button type="button" onClick={() => setSendResult(null)} aria-label="Dismiss send result" className="shrink-0 rounded-lg px-2 text-lg leading-none hover:bg-black/10">×</button> : null}
+          </div> : null}
           <div className="bg-white rounded-[22px] border border-slate-300 overflow-hidden"><div className="px-4 py-3 text-slate-600">Showing {filteredConfigs.length} entries</div><div className="table-sticky-scroll"><table className="min-w-full border-collapse"><thead className="sticky top-0 z-30"><tr className="bg-indigo-700 text-white"><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">LoginID</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Pass</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">GroupId</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Menu</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Message</th><th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Status</th><th className="px-4 py-4 text-right text-sm font-bold border-2 border-black">Action</th></tr></thead><tbody>{filteredConfigs.length === 0 ? <tr><td colSpan={7} className="px-6 py-10 text-center border-2 border-black">No WhatsApp configurations found.</td></tr> : filteredConfigs.map((config) => <tr key={config.id}><td className="px-4 py-4 font-bold border-2 border-black">{config.loginId}</td><td className="px-4 py-4 border-2 border-black tracking-widest">********</td><td className="px-4 py-4 border-2 border-black">{config.groupId}</td><td className="px-4 py-4 border-2 border-black">{menuOptions.find((option) => option.value === config.menu)?.label || config.menu}</td><td className="px-4 py-4 border-2 border-black whitespace-pre-wrap max-w-[360px]">{config.message}</td><td className="px-4 py-4 border-2 border-black">{config.active === "No" ? "Inactive" : "Active"}</td><td className="px-4 py-3 text-right border-2 border-black"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => void sendCurrent(config)} disabled={config.active === "No" || Boolean(sendingConfigId)} className="px-4 py-2 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">{sendingConfigId === config.id ? "Sending..." : "Send Current"}</button><button type="button" onClick={() => openEdit(config)} className="px-6 py-2 rounded-xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50">Open</button></div></td></tr>)}</tbody></table></div></div>
         </>
       )}
