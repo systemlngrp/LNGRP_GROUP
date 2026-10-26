@@ -337,6 +337,7 @@ const reportProductionItems: NavItem[] = [
   { name: "Conversion Cost Month Wise", href: "/reports/conversion-cost-month-wise", icon: BarChart3 },
   { name: "Conversion Cost Details", href: "/reports/conversion-cost-details", icon: BarChart3 },
   { name: "Efficiency Report", href: "/reports/efficiency", icon: BarChart3 },
+  { name: "Printing Shift Report", href: "/reports/printing-shift", icon: BarChart3 },
   { name: "Hit Vs Miss", href: "/reports/hit-vs-miss", icon: BarChart3 },
 ];
 

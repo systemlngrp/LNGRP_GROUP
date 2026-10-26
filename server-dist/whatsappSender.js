@@ -180,6 +180,9 @@ export function sendWhatsappBoardlineMessage(config, record, options = {}) {
 export function sendWhatsappPrintingMessage(config, record, options = {}) {
     return sendWhatsappPayload(config, buildWhatsappPrintingPayload(config, record), options);
 }
+export function sendWhatsappTextMessage(config, message, options = {}) {
+    return sendWhatsappPayload(config, { recipientIds: [config.groupId], message: [message] }, options);
+}
 export async function sendWhatsappComplaintStage(config, complaint, stage, options = {}) {
     const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";
     if (stage !== "text" && !buildPhotoUrl(stage === "photo1" ? complaint.photo1 : complaint.photo2, appPublicUrl)) {

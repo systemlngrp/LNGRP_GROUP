@@ -165,6 +165,7 @@ const JobwiseReelConsumptionReport = lazy(() => import("./pages/JobwiseReelConsu
 const JobConsumption = lazy(() => import("./pages/JobConsumption").then((module) => ({ default: module.JobConsumption })));
 const JobsInProgressReport = lazy(() => import("./pages/JobsInProgressReport").then((module) => ({ default: module.JobsInProgressReport })));
 const EfficiencyReport = lazy(() => import("./pages/EfficiencyReport").then((module) => ({ default: module.EfficiencyReport })));
+const PrintingShiftReport = lazy(() => import("./pages/PrintingShiftReport").then((module) => ({ default: module.PrintingShiftReport })));
 const HitVsMissReport = lazy(() => import("./pages/HitVsMissReport").then((module) => ({ default: module.HitVsMissReport })));
 const RealizationReport = lazy(() => import("./pages/RealizationReport").then((module) => ({ default: module.RealizationReport })));
 const PaperRequirementReport = lazy(() => import("./pages/PaperRequirementReport").then((module) => ({ default: module.PaperRequirementReport })));
@@ -472,6 +473,7 @@ export default function App() {
           <Route path="reports/job-consumption" element={<JobConsumption />} />
           <Route path="reports/jobs-in-progress" element={<JobsInProgressReport />} />
           <Route path="reports/efficiency" element={<EfficiencyReport />} />
+          <Route path="reports/printing-shift" element={<PrintingShiftReport />} />
           <Route path="reports/hit-vs-miss" element={<HitVsMissReport />} />
           <Route path="reports/realization" element={<RealizationReport />} />
           <Route path="reports/lm-l1" element={<LmL1Report />} />

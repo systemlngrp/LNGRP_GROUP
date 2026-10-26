@@ -14,7 +14,8 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_PRINTING_MENU, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappPrintingMessage, type WhatsappSendStage } from "./whatsappSender.js";
+import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_PRINTING_MENU, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappPrintingMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
+import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -7524,6 +7525,26 @@ await db.query(`
           \`updateTimestamp\` VARCHAR(255)
         )
       `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`printing_shift_report_settings\` (
+          \`id\` TINYINT PRIMARY KEY,
+          \`activatedAt\` VARCHAR(255) NOT NULL
+        )
+      `);
+      await db.query("INSERT IGNORE INTO `printing_shift_report_settings` (`id`, `activatedAt`) VALUES (1, ?)", [new Date().toISOString()]);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`printing_shift_reports\` (
+          \`id\` VARCHAR(40) PRIMARY KEY,
+          \`shiftDate\` VARCHAR(10) NOT NULL,
+          \`shift\` VARCHAR(10) NOT NULL,
+          \`message\` TEXT,
+          \`whatsappSendStatus\` VARCHAR(30),
+          \`whatsappSendError\` VARCHAR(255),
+          \`whatsappSentAt\` VARCHAR(255),
+          \`whatsappSendStartedAt\` VARCHAR(255),
+          UNIQUE KEY \`uq_printing_shift_report\` (\`shiftDate\`, \`shift\`)
+        )
+      `);
       try {
         const [existingServiceRows] = await db.query("SELECT COUNT(*) as count FROM `services`");
         const existingServiceCount = Number((existingServiceRows as any[])[0]?.count || 0);
@@ -9845,6 +9866,124 @@ async function retryPendingWhatsappComplaints() {
     whatsappRetryRunning = false;
   }
 }
+
+async function getPrintingShiftOutput(db: mysql.Pool, shiftDate: string, shift: PrintingShift) {
+  const [rows] = await db.query(`
+    SELECT pp.jobNo, COALESCE(NULLIF(TRIM(n.itemName), ''), NULLIF(TRIM(pm.itemName), ''), NULLIF(TRIM(plm.itemName), ''), '') AS itemName, pp.qty
+    FROM \`production_processing\` pp
+    LEFT JOIN \`productions\` p ON p.id = pp.productionId
+    LEFT JOIN \`npd\` n ON n.id = p.itemId AND COALESCE(p.itemSource, 'FG') = 'FG'
+    LEFT JOIN \`php_item_master\` pm ON pm.id = p.itemId AND p.itemSource = 'PHP'
+    LEFT JOIN \`plate_item_master\` plm ON plm.id = p.itemId AND p.itemSource = 'PLATE'
+    WHERE LEFT(pp.date, 10) = ? AND COALESCE(NULLIF(TRIM(pp.shift), ''), 'Day') = ?
+      AND LOWER(TRIM(pp.machineName)) = 'printing'
+  `, [shiftDate, shift]);
+  return rows as { jobNo: unknown; itemName: unknown; qty: unknown }[];
+}
+
+async function getPrintingShiftConfig(db: mysql.Pool) {
+  const [rows] = await db.query(
+    "SELECT loginId, pass, groupId, message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1",
+    [PRINTING_SHIFT_MENU]
+  );
+  return (rows as any[])[0] as { loginId: string; pass: string; groupId: string; message: string } | undefined;
+}
+
+async function processPrintingShiftReport(db: mysql.Pool, shiftDate: string, shift: PrintingShift) {
+  const id = `${shiftDate}-${shift}`;
+  await db.query(
+    "INSERT IGNORE INTO `printing_shift_reports` (`id`, `shiftDate`, `shift`, `whatsappSendStatus`) VALUES (?, ?, ?, 'Pending')",
+    [id, shiftDate, shift]
+  );
+  const lease = new Date().toISOString();
+  const stale = new Date(Date.now() - 120_000).toISOString();
+  const [claim] = await db.query(
+    "UPDATE `printing_shift_reports` SET whatsappSendStatus = 'Sending', whatsappSendStartedAt = ? WHERE id = ? AND COALESCE(whatsappSentAt, '') = '' AND (whatsappSendStartedAt IS NULL OR whatsappSendStartedAt < ?)",
+    [lease, id, stale]
+  );
+  if (!(claim as mysql.ResultSetHeader).affectedRows) return;
+  try {
+    const config = await getPrintingShiftConfig(db);
+    const output = await getPrintingShiftOutput(db, shiftDate, shift);
+    const message = renderPrintingShiftMessage(config?.message || DEFAULT_PRINTING_SHIFT_MESSAGE, shiftDate, shift, output);
+    if (!config || !config.loginId || !config.pass || config.pass === "********" || !config.groupId) {
+      await db.query(
+        "UPDATE `printing_shift_reports` SET message = ?, whatsappSendStatus = 'Not Configured', whatsappSendError = 'No active Printing Shift WhatsApp configuration with valid credentials was found.', whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?",
+        [message, id, lease]
+      );
+      return;
+    }
+    const result = await sendWhatsappTextMessage(config, message);
+    if (result.status === "Sent") {
+      await db.query(
+        "UPDATE `printing_shift_reports` SET message = ?, whatsappSendStatus = 'Sent', whatsappSendError = NULL, whatsappSentAt = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?",
+        [message, result.sentAt || new Date().toISOString(), id, lease]
+      );
+    } else {
+      await db.query(
+        "UPDATE `printing_shift_reports` SET message = ?, whatsappSendStatus = 'Failed', whatsappSendError = ?, whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?",
+        [message, result.error || "WhatsApp sender request failed.", id, lease]
+      );
+    }
+  } catch {
+    await db.query(
+      "UPDATE `printing_shift_reports` SET whatsappSendStatus = 'Failed', whatsappSendError = 'Printing shift report could not be sent.', whatsappSendStartedAt = NULL WHERE id = ? AND whatsappSendStartedAt = ?",
+      [id, lease]
+    );
+  }
+}
+
+let printingShiftWorkerRunning = false;
+async function retryPrintingShiftReports() {
+  if (printingShiftWorkerRunning) return;
+  printingShiftWorkerRunning = true;
+  try {
+    const db = await getPool();
+    if (!db) return;
+    const [settings] = await db.query("SELECT activatedAt FROM `printing_shift_report_settings` WHERE id = 1 LIMIT 1");
+    const activatedAt = new Date(String((settings as any[])[0]?.activatedAt || ""));
+    if (Number.isNaN(activatedAt.getTime())) return;
+    const due = duePrintingShifts(activatedAt, new Date());
+    for (const { shiftDate, shift } of due) await processPrintingShiftReport(db, shiftDate, shift);
+  } catch (error) {
+    console.warn("[WHATSAPP] Printing shift report worker failed:", (error as Error).message);
+  } finally {
+    printingShiftWorkerRunning = false;
+  }
+}
+
+app.get("/api/reports/printing-shift", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || !hasPermission(user, PRINTING_SHIFT_MENU)) return res.status(403).json({ error: "Forbidden" });
+  const from = String(req.query.from || "");
+  const to = String(req.query.to || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to || (Date.parse(to) - Date.parse(from)) / 86_400_000 > 31) {
+    return res.status(400).json({ error: "Select a valid date range of 31 days or less." });
+  }
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "Database unavailable." });
+    const [storedRows] = await db.query("SELECT shiftDate, shift, message, whatsappSendStatus, whatsappSendError, whatsappSentAt FROM `printing_shift_reports` WHERE shiftDate BETWEEN ? AND ?", [from, to]);
+    const [settingsRows] = await db.query("SELECT activatedAt FROM `printing_shift_report_settings` WHERE id = 1 LIMIT 1");
+    const activatedAt = new Date(String((settingsRows as any[])[0]?.activatedAt || ""));
+    const stored = new Map((storedRows as any[]).map((row) => [`${row.shiftDate}-${row.shift}`, row]));
+    const [configRows] = await db.query("SELECT message FROM `whatsapp_configs` WHERE active = 'Yes' AND menu = ? ORDER BY updateTimestamp DESC, id DESC LIMIT 1", [PRINTING_SHIFT_MENU]);
+    const template = String((configRows as any[])[0]?.message || DEFAULT_PRINTING_SHIFT_MESSAGE);
+    const reports = [];
+    for (let day = Date.parse(`${from}T00:00:00Z`); day <= Date.parse(`${to}T00:00:00Z`); day += 86_400_000) {
+      const shiftDate = new Date(day).toISOString().slice(0, 10);
+      for (const shift of ["Day", "Night"] as const) {
+        const output = await getPrintingShiftOutput(db, shiftDate, shift);
+        const currentMessage = renderPrintingShiftMessage(template, shiftDate, shift, output);
+        const saved = stored.get(`${shiftDate}-${shift}`);
+        reports.push({ shiftDate, shift, currentMessage, sentMessage: saved?.whatsappSentAt ? saved.message : null, status: saved?.whatsappSendStatus || (shiftEndAt(shiftDate, shift) <= activatedAt ? "Historical" : "Scheduled"), error: saved?.whatsappSendError || null, sentAt: saved?.whatsappSentAt || null, dueAt: shiftDueAt(shiftDate, shift).toISOString() });
+      }
+    }
+    return res.json(reports.reverse());
+  } catch {
+    return res.status(500).json({ error: "Could not load Printing shift reports." });
+  }
+});
 
 const createHandlers = (tableName: string) => {
   return {
@@ -15643,7 +15782,9 @@ async function startServer() {
     if (db) await ensureProductionProcessingAuditColumns(db);
     setInterval(() => {
       void retryPendingWhatsappComplaints();
+      void retryPrintingShiftReports();
     }, 60_000);
+    void retryPrintingShiftReports();
   })().catch((error) => {
     console.error("[SERVER] Database initialization failed:", error);
   });

@@ -281,6 +281,14 @@ export function sendWhatsappPrintingMessage(
   return sendWhatsappPayload(config, buildWhatsappPrintingPayload(config, record), options);
 }
 
+export function sendWhatsappTextMessage(
+  config: WhatsappSenderConfig,
+  message: string,
+  options: { endpoint?: string; fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+) {
+  return sendWhatsappPayload(config, { recipientIds: [config.groupId], message: [message] }, options);
+}
+
 export async function sendWhatsappComplaintStage(
   config: WhatsappSenderConfig,
   complaint: WhatsappComplaintRecord,

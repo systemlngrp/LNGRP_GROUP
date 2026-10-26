@@ -58,6 +58,13 @@ const DEFAULT_BOARDLINE_QC_MESSAGE = `📋 *BOARDLINE QC CHECK*
 *PRINTING ARTWORK*
 {{printingArtwork}}`;
 const PRINTING_QC_MENU = "/quality/printing-qc/form";
+const PRINTING_SHIFT_MENU = "/reports/printing-shift";
+const DEFAULT_PRINTING_SHIFT_MESSAGE = `*Printing Report ({{shiftHours}}) {{date}}*
+
+{{jobLines}}
+
+*Total Qty in Shift:* {{totalQty}}
+*Boxes Per Hour:* {{boxesPerHour}}`;
 const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 
 *Job No.:* {{jobNo}}
@@ -93,6 +100,7 @@ const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 *Operator Name:* {{operatorName}}`;
 
 function defaultMessageForMenu(menu: string) {
+  if (menu === PRINTING_SHIFT_MENU) return DEFAULT_PRINTING_SHIFT_MESSAGE;
   if (menu === BOARDLINE_QC_MENU) return DEFAULT_BOARDLINE_QC_MESSAGE;
   if (menu === PRINTING_QC_MENU) return DEFAULT_PRINTING_QC_MESSAGE;
   return DEFAULT_QC_COMPLAINT_MESSAGE;
