@@ -149,38 +149,6 @@ app.get("/uploads/:filename", async (req, res, next) => {
         return next();
     }
 });
-// Public media endpoint for third-party attachment fetchers such as Message
-// Auto Sender. It intentionally has no application authentication because the
-// sender must be able to download the image directly over HTTPS.
-app.get("/api/public-media/:filename", async (req, res) => {
-    const filename = path.basename(String(req.params.filename || "").trim());
-    if (!filename || filename === "." || filename === "..")
-        return res.status(400).send("Invalid media filename");
-    try {
-        const db = await getPool();
-        if (db) {
-            const [rows] = await db.query("SELECT mimeType, data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [filename]);
-            const row = rows?.[0];
-            const data = uploadedFileBuffer(row?.data);
-            if (data) {
-                const mimeType = /^image\/(png|jpe?g|webp|gif)$/i.test(String(row.mimeType || "")) ? String(row.mimeType) : "application/octet-stream";
-                res.setHeader("Content-Type", mimeType);
-                res.setHeader("Content-Disposition", `inline; filename=\"${filename.replace(/\"/g, "")}\"`);
-                res.setHeader("Cache-Control", "public, max-age=3600");
-                return res.send(data);
-            }
-        }
-        const filePath = path.join(process.cwd(), "uploads", filename);
-        if (fs.existsSync(filePath)) {
-            res.setHeader("Content-Disposition", `inline; filename=\"${filename.replace(/\"/g, "")}\"`);
-            return res.sendFile(filePath);
-        }
-        return res.status(404).send("Media not found");
-    }
-    catch {
-        return res.status(404).send("Media not found");
-    }
-});
 // Short-lived signed media URL for external attachment fetchers. This avoids
 // making uploaded complaint images permanently public while allowing Message
 // Auto Sender to download them without an application login.
@@ -9397,7 +9365,7 @@ async function processLoadingSlipWhatsappDelivery(db, tableName, slipId) {
         if (!fs.existsSync(pdfPath)) {
             await writeLoadingSlipPdf({ ...slip, lines, totalQty, itemName: resolvedLine.itemName, erpCode: resolvedLine.erpCode || resolvedLine.itemErp }, pdfPath);
         }
-        const publicUrl = `${(process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
+        const publicUrl = `${(process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
         const record = {
             ...slip,
             lines,
@@ -9462,7 +9430,7 @@ async function processMrrWhatsappDelivery(db, mrrId) {
         const supplierName = String(supplierRows[0]?.name || mrr.supplierId || "");
         const uploadsDir = path.join(process.cwd(), "uploads");
         const filenames = await writeMrrWhatsappPdfs({ ...mrr, lines, supplierName }, packingSlips, uploadsDir);
-        const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+        const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
         const urls = filenames.map((filename) => `${publicBase}/uploads/${encodeURIComponent(filename)}`);
         const totalQty = lines.reduce((sum, line) => sum + Number(line?.qty ?? line?.invoiceQty ?? line?.actualQty ?? 0), 0);
         const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: String(config.message || DEFAULT_MRR_MESSAGE) };
@@ -9515,7 +9483,7 @@ async function processReelReturnWhatsappDelivery(db, returnId) {
             throw new Error("No returned reels were found.");
         const uploadsDir = path.join(process.cwd(), "uploads");
         const filename = String(returnRecord.whatsappPdfFilename || "").trim() || await writeReelReturnWhatsappPdf(returnRecord, reels, uploadsDir);
-        const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+        const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
         const pdfUrl = `${publicBase}/uploads/${encodeURIComponent(filename)}`;
         const totalWeightKg = reels.reduce((sum, row) => sum + Number(row.weightKg || 0), 0).toFixed(2);
         const senderConfig = { loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: String(config.message || DEFAULT_REEL_RETURN_MESSAGE) };
@@ -9808,7 +9776,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
             hasCurrentData = Boolean(record);
             currentComplaint = record || null;
             if (record)
-                message = resolveWhatsappTemplate(messageTemplate, record, process.env.APP_PUBLIC_URL || "https://system.lngr.in");
+                message = resolveWhatsappTemplate(messageTemplate, record, process.env.APP_PUBLIC_URL || "https://system.lngrp.in");
         }
         else if (menu === WHATSAPP_BOARDLINE_MENU) {
             const [rows] = await db.query("SELECT * FROM `boardline_qc_checks` ORDER BY COALESCE(updateTimestamp, timestamp) DESC, timestamp DESC LIMIT 1");
@@ -9839,7 +9807,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
                 } })();
                 const uploadsDir = path.join(process.cwd(), "uploads");
                 const filenames = await writeMrrWhatsappPdfs({ ...record, lines, supplierName: record.supplier }, packingRows, uploadsDir);
-                const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+                const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
                 currentAttachmentUrls = filenames.map((filename) => `${publicBase}/uploads/${encodeURIComponent(filename)}`);
                 message = resolveWhatsappMrrTemplate(messageTemplate, { ...record, totalQty: lines.reduce((sum, line) => sum + Number(line?.qty ?? line?.invoiceQty ?? 0), 0), reelCount: packingRows.length });
             }
@@ -9874,7 +9842,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
                 const pdfPath = path.join(uploadsDir, filename);
                 if (!fs.existsSync(pdfPath))
                     await writeLoadingSlipPdf({ ...slip, lines, totalQty, itemName: firstLine.itemName, erpCode: firstLine.erpCode }, pdfPath);
-                const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "");
+                const publicBase = (process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "");
                 currentAttachmentUrls = [`${publicBase}/uploads/${encodeURIComponent(filename)}`];
                 message = resolveWhatsappLoadingSlipTemplate(messageTemplate, { ...slip, totalQty, itemName: firstLine.itemName, erpCode: firstLine.erpCode, whatsappPdfUrl: currentAttachmentUrls[0] });
             }
@@ -9889,7 +9857,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
                 const filename = String(record.whatsappPdfFilename || "").trim() || await writeReelReturnWhatsappPdf(record, reels, path.join(process.cwd(), "uploads"));
                 if (!record.whatsappPdfFilename)
                     await db.query("UPDATE material_returns SET whatsappPdfFilename = ? WHERE id = ?", [filename, record.id]);
-                currentAttachmentUrl = `${(process.env.APP_PUBLIC_URL || "https://system.lngr.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
+                currentAttachmentUrl = `${(process.env.APP_PUBLIC_URL || "https://system.lngrp.in").replace(/\/$/, "")}/uploads/${encodeURIComponent(filename)}`;
                 currentAttachmentUrls = [currentAttachmentUrl];
                 message = resolveWhatsappReelReturnTemplate(messageTemplate, { ...record, totalReels: reels.length, totalWeightKg: reels.reduce((sum, row) => sum + Number(row.weightKg || 0), 0).toFixed(2) });
             }

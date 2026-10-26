@@ -1,4 +1,3 @@
-import crypto from "crypto";
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
 export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
@@ -122,10 +121,6 @@ export const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 *QC Person:* {{qcPerson}}
 *Operator Name:* {{operatorName}}`;
 const text = (value) => String(value ?? "").trim();
-function signedMediaToken(filename, expires) {
-    const secret = process.env.AUTH_SECRET || "dev-auth-secret-change-me";
-    return crypto.createHmac("sha256", secret).update(`${filename}.${expires}`).digest("hex");
-}
 export function resolveWhatsappTemplate(template, complaint, appPublicUrl) {
     const values = {
         complaintNo: text(complaint.id),
@@ -220,12 +215,8 @@ export function buildPhotoUrl(value, appPublicUrl) {
     // Complaint records may contain either a filename from uploaded_files,
     // an absolute /uploads path, or a relative uploads path from the PHP host.
     // Preserve the path form instead of encoding its slashes into the filename.
-    if (/^\/?uploads\//i.test(storedValue)) {
-        return `${publicBase}/${storedValue.replace(/^\//, "")}`;
-    }
-    const expires = String(Math.floor(Date.now() / 1000) + 15 * 60);
-    const signature = signedMediaToken(storedValue, expires);
-    return `${publicBase}/api/public-media?filename=${encodeURIComponent(storedValue)}&expires=${expires}&signature=${signature}`;
+    const mediaFilename = storedValue.replace(/^\/?uploads\//i, "");
+    return `${publicBase}/uploads/${encodeURIComponent(mediaFilename)}`;
 }
 export function buildWhatsappPayload(config, complaint, appPublicUrl, stage = "text") {
     const photoUrl = stage === "photo1"
@@ -290,7 +281,7 @@ export function sendWhatsappReelReturnMessage(config, record, options = {}) {
     return sendWhatsappPayload(config, buildWhatsappReelReturnPayload(config, record), options);
 }
 export async function sendWhatsappComplaintStage(config, complaint, stage, options = {}) {
-    const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngr.in";
+    const appPublicUrl = options.appPublicUrl || process.env.APP_PUBLIC_URL || "https://system.lngrp.in";
     if (stage !== "text" && !buildPhotoUrl(stage === "photo1" ? complaint.photo1 : complaint.photo2, appPublicUrl)) {
         return { status: "Sent", sentAt: new Date().toISOString() };
     }

@@ -21,21 +21,21 @@ const config = { loginId: "login", pass: "secret", groupId: "group@g.us", messag
 
 describe("WhatsApp complaint sender", () => {
   it("resolves the Complaint No. and never prints photo URLs in the message", () => {
-    const message = resolveWhatsappTemplate("{{complaintNo}} {{partyName}} {{photo1}} {{photo2}}", complaint, "https://system.lngr.in/");
+    const message = resolveWhatsappTemplate("{{complaintNo}} {{partyName}} {{photo1}} {{photo2}}", complaint, "https://system.lngrp.in/");
     assert.equal(message, "QC-1792839256252-tolgrr Acme  ");
   });
 
   it("builds separate text and photo payloads", () => {
-    assert.deepEqual(buildWhatsappPayload(config, complaint, "https://system.lngr.in", "text"), {
+    assert.deepEqual(buildWhatsappPayload(config, complaint, "https://system.lngrp.in", "text"), {
       recipientIds: ["group@g.us"],
       message: ["No QC-1792839256252-tolgrr JOB/001 "],
     });
-    assert.deepEqual(buildWhatsappPayload(config, complaint, "https://system.lngr.in", "photo1"), {
+    assert.deepEqual(buildWhatsappPayload(config, complaint, "https://system.lngrp.in", "photo1"), {
       recipientIds: ["group@g.us"],
       message: [""],
-      filePathUrl: ["https://system.lngr.in/uploads/a6194171-dfbf-4267-a44f-0f138517d3d0.png"],
+      filePathUrl: ["https://system.lngrp.in/uploads/a6194171-dfbf-4267-a44f-0f138517d3d0.png"],
     });
-    assert.equal(buildPhotoUrl(complaint.photo2, "https://system.lngr.in"), "https://system.lngr.in/uploads/76827876-7b77-4459-9d10-67b488a66ce6.png");
+    assert.equal(buildPhotoUrl(complaint.photo2, "https://system.lngrp.in"), "https://system.lngrp.in/uploads/76827876-7b77-4459-9d10-67b488a66ce6.png");
   });
 
   it("sends text, Photo 1, then Photo 2 in order without exposing credentials", async () => {
@@ -150,7 +150,7 @@ describe("WhatsApp complaint sender", () => {
     };
     const first = await sendWhatsappBoardlineMessage(boardlineConfig, { jobNo: "10626" }, { fetchImpl });
     const second = await sendWhatsappBoardlineMessage(boardlineConfig, { jobNo: "10626" }, { fetchImpl });
-    assert.deepEqual(first, { status: "Failed", error: "WhatsApp sender returned 401." });
+    assert.deepEqual(first, { status: "Failed", httpStatus: 401, error: "WhatsApp sender returned 401." });
     assert.equal(second.status, "Sent");
     assert.ok(second.sentAt);
     assert.equal(attempts, 2);
