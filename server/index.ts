@@ -10020,6 +10020,7 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
     const messageTemplate = String(config.message || "");
     let message = "";
     let hasCurrentData = true;
+    let sentTemplateFallback = false;
     const currentDate = indiaNowParts(new Date()).date;
 
     if (menu === WHATSAPP_COMPLAINT_MENU) {
@@ -10056,10 +10057,14 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
       hasCurrentData = false;
     }
 
-    if (!hasCurrentData) return res.json({ status: "No Current Data", error: "No current data is available for this template." });
-    if (!message.trim() || /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/.test(message)) return res.json({ status: "Failed", error: "The template contains unsupported placeholders." });
+    if (!hasCurrentData) {
+      message = messageTemplate;
+      sentTemplateFallback = true;
+    }
+    if (!message.trim()) return res.json({ status: "Failed", error: "The saved WhatsApp template is empty." });
+    if (!sentTemplateFallback && /\{\{\s*[a-zA-Z0-9_]+\s*\}\}/.test(message)) return res.json({ status: "Failed", error: "The template contains unsupported placeholders." });
     const result = await sendWhatsappTextMessage({ loginId: String(config.loginId), pass: String(config.pass), groupId: String(config.groupId), message: messageTemplate }, message);
-    return res.json(result.status === "Sent" ? { status: "Sent" } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
+    return res.json(result.status === "Sent" ? { status: "Sent", templateFallback: sentTemplateFallback } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
   } catch {
     return res.status(500).json({ status: "Failed", error: "Current WhatsApp message could not be sent." });
   }

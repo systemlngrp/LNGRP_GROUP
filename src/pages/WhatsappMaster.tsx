@@ -265,7 +265,8 @@ export function WhatsappMaster() {
       });
       const result = await response.json().catch(() => ({}));
       const status = String(result.status || "Failed");
-      if (status === "Sent") setSendResult({ kind: "success", menuLabel, message: "Message sent successfully." });
+      if (status === "Sent" && result.templateFallback) setSendResult({ kind: "success", menuLabel, message: "Template sent successfully. No current data was found, so the saved template was sent as-is." });
+      else if (status === "Sent") setSendResult({ kind: "success", menuLabel, message: "Message sent successfully." });
       else if (status === "No Current Data") setSendResult({ kind: "no-current-data", menuLabel, message: "No current data is available for this template." });
       else if (status === "Not Configured") setSendResult({ kind: "not-configured", menuLabel, message: "No active WhatsApp configuration or valid credentials found." });
       else setSendResult({ kind: "failure", menuLabel, message: result.error || "Message sending failed." });
