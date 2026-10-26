@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 export type WhatsappComplaintRecord = {
   id?: unknown;
   dateOfComplaint?: unknown;
@@ -237,6 +239,11 @@ export const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 
 const text = (value: unknown) => String(value ?? "").trim();
 
+function signedMediaToken(filename: string, expires: string) {
+  const secret = process.env.AUTH_SECRET || "dev-auth-secret-change-me";
+  return crypto.createHmac("sha256", secret).update(`${filename}.${expires}`).digest("hex");
+}
+
 export function resolveWhatsappTemplate(template: string, complaint: WhatsappComplaintRecord, appPublicUrl: string) {
   const values: Record<string, string> = {
     complaintNo: text(complaint.id),
@@ -347,7 +354,9 @@ export function buildPhotoUrl(value: unknown, appPublicUrl: string) {
   if (/^\/?uploads\//i.test(storedValue)) {
     return `${publicBase}/${storedValue.replace(/^\//, "")}`;
   }
-  return `${publicBase}/uploads/${encodeURIComponent(storedValue)}`;
+  const expires = String(Math.floor(Date.now() / 1000) + 15 * 60);
+  const signature = signedMediaToken(storedValue, expires);
+  return `${publicBase}/api/public-media?filename=${encodeURIComponent(storedValue)}&expires=${expires}&signature=${signature}`;
 }
 
 export function buildWhatsappPayload(config: WhatsappSenderConfig, complaint: WhatsappComplaintRecord, appPublicUrl: string, stage: WhatsappSendStage = "text") {

@@ -162,6 +162,70 @@ app.get("/uploads/:filename", async (req, res, next) => {
   }
 });
 
+// Public media endpoint for third-party attachment fetchers such as Message
+// Auto Sender. It intentionally has no application authentication because the
+// sender must be able to download the image directly over HTTPS.
+app.get("/api/public-media/:filename", async (req, res) => {
+  const filename = path.basename(String(req.params.filename || "").trim());
+  if (!filename || filename === "." || filename === "..") return res.status(400).send("Invalid media filename");
+  try {
+    const db = await getPool();
+    if (db) {
+      const [rows] = await db.query("SELECT mimeType, data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [filename]);
+      const row = (rows as any[])?.[0];
+      const data = uploadedFileBuffer(row?.data);
+      if (data) {
+        const mimeType = /^image\/(png|jpe?g|webp|gif)$/i.test(String(row.mimeType || "")) ? String(row.mimeType) : "application/octet-stream";
+        res.setHeader("Content-Type", mimeType);
+        res.setHeader("Content-Disposition", `inline; filename=\"${filename.replace(/\"/g, "") }\"`);
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        return res.send(data);
+      }
+    }
+    const filePath = path.join(process.cwd(), "uploads", filename);
+    if (fs.existsSync(filePath)) {
+      res.setHeader("Content-Disposition", `inline; filename=\"${filename.replace(/\"/g, "") }\"`);
+      return res.sendFile(filePath);
+    }
+    return res.status(404).send("Media not found");
+  } catch {
+    return res.status(404).send("Media not found");
+  }
+});
+
+// Short-lived signed media URL for external attachment fetchers. This avoids
+// making uploaded complaint images permanently public while allowing Message
+// Auto Sender to download them without an application login.
+app.get("/api/public-media", async (req, res) => {
+  const filename = path.basename(String(req.query.filename || "").trim());
+  const expires = String(req.query.expires || "").trim();
+  const signature = String(req.query.signature || "").trim().toLowerCase();
+  const expected = crypto.createHmac("sha256", AUTH_SECRET).update(`${filename}.${expires}`).digest("hex");
+  if (!filename || !/^\d+$/.test(expires) || Number(expires) < Math.floor(Date.now() / 1000) || !/^[a-f0-9]{64}$/.test(signature) || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    return res.status(403).send("Invalid or expired media URL");
+  }
+  try {
+    const db = await getPool();
+    if (db) {
+      const [rows] = await db.query("SELECT mimeType, data FROM `uploaded_files` WHERE filename = ? LIMIT 1", [filename]);
+      const row = (rows as any[])?.[0];
+      const data = uploadedFileBuffer(row?.data);
+      if (data) {
+        res.setHeader("Content-Type", String(row.mimeType || "application/octet-stream"));
+        res.setHeader("Content-Disposition", `inline; filename=\"${filename.replace(/\"/g, "")}\"`);
+        res.setHeader("Cache-Control", "private, max-age=900");
+        return res.send(data);
+      }
+    }
+    const filePath = path.join(process.cwd(), "uploads", filename);
+    if (!fs.existsSync(filePath)) return res.status(404).send("Media not found");
+    res.setHeader("Content-Disposition", `inline; filename=\"${filename.replace(/\"/g, "")}\"`);
+    return res.sendFile(filePath);
+  } catch {
+    return res.status(404).send("Media not found");
+  }
+});
+
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 type AuthUser = {

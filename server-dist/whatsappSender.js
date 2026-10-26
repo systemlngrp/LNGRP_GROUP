@@ -1,3 +1,4 @@
+import crypto from "crypto";
 export const WHATSAPP_COMPLAINT_MENU = "/quality/complaints/form";
 export const WHATSAPP_BOARDLINE_MENU = "/quality/boardline-qc/form";
 export const WHATSAPP_PRINTING_MENU = "/quality/printing-qc/form";
@@ -121,6 +122,10 @@ export const DEFAULT_PRINTING_QC_MESSAGE = `🖨️ *PRINTING QC CHECK*
 *QC Person:* {{qcPerson}}
 *Operator Name:* {{operatorName}}`;
 const text = (value) => String(value ?? "").trim();
+function signedMediaToken(filename, expires) {
+    const secret = process.env.AUTH_SECRET || "dev-auth-secret-change-me";
+    return crypto.createHmac("sha256", secret).update(`${filename}.${expires}`).digest("hex");
+}
 export function resolveWhatsappTemplate(template, complaint, appPublicUrl) {
     const values = {
         complaintNo: text(complaint.id),
@@ -218,7 +223,9 @@ export function buildPhotoUrl(value, appPublicUrl) {
     if (/^\/?uploads\//i.test(storedValue)) {
         return `${publicBase}/${storedValue.replace(/^\//, "")}`;
     }
-    return `${publicBase}/uploads/${encodeURIComponent(storedValue)}`;
+    const expires = String(Math.floor(Date.now() / 1000) + 15 * 60);
+    const signature = signedMediaToken(storedValue, expires);
+    return `${publicBase}/api/public-media?filename=${encodeURIComponent(storedValue)}&expires=${expires}&signature=${signature}`;
 }
 export function buildWhatsappPayload(config, complaint, appPublicUrl, stage = "text") {
     const photoUrl = stage === "photo1"
