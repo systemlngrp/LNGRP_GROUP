@@ -960,9 +960,24 @@ def main() -> None:
         if not selector and len(firms) == 1:
             selector = str(firms[0].get("id") or "")
         if not selector:
-            raise RuntimeError(
-                "Select a firm with --firm. Run with --list-firms to see firm IDs, names, and Tally ports."
-            )
+            print("Select the firm for this debit note:")
+            for index, available_firm in enumerate(firms, 1):
+                print(
+                    f"{index}: {available_firm.get('firmName') or '-'} | "
+                    f"Short name: {available_firm.get('shortName') or '-'} | "
+                    f"ID: {available_firm.get('id') or '-'} | "
+                    f"Tally port: {available_firm.get('tallyPortNo') or '-'}"
+                )
+            try:
+                selector = input("Enter firm number, ID, name, or short name: ").strip()
+            except EOFError as error:
+                raise RuntimeError(
+                    "No interactive input is available. Specify --firm or set LNPI_FIRM_ID."
+                ) from error
+            if not selector:
+                raise RuntimeError(
+                    "No firm selected. Run again and enter a firm, or specify it with --firm."
+                )
         firm = resolve_firm(conn, selector, firms)
         COMPANY_NAME = firm["firmName"]
         TALLY_URL_CANDIDATES = build_tally_url_candidates(firm["tallyPortNo"])

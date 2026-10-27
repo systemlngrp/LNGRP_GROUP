@@ -93,6 +93,27 @@ class DebitNoteFirmSelectionTests(unittest.TestCase):
         )
         connection.close.assert_called_once()
 
+    def test_cli_prompts_for_firm_when_no_selection_is_provided(self):
+        connection = Mock()
+        with patch.object(debitnote, "get_db_connection", return_value=connection), \
+             patch.object(debitnote, "get_firms", return_value=FIRMS), \
+             patch.object(debitnote, "get_pending_debit_note_row", return_value=None) as get_pending, \
+             patch("sys.argv", ["debitnote.py"]), \
+             patch("builtins.input", return_value="2") as prompt, \
+             redirect_stdout(io.StringIO()) as output:
+            debitnote.main()
+
+        prompt.assert_called_once()
+        get_pending.assert_called_once_with(
+            connection,
+            firm_id="firm-2",
+            debit_note_no=None,
+            mrr_no=None,
+        )
+        self.assertIn("Select the firm for this debit note:", output.getvalue())
+        self.assertIn("Selected firm: Unit-II | Tally port: 9002", output.getvalue())
+        connection.close.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
