@@ -5742,7 +5742,6 @@ async function ensureDailyConsumptionSchema(db, database) {
 async function ensureDailyConsumptionReady(db) {
     if (databaseInitializationPromise) {
         await databaseInitializationPromise;
-        return;
     }
     if (!dailyConsumptionSchemaPromise) {
         const database = String(process.env.DB_NAME || "").trim().replace(/^['"]|['"]$/g, "");

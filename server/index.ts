@@ -6185,7 +6185,6 @@ async function ensureDailyConsumptionSchema(db: mysql.Pool, database: string) {
 async function ensureDailyConsumptionReady(db: mysql.Pool) {
   if (databaseInitializationPromise) {
     await databaseInitializationPromise;
-    return;
   }
   if (!dailyConsumptionSchemaPromise) {
     const database = String(process.env.DB_NAME || "").trim().replace(/^['"]|['"]$/g, "");
@@ -17189,4 +17188,3 @@ startServer().catch((error) => {
   console.error("[SERVER] Startup failed:", error);
   process.exitCode = 1;
 });
-
