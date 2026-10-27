@@ -15,7 +15,7 @@ export function DailyConsumptionMaster() {
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
 
-  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export function DailyConsumptionMaster() {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return materialIssues
       .filter((issue) => !isAutoProductionInterFirmIssue(issue))
-      .filter((issue) => isDailyConsumableIssue(issue) && toDateOnly(issue.date) === date && (!firmFilter || issue.firmId === firmFilter))
+      .filter((issue) => isDailyConsumableIssue(issue) && (!date || toDateOnly(issue.date) === date) && (!firmFilter || issue.firmId === firmFilter))
       .filter((issue) => {
         if (!normalizedSearch) return true;
         return (

@@ -152,9 +152,6 @@ export function PendingConsumptionTallyPosting() {
       <div className="flex justify-between items-center pb-4 border-b border-black">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Consumption Tally Posting</h2>
-          <p className="text-sm font-medium text-slate-600 mt-1">
-            Shows non-job issues where <span className="font-bold">tallyTimestamp</span> is blank.
-          </p>
         </div>
         <div className="text-sm font-bold text-slate-700">Pending: {pendingRows.length}</div>
       </div>
