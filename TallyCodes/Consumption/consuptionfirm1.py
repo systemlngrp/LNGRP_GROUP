@@ -78,24 +78,58 @@ def _is_without_job(issue_type):
     return normalized in {"general", "without job", "withoutjob"}
 
 
-def get_port_and_company(connection):
-    override = os.environ.get("CONSUMPTION_FIRM1_TALLY_PORT", "").strip()
+def get_port_and_company(connection, firm_number=1):
+    firms = {
+        1: {
+            "label": "Firm-1",
+            "unit": "Unit-I",
+            "env": "CONSUMPTION_FIRM1_TALLY_PORT",
+            "names": ("uniti", "unit1"),
+            "short_names": ("LNCB-1", "UNIT-1", "UNIT1"),
+        },
+        2: {
+            "label": "Firm-2",
+            "unit": "Unit-II",
+            "env": "CONSUMPTION_FIRM2_TALLY_PORT",
+            "names": ("unitii", "unit2"),
+            "short_names": ("LNCB-2", "UNIT-2", "UNIT2"),
+        },
+        3: {
+            "label": "Firm-3",
+            "unit": "Firm-3 (LNKI)",
+            "env": "CONSUMPTION_FIRM3_TALLY_PORT",
+            "names": ("laxminarayankraftindustries", "lnki"),
+            "short_names": ("LNKI",),
+        },
+    }
+    if firm_number not in firms:
+        raise ValueError(f"Unsupported consumption firm number: {firm_number}")
+    firm = firms[firm_number]
+    override = os.environ.get(firm["env"], "").strip()
     cursor = connection.cursor()
     if override:
         cursor.execute("SELECT firmName FROM firms WHERE tallyPortNo = %s LIMIT 1", (override,))
     else:
+        name_conditions = " OR ".join(
+            "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(firmName, '')), '-', ''), ' ', ''), '_', '')) = %s"
+            for _ in firm["names"]
+        )
+        short_placeholders = ", ".join("%s" for _ in firm["short_names"])
         cursor.execute(
-            """SELECT firmName, tallyPortNo FROM firms
+            f"""SELECT firmName, tallyPortNo FROM firms
                WHERE COALESCE(TRIM(tallyPortNo), '') <> ''
-                 AND (LOWER(REPLACE(REPLACE(REPLACE(TRIM(firmName), '-', ''), ' ', ''), '_', '')) = 'uniti'
-                      OR UPPER(TRIM(COALESCE(shortName, ''))) IN ('LNCB-1', 'UNIT-1', 'UNIT1'))
-               ORDER BY id LIMIT 1"""
+                 AND ({name_conditions}
+                      OR UPPER(TRIM(COALESCE(shortName, ''))) IN ({short_placeholders}))
+               ORDER BY id LIMIT 1""",
+            (*firm["names"], *(name.upper() for name in firm["short_names"])),
         )
     rows = dict_rows(cursor, cursor.fetchall())
     cursor.close()
     if not rows:
-        raise RuntimeError("Configure Unit-I firms.tallyPortNo or set CONSUMPTION_FIRM1_TALLY_PORT.")
-    return override or str(rows[0]["tallyPortNo"]), str(rows[0].get("firmName") or "Firm-1")
+        raise RuntimeError(
+            f"Configure {firm['unit']} firms.tallyPortNo or set {firm['env']}."
+        )
+    return override or str(rows[0]["tallyPortNo"]), str(rows[0].get("firmName") or firm["label"])
 
 
 def get_rows(connection, date_filter=None, transaction_filter=None, retry=False):
@@ -255,7 +289,7 @@ def ensure_issue_stock_items(port, company, issue, timeout):
                 raise
 
 
-def save_result(connection, issue_id, result, timestamp, voucher_date=None):
+def save_result(connection, issue_id, result, timestamp, voucher_date=None, firm_label="Firm-1"):
     cursor = connection.cursor()
     status = str(result.get("status") or "Failed")
     posted = status.lower() == "posted"
@@ -271,7 +305,7 @@ def save_result(connection, issue_id, result, timestamp, voucher_date=None):
             result.get("voucher"),
             str(voucher_date or timestamp[:10])[:10] if posted else None,
             VOUCHER_TYPE,
-            "Firm-1 Daily Consumption Journal" if posted else "Firm-1 Daily Consumption Journal",
+            f"{firm_label} Daily Consumption Journal",
             None if posted else result.get("error"),
             timestamp,
             issue_id,
@@ -281,17 +315,18 @@ def save_result(connection, issue_id, result, timestamp, voucher_date=None):
     cursor.close()
 
 
-def print_result(issue, result):
+def print_result(issue, result, firm_label="Firm-1"):
     transaction_no = str(issue.get("consumptionTransactionNo") or issue.get("issueNo") or "-").strip()
     if str(result.get("status") or "").lower() == "posted":
-        print(f"[SUCCESS] Firm-1 | Consumption: {transaction_no} | Consumption Journal posted | Voucher: {result.get('voucher') or '-'}")
+        print(f"[SUCCESS] {firm_label} | Consumption: {transaction_no} | Consumption Journal posted | Voucher: {result.get('voucher') or '-'}")
     else:
-        print(f"[FAILED] Firm-1 | Consumption: {transaction_no} | {result.get('error') or 'Tally did not post the voucher'}")
+        print(f"[FAILED] {firm_label} | Consumption: {transaction_no} | {result.get('error') or 'Tally did not post the voucher'}")
 
 
-def main():
+def main(firm_number=1):
     load_env()
-    parser = argparse.ArgumentParser(description="Post Firm-1 daily consumption issues to Tally")
+    firm_label = f"Firm-{firm_number}"
+    parser = argparse.ArgumentParser(description=f"Post {firm_label} daily consumption issues to Tally")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--date")
     parser.add_argument("--transaction")
@@ -301,14 +336,14 @@ def main():
 
     connection = connect_db()
     try:
-        port, company = get_port_and_company(connection)
+        port, company = get_port_and_company(connection, firm_number)
         issues = group_rows(get_rows(connection, args.date, args.transaction, args.retry))
-        print(f"Firm-1 Consumption Tally port: {port}; eligible issues: {len(issues)}")
+        print(f"{firm_label} Consumption Tally port: {port}; eligible issues: {len(issues)}")
         for issue in issues:
             try:
                 payload = voucher_xml(issue, company)
                 if args.dry_run:
-                    print(f"[DRY-RUN] Firm-1 | Consumption: {issue.get('consumptionTransactionNo') or '-'}\n{payload}")
+                    print(f"[DRY-RUN] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'}\n{payload}")
                     continue
 
                 existing = find_existing_voucher(
@@ -333,8 +368,8 @@ def main():
                         args.timeout,
                     )
                 timestamp = dt.datetime.now(dt.timezone.utc).isoformat()
-                save_result(connection, issue["id"], result, timestamp, issue.get("date"))
-                print_result(issue, result)
+                save_result(connection, issue["id"], result, timestamp, issue.get("date"), firm_label)
+                print_result(issue, result, firm_label)
             except Exception as exc:
                 if not args.dry_run:
                     save_result(
@@ -343,8 +378,9 @@ def main():
                         {"status": "Failed", "voucher": None, "error": str(exc)},
                         dt.datetime.now(dt.timezone.utc).isoformat(),
                         issue.get("date"),
+                        firm_label,
                     )
-                print(f"[FAILED] Firm-1 | Consumption: {issue.get('consumptionTransactionNo') or '-'} | {exc}")
+                print(f"[FAILED] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'} | {exc}")
     finally:
         connection.close()
 
