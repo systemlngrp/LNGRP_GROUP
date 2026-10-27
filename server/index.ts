@@ -16112,6 +16112,7 @@ app.delete("/api/printing-stereo-records/:id", requireAuth, createPrintingStereo
 app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
   const db = await getPool();
   if (!db) return res.status(503).json({ error: "Database unavailable" });
+  res.setHeader("Cache-Control", "no-store");
   try {
     const today = String(req.query.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");

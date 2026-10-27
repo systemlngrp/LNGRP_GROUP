@@ -1,0 +1,1 @@
+const i={"Corrugation Finger":"Corrugation Paper","Corrugation Linear":"Corrugation Liner",Sloting:"Slotting",Slotter:"Slotting",Stithing:"Stitching"};function r(n){const t=String(n||"").trim();return i[t]||t}export{r as n};
