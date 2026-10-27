@@ -1,16 +1,20 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { Firm, MaterialIssue, Production } from "../types";
+import { Firm, MaterialIssue } from "../types";
 import { TableControls } from "../components/TableControls";
 import { formatDate } from "../lib/serial";
-import { getPendingDailyConsumables } from "../lib/dailyConsumables";
+import type { DailyConsumablePending } from "../lib/dailyConsumables";
 
 export function PendingNonJobMaterialIssue() {
   const navigate = useNavigate();
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
-  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
+  const [firms, , firmsLoading, firmsApi] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [pendingRows, , pendingLoading, pendingApi] = useData<DailyConsumablePending & { id: string }>("pending-daily-consumables", [], {
+    endpointOverride: "/api/material-issues/pending-daily",
+    firmScope: "all",
+    cacheToLocalStorage: false,
+  });
+  const [, , , materialIssueApi] = useData<MaterialIssue>("material-issues", [], { enabled: false, firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
@@ -18,12 +22,11 @@ export function PendingNonJobMaterialIssue() {
   const [notApplicableDate, setNotApplicableDate] = useState<string | null>(null);
   const [notApplicableRemarks, setNotApplicableRemarks] = useState("");
   const [notApplicableError, setNotApplicableError] = useState("");
+  const loadError = firmsApi.error || pendingApi.error;
 
   const today = new Date().toISOString().slice(0, 10);
 
-  const pendingDates = useMemo(() => {
-    return getPendingDailyConsumables(firms, productions, materialIssues, today);
-  }, [firms, materialIssues, productions, today]);
+  const pendingDates = useMemo(() => pendingRows.filter((row) => row.date <= today), [pendingRows, today]);
 
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -101,7 +104,8 @@ export function PendingNonJobMaterialIssue() {
 
     setMarkingDate(notApplicableDate);
     try {
-      await setMaterialIssues([issue, ...materialIssues]);
+      await materialIssueApi.addItem(issue);
+      await pendingApi.refresh({ force: true });
       setNotApplicableDate(null);
       setNotApplicableRemarks("");
       setNotApplicableError("");
@@ -140,7 +144,15 @@ export function PendingNonJobMaterialIssue() {
               </tr>
             </thead>
             <tbody className="divide-y divide-black">
-              {firms.length === 0 ? (
+              {firmsLoading || pendingLoading ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center text-slate-600 font-medium">Loading pending Daily Consumables...</td>
+                </tr>
+              ) : loadError ? (
+                <tr>
+                  <td colSpan={3} className="px-6 py-8 text-center font-medium text-red-600">Unable to load pending Daily Consumables: {loadError}</td>
+                </tr>
+              ) : firms.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="px-6 py-8 text-center text-slate-600 font-medium">
                     No firms are configured.

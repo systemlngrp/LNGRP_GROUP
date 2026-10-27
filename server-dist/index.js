@@ -967,10 +967,17 @@ const AUTH_COOKIE_NAME = "lngrp_auth";
 // connection.  Some TLS/HTTP2 reverse proxies terminate SSE streams with
 // ERR_HTTP2_PROTOCOL_ERROR, which caused a persistent browser console error.
 let realtimeDataVersion = 0;
+const NPD_PAGE_SIZE_MAX = 250;
+const NPD_CACHE_TTL_MS = 30_000;
+const firmWiseNpdCache = new Map();
+const firmWiseNpdInflight = new Map();
+function invalidateNpdCache() {
+    firmWiseNpdCache.clear();
+}
 function publishRealtimeDataChange(entities = ["*"]) {
-    // Keep the argument for callers that may later publish entity-specific
-    // changes.  Clients currently invalidate safely using a wildcard refresh.
-    void entities;
+    if (entities.includes("*") || entities.some((entity) => ["npd", "npd-firm-wise", "material_in", "productions", "production_processing", "loading_slips", "invoices", "invoice_line_items", "orders"].includes(entity))) {
+        invalidateNpdCache();
+    }
     realtimeDataVersion += 1;
 }
 function getCookieValue(req, name) {
@@ -1117,16 +1124,34 @@ app.get("/api/npd-firm-wise", async (req, res) => {
         return res.status(500).json({ error: "DB connection not available" });
     try {
         const page = Math.max(1, Number(req.query.page || 1));
-        const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
+        const pageSize = Math.min(NPD_PAGE_SIZE_MAX, Math.max(25, Number(req.query.pageSize || NPD_PAGE_SIZE_MAX)));
         const status = String(req.query.status || "active").trim().toLowerCase();
         const search = String(req.query.search || "").trim();
-        const result = await fetchFirmWiseNpdItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
+        const result = await getCachedFirmWiseNpdItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
         res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
         return res.json({ ...result, page, pageSize, search, status });
     }
     catch (error) {
         console.error("[DB] Error fetching firm-wise NPD items:", error);
         return res.status(500).json({ error: error.message || "Failed to fetch firm-wise NPD items" });
+    }
+});
+app.get("/api/npd/catalog", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    try {
+        const page = Math.max(1, Number(req.query.page || 1));
+        const pageSize = Math.min(NPD_PAGE_SIZE_MAX, Math.max(25, Number(req.query.pageSize || NPD_PAGE_SIZE_MAX)));
+        const statusParam = String(req.query.status || "active").trim().toLowerCase();
+        const status = statusParam === "removed" || statusParam === "all" ? statusParam : "active";
+        const search = String(req.query.search || "").trim();
+        const result = await fetchNpdCatalogItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
+        return res.json({ ...result, page, pageSize, search, status });
+    }
+    catch (error) {
+        console.error("[DB] Error fetching NPD catalog:", error);
+        return res.status(500).json({ error: error.message || "Failed to fetch NPD catalog" });
     }
 });
 // Protect all /api routes except auth + public integrations
@@ -2539,6 +2564,30 @@ async function fetchActiveNpdItems(db, options) {
         total: Number(countRows?.[0]?.total || 0),
     };
 }
+async function fetchNpdCatalogItems(db, options) {
+    const status = String(options.status || "active").trim().toLowerCase();
+    const where = [];
+    const params = [];
+    if (status !== "all") {
+        where.push(status === "removed"
+            ? "COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') = 'removed'"
+            : "COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') <> 'removed'");
+    }
+    const search = String(options.search || "").trim();
+    if (search) {
+        const like = `%${search}%`;
+        where.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
+        params.push(like, like, like, like, like, like);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const columns = ["id", "npdId", "itemName", "erp", "erpCode", "erpItemCode", "masterItemNameErpCode", "customerName", "companyName", "companyId", "boxType", "rate", "gstRate", "uom"];
+    const [columnRows] = await db.query("SHOW COLUMNS FROM `npd`");
+    const available = new Set(columnRows.map((row) => String(row.Field || "")));
+    const selected = columns.filter((column) => available.has(column)).map((column) => `n.\`${column}\``).join(", ");
+    const [rows] = await db.query(`SELECT ${selected} FROM \`npd\` n ${whereSql} ORDER BY n.npdId ASC LIMIT ? OFFSET ?`, [...params, options.limit, options.offset]);
+    const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
+    return { rows: rows.map((row) => normalizeFetchedRow("npd", row)), total: Number(countRows[0]?.total || 0) };
+}
 function normalizeItemLookupId(value) {
     return stringOrEmpty(value?.npdId || value?.itemId || value);
 }
@@ -2779,6 +2828,28 @@ async function fetchFirmWiseNpdItems(db, options) {
         return { ...row, firmStocks };
     });
     return { rows, total: base.total, firms };
+}
+async function getCachedFirmWiseNpdItems(db, options) {
+    const key = JSON.stringify({ search: String(options.search || ""), status: String(options.status || "active"), limit: options.limit, offset: options.offset });
+    const cached = firmWiseNpdCache.get(key);
+    if (cached && cached.expiresAt > Date.now()) {
+        console.info(`[NPD] cache hit key=${key}`);
+        return cached.value;
+    }
+    const pending = firmWiseNpdInflight.get(key);
+    if (pending) {
+        console.info(`[NPD] cache join key=${key}`);
+        return pending;
+    }
+    console.info(`[NPD] cache miss key=${key}`);
+    const startedAt = Date.now();
+    const request = fetchFirmWiseNpdItems(db, options).then((value) => {
+        firmWiseNpdCache.set(key, { expiresAt: Date.now() + NPD_CACHE_TTL_MS, value });
+        console.info(`[NPD] aggregation rows=${value.rows.length} total=${value.total} elapsedMs=${Date.now() - startedAt}`);
+        return value;
+    }).finally(() => firmWiseNpdInflight.delete(key));
+    firmWiseNpdInflight.set(key, request);
+    return request;
 }
 async function dropConfirmedUnusedColumns(db, database, columns) {
     for (const candidate of columns) {
@@ -4449,6 +4520,25 @@ async function ensureUsersCanonicalData(db, database) {
 async function ensureNpdSchemaColumns(db, database) {
     for (const { column, type } of NPD_SCHEMA_COLUMNS) {
         await ensureColumnExists(db, database, "npd", column, type);
+    }
+}
+async function ensureNpdLookupIndexes(db, database) {
+    const indexes = [
+        { name: "idx_npd_npd_id", column: "npdId" },
+        { name: "idx_npd_erp", column: "erp" },
+        { name: "idx_npd_sync_status", column: "syncStatus" },
+    ];
+    for (const index of indexes) {
+        const [rows] = await db.query("SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'npd' AND INDEX_NAME = ? LIMIT 1", [database, index.name]);
+        if (rows.length === 0) {
+            try {
+                await db.query(`ALTER TABLE \`npd\` ADD INDEX \`${index.name}\` (\`${index.column}\`)`);
+                console.info(`[DB] Added ${index.name} for NPD lookups.`);
+            }
+            catch (err) {
+                console.warn(`[DB] Could not add ${index.name}:`, err.message);
+            }
+        }
     }
 }
 async function ensureSheetMasterSchemaColumns(db, database, table, schemaColumns) {
@@ -8886,6 +8976,7 @@ async function initDb(retries = 5) {
             }
             try {
                 await ensureNpdSchemaColumns(db, database);
+                await ensureNpdLookupIndexes(db, database);
             }
             catch (err) {
                 console.warn("[DB] Could not ensure npd schema columns:", err.message);
@@ -10089,7 +10180,7 @@ const createHandlers = (tableName) => {
                 }
                 else if (tableName === "npd") {
                     const page = Math.max(1, Number(req.query.page || 1));
-                    const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
+                    const pageSize = Math.min(NPD_PAGE_SIZE_MAX, Math.max(25, Number(req.query.pageSize || NPD_PAGE_SIZE_MAX)));
                     const search = String(req.query.search || "").trim();
                     const statusParam = String(req.query.status || "active").trim().toLowerCase();
                     const status = statusParam === "removed" || statusParam === "all" ? statusParam : "active";
@@ -10136,9 +10227,9 @@ const createHandlers = (tableName) => {
                 }
                 else if (tableName === "npd-firm-wise") {
                     const page = Math.max(1, Number(req.query.page || 1));
-                    const pageSize = Math.min(10000, Math.max(25, Number(req.query.pageSize || 10000)));
+                    const pageSize = Math.min(NPD_PAGE_SIZE_MAX, Math.max(25, Number(req.query.pageSize || NPD_PAGE_SIZE_MAX)));
                     const statusParam = String(req.query.status || "active").trim().toLowerCase();
-                    const result = await fetchFirmWiseNpdItems(db, { search: String(req.query.search || "").trim(), status: statusParam, limit: pageSize, offset: (page - 1) * pageSize });
+                    const result = await getCachedFirmWiseNpdItems(db, { search: String(req.query.search || "").trim(), status: statusParam, limit: pageSize, offset: (page - 1) * pageSize });
                     res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
                     return res.json({ ...result, page, pageSize, search: String(req.query.search || ""), status: statusParam });
                 }
@@ -14787,6 +14878,39 @@ app.delete("/api/printing-stereo-records/:id", requireAuth, createPrintingStereo
     hasAccess: (user) => hasPermission(user, "/quality/printing-stereo"),
     getPool,
 }));
+app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database unavailable" });
+    try {
+        const today = String(req.query.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
+        const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
+        const [productionRows] = await db.query("SELECT COALESCE(NULLIF(TRIM(firmId), ''), NULLIF(TRIM(orderFirmId), '')) AS firmId, MIN(LEFT(date, 10)) AS firstJobDate FROM `productions` WHERE COALESCE(NULLIF(TRIM(firmId), ''), NULLIF(TRIM(orderFirmId), '')) <> '' AND LEFT(date, 10) <> '' GROUP BY COALESCE(NULLIF(TRIM(firmId), ''), NULLIF(TRIM(orderFirmId), ''))");
+        const [issueRows] = await db.query("SELECT firmId, LEFT(date, 10) AS issueDate FROM `material_issues` WHERE LOWER(TRIM(COALESCE(issueType, ''))) IN ('general', 'without job', 'withoutjob', 'without_job') AND NOT (LOWER(TRIM(COALESCE(interFirmFlow, ''))) = 'yes' AND LOWER(TRIM(COALESCE(autoGenerated, ''))) = 'yes' AND LOWER(TRIM(COALESCE(sourceTransactionType, ''))) = 'production processing') AND COALESCE(TRIM(firmId), '') <> '' AND LEFT(date, 10) <> ''");
+        const firstJobByFirm = new Map(productionRows.map((row) => [String(row.firmId), String(row.firstJobDate).slice(0, 10)]));
+        const completed = new Set(issueRows.map((row) => `${String(row.firmId)}:${String(row.issueDate).slice(0, 10)}`));
+        const rows = [];
+        for (const firm of firmRows) {
+            const firmId = String(firm.id || "").trim();
+            const firstDate = firstJobByFirm.get(firmId);
+            if (!firmId || !firstDate)
+                continue;
+            for (let cursor = firstDate; cursor <= today;) {
+                if (!completed.has(`${firmId}:${cursor}`))
+                    rows.push({ id: `${firmId}:${cursor}`, firmId, firmName: firm.firmName || firmId, date: cursor });
+                const next = new Date(`${cursor}T00:00:00Z`);
+                next.setUTCDate(next.getUTCDate() + 1);
+                cursor = next.toISOString().slice(0, 10);
+            }
+        }
+        rows.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.firmName).localeCompare(String(b.firmName)));
+        return res.json({ rows, total: rows.length });
+    }
+    catch (error) {
+        console.error("[DB] Pending Daily Consumables lookup failed:", error);
+        return res.status(500).json({ error: error.message || "Failed to load pending Daily Consumables." });
+    }
+});
 // Daily Consumables are a single firm/date document.  This endpoint performs
 // the lookup and append in one transaction so a stale browser cache cannot
 // accidentally create a second parent record.

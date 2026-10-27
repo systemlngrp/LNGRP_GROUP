@@ -124,7 +124,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         setDataState(snapshot.rows);
         dataRef.current = snapshot.rows;
         setProgress({ loaded: snapshot.loaded, total: snapshot.total });
-      });
+      }, force);
       activeLoadRef.current = task;
       let finalData: T[];
       try {
@@ -193,7 +193,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       setProgress({ loaded: 0, total: 0 });
       return;
     }
-    fetchData({ force: true });
+    fetchData();
 
     // Listen for sync events from other hook instances
     const handleSync = () => {
