@@ -15656,6 +15656,13 @@ app.post("/api/material-issues/daily-upsert", requireAuth, async (req, res) => {
             return res.status(409).json({ error: "Daily Consumables is being saved by another user. Please try again." });
         await conn.beginTransaction();
         const requestedId = String(incoming.id || "").trim();
+        if (requestedId) {
+            const [requestedRows] = await conn.query("SELECT id, firmId FROM `daily_consumptions` WHERE id = ? LIMIT 1 FOR UPDATE", [requestedId]);
+            const requestedExisting = requestedRows[0];
+            if (requestedExisting?.id && String(requestedExisting.firmId || "").trim() !== firmId) {
+                return res.status(409).json({ error: "This Daily Consumption belongs to another firm. Reload the form and select the stored firm." });
+            }
+        }
         const [matchingRows] = await conn.query(`SELECT * FROM \`daily_consumptions\`
        WHERE firmId = ? AND LEFT(date, 10) = ?
          AND LOWER(TRIM(COALESCE(issueType, ''))) IN ('without job', 'withoutjob', 'without_job', 'general')
@@ -15715,7 +15722,10 @@ app.post("/api/material-issues/daily-upsert", requireAuth, async (req, res) => {
             savedLineIds.add(line.id);
         }
         await conn.commit();
-        const [savedIssues] = await db.query("SELECT * FROM `daily_consumptions` WHERE id = ? LIMIT 1", [issueId]);
+        const [savedIssues] = await db.query(`SELECT dc.*, f.firmName
+       FROM \`daily_consumptions\` dc
+       LEFT JOIN \`firms\` f ON f.id = dc.firmId
+       WHERE dc.id = ? LIMIT 1`, [issueId]);
         publishRealtimeDataChange(["daily_consumptions", "daily_consumption_items"]);
         return res.json({ created: !existing?.id, issue: savedIssues[0], savedLineIds: Array.from(savedLineIds) });
     }

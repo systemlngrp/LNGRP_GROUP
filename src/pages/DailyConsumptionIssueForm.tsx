@@ -56,6 +56,7 @@ export function DailyConsumptionIssueForm() {
   );
 
   const getMaterial = (materialId: string) => materials.find((material) => material.id === materialId);
+  const selectedFirm = firms.find((firm) => firm.id === firmId);
 
   const handleAddLine = () => {
     if (!currentMaterialId) return;
@@ -131,6 +132,9 @@ export function DailyConsumptionIssueForm() {
               <option value="">Select firm...</option>
               {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
             </select>
+            <div className="text-xs font-bold text-slate-600" aria-live="polite">
+              Selected firm: {selectedFirm?.firmName || "None selected"}
+            </div>
           </Field>
           <Field label="Issue No (Auto)">
             <input type="text" value="Generated on Submit" disabled className="w-full border-2 border-black rounded p-2 bg-slate-50 opacity-70" />

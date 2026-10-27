@@ -16716,6 +16716,13 @@ app.post("/api/material-issues/daily-upsert", requireAuth, async (req, res) => {
 
     await conn.beginTransaction();
     const requestedId = String(incoming.id || "").trim();
+    if (requestedId) {
+      const [requestedRows] = await conn.query("SELECT id, firmId FROM `daily_consumptions` WHERE id = ? LIMIT 1 FOR UPDATE", [requestedId]);
+      const requestedExisting = (requestedRows as any[])[0];
+      if (requestedExisting?.id && String(requestedExisting.firmId || "").trim() !== firmId) {
+        return res.status(409).json({ error: "This Daily Consumption belongs to another firm. Reload the form and select the stored firm." });
+      }
+    }
     const [matchingRows] = await conn.query(
       `SELECT * FROM \`daily_consumptions\`
        WHERE firmId = ? AND LEFT(date, 10) = ?
@@ -16787,7 +16794,13 @@ app.post("/api/material-issues/daily-upsert", requireAuth, async (req, res) => {
     }
 
     await conn.commit();
-    const [savedIssues] = await db.query("SELECT * FROM `daily_consumptions` WHERE id = ? LIMIT 1", [issueId]);
+    const [savedIssues] = await db.query(
+      `SELECT dc.*, f.firmName
+       FROM \`daily_consumptions\` dc
+       LEFT JOIN \`firms\` f ON f.id = dc.firmId
+       WHERE dc.id = ? LIMIT 1`,
+      [issueId]
+    );
     publishRealtimeDataChange(["daily_consumptions", "daily_consumption_items"]);
     return res.json({ created: !existing?.id, issue: (savedIssues as any[])[0], savedLineIds: Array.from(savedLineIds) });
   } catch (error) {

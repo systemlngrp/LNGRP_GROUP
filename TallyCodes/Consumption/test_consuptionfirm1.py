@@ -99,6 +99,14 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         self.assertIn("ORDER BY dc.date, dc.id, dci.id", query)
         self.assertEqual(params, ("2026-10-17", "CON/1"))
 
+    def test_get_rows_filters_by_stored_firm_id(self):
+        connection = Mock()
+        connection.cursor.return_value.fetchall.return_value = []
+        sync.get_rows(connection, firm_id="unit-2")
+        query, params = connection.cursor.return_value.execute.call_args.args
+        self.assertIn("dc.firmId = %s", query)
+        self.assertEqual(params, ("unit-2",))
+
     def test_firm_port_lookup_uses_firm_specific_identifiers(self):
         cases = (
             (1, "uniti", "LNCB-1"),
@@ -151,29 +159,29 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         connection = Mock()
         flat_rows = [{**ISSUE, **ISSUE["lines"][0], "issueId": ISSUE["id"], "lineId": "1"}]
         with patch.object(sync, "load_env"), patch.object(sync, "connect_db", return_value=connection), \
-             patch.object(sync, "get_port_and_company", return_value=("9001", "Unit-I")), \
+             patch.object(sync, "get_firm_configs", return_value=[{"id": "unit-1", "firmName": "Unit-I", "shortName": "LNCB-1", "tallyPortNo": "9001"}]), \
              patch.object(sync, "get_rows", return_value=flat_rows), \
              patch.object(sync, "find_existing_voucher") as lookup, patch.object(sync, "post_tally") as post, \
-             patch.object(sync, "save_result") as save, patch("sys.argv", ["consuptionfirm1.py", "--dry-run"]), \
+             patch.object(sync, "save_result") as save, patch("sys.argv", ["consuption.py", "--dry-run"]), \
              redirect_stdout(io.StringIO()) as output:
             sync.main()
-        self.assertIn("[DRY-RUN] Firm-1", output.getvalue())
+        self.assertIn("[DRY-RUN] LNCB-1", output.getvalue())
         lookup.assert_not_called()
         post.assert_not_called()
         save.assert_not_called()
         connection.close.assert_called_once()
 
-    def test_cli_selects_firm(self):
+    def test_cli_selects_firm_master_id(self):
         connection = Mock()
         with patch.object(sync, "load_env"), \
              patch.object(sync, "connect_db", return_value=connection), \
-             patch.object(sync, "get_port_and_company", return_value=("9002", "Unit-II")) as get_firm, \
+             patch.object(sync, "get_firm_configs", return_value=[{"id": "unit-2", "firmName": "Unit-II", "shortName": "LNCB-2", "tallyPortNo": "9002"}]) as get_configs, \
              patch.object(sync, "get_rows", return_value=[]), \
-             patch("sys.argv", ["consuptionfirm1.py", "--firm", "2"]), \
+             patch("sys.argv", ["consuption.py", "--firm-id", "unit-2"]), \
              redirect_stdout(io.StringIO()) as output:
             sync.main()
-        get_firm.assert_called_once_with(connection, 2)
-        self.assertIn("Firm-2 Consumption Tally port", output.getvalue())
+        get_configs.assert_called_once_with(connection, "unit-2")
+        self.assertIn("LNCB-2 (Unit-II) Consumption Tally port", output.getvalue())
 
     def test_explicit_tally_exception_is_preserved(self):
         response = "<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><LINEERROR>No accounting entries are available</LINEERROR></DATA></BODY></ENVELOPE>"

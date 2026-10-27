@@ -137,7 +137,24 @@ def get_port_and_company(connection, firm_number=1):
     return override or str(rows[0]["tallyPortNo"]), str(rows[0].get("firmName") or firm["label"])
 
 
-def get_rows(connection, date_filter=None, transaction_filter=None, retry=False):
+def get_firm_configs(connection, firm_id=None):
+    """Read Tally routing directly from Firm Master."""
+    cursor = connection.cursor()
+    sql = """SELECT id, firmName, shortName, tallyPortNo
+             FROM firms
+             WHERE COALESCE(TRIM(tallyPortNo), '') <> ''"""
+    params = []
+    if firm_id:
+        sql += " AND id = %s"
+        params.append(str(firm_id).strip())
+    sql += " ORDER BY firmName, id"
+    cursor.execute(sql, tuple(params))
+    rows = dict_rows(cursor, cursor.fetchall())
+    cursor.close()
+    return rows
+
+
+def get_rows(connection, date_filter=None, transaction_filter=None, retry=False, firm_id=None):
     clauses = [
         "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(dc.issueType, '')), '_', ' '), '-', ' '), '  ', ' ')) IN ('general', 'without job', 'withoutjob')",
         "COALESCE(TRIM(dc.consumptionTransactionNo), '') <> ''",
@@ -147,13 +164,16 @@ def get_rows(connection, date_filter=None, transaction_filter=None, retry=False)
     if not retry:
         clauses.append("LOWER(TRIM(COALESCE(dc.tallyPostingStatus, ''))) NOT IN ('posted', 'completed')")
     params = []
+    if firm_id:
+        clauses.append("dc.firmId = %s")
+        params.append(str(firm_id).strip())
     if date_filter:
         clauses.append("dc.date = %s")
         params.append(date_filter)
     if transaction_filter:
         clauses.append("CAST(dc.consumptionTransactionNo AS CHAR) = %s")
         params.append(transaction_filter)
-    sql = f"""SELECT dc.id AS issueId, dc.issueNo, dc.consumptionTransactionNo,
+    sql = f"""SELECT dc.id AS issueId, dc.firmId, dc.issueNo, dc.consumptionTransactionNo,
         dc.date, dc.issueType, dc.jobNo, dc.remarks, dc.tallyPostingStatus,
         dci.id AS lineId, dci.materialId, dci.qty, dci.uom,
         COALESCE(NULLIF(dci.rate, 0), NULLIF(dci.lastPurchaseRate, 0),
@@ -329,65 +349,68 @@ def print_result(issue, result, firm_label="Firm-1"):
 
 def main(firm_number=None):
     load_env()
-    default_firm = firm_number or 1
-    parser = argparse.ArgumentParser(description="Post daily consumption issues for a configured firm to Tally")
-    parser.add_argument("--firm", type=int, choices=(1, 2, 3), default=default_firm, help="Firm number (default: 1)")
+    parser = argparse.ArgumentParser(description="Post daily consumption issues using Firm Master routing")
+    parser.add_argument("--firm-id", help="Process only this Firm Master ID; default processes all configured firms")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--date")
     parser.add_argument("--transaction")
     parser.add_argument("--retry", action="store_true")
     parser.add_argument("--timeout", type=float, default=20)
     args = parser.parse_args()
-    firm_number = args.firm
-    firm_label = f"Firm-{firm_number}"
 
     connection = connect_db()
     try:
-        port, company = get_port_and_company(connection, firm_number)
-        issues = group_rows(get_rows(connection, args.date, args.transaction, args.retry))
-        print(f"{firm_label} Consumption Tally port: {port}; eligible issues: {len(issues)}")
-        for issue in issues:
-            try:
-                payload = voucher_xml(issue, company)
-                if args.dry_run:
-                    print(f"[DRY-RUN] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'}\n{payload}")
-                    continue
+        configs = get_firm_configs(connection, args.firm_id)
+        if not configs:
+            raise RuntimeError("No configured Firm Master records with tallyPortNo were found.")
 
-                existing = find_existing_voucher(
-                    port,
-                    company,
-                    issue.get("consumptionTransactionNo"),
-                    issue.get("issueNo"),
-                    issue.get("date"),
-                    args.timeout,
-                )
-                if existing:
-                    result = {"status": "Posted", "voucher": existing.get("voucher"), "error": None}
-                else:
-                    ensure_voucher_type(port, company, VOUCHER_TYPE, args.timeout)
-                    ensure_issue_stock_items(port, company, issue, args.timeout)
-                    result = post_tally(
-                        port,
-                        payload,
-                        company,
-                        issue.get("consumptionTransactionNo"),
-                        issue.get("date"),
-                        args.timeout,
-                    )
-                timestamp = dt.datetime.now(dt.timezone.utc).isoformat()
-                save_result(connection, issue["id"], result, timestamp, issue.get("date"), firm_label)
-                print_result(issue, result, firm_label)
-            except Exception as exc:
-                if not args.dry_run:
-                    save_result(
-                        connection,
-                        issue["id"],
-                        {"status": "Failed", "voucher": None, "error": str(exc)},
-                        dt.datetime.now(dt.timezone.utc).isoformat(),
-                        issue.get("date"),
-                        firm_label,
-                    )
-                print(f"[FAILED] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'} | {exc}")
+        for config in configs:
+            firm_id = str(config.get("id") or "").strip()
+            firm_name = str(config.get("firmName") or firm_id).strip()
+            firm_label = str(config.get("shortName") or firm_name or firm_id).strip()
+            port_value = str(config.get("tallyPortNo") or "").strip()
+            issues = group_rows(get_rows(connection, args.date, args.transaction, args.retry, firm_id=firm_id))
+            print(f"{firm_label} ({firm_name}) Consumption Tally port: {port_value or '-'}; eligible issues: {len(issues)}")
+
+            if not port_value:
+                error = f"Firm Master tallyPortNo is missing for {firm_name}."
+                for issue in issues:
+                    if not args.dry_run:
+                        save_result(connection, issue["id"], {"status": "Failed", "voucher": None, "error": error}, dt.datetime.now(dt.timezone.utc).isoformat(), issue.get("date"), firm_label)
+                    print(f"[FAILED] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'} | {error}")
+                continue
+
+            try:
+                port = int(port_value)
+            except ValueError:
+                error = f"Invalid Firm Master tallyPortNo for {firm_name}: {port_value}"
+                for issue in issues:
+                    if not args.dry_run:
+                        save_result(connection, issue["id"], {"status": "Failed", "voucher": None, "error": error}, dt.datetime.now(dt.timezone.utc).isoformat(), issue.get("date"), firm_label)
+                    print(f"[FAILED] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'} | {error}")
+                continue
+
+            company = firm_name
+            for issue in issues:
+                try:
+                    payload = voucher_xml(issue, company)
+                    if args.dry_run:
+                        print(f"[DRY-RUN] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'}\n{payload}")
+                        continue
+
+                    existing = find_existing_voucher(port, company, issue.get("consumptionTransactionNo"), issue.get("issueNo"), issue.get("date"), args.timeout)
+                    if existing:
+                        result = {"status": "Posted", "voucher": existing.get("voucher"), "error": None}
+                    else:
+                        ensure_voucher_type(port, company, VOUCHER_TYPE, args.timeout)
+                        ensure_issue_stock_items(port, company, issue, args.timeout)
+                        result = post_tally(port, payload, company, issue.get("consumptionTransactionNo"), issue.get("date"), args.timeout)
+                    save_result(connection, issue["id"], result, dt.datetime.now(dt.timezone.utc).isoformat(), issue.get("date"), firm_label)
+                    print_result(issue, result, firm_label)
+                except Exception as exc:
+                    result = {"status": "Failed", "voucher": None, "error": str(exc)}
+                    save_result(connection, issue["id"], result, dt.datetime.now(dt.timezone.utc).isoformat(), issue.get("date"), firm_label)
+                    print(f"[FAILED] {firm_label} | Consumption: {issue.get('consumptionTransactionNo') or '-'} | {exc}")
     finally:
         connection.close()
 
