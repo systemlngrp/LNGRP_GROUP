@@ -4,11 +4,7 @@ import { useData } from "../hooks/useData";
 import { Material, MaterialIssue, MaterialIssueLine } from "../types";
 import { TableControls } from "../components/TableControls";
 import { formatDate } from "../lib/serial";
-
-function isWithoutJobIssue(issueType?: string) {
-  const t = String(issueType || "").trim().toLowerCase();
-  return t === "general" || t === "without job" || t === "withoutjob" || t === "without_job";
-}
+import { isPendingDailyConsumableTally } from "../lib/materialIssueClassification";
 
 function formatMoney(value?: number) {
   return Number(value || 0).toLocaleString("en-IN", {
@@ -83,10 +79,7 @@ export function PendingConsumptionTallyPosting() {
   const pendingRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
     return [...materialIssues]
-      .filter((row) => isWithoutJobIssue(row.issueType))
-      .filter((row) => String(row.consumptionTransactionNo || "").trim() !== "")
-      .filter((row) => String(row.tallyTimestamp || "").trim() === "")
-      .filter((row) => !["not applicable", "cancelled"].includes(String(row.tallyPostingStatus || "").trim().toLowerCase()))
+      .filter(isPendingDailyConsumableTally)
       .filter((row) => {
         if (!q) return true;
         const haystack = [
@@ -210,7 +203,7 @@ export function PendingConsumptionTallyPosting() {
                             <span>{row.issueNo}</span>
                           </button>
                         </td>
-                        <td className="px-4 py-3 text-sm font-semibold text-indigo-700">{row.consumptionTransactionNo || "-"}</td>
+                        <td className="px-4 py-3 text-sm font-semibold text-indigo-700">{row.consumptionTransactionNo || row.issueNo || "-"}</td>
                         <td className="px-4 py-3 text-sm">{formatDate(row.date) || "-"}</td>
                         <td className="px-4 py-3 text-right text-sm font-black text-slate-800">{itemStats.itemCount.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right text-sm font-black text-emerald-700">{formatMoney(itemStats.totalValue)}</td>

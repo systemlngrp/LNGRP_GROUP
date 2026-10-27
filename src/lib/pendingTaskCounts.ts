@@ -40,6 +40,7 @@ import { withIndentTotals } from "./indentTotals";
 import { getAllReturnableReelLines } from "./materialMovement";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "./reelTransfer";
 import { countEligibleLoadingPlans } from "./pendingLoadingEligibility";
+import { isPendingDailyConsumableTally } from "./materialIssueClassification";
 
 type OrderCatalogItem = {
   id: string;
@@ -147,10 +148,6 @@ export type BuildPendingTaskCountsArgs = {
 
 const isPendingPH = (status?: string | null) => !status || status === "Pending PH";
 const normalizeDate = (value?: string | null) => String(value || "").slice(0, 10);
-const isWithoutJobIssue = (issueType?: string | null) => {
-  const t = String(issueType || "").trim().toLowerCase();
-  return t === "general" || t === "without job" || t === "withoutjob" || t === "without_job";
-};
 
 function parseLocalYmd(dateStr?: string) {
   if (!dateStr) return null;
@@ -364,12 +361,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     args.materialReturns,
     args.materialReturnLines
   );
-  const pendingConsumptionTallyCount = args.materialIssues.filter(
-    (issue) =>
-      isWithoutJobIssue(issue.issueType) &&
-      String(issue.consumptionTransactionNo || "").trim() !== "" &&
-      String(issue.tallyTimestamp || "").trim() === ""
-  ).length;
+  const pendingConsumptionTallyCount = args.materialIssues.filter(isPendingDailyConsumableTally).length;
   const pendingPhpLoadingTallyCount = args.phpLoadingSlips.filter(
     (slip) =>
       String(slip.phpConsumptionTransactionNo || "").trim() !== "" &&
