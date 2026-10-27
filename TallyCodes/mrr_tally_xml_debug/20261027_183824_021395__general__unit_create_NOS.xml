@@ -1,0 +1,30 @@
+
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Import Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <IMPORTDATA>
+                <REQUESTDESC>
+                    <REPORTNAME>All Masters</REPORTNAME>
+                    <STATICVARIABLES>
+                        <SVCURRENTCOMPANY>Laxmi Narayan Corrugated Boards LLP (Unit-II)</SVCURRENTCOMPANY>
+                    </STATICVARIABLES>
+                </REQUESTDESC>
+                <REQUESTDATA>
+                    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+                        <UNIT NAME="NOS" ACTION="Create">
+                            <NAME.LIST TYPE="String">
+                                <NAME>NOS</NAME>
+                            </NAME.LIST>
+                            <ORIGINALNAME>NOS</ORIGINALNAME>
+                            <FORMALNAME>NOS</FORMALNAME>
+                            <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
+                            <DECIMALPLACES>2</DECIMALPLACES>
+                        </UNIT>
+                    </TALLYMESSAGE>
+                </REQUESTDATA>
+            </IMPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    

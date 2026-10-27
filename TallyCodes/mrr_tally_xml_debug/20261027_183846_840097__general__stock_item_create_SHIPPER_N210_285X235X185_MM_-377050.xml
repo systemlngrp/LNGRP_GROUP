@@ -1,0 +1,28 @@
+
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Import Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <IMPORTDATA>
+                <REQUESTDESC>
+                    <REPORTNAME>All Masters</REPORTNAME>
+                    <STATICVARIABLES>
+                        <SVCURRENTCOMPANY>Laxmi Narayan Corrugated Boards LLP (Unit-II)</SVCURRENTCOMPANY>
+                    </STATICVARIABLES>
+                </REQUESTDESC>
+                <REQUESTDATA>
+                    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+                        <STOCKITEM NAME="SHIPPER N210 (285X235X185 MM)-377050" ACTION="Create">
+                            <NAME.LIST>
+                                <NAME>SHIPPER N210 (285X235X185 MM)-377050</NAME>
+                            </NAME.LIST>
+                            <PARENT>FG- FINISHED GOODS</PARENT>
+                            <BASEUNITS>NOS</BASEUNITS>
+                        </STOCKITEM>
+                    </TALLYMESSAGE>
+                </REQUESTDATA>
+            </IMPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    

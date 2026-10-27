@@ -106,8 +106,13 @@ def format_quantity(value: Any) -> str:
 
 
 def load_env_file() -> None:
-    env_path = BASE_DIR / ".env"
-    if not env_path.exists():
+    candidates = []
+    explicit_env = os.getenv("LNPI_ENV_FILE")
+    if explicit_env:
+        candidates.append(Path(explicit_env).expanduser())
+    candidates.extend((Path.cwd() / ".env", BASE_DIR / ".env", BASE_DIR.parent / ".env"))
+    env_path = next((path for path in candidates if path.is_file()), None)
+    if env_path is None:
         return
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -123,12 +128,30 @@ def load_env_file() -> None:
 load_env_file()
 
 DB_CONFIG = {
-    "host": "193.203.184.152",
-    "user": "u380633007_lnpidata",
-    "password": "!Office1@",
-    "database": "u380633007_lnpidata",
-    "port": 3306,
+    "host": os.getenv("DB_HOST") or os.getenv("LNPI_DB_HOST") or "srv1644.hstgr.io",
+    "user": os.getenv("DB_USER") or os.getenv("LNPI_DB_USER") or "u380633007_lngrpgroup",
+    "password": os.getenv("DB_PASSWORD") or os.getenv("LNPI_DB_PASSWORD") or "",
+    "database": os.getenv("DB_NAME") or os.getenv("LNPI_DB_NAME") or "u380633007_lngrpgroup",
+    "port": int(os.getenv("DB_PORT") or os.getenv("LNPI_DB_PORT") or "3306"),
     "use_pure": True,
+}
+
+FIRM_CONFIG = {
+    1: {
+        "label": "Firm-1",
+        "names": ("uniti", "unit1"),
+        "short_names": ("LNCB-1", "UNIT-1", "UNIT1"),
+    },
+    2: {
+        "label": "Firm-2",
+        "names": ("unitii", "unit2"),
+        "short_names": ("LNCB-2", "UNIT-2", "UNIT2"),
+    },
+    3: {
+        "label": "Firm-3",
+        "names": ("laxminarayankraftindustries", "lnki"),
+        "short_names": ("LNKI",),
+    },
 }
 
 PURCHASE_LEDGER_BY_MRR = {
@@ -160,13 +183,16 @@ SUPPLIER_GROUP_HINT_BY_MRR = {
 }
 
 
-def build_tally_url_candidates() -> list[str]:
+def build_tally_url_candidates(port: int | str | None = None) -> list[str]:
     candidates: list[str] = []
-    preferred = [
-        os.getenv("LNPI_TALLY_URL"),
-        "http://localhost:9004",
-        "http://127.0.0.1:9004",
-    ]
+    if port is not None:
+        preferred = [f"http://localhost:{port}", f"http://127.0.0.1:{port}"]
+    else:
+        preferred = [
+            os.getenv("LNPI_TALLY_URL"),
+            "http://localhost:9004",
+            "http://127.0.0.1:9004",
+        ]
     for url in preferred:
         if not url:
             continue
@@ -417,18 +443,66 @@ def ensure_db_connection(conn):
         return get_db_connection()
 
 
-def get_pending_mrrs(conn):
+def resolve_firm(conn, firm_number: int) -> dict[str, Any]:
+    config = FIRM_CONFIG.get(firm_number)
+    if config is None:
+        raise ValueError(f"Unsupported MRR firm number: {firm_number}")
+
+    name_conditions = " OR ".join(
+        "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(firmName, '')), '-', ''), ' ', ''), '_', '')) = %s"
+        for _ in config["names"]
+    )
+    short_placeholders = ", ".join("%s" for _ in config["short_names"])
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            f"""SELECT id, firmName, shortName, tallyPortNo
+                FROM firms
+                WHERE {name_conditions}
+                   OR UPPER(TRIM(COALESCE(shortName, ''))) IN ({short_placeholders})
+                ORDER BY id
+                LIMIT 1""",
+            (*config["names"], *(name.upper() for name in config["short_names"])),
+        )
+        firm = cursor.fetchone()
+    finally:
+        cursor.close()
+
+    if not firm:
+        raise RuntimeError(f"{config['label']} was not found in the firms master.")
+    firm_id = str(firm.get("id") or "").strip()
+    firm_name = str(firm.get("firmName") or "").strip()
+    try:
+        port = int(str(firm.get("tallyPortNo") or "").strip())
+    except ValueError as error:
+        raise RuntimeError(f"{config['label']} '{firm_name}' has no valid Tally port configured.") from error
+    if not firm_id or not firm_name:
+        raise RuntimeError(f"{config['label']} configuration requires a firm ID and name.")
+    if not 1 <= port <= 65535:
+        raise RuntimeError(f"{config['label']} '{firm_name}' has an invalid Tally port configured.")
+    return {
+        **firm,
+        "id": firm_id,
+        "firmName": firm_name,
+        "tallyPortNo": port,
+        "label": config["label"],
+    }
+
+
+def get_pending_mrrs(conn, firm_id: str):
     conn = ensure_db_connection(conn)
     cursor = conn.cursor(dictionary=True)
     cursor.execute(
         """
         SELECT `id`, `transactionNo`, `mrrType`, `mrrSubType`, `date`, `timestamp`, `invoiceNo`, `invDate`, `supplierId`,
                `totalAmount`, `totalCgst`, `totalSgst`, `totalIgst`,
-               `insurance`, `otherCharges`, `roundOff`, `tdsAmount`, `lines`, `status`, `tallyTimestamp`
+               `insurance`, `otherCharges`, `roundOff`, 0 AS `tdsAmount`, `lines`, `status`, `tallyTimestamp`
         FROM `material_in`
         WHERE (`tallyTimestamp` IS NULL OR `tallyTimestamp` = '')
+          AND `firmId` = %s
         ORDER BY `timestamp` ASC, `transactionNo` ASC
-        """
+        """,
+        (firm_id,),
     )
     rows = cursor.fetchall()
     cursor.close()
@@ -650,6 +724,7 @@ def fetch_tally_vouchers_for_duplicate_check(
     to_date: str,
 ) -> list[dict[str, str]]:
     safe_type = escape_xml(voucher_type)
+    safe_supplier = escape_xml(supplier_name)
     xml_text = f"""
     <ENVELOPE>
         <HEADER>
@@ -671,6 +746,7 @@ def fetch_tally_vouchers_for_duplicate_check(
                     <TDLMESSAGE>
                         <COLLECTION NAME="DupCheckVouchers" ISMODIFY="No">
                             <TYPE>Voucher</TYPE>
+                            <FILTERS>OnlyTargetParty</FILTERS>
                             <FETCH>Date</FETCH>
                             <FETCH>VoucherNumber</FETCH>
                             <FETCH>Reference</FETCH>
@@ -679,6 +755,7 @@ def fetch_tally_vouchers_for_duplicate_check(
                             <FETCH>PartyName</FETCH>
                             <FETCH>VoucherTypeName</FETCH>
                         </COLLECTION>
+                        <SYSTEM TYPE="Formulae" NAME="OnlyTargetParty">$$StringEqual:$PartyLedgerName:"{safe_supplier}"</SYSTEM>
                     </TDLMESSAGE>
                 </TDL>
             </DESC>
@@ -1936,17 +2013,28 @@ def process_one_mrr(conn, company_name: str | None, mrr: dict[str, Any]) -> None
     raise RuntimeError(f"Tally rejected voucher {voucher_no}: {response_text}")
 
 
-def main() -> None:
+def main(firm_number: int = 1) -> None:
+    global TALLY_URL_CANDIDATES, ACTIVE_TALLY_URL
+
     LOGGER.info("Starting Tally MRR posting")
     LOGGER.info("MRR log file: %s", LOG_FILE)
-    LOGGER.info("Tally URL candidates: %s", ", ".join(TALLY_URL_CANDIDATES))
-    LOGGER.info("Using active Tally company on port 9004. No SVCURRENTCOMPANY will be sent.")
-    company_name = None
 
     conn = get_db_connection()
     try:
-        pending_mrrs = get_pending_mrrs(conn)
-        LOGGER.info("Found %s pending MRR(s)", len(pending_mrrs))
+        firm = resolve_firm(conn, firm_number)
+        company_name = firm["firmName"]
+        TALLY_URL_CANDIDATES = build_tally_url_candidates(firm["tallyPortNo"])
+        ACTIVE_TALLY_URL = None
+        LOGGER.info(
+            "Selected %s | firm_id=%s | company=%s | Tally port=%s",
+            firm["label"],
+            firm["id"],
+            company_name,
+            firm["tallyPortNo"],
+        )
+        LOGGER.info("Tally URL candidates: %s", ", ".join(TALLY_URL_CANDIDATES))
+        pending_mrrs = get_pending_mrrs(conn, firm["id"])
+        LOGGER.info("Found %s pending MRR(s) for %s", len(pending_mrrs), firm["label"])
         for mrr in pending_mrrs:
             try:
                 conn = ensure_db_connection(conn)

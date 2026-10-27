@@ -1,0 +1,32 @@
+
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>COLLECTION</TYPE>
+            <ID>StockItems</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    <SVCURRENTCOMPANY>Laxmi Narayan Corrugated Boards LLP (Unit-II)</SVCURRENTCOMPANY>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="StockItems" ISMODIFY="No">
+                            <TYPE>StockItem</TYPE>
+                            <FETCH>Name</FETCH>
+                            <FETCH>BaseUnits</FETCH>
+                            <FETCH>GUID</FETCH>
+                            <FETCH>PartNo</FETCH>
+                            <FETCH>PartNumber</FETCH>
+                            <FETCH>MailingName.LIST</FETCH>
+                            <FETCH>LanguageName.LIST</FETCH>
+                            <FETCH>Parent</FETCH>
+                        </COLLECTION>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    

@@ -1,0 +1,28 @@
+
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Import Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <IMPORTDATA>
+                <REQUESTDESC>
+                    <REPORTNAME>All Masters</REPORTNAME>
+                    <STATICVARIABLES>
+                        <SVCURRENTCOMPANY>Laxmi Narayan Corrugated Boards LLP (Unit-II)</SVCURRENTCOMPANY>
+                    </STATICVARIABLES>
+                </REQUESTDESC>
+                <REQUESTDATA>
+                    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+                        <STOCKITEM NAME="OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13" ACTION="Create">
+                            <NAME.LIST>
+                                <NAME>OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13</NAME>
+                            </NAME.LIST>
+                            <PARENT>FG- FINISHED GOODS</PARENT>
+                            <BASEUNITS>NOS</BASEUNITS>
+                        </STOCKITEM>
+                    </TALLYMESSAGE>
+                </REQUESTDATA>
+            </IMPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    

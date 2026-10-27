@@ -1,0 +1,35 @@
+
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>COLLECTION</TYPE>
+            <ID>DupCheckVouchers</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    <SVCURRENTCOMPANY>Laxmi Narayan Corrugated Boards LLP (Unit-II)</SVCURRENTCOMPANY>
+                    <SVFROMDATE>20260401</SVFROMDATE>
+                    <SVTODATE>20270331</SVTODATE>
+                    <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="DupCheckVouchers" ISMODIFY="No">
+                            <TYPE>Voucher</TYPE>
+                            <FETCH>Date</FETCH>
+                            <FETCH>VoucherNumber</FETCH>
+                            <FETCH>Reference</FETCH>
+                            <FETCH>Narration</FETCH>
+                            <FETCH>PartyLedgerName</FETCH>
+                            <FETCH>PartyName</FETCH>
+                            <FETCH>VoucherTypeName</FETCH>
+                        </COLLECTION>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    
