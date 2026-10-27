@@ -39,6 +39,7 @@ export function useDailyConsumptions({ page, pageSize, date, firmId, search }: O
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [httpStatus, setHttpStatus] = useState<number | null>(null);
   const [linesById, setLinesById] = useState<Record<string, DailyConsumptionLine[]>>({});
   const [lineLoadingId, setLineLoadingId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -57,9 +58,11 @@ export function useDailyConsumptions({ page, pageSize, date, firmId, search }: O
     try {
       const response = await fetch(`/api/daily-consumptions?${params.toString()}`, { headers: getDataAuthHeaders(false), signal: controller.signal });
       const body = await response.json().catch(() => ({}));
+      setHttpStatus(response.status);
       if (!response.ok) throw new Error(String(body?.error || response.statusText || "Unable to load Daily Consumption."));
       setRows(Array.isArray(body.rows) ? body.rows : []);
       setTotal(Number(body.total) || 0);
+      setHttpStatus(null);
       setLinesById({});
     } catch (cause) {
       if ((cause as Error).name !== "AbortError") setError((cause as Error).message || "Unable to load Daily Consumption.");
@@ -100,5 +103,6 @@ export function useDailyConsumptions({ page, pageSize, date, firmId, search }: O
     }
   }, [linesById]);
 
-  return { rows, total, loading, error, linesById, lineLoadingId, loadLines, refresh: () => load(false) };
+  const retry = useCallback(() => load(false), [load]);
+  return { rows, total, loading, error, httpStatus, linesById, lineLoadingId, loadLines, refresh: retry, retry };
 }

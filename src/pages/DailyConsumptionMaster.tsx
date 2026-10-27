@@ -15,7 +15,7 @@ export function DailyConsumptionMaster() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
-  const { rows, total, loading, error, linesById, lineLoadingId, loadLines } = useDailyConsumptions({ page, pageSize, date, firmId: firmFilter, search: searchTerm });
+  const { rows, total, loading, error, httpStatus, linesById, lineLoadingId, loadLines, retry } = useDailyConsumptions({ page, pageSize, date, firmId: firmFilter, search: searchTerm });
 
   const selectedIssue = useMemo(
     () => rows.find((issue) => issue.id === selectedIssueId) || null,
@@ -76,7 +76,7 @@ export function DailyConsumptionMaster() {
           {loading && rows.length === 0 ? (
             <div className="p-4 text-center text-sm">Loading Daily Consumption…</div>
           ) : error ? (
-            <div className="p-4 text-center text-sm text-red-700">Unable to load Daily Consumption: {error}</div>
+            <div className="p-4 text-center text-sm text-red-700">Unable to load Daily Consumption: {error}{httpStatus === 503 ? <button type="button" onClick={() => retry()} className="mx-auto mt-3 block rounded border border-red-700 bg-white px-4 py-1 font-bold text-red-700">Retry</button> : null}</div>
           ) : rows.length === 0 ? (
             <div className="p-4 bg-slate-50 border border-dashed border-black text-center text-sm">No Daily Consumption records found.</div>
           ) : (
@@ -118,7 +118,7 @@ export function DailyConsumptionMaster() {
             {loading && rows.length === 0 ? (
               <tr><td colSpan={5} className="px-4 py-10 text-center text-sm">Loading Daily Consumption…</td></tr>
             ) : error ? (
-              <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-red-700">Unable to load Daily Consumption: {error}</td></tr>
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-sm text-red-700"><div>Unable to load Daily Consumption: {error}</div>{httpStatus === 503 ? <button type="button" onClick={() => retry()} className="mx-auto mt-3 block rounded border border-red-700 bg-white px-4 py-1 font-bold text-red-700">Retry</button> : null}</td></tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-600 border border-black">
