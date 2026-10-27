@@ -27,42 +27,11 @@ import {
   ,ArrowLeftRight
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useData } from "../hooks/useData";
 import { REALTIME_DATA_CHANGE_EVENT } from "../hooks/useRealtimeDataSync";
-import { useNpdItems } from "../hooks/useNpdItems";
-import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
+import { usePendingTaskCounts } from "../hooks/usePendingTaskCounts";
 import { useAuth } from "../auth/AuthContext";
-import {
-  MaterialIn,
-  Material,
-  Machine,
-  Production,
-  ProductionProcessing,
-  Order,
-  Consumption,
-  OrderSchedule,
-  DispatchPlan,
-  LoadingSlip,
-  SampleRequest,
-  Indent,
-  IndentLine,
-  PurchaseOrder,
-  PurchaseOrderLine,
-  GateEntry,
-  MaterialIssue,
-  MaterialIssueLine,
-  MaterialIssueReelLine,
-  MaterialReturn,
-  MaterialReturnLine,
-  MaterialReturnReelLine,
-  Invoice,
-  GatePass,
-  Setting,
-  Firm,
-} from "../types";
 import { cn } from "../lib/utils";
 import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
-import { buildPendingTaskCounts } from "../lib/pendingTaskCounts";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -516,42 +485,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const { hasAccess, user } = useAuth();
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [menuSearchTerm, setMenuSearchTerm] = useState("");
-  const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [approvalMaterialIn] = useData<MaterialIn>("material-in", [], {
-    firmScope: "all",
-    storageKey: "material-in-all-firms",
-  });
-  const [productions, , productionsLoading] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });
-  const [phpJobMaster, , phpJobsLoading] = useData<Production>("php_job_master", [], { firmScope: "all" });
-  const [plateJobMaster, , plateJobsLoading] = useData<Production>("plate_job_master", [], { firmScope: "all" });
-  const [materials] = useData<Material>("materials", []);
-  const [orders, , ordersLoading] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
-  const npdItems = useNpdItems();
-  const { resolveOrderItem, findItemAcrossSources, itemsBySource, loading: catalogLoading } = useOrderItemCatalog();
-  const [consumptions] = useData<Consumption>("consumptions", []);
-  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all", storageKey: "material-issues-all-firms" });
-  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all", storageKey: "material-issue-lines-all-firms" });
-  const [materialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", storageKey: "material-issue-reel-lines-all-firms" });
-  const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all", storageKey: "material-returns-all-firms" });
-  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all", storageKey: "material-return-lines-all-firms" });
-  const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", storageKey: "material-return-reel-lines-all-firms" });
-  const [sampleRequests] = useData<SampleRequest>("sample_requests", []);
-  const [indents] = useData<Indent>("indents", []);
-  const [indentLines] = useData<IndentLine>("indent-lines", []);
-  const [purchaseOrders] = useData<PurchaseOrder>("purchase-orders", []);
-  const [purchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
-  const [gateEntries] = useData<GateEntry>("gate-entries", []);
-  const [schedules, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
-  const [dispatchPlans, , dispatchPlansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all" });
-  const [loadingSlips, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all" });
-  const [phpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
-  const [plateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
-  const [invoices] = useData<Invoice>("invoices", []);
-  const [gatePasses] = useData<GatePass>("gate_passes", []);
-  const [machines] = useData<Machine>("machines", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms" });
-  const [settings] = useData<Setting>("settings", []);
+  const { counts } = usePendingTaskCounts();
 
   const [pendingJobClosureCount, setPendingJobClosureCount] = useState<number>(0);
 
@@ -593,103 +527,9 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
     void refreshPendingJobClosureCount();
   });
 
-  const firmScopedCounts = useMemo(
-    () =>
-      buildPendingTaskCounts({
-        firms,
-        materialIn,
-        productions,
-        phpJobMaster,
-        plateJobMaster,
-        materials,
-        orders,
-        npdItems,
-        consumptions,
-        materialIssues,
-        materialIssueLines,
-        materialIssueReelLines,
-        materialReturns,
-        materialReturnLines,
-        materialReturnReelLines,
-        sampleRequests,
-        indents,
-        indentLines,
-        purchaseOrders,
-        purchaseOrderLines,
-        gateEntries,
-        schedules,
-        dispatchPlans,
-        loadingSlips,
-        phpLoadingSlips,
-        plateLoadingSlips,
-        invoices,
-        gatePasses,
-        machines,
-        processing,
-        settings,
-        pendingJobClosureCount,
-        user,
-        resolveOrderItem,
-        findItemAcrossSources,
-        itemsBySource,
-      }),
-    [
-      materialIn,
-      firms,
-      productions,
-      phpJobMaster,
-      plateJobMaster,
-      materials,
-      orders,
-      npdItems,
-      consumptions,
-      materialIssues,
-      materialIssueLines,
-      materialIssueReelLines,
-      materialReturns,
-      materialReturnLines,
-      materialReturnReelLines,
-      sampleRequests,
-      indents,
-      indentLines,
-      purchaseOrders,
-      purchaseOrderLines,
-      gateEntries,
-      schedules,
-      dispatchPlans,
-      loadingSlips,
-      phpLoadingSlips,
-      plateLoadingSlips,
-      invoices,
-      gatePasses,
-      machines,
-      processing,
-      settings,
-      pendingJobClosureCount,
-      user,
-      resolveOrderItem,
-      findItemAcrossSources,
-      itemsBySource,
-    ]
-  );
-
-  const counts = useMemo(
-    () => ({
-      ...firmScopedCounts,
-      "/loading/pending": [productionsLoading, phpJobsLoading, plateJobsLoading, ordersLoading, schedulesLoading, dispatchPlansLoading, loadingSlipsLoading, catalogLoading].some(Boolean)
-        ? 0
-        : firmScopedCounts["/loading/pending"],
-      "/material-receipt/approvals": approvalMaterialIn.filter((m) =>
-        ["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status)
-      ).length,
-      "/material-receipt/pending-ph-approval": approvalMaterialIn.filter((m) => m.status === "Pending PH").length,
-      "/material-receipt/pending-accounts-approval": approvalMaterialIn.filter((m) => m.status === "Pending Accounts").length,
-      "/material-receipt/pending-md-approval": approvalMaterialIn.filter((m) => m.status === "Pending MD").length,
-      "/material-receipt/pending-tally": approvalMaterialIn.filter(
-        (m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in"
-      ).length,
-    }),
-    [approvalMaterialIn, firmScopedCounts, productionsLoading, phpJobsLoading, plateJobsLoading, ordersLoading, schedulesLoading, dispatchPlansLoading, loadingSlipsLoading, catalogLoading]
+  const visibleCounts = useMemo(
+    () => ({ ...counts, "/production/pending-job-closure": pendingJobClosureCount }),
+    [counts, pendingJobClosureCount]
   );
 
   const navigation = useMemo<NavGroup[]>(() => {
@@ -816,7 +656,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
 
   const renderNavLink = (item: NavItem, nested = false) => {
     const isActive = isActiveItem(item);
-    const count = item.countKey ? counts[item.countKey] : (item as any).count || 0;
+    const count = item.countKey ? visibleCounts[item.countKey] : (item as any).count || 0;
     const Icon = typeof item.icon === "function" ? item.icon : FileText;
 
     if (item.disabled) {

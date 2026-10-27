@@ -1007,6 +1007,9 @@ const NPD_PAGE_SIZE_MAX = 250;
 const NPD_CACHE_TTL_MS = 30_000;
 const firmWiseNpdCache = new Map<string, { expiresAt: number; value: { rows: any[]; total: number; firms: any[] } }>();
 const firmWiseNpdInflight = new Map<string, Promise<{ rows: any[]; total: number; firms: any[] }>>();
+const SIDEBAR_COUNT_CACHE_TTL_MS = 20_000;
+let sidebarCountCache: { expiresAt: number; value: { counts: Record<string, number>; generatedAt: string } } | null = null;
+let sidebarCountInflight: Promise<{ counts: Record<string, number>; generatedAt: string }> | null = null;
 
 function invalidateNpdCache() {
   firmWiseNpdCache.clear();
@@ -1017,6 +1020,80 @@ function publishRealtimeDataChange(entities: string[] = ["*"]) {
     invalidateNpdCache();
   }
   realtimeDataVersion += 1;
+  sidebarCountCache = null;
+}
+
+const SIDEBAR_COUNT_KEYS = [
+  "/indent/pending", "/purchase-orders/pending-indent-lines", "/purchase-orders/pending-approval", "/material-receipt/pending-mrr",
+  "/material-receipt/approvals", "/material-receipt/pending-tally", "/material-receipt/pending-debit-note", "/material-receipt/pending-credit-note",
+  "/material-movement/pending-non-job-issue", "/material-movement/pending-consumption-tally", "/orders/pending-ph", "/orders/pending-scheduling",
+  "/production/pending", "/production/pending-npd", "/production/pending-consumption", "/production/pending-material-return", "/production/pending-job-transfer",
+  "/production/pending-printing", "/production/pending-tally", "/production/pending-job-closure", "/production/pending-machine-processing",
+  "/production/php/pending-planning", "/production/plate/pending-planning", "/production/php-plate/pending-production", "/samples/pending",
+  "/dispatch/pending-planning", "/loading/pending", "/loading/php/pending-tally", "/loading/plate/pending-tally", "/billing/pending", "/billing/pending-tally",
+  "/gate-pass/pending-returnable",
+] as const;
+
+async function buildSidebarPendingCounts(db: mysql.Pool) {
+  const counts = Object.fromEntries(SIDEBAR_COUNT_KEYS.map((key) => [key, 0])) as Record<string, number>;
+  const count = async (key: string, sql: string, params: any[] = []) => {
+    try {
+      const [rows] = await db.query(sql, params);
+      counts[key] = Number((rows as any[])[0]?.count || 0);
+    } catch (error) {
+      console.warn(`[SIDEBAR_COUNTS] ${key} query failed:`, (error as Error).message);
+    }
+  };
+  await Promise.all([
+    count("/indent/pending", "SELECT COUNT(*) AS count FROM indents WHERE LOWER(COALESCE(status, '')) = 'pending'"),
+    count("/purchase-orders/pending-approval", "SELECT COUNT(*) AS count FROM purchase_orders WHERE LOWER(COALESCE(status, '')) = 'pending approval'"),
+    count("/purchase-orders/pending-indent-lines", "SELECT COUNT(*) AS count FROM indent_lines WHERE COALESCE(qty, 0) - COALESCE(cancelledQty, 0) - COALESCE(orderedQty, 0) > 0"),
+    count("/material-receipt/approvals", "SELECT COUNT(*) AS count FROM material_in WHERE status IN ('Pending PH', 'Pending Accounts', 'Pending MD')"),
+    count("/material-receipt/pending-ph-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending PH'"),
+    count("/material-receipt/pending-accounts-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Accounts'"),
+    count("/material-receipt/pending-md-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending MD'"),
+    count("/material-receipt/pending-tally", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Tally' AND LOWER(COALESCE(mrrType, '')) <> 'rejection in'"),
+    count("/material-receipt/pending-debit-note", "SELECT COUNT(*) AS count FROM material_in WHERE COALESCE(debitNote, '') <> '' AND COALESCE(tallyTimestamp, '') = ''"),
+    count("/material-receipt/pending-credit-note", "SELECT COUNT(*) AS count FROM material_in WHERE mrrType = 'Rejection In' AND COALESCE(creditTallyTimestamp, '') = ''"),
+    count("/orders/pending-ph", "SELECT COUNT(*) AS count FROM orders WHERE status IN ('Pending PH', 'Pending Salesman Approval')"),
+    count("/orders/pending-scheduling", "SELECT COUNT(*) AS count FROM orders WHERE status = 'Pending Scheduling'"),
+    count("/samples/pending", "SELECT COUNT(*) AS count FROM sample_requests WHERE COALESCE(jobCardNo, '') = '' AND COALESCE(cancelTimestamp, '') = ''"),
+    count("/production/pending", "SELECT COUNT(*) AS count FROM productions WHERE status IN ('Pending PH', 'Pending Production', 'Pending Planning')"),
+    count("/production/pending-consumption", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(status, '') NOT IN ('Cancelled', 'Completed')"),
+    count("/production/pending-tally", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(tallyPostingStatus, '') <> 'Completed' AND COALESCE(tallyTimestamp, '') = '' AND COALESCE(status, '') NOT IN ('Cancelled', 'Pending PH')"),
+    count("/production/pending-material-return", "SELECT COUNT(DISTINCT productionId) AS count FROM material_issue_reel_lines WHERE COALESCE(productionId, '') <> ''"),
+    count("/production/pending-machine-processing", "SELECT COUNT(*) AS count FROM production_processing WHERE COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
+    count("/production/pending-printing", "SELECT COUNT(*) AS count FROM production_processing WHERE LOWER(COALESCE(machineName, '')) LIKE '%printing%' AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
+    count("/loading/php/pending-tally", "SELECT COUNT(*) AS count FROM php_loading_slips WHERE COALESCE(phpConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
+    count("/loading/plate/pending-tally", "SELECT COUNT(*) AS count FROM plate_loading_slips WHERE COALESCE(plateConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
+    count("/material-movement/pending-consumption-tally", "SELECT COUNT(*) AS count FROM material_issues WHERE COALESCE(tallyTimestamp, '') = '' AND COALESCE(tallyPostingStatus, '') <> 'Not Applicable'"),
+    count("/billing/pending", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = ''"),
+    count("/billing/pending-tally", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = '' AND COALESCE(tallyPostingStatus, '') <> 'Not Applicable'"),
+    count("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
+  ]);
+  const pendingDaily = await fetchPendingDailyCount(db);
+  counts["/material-movement/pending-non-job-issue"] = pendingDaily;
+  const generatedAt = new Date().toISOString();
+  return { counts, generatedAt };
+}
+
+async function fetchPendingDailyCount(db: mysql.Pool) {
+  const [productionRows] = await db.query("SELECT COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) AS firmId, MIN(LEFT(p.date, 10)) AS firstJobDate FROM productions p LEFT JOIN orders_schedule os ON os.id = p.scheduleId LEFT JOIN orders o ON o.id = os.orderId WHERE COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) <> '' AND LEFT(p.date, 10) <> '' GROUP BY COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), ''))");
+  const [issueRows] = await db.query("SELECT firmId, LEFT(date, 10) AS issueDate FROM material_issues WHERE LOWER(TRIM(COALESCE(issueType, ''))) IN ('general', 'without job', 'withoutjob', 'without_job') AND NOT (LOWER(TRIM(COALESCE(interFirmFlow, ''))) = 'yes' AND LOWER(TRIM(COALESCE(autoGenerated, ''))) = 'yes' AND LOWER(TRIM(COALESCE(sourceTransactionType, ''))) = 'production processing') AND COALESCE(TRIM(firmId), '') <> '' AND LEFT(date, 10) <> ''");
+  const completed = new Set((issueRows as any[]).map((row) => `${row.firmId}:${row.issueDate}`));
+  const today = new Date().toISOString().slice(0, 10);
+  let total = 0;
+  for (const row of productionRows as any[]) {
+    const first = String(row.firstJobDate || "").slice(0, 10);
+    if (!first) continue;
+    for (let date = first; date <= today; ) {
+      if (!completed.has(`${row.firmId}:${date}`)) total += 1;
+      const next = new Date(`${date}T00:00:00Z`);
+      next.setUTCDate(next.getUTCDate() + 1);
+      date = next.toISOString().slice(0, 10);
+    }
+  }
+  return total;
 }
 function getCookieValue(req: express.Request, name: string) {
   const prefix = `${name}=`;
@@ -1170,6 +1247,34 @@ app.post("/api/auth/logout", requireAuth, async (_req, res) => {
 
 app.get("/api/version", (_req, res) => {
   res.json({ build: APP_BUILD_MARKER });
+});
+
+app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+  const now = Date.now();
+  if (sidebarCountCache && sidebarCountCache.expiresAt > now) {
+    console.info("[SIDEBAR_COUNTS] cache hit");
+    return res.json(sidebarCountCache.value);
+  }
+  if (!sidebarCountInflight) {
+    const startedAt = now;
+    sidebarCountInflight = buildSidebarPendingCounts(db)
+      .then((value) => {
+        sidebarCountCache = { expiresAt: Date.now() + SIDEBAR_COUNT_CACHE_TTL_MS, value };
+        console.info(`[SIDEBAR_COUNTS] refreshed keys=${Object.keys(value.counts).length} elapsedMs=${Date.now() - startedAt}`);
+        return value;
+      })
+      .finally(() => { sidebarCountInflight = null; });
+  } else {
+    console.info("[SIDEBAR_COUNTS] joined in-flight request");
+  }
+  try {
+    return res.json(await sidebarCountInflight);
+  } catch (error) {
+    console.error("[SIDEBAR_COUNTS] failed:", error);
+    return res.status(500).json({ error: "Failed to load sidebar counts" });
+  }
 });
 
 app.get("/api/npd-firm-wise", async (req, res) => {
@@ -16011,7 +16116,7 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
     const today = String(req.query.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
     const [productionRows] = await db.query(
-      "SELECT COALESCE(NULLIF(TRIM(firmId), ''), NULLIF(TRIM(orderFirmId), '')) AS firmId, MIN(LEFT(date, 10)) AS firstJobDate FROM `productions` WHERE COALESCE(NULLIF(TRIM(firmId), ''), NULLIF(TRIM(orderFirmId), '')) <> '' AND LEFT(date, 10) <> '' GROUP BY COALESCE(NULLIF(TRIM(firmId), ''), NULLIF(TRIM(orderFirmId), ''))"
+      "SELECT COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) AS firmId, MIN(LEFT(p.date, 10)) AS firstJobDate FROM `productions` p LEFT JOIN `orders_schedule` os ON os.id = p.scheduleId LEFT JOIN `orders` o ON o.id = os.orderId WHERE COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) <> '' AND LEFT(p.date, 10) <> '' GROUP BY COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), ''))"
     );
     const [issueRows] = await db.query(
       "SELECT firmId, LEFT(date, 10) AS issueDate FROM `material_issues` WHERE LOWER(TRIM(COALESCE(issueType, ''))) IN ('general', 'without job', 'withoutjob', 'without_job') AND NOT (LOWER(TRIM(COALESCE(interFirmFlow, ''))) = 'yes' AND LOWER(TRIM(COALESCE(autoGenerated, ''))) = 'yes' AND LOWER(TRIM(COALESCE(sourceTransactionType, ''))) = 'production processing') AND COALESCE(TRIM(firmId), '') <> '' AND LEFT(date, 10) <> ''"
