@@ -46,7 +46,7 @@ export function PendingNonJobMaterialIssue() {
       firmId,
       lockFirm: "1",
     });
-    navigate(`/material-movement/issue?${params.toString()}`);
+    navigate(`/material-movement/daily-consumption?${params.toString()}`);
   };
   const openNotApplicableModal = (firmId: string, date: string) => {
     setNotApplicableDate(`${firmId}:${date}`);
