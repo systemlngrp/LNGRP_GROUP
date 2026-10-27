@@ -13,6 +13,16 @@ import { useRealtimeDataSync } from "../hooks/useRealtimeDataSync";
 import { ResizableTables } from "./ResizableTables";
 import { FullscreenViewControl } from "./FullscreenViewControl";
 import { BackNavigationControl } from "./BackNavigationControl";
+import { Spinner } from "./Spinner";
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 p-6 text-center">
+      <Spinner />
+      <div className="text-sm font-bold text-slate-700">Loading page…</div>
+    </div>
+  );
+}
 
 export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -262,7 +272,7 @@ export function Layout() {
           <ResizableTables />
           <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
             <DataLoadingBoundary key={location.pathname}>
-              <Suspense fallback={null}>
+              <Suspense fallback={<PageLoadingFallback />}>
                 <RouteMountMarker />
                 <Outlet />
               </Suspense>

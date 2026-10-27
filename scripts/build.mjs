@@ -36,9 +36,17 @@ try {
     // to an in-place copy when the atomic directory rename is unavailable.
     if (previousMoved && !existsSync(distPath)) renameSync(backupPath, distPath);
     if (existsSync(tempPath)) {
-      mkdirSync(distPath, { recursive: true });
-      cpSync(tempPath, distPath, { recursive: true, force: true });
-      rmSync(tempPath, { recursive: true, force: true });
+      // If the directory swap is blocked on Windows, replace the generated
+      // directory rather than merging into the old one. Merging leaves stale
+      // hashed chunks available to clients and can recreate blank-page errors.
+      if (existsSync(distPath)) rmSync(distPath, { recursive: true, force: true });
+      try {
+        renameSync(tempPath, distPath);
+      } catch {
+        mkdirSync(distPath, { recursive: true });
+        cpSync(tempPath, distPath, { recursive: true, force: true });
+        rmSync(tempPath, { recursive: true, force: true });
+      }
       if (existsSync(backupPath)) rmSync(backupPath, { recursive: true, force: true });
     } else {
       throw swapError;

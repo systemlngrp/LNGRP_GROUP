@@ -25,6 +25,8 @@ type AuthContextValue = {
   activeFirm: ActiveFirm | null;
   activeFirmId: string;
   loading: boolean;
+  authError: string | null;
+  retryAuth: () => void;
   login: (identifier: string, password: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   setActiveFirm: (firm: ActiveFirm | null) => void;
@@ -151,6 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     normalizeActiveFirm(window.localStorage.getItem(ACTIVE_FIRM_STORAGE_KEY))
   );
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const setActiveFirm = useCallback((firm: ActiveFirm | null) => {
     const normalizedFirm = normalizeActiveFirm(firm);
@@ -169,12 +172,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setActiveFirmState(null);
       window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
+      setAuthError(null);
       if (showLoading) setLoading(false);
       return;
     }
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10_000);
     try {
-      if (showLoading) setLoading(true);
-      const res = await authFetch("/api/auth/me");
+      if (showLoading) {
+        setLoading(true);
+        setAuthError(null);
+      }
+      const res = await authFetch("/api/auth/me", { signal: controller.signal });
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
           window.localStorage.removeItem("authToken");
@@ -182,13 +191,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setActiveFirmState(null);
         }
+        if (showLoading && res.status !== 401 && res.status !== 403) setAuthError(`Authentication check failed (${res.status}).`);
         return;
       }
       const me = (await res.json()) as AuthUser;
       setUser({ ...me, role: normalizeRole(me.role), menuAccess: normalizeMenuAccess(me.menuAccess) });
-    } catch {
-      // Keep the current user during a temporary connectivity failure.
+    } catch (error) {
+      if (showLoading) {
+        setAuthError((error as Error)?.name === "AbortError" ? "The server took too long to respond." : "Unable to verify your session.");
+      }
+      // Keep the current user during a temporary background connectivity failure.
     } finally {
+      window.clearTimeout(timeoutId);
       if (showLoading) setLoading(false);
     }
   }, []);
@@ -231,6 +245,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.localStorage.setItem("authToken", String(data.token || ""));
     window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
     setActiveFirmState(null);
+    setAuthError(null);
     const nextUser = {
       ...(data.user as AuthUser),
       role: normalizeRole(data.user?.role),
@@ -250,14 +265,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
       setUser(null);
       setActiveFirmState(null);
+      setAuthError(null);
     }
   }, []);
 
   const hasAccess = useCallback((href: string) => isAllowed(user, href), [user]);
+  const retryAuth = useCallback(() => { void refreshMe(true); }, [refreshMe]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, activeFirm, activeFirmId: activeFirm?.id || "", loading, login, logout, setActiveFirm, hasAccess }),
-    [user, activeFirm, loading, login, logout, setActiveFirm, hasAccess]
+    () => ({ user, activeFirm, activeFirmId: activeFirm?.id || "", loading, authError, retryAuth, login, logout, setActiveFirm, hasAccess }),
+    [user, activeFirm, loading, authError, retryAuth, login, logout, setActiveFirm, hasAccess]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
