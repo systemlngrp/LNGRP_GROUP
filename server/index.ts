@@ -16113,6 +16113,11 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
   const db = await getPool();
   if (!db) return res.status(503).json({ error: "Database unavailable" });
   res.setHeader("Cache-Control", "no-store");
+  const startedAt = Date.now();
+  const page = Math.max(1, Number(req.query.page || 1) || 1);
+  const pageSize = Math.min(250, Math.max(1, Number(req.query.pageSize || 50) || 50));
+  const search = String(req.query.search || "").trim().toLowerCase();
+  const firmFilter = String(req.query.firmId || "").trim();
   try {
     const today = String(req.query.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
@@ -16137,7 +16142,23 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
       }
     }
     rows.sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(a.firmName).localeCompare(String(b.firmName)));
-    return res.json({ rows, total: rows.length });
+    const filteredRows = rows.filter((row) => {
+      if (firmFilter && String(row.firmId) !== firmFilter) return false;
+      if (!search) return true;
+      return `${row.firmName} ${row.date}`.toLowerCase().includes(search);
+    });
+    const total = filteredRows.length;
+    const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+    console.info("[DB] Pending Daily Consumables lookup", {
+      elapsedMs: Date.now() - startedAt,
+      page,
+      pageSize,
+      search,
+      firmId: firmFilter,
+      total,
+      rows: pagedRows.length,
+    });
+    return res.json({ rows: pagedRows, total, page, pageSize });
   } catch (error) {
     console.error("[DB] Pending Daily Consumables lookup failed:", error);
     return res.status(500).json({ error: (error as Error).message || "Failed to load pending Daily Consumables." });

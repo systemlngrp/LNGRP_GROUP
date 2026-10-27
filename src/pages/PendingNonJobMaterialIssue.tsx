@@ -3,37 +3,26 @@ import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Firm, MaterialIssue } from "../types";
 import { TableControls } from "../components/TableControls";
+import { ClientPagination } from "../components/ClientPagination";
 import { formatDate } from "../lib/serial";
-import type { DailyConsumablePending } from "../lib/dailyConsumables";
+import { usePendingDailyConsumables } from "../hooks/usePendingDailyConsumables";
 
 export function PendingNonJobMaterialIssue() {
   const navigate = useNavigate();
   const [firms, , firmsLoading, firmsApi] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [pendingRows, , pendingLoading, pendingApi] = useData<DailyConsumablePending & { id: string }>("pending-daily-consumables", [], {
-    endpointOverride: "/api/material-issues/pending-daily",
-    firmScope: "all",
-    cacheToLocalStorage: false,
-  });
   const [, , , materialIssueApi] = useData<MaterialIssue>("material-issues", [], { enabled: false, firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [markingDate, setMarkingDate] = useState<string | null>(null);
   const [notApplicableDate, setNotApplicableDate] = useState<string | null>(null);
   const [notApplicableRemarks, setNotApplicableRemarks] = useState("");
   const [notApplicableError, setNotApplicableError] = useState("");
-  const loadError = firmsApi.error || pendingApi.error;
-
-  const today = new Date().toISOString().slice(0, 10);
-
-  const pendingDates = useMemo(() => pendingRows.filter((row) => row.date <= today), [pendingRows, today]);
-
-  const filtered = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    return pendingDates.filter((row) =>
-      (!firmFilter || row.firmId === firmFilter) && (!q || `${row.firmName} ${row.date}`.toLowerCase().includes(q))
-    );
-  }, [firmFilter, pendingDates, searchTerm]);
+  const pending = usePendingDailyConsumables({ page, pageSize, search: searchTerm, firmId: firmFilter });
+  const loadError = firmsApi.error || pending.error;
+  const filtered = pending.rows;
 
   const groupedByFirm = useMemo(() => {
     const groups = new Map<string, { firmId: string; firmName: string; rows: typeof filtered }>();
@@ -105,7 +94,7 @@ export function PendingNonJobMaterialIssue() {
     setMarkingDate(notApplicableDate);
     try {
       await materialIssueApi.addItem(issue);
-      await pendingApi.refresh({ force: true });
+      await pending.refresh();
       setNotApplicableDate(null);
       setNotApplicableRemarks("");
       setNotApplicableError("");
@@ -126,8 +115,8 @@ export function PendingNonJobMaterialIssue() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search firm or date..." />
-        <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="min-w-52 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold">
+        <TableControls searchTerm={searchTerm} onSearchChange={(value) => { setSearchTerm(value); setPage(1); }} placeholder="Search firm or date..." />
+        <select value={firmFilter} onChange={(e) => { setFirmFilter(e.target.value); setPage(1); }} className="min-w-52 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold">
           <option value="">All firms</option>
           {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
         </select>
@@ -144,7 +133,7 @@ export function PendingNonJobMaterialIssue() {
               </tr>
             </thead>
             <tbody className="divide-y divide-black">
-              {firmsLoading || pendingLoading ? (
+              {firmsLoading || (pending.loading && filtered.length === 0) ? (
                 <tr>
                   <td colSpan={3} className="px-6 py-8 text-center text-slate-600 font-medium">Loading pending Daily Consumables...</td>
                 </tr>
@@ -158,7 +147,7 @@ export function PendingNonJobMaterialIssue() {
                     No firms are configured.
                   </td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : pending.total === 0 ? (
                 <tr>
                   <td colSpan={3} className="px-6 py-8 text-center text-slate-600 font-medium">
                     No pending Daily Consumables entries.
@@ -199,6 +188,16 @@ export function PendingNonJobMaterialIssue() {
             </tbody>
           </table>
         </div>
+        {pending.total > 0 ? (
+          <ClientPagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={pending.total}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            pageSizeOptions={[25, 50, 100, 250]}
+          />
+        ) : null}
       </div>
       {notApplicableDate ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
