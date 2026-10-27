@@ -11,7 +11,11 @@ export type DailyConsumptionRow = {
   date: string;
   issueType?: string;
   remarks?: string;
+  tallyPostingStatus?: string;
+  tallyPostingRemark?: string;
+  tallyPostingError?: string;
   itemCount: number;
+  totalQty: number;
   totalValue: number;
   itemNames?: string;
   updateTimestamp?: string;
