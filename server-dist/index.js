@@ -1210,6 +1210,12 @@ app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
     const db = await getPool();
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
+    try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
     const now = Date.now();
     if (sidebarCountCache && sidebarCountCache.expiresAt > now) {
         console.info("[SIDEBAR_COUNTS] cache hit");
@@ -1873,6 +1879,8 @@ app.post("/api/tally/sync", async (req, res) => {
 });
 // Database connection pool
 let pool = null;
+let dailyConsumptionSchemaPromise = null;
+let databaseInitializationPromise = null;
 const DELETE_REFERENCES = {
     companies: [
         { table: "orders", column: "companyId", label: "Orders" },
@@ -5729,6 +5737,26 @@ async function ensureDailyConsumptionSchema(db, database) {
         ["daily_consumption_items", "materialId", "idx_daily_consumption_items_material"],
     ]) {
         await ensureIndex(db, database, table, column, index);
+    }
+}
+async function ensureDailyConsumptionReady(db) {
+    if (databaseInitializationPromise) {
+        await databaseInitializationPromise;
+        return;
+    }
+    if (!dailyConsumptionSchemaPromise) {
+        const database = String(process.env.DB_NAME || "").trim().replace(/^['"]|['"]$/g, "");
+        dailyConsumptionSchemaPromise = ensureDailyConsumptionSchema(db, database).then(() => {
+            console.info(`[DB] Daily Consumption schema is ready in ${database}.`);
+        });
+    }
+    try {
+        await dailyConsumptionSchemaPromise;
+    }
+    catch (error) {
+        dailyConsumptionSchemaPromise = null;
+        console.error("[DB] Daily Consumption schema initialization failed:", error);
+        throw error;
     }
 }
 async function migrateDailyConsumptionsToDedicatedTables(db) {
@@ -15295,6 +15323,12 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
+    try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
     const startedAt = Date.now();
     const page = Math.max(1, Number(req.query.page || 1) || 1);
     const pageSize = Math.min(250, Math.max(1, Number(req.query.pageSize || 50) || 50));
@@ -15369,6 +15403,12 @@ app.get("/api/material-issues/pending-tally/:id/lines", requireAuth, async (req,
     const db = await getPool();
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
+    try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
     res.setHeader("Cache-Control", "no-store");
     try {
         const [rows] = await db.query(`SELECT mil.*, COALESCE(m.name, '') AS materialName
@@ -15391,6 +15431,12 @@ app.delete("/api/material-issues/pending-tally/:id", requireAuth, async (req, re
     const db = await getPool();
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
+    try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
     const conn = await db.getConnection();
     const id = String(req.params.id || "").trim();
     try {
@@ -15422,6 +15468,12 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
+    try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
     res.setHeader("Cache-Control", "no-store");
     const startedAt = Date.now();
     const page = Math.max(1, Number(req.query.page || 1) || 1);
@@ -15482,6 +15534,12 @@ app.get("/api/daily-consumptions", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
+    try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
     const page = Math.max(1, Number(req.query.page || 1) || 1);
     const pageSize = Math.min(250, Math.max(1, Number(req.query.pageSize || 50) || 50));
     const search = String(req.query.search || "").trim().toLowerCase();
@@ -15541,6 +15599,12 @@ app.get("/api/daily-consumptions/:id/lines", requireAuth, async (req, res) => {
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
     try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
+    try {
         const [rows] = await db.query(`SELECT dci.*, COALESCE(m.name, '') AS materialName
        FROM daily_consumption_items dci
        LEFT JOIN materials m ON m.id = dci.materialId
@@ -15559,6 +15623,12 @@ app.post("/api/material-issues/daily-upsert", requireAuth, async (req, res) => {
     const db = await getPool();
     if (!db)
         return res.status(503).json({ error: "Database unavailable" });
+    try {
+        await ensureDailyConsumptionReady(db);
+    }
+    catch {
+        return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." });
+    }
     const conn = await db.getConnection();
     let dailyLockName = "";
     let dailyLockHeld = false;
@@ -16044,6 +16114,15 @@ app.post("/api/table-column-widths", async (req, res) => {
 });
 registerSalesOrderSync(app, getPool);
 async function startServer() {
+    databaseInitializationPromise = (async () => {
+        await initDb();
+        const db = await getPool();
+        if (db)
+            await ensureProductionProcessingAuditColumns(db);
+    })().catch((error) => {
+        console.error("[SERVER] Database initialization failed:", error);
+        throw error;
+    });
     if (process.env.NODE_ENV !== "production") {
         const vite = await createViteServer({
             server: { middlewareMode: true },
@@ -16062,20 +16141,15 @@ async function startServer() {
         console.log(`Server running on http://localhost:${PORT}`);
     });
     // Database setup can take longer than the proxy's startup timeout.
-    // Keep the web server available while migrations run.
-    void (async () => {
-        await initDb();
-        const db = await getPool();
-        if (db)
-            await ensureProductionProcessingAuditColumns(db);
+    // Keep the web server available while migrations run; Daily Consumption
+    // endpoints await databaseInitializationPromise before querying.
+    void databaseInitializationPromise.then(() => {
         setInterval(() => {
             void retryPendingWhatsappComplaints();
             void retryPrintingShiftReports();
         }, 60_000);
         void retryPrintingShiftReports();
-    })().catch((error) => {
-        console.error("[SERVER] Database initialization failed:", error);
-    });
+    }).catch(() => undefined);
 }
 startServer().catch((error) => {
     console.error("[SERVER] Startup failed:", error);
