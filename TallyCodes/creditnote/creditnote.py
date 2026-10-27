@@ -81,6 +81,7 @@ def candidate_env_paths() -> list[Path]:
             SCRIPT_DIR / ".env",
             SCRIPT_DIR / "Data Backups" / ".env",
             BASE_DIR / ".env",
+            BASE_DIR.parent / ".env",
             Path("D:/lnpi/.env"),
         ]
     )
@@ -202,11 +203,11 @@ def get_db_config() -> dict[str, Any]:
         return fallback
 
     config = {
-        "host": configured_value("LNPI_DB_HOST", "DB_HOST", fallback=BUILTIN_DB_CONFIG["host"]),
-        "user": configured_value("LNPI_DB_USER", "DB_USER", fallback=BUILTIN_DB_CONFIG["user"]),
-        "password": configured_value("LNPI_DB_PASSWORD", "DB_PASSWORD", fallback=BUILTIN_DB_CONFIG["password"]),
-        "database": configured_value("LNPI_DB_NAME", "DB_NAME", fallback=BUILTIN_DB_CONFIG["database"]),
-        "port": int(configured_value("LNPI_DB_PORT", "DB_PORT", fallback=BUILTIN_DB_CONFIG["port"])),
+        "host": configured_value("DB_HOST", "LNPI_DB_HOST", fallback=BUILTIN_DB_CONFIG["host"]),
+        "user": configured_value("DB_USER", "LNPI_DB_USER", fallback=BUILTIN_DB_CONFIG["user"]),
+        "password": configured_value("DB_PASSWORD", "LNPI_DB_PASSWORD", fallback=BUILTIN_DB_CONFIG["password"]),
+        "database": configured_value("DB_NAME", "LNPI_DB_NAME", fallback=BUILTIN_DB_CONFIG["database"]),
+        "port": int(configured_value("DB_PORT", "LNPI_DB_PORT", fallback=BUILTIN_DB_CONFIG["port"])),
         "use_pure": True,
     }
     missing = [key for key in ("host", "user", "password", "database") if not config.get(key)]
@@ -215,7 +216,7 @@ def get_db_config() -> dict[str, Any]:
         raise RuntimeError(
             "Missing DB config: "
             + ", ".join(missing)
-            + ". Set LNPI_DB_HOST, LNPI_DB_USER, LNPI_DB_PASSWORD, LNPI_DB_NAME "
+            + ". Set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (or LNPI_DB_* for legacy configuration) "
             + "in PowerShell or an .env file. Checked: "
             + checked_paths
         )
@@ -814,8 +815,6 @@ def main() -> None:
             return
 
         selector = args.firm or os.getenv("LNPI_FIRM_ID")
-        if not selector and COMPANY_NAME.strip():
-            selector = COMPANY_NAME
         if not selector and len(firms) == 1:
             selector = str(firms[0].get("id") or "")
         if not selector:

@@ -98,6 +98,7 @@ def candidate_env_paths() -> list[Path]:
             Path.cwd() / ".env",
             SCRIPT_DIR / ".env",
             BASE_DIR / ".env",
+            BASE_DIR.parent / ".env",
             Path("D:/lnpi/.env"),
         ]
     )
@@ -169,13 +170,9 @@ PURCHASE_LEDGER_BY_MRR = {
 }
 
 
-def build_tally_url_candidates() -> list[str]:
+def build_tally_url_candidates(port: int | str = 9004) -> list[str]:
     candidates: list[str] = []
-    preferred = (
-        "http://localhost:9004",
-        BUILTIN_TALLY_URL,
-    )
-    for url in preferred:
+    for url in (f"http://localhost:{port}", f"http://127.0.0.1:{port}"):
         cleaned = str(url or "").strip()
         if cleaned and cleaned not in candidates:
             candidates.append(cleaned)
@@ -188,11 +185,11 @@ ACTIVE_TALLY_URL: str | None = None
 
 def get_db_config() -> dict[str, Any]:
     config = {
-        "host": os.getenv("LNPI_DB_HOST") or os.getenv("DB_HOST") or BUILTIN_DB_CONFIG["host"],
-        "user": os.getenv("LNPI_DB_USER") or os.getenv("DB_USER") or BUILTIN_DB_CONFIG["user"],
-        "password": os.getenv("LNPI_DB_PASSWORD") or os.getenv("DB_PASSWORD") or BUILTIN_DB_CONFIG["password"],
-        "database": os.getenv("LNPI_DB_NAME") or os.getenv("DB_NAME") or BUILTIN_DB_CONFIG["database"],
-        "port": int(os.getenv("LNPI_DB_PORT") or os.getenv("DB_PORT") or BUILTIN_DB_CONFIG["port"]),
+        "host": os.getenv("DB_HOST") or os.getenv("LNPI_DB_HOST") or BUILTIN_DB_CONFIG["host"],
+        "user": os.getenv("DB_USER") or os.getenv("LNPI_DB_USER") or BUILTIN_DB_CONFIG["user"],
+        "password": os.getenv("DB_PASSWORD") or os.getenv("LNPI_DB_PASSWORD") or BUILTIN_DB_CONFIG["password"],
+        "database": os.getenv("DB_NAME") or os.getenv("LNPI_DB_NAME") or BUILTIN_DB_CONFIG["database"],
+        "port": int(os.getenv("DB_PORT") or os.getenv("LNPI_DB_PORT") or BUILTIN_DB_CONFIG["port"]),
         "use_pure": True,
     }
     missing = [key for key in ("host", "user", "password", "database") if not config.get(key)]
@@ -201,8 +198,8 @@ def get_db_config() -> dict[str, Any]:
         raise RuntimeError(
             "Missing DB config: "
             + ", ".join(missing)
-            + ". Set LNPI_DB_HOST, LNPI_DB_USER, LNPI_DB_PASSWORD, LNPI_DB_NAME "
-            + "or DB_HOST, DB_USER, DB_PASSWORD, DB_NAME in a .env file or PowerShell env. "
+            + ". Set DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (or LNPI_DB_* for legacy configuration) "
+            + "in a .env file or PowerShell env. "
             + "Searched .env paths: "
             + searched
         )
@@ -335,10 +332,78 @@ def resolve_material_name(conn, material_id: str) -> str:
     return material_id
 
 
-def get_pending_debit_note_row(conn, debit_note_no: str | None = None, mrr_no: str | None = None) -> dict[str, Any] | None:
+def get_firms(conn) -> list[dict[str, Any]]:
     cursor = conn.cursor(dictionary=True)
-    where = ["`debitNote` IS NOT NULL", "`debitNote` <> ''", "COALESCE(NULLIF(TRIM(`debitTallySync`), ''), '') = ''"]
-    params: list[Any] = []
+    try:
+        cursor.execute(
+            """SELECT id, firmName, shortName, tallyPortNo
+               FROM firms
+               ORDER BY firmName, id"""
+        )
+        return list(cursor.fetchall() or [])
+    finally:
+        cursor.close()
+
+
+def resolve_firm(
+    conn,
+    selector: str | None,
+    firms: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    firms = get_firms(conn) if firms is None else list(firms)
+    if not firms:
+        raise RuntimeError("No firms are configured in the firms table.")
+
+    wanted = str(selector or "").strip().casefold()
+    matches = [
+        firm for firm in firms
+        if wanted and wanted in {
+            str(firm.get("id") or "").strip().casefold(),
+            str(firm.get("firmName") or "").strip().casefold(),
+            str(firm.get("shortName") or "").strip().casefold(),
+        }
+    ]
+    if not matches and wanted.isdigit():
+        position = int(wanted)
+        if 1 <= position <= len(firms):
+            matches = [firms[position - 1]]
+    if not matches:
+        options = ", ".join(
+            f"{index}: {firm.get('firmName')} [{firm.get('shortName') or firm.get('id')}]"
+            for index, firm in enumerate(firms, 1)
+        )
+        raise RuntimeError(f"Firm '{selector}' was not found. Available firms: {options}")
+    if len(matches) > 1:
+        raise RuntimeError(f"Firm selector '{selector}' matches multiple firms; select a firm ID.")
+
+    firm = matches[0]
+    firm_id = str(firm.get("id") or "").strip()
+    firm_name = str(firm.get("firmName") or "").strip()
+    if not firm_id or not firm_name:
+        raise RuntimeError("Selected firm configuration is incomplete: firm ID and name are required.")
+    try:
+        port = int(str(firm.get("tallyPortNo") or "").strip())
+    except ValueError as error:
+        raise RuntimeError(f"Selected firm '{firm_name}' has no valid Tally port configured.") from error
+    if not 1 <= port <= 65535:
+        raise RuntimeError(f"Selected firm '{firm_name}' has an invalid Tally port configured.")
+    return {**firm, "id": firm_id, "firmName": firm_name, "tallyPortNo": port}
+
+
+def get_pending_debit_note_row(
+    conn,
+    firm_id: str,
+    debit_note_no: str | None = None,
+    mrr_no: str | None = None,
+) -> dict[str, Any] | None:
+    cursor = conn.cursor(dictionary=True)
+    where = [
+        "`debitNote` IS NOT NULL",
+        "`debitNote` <> ''",
+        "COALESCE(NULLIF(TRIM(`debitTallySync`), ''), '') = ''",
+        "`firmId` = %s",
+    ]
+    params: list[Any] = [firm_id]
     if debit_note_no:
         where.append("`debitNote` = %s")
         params.append(debit_note_no)
@@ -870,15 +935,46 @@ def mark_failed(conn, note: DebitNote, error_message: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Post MRR Debit Note from Hostinger DB to Tally")
+    parser.add_argument("--firm", help="Firm ID, name, short name, or number from --list-firms")
+    parser.add_argument("--list-firms", action="store_true", help="List configured firms and their Tally ports")
     parser.add_argument("--debit-note", help="Debit note number, example DN-00038")
     parser.add_argument("--mrr", help="MRR transaction number")
     parser.add_argument("--dry-run", action="store_true", help="Print XML only; do not post to Tally or update DB")
     parser.add_argument("--mark-posted", action="store_true", help="Deprecated; successful posts always update material_in.debitTallySync")
     args = parser.parse_args()
 
+    global COMPANY_NAME, TALLY_URL_CANDIDATES, ACTIVE_TALLY_URL
     conn = get_db_connection()
     try:
-        row = get_pending_debit_note_row(conn, debit_note_no=args.debit_note, mrr_no=args.mrr)
+        firms = get_firms(conn)
+        if args.list_firms:
+            for index, firm in enumerate(firms, 1):
+                print(
+                    f"{index}: {firm.get('firmName') or '-'} | "
+                    f"Short name: {firm.get('shortName') or '-'} | "
+                    f"ID: {firm.get('id') or '-'} | Tally port: {firm.get('tallyPortNo') or '-'}"
+                )
+            return
+
+        selector = args.firm or os.getenv("LNPI_FIRM_ID")
+        if not selector and len(firms) == 1:
+            selector = str(firms[0].get("id") or "")
+        if not selector:
+            raise RuntimeError(
+                "Select a firm with --firm. Run with --list-firms to see firm IDs, names, and Tally ports."
+            )
+        firm = resolve_firm(conn, selector, firms)
+        COMPANY_NAME = firm["firmName"]
+        TALLY_URL_CANDIDATES = build_tally_url_candidates(firm["tallyPortNo"])
+        ACTIVE_TALLY_URL = None
+        print(f"Selected firm: {COMPANY_NAME} | Tally port: {firm['tallyPortNo']}")
+
+        row = get_pending_debit_note_row(
+            conn,
+            firm_id=firm["id"],
+            debit_note_no=args.debit_note,
+            mrr_no=args.mrr,
+        )
         if not row:
             print("No debit note MRR found in Hostinger DB for the given filter.")
             return
