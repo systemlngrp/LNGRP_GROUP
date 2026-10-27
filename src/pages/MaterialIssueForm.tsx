@@ -668,13 +668,7 @@ export function MaterialIssueForm() {
         date
       );
       const consumptionTransactionNo = isWithoutJobIssue(issueType)
-        ? existingDailyIssue?.consumptionTransactionNo || generateTransactionNo(
-          "CON",
-          materialIssues
-            .filter((row) => isWithoutJobIssue(row.issueType))
-            .map((row) => ({ transactionNo: row.consumptionTransactionNo, date: row.date })),
-          date
-        )
+        ? existingDailyIssue?.consumptionTransactionNo
         : undefined;
 
       const issue: MaterialIssue = {

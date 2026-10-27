@@ -153,15 +153,6 @@ def get_rows(connection, date_filter=None, transaction_filter=None, retry=False)
     if transaction_filter:
         clauses.append("CAST(mi.consumptionTransactionNo AS CHAR) = %s")
         params.append(transaction_filter)
-    selected_issue = f"""SELECT mi_candidate.id
-        FROM material_issues mi_candidate
-        WHERE {' AND '.join(clause.replace('mi.', 'mi_candidate.') for clause in clauses)}
-          AND EXISTS (
-              SELECT 1 FROM material_issue_lines mil_candidate
-              WHERE mil_candidate.materialIssueId = mi_candidate.id
-          )
-        ORDER BY mi_candidate.date, mi_candidate.id
-        LIMIT 1"""
     sql = f"""SELECT mi.id AS issueId, mi.issueNo, mi.consumptionTransactionNo,
         mi.date, mi.issueType, mi.jobNo, mi.remarks, mi.tallyPostingStatus,
         mil.id AS lineId, mil.materialId, mil.qty, mil.uom,
@@ -172,7 +163,7 @@ def get_rows(connection, date_filter=None, transaction_filter=None, retry=False)
         FROM material_issues mi
         JOIN material_issue_lines mil ON mil.materialIssueId = mi.id
         LEFT JOIN materials m ON m.id = mil.materialId
-        WHERE mi.id = ({selected_issue})
+        WHERE {' AND '.join(clauses)}
         ORDER BY mi.date, mi.id, mil.id"""
     cursor = connection.cursor()
     cursor.execute(sql, tuple(params))
@@ -355,7 +346,7 @@ def main(firm_number=None):
     try:
         port, company = get_port_and_company(connection, firm_number)
         issues = group_rows(get_rows(connection, args.date, args.transaction, args.retry))
-        print(f"{firm_label} Consumption Tally port: {port}; eligible issues selected: {len(issues)} (maximum 1)")
+        print(f"{firm_label} Consumption Tally port: {port}; eligible issues: {len(issues)}")
         for issue in issues:
             try:
                 payload = voucher_xml(issue, company)

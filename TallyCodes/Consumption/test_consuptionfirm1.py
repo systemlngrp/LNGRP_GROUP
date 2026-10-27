@@ -88,16 +88,15 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         self.assertIn("cancelled", query)
         self.assertIn("not applicable", query)
 
-    def test_get_rows_selects_one_oldest_issue_with_all_its_lines(self):
+    def test_get_rows_returns_all_eligible_issues_and_their_lines(self):
         connection = Mock()
         connection.cursor.return_value.fetchall.return_value = []
         sync.get_rows(connection, date_filter="2026-10-17", transaction_filter="CON/1")
         query, params = connection.cursor.return_value.execute.call_args.args
-        self.assertIn("WHERE mi.id = (SELECT mi_candidate.id", query)
-        self.assertIn("ORDER BY mi_candidate.date, mi_candidate.id", query)
-        self.assertIn("LIMIT 1", query)
-        self.assertIn("FROM material_issue_lines mil_candidate", query)
+        self.assertIn("WHERE LOWER(REPLACE", query)
+        self.assertNotIn("LIMIT 1", query)
         self.assertIn("JOIN material_issue_lines mil ON mil.materialIssueId = mi.id", query)
+        self.assertIn("ORDER BY mi.date, mi.id, mil.id", query)
         self.assertEqual(params, ("2026-10-17", "CON/1"))
 
     def test_firm_port_lookup_uses_firm_specific_identifiers(self):
