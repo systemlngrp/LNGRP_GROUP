@@ -1,12 +1,16 @@
 """Offline tests for Firm-1 daily Consumption Journal posting."""
 
 import io
+import sys
 import unittest
 import xml.etree.ElementTree as ET
 from contextlib import redirect_stdout
+from pathlib import Path
 from unittest.mock import Mock, patch
 
-import consuptionfirm1 as sync
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import consuption as sync
 import mfjFirm1
 
 
@@ -84,6 +88,18 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         self.assertIn("cancelled", query)
         self.assertIn("not applicable", query)
 
+    def test_get_rows_selects_one_oldest_issue_with_all_its_lines(self):
+        connection = Mock()
+        connection.cursor.return_value.fetchall.return_value = []
+        sync.get_rows(connection, date_filter="2026-10-17", transaction_filter="CON/1")
+        query, params = connection.cursor.return_value.execute.call_args.args
+        self.assertIn("WHERE mi.id = (SELECT mi_candidate.id", query)
+        self.assertIn("ORDER BY mi_candidate.date, mi_candidate.id", query)
+        self.assertIn("LIMIT 1", query)
+        self.assertIn("FROM material_issue_lines mil_candidate", query)
+        self.assertIn("JOIN material_issue_lines mil ON mil.materialIssueId = mi.id", query)
+        self.assertEqual(params, ("2026-10-17", "CON/1"))
+
     def test_firm_port_lookup_uses_firm_specific_identifiers(self):
         cases = (
             (1, "uniti", "LNCB-1"),
@@ -147,6 +163,18 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         post.assert_not_called()
         save.assert_not_called()
         connection.close.assert_called_once()
+
+    def test_cli_selects_firm(self):
+        connection = Mock()
+        with patch.object(sync, "load_env"), \
+             patch.object(sync, "connect_db", return_value=connection), \
+             patch.object(sync, "get_port_and_company", return_value=("9002", "Unit-II")) as get_firm, \
+             patch.object(sync, "get_rows", return_value=[]), \
+             patch("sys.argv", ["consuptionfirm1.py", "--firm", "2"]), \
+             redirect_stdout(io.StringIO()) as output:
+            sync.main()
+        get_firm.assert_called_once_with(connection, 2)
+        self.assertIn("Firm-2 Consumption Tally port", output.getvalue())
 
     def test_explicit_tally_exception_is_preserved(self):
         response = "<ENVELOPE><HEADER><STATUS>1</STATUS></HEADER><BODY><DATA><LINEERROR>No accounting entries are available</LINEERROR></DATA></BODY></ENVELOPE>"

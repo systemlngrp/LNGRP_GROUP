@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post Firm-1 daily material consumption issues to Tally."""
+"""Post daily material consumption issues for any configured firm to Tally."""
 from __future__ import annotations
 
 import argparse
@@ -153,6 +153,15 @@ def get_rows(connection, date_filter=None, transaction_filter=None, retry=False)
     if transaction_filter:
         clauses.append("CAST(mi.consumptionTransactionNo AS CHAR) = %s")
         params.append(transaction_filter)
+    selected_issue = f"""SELECT mi_candidate.id
+        FROM material_issues mi_candidate
+        WHERE {' AND '.join(clause.replace('mi.', 'mi_candidate.') for clause in clauses)}
+          AND EXISTS (
+              SELECT 1 FROM material_issue_lines mil_candidate
+              WHERE mil_candidate.materialIssueId = mi_candidate.id
+          )
+        ORDER BY mi_candidate.date, mi_candidate.id
+        LIMIT 1"""
     sql = f"""SELECT mi.id AS issueId, mi.issueNo, mi.consumptionTransactionNo,
         mi.date, mi.issueType, mi.jobNo, mi.remarks, mi.tallyPostingStatus,
         mil.id AS lineId, mil.materialId, mil.qty, mil.uom,
@@ -163,7 +172,7 @@ def get_rows(connection, date_filter=None, transaction_filter=None, retry=False)
         FROM material_issues mi
         JOIN material_issue_lines mil ON mil.materialIssueId = mi.id
         LEFT JOIN materials m ON m.id = mil.materialId
-        WHERE {' AND '.join(clauses)}
+        WHERE mi.id = ({selected_issue})
         ORDER BY mi.date, mi.id, mil.id"""
     cursor = connection.cursor()
     cursor.execute(sql, tuple(params))
@@ -328,22 +337,25 @@ def print_result(issue, result, firm_label="Firm-1"):
         print(f"[FAILED] {firm_label} | Consumption: {transaction_no} | {result.get('error') or 'Tally did not post the voucher'}")
 
 
-def main(firm_number=1):
+def main(firm_number=None):
     load_env()
-    firm_label = f"Firm-{firm_number}"
-    parser = argparse.ArgumentParser(description=f"Post {firm_label} daily consumption issues to Tally")
+    default_firm = firm_number or 1
+    parser = argparse.ArgumentParser(description="Post daily consumption issues for a configured firm to Tally")
+    parser.add_argument("--firm", type=int, choices=(1, 2, 3), default=default_firm, help="Firm number (default: 1)")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--date")
     parser.add_argument("--transaction")
     parser.add_argument("--retry", action="store_true")
     parser.add_argument("--timeout", type=float, default=20)
     args = parser.parse_args()
+    firm_number = args.firm
+    firm_label = f"Firm-{firm_number}"
 
     connection = connect_db()
     try:
         port, company = get_port_and_company(connection, firm_number)
         issues = group_rows(get_rows(connection, args.date, args.transaction, args.retry))
-        print(f"{firm_label} Consumption Tally port: {port}; eligible issues: {len(issues)}")
+        print(f"{firm_label} Consumption Tally port: {port}; eligible issues selected: {len(issues)} (maximum 1)")
         for issue in issues:
             try:
                 payload = voucher_xml(issue, company)
