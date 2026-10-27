@@ -73,6 +73,11 @@ def _money(value):
     return format(Decimal(str(value or "0")).quantize(Decimal("0.01")), "f")
 
 
+def normalize_uom(value):
+    uom = str(value or "").strip()
+    return "KGS" if uom.upper() == "KG" else uom
+
+
 def _is_without_job(issue_type):
     normalized = str(issue_type or "").strip().lower().replace("_", " ")
     return normalized in {"general", "without job", "withoutjob"}
@@ -203,7 +208,7 @@ def voucher_xml(issue, company):
     entries = []
     for line in issue["lines"]:
         item = str(line.get("materialName") or line.get("materialErp") or "").strip()
-        uom = str(line.get("uom") or "").strip()
+        uom = normalize_uom(line.get("uom"))
         qty = Decimal(str(line.get("qty") or "0"))
         rate = Decimal(str(line.get("rate") or "0"))
         if not item:
@@ -283,7 +288,7 @@ def ensure_issue_stock_items(port, company, issue, timeout):
             continue
         seen.add(item.lower())
         try:
-            create_stock_item(port, company, item, line.get("uom") or "PCS", timeout)
+            create_stock_item(port, company, item, normalize_uom(line.get("uom")) or "PCS", timeout)
         except RuntimeError as exc:
             if not _ignore_duplicate_error(exc):
                 raise

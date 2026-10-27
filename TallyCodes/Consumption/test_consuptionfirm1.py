@@ -7,6 +7,7 @@ from contextlib import redirect_stdout
 from unittest.mock import Mock, patch
 
 import consuptionfirm1 as sync
+import mfjFirm1
 
 
 ISSUE = {
@@ -37,6 +38,20 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         self.assertEqual(voucher.findtext("REFERENCE"), "MIS/26-27/1")
         self.assertEqual(len(voucher.findall("INVENTORYENTRIESOUT.LIST")), 2)
         self.assertEqual(voucher.find(".//INVENTORYENTRIESOUT.LIST/STOCKITEMNAME").text, "Kraft Paper")
+
+    def test_kg_is_normalized_to_kgs_for_voucher_xml(self):
+        issue = {**ISSUE, "lines": [{**ISSUE["lines"][0], "uom": "Kg"}]}
+        root = ET.fromstring(sync.voucher_xml(issue, "Unit-I"))
+        entry = root.find(".//INVENTORYENTRIESOUT.LIST")
+        self.assertEqual(entry.findtext("ACTUALQTY"), "12.50 KGS")
+        self.assertEqual(entry.findtext("BILLEDQTY"), "12.50 KGS")
+        self.assertEqual(entry.findtext("RATE"), "32.00/KGS")
+
+    def test_kg_is_normalized_when_creating_tally_stock_item(self):
+        issue = {"lines": [{"materialName": "Kraft Paper", "uom": "Kg"}]}
+        with patch.object(sync, "create_stock_item") as create:
+            sync.ensure_issue_stock_items(9001, "Unit-I", issue, 1)
+        create.assert_called_once_with(9001, "Unit-I", "Kraft Paper", "KGS", 1)
 
     def test_missing_values_fail_before_posting(self):
         for field, value, message in (("materialName", "", "Material name"), ("uom", "", "UOM"), ("qty", "0", "quantity"), ("rate", "0", "rate")):
@@ -86,6 +101,24 @@ class ConsumptionFirm1Tests(unittest.TestCase):
                 self.assertIn(normalized_name, params)
                 self.assertIn(short_name, params)
                 self.assertIn("tallyPortNo", query)
+
+    def test_existing_voucher_type_is_not_recreated(self):
+        with patch.object(
+            mfjFirm1,
+            "create_voucher_type",
+            side_effect=RuntimeError("Cannot change Type of Voucher!"),
+        ) as create:
+            sync.ensure_voucher_type(9001, "Unit-I", sync.VOUCHER_TYPE, 1)
+        create.assert_called_once_with(9001, "Unit-I", sync.VOUCHER_TYPE, 1)
+
+    def test_unrelated_voucher_type_errors_are_preserved(self):
+        with patch.object(
+            mfjFirm1,
+            "create_voucher_type",
+            side_effect=RuntimeError("Tally connection failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "Tally connection failed"):
+                sync.ensure_voucher_type(9001, "Unit-I", sync.VOUCHER_TYPE, 1)
 
     def test_register_lookup_matches_consumption_number(self):
         voucher = "<VOUCHER VCHTYPE='Consumption Journal'><VOUCHERNUMBER>CON/26-27/1</VOUCHERNUMBER></VOUCHER>"

@@ -220,7 +220,10 @@ def ensure_voucher_type(port, company, voucher_type, timeout):
     try:
         create_voucher_type(port, company, voucher_type, timeout)
     except RuntimeError as exc:
-        if not any(text in str(exc).lower() for text in ("already exist", "duplicate entry")):
+        if not any(
+            text in str(exc).lower()
+            for text in ("already exist", "duplicate entry", "cannot change type of voucher")
+        ):
             raise
 
 
