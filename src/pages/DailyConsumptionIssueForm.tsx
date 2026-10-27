@@ -1,11 +1,9 @@
 import { Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
-import { useData } from "../hooks/useData";
-import { generateTransactionNo } from "../lib/serial";
-import { Firm, Material, MaterialIssue, MaterialIssueLine } from "../types";
-import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
+import { Firm, Material } from "../types";
 
 type ConsumptionLine = {
   id: string;
@@ -16,8 +14,6 @@ type ConsumptionLine = {
 export function DailyConsumptionIssueForm() {
   const [materials] = useData<Material>("materials", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [firmId, setFirmId] = useState("");
@@ -26,6 +22,21 @@ export function DailyConsumptionIssueForm() {
   const [currentQty, setCurrentQty] = useState<number | "">("");
   const [lines, setLines] = useState<ConsumptionLine[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [existingCount, setExistingCount] = useState(0);
+
+  useEffect(() => {
+    if (!firmId || !date) { setExistingCount(0); return; }
+    const controller = new AbortController();
+    const params = new URLSearchParams({ page: "1", pageSize: "1", date, firmId });
+    fetch(`/api/daily-consumptions?${params.toString()}`, { headers: getDataAuthHeaders(false), signal: controller.signal })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(String(body?.error || response.statusText));
+        setExistingCount(Number(body.total) || 0);
+      })
+      .catch((error) => { if ((error as Error).name !== "AbortError") setExistingCount(0); });
+    return () => controller.abort();
+  }, [date, firmId]);
 
   const materialOptions = useMemo(
     () =>
@@ -37,11 +48,6 @@ export function DailyConsumptionIssueForm() {
           label: `${material.name}${material.erpCode ? ` (${material.erpCode})` : ""}`,
         })),
     [materials]
-  );
-
-  const generalIssuesForDate = useMemo(
-    () => materialIssues.filter((issue) => !isAutoProductionInterFirmIssue(issue) && issue.issueType === "General" && (issue.date || "").split("T")[0] === date && issue.firmId === firmId),
-    [materialIssues, date, firmId]
   );
 
   const getMaterial = (materialId: string) => materials.find((material) => material.id === materialId);
@@ -61,55 +67,42 @@ export function DailyConsumptionIssueForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!date || !firmId || lines.length === 0) return;
-    if (generalIssuesForDate.length > 0) {
+    if (existingCount > 0) {
       alert("Daily Consumption (General) issue already exists for this date.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const timestamp = new Date().toISOString();
-      const issueId = crypto.randomUUID();
-      const issueNo = generateTransactionNo(
-        "MIS",
-        materialIssues.map((row) => ({ transactionNo: row.issueNo, date: row.date })),
-        date
-      );
-      const issue: MaterialIssue = {
-        id: issueId,
-        firmId,
-        firmName: firms.find((firm) => firm.id === firmId)?.firmName || "",
-        issueNo,
-        date,
-        issueType: "General",
-        remarks: remarks.trim() || undefined,
-        tallyPostingStatus: "Pending",
-        updatedBy: "System User",
-        updateTimestamp: timestamp,
-      };
-
-      const createdLines: MaterialIssueLine[] = lines.map((line) => {
+      const response = await fetch("/api/material-issues/daily-upsert", {
+        method: "POST",
+        headers: { ...getDataAuthHeaders(false), "Content-Type": "application/json" },
+        body: JSON.stringify({
+          issue: { id: crypto.randomUUID(), firmId, date, issueType: "General", remarks: remarks.trim(), tallyPostingStatus: "Pending", updatedBy: "System User" },
+          lines: lines.map((line) => {
         const material = getMaterial(line.materialId);
         return {
           id: crypto.randomUUID(),
-          materialIssueId: issueId,
           materialId: line.materialId,
           qty: Number(Number(line.qty || 0).toFixed(2)),
           uom: material?.uom || "",
           updatedBy: "System User",
-          updateTimestamp: timestamp,
+            updateTimestamp: new Date().toISOString(),
         };
+          }),
+          reelLines: [],
+        }),
       });
-
-      const saveResult = await setMaterialIssues([issue, ...materialIssues]) as { issue?: { consumptionTransactionNo?: string }; consumptionTransactionNo?: string } | undefined;
-      await setMaterialIssueLines([...materialIssueLines, ...createdLines]);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(result?.error || response.statusText || "Failed to save Daily Consumption."));
+      const savedIssue = result?.issue || {};
 
       setDate(new Date().toISOString().split("T")[0]);
       setRemarks("");
       setCurrentMaterialId("");
       setCurrentQty("");
       setLines([]);
-      alert(`Daily Consumption saved with Issue No: ${issueNo} | Consumption No: ${saveResult?.issue?.consumptionTransactionNo || saveResult?.consumptionTransactionNo || "Generated by server"}`);
+      alert(`Daily Consumption saved with Issue No: ${savedIssue.issueNo || "Generated by server"} | Consumption No: ${savedIssue.consumptionTransactionNo || "Generated by server"}`);
     } catch (error) {
       console.error("Failed to save daily consumption issue:", error);
       alert("Failed to save daily consumption issue.");
@@ -137,7 +130,7 @@ export function DailyConsumptionIssueForm() {
             <input type="text" value="Generated on Submit" disabled className="w-full border-2 border-black rounded p-2 bg-slate-50 opacity-70" />
           </Field>
           <div className="md:col-span-2 rounded border border-black bg-slate-50 p-3 text-sm font-bold">
-            Daily Consumption (General) issues on {date}: {generalIssuesForDate.length}
+            Daily Consumption (General) issues on {date}: {existingCount}
           </div>
           <Field label="Remarks" className="md:col-span-2">
             <input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full border-2 border-black rounded p-2" />
@@ -185,7 +178,7 @@ export function DailyConsumptionIssueForm() {
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={isSubmitting || !firmId || lines.length === 0 || generalIssuesForDate.length > 0}
+            disabled={isSubmitting || !firmId || lines.length === 0 || existingCount > 0}
             className="min-w-[180px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 disabled:opacity-50"
           >
             {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save Daily Consumption"}

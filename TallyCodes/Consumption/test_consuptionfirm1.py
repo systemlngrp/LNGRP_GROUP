@@ -81,8 +81,8 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         connection.cursor.return_value.fetchall.return_value = []
         sync.get_rows(connection)
         query = connection.cursor.return_value.execute.call_args.args[0]
-        self.assertIn("material_issues", query)
-        self.assertIn("material_issue_lines", query)
+        self.assertIn("daily_consumptions", query)
+        self.assertIn("daily_consumption_items", query)
         self.assertIn("consumptionTransactionNo", query)
         self.assertIn("tallyTimestamp", query)
         self.assertIn("cancelled", query)
@@ -95,8 +95,8 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         query, params = connection.cursor.return_value.execute.call_args.args
         self.assertIn("WHERE LOWER(REPLACE", query)
         self.assertNotIn("LIMIT 1", query)
-        self.assertIn("JOIN material_issue_lines mil ON mil.materialIssueId = mi.id", query)
-        self.assertIn("ORDER BY mi.date, mi.id, mil.id", query)
+        self.assertIn("JOIN daily_consumption_items dci ON dci.dailyConsumptionId = dc.id", query)
+        self.assertIn("ORDER BY dc.date, dc.id, dci.id", query)
         self.assertEqual(params, ("2026-10-17", "CON/1"))
 
     def test_firm_port_lookup_uses_firm_specific_identifiers(self):

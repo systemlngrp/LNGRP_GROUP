@@ -139,32 +139,31 @@ def get_port_and_company(connection, firm_number=1):
 
 def get_rows(connection, date_filter=None, transaction_filter=None, retry=False):
     clauses = [
-        "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(mi.issueType, '')), '_', ' '), '-', ' '), '  ', ' ')) IN ('general', 'without job', 'withoutjob')",
-        "COALESCE(TRIM(mi.consumptionTransactionNo), '') <> ''",
-        "COALESCE(TRIM(mi.tallyTimestamp), '') = ''",
-        "LOWER(TRIM(COALESCE(mi.tallyPostingStatus, ''))) NOT IN ('cancelled', 'not applicable')",
+        "LOWER(REPLACE(REPLACE(REPLACE(TRIM(COALESCE(dc.issueType, '')), '_', ' '), '-', ' '), '  ', ' ')) IN ('general', 'without job', 'withoutjob')",
+        "COALESCE(TRIM(dc.consumptionTransactionNo), '') <> ''",
+        "COALESCE(TRIM(dc.tallyTimestamp), '') = ''",
+        "LOWER(TRIM(COALESCE(dc.tallyPostingStatus, ''))) NOT IN ('cancelled', 'not applicable')",
     ]
     if not retry:
-        clauses.append("LOWER(TRIM(COALESCE(mi.tallyPostingStatus, ''))) NOT IN ('posted', 'completed')")
+        clauses.append("LOWER(TRIM(COALESCE(dc.tallyPostingStatus, ''))) NOT IN ('posted', 'completed')")
     params = []
     if date_filter:
-        clauses.append("mi.date = %s")
+        clauses.append("dc.date = %s")
         params.append(date_filter)
     if transaction_filter:
-        clauses.append("CAST(mi.consumptionTransactionNo AS CHAR) = %s")
+        clauses.append("CAST(dc.consumptionTransactionNo AS CHAR) = %s")
         params.append(transaction_filter)
-    sql = f"""SELECT mi.id AS issueId, mi.issueNo, mi.consumptionTransactionNo,
-        mi.date, mi.issueType, mi.jobNo, mi.remarks, mi.tallyPostingStatus,
-        mil.id AS lineId, mil.materialId, mil.qty, mil.uom,
-        COALESCE(NULLIF(mil.rate, 0), NULLIF(mil.lastPurchaseRate, 0),
-                 NULLIF(m.openingRate, 0),
-                 NULLIF(m.openingValue, 0) / NULLIF(m.openingQty, 0), 0) AS rate,
-        mil.amount, m.name AS materialName, m.erpCode AS materialErp
-        FROM material_issues mi
-        JOIN material_issue_lines mil ON mil.materialIssueId = mi.id
-        LEFT JOIN materials m ON m.id = mil.materialId
+    sql = f"""SELECT dc.id AS issueId, dc.issueNo, dc.consumptionTransactionNo,
+        dc.date, dc.issueType, dc.jobNo, dc.remarks, dc.tallyPostingStatus,
+        dci.id AS lineId, dci.materialId, dci.qty, dci.uom,
+        COALESCE(NULLIF(dci.rate, 0), NULLIF(dci.lastPurchaseRate, 0),
+                 NULLIF(dci.openingRate, 0), 0) AS rate,
+        dci.amount, m.name AS materialName, m.erpCode AS materialErp
+        FROM daily_consumptions dc
+        JOIN daily_consumption_items dci ON dci.dailyConsumptionId = dc.id
+        LEFT JOIN materials m ON m.id = dci.materialId
         WHERE {' AND '.join(clauses)}
-        ORDER BY mi.date, mi.id, mil.id"""
+        ORDER BY dc.date, dc.id, dci.id"""
     cursor = connection.cursor()
     cursor.execute(sql, tuple(params))
     rows = dict_rows(cursor, cursor.fetchall())
@@ -299,7 +298,7 @@ def save_result(connection, issue_id, result, timestamp, voucher_date=None, firm
     status = str(result.get("status") or "Failed")
     posted = status.lower() == "posted"
     cursor.execute(
-        """UPDATE material_issues SET tallyTimestamp=%s, tallyPostingStatus=%s,
+        """UPDATE daily_consumptions SET tallyTimestamp=%s, tallyPostingStatus=%s,
            tallyVoucherNo=%s, tallyVoucherDate=%s, tallyVoucherType=%s,
            tallyPostingRemark=%s, tallyPostingError=%s, tallyLastAttemptAt=%s,
            tallyPostingAttemptCount=COALESCE(tallyPostingAttemptCount, 0) + 1
