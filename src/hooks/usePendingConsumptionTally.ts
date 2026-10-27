@@ -5,6 +5,8 @@ import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
 
 export type PendingTallyRow = {
   id: string;
+  firmId?: string | null;
+  firmName?: string | null;
   issueNo?: string;
   consumptionTransactionNo?: string;
   date?: string;

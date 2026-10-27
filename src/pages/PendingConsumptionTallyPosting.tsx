@@ -72,6 +72,7 @@ export function PendingConsumptionTallyPosting() {
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase">Issue No</th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Firm</th>
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase">Consumption No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
                 <th className="px-4 py-3 text-right text-xs font-bold uppercase">No. of Items</th>
@@ -84,9 +85,9 @@ export function PendingConsumptionTallyPosting() {
             </thead>
             <tbody className="divide-y divide-black">
               {loading && rows.length === 0 ? (
-                <tr><td colSpan={9} className="px-6 py-8 text-center font-medium text-slate-600">Loading pending Consumption Tally posting…</td></tr>
+                <tr><td colSpan={10} className="px-6 py-8 text-center font-medium text-slate-600">Loading pending Consumption Tally posting…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={9} className="px-6 py-8 text-center font-medium text-slate-600">No pending Consumption Tally posting rows found.</td></tr>
+                <tr><td colSpan={10} className="px-6 py-8 text-center font-medium text-slate-600">No pending Consumption Tally posting rows found.</td></tr>
               ) : rows.map((row) => {
                 const isExpanded = expandedIssueId === row.id;
                 const lines = linesByIssueId[row.id] || [];
@@ -99,6 +100,7 @@ export function PendingConsumptionTallyPosting() {
                           <span>{row.issueNo || row.id}</span>
                         </button>
                       </td>
+                      <td className="px-4 py-3 text-sm">{row.firmName || row.firmId || "-"}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-indigo-700">{row.consumptionTransactionNo || row.issueNo || "-"}</td>
                       <td className="px-4 py-3 text-sm">{formatDate(row.date) || "-"}</td>
                       <td className="px-4 py-3 text-right text-sm font-black text-slate-800">{Number(row.itemCount || 0).toLocaleString()}</td>
@@ -114,7 +116,7 @@ export function PendingConsumptionTallyPosting() {
                     </tr>
                     {isExpanded ? (
                       <tr className="bg-slate-50">
-                        <td colSpan={9} className="border-t border-black px-3 py-2">
+                        <td colSpan={10} className="border-t border-black px-3 py-2">
                           <div className="overflow-hidden rounded border border-black bg-white">
                             {lineLoadingId === row.id ? <div className="px-3 py-4 text-center text-sm text-slate-600">Loading item details…</div> : (
                               detailError ? <div className="px-3 py-4 text-center text-sm font-semibold text-red-700">{detailError}</div> :

@@ -15142,10 +15142,12 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
         const total = Number(countRows[0]?.total || 0);
         const offset = (page - 1) * pageSize;
         const [rows] = await db.query(`SELECT mi.*,
+          COALESCE(NULLIF(TRIM(mi.firmName), ''), NULLIF(TRIM(f.firmName), '')) AS resolvedFirmName,
           COALESCE(lineSummary.itemCount, 0) AS itemCount,
           COALESCE(lineSummary.totalValue, 0) AS totalValue,
           COALESCE(lineSummary.itemNames, '') AS itemNames
        FROM material_issues mi
+       LEFT JOIN firms f ON f.id = mi.firmId
        LEFT JOIN (
          SELECT mil.materialIssueId,
            COUNT(*) AS itemCount,
@@ -15166,7 +15168,12 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
             total,
             rows: rows.length,
         });
-        return res.json({ rows, total, page, pageSize });
+        const responseRows = rows.map((row) => ({
+            ...row,
+            firmName: String(row.resolvedFirmName || row.firmName || "").trim() || null,
+            resolvedFirmName: undefined,
+        }));
+        return res.json({ rows: responseRows, total, page, pageSize });
     }
     catch (error) {
         console.error("[DB] Pending Consumption Tally lookup failed:", error);

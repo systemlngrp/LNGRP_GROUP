@@ -12,8 +12,8 @@ function toDateOnly(value?: string) {
 export function DailyConsumptionMaster() {
   const [materials] = useData<Material>("materials", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
+  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
 
   const [date, setDate] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
