@@ -15127,6 +15127,11 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
         ? ` AND (
         LOWER(CONCAT_WS(' ', mi.issueNo, mi.consumptionTransactionNo, mi.date, mi.remarks, mi.tallyPostingStatus, mi.tallyPostingRemark, mi.tallyPostingError)) LIKE ?
         OR EXISTS (
+          SELECT 1 FROM firms searchFirm
+          WHERE searchFirm.id = mi.firmId
+            AND LOWER(COALESCE(searchFirm.firmName, '')) LIKE ?
+        )
+        OR EXISTS (
           SELECT 1 FROM material_issue_lines searchMil
           LEFT JOIN materials searchMaterial ON searchMaterial.id = searchMil.materialId
           WHERE searchMil.materialIssueId = mi.id
@@ -15134,7 +15139,7 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
         )
       )`
         : "";
-    const searchParams = search ? [`%${search}%`, `%${search}%`] : [];
+    const searchParams = search ? [`%${search}%`, `%${search}%`, `%${search}%`] : [];
     const where = `WHERE ${pendingDailyTallyWhere("mi")}${searchClause}`;
     res.setHeader("Cache-Control", "no-store");
     try {
@@ -15142,7 +15147,7 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
         const total = Number(countRows[0]?.total || 0);
         const offset = (page - 1) * pageSize;
         const [rows] = await db.query(`SELECT mi.*,
-          COALESCE(NULLIF(TRIM(mi.firmName), ''), NULLIF(TRIM(f.firmName), '')) AS resolvedFirmName,
+          NULLIF(TRIM(f.firmName), '') AS resolvedFirmName,
           COALESCE(lineSummary.itemCount, 0) AS itemCount,
           COALESCE(lineSummary.totalValue, 0) AS totalValue,
           COALESCE(lineSummary.itemNames, '') AS itemNames
@@ -15170,7 +15175,8 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
         });
         const responseRows = rows.map((row) => ({
             ...row,
-            firmName: String(row.resolvedFirmName || row.firmName || "").trim() || null,
+            firmId: String(row.firmId || "").trim() || null,
+            firmName: String(row.resolvedFirmName || "").trim() || null,
             resolvedFirmName: undefined,
         }));
         return res.json({ rows: responseRows, total, page, pageSize });
