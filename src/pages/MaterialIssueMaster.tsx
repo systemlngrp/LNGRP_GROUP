@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, Material, Production } from "../types";
+import { MaterialIssue, MaterialIssueLine, MaterialIssueReelLine, Material } from "../types";
 import { Select } from "../components/Select";
 import { Trash2, Package, Layers, Disc, Search } from "lucide-react";
 import { formatDate } from "../lib/serial";
 import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
+import { ClientPagination } from "../components/ClientPagination";
 
 function isWithoutJobIssue(issueType?: string) {
   const t = String(issueType || "").trim().toLowerCase();
@@ -39,7 +40,6 @@ export function MaterialIssueMaster() {
   const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
   const [reelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", [], { firmScope: "all" });
-  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -92,6 +92,16 @@ export function MaterialIssueMaster() {
       .map((reelNo) => ({ value: reelNo, label: reelNo }));
   }, [reelLines]);
 
+  const reelLineIdsByIssueLineId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    reelLines.forEach((line) => {
+      const ids = map.get(line.materialIssueLineId) || new Set<string>();
+      ids.add(line.ourReelNo);
+      map.set(line.materialIssueLineId, ids);
+    });
+    return map;
+  }, [reelLines]);
+
   const processedData = useMemo(() => {
     const q = searchTerm.toLowerCase().trim();
 
@@ -128,7 +138,7 @@ export function MaterialIssueMaster() {
       // predates reel-detail tracking. Classifying only by the presence of a
       // child reel row caused these orphaned reel issues to appear as general
       // material movements.
-      .filter((line) => !reelLines.some((reel) => reel.materialIssueLineId === line.id))
+      .filter((line) => !reelLineIdsByIssueLineId.has(line.id))
       .filter((line) => String(materialMap.get(line.materialId)?.type || "").trim().toLowerCase() !== "reel")
       .map((line) => {
         const parent = issueMap.get(line.materialIssueId);
@@ -142,10 +152,7 @@ export function MaterialIssueMaster() {
           remarks: parent.remarks,
           materialName: material?.name || "Unknown Material",
           issueType: parent.issueType,
-          reelNos: reelLines
-            .filter((reel) => reel.materialIssueLineId === line.id)
-            .map((reel) => reel.ourReelNo)
-            .join(" "),
+          reelNos: Array.from(reelLineIdsByIssueLineId.get(line.id) || []).join(" "),
         };
       })
       .filter(Boolean)
@@ -219,7 +226,25 @@ export function MaterialIssueMaster() {
       reelDetails: finalReelDetails,
       metrics,
     };
-  }, [materialIssues, operationalIssueIds, issueLines, reelLines, materialMap, issueLineMap, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter]);
+  }, [materialIssues, operationalIssueIds, issueLines, reelLines, reelLineIdsByIssueLineId, materialMap, issueLineMap, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter]);
+
+  const activeRows = activeTab === "general"
+    ? processedData.general
+    : activeTab === "reel-summary"
+      ? processedData.reelSummary
+      : processedData.reelDetails;
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
+  const totalPages = Math.max(1, Math.ceil(activeRows.length / pageSize));
+  const paginatedRows = activeRows.slice((page - 1) * pageSize, page * pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter, pageSize]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const handleDelete = (id: string) => {
     if (deletingId !== id) {
@@ -230,9 +255,6 @@ export function MaterialIssueMaster() {
     setMaterialIssues((prev) => prev.filter((row) => row.id !== id));
     setDeletingId(null);
   };
-
-  const getJobDate = (productionId?: string) =>
-    productions.find((p) => p.id === productionId)?.date || "";
 
   return (
     <div className="space-y-6">
@@ -360,7 +382,7 @@ export function MaterialIssueMaster() {
                     <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No general material issues found.</td>
                   </tr>
                 ) : (
-                  processedData.general.map((row) => (
+                  paginatedRows.map((row: any) => (
                     <tr key={row.id} className="divide-x divide-black hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-sm font-bold text-indigo-700">{row.issueNo}</td>
                       <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
@@ -395,7 +417,7 @@ export function MaterialIssueMaster() {
                     <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No reel issues found.</td>
                   </tr>
                 ) : (
-                  processedData.reelSummary.map((row, idx) => (
+                  paginatedRows.map((row: any, idx) => (
                     <tr key={idx} className="divide-x divide-black hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-sm font-bold text-emerald-700">{row.issueNo}</td>
                       <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
@@ -430,7 +452,7 @@ export function MaterialIssueMaster() {
                     <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No reel details found.</td>
                   </tr>
                 ) : (
-                  processedData.reelDetails.map((row) => (
+                  paginatedRows.map((row: any) => (
                     <tr key={row.id} className="divide-x divide-black hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-3 text-sm font-bold text-amber-700">{row.issueNo}</td>
                       <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
@@ -446,6 +468,14 @@ export function MaterialIssueMaster() {
             </table>
           )}
         </div>
+        <ClientPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={activeRows.length}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[50, 100, 250]}
+        />
       </div>
     </div>
   );

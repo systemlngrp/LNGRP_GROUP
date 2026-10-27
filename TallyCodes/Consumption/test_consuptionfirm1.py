@@ -69,6 +69,24 @@ class ConsumptionFirm1Tests(unittest.TestCase):
         self.assertIn("cancelled", query)
         self.assertIn("not applicable", query)
 
+    def test_firm_port_lookup_uses_firm_specific_identifiers(self):
+        cases = (
+            (1, "uniti", "LNCB-1"),
+            (2, "unitii", "LNCB-2"),
+            (3, "laxminarayankraftindustries", "LNKI"),
+        )
+        for firm_number, normalized_name, short_name in cases:
+            with self.subTest(firm_number=firm_number):
+                connection = Mock()
+                cursor = connection.cursor.return_value
+                cursor.fetchall.return_value = [{"firmName": "Configured Firm", "tallyPortNo": "9002"}]
+                port, company = sync.get_port_and_company(connection, firm_number)
+                query, params = cursor.execute.call_args.args
+                self.assertEqual((port, company), ("9002", "Configured Firm"))
+                self.assertIn(normalized_name, params)
+                self.assertIn(short_name, params)
+                self.assertIn("tallyPortNo", query)
+
     def test_register_lookup_matches_consumption_number(self):
         voucher = "<VOUCHER VCHTYPE='Consumption Journal'><VOUCHERNUMBER>CON/26-27/1</VOUCHERNUMBER></VOUCHER>"
         with patch.object(sync.urllib.request, "urlopen", return_value=io.BytesIO(register_response(voucher).encode())):

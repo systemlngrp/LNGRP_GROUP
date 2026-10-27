@@ -163,7 +163,6 @@ export function Materials() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const reelMaterialFileInputRef = useRef<HTMLInputElement>(null);
   const otherMaterialFileInputRef = useRef<HTMLInputElement>(null);
-  const hasNormalizedExistingReelNamesRef = useRef(false);
 
   const reelGroup = useMemo(
     () => materialGroups.find((group) => group.name.trim().toLowerCase() === "reel") || null,
@@ -664,47 +663,6 @@ export function Materials() {
       }))
       .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }));
   }, [editingId, formData.erpCode, formData.firmId, formData.type, materialIn, materials, packingSlips]);
-
-  useEffect(() => {
-    if (hasNormalizedExistingReelNamesRef.current) return;
-    if (materials.length === 0) return;
-
-    const timestamp = new Date().toISOString();
-    let hasChanges = false;
-
-    const nextMaterials = materials.map((material) => {
-      if (material.type !== "Reel") return material;
-
-      const erpCode = String(material.erpCode || "").trim();
-      const color = String(material.color || "").trim();
-      const size = Number(material.size);
-      const gsm = Number(material.gsm);
-      const bf = Number(material.bf);
-
-      if (!erpCode || !color || !Number.isFinite(size) || !Number.isFinite(gsm) || !Number.isFinite(bf)) {
-        return material;
-      }
-
-      const expectedName = getReelDisplayName(erpCode, size, gsm, bf, color);
-      if (material.name === expectedName) return material;
-
-      hasChanges = true;
-      return {
-        ...material,
-        name: expectedName,
-        updatedBy: "System User",
-        updateTimestamp: timestamp,
-      };
-    });
-
-    hasNormalizedExistingReelNamesRef.current = true;
-    if (!hasChanges) return;
-
-    void setMaterials(nextMaterials).catch((error) => {
-      console.error("Failed to normalize existing reel material names:", error);
-      hasNormalizedExistingReelNamesRef.current = false;
-    });
-  }, [materials, setMaterials]);
 
   useEffect(() => {
     setPage(1);

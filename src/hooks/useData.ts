@@ -112,6 +112,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
 
     isFetchingRef.current = true;
     const generation = ++requestGenerationRef.current;
+    const startedAt = performance.now();
     try {
       if (!background) {
         setLoading(true);
@@ -138,6 +139,10 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       forbiddenUntilRef.current = 0;
       setError(null);
       lastFetchAtRef.current = Date.now();
+      const elapsedMs = Math.round(performance.now() - startedAt);
+      if (elapsedMs >= 1000) {
+        console.warn(`[useData:${entity}] slow load`, { endpoint, elapsedMs, rows: finalData.length });
+      }
       if (shouldCacheToLocalStorage) {
         safeSetLocalStorage(storageKey, JSON.stringify(finalData));
       }
