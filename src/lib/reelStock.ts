@@ -94,6 +94,32 @@ export function buildReelStockRows({
   const firmMap = new Map(firms.map((firm) => [firm.id, firm]));
   const filteredIssueLines = issueReelLines.filter(includeIssueLine);
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
+  const issueLinesByPackingSlipId = new Map<string, MaterialIssueReelLine[]>();
+  filteredIssueLines.forEach((line) => {
+    const key = String(line.packingSlipId || "");
+    if (!key) return;
+    const rows = issueLinesByPackingSlipId.get(key) || [];
+    rows.push(line);
+    issueLinesByPackingSlipId.set(key, rows);
+  });
+  const returnLinesByPackingSlipId = new Map<string, MaterialReturnReelLine[]>();
+  filteredReturnLines.forEach((line) => {
+    const key = String(line.packingSlipId || "");
+    if (!key) return;
+    const rows = returnLinesByPackingSlipId.get(key) || [];
+    rows.push(line);
+    returnLinesByPackingSlipId.set(key, rows);
+  });
+  const getRelatedLines = <T,>(map: Map<string, T[]>, keys: string[]) => {
+    const rows: T[] = [];
+    const seen = new Set<string>();
+    keys.forEach((key) => {
+      if (seen.has(key)) return;
+      seen.add(key);
+      rows.push(...(map.get(key) || []));
+    });
+    return rows;
+  };
   const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
 
   const explicitOpeningMaterialIds = new Set(
@@ -107,12 +133,8 @@ export function buildReelStockRows({
     .map((material, index) => {
       const openingQty = round2(Number(material.openingQty || 0));
       const openingRate = round2(Number(material.openingRate || 0));
-      const relatedIssueLines = filteredIssueLines.filter(
-        (line) => line.packingSlipId === material.id || line.packingSlipId === `opening-${material.id}`
-      );
-      const relatedReturnLines = filteredReturnLines.filter(
-        (line) => line.packingSlipId === material.id || line.packingSlipId === `opening-${material.id}`
-      );
+      const relatedIssueLines = getRelatedLines(issueLinesByPackingSlipId, [material.id, `opening-${material.id}`]);
+      const relatedReturnLines = getRelatedLines(returnLinesByPackingSlipId, [material.id, `opening-${material.id}`]);
       const issuedWeight = round2(relatedIssueLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
       const returnedWeight = round2(relatedReturnLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
       const netIssuedWeight = round2(issuedWeight - returnedWeight);
@@ -159,8 +181,8 @@ export function buildReelStockRows({
       const receiptLine =
         receipt?.lines.find((line) => line.id === slip.materialLineId) ||
         receipt?.lines.find((line) => line.itemId === slip.materialId);
-      const relatedIssueLines = filteredIssueLines.filter((line) => line.packingSlipId === slip.id);
-      const relatedReturnLines = filteredReturnLines.filter((line) => line.packingSlipId === slip.id);
+      const relatedIssueLines = getRelatedLines(issueLinesByPackingSlipId, [slip.id]);
+      const relatedReturnLines = getRelatedLines(returnLinesByPackingSlipId, [slip.id]);
       const issuedWeight = relatedIssueLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0);
       const returnedWeight = relatedReturnLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0);
       const reelQty = round2(Number(slip.weightKg || 0));

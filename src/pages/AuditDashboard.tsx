@@ -22,6 +22,8 @@ import type {
 import { cn } from "../lib/utils";
 import { formatDate } from "../lib/serial";
 import { ExcelExport } from "../components/ExcelExport";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 
 const ALL_DATA_DATE_RANGE = { from: "", to: "" };
 const ALL_DATA_RANGE_LABEL = "All Dates";
@@ -106,64 +108,105 @@ function normalizeAuditKey(value: unknown) {
   return String(value || "").trim();
 }
 
-function getAuditMfjAppQty(
-  item: Item,
+type AuditMfjIndex = {
+  productionIdsByItemKey: Map<string, Set<string>>;
+  productionIdsByErp: Map<string, Set<string>>;
+  productionQtyById: Map<string, number>;
+  productionIds: Set<string>;
+  productionJobNos: Set<string>;
+  issueIds: Set<string>;
+  returnIds: Set<string>;
+  issuedQtyByMaterialId: Map<string, number>;
+  returnedQtyByMaterialId: Map<string, number>;
+};
+
+function addToSetMap(map: Map<string, Set<string>>, key: string, value: string) {
+  if (!key) return;
+  const values = map.get(key) || new Set<string>();
+  values.add(value);
+  map.set(key, values);
+}
+
+function addToNumberMap(map: Map<string, number>, key: string, value: number) {
+  if (!key) return;
+  map.set(key, (map.get(key) || 0) + value);
+}
+
+function buildAuditMfjIndex(
   productions: Production[],
   materialIssues: MaterialIssue[],
   materialIssueLines: MaterialIssueLine[],
   materialReturns: MaterialReturn[],
   materialReturnLines: MaterialReturnLine[]
-) {
-  const itemIds = new Set(
-    [item.id, (item as any).npdId, (item as any).itemId]
-      .map((value) => normalizeAuditKey(value))
-      .filter(Boolean)
-  );
-  const itemErp = normalizeAuditKey(item.erp);
-  const countedProductionIds = new Set<string>();
-  const activeProductions = productions.filter((production) => !production.cancelTimestamp && production.status !== "Cancelled");
-  const productionIdSet = new Set(activeProductions.map((production) => normalizeAuditKey(production.id)).filter(Boolean));
-  const productionJobNoSet = new Set(activeProductions.map((production) => normalizeAuditKey(production.transactionNo)).filter(Boolean));
+): AuditMfjIndex {
+  const productionIdsByItemKey = new Map<string, Set<string>>();
+  const productionIdsByErp = new Map<string, Set<string>>();
+  const productionQtyById = new Map<string, number>();
+  const productionIds = new Set<string>();
+  const productionJobNos = new Set<string>();
 
-  const productionQty = activeProductions.reduce((sum, production) => {
-    const productionId = normalizeAuditKey(production.id);
-    if (productionId && countedProductionIds.has(productionId)) return sum;
-
-    const directItemMatch = [production.npdId, production.itemId].some((value) => itemIds.has(normalizeAuditKey(value)));
-    const masterErpMatch = Boolean(itemErp) && normalizeAuditKey(production.masterErp) === itemErp;
-    if (!directItemMatch && !masterErpMatch) return sum;
-
-    if (productionId) countedProductionIds.add(productionId);
-    return sum + Number(production.prodFromFFG || 0);
-  }, 0);
-
-  if (roundMoney(productionQty) !== 0) return roundMoney(productionQty);
+  productions
+    .filter((production) => !production.cancelTimestamp && production.status !== "Cancelled")
+    .forEach((production, index) => {
+      const productionId = normalizeAuditKey(production.id) || `row-${index}`;
+      productionIds.add(normalizeAuditKey(production.id));
+      const jobNo = normalizeAuditKey(production.transactionNo);
+      if (jobNo) productionJobNos.add(jobNo);
+      productionQtyById.set(productionId, Number(production.prodFromFFG || 0));
+      [production.npdId, production.itemId].forEach((value) => {
+        addToSetMap(productionIdsByItemKey, normalizeAuditKey(value), productionId);
+      });
+      addToSetMap(productionIdsByErp, normalizeAuditKey(production.masterErp), productionId);
+    });
 
   const isManufacturingEntry = (entry: { productionId?: string; jobNo?: string }) => {
     const productionId = normalizeAuditKey(entry.productionId);
-    if (productionId) return productionIdSet.has(productionId);
+    if (productionId) return productionIds.has(productionId);
     const jobNo = normalizeAuditKey(entry.jobNo);
-    return jobNo ? productionJobNoSet.has(jobNo) : false;
+    return jobNo ? productionJobNos.has(jobNo) : false;
   };
-  const issueIdSet = new Set(
+
+  const issueIds = new Set(
     materialIssues
       .filter((issue) => !isCancelledIssue(issue) && !isNotApplicableIssue(issue) && isManufacturingEntry(issue))
       .map((issue) => normalizeAuditKey(issue.id))
       .filter(Boolean)
   );
-  const returnIdSet = new Set(
+  const returnIds = new Set(
     materialReturns
       .filter(isManufacturingEntry)
       .map((entry) => normalizeAuditKey(entry.id))
       .filter(Boolean)
   );
-  const issuedQty = materialIssueLines
-    .filter((line) => issueIdSet.has(normalizeAuditKey(line.materialIssueId)) && itemIds.has(normalizeAuditKey(line.materialId)))
-    .reduce((sum, line) => sum + Number(line.qty || 0), 0);
-  const returnedQty = materialReturnLines
-    .filter((line) => returnIdSet.has(normalizeAuditKey(line.materialReturnId)) && itemIds.has(normalizeAuditKey(line.materialId)))
-    .reduce((sum, line) => sum + Number(line.qty || 0), 0);
+  const issuedQtyByMaterialId = new Map<string, number>();
+  materialIssueLines.forEach((line) => {
+    if (issueIds.has(normalizeAuditKey(line.materialIssueId))) {
+      addToNumberMap(issuedQtyByMaterialId, normalizeAuditKey(line.materialId), Number(line.qty || 0));
+    }
+  });
+  const returnedQtyByMaterialId = new Map<string, number>();
+  materialReturnLines.forEach((line) => {
+    if (returnIds.has(normalizeAuditKey(line.materialReturnId))) {
+      addToNumberMap(returnedQtyByMaterialId, normalizeAuditKey(line.materialId), Number(line.qty || 0));
+    }
+  });
 
+  return { productionIdsByItemKey, productionIdsByErp, productionQtyById, productionIds, productionJobNos, issueIds, returnIds, issuedQtyByMaterialId, returnedQtyByMaterialId };
+}
+
+function getAuditMfjAppQty(item: Item, index: AuditMfjIndex) {
+  const itemIds = [item.id, (item as any).npdId, (item as any).itemId]
+    .map((value) => normalizeAuditKey(value))
+    .filter(Boolean);
+  const itemKeys = new Set(itemIds);
+  const productionIds = new Set<string>();
+  itemKeys.forEach((key) => index.productionIdsByItemKey.get(key)?.forEach((id) => productionIds.add(id)));
+  index.productionIdsByErp.get(normalizeAuditKey(item.erp))?.forEach((id) => productionIds.add(id));
+  const productionQty = [...productionIds].reduce((sum, id) => sum + (index.productionQtyById.get(id) || 0), 0);
+  if (roundMoney(productionQty) !== 0) return roundMoney(productionQty);
+
+  const issuedQty = itemIds.reduce((sum, id) => sum + (index.issuedQtyByMaterialId.get(id) || 0), 0);
+  const returnedQty = itemIds.reduce((sum, id) => sum + (index.returnedQtyByMaterialId.get(id) || 0), 0);
   return roundMoney(issuedQty - returnedQty);
 }
 
@@ -308,6 +351,11 @@ export function AuditDashboard() {
     setTallyValues(getSnapshotValues(currentSnapshot));
     setFetchedAt(currentSnapshot?.updateTimestamp || "");
   }, [currentSnapshot]);
+
+  const auditMfjIndex = useMemo(
+    () => buildAuditMfjIndex(productions, materialIssues, materialIssueLines, materialReturns, materialReturnLines),
+    [materialIssueLines, materialIssues, materialReturnLines, materialReturns, productions]
+  );
 
   const appValues = useMemo(() => {
     const consumptionIssueIdSet = new Set(
@@ -480,45 +528,45 @@ export function AuditDashboard() {
     [negativeOpeningNpdRows]
   );
 
-  const npdItemStockMismatchExcelRows = useMemo(
-    () =>
-      npdItems
-        .filter((item) => {
-          const appStock = roundMoney(Number(item.balance || 0));
-          const tallyStock = roundMoney(Number(item.tallyStock || 0));
-          const mfjApp = getAuditMfjAppQty(item, productions, materialIssues, materialIssueLines, materialReturns, materialReturnLines);
-          const mfgTally = roundMoney(firstNumber(item.TallyMFJQty, item.tallyMFJQty));
-          const salesApp = getBillingSalesQty(item);
-          const salesTally = roundMoney(firstNumber(item.TallySalesQty, item.tallySalesQty)); return (
-            roundMoney(tallyStock - appStock) !== 0 ||
-            roundMoney(mfgTally - mfjApp) !== 0 ||
-            roundMoney(salesTally - salesApp) !== 0
-          );
-        })
-        .map((item) => {
-          const opening = roundMoney(Number(item.opening || 0));
-          const mfjApp = getAuditMfjAppQty(item, productions, materialIssues, materialIssueLines, materialReturns, materialReturnLines);
-          const mfgTally = roundMoney(firstNumber(item.TallyMFJQty, item.tallyMFJQty));
-          const salesApp = getBillingSalesQty(item);
-          const salesTally = roundMoney(firstNumber(item.TallySalesQty, item.tallySalesQty));
-          const appStock = roundMoney(Number(item.balance || 0));
-          const tallyStock = roundMoney(Number(item.tallyStock || 0));
-          const diff = roundMoney(tallyStock - appStock);
+  const npdItemStockMismatchRows = useMemo(() => npdItems.map((item) => {
+    const opening = roundMoney(Number(item.opening || 0));
+    const mfjApp = getAuditMfjAppQty(item, auditMfjIndex);
+    const mfgTally = roundMoney(firstNumber(item.TallyMFJQty, item.tallyMFJQty));
+    const salesApp = getBillingSalesQty(item);
+    const salesTally = roundMoney(firstNumber(item.TallySalesQty, item.tallySalesQty));
+    const appStock = roundMoney(Number(item.balance || 0));
+    const tallyStock = roundMoney(Number(item.tallyStock || 0));
+    const difference = roundMoney(tallyStock - appStock);
+    return {
+      id: String(item.id || item.erp || item.name || ""),
+      itemName: String(item.name || ""),
+      opening,
+      mfjApp,
+      mfgTally,
+      salesApp,
+      salesTally,
+      appStock,
+      tallyStock,
+      difference,
+      mfjMismatch: roundMoney(mfgTally - mfjApp) !== 0,
+      salesMismatch: roundMoney(salesTally - salesApp) !== 0,
+    };
+  }).filter((row) => row.difference !== 0 || row.mfjMismatch || row.salesMismatch), [auditMfjIndex, npdItems]);
 
-          return {
-            "Item Name": item.name,
-            Opening: opening,
-            "MFJ App": mfjApp,
-            "MFG Tally": mfgTally,
-            "Sales App": salesApp,
-            "Sales Tally": salesTally,
-            "App Stock (Balance)": appStock,
-            "Tally Stock": tallyStock,
-            Difference: diff,
-            Status: "DIFFERENCE",
-          };
-        }),
-    [materialIssueLines, materialIssues, materialReturnLines, materialReturns, npdItems, productions]
+  const npdItemStockMismatchExcelRows = useMemo(
+    () => npdItemStockMismatchRows.map((row) => ({
+      "Item Name": row.itemName,
+      Opening: row.opening,
+      "MFJ App": row.mfjApp,
+      "MFG Tally": row.mfgTally,
+      "Sales App": row.salesApp,
+      "Sales Tally": row.salesTally,
+      "App Stock (Balance)": row.appStock,
+      "Tally Stock": row.tallyStock,
+      Difference: row.difference,
+      Status: "DIFFERENCE",
+    })),
+    [npdItemStockMismatchRows]
   );
   const reelMaterialMismatchRows = useMemo<ReelMaterialMismatchRow[]>(() => {
     const reelStockRows = buildReelStockRows({
@@ -529,11 +577,17 @@ export function AuditDashboard() {
       returnReelLines,
       suppliers,
     });
+    const rowsByMaterialId = new Map<string, typeof reelStockRows>();
+    reelStockRows.forEach((row) => {
+      const rows = rowsByMaterialId.get(row.materialId) || [];
+      rows.push(row);
+      rowsByMaterialId.set(row.materialId, rows);
+    });
 
     return materials
       .filter((material) => material.type === "Reel")
       .map((material) => {
-        const materialRows = reelStockRows.filter((row) => row.materialId === material.id);
+        const materialRows = rowsByMaterialId.get(material.id) || [];
         const appStock = roundMoney(materialRows.reduce((sum, row) => sum + Number(row.availableWeight || 0), 0));
         const hasTallyStock = material.tallyStock != null;
         const tallyStock = hasTallyStock ? roundMoney(Number(material.tallyStock || 0)) : null;
@@ -576,6 +630,14 @@ export function AuditDashboard() {
       })),
     [reelMaterialMismatchRows]
   );
+
+  const negativeOpeningPagination = useClientPagination(negativeOpeningNpdRows, 25);
+  const npdMismatchPagination = useClientPagination(npdItemStockMismatchRows, 25);
+  const reelMismatchPagination = useClientPagination(reelMaterialMismatchRows, 25);
+
+  useEffect(() => { negativeOpeningPagination.setPage(1); }, [negativeOpeningNpdRows]);
+  useEffect(() => { npdMismatchPagination.setPage(1); }, [npdItemStockMismatchRows]);
+  useEffect(() => { reelMismatchPagination.setPage(1); }, [reelMaterialMismatchRows]);
 
   return (
     <div className="space-y-4">
@@ -677,7 +739,7 @@ export function AuditDashboard() {
                   </td>
                 </tr>
               ) : (
-                negativeOpeningNpdRows.map((row) => (
+                negativeOpeningPagination.paginatedItems.map((row) => (
                   <tr key={row.id} className="divide-x divide-slate-900 bg-red-50/50">
                     <td className="px-3 py-2 text-xs font-bold text-slate-900">{row.itemName || "-"}</td>
                     <td className="px-3 py-2 text-xs font-bold text-slate-900">{row.erp || "-"}</td>
@@ -695,24 +757,20 @@ export function AuditDashboard() {
             </tbody>
           </table>
         </div>
+        <ClientPagination
+          page={negativeOpeningPagination.page}
+          pageSize={negativeOpeningPagination.pageSize}
+          totalItems={negativeOpeningPagination.totalItems}
+          onPageChange={negativeOpeningPagination.setPage}
+          onPageSizeChange={negativeOpeningPagination.setPageSize}
+        />
       </section>
       <section className="overflow-hidden rounded-xl border-2 border-slate-900 bg-white shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
         <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-white border-b-2 border-slate-900 flex justify-between items-center gap-3">
           <span>NPD Item Stock Mismatch Breakdown (Tally Stock vs App Balance)</span>
           <div className="flex shrink-0 items-center gap-2">
             <span className="text-[10px] text-slate-300 font-normal">
-              Showing Mismatched Items ({npdItems.filter((item) => {
-              const appStock = roundMoney(Number(item.balance || 0));
-              const tallyStock = roundMoney(Number(item.tallyStock || 0));
-              const mfjApp = getAuditMfjAppQty(item, productions, materialIssues, materialIssueLines, materialReturns, materialReturnLines);
-              const mfgTally = roundMoney(firstNumber(item.TallyMFJQty, item.tallyMFJQty));
-              const salesApp = getBillingSalesQty(item);
-              const salesTally = roundMoney(firstNumber(item.TallySalesQty, item.tallySalesQty)); return (
-                roundMoney(tallyStock - appStock) !== 0 ||
-                roundMoney(mfgTally - mfjApp) !== 0 ||
-                roundMoney(salesTally - salesApp) !== 0
-              );
-            }).length})
+              Showing Mismatched Items ({npdItemStockMismatchRows.length})
             </span>
             <ExcelExport data={npdItemStockMismatchExcelRows} fileName="NPD_Item_Stock_Mismatch" sheetName="NPD Mismatch" className="h-7 border-white/40 bg-white px-2 py-0 text-[10px] text-slate-950 hover:bg-slate-100" />
           </div>
@@ -734,40 +792,18 @@ export function AuditDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-900 bg-white">
-              {npdItems
-                .filter((item) => {
-                  const appStock = roundMoney(Number(item.balance || 0));
-                  const tallyStock = roundMoney(Number(item.tallyStock || 0));
-                  const mfjApp = getAuditMfjAppQty(item, productions, materialIssues, materialIssueLines, materialReturns, materialReturnLines);
-                  const mfgTally = roundMoney(firstNumber(item.TallyMFJQty, item.tallyMFJQty));
-                  const salesApp = getBillingSalesQty(item);
-                  const salesTally = roundMoney(firstNumber(item.TallySalesQty, item.tallySalesQty)); return (
-                    roundMoney(tallyStock - appStock) !== 0 ||
-                    roundMoney(mfgTally - mfjApp) !== 0 ||
-                    roundMoney(salesTally - salesApp) !== 0
-                  );
-                })
-                .map((item, index) => {
-                  const opening = roundMoney(Number(item.opening || 0));
-                  const mfjApp = getAuditMfjAppQty(item, productions, materialIssues, materialIssueLines, materialReturns, materialReturnLines);
-                  const mfgTally = roundMoney(firstNumber(item.TallyMFJQty, item.tallyMFJQty));
-                  const salesApp = getBillingSalesQty(item);
-                  const salesTally = roundMoney(firstNumber(item.TallySalesQty, item.tallySalesQty));
-                  const mfjMismatch = roundMoney(mfgTally - mfjApp) !== 0;
-                  const salesMismatch = roundMoney(salesTally - salesApp) !== 0;
-                  const appStock = roundMoney(Number(item.balance || 0));
-                  const tallyStock = roundMoney(Number(item.tallyStock || 0));
-                  const diff = roundMoney(tallyStock - appStock); return (
-                    <tr key={item.id || index} className="divide-x divide-slate-900 bg-red-50/50">
-                      <td className="px-3 py-2 text-xs font-bold text-slate-900">{item.name}</td>
-                      <td className="px-3 py-2 text-right text-xs font-black text-slate-900">{formatMoney(opening)}</td>
-                      <td className={cn("px-3 py-2 text-right text-xs font-black text-indigo-800", mfjMismatch && "bg-red-100 text-red-800")}>{formatMoney(mfjApp)}</td>
-                      <td className={cn("px-3 py-2 text-right text-xs font-black text-slate-900", mfjMismatch && "bg-red-100 text-red-800")}>{formatMoney(mfgTally)}</td>
-                      <td className={cn("px-3 py-2 text-right text-xs font-black text-indigo-800", salesMismatch && "bg-red-100 text-red-800")}>{formatMoney(salesApp)}</td>
-                      <td className={cn("px-3 py-2 text-right text-xs font-black text-slate-900", salesMismatch && "bg-red-100 text-red-800")}>{formatMoney(salesTally)}</td>
-                      <td className="px-3 py-2 text-right text-xs font-black text-indigo-800">{formatMoney(appStock)}</td>
-                      <td className="px-3 py-2 text-right text-xs font-black text-slate-900">{formatMoney(tallyStock)}</td>
-                      <td className="px-3 py-2 text-right text-xs font-black text-red-700">{formatMoney(diff)}</td>
+              {npdMismatchPagination.paginatedItems.map((item) => {
+                  return (
+                    <tr key={item.id} className="divide-x divide-slate-900 bg-red-50/50">
+                      <td className="px-3 py-2 text-xs font-bold text-slate-900">{item.itemName}</td>
+                      <td className="px-3 py-2 text-right text-xs font-black text-slate-900">{formatMoney(item.opening)}</td>
+                      <td className={cn("px-3 py-2 text-right text-xs font-black text-indigo-800", item.mfjMismatch && "bg-red-100 text-red-800")}>{formatMoney(item.mfjApp)}</td>
+                      <td className={cn("px-3 py-2 text-right text-xs font-black text-slate-900", item.mfjMismatch && "bg-red-100 text-red-800")}>{formatMoney(item.mfgTally)}</td>
+                      <td className={cn("px-3 py-2 text-right text-xs font-black text-indigo-800", item.salesMismatch && "bg-red-100 text-red-800")}>{formatMoney(item.salesApp)}</td>
+                      <td className={cn("px-3 py-2 text-right text-xs font-black text-slate-900", item.salesMismatch && "bg-red-100 text-red-800")}>{formatMoney(item.salesTally)}</td>
+                      <td className="px-3 py-2 text-right text-xs font-black text-indigo-800">{formatMoney(item.appStock)}</td>
+                      <td className="px-3 py-2 text-right text-xs font-black text-slate-900">{formatMoney(item.tallyStock)}</td>
+                      <td className="px-3 py-2 text-right text-xs font-black text-red-700">{formatMoney(item.difference)}</td>
                       <td className="px-3 py-2">
                         <span className="inline-flex rounded-full border border-red-800 bg-red-50 px-2 py-0.5 text-[9px] font-black uppercase text-red-700">
                           DIFFERENCE
@@ -779,6 +815,13 @@ export function AuditDashboard() {
             </tbody>
           </table>
         </div>
+        <ClientPagination
+          page={npdMismatchPagination.page}
+          pageSize={npdMismatchPagination.pageSize}
+          totalItems={npdMismatchPagination.totalItems}
+          onPageChange={npdMismatchPagination.setPage}
+          onPageSizeChange={npdMismatchPagination.setPageSize}
+        />
       </section>
       <section className="overflow-hidden rounded-xl border-2 border-slate-900 bg-white shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
         <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-white border-b-2 border-slate-900 flex justify-between items-center gap-3">
@@ -814,7 +857,7 @@ export function AuditDashboard() {
                   </td>
                 </tr>
               ) : (
-                reelMaterialMismatchRows.map((row) => (
+                reelMismatchPagination.paginatedItems.map((row) => (
                   <tr key={row.materialId} className="divide-x divide-slate-900 bg-red-50/50">
                     <td className="px-3 py-2 text-xs font-bold text-slate-900">{row.erp || "-"}</td>
                     <td className="px-3 py-2 text-xs font-bold text-slate-900">{row.itemName || "-"}</td>
@@ -836,6 +879,13 @@ export function AuditDashboard() {
             </tbody>
           </table>
         </div>
+        <ClientPagination
+          page={reelMismatchPagination.page}
+          pageSize={reelMismatchPagination.pageSize}
+          totalItems={reelMismatchPagination.totalItems}
+          onPageChange={reelMismatchPagination.setPage}
+          onPageSizeChange={reelMismatchPagination.setPageSize}
+        />
       </section>
     </div>
   );
