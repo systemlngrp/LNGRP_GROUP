@@ -750,7 +750,7 @@ export interface MaterialIn {
   firmId?: string;
   firmName?: string;
   transactionNo: string;
-  mrrType?: "Reel" | "Others" | "Rejection In" | "FG Purchase" | "Service Return";
+  mrrType?: "Reel" | "Others" | "Rejection In" | "FG Purchase" | "Service Return" | "Direct Service";
   mrrSubType?: "Other RM" | "Spare parts" | "Others" | string;
   tallyLedgerName?: string;
   gateEntryId?: string;
@@ -791,6 +791,8 @@ export interface MaterialIn {
   expenseSGST?: number;
   expenseIGST?: number;
   roundOff?: number;
+  tdsAmount?: number;
+  netSupplierPayable?: number;
   totalAmount: number;
   lines: MaterialLine[];
   phTimestamp?: string;

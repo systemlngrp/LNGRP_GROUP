@@ -31,7 +31,7 @@ import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
 import { useNpdItems } from "../hooks/useNpdItems";
-import { applySupplyTypeTaxRates, normalizeInvoiceCurrency, recalculateMaterialLine, summarizeMaterialInLines } from "../lib/materialInTaxes";
+import { applySupplyTypeTaxRates, calculateNetSupplierPayable, normalizeInvoiceCurrency, normalizeTdsAmount, recalculateMaterialLine, summarizeMaterialInLines, validateTdsAmount } from "../lib/materialInTaxes";
 import { getGatePassLinesWithReturns } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
 import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/materialInPoMandatory";
@@ -199,6 +199,7 @@ export function MaterialInForm() {
   const [expenseSGST, setExpenseSGST] = useState<number | "">("");
   const [expenseIGST, setExpenseIGST] = useState<number | "">("");
   const [roundOff, setRoundOff] = useState<number | "">("");
+  const [tdsAmount, setTdsAmount] = useState<number | "">("");
 
   const [lines, setLines] = useState<MaterialLine[]>([]);
   const [currentItemId, setCurrentItemId] = useState("");
@@ -225,6 +226,7 @@ export function MaterialInForm() {
 
   const gateEntryId = searchParams.get("gateEntryId") || "";
   const editId = searchParams.get("edit") || "";
+  const directServiceRequested = searchParams.get("directService") === "1";
   const linkedGateEntry = useMemo(
     () => gateEntries.find((entry) => entry.id === gateEntryId),
     [gateEntries, gateEntryId]
@@ -265,10 +267,11 @@ export function MaterialInForm() {
   );
   const isFgType = mrrType === "Rejection In" || mrrType === "FG Purchase";
   const isServiceReturn = isReturnableReceiptFlow || mrrType === "Service Return";
+  const isDirectService = !linkedGateEntry && (directServiceRequested || mrrType === "Direct Service" || editingEntry?.mrrType === "Direct Service");
   const poMandatoryMrrTypes = useMemo(() => new Set(parsePoMandatoryMrrTypes(settings[0])), [settings]);
   const supportsPoSettingForCurrentMrrType = supportsPoMandatorySetting(mrrType);
   const isPoMandatoryForCurrentMrrType = supportsPoSettingForCurrentMrrType && poMandatoryMrrTypes.has(mrrType);
-  const showPoLineSelection = !isServiceReturn && (mrrType === "Others" || mrrType === "FG Purchase");
+  const showPoLineSelection = !isServiceReturn && !isDirectService && (mrrType === "Others" || mrrType === "FG Purchase");
   const normalizedInvoiceCurrency = normalizeInvoiceCurrency(invoiceCurrency);
   const isUsdInvoice = normalizedInvoiceCurrency === "USD";
   const numericExchangeRate = isUsdInvoice ? Number(exchangeRate || 0) : 0;
@@ -338,10 +341,10 @@ export function MaterialInForm() {
     [services]
   );
 
-  const activeItemOptions = isServiceReturn ? serviceOptions : materialOptions;
-  const activeItemLabel = isServiceReturn ? "Service" : isFgType ? "FG Item" : "Material";
-  const activeItemPlaceholder = isServiceReturn ? "Select Service..." : isFgType ? "Select Item..." : "Select Material...";
-  const activeItemSelectKey = isServiceReturn ? "service" : isFgType ? "fg" : mrrType === "Reel" ? "reel" : "material";
+  const activeItemOptions = isServiceReturn || isDirectService ? serviceOptions : materialOptions;
+  const activeItemLabel = isServiceReturn || isDirectService ? "Service" : isFgType ? "FG Item" : "Material";
+  const activeItemPlaceholder = isServiceReturn || isDirectService ? "Select Service..." : isFgType ? "Select Item..." : "Select Material...";
+  const activeItemSelectKey = isServiceReturn || isDirectService ? "service" : isFgType ? "fg" : mrrType === "Reel" ? "reel" : "material";
 
   const supplierOptions = useMemo(
     () => {
@@ -360,6 +363,7 @@ export function MaterialInForm() {
     { value: "Rejection In", label: "Rejection In" },
     { value: "FG Purchase", label: "FG Purchase" },
     { value: "Service Return", label: "Service Return" },
+    { value: "Direct Service", label: "Direct Service" },
   ];
 
   useEffect(() => {
@@ -369,6 +373,15 @@ export function MaterialInForm() {
   useEffect(() => {
     if (mrrType === "Reel" && unitOneFirm?.id) setFirmId(unitOneFirm.id);
   }, [mrrType, unitOneFirm?.id]);
+
+  useEffect(() => {
+    if (!editingEntry && directServiceRequested && !linkedGateEntry) {
+      setMrrType("Direct Service");
+      setLines([]);
+      setPackingSlipDrafts({});
+      resetLineDrafts();
+    }
+  }, [directServiceRequested, editingEntry, linkedGateEntry]);
 
   useEffect(() => {
     if (editingEntry) return;
@@ -416,6 +429,7 @@ export function MaterialInForm() {
     setExpenseSGST(editingEntry.expenseSGST ?? "");
     setExpenseIGST(editingEntry.expenseIGST ?? "");
     setRoundOff(editingEntry.roundOff ?? "");
+    setTdsAmount(editingEntry.tdsAmount ?? "");
     setLines((editingEntry.lines || []).map((line) => recalculateMaterialLine({ ...line }, { invoiceCurrency: loadedCurrency, exchangeRate: loadedCurrency === "USD" ? Number(editingEntry.exchangeRate || line.exchangeRate || 0) : undefined })));
 
     const existingPackingSlips = packingSlips.filter((row) => row.materialInId === editingEntry.id);
@@ -1104,6 +1118,8 @@ export function MaterialInForm() {
       ),
     [lines, insurance, otherCharges, roundOff, expenseCGST, expenseSGST, expenseIGST, normalizedInvoiceCurrency, numericExchangeRate, isUsdInvoice]
   );
+  const displayTdsAmount = isDirectService ? normalizeTdsAmount(tdsAmount, totalAmount) : 0;
+  const displayNetSupplierPayable = calculateNetSupplierPayable(totalAmount, displayTdsAmount);
 
   const getAllDraftSlips = () => Object.values(packingSlipDrafts).flat();
 
@@ -1189,6 +1205,46 @@ export function MaterialInForm() {
     if (!currentItemId) return;
     if (isUsdInvoice && (!numericExchangeRate || numericExchangeRate <= 0)) {
       alert("Exchange rate must be greater than 0 for USD invoices.");
+      return;
+    }
+
+    if (isDirectService) {
+      const service = services.find((entry) => entry.id === currentItemId && entry.active !== "No");
+      const amount = Number(currentInvoiceRate || 0);
+      if (!service || amount <= 0) {
+        alert("Select an active service and enter a service amount greater than 0.");
+        return;
+      }
+
+      const newLine = recalculateMaterialLine({
+        id: crypto.randomUUID(),
+        itemId: service.id,
+        itemName: service.name,
+        lineType: "Service",
+        serviceId: service.id,
+        serviceName: service.name,
+        qty: 1,
+        actualQty: 1,
+        invoiceQty: 1,
+        uom: "NOS",
+        invoiceCurrency: normalizedInvoiceCurrency,
+        exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+        ...(isUsdInvoice
+          ? { invoiceRateUsd: amount }
+          : { invoiceRate: amount }),
+        rate: amount,
+        value: amount,
+        gstRate: 0,
+        cgstRate: 0,
+        sgstRate: 0,
+        igstRate: 0,
+      }, {
+        invoiceCurrency: normalizedInvoiceCurrency,
+        exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+      });
+
+      setLines((prev) => [...prev, newLine]);
+      resetLineDrafts();
       return;
     }
 
@@ -2192,7 +2248,27 @@ export function MaterialInForm() {
     }
 
     const linesForSubmit =
-      mrrType === "Reel"
+      isDirectService
+        ? lines.map((line) => recalculateMaterialLine({
+            ...line,
+            lineType: "Service",
+            serviceId: line.serviceId || line.itemId,
+            serviceName: line.serviceName || line.itemName,
+            qty: 1,
+            invoiceQty: 1,
+            actualQty: 1,
+            uom: "NOS",
+            gstRate: 0,
+            cgstRate: 0,
+            sgstRate: 0,
+            igstRate: 0,
+            invoiceCurrency: normalizedInvoiceCurrency,
+            exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+          }, {
+            invoiceCurrency: normalizedInvoiceCurrency,
+            exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+          }))
+        : mrrType === "Reel"
         ? lines.map((line) => {
             const totalWeight = Number(
               (packingSlipDrafts[line.id] || []).reduce((sum, slip) => sum + Number(slip.weightKg || 0), 0).toFixed(2)
@@ -2331,6 +2407,16 @@ export function MaterialInForm() {
       }
     );
 
+    const normalizedTdsAmount = normalizeTdsAmount(tdsAmount, submitSummary.totalAmount);
+    if (isDirectService) {
+      const tdsError = validateTdsAmount(tdsAmount, submitSummary.totalAmount);
+      if (tdsError) {
+        alert(tdsError);
+        return;
+      }
+    }
+    const netSupplierPayable = calculateNetSupplierPayable(submitSummary.totalAmount, normalizedTdsAmount);
+
     setIsSubmitting(true);
     try {
       let transactionNo = editingEntry?.transactionNo || "";
@@ -2348,7 +2434,7 @@ export function MaterialInForm() {
           firmId,
           firmName: selectedFirm.firmName,
           transactionNo,
-          mrrType,
+          mrrType: isDirectService ? "Direct Service" : mrrType,
           ...(mrrType === "Others" ? {
             mrrSubType: normalizeMaterialInSubType(mrrSubType),
             tallyLedgerName: getMaterialInSubTypeLedger(mrrSubType),
@@ -2379,6 +2465,8 @@ export function MaterialInForm() {
           expenseSGST: submitSummary.expenseSGSTValue,
           expenseIGST: submitSummary.expenseIGSTValue,
           roundOff: submitSummary.roundOffValue,
+          tdsAmount: isDirectService ? normalizedTdsAmount : undefined,
+          netSupplierPayable: isDirectService ? netSupplierPayable : undefined,
           totalAmount: submitSummary.totalAmount,
           lines: submitSummary.lines,
           status: editingEntry?.status || "Pending PH",
@@ -2474,6 +2562,7 @@ export function MaterialInForm() {
       setExpenseSGST("");
       setExpenseIGST("");
       setRoundOff("");
+      setTdsAmount("");
       setLines([]);
       setPackingSlipDrafts({});
       setCurrentPoLineId("");
@@ -2520,7 +2609,7 @@ export function MaterialInForm() {
   return (
     <div className="bg-white p-6 rounded shadow-sm border border-black text-black">
       <h2 className="text-xl font-bold text-black mb-6 uppercase tracking-tight border-b border-black pb-2">
-        {editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
+        {isDirectService ? (editingEntry ? "Edit Direct Service MRR" : "Direct Service MRR") : editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
       </h2>
       <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
         {linkedGateEntry ? (
@@ -2867,7 +2956,9 @@ export function MaterialInForm() {
             <label className="font-bold text-black">
               MRR Type <span className="text-red-500">*</span>
             </label>
-            {linkedGateEntry?.purpose === "Returnable Receipt" ? (
+            {isDirectService ? (
+              <input value="Direct Service" disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
+            ) : linkedGateEntry?.purpose === "Returnable Receipt" ? (
               <input value="Service Return" disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
             ) : (
               <Select options={mrrTypeOptions} value={mrrType} onChange={handleMrrTypeChange} required />
@@ -3002,6 +3093,19 @@ export function MaterialInForm() {
               className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
             />
           </div>
+          {isDirectService ? (
+            <div className="flex flex-col space-y-1">
+              <label className="font-bold text-black">TDS Deduction</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={tdsAmount}
+                onChange={(e) => setTdsAmount(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
+              />
+            </div>
+          ) : null}
           <div className="md:col-span-2 text-xs text-slate-600">
             Expense GST follows the selected party supply type. For intrastate, CGST and SGST stay equal. For interstate, only IGST is allowed.
           </div>
@@ -3019,7 +3123,7 @@ export function MaterialInForm() {
 
         <div className="mt-6 border-t border-black pt-4">
           <h3 className="text-lg font-bold text-black mb-4 uppercase">
-            {isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
+            {isDirectService ? "Direct Service Lines" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
           </h3>
           <div className="flex flex-wrap gap-4 items-end mb-4 bg-slate-50 p-4 rounded border border-black">
             <div className="flex flex-col space-y-1 w-full md:w-80">
@@ -3082,7 +3186,7 @@ export function MaterialInForm() {
               </div>
             ) : null}
             <div className="flex flex-col space-y-1 w-full md:w-24">
-              <label className="text-sm font-bold text-black">{isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</label>
+              <label className="text-sm font-bold text-black">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</label>
               <input
                 type="number"
                 value={currentInvoiceRate || ""}
@@ -3102,12 +3206,12 @@ export function MaterialInForm() {
                 <table className="min-w-full divide-y divide-black border-collapse border border-black">
                   <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                     <tr className="divide-x divide-black">
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Service" : isFgType ? "Item" : "Material"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService || isServiceReturn ? "Service" : isFgType ? "Item" : "Material"}</th>
                       {isServiceReturn ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Returned Item</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Our PO No.</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">PO Rate</th> : null}
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? "Quantity" : isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GST %</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Invoice Value (INR)</th>
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">CGST %</th> : null}
@@ -3149,7 +3253,7 @@ export function MaterialInForm() {
                             <td className="px-4 py-3 text-sm text-black border border-black">{Number(line.poRate || 0).toFixed(2)}</td>
                           ) : null}
                           <td className="px-4 py-3 text-sm text-black border border-black">
-                            {mrrType === "Reel" ? Number(line.invoiceQty || 0).toFixed(2) : (
+                            {isDirectService ? "1" : mrrType === "Reel" ? Number(line.invoiceQty || 0).toFixed(2) : (
                               <input
                                 type="number"
                                 min="0"
@@ -3173,12 +3277,14 @@ export function MaterialInForm() {
                             />
                           </td>
                           <td className="px-4 py-3 text-sm text-black border border-black min-w-[220px]">
-                            <Select
-                              options={gstRateOptions}
-                              value={String(Number(line.gstRate || 0))}
-                              onChange={(value) => updateLine(line.id, { gstRate: Number(value || 0) })}
-                              placeholder="Select GST..."
-                            />
+                            {isDirectService ? "0" : (
+                              <Select
+                                options={gstRateOptions}
+                                value={String(Number(line.gstRate || 0))}
+                                onChange={(value) => updateLine(line.id, { gstRate: Number(value || 0) })}
+                                placeholder="Select GST..."
+                              />
+                            )}
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-black border border-black">{Number(line.invoiceValue || 0).toFixed(2)}</td>
                           {!isInterState ? (
@@ -3193,18 +3299,20 @@ export function MaterialInForm() {
                           ) : null}
                           {isInterState ? (
                             <td className="px-4 py-3 text-sm text-black border border-black">
-                              <input type="number" min="0" step="0.01" value={Number(line.igstRate || 0) > 0 ? line.igstRate : ""} onChange={(e) => updateLine(line.id, { igstRate: Number(e.target.value || 0) })} className="w-20 rounded border border-slate-300 px-2 py-1 text-sm" />
+                              {isDirectService ? "0" : <input type="number" min="0" step="0.01" value={Number(line.igstRate || 0) > 0 ? line.igstRate : ""} onChange={(e) => updateLine(line.id, { igstRate: Number(e.target.value || 0) })} className="w-20 rounded border border-slate-300 px-2 py-1 text-sm" />}
                             </td>
                           ) : null}
                           <td className="px-4 py-3 text-sm text-black border border-black">
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={(line.actualQty ?? line.qty) === 0 ? "" : (line.actualQty ?? line.qty)}
-                              onChange={(e) => updateLine(line.id, { actualQty: Number(e.target.value || 0) })}
-                              className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
-                            />
+                            {isDirectService ? "1" : (
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={(line.actualQty ?? line.qty) === 0 ? "" : (line.actualQty ?? line.qty)}
+                                onChange={(e) => updateLine(line.id, { actualQty: Number(e.target.value || 0) })}
+                                className="w-24 rounded border border-slate-300 px-2 py-1 text-sm"
+                              />
+                            )}
                           </td>
                           <td className="px-4 py-3 text-sm text-black border border-black">{line.uom}</td>
                           <td className="px-4 py-3 text-sm font-medium text-black border border-black">{Number(line.actualValue || line.value || 0).toFixed(2)}</td>
@@ -3357,7 +3465,13 @@ export function MaterialInForm() {
             <div>Expense SGST: <span className="text-slate-700">{expenseSGSTValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
             <div>Expense IGST: <span className="text-slate-700">{expenseIGSTValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
             <div>Round Off: <span className="text-slate-700">{roundOffValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Total Amount: <span className="text-emerald-700">{totalAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+            <div>Gross Total Amount: <span className="text-emerald-700">{totalAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+            {isDirectService ? (
+              <>
+                <div>TDS Deduction: <span className="text-rose-700">{displayTdsAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+                <div>Net Supplier Payable: <span className="text-indigo-700">{displayNetSupplierPayable.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+              </>
+            ) : null}
           </div>
         </div>
 

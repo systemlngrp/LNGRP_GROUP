@@ -113,7 +113,7 @@ export function resolveMaterialIssueRate(
     .filter((entry) => !firmId || String(entry.firmId || "").trim() === firmId)
     .flatMap((entry) =>
       entry.lines
-        .filter((line) => line.itemId === materialId)
+        .filter((line) => line.lineType !== "Service" && line.itemId === materialId)
         .map((line) => ({
           line,
           time: new Date(entry.timestamp || entry.date || 0).getTime() || 0,
@@ -204,7 +204,7 @@ export function getNonReelAvailableQty(
     (sum, entry) =>
       sum +
       entry.lines
-        .filter((line) => line.itemId === materialId)
+        .filter((line) => line.lineType !== "Service" && line.itemId === materialId)
         .reduce((lineSum, line) => lineSum + Number(line.qty || 0), 0),
     round2(Number(openingQty || 0))
   );

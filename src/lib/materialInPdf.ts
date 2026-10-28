@@ -266,6 +266,10 @@ export async function downloadMaterialInPdf({
   if (Number(mrr.expenseSGST || 0) !== 0) summaryRows.push(["Expense SGST", formatMoney(Number(mrr.expenseSGST || 0))]);
   if (Number(mrr.expenseIGST || 0) !== 0) summaryRows.push(["Expense IGST", formatMoney(Number(mrr.expenseIGST || 0))]);
   if (Number(mrr.roundOff || 0) !== 0) summaryRows.push(["Round Off", formatMoney(Number(mrr.roundOff || 0))]);
+  if (mrr.mrrType === "Direct Service") {
+    summaryRows.push(["TDS Deduction", formatMoney(Number(mrr.tdsAmount || 0))]);
+    summaryRows.push(["Net Supplier Payable", formatMoney(Number(mrr.netSupplierPayable ?? (Number(mrr.totalAmount || 0) - Number(mrr.tdsAmount || 0))))]);
+  }
 
   const summaryBoxWidth = 84;
   const summaryBoxHeight = 14 + summaryRows.length * 5.5 + 10;
@@ -299,7 +303,7 @@ export async function downloadMaterialInPdf({
   doc.line(summaryBoxX + 4, totalY - 2, summaryBoxX + summaryBoxWidth - 4, totalY - 2);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
-  doc.text("GRAND TOTAL:", summaryBoxX + 4, totalY + 4);
+  doc.text(mrr.mrrType === "Direct Service" ? "GROSS TOTAL:" : "GRAND TOTAL:", summaryBoxX + 4, totalY + 4);
   doc.text(formatMoney(Number(mrr.totalAmount || 0)), summaryBoxX + summaryBoxWidth - 4, totalY + 4, { align: "right" });
   footerY = summaryBoxY + summaryBoxHeight + 8;
 

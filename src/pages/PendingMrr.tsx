@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Eye, Search, X, XCircle } from "lucide-react";
+import { Eye, FilePlus2, Search, X, XCircle } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Company, Firm, GateEntry, GateEntryPhoto, Supplier } from "../types";
 import { useNavigate } from "react-router-dom";
@@ -140,16 +140,27 @@ export function PendingMrr() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 border-b border-black pb-4">
-        <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">Pending Material Receipt</h2>
-        <button
-          type="button"
-          onClick={clearFilters}
-          disabled={!hasActiveFilters}
-          className="inline-flex w-auto max-w-max items-center justify-self-end gap-1.5 whitespace-nowrap rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase text-black transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
-          style={{ width: "max-content" }}
-        >
-          <X size={14} /> Clear Filters
-        </button>
+        <div className="flex min-w-0 items-center gap-3">
+          <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">Pending Material Receipt</h2>
+          <button
+            type="button"
+            onClick={() => navigate("/material-in/form?directService=1")}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded border border-indigo-700 bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase text-white transition hover:bg-indigo-700"
+          >
+            <FilePlus2 size={14} /> Direct Service
+          </button>
+        </div>
+        <div className="flex items-center gap-2 justify-self-end">
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!hasActiveFilters}
+            className="inline-flex w-auto max-w-max items-center gap-1.5 whitespace-nowrap rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase text-black transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
+            style={{ width: "max-content" }}
+          >
+            <X size={14} /> Clear Filters
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(260px,1.6fr)_minmax(150px,1fr)_minmax(200px,1.2fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)] xl:items-center">

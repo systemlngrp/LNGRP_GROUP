@@ -275,7 +275,7 @@ export function Materials() {
       if (receipt.mrrType !== "Reel") {
         receipt.lines.forEach(line => {
           const materialId = String(line.itemId || (line as any).npdId || "").trim();
-          if (!materialId) return;
+          if (!materialId || line.lineType === "Service") return;
           const qty = getLineQty(line);
           const current = getMovement(materialId, receipt.firmId);
           current.receipts += qty;

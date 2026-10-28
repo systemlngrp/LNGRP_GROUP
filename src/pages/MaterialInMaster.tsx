@@ -266,7 +266,9 @@ export function MaterialInMaster() {
     "Other Charges": Number(entry.otherCharges || 0),
     "Expense GST": Number(getExpenseGstTotal(entry) || 0),
     "Round Off": Number(entry.roundOff || 0),
-    "Total Amount": Number(entry.totalAmount || 0),
+    "Gross Total Amount": Number(entry.totalAmount || 0),
+    TDS: Number(entry.tdsAmount || 0),
+    "Net Supplier Payable": Number(entry.netSupplierPayable ?? (Number(entry.totalAmount || 0) - Number(entry.tdsAmount || 0))),
     "Debit Note No": formatText(entry.debitNote),
     "Debit Note Date": entry.debitNoteDate ? formatDate(entry.debitNoteDate) : "-",
     "Debit Amount": Number(entry.debitNoteAmount || 0),
@@ -453,7 +455,9 @@ export function MaterialInMaster() {
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Other Charges</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Expense GST</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Round Off</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Total Amount</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Gross Total</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">TDS</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Net Payable</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Debit Note No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Debit Note Date</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Debit Amount</th>
@@ -465,7 +469,7 @@ export function MaterialInMaster() {
             <tbody className="divide-y divide-black bg-white">
               {filteredMaterialIn.length === 0 ? (
                 <tr>
-                  <td colSpan={27} className="px-6 py-8 text-center text-black font-medium italic">No material receipt records found.</td>
+                  <td colSpan={29} className="px-6 py-8 text-center text-black font-medium italic">No material receipt records found.</td>
                 </tr>
               ) : (
                 filteredMaterialIn.map((entry) => (
@@ -506,6 +510,8 @@ export function MaterialInMaster() {
                     <td className="px-4 py-3 text-right text-xs font-medium text-black border border-black whitespace-nowrap">{formatMoney(getExpenseGstTotal(entry))}</td>
                     <td className="px-4 py-3 text-right text-xs font-medium text-black border border-black whitespace-nowrap">{formatMoney(entry.roundOff)}</td>
                     <td className="px-4 py-3 text-right text-xs font-black text-indigo-700 border border-black whitespace-nowrap">{formatMoney(entry.totalAmount)}</td>
+                    <td className="px-4 py-3 text-right text-xs font-medium text-rose-700 border border-black whitespace-nowrap">{formatMoney(entry.tdsAmount)}</td>
+                    <td className="px-4 py-3 text-right text-xs font-black text-emerald-700 border border-black whitespace-nowrap">{formatMoney(entry.netSupplierPayable ?? (Number(entry.totalAmount || 0) - Number(entry.tdsAmount || 0)))}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{formatText(entry.debitNote)}</td>
                     <td className="px-4 py-3 text-xs text-black border border-black whitespace-nowrap">{entry.debitNoteDate ? formatDate(entry.debitNoteDate) : "-"}</td>
                     <td className="px-4 py-3 text-right text-xs font-medium text-black border border-black whitespace-nowrap">{formatMoney(entry.debitNoteAmount)}</td>

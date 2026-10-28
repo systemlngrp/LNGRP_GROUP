@@ -32,7 +32,7 @@ export function PendingTallyEntry() {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostTally = currentUserEmail === "pankaj@bizskilledu.com";
-  const tableColumnCount = canPostTally ? 21 : 19;
+  const tableColumnCount = canPostTally ? 23 : 21;
   const formatMoney = (value?: number) =>
     `${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -192,7 +192,9 @@ export function PendingTallyEntry() {
                   <th className="px-4 py-3 text-left">Date</th>
                   <th className="px-4 py-3 text-left">Supplier</th>
                   <th className="px-4 py-3 text-left">Items</th>
-                  <th className="px-6 py-3 text-right">Amount</th>
+                  <th className="px-6 py-3 text-right">Gross Amount</th>
+                  <th className="px-6 py-3 text-right">TDS</th>
+                  <th className="px-6 py-3 text-right">Net Payable</th>
                   <th className="px-6 py-3 text-right">Item Value</th>
                   <th className="px-6 py-3 text-right">Invoice Value</th>
                   <th className="px-6 py-3 text-right">Actual Value</th>
@@ -238,6 +240,8 @@ export function PendingTallyEntry() {
                           <td className="px-4 py-4">{getSupplierName(m.supplierId)}</td>
                           <td className="px-4 py-4 whitespace-nowrap">{m.lines?.length || 0} Item(s)</td>
                           <td className="px-6 py-4 text-right font-mono font-bold whitespace-nowrap">{formatMoney(m.totalAmount)}</td>
+                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.tdsAmount)}</td>
+                          <td className="px-6 py-4 text-right font-mono font-bold whitespace-nowrap">{formatMoney(m.netSupplierPayable ?? (Number(m.totalAmount || 0) - Number(m.tdsAmount || 0)))}</td>
                           <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(getItemValue(m.lines))}</td>
                           <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalInvoiceValue)}</td>
                           <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalActualValue)}</td>

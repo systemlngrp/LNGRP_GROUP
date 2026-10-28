@@ -11,6 +11,25 @@ function round2(value: number) {
   return Number(Number(value || 0).toFixed(2));
 }
 
+export function normalizeTdsAmount(value: unknown, grossTotal: unknown) {
+  const gross = Math.max(0, round2(Number(grossTotal || 0)));
+  const tds = Math.max(0, round2(Number(value || 0)));
+  return Math.min(tds, gross);
+}
+
+export function calculateNetSupplierPayable(grossTotal: unknown, tdsAmount: unknown) {
+  const gross = Math.max(0, round2(Number(grossTotal || 0)));
+  return round2(gross - normalizeTdsAmount(tdsAmount, gross));
+}
+
+export function validateTdsAmount(value: unknown, grossTotal: unknown): string | null {
+  const amount = Number(value || 0);
+  const gross = Math.max(0, Number(grossTotal || 0));
+  if (!Number.isFinite(amount) || amount < 0) return "TDS cannot be negative.";
+  if (amount > gross) return "TDS cannot be greater than the gross Total Amount.";
+  return null;
+}
+
 export function normalizeInvoiceCurrency(value: unknown): "INR" | "USD" {
   return value === "USD" ? "USD" : "INR";
 }
@@ -215,6 +234,8 @@ export function normalizeMaterialInRecord(entry: MaterialIn): MaterialIn {
     expenseSGST: summary.expenseSGSTValue,
     expenseIGST: summary.expenseIGSTValue,
     roundOff: summary.roundOffValue,
+    tdsAmount: normalizeTdsAmount(entry.tdsAmount, summary.totalAmount),
+    netSupplierPayable: calculateNetSupplierPayable(summary.totalAmount, entry.tdsAmount),
     totalAmount: summary.totalAmount,
   };
 }
