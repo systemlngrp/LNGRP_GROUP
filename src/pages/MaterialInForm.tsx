@@ -461,6 +461,13 @@ export function MaterialInForm() {
   }, [isInterState]);
 
   useEffect(() => {
+    if (!isDirectService || !lines.length) return;
+    setLines((prev) =>
+      prev.map((line) => applySupplyTypeTaxRates(line, isInterState ? "INTER_STATE" : "INTRA_STATE", { forceFromGstRate: true }))
+    );
+  }, [isDirectService, isInterState, lines.length]);
+
+  useEffect(() => {
     if (!hasExpenseBase) {
       if (expenseCGST !== "") setExpenseCGST("");
       if (expenseSGST !== "") setExpenseSGST("");
@@ -1404,13 +1411,14 @@ export function MaterialInForm() {
     setLines((prev) =>
       prev.map((line) => {
         if (line.id !== lineId) return line;
-        return recalculateMaterialLine({
+        return applySupplyTypeTaxRates({
           ...line,
           gstRate,
           cgstRate: 0,
           sgstRate: 0,
           igstRate: 0,
-        }, {
+        }, isInterState ? "INTER_STATE" : "INTRA_STATE", {
+          forceFromGstRate: true,
           invoiceCurrency: normalizedInvoiceCurrency,
           exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
         });
@@ -2268,7 +2276,7 @@ export function MaterialInForm() {
 
     const linesForSubmit =
       isDirectService
-        ? lines.map((line) => recalculateMaterialLine({
+        ? lines.map((line) => applySupplyTypeTaxRates(recalculateMaterialLine({
             ...line,
             lineType: "Service",
             serviceId: line.serviceId || line.itemId,
@@ -2278,12 +2286,13 @@ export function MaterialInForm() {
             actualQty: 1,
             uom: "NOS",
             gstRate: Number(line.gstRate || 0),
-            cgstRate: 0,
-            sgstRate: 0,
-            igstRate: 0,
             invoiceCurrency: normalizedInvoiceCurrency,
             exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
           }, {
+            invoiceCurrency: normalizedInvoiceCurrency,
+            exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+          }), isInterState ? "INTER_STATE" : "INTRA_STATE", {
+            forceFromGstRate: true,
             invoiceCurrency: normalizedInvoiceCurrency,
             exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
           }))
