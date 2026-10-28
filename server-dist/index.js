@@ -759,6 +759,8 @@ const MATERIAL_IN_CURRENCY_SCHEMA_COLUMNS = [
     { column: "exchangeRate", type: "DECIMAL(15,4) NULL" },
     { column: "totalInvoiceValueUsd", type: "DECIMAL(15,2) NULL" },
     { column: "totalActualValueUsd", type: "DECIMAL(15,2) NULL" },
+    { column: "tdsAmount", type: "DECIMAL(15,2) NULL" },
+    { column: "netSupplierPayable", type: "DECIMAL(15,2) NULL" },
 ];
 const MATERIAL_IN_LINE_CURRENCY_SCHEMA_COLUMNS = [
     { column: "invoiceCurrency", type: "VARCHAR(10) NULL" },
@@ -7028,6 +7030,8 @@ async function initDb(retries = 5) {
           \`expenseSGST\` DECIMAL(15, 2) NOT NULL DEFAULT 0,
           \`expenseIGST\` DECIMAL(15, 2) NOT NULL DEFAULT 0,
           \`roundOff\` DECIMAL(15, 2) NOT NULL DEFAULT 0,
+          \`tdsAmount\` DECIMAL(15,2) DEFAULT 0,
+          \`netSupplierPayable\` DECIMAL(15,2) DEFAULT 0,
           \`totalAmount\` DECIMAL(15, 2) NOT NULL,
           \`lines\` JSON NOT NULL,
           \`phTimestamp\` VARCHAR(255),
@@ -8529,6 +8533,8 @@ async function initDb(retries = 5) {
                 { table: "material_in", column: "expenseSGST", type: "DECIMAL(15, 2) NOT NULL DEFAULT 0" },
                 { table: "material_in", column: "expenseIGST", type: "DECIMAL(15, 2) NOT NULL DEFAULT 0" },
                 { table: "material_in", column: "roundOff", type: "DECIMAL(15, 2) NOT NULL DEFAULT 0" },
+                { table: "material_in", column: "tdsAmount", type: "DECIMAL(15,2) DEFAULT 0" },
+                { table: "material_in", column: "netSupplierPayable", type: "DECIMAL(15,2) DEFAULT 0" },
                 { table: "material_in", column: "totalAmount", type: "DECIMAL(15, 2) NOT NULL" },
                 { table: "material_in", column: "phTimestamp", type: "VARCHAR(255)" },
                 { table: "material_in", column: "phEmailId", type: "VARCHAR(255)" },
