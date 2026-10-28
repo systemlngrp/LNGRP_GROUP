@@ -367,8 +367,8 @@ export function MaterialInForm() {
   ];
 
   useEffect(() => {
-    setFirmId(editingEntry?.firmId || linkedGateEntry?.firmId || "");
-  }, [activeFirm?.id, editingEntry?.firmId, firms, linkedGateEntry?.firmId]);
+    setFirmId(editingEntry?.firmId || linkedGateEntry?.firmId || (isDirectService ? activeFirm?.id || "" : ""));
+  }, [activeFirm?.id, editingEntry?.firmId, isDirectService, linkedGateEntry?.firmId]);
 
   useEffect(() => {
     if (mrrType === "Reel" && unitOneFirm?.id) setFirmId(unitOneFirm.id);

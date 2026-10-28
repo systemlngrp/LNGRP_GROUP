@@ -142,6 +142,8 @@ export function PendingMrr() {
       <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 border-b border-black pb-4">
         <div className="flex min-w-0 items-center gap-3">
           <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">Pending Material Receipt</h2>
+        </div>
+        <div className="flex items-center gap-2 justify-self-end">
           <button
             type="button"
             onClick={() => navigate("/material-in/form?directService=1")}
@@ -150,20 +152,9 @@ export function PendingMrr() {
             <FilePlus2 size={14} /> Direct Service
           </button>
         </div>
-        <div className="flex items-center gap-2 justify-self-end">
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!hasActiveFilters}
-            className="inline-flex w-auto max-w-max items-center gap-1.5 whitespace-nowrap rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase text-black transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
-            style={{ width: "max-content" }}
-          >
-            <X size={14} /> Clear Filters
-          </button>
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(260px,1.6fr)_minmax(150px,1fr)_minmax(200px,1.2fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)] xl:items-center">
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-[minmax(260px,1.6fr)_minmax(150px,1fr)_minmax(200px,1.2fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)_max-content] xl:items-center">
         <div className="relative w-full">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
@@ -177,6 +168,14 @@ export function PendingMrr() {
         <Select value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers / Customers" />
         <input type="date" aria-label="From date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
         <input type="date" aria-label="To date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+        <button
+          type="button"
+          onClick={clearFilters}
+          disabled={!hasActiveFilters}
+          className="inline-flex h-[42px] w-full items-center justify-center gap-1.5 whitespace-nowrap rounded border border-black bg-white px-3 py-1.5 text-xs font-bold uppercase text-black transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400 xl:w-auto"
+        >
+          <X size={14} /> Clear Filters
+        </button>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-black bg-white shadow-sm">

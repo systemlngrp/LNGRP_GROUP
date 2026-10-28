@@ -3,13 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { lazy, useEffect } from "react";
+import { useEffect } from "react";
+import type { ComponentType } from "react";
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
 import { RequireAuth } from "./auth/RequireAuth";
 import { LoginPage } from "./pages/Login";
 import { UnauthorizedPage } from "./pages/Unauthorized";
+import { lazyWithRetry } from "./lib/lazyWithRetry";
+
+let lazyRouteIndex = 0;
+const lazy = (importer: () => Promise<{ default: ComponentType<any> }>) =>
+  lazyWithRetry(importer, `route-${lazyRouteIndex++}`);
+
 const ItemGroups = lazy(() => import("./pages/ItemGroups").then((module) => ({ default: module.ItemGroups })));
 const MaterialGroups = lazy(() => import("./pages/MaterialGroups").then((module) => ({ default: module.MaterialGroups })));
 const LegacyItemsMaster = lazy(() => import("./pages/LegacyItemsMaster").then((module) => ({ default: module.LegacyItemsMaster })));
