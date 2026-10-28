@@ -14187,7 +14187,7 @@ app.post("/api/material-firm-openings", requireAuth, async (req, res) => {
 });
 
 // Routes
-const TRANSACTIONAL_RESET_CONFIRMATION = "CLEAR TRANSACTION DATA";
+const TRANSACTIONAL_RESET_CONFIRMATION = "CLEAR ALL TRANSACTIONAL DATA";
 const CORE_JOB_RESET_CONFIRMATION = "CLEAR CORE JOB DATA";
 const CORE_JOB_RESET_TABLES = [
   "gate_entry_photos",
@@ -14202,11 +14202,26 @@ const CORE_JOB_RESET_TABLES = [
   "gate_entries", "material_in",
 ] as const;
 const TRANSACTIONAL_RESET_TABLES = [
-  "reel_transfer_lines", "material_issue_reel_lines", "material_return_reel_lines",
-  "material_issue_lines", "material_return_lines", "boardline_qc_checks", "printing_qc_checks",
-  "production_processing", "consumptions", "material_issues", "material_returns", "daily_consumptions", "daily_consumption_items", "reel_transfers",
-  "dispatch_plans", "loading_slips", "invoice_line_items", "gate_passes", "invoices",
-  "inter_firm_pending_invoices", "productions", "orders_schedule", "orders",
+  // Child rows first so this remains safe when foreign keys are enabled.
+  "invoice_line_items", "gate_entry_photos", "material_in_packing_slips",
+  "material_issue_reel_lines", "material_return_reel_lines", "reel_transfer_lines",
+  "material_issue_lines", "material_return_lines", "daily_consumption_items",
+  "qc_update_audit_logs", "qc_spec_card_movements",
+  "php_loading_slips", "plate_loading_slips",
+  "inter_firm_pending_invoices",
+  "printing_shift_reports", "qc_printing_wastage_records", "quality_complaints",
+  "pre_dispatch_inspections", "special_remark_records", "printing_stereo_records",
+  "control_records", "sample_requests", "php_plate_in_out_records",
+  "boardline_qc_checks", "printing_qc_checks", "qc_update_records",
+  "production_processing", "consumptions", "material_issues", "material_returns",
+  "daily_consumptions", "reel_transfers", "dispatch_plans", "loading_slips",
+  "gate_passes", "invoices", "gate_entries", "material_in",
+  "productions", "php_job_master", "plate_job_master",
+  "orders_schedule", "orders",
+  "purchase_order_lines", "purchase_orders", "indent_lines", "indents",
+  "material_visit", "physical_stock_sessions", "reel_stock_taker_logs",
+  "audit_dashboard_snapshots", "tally_change_log", "fixed_monthly_expenses",
+  "fixed_daily_expenses",
 ] as const;
 
 app.post("/api/settings/clear-core-job-data", async (req, res) => {
@@ -14276,7 +14291,18 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   const counts: Record<string, number> = {};
   try {
     await conn.beginTransaction();
+    const [existingRows] = await conn.query(
+      "SELECT TABLE_NAME AS tableName FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()"
+    );
+    const existingTables = new Set((existingRows as any[]).map((row) => String(row?.tableName || "")));
     for (const table of TRANSACTIONAL_RESET_TABLES) {
+      // Some installations predate optional modules. Missing optional tables
+      // are skipped, while the explicit allowlist still prevents master data
+      // from ever being selected for deletion.
+      if (!existingTables.has(table)) {
+        counts[table] = 0;
+        continue;
+      }
       const [result] = await conn.query(`DELETE FROM \`${table}\``);
       counts[table] = Number((result as any)?.affectedRows || 0);
     }

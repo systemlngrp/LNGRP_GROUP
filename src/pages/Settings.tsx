@@ -338,6 +338,10 @@ export function SettingsPage() {
   const [coreResetConfirmation, setCoreResetConfirmation] = useState("");
   const [coreResetting, setCoreResetting] = useState(false);
   const [coreResetResult, setCoreResetResult] = useState("");
+  const [transactionalResetDialogOpen, setTransactionalResetDialogOpen] = useState(false);
+  const [transactionalResetConfirmation, setTransactionalResetConfirmation] = useState("");
+  const [transactionalResetting, setTransactionalResetting] = useState(false);
+  const [transactionalResetResult, setTransactionalResetResult] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [designationDraft, setDesignationDraft] = useState<string[]>([]);
   const [newDesignation, setNewDesignation] = useState("");
@@ -872,6 +876,47 @@ export function SettingsPage() {
     }
   };
 
+  const clearAllTransactionalData = async () => {
+    if (transactionalResetConfirmation !== "CLEAR ALL TRANSACTIONAL DATA") return;
+    setTransactionalResetting(true);
+    setTransactionalResetResult("");
+    try {
+      const token = window.localStorage.getItem("authToken") || "";
+      const response = await fetch("/api/settings/clear-transactional-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ confirmation: transactionalResetConfirmation }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result?.error || "Failed to clear transactional data.");
+      const entities = [
+        "orders", "orders_schedule", "indents", "indent_lines", "purchase_orders", "purchase_order_lines",
+        "productions", "production_processing", "consumptions", "material_issues", "material_issue_lines",
+        "material_issue_reel_lines", "material_returns", "material_return_lines", "material_return_reel_lines",
+        "daily_consumptions", "daily_consumption_items", "reel_transfers", "reel_transfer_lines",
+        "dispatch_plans", "loading_slips", "php_loading_slips", "plate_loading_slips", "gate_entries",
+        "gate_entry_photos", "gate_passes", "material_in", "material_in_packing_slips", "invoices",
+        "invoice_line_items", "inter_firm_pending_invoices", "boardline_qc_checks", "printing_qc_checks",
+        "qc_printing_wastage_records", "quality_complaints", "pre_dispatch_inspections", "qc_update_records",
+        "qc_update_audit_logs", "special_remark_records", "printing_stereo_records", "control_records",
+        "sample_requests", "php_plate_in_out_records", "php_job_master", "plate_job_master", "material_visit",
+        "physical_stock_sessions", "reel_stock_taker_logs", "audit_dashboard_snapshots", "tally_change_log",
+        "fixed_monthly_expenses", "fixed_daily_expenses",
+      ];
+      entities.forEach((entity) => {
+        window.localStorage.removeItem(`udc_${entity}`);
+        window.dispatchEvent(new Event(`sync-data-${entity}`));
+      });
+      setTransactionalResetConfirmation("");
+      setTransactionalResetDialogOpen(false);
+      setTransactionalResetResult(`Deleted ${Number(result.total || 0).toLocaleString()} transactional rows.`);
+    } catch (error) {
+      setTransactionalResetResult(error instanceof Error ? error.message : "Failed to clear transactional data.");
+    } finally {
+      setTransactionalResetting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center pb-4 border-b border-black">
@@ -1046,6 +1091,57 @@ export function SettingsPage() {
             {coreResetting ? "Backing up and clearing..." : "Backup and Clear Core Data"}
           </button>
           {coreResetResult && <p className="text-sm font-bold text-black">{coreResetResult}</p>}
+        </div>
+      )}
+
+      {user?.role === "Admin" && (
+        <div className="max-w-3xl space-y-4 rounded border-2 border-red-900 bg-red-100 p-6">
+          <div>
+            <h3 className="text-sm font-black uppercase text-red-950">Delete All Transactional Data</h3>
+            <p className="mt-1 text-sm leading-6 text-black">
+              Permanently deletes orders, MRRs, production, dispatch, loading, billing, inventory movements, QC records, stock history, audit snapshots, and related operational data. Master and configuration tables are preserved.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setTransactionalResetResult("");
+              setTransactionalResetConfirmation("");
+              setTransactionalResetDialogOpen(true);
+            }}
+            disabled={transactionalResetting}
+            className="rounded border-2 border-black bg-red-900 px-5 py-2 font-black text-white disabled:opacity-40"
+          >
+            {transactionalResetting ? "Deleting transactional data..." : "Delete All Transactional Data"}
+          </button>
+          {transactionalResetResult && <p className="text-sm font-bold text-black">{transactionalResetResult}</p>}
+        </div>
+      )}
+
+      {transactionalResetDialogOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4" role="presentation">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="transactional-reset-title" className="w-full max-w-lg space-y-4 rounded-lg border-2 border-red-900 bg-white p-6 text-black shadow-2xl">
+            <div>
+              <h3 id="transactional-reset-title" className="text-lg font-black uppercase text-red-900">Confirm permanent deletion</h3>
+              <p className="mt-2 text-sm font-semibold leading-6">This cannot be undone. All non-master transactional and operational data will be deleted.</p>
+            </div>
+            <label className="block space-y-2">
+              <span className="text-xs font-black uppercase">Type CLEAR ALL TRANSACTIONAL DATA to confirm</span>
+              <input
+                autoFocus
+                value={transactionalResetConfirmation}
+                onChange={(event) => setTransactionalResetConfirmation(event.target.value)}
+                disabled={transactionalResetting}
+                className="w-full rounded border-2 border-black bg-white p-2 text-black"
+              />
+            </label>
+            <div className="flex justify-end gap-3">
+              <button type="button" onClick={() => setTransactionalResetDialogOpen(false)} disabled={transactionalResetting} className="rounded border-2 border-black bg-white px-4 py-2 font-bold disabled:opacity-40">Cancel</button>
+              <button type="button" onClick={() => void clearAllTransactionalData()} disabled={transactionalResetting || transactionalResetConfirmation !== "CLEAR ALL TRANSACTIONAL DATA"} className="rounded border-2 border-black bg-red-900 px-4 py-2 font-black text-white disabled:opacity-40">
+                {transactionalResetting ? "Deleting..." : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
