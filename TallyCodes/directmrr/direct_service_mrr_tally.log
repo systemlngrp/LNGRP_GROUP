@@ -15,3 +15,89 @@
 2026-10-28 12:01:39,278 | ERROR | Tally unavailable while processing LNKI/MRR/26-27/00007: Cannot connect to Tally at http://localhost:9003, http://127.0.0.1:9003. Enable Tally XML/HTTP or set LNPI_TALLY_URL. Last error: HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
 2026-10-28 12:01:39,278 | ERROR | TallyPrime is not accepting XML requests for Firm-3. Enable its HTTP/XML service on port 9003, then run this script again.
 2026-10-28 12:01:39,280 | INFO | Finished Direct Service MRR Tally posting
+2026-10-28 12:26:09,318 | INFO | Starting Direct Service MRR Tally posting
+2026-10-28 12:26:10,748 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 12:26:10,924 | INFO | Found 1 pending Direct Service MRR(s) for Firm-1
+2026-10-28 12:26:11,259 | INFO | Processing Direct Service MRR LNCB-1/MRR/26-27/00002 | party=SHREE PAWAN KRAFT PAPER MILLS LLP | source=companies | service_ledgers=exact line names
+2026-10-28 12:26:11,261 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNCB-1/MRR/26-27/00002 | voucher=- | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_122611_260050__general__health_check_before_direct_service_mrr_LNCB-1_MRR_26-27_00002.xml
+2026-10-28 12:26:11,585 | INFO | Tally XML completed | step=health_check:before_direct_service_mrr:LNCB-1/MRR/26-27/00002 | voucher=- | response_chars=214
+2026-10-28 12:26:11,588 | INFO | Sending Tally XML | step=direct_service_duplicate_check:SHREE PAWAN KRAFT PAPER MILLS LLP | voucher=- | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_122611_586626__general__direct_service_duplicate_check_SHREE_PAWAN_KRAFT_PAPER_MILLS_LLP.xml
+2026-10-28 12:26:30,235 | INFO | Tally XML completed | step=direct_service_duplicate_check:SHREE PAWAN KRAFT PAPER MILLS LLP | voucher=- | response_chars=1511
+2026-10-28 12:26:30,237 | INFO | Sending Tally XML | step=direct_service_purchase_import | voucher=LNCB-1/MRR/26-27/00002 | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_122630_235940__LNCB-1_MRR_26-27_00002__direct_service_purchase_import.xml
+2026-10-28 12:26:33,673 | INFO | Tally XML completed | step=direct_service_purchase_import | voucher=LNCB-1/MRR/26-27/00002 | response_chars=339
+2026-10-28 12:26:34,873 | ERROR | Direct Service MRR LNCB-1/MRR/26-27/00002 failed for Firm-1: Tally rejected Direct Service voucher LNCB-1/MRR/26-27/00002: <RESPONSE>
+ <LINEERROR>Ledger &apos;Repairing&apos; does not exist!</LINEERROR>
+ <CREATED>0</CREATED>
+ <ALTERED>0</ALTERED>
+ <DELETED>0</DELETED>
+ <LASTVCHID>0</LASTVCHID>
+ <LASTMID>0</LASTMID>
+ <COMBINED>0</COMBINED>
+ <IGNORED>0</IGNORED>
+ <ERRORS>0</ERRORS>
+ <CANCELLED>0</CANCELLED>
+ <EXCEPTIONS>1</EXCEPTIONS>
+</RESPONSE>
+Traceback (most recent call last):
+  File "d:\LNGRP\TallyCodes\directmrr\directmrr.py", line 709, in process_firm
+    process_one_direct_service_mrr(conn, company_name, mrr)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\LNGRP\TallyCodes\directmrr\directmrr.py", line 637, in process_one_direct_service_mrr
+    raise RuntimeError(f"Tally rejected Direct Service voucher {voucher_no}: {response_text}")
+RuntimeError: Tally rejected Direct Service voucher LNCB-1/MRR/26-27/00002: <RESPONSE>
+ <LINEERROR>Ledger &apos;Repairing&apos; does not exist!</LINEERROR>
+ <CREATED>0</CREATED>
+ <ALTERED>0</ALTERED>
+ <DELETED>0</DELETED>
+ <LASTVCHID>0</LASTVCHID>
+ <LASTMID>0</LASTMID>
+ <COMBINED>0</COMBINED>
+ <IGNORED>0</IGNORED>
+ <ERRORS>0</ERRORS>
+ <CANCELLED>0</CANCELLED>
+ <EXCEPTIONS>1</EXCEPTIONS>
+</RESPONSE>
+
+2026-10-28 12:26:34,975 | INFO | Selected Firm-2 | firm_id=334aa279-b7f3-450d-8b34-ee538a70e802 | company=Laxmi Narayan Corrugated Boards LLP (Unit-II) | Tally port=9002
+2026-10-28 12:26:35,121 | INFO | Found 0 pending Direct Service MRR(s) for Firm-2
+2026-10-28 12:26:35,228 | INFO | Selected Firm-3 | firm_id=106cec9f-54f7-4b32-bb3a-6973d1993ea1 | company=LAXMI NARAYAN KRAFT INDUSTRIES | Tally port=9003
+2026-10-28 12:26:35,379 | INFO | Found 1 pending Direct Service MRR(s) for Firm-3
+2026-10-28 12:26:35,693 | INFO | Processing Direct Service MRR LNKI/MRR/26-27/00007 | party=SHREE PAWAN KRAFT PAPER MILLS LLP | source=companies | service_ledgers=exact line names
+2026-10-28 12:26:35,694 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_122635_693973__general__health_check_before_direct_service_mrr_LNKI_MRR_26-27_00007.xml
+2026-10-28 12:26:39,895 | WARNING | Tally not reachable | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | url=http://localhost:9003 | error=HTTPConnectionPool(host='localhost', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:26:39,896 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | url=http://127.0.0.1:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_122635_693973__general__health_check_before_direct_service_mrr_LNKI_MRR_26-27_00007.xml
+2026-10-28 12:26:41,934 | WARNING | Tally not reachable | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | url=http://127.0.0.1:9003 | error=HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:26:41,934 | ERROR | Tally unavailable while processing LNKI/MRR/26-27/00007: Cannot connect to Tally at http://localhost:9003, http://127.0.0.1:9003. Enable Tally XML/HTTP or set LNPI_TALLY_URL. Last error: HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:26:41,934 | ERROR | TallyPrime is not accepting XML requests for Firm-3. Enable its HTTP/XML service on port 9003, then run this script again.
+2026-10-28 12:26:41,936 | INFO | Finished Direct Service MRR Tally posting
+2026-10-28 12:30:50,374 | INFO | Direct Service ledger 'Repairing' is missing. Creating it under 'Indirect Expenses'.
+2026-10-28 12:30:50,375 | INFO | Created Direct Service ledger 'Repairing' under 'Indirect Expenses'.
+2026-10-28 12:32:47,418 | INFO | Starting Direct Service MRR Tally posting
+2026-10-28 12:32:49,097 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 12:32:49,569 | INFO | Found 1 pending Direct Service MRR(s) for Firm-1
+2026-10-28 12:32:49,891 | INFO | Processing Direct Service MRR LNCB-1/MRR/26-27/00002 | party=SHREE PAWAN KRAFT PAPER MILLS LLP | source=companies | service_ledgers=exact line names
+2026-10-28 12:32:49,892 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNCB-1/MRR/26-27/00002 | voucher=- | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_123249_891386__general__health_check_before_direct_service_mrr_LNCB-1_MRR_26-27_00002.xml
+2026-10-28 12:32:50,029 | INFO | Tally XML completed | step=health_check:before_direct_service_mrr:LNCB-1/MRR/26-27/00002 | voucher=- | response_chars=214
+2026-10-28 12:32:50,031 | INFO | Sending Tally XML | step=direct_service_duplicate_check:SHREE PAWAN KRAFT PAPER MILLS LLP | voucher=- | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_123250_030807__general__direct_service_duplicate_check_SHREE_PAWAN_KRAFT_PAPER_MILLS_LLP.xml
+2026-10-28 12:32:58,472 | INFO | Tally XML completed | step=direct_service_duplicate_check:SHREE PAWAN KRAFT PAPER MILLS LLP | voucher=- | response_chars=1511
+2026-10-28 12:32:58,473 | INFO | Sending Tally XML | step=direct_service_ledger_check:Repairing | voucher=- | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_123258_472776__general__direct_service_ledger_check_Repairing.xml
+2026-10-28 12:32:58,553 | INFO | Tally XML completed | step=direct_service_ledger_check:Repairing | voucher=- | response_chars=1497
+2026-10-28 12:32:58,554 | INFO | Direct Service ledger 'Repairing' is missing. Creating it under 'Indirect Expenses'.
+2026-10-28 12:32:58,555 | INFO | Sending Tally XML | step=direct_service_ledger_create:Repairing | voucher=- | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_123258_554461__general__direct_service_ledger_create_Repairing.xml
+2026-10-28 12:32:58,809 | INFO | Tally XML completed | step=direct_service_ledger_create:Repairing | voucher=- | response_chars=269
+2026-10-28 12:32:58,810 | INFO | Created Direct Service ledger 'Repairing' under 'Indirect Expenses'.
+2026-10-28 12:32:58,811 | INFO | Sending Tally XML | step=direct_service_purchase_import | voucher=LNCB-1/MRR/26-27/00002 | url=http://localhost:9001 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_123258_810809__LNCB-1_MRR_26-27_00002__direct_service_purchase_import.xml
+2026-10-28 12:32:59,417 | INFO | Tally XML completed | step=direct_service_purchase_import | voucher=LNCB-1/MRR/26-27/00002 | response_chars=274
+2026-10-28 12:32:59,643 | INFO | Posted Direct Service voucher LNCB-1/MRR/26-27/00002 successfully
+2026-10-28 12:32:59,757 | INFO | Selected Firm-2 | firm_id=334aa279-b7f3-450d-8b34-ee538a70e802 | company=Laxmi Narayan Corrugated Boards LLP (Unit-II) | Tally port=9002
+2026-10-28 12:32:59,928 | INFO | Found 0 pending Direct Service MRR(s) for Firm-2
+2026-10-28 12:33:00,034 | INFO | Selected Firm-3 | firm_id=106cec9f-54f7-4b32-bb3a-6973d1993ea1 | company=LAXMI NARAYAN KRAFT INDUSTRIES | Tally port=9003
+2026-10-28 12:33:00,209 | INFO | Found 1 pending Direct Service MRR(s) for Firm-3
+2026-10-28 12:33:00,531 | INFO | Processing Direct Service MRR LNKI/MRR/26-27/00007 | party=SHREE PAWAN KRAFT PAPER MILLS LLP | source=companies | service_ledgers=exact line names
+2026-10-28 12:33:00,533 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_123300_532268__general__health_check_before_direct_service_mrr_LNKI_MRR_26-27_00007.xml
+2026-10-28 12:33:04,592 | WARNING | Tally not reachable | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | url=http://localhost:9003 | error=HTTPConnectionPool(host='localhost', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:33:04,601 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | url=http://127.0.0.1:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_123300_532268__general__health_check_before_direct_service_mrr_LNKI_MRR_26-27_00007.xml
+2026-10-28 12:33:06,692 | WARNING | Tally not reachable | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | url=http://127.0.0.1:9003 | error=HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:33:06,693 | ERROR | Tally unavailable while processing LNKI/MRR/26-27/00007: Cannot connect to Tally at http://localhost:9003, http://127.0.0.1:9003. Enable Tally XML/HTTP or set LNPI_TALLY_URL. Last error: HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:33:06,695 | ERROR | TallyPrime is not accepting XML requests for Firm-3. Enable its HTTP/XML service on port 9003, then run this script again.
+2026-10-28 12:33:06,697 | INFO | Finished Direct Service MRR Tally posting

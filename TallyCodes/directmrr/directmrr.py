@@ -90,6 +90,9 @@ TALLY_COMPANY_NAME = str(
     or os.getenv("TALLY_COMPANY_NAME")
     or ""
 ).strip()
+DIRECT_SERVICE_LEDGER_GROUP = str(
+    os.getenv("DIRECT_SERVICE_LEDGER_GROUP") or "Indirect Expenses"
+).strip()
 
 FIRM_CONFIG = {
     1: {
@@ -421,6 +424,119 @@ def direct_service_duplicate_exists(
     return bool(normalized_invoice and normalized_invoice in normalized_response)
 
 
+def get_service_ledger_names(lines: list[dict[str, Any]]) -> list[str]:
+    names: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        if str(line.get("lineType") or "") != "Service":
+            continue
+        if service_line_amount(line) <= Decimal("0.00"):
+            continue
+        name = str(
+            line.get("itemName")
+            or line.get("materialName")
+            or line.get("name")
+            or line.get("description")
+            or ""
+        ).strip()
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            names.append(name)
+    return names
+
+
+def tally_ledger_exists(company_name: str | None, ledger_name: str) -> bool:
+    safe_name = escape_xml(ledger_name)
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>COLLECTION</TYPE>
+            <ID>DirectServiceLedgerLookup</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="DirectServiceLedgerLookup" ISMODIFY="No">
+                            <TYPE>Ledger</TYPE>
+                            <FETCH>Name</FETCH>
+                            <FILTERS>DirectServiceLedgerFilter</FILTERS>
+                        </COLLECTION>
+                        <SYSTEM TYPE="Formulae" NAME="DirectServiceLedgerFilter">$$StringEqual:$Name:"{safe_name}"</SYSTEM>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+    response_text = post_xml_to_tally(
+        xml_text,
+        debug_step=f"direct_service_ledger_check:{ledger_name}",
+        voucher_no="-",
+    )
+    normalized_name = "".join(ledger_name.upper().split())
+    normalized_response = "".join(str(response_text or "").upper().split())
+    return bool(normalized_name and normalized_name in normalized_response)
+
+
+def create_service_ledger(company_name: str | None, ledger_name: str) -> None:
+    safe_name = escape_xml(ledger_name)
+    safe_group = escape_xml(DIRECT_SERVICE_LEDGER_GROUP)
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+        <BODY><IMPORTDATA>
+            <REQUESTDESC>
+                <REPORTNAME>All Masters</REPORTNAME>
+                <STATICVARIABLES>{build_company_static_variables(company_name)}</STATICVARIABLES>
+            </REQUESTDESC>
+            <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
+                <LEDGER NAME="{safe_name}" ACTION="Create">
+                    <NAME.LIST TYPE="String"><NAME>{safe_name}</NAME></NAME.LIST>
+                    <PARENT>{safe_group}</PARENT>
+                    <ISBILLWISEON>No</ISBILLWISEON>
+                    <AFFECTSSTOCK>No</AFFECTSSTOCK>
+                </LEDGER>
+            </TALLYMESSAGE></REQUESTDATA>
+        </IMPORTDATA></BODY>
+    </ENVELOPE>
+    """
+    response_text = post_xml_to_tally(
+        xml_text,
+        debug_step=f"direct_service_ledger_create:{ledger_name}",
+        voucher_no="-",
+    )
+    if "<CREATED>1</CREATED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
+        LOGGER.info("Created Direct Service ledger '%s' under '%s'.", ledger_name, DIRECT_SERVICE_LEDGER_GROUP)
+        return
+    if tally_ledger_exists(company_name, ledger_name):
+        LOGGER.info("Direct Service ledger '%s' already exists in Tally.", ledger_name)
+        return
+    raise RuntimeError(
+        f"Could not create Direct Service ledger '{ledger_name}' under "
+        f"'{DIRECT_SERVICE_LEDGER_GROUP}': {response_error_message(response_text)}"
+    )
+
+
+def ensure_service_ledgers_exist(company_name: str | None, lines: list[dict[str, Any]]) -> None:
+    for ledger_name in get_service_ledger_names(lines):
+        if tally_ledger_exists(company_name, ledger_name):
+            continue
+        LOGGER.info(
+            "Direct Service ledger '%s' is missing. Creating it under '%s'.",
+            ledger_name,
+            DIRECT_SERVICE_LEDGER_GROUP,
+        )
+        create_service_ledger(company_name, ledger_name)
+
+
 def service_line_amount(line: dict[str, Any]) -> Decimal:
     stored_value = line.get("invoiceValue")
     if stored_value not in (None, ""):
@@ -612,6 +728,19 @@ def process_one_direct_service_mrr(conn, company_name: str | None, mrr: dict[str
         mark_mrr_completed(conn, str(mrr["id"]), remark)
         LOGGER.info("Skipping duplicate Direct Service MRR %s: %s", voucher_no, remark)
         return
+
+    try:
+        ensure_service_ledgers_exist(company_name, parse_lines(mrr.get("lines")))
+    except TallyUnavailableError:
+        update_mrr_tally_remark(
+            conn,
+            str(mrr["id"]),
+            f"Tally did not respond while preparing ledgers for Direct Service voucher {voucher_no}.",
+        )
+        raise
+    except RuntimeError as error:
+        update_mrr_tally_remark(conn, str(mrr["id"]), str(error))
+        raise
 
     try:
         response_text = post_xml_to_tally(

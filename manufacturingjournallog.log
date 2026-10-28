@@ -1,0 +1,10 @@
+2026-10-28 12:39:48,881 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 12:39:48,882 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 12:39:50,406 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 12:41:19,224 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 12:41:19,224 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 12:41:21,145 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 12:41:21,154 | INFO | Tally URL candidates: http://localhost:9001, http://127.0.0.1:9001
+2026-10-28 12:41:21,296 | INFO | Connected to Tally at http://localhost:9001
+2026-10-28 12:41:21,386 | INFO | Found 392 stock group(s) in Tally
+2026-10-28 12:41:21,524 | INFO | Finished Tally Manufacturing Journal posting

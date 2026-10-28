@@ -1,0 +1,19 @@
+
+    <ENVELOPE>
+        <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+        <BODY><IMPORTDATA>
+            <REQUESTDESC>
+                <REPORTNAME>All Masters</REPORTNAME>
+                <STATICVARIABLES><SVCURRENTCOMPANY>Laxmi Narayan Corrugated Boards LLP Unit-I</SVCURRENTCOMPANY></STATICVARIABLES>
+            </REQUESTDESC>
+            <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
+                <LEDGER NAME="Repairing" ACTION="Create">
+                    <NAME.LIST TYPE="String"><NAME>Repairing</NAME></NAME.LIST>
+                    <PARENT>Indirect Expenses</PARENT>
+                    <ISBILLWISEON>No</ISBILLWISEON>
+                    <AFFECTSSTOCK>No</AFFECTSSTOCK>
+                </LEDGER>
+            </TALLYMESSAGE></REQUESTDATA>
+        </IMPORTDATA></BODY>
+    </ENVELOPE>
+    

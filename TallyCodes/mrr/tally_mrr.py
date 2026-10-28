@@ -1,11 +1,10 @@
-import json
 import logging
 import os
 import re
 import sys
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -14,23 +13,31 @@ import requests
 from requests import exceptions as requests_exceptions
 
 
-def get_runtime_base_dir() -> Path:
+BASE_DIR = Path(__file__).resolve().parents[1]
+
+
+def resolve_log_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[1]
+    return Path.cwd()
 
 
-BASE_DIR = get_runtime_base_dir()
-LOG_DIR = BASE_DIR
+LOG_DIR = resolve_log_dir()
 LOG_DIR.mkdir(parents=True, exist_ok=True)
-LOG_FILE = LOG_DIR / "mrrtallysync.log"
-DEBUG_XML_DIR = LOG_DIR / "mrr_tally_xml_debug"
-DEBUG_XML_DIR.mkdir(parents=True, exist_ok=True)
-REQUEST_TIMEOUT = 20
+LOG_FILE = LOG_DIR / "manufacturingjournallog.log"
+BUILD_SIGNATURE = "2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS"
+POSTED_BY = "tally_manufacturing_journal_posting.py"
+
+REEL_GROUP = str(os.getenv("LNPI_TALLY_REEL_GROUP") or os.getenv("TALLY_REEL_GROUP") or "PAPER IN REEL FORM").strip()
+OTHER_GROUP = "OTHER"
+FG_GROUP = "FG- FINISHED GOODS"
+RM_GROUP_BY_TYPE = {
+    "reel": REEL_GROUP,
+}
 
 
 def setup_logger() -> logging.Logger:
-    logger = logging.getLogger("tally_mrr_posting")
+    logger = logging.getLogger("tally_manufacturing_journal_posting")
     if logger.handlers:
         return logger
 
@@ -50,68 +57,19 @@ def setup_logger() -> logging.Logger:
 
 
 LOGGER = setup_logger()
-ITEM_NAME_CACHE: dict[str, str | None] = {}
-STOCK_ITEM_LOOKUP_CACHE: dict[str, tuple[str, str | None]] = {}
-CONFIRMED_TALLY_UNITS: set[str] = set()
-MONEY_QUANTUM = Decimal("0.01")
-QTY_QUANTUM = Decimal("0.01")
 
-
-class TallyUnavailableError(RuntimeError):
-    pass
-
-
-def _sanitize_debug_name(value: str) -> str:
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", str(value or "").strip())
-    return cleaned.strip("._-") or "unnamed"
-
-
-def dump_tally_xml(debug_step: str, xml_text: str, voucher_no: str | None = None) -> Path:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    file_name = f"{timestamp}__{_sanitize_debug_name(voucher_no or 'general')}__{_sanitize_debug_name(debug_step)}.xml"
-    target = DEBUG_XML_DIR / file_name
-    target.write_text(xml_text, encoding="utf-8")
-    return target
-
-
-def normalize_lookup_key(value: Any) -> str:
-    text = str(value or "").strip().upper()
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"[^A-Z0-9]+", "", text)
-    return text
-
-
-def clean_tally_xml(xml_text: str) -> str:
-    cleaned = str(xml_text or "")
-    cleaned = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", cleaned)
-    cleaned = re.sub(r"&#(?:0?[0-8]|1[12]|1[4-9]|2[0-9]|3[01]);", "", cleaned)
-    cleaned = re.sub(r"&#x(?:[0-8]|[bBcCeE]|1[0-9A-Fa-f]);", "", cleaned, flags=re.IGNORECASE)
-    return cleaned.strip()
-
-
-def round_money(value: Any) -> Decimal:
-    return Decimal(str(to_float(value))).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-
-
-def format_money(value: Any) -> str:
-    return f"{round_money(value):.2f}"
-
-
-def round_quantity(value: Any) -> Decimal:
-    return Decimal(str(to_float(value))).quantize(QTY_QUANTUM, rounding=ROUND_HALF_UP)
-
-
-def format_quantity(value: Any) -> str:
-    return f"{round_quantity(value):.2f}"
 
 
 def load_env_file() -> None:
-    candidates = []
     explicit_env = os.getenv("LNPI_ENV_FILE")
-    if explicit_env:
-        candidates.append(Path(explicit_env).expanduser())
-    candidates.extend((Path.cwd() / ".env", BASE_DIR / ".env", BASE_DIR.parent / ".env"))
-    env_path = next((path for path in candidates if path.is_file()), None)
+    candidates = [
+        Path(explicit_env).expanduser() if explicit_env else None,
+        Path.cwd() / ".env",
+        BASE_DIR / ".env",
+        BASE_DIR.parent / ".env",
+        BASE_DIR.parent.parent / ".env",
+    ]
+    env_path = next((path for path in candidates if path and path.is_file()), None)
     if env_path is None:
         return
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
@@ -127,14 +85,59 @@ def load_env_file() -> None:
 
 load_env_file()
 
+TALLY_CONNECT_TIMEOUT = float(os.getenv("TALLY_CONNECT_TIMEOUT", "5"))
+TALLY_READ_TIMEOUT = float(os.getenv("TALLY_READ_TIMEOUT", "120"))
+REQUEST_TIMEOUT = (TALLY_CONNECT_TIMEOUT, TALLY_READ_TIMEOUT)
+
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST") or os.getenv("LNPI_DB_HOST") or "srv1644.hstgr.io",
-    "user": os.getenv("DB_USER") or os.getenv("LNPI_DB_USER") or "u380633007_lngrpgroup",
-    "password": os.getenv("DB_PASSWORD") or os.getenv("LNPI_DB_PASSWORD") or "",
-    "database": os.getenv("DB_NAME") or os.getenv("LNPI_DB_NAME") or "u380633007_lngrpgroup",
-    "port": int(os.getenv("DB_PORT") or os.getenv("LNPI_DB_PORT") or "3306"),
+    "host": os.getenv("DB_HOST") or os.getenv("LNPI_DB_HOST", "193.203.184.152"),
+    "user": os.getenv("DB_USER") or os.getenv("LNPI_DB_USER", "u380633007_lnpidata"),
+    "password": os.getenv("DB_PASSWORD") or os.getenv("LNPI_DB_PASSWORD", "!Office1@"),
+    "database": os.getenv("DB_NAME") or os.getenv("LNPI_DB_NAME", "u380633007_lnpidata"),
+    "port": int(os.getenv("DB_PORT") or os.getenv("LNPI_DB_PORT", "3306")),
     "use_pure": True,
 }
+
+
+def build_tally_url_candidates(port: int | str | None = None) -> list[str]:
+    candidates: list[str] = []
+    preferred = (
+        [f"http://localhost:{port}", f"http://127.0.0.1:{port}"]
+        if port is not None
+        else [
+            os.getenv("LNPI_TALLY_URL"),
+            os.getenv("TALLY_URL"),
+            "http://localhost:9004",
+            "http://127.0.0.1:9004",
+        ]
+    )
+    for url in preferred:
+        if not url:
+            continue
+        cleaned = str(url).strip()
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+    return candidates
+
+
+TALLY_URL_CANDIDATES = build_tally_url_candidates()
+ACTIVE_TALLY_URL: str | None = None
+ITEM_NAME_CACHE: dict[str, str | None] = {}
+FG_GROUP_OVERRIDE = str(os.getenv("LNPI_TALLY_FG_GROUP", "")).strip()
+# Optional only. If blank, no <SVCURRENTCOMPANY> is sent and Tally uses the active/open company on port 9004.
+TALLY_COMPANY_NAME = str(
+    os.getenv("LNPI_TALLY_COMPANY_NAME")
+    or os.getenv("TALLY_COMPANY_NAME")
+    or ""
+).strip()
+
+# In this Tally data, reel-paper ERP codes are stored as MAILINGNAME aliases
+# (example: <MAILINGNAME>7220134</MAILINGNAME>). Using this alias in
+# voucher STOCKITEMNAME avoids failures caused by multiple spaces in long item names.
+# Keep default ON. Set LNPI_POST_REEL_BY_ERP_ALIAS=0 only if your Tally does not accept aliases.
+POST_REEL_BY_ERP_ALIAS = str(os.getenv("LNPI_POST_REEL_BY_ERP_ALIAS", "1")).strip().lower() not in ("0", "false", "no")
+TALLY_STOCK_ITEM_CACHE: dict[str, dict[str, dict[str, Any]]] = {}
+TALLY_VOUCHER_EXPORT_CACHE: dict[str, str] = {}
 
 FIRM_CONFIG = {
     1: {
@@ -153,57 +156,6 @@ FIRM_CONFIG = {
         "short_names": ("LNKI",),
     },
 }
-
-PURCHASE_LEDGER_BY_MRR = {
-    "Reel": "PURCHASE PAPER",
-    "Others": "PURCHASE - OTHER RM",
-    "FG Purchase": "Purchase - FG",
-    "Rejection In": "Purchase - Rejection In",
-}
-
-PURCHASE_LEDGER_BY_MRR_SUBTYPE = {
-    "Other RM": "PURCHASE - OTHER RM",
-    "Spare parts": "PURCHASE - SPARE PARTS",
-    "Others": "PURCHASE - OTHERS",
-}
-
-STOCK_GROUP_BY_MRR = {
-    "Reel": "KRAFT PAPER",
-    "Others": "App Group",
-    "FG Purchase": "FG- FINISHED GOODS",
-    "Rejection In": "FG- FINISHED GOODS",
-}
-
-SUPPLIER_GROUP_HINT_BY_MRR = {
-    "Reel": "SUNDRY CREDITORS - PAPER",
-    "Others": "SUNDRY CREDITORS - OTHERS",
-    "FG Purchase": "Sundry Creditors",
-    "Rejection In": "Sundry Creditors",
-    "Service Return": "Sundry Creditors",
-}
-
-
-def build_tally_url_candidates(port: int | str | None = None) -> list[str]:
-    candidates: list[str] = []
-    if port is not None:
-        preferred = [f"http://localhost:{port}", f"http://127.0.0.1:{port}"]
-    else:
-        preferred = [
-            os.getenv("LNPI_TALLY_URL"),
-            "http://localhost:9004",
-            "http://127.0.0.1:9004",
-        ]
-    for url in preferred:
-        if not url:
-            continue
-        cleaned = str(url).strip()
-        if cleaned and cleaned not in candidates:
-            candidates.append(cleaned)
-    return candidates
-
-
-TALLY_URL_CANDIDATES = build_tally_url_candidates()
-ACTIVE_TALLY_URL: str | None = None
 
 
 def to_float(value: Any) -> float:
@@ -226,6 +178,367 @@ def escape_xml(text: Any) -> str:
         .replace('"', "&quot;")
         .replace("'", "&apos;")
     )
+
+
+def clean_tally_xml(xml_content: str | bytes) -> str:
+    text = xml_content.decode("utf-8", errors="ignore") if isinstance(xml_content, bytes) else str(xml_content)
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", text)
+    text = re.sub(r"&#(?:0?[0-8]|1[12]|1[4-9]|2[0-9]|3[01]);", "", text)
+    text = re.sub(r"&#x(?:[0-8]|[bBcCeE]|1[0-9a-fA-F]);", "", text, flags=re.IGNORECASE)
+    return text
+
+
+def extract_first_matching_tag(xml_block: str, tag_names: list[str]) -> str:
+    for tag_name in tag_names:
+        escaped_tag = re.escape(tag_name)
+        match = re.search(rf"<{escaped_tag}\b[^>]*>(.*?)</{escaped_tag}>", xml_block, re.IGNORECASE | re.DOTALL)
+        if match:
+            return re.sub(r"\s+", " ", str(match.group(1) or "").strip())
+    return ""
+
+
+def extract_matching_tag_values(xml_block: str, tag_names: list[str]) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for tag_name in tag_names:
+        escaped_tag = re.escape(tag_name)
+        for match in re.findall(rf"<{escaped_tag}\b[^>]*>(.*?)</{escaped_tag}>", xml_block, re.IGNORECASE | re.DOTALL):
+            cleaned = re.sub(r"\s+", " ", str(match or "").strip())
+            normalized = cleaned.upper()
+            if not cleaned or normalized in seen:
+                continue
+            seen.add(normalized)
+            values.append(cleaned)
+    return values
+
+
+def normalize_lookup_token(value: Any) -> str:
+    # Tally may return names with double/triple spaces.
+    # Use this everywhere for matching, otherwise an existing item can be missed.
+    return re.sub(r"\s+", " ", str(value or "").strip()).upper()
+
+
+def clean_tally_text(value: Any) -> str:
+    """
+    Decode Tally/XML text while preserving meaningful internal spaces.
+
+    Important: Tally stock item names are exact text. A name like
+    "BF: 18   Color" is different from "BF: 18 Color" while importing
+    a voucher. Therefore this function must NOT collapse whitespace.
+
+    Use normalize_lookup_token() only for comparisons/search keys.
+    Use clean_tally_text() for the exact value that will be posted back to Tally.
+    """
+    cleaned = clean_tally_xml(str(value or ""))
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", cleaned)
+    cleaned = (
+        cleaned.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", '"')
+        .replace("&apos;", "'")
+    )
+    return cleaned.strip()
+
+
+def extract_first_tag_value(source_text: str, tag_name: str) -> str:
+    match = re.search(
+        rf"<{re.escape(tag_name)}\b[^>]*>(.*?)</{re.escape(tag_name)}>",
+        source_text or "",
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    return clean_tally_text(match.group(1))
+
+
+def extract_stockitem_attr(xml_text: str, attr_name: str) -> str:
+    match = re.search(
+        rf"<STOCKITEM\b[^>]*\b{re.escape(attr_name)}=\"([^\"]*)\"",
+        xml_text or "",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    return clean_tally_text(match.group(1))
+
+
+def normalize_erp_token(value: Any) -> str:
+    return re.sub(r"\s+", "", str(value or "").strip()).upper()
+
+
+def build_stock_item_details_from_xml_block(item_block: str, requested_name: str = "") -> dict[str, Any]:
+    # Tally often stores ERP/part code in MAILINGNAME, not PARTNO.
+    # Example received from Tally:
+    # <MAILINGNAME>7220134</MAILINGNAME> and <BASEUNITS>KGS</BASEUNITS>
+    name = (
+        extract_stockitem_attr(item_block, "NAME")
+        or extract_stockitem_attr(item_block, "REQNAME")
+        or extract_first_tag_value(item_block, "NAME")
+        or str(requested_name or "").strip()
+    )
+    aliases = extract_matching_tag_values(item_block, ["MAILINGNAME", "NAME"])
+    part_no = (
+        extract_first_tag_value(item_block, "PARTNO")
+        or extract_first_tag_value(item_block, "PARTNUMBER")
+        or extract_first_tag_value(item_block, "PARTNUM")
+        or extract_first_tag_value(item_block, "MAILINGNAME")
+    )
+    return {
+        "exists": True,
+        "name": clean_tally_text(name),
+        "guid": extract_first_tag_value(item_block, "GUID"),
+        "partNo": clean_tally_text(part_no),
+        "baseUnit": extract_first_tag_value(item_block, "BASEUNITS") or extract_first_tag_value(item_block, "BASEUNIT"),
+        "parent": extract_first_tag_value(item_block, "PARENT"),
+        "aliases": aliases,
+    }
+
+
+def extract_stock_item_fragment(source_text: str, stock_item_name: str) -> str:
+    # Tally object export often returns <STOCKITEM NAME="..."> or REQNAME.
+    # This raw fallback is helpful when ElementTree cannot parse Tally's XML cleanly.
+    escaped_name = re.escape(str(stock_item_name or "").strip())
+    if not escaped_name:
+        return ""
+    pattern = re.compile(
+        rf'<STOCKITEM\b[^>]*\b(?:NAME|REQNAME)="{escaped_name}"[^>]*>.*?</STOCKITEM>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(source_text or "")
+    return match.group(0) if match else ""
+
+
+def query_tally_stock_item_details(item_name: str, company_name: str | None = None) -> dict[str, Any]:
+    """
+    Directly read one Stock Item from Tally by name.
+
+    Important Tally behaviour handled here:
+    - The item code/ERP may come in <MAILINGNAME>, not <PARTNO>.
+    - The base unit comes in <BASEUNITS>, for reel paper normally KGS.
+    - The stock item name may be an attribute NAME/REQNAME, not a child <NAME>.
+    """
+    cleaned_item_name = str(item_name or "").strip()
+    blank = {"exists": False, "name": "", "guid": "", "partNo": "", "baseUnit": "", "parent": "", "aliases": []}
+    if not cleaned_item_name:
+        return blank
+
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>Export</TALLYREQUEST>
+            <TYPE>Object</TYPE>
+            <SUBTYPE>Stock Item</SUBTYPE>
+            <ID TYPE="Name">{escape_xml(cleaned_item_name)}</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <FETCHLIST>
+                    <FETCH>Name</FETCH>
+                    <FETCH>GUID</FETCH>
+                    <FETCH>Parent</FETCH>
+                    <FETCH>BaseUnits</FETCH>
+                    <FETCH>PartNo</FETCH>
+                    <FETCH>PartNumber</FETCH>
+                    <FETCH>MailingName.LIST</FETCH>
+                    <FETCH>LanguageName.LIST</FETCH>
+                </FETCHLIST>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+
+    try:
+        response_text = post_xml_to_tally(xml_text)
+    except Exception as error:
+        LOGGER.warning("Direct Tally stock-item lookup failed for '%s': %s", cleaned_item_name, error)
+        return blank
+
+    if not response_text or "<LINEERROR>" in response_text.upper():
+        return blank
+
+    cleaned_response = clean_tally_xml(response_text)
+    requested_token = normalize_lookup_token(cleaned_item_name)
+
+    # First, use raw STOCKITEM blocks. This is more reliable for Tally XML because
+    # BASEUNITS and MAILINGNAME can be present even when ElementTree findtext misses them.
+    raw_blocks = re.findall(r"<STOCKITEM\b[^>]*>.*?</STOCKITEM>", cleaned_response, flags=re.IGNORECASE | re.DOTALL)
+    for block in raw_blocks:
+        details = build_stock_item_details_from_xml_block(block, cleaned_item_name)
+        name_token = normalize_lookup_token(details.get("name"))
+        attr_name_token = normalize_lookup_token(extract_stockitem_attr(block, "NAME"))
+        attr_req_token = normalize_lookup_token(extract_stockitem_attr(block, "REQNAME"))
+        if requested_token in (name_token, attr_name_token, attr_req_token):
+            LOGGER.info(
+                "Direct Tally lookup found stock item '%s' with Part/Mailing No '%s', BaseUnits '%s', Parent '%s'.",
+                details.get("name") or cleaned_item_name,
+                details.get("partNo") or "blank",
+                details.get("baseUnit") or "blank",
+                details.get("parent") or "blank",
+            )
+            return details
+
+    # XML parse fallback, useful when Tally returns a clean ElementTree-friendly response.
+    try:
+        root = ET.fromstring(cleaned_response)
+        for stock_item in root.findall(".//STOCKITEM"):
+            item_block = ET.tostring(stock_item, encoding="unicode")
+            details = build_stock_item_details_from_xml_block(item_block, cleaned_item_name)
+            name_attr = stock_item.get("NAME") or stock_item.get("REQNAME") or ""
+            if normalize_lookup_token(details.get("name")) == requested_token or normalize_lookup_token(name_attr) == requested_token:
+                LOGGER.info(
+                    "Direct Tally lookup found stock item '%s' with Part/Mailing No '%s', BaseUnits '%s', Parent '%s'.",
+                    details.get("name") or cleaned_item_name,
+                    details.get("partNo") or "blank",
+                    details.get("baseUnit") or "blank",
+                    details.get("parent") or "blank",
+                )
+                return details
+    except ET.ParseError as error:
+        LOGGER.warning("Could not parse direct stock-item XML for '%s': %s", cleaned_item_name, error)
+
+    # Last fallback: response contains the item name but not a full block.
+    if f'NAME="{escape_xml(cleaned_item_name)}"' in cleaned_response or f'REQNAME="{escape_xml(cleaned_item_name)}"' in cleaned_response:
+        details = build_stock_item_details_from_xml_block(cleaned_response, cleaned_item_name)
+        LOGGER.info(
+            "Direct Tally lookup found stock item '%s' with Part/Mailing No '%s', BaseUnits '%s', Parent '%s'.",
+            details.get("name") or cleaned_item_name,
+            details.get("partNo") or "blank",
+            details.get("baseUnit") or "blank",
+            details.get("parent") or "blank",
+        )
+        return details
+
+    return blank
+
+
+def escape_tally_formula_text(value: Any) -> str:
+    return escape_xml(str(value or "")).replace('"', '&quot;')
+
+
+def query_tally_stock_item_by_part_no(erp_code: str, company_name: str | None = None) -> dict[str, Any]:
+    """
+    Find a Tally stock item by ERP/Part code.
+    In this Tally data, the ERP code may be stored as MAILINGNAME, not PARTNO.
+    """
+    normalized_erp = normalize_erp_token(erp_code)
+    blank = {"exists": False, "name": "", "guid": "", "partNo": "", "baseUnit": "", "parent": "", "aliases": []}
+    if not normalized_erp:
+        return blank
+
+    safe_formula_erp = escape_tally_formula_text(normalized_erp)
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Export Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <EXPORTDATA>
+                <REQUESTDESC>
+                    <STATICVARIABLES>
+                        {build_company_static_variables(company_name)}
+                        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                    </STATICVARIABLES>
+                    <TDL>
+                        <TDLMESSAGE>
+                            <COLLECTION NAME="StockItemByPartNo" ISMODIFY="No">
+                                <TYPE>StockItem</TYPE>
+                                <FETCH>Name</FETCH>
+                                <FETCH>GUID</FETCH>
+                                <FETCH>Parent</FETCH>
+                                <FETCH>BaseUnits</FETCH>
+                                <FETCH>PartNo</FETCH>
+                                <FETCH>PartNumber</FETCH>
+                                <FETCH>MailingName.LIST</FETCH>
+                                <FETCH>LanguageName.LIST</FETCH>
+                                <FILTERS>OnlyMatchingPartNoOrMailingName</FILTERS>
+                            </COLLECTION>
+                            <SYSTEM TYPE="Formulae" NAME="OnlyMatchingPartNoOrMailingName">
+                                $$StringEqual:$$StringUpper:$$String:$PartNo:"{safe_formula_erp}"
+                                OR $$StringEqual:$$StringUpper:$$String:$PartNumber:"{safe_formula_erp}"
+                                OR $$StringEqual:$$StringUpper:$$String:$MailingName:"{safe_formula_erp}"
+                            </SYSTEM>
+                        </TDLMESSAGE>
+                    </TDL>
+                </REQUESTDESC>
+            </EXPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    """
+
+    try:
+        response_text = post_xml_to_tally(xml_text)
+    except Exception as error:
+        LOGGER.warning("Tally ERP/MailingName lookup failed for ERP '%s': %s", erp_code, error)
+        return blank
+
+    cleaned = clean_tally_xml(response_text or "")
+    matches: list[dict[str, Any]] = []
+
+    for block in re.findall(r"<STOCKITEM\b[^>]*>.*?</STOCKITEM>", cleaned, flags=re.IGNORECASE | re.DOTALL):
+        details = build_stock_item_details_from_xml_block(block)
+        candidates = [details.get("partNo") or ""] + list(details.get("aliases") or [])
+        # Some reel item names also start with the ERP code.
+        if details.get("name"):
+            candidates.append(str(details.get("name")).split("-", 1)[0].strip())
+        if any(normalize_erp_token(candidate) == normalized_erp for candidate in candidates):
+            matches.append(details)
+
+    # If TDL $MailingName filter is not supported and no row came, fall back to bulk stock item cache.
+    # This cache already includes MAILINGNAME aliases.
+    if not matches:
+        for item in get_tally_stock_item_map(company_name).values():
+            candidates = [item.get("partNo") or ""] + list(item.get("aliases") or [])
+            if item.get("name"):
+                candidates.append(str(item.get("name")).split("-", 1)[0].strip())
+            if any(normalize_erp_token(candidate) == normalized_erp for candidate in candidates):
+                matches.append(item)
+
+    # De-duplicate by item name.
+    unique: dict[str, dict[str, Any]] = {}
+    for match in matches:
+        key = normalize_lookup_token(match.get("name"))
+        if key:
+            unique[key] = match
+    matches = list(unique.values())
+
+    if len(matches) == 1:
+        LOGGER.info(
+            "Tally ERP/MailingName lookup matched ERP '%s' to stock item '%s' with BaseUnits '%s'.",
+            erp_code,
+            matches[0].get("name") or "",
+            matches[0].get("baseUnit") or "blank",
+        )
+        return matches[0]
+
+    if len(matches) > 1:
+        LOGGER.warning(
+            "ERP/MailingName '%s' matched multiple Tally stock items: %s. Skipping ERP auto-match.",
+            erp_code,
+            ", ".join(str(m.get("name") or "") for m in matches),
+        )
+
+    return blank
+
+
+def parse_json_lines(raw_lines: Any) -> list[dict[str, Any]]:
+    if isinstance(raw_lines, list):
+        return [line for line in raw_lines if isinstance(line, dict)]
+    if isinstance(raw_lines, str) and raw_lines.strip():
+        try:
+            import json
+
+            parsed = json.loads(raw_lines)
+            if isinstance(parsed, list):
+                return [line for line in parsed if isinstance(line, dict)]
+        except Exception as error:
+            LOGGER.warning("Invalid JSON in material lines. Skipping that row. Error=%s | Raw=%s", error, raw_lines[:300])
+    return []
 
 
 def _parse_tally_date(raw_value: Any) -> datetime | None:
@@ -271,122 +584,61 @@ def _parse_tally_date(raw_value: Any) -> datetime | None:
     return None
 
 
-def format_tally_date(mrr: dict[str, Any]) -> str:
-    inv_date = mrr.get("invDate") or mrr.get("InvDate") or mrr.get("inv_date") or mrr.get("invdate")
+def format_production_date(production: dict[str, Any]) -> str:
     for raw in (
-        inv_date,
-        mrr.get("date"),
-        mrr.get("Date"),
-        mrr.get("timestamp"),
-        mrr.get("ts"),
-        mrr.get("createdAt"),
+        production.get("date"),
+        production.get("scheduledDate"),
+        production.get("updateTimestamp"),
     ):
         parsed = _parse_tally_date(raw)
         if parsed:
             return parsed.strftime("%Y%m%d")
-
     raise RuntimeError(
-        "Voucher date could not be resolved from invDate/date/timestamp. "
-        f"invDate={inv_date!r}, date={mrr.get('date')!r}, timestamp={mrr.get('timestamp')!r}"
+        "Voucher date could not be resolved from production date fields. "
+        f"date={production.get('date')!r}, scheduledDate={production.get('scheduledDate')!r}"
     )
 
 
-def resolve_voucher_datetime(mrr: dict[str, Any]) -> datetime:
-    inv_date = mrr.get("invDate") or mrr.get("InvDate") or mrr.get("inv_date") or mrr.get("invdate")
-    for raw in (
-        inv_date,
-        mrr.get("date"),
-        mrr.get("Date"),
-        mrr.get("timestamp"),
-        mrr.get("ts"),
-        mrr.get("createdAt"),
-    ):
-        parsed = _parse_tally_date(raw)
-        if parsed:
-            return parsed
-
-    raise RuntimeError(
-        "Voucher date could not be resolved from invDate/date/timestamp. "
-        f"invDate={inv_date!r}, date={mrr.get('date')!r}, timestamp={mrr.get('timestamp')!r}"
-    )
-
-
-def get_financial_year_bounds(voucher_date: datetime) -> tuple[str, str]:
-    fy_start_year = voucher_date.year if voucher_date.month >= 4 else voucher_date.year - 1
-    fy_start = datetime(fy_start_year, 4, 1)
-    fy_end = datetime(fy_start_year + 1, 3, 31)
-    return fy_start.strftime("%Y%m%d"), fy_end.strftime("%Y%m%d")
-
-def post_xml_to_tally(xml_text: str, debug_step: str = "unknown", voucher_no: str | None = None) -> str:
+def post_xml_to_tally(xml_text: str) -> str:
     global ACTIVE_TALLY_URL
 
     urls_to_try = [ACTIVE_TALLY_URL] if ACTIVE_TALLY_URL else []
     urls_to_try.extend([url for url in TALLY_URL_CANDIDATES if url not in urls_to_try])
     last_error: Exception | None = None
-    xml_dump_path = dump_tally_xml(debug_step, xml_text, voucher_no)
-    LOGGER.info(
-        "Sending Tally XML | step=%s | voucher=%s | payload=%s",
-        debug_step,
-        voucher_no or "-",
-        xml_dump_path,
-    )
 
     for url in urls_to_try:
         try:
             response = requests.post(
                 url,
                 data=xml_text.encode("utf-8"),
-                headers={"Content-Type": "application/xml"},
+                headers={"Content-Type": "text/xml; charset=utf-8"},
                 timeout=REQUEST_TIMEOUT,
             )
             response.raise_for_status()
             if ACTIVE_TALLY_URL != url:
                 LOGGER.info("Connected to Tally at %s", url)
-            LOGGER.info(
-                "Tally XML completed | step=%s | voucher=%s | url=%s | response_chars=%s",
-                debug_step,
-                voucher_no or "-",
-                url,
-                len(response.text or ""),
-            )
             ACTIVE_TALLY_URL = url
             return response.text
         except requests_exceptions.Timeout as error:
             LOGGER.warning(
-                "Tally timed out | step=%s | voucher=%s | url=%s | timeout=%ss | payload=%s",
-                debug_step,
-                voucher_no or "-",
+                "Tally timed out at %s (connect timeout=%ss, read timeout=%ss)",
                 url,
-                REQUEST_TIMEOUT,
-                xml_dump_path,
+                TALLY_CONNECT_TIMEOUT,
+                TALLY_READ_TIMEOUT,
             )
             last_error = error
         except requests_exceptions.ConnectionError as error:
-            LOGGER.warning(
-                "Tally not reachable | step=%s | voucher=%s | url=%s | payload=%s",
-                debug_step,
-                voucher_no or "-",
-                url,
-                xml_dump_path,
-            )
+            LOGGER.warning("Tally not reachable at %s", url)
             last_error = error
         except requests_exceptions.RequestException as error:
-            LOGGER.warning(
-                "Tally request failed | step=%s | voucher=%s | url=%s | payload=%s | error=%s",
-                debug_step,
-                voucher_no or "-",
-                url,
-                xml_dump_path,
-                error,
-            )
+            LOGGER.warning("Tally request failed at %s: %s", url, error)
             last_error = error
 
     urls_text = ", ".join(urls_to_try)
-    raise TallyUnavailableError(
+    raise RuntimeError(
         f"Cannot connect to Tally on the configured URLs: {urls_text}. "
-        f"Last step='{debug_step}', voucher='{voucher_no or '-'}', payload='{xml_dump_path}'. "
-        "This usually means Tally XML/HTTP is not enabled on port 9004, or another app is using that port. "
-        "If your Tally runs on a different port, set LNPI_TALLY_URL before running."
+        f"Tally did not return a usable response within {TALLY_READ_TIMEOUT:g} seconds. "
+        "Confirm that Tally is open, the correct company is active, and XML/HTTP is enabled on the configured port."
     ) from last_error
 
 
@@ -396,25 +648,75 @@ def build_company_static_variables(company_name: str | None) -> str:
     return f"<SVCURRENTCOMPANY>{escape_xml(company_name)}</SVCURRENTCOMPANY>"
 
 
-def check_tally_health(company_name: str | None, reason: str = "health_check") -> None:
-    xml_text = f"""
+def get_current_tally_company() -> str | None:
+    xml_text = """
     <ENVELOPE>
         <HEADER>
+            <VERSION>1</VERSION>
             <TALLYREQUEST>EXPORT</TALLYREQUEST>
             <TYPE>DATA</TYPE>
-            <ID>Units</ID>
+            <ID>List of Companies</ID>
         </HEADER>
         <BODY>
             <DESC>
                 <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
                     <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
                 </STATICVARIABLES>
             </DESC>
         </BODY>
     </ENVELOPE>
     """
-    post_xml_to_tally(xml_text, debug_step=f"health_check:{reason}")
+    response_text = post_xml_to_tally(xml_text)
+    patterns = [
+        r"<SVCURRENTCOMPANY>(.*?)</SVCURRENTCOMPANY>",
+        r"<CMPNAME>(.*?)</CMPNAME>",
+        r"<NAME>(.*?)</NAME>",
+    ]
+    for pattern in patterns:
+        company_names = re.findall(pattern, response_text, flags=re.IGNORECASE | re.DOTALL)
+        company_names = [name.strip() for name in company_names if name.strip()]
+        if company_names:
+            return company_names[0]
+    return None
+
+
+def parse_import_summary(response_text: str) -> dict[str, str]:
+    summary: dict[str, str] = {}
+    for tag in ["CREATED", "ALTERED", "COMBINED", "IGNORED", "DELETED", "CANCELLED", "ERRORS", "EXCEPTIONS"]:
+        match = re.search(rf"<{tag}>(.*?)</{tag}>", response_text or "", re.IGNORECASE)
+        if match:
+            summary[tag.lower()] = match.group(1).strip()
+    return summary
+
+
+def response_error_message(response_text: str) -> str:
+    response_text = (response_text or "").strip()
+    if not response_text:
+        return "Empty response from Tally"
+
+    line_error = re.search(r"<LINEERROR>(.*?)</LINEERROR>", response_text, re.IGNORECASE | re.DOTALL)
+    if line_error:
+        return line_error.group(1).strip()
+
+    summary = parse_import_summary(response_text)
+    if summary:
+        details = ", ".join(f"{key}={value}" for key, value in summary.items())
+        return f"Tally import failed without LINEERROR ({details})"
+
+    cleaned = re.sub(r"<[^>]+>", " ", response_text)
+    cleaned = " ".join(cleaned.split())
+    return cleaned[:250] if cleaned else "Failed to import"
+
+
+def compact_xml_for_log(xml_text: str, max_length: int = 1200) -> str:
+    cleaned = clean_tally_xml(xml_text or "")
+    # Preserve multiple spaces inside Tally stock item names. Collapsing all whitespace
+    # makes the log misleading for names like "BF: 18   Color".
+    cleaned = re.sub(r"[\r\n\t]+", " ", cleaned).strip()
+    cleaned = re.sub(r" {10,}", "   ", cleaned)
+    if len(cleaned) <= max_length:
+        return cleaned
+    return cleaned[:max_length] + "...(truncated)"
 
 
 def get_db_connection():
@@ -431,16 +733,903 @@ def get_db_connection():
         ) from error
 
 
-def ensure_db_connection(conn):
+def get_tally_groups() -> set[str]:
+    xml_text = """
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>COLLECTION</TYPE>
+            <ID>StockGroups</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="StockGroups">
+                            <TYPE>StockGroup</TYPE>
+                            <FETCH>Name</FETCH>
+                        </COLLECTION>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+    response_text = post_xml_to_tally(xml_text)
+    cleaned = clean_tally_xml(response_text)
+    groups: set[str] = set()
     try:
-        conn.ping(reconnect=True, attempts=3, delay=2)
-        return conn
-    except mysql.connector.Error:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        return get_db_connection()
+        root = ET.fromstring(cleaned)
+        for group in root.findall(".//STOCKGROUP"):
+            name = group.get("NAME") or group.findtext("NAME")
+            if name:
+                groups.add(str(name).strip().upper())
+    except ET.ParseError:
+        pass
+    return groups
+
+
+def get_tally_stock_item_map(company_name: str | None = None) -> dict[str, dict[str, Any]]:
+    cache_key = str(company_name or "").strip().upper()
+    cached = TALLY_STOCK_ITEM_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>COLLECTION</TYPE>
+            <ID>StockItems</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="StockItems">
+                            <TYPE>StockItem</TYPE>
+                            <FETCH>Name</FETCH>
+                            <FETCH>GUID</FETCH>
+                            <FETCH>PartNo</FETCH>
+                            <FETCH>PartNumber</FETCH>
+                            <FETCH>MailingName.LIST</FETCH>
+                            <FETCH>LanguageName.LIST</FETCH>
+                            <FETCH>Parent</FETCH>
+                        </COLLECTION>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+    response_text = post_xml_to_tally(xml_text)
+    cleaned = clean_tally_xml(response_text)
+    items: dict[str, dict[str, Any]] = {}
+    try:
+        root = ET.fromstring(cleaned)
+    except ET.ParseError:
+        root = None
+
+    if root is not None:
+        for item in root.findall(".//STOCKITEM"):
+            name = str(item.get("NAME") or item.findtext("NAME") or "").strip()
+            if not name:
+                continue
+            item_block = ET.tostring(item, encoding="unicode")
+            part_no = str(item.findtext("PARTNO") or item.findtext("PARTNUMBER") or "").strip()
+            if not part_no:
+                part_no = extract_first_matching_tag(item_block, ["PARTNO", "PARTNUMBER", "PARTNUM", "PARTNUMBER"] )
+            aliases = extract_matching_tag_values(item_block, ["MAILINGNAME", "NAME"])
+            items[normalize_lookup_token(name)] = {
+                "name": name,
+                "guid": str(item.get("GUID") or item.findtext("GUID") or "").strip(),
+                "partNo": part_no,
+                "aliases": aliases,
+                "parent": str(item.findtext("PARENT") or "").strip(),
+            }
+        for item in root.findall(".//STOCKITEMS.LIST/*"):
+            name = str(item.get("NAME") or item.findtext("NAME") or "").strip()
+            if not name:
+                continue
+            item_block = ET.tostring(item, encoding="unicode")
+            part_no = str(item.findtext("PARTNO") or item.findtext("PARTNUMBER") or "").strip()
+            if not part_no:
+                part_no = extract_first_matching_tag(item_block, ["PARTNO", "PARTNUMBER", "PARTNUM", "PARTNUMBER"] )
+            aliases = extract_matching_tag_values(item_block, ["MAILINGNAME", "NAME"])
+            items[normalize_lookup_token(name)] = {
+                "name": name,
+                "guid": str(item.get("GUID") or item.findtext("GUID") or "").strip(),
+                "partNo": part_no,
+                "aliases": aliases,
+                "parent": str(item.findtext("PARENT") or "").strip(),
+            }
+
+    LOGGER.info("Loaded %s Tally stock item(s) for company key '%s'", len(items), cache_key or "current")
+    TALLY_STOCK_ITEM_CACHE[cache_key] = items
+    return items
+
+
+def invalidate_tally_stock_item_cache(company_name: str | None = None) -> None:
+    cache_key = str(company_name or "").strip().upper()
+    if cache_key:
+        TALLY_STOCK_ITEM_CACHE.pop(cache_key, None)
+        return
+    TALLY_STOCK_ITEM_CACHE.clear()
+
+
+def query_tally_item(item_name: str, company_name: str | None = None) -> tuple[bool, str | None]:
+    item = get_tally_item_record_by_name(item_name, company_name)
+    if not item:
+        return False, None
+    guid = str(item.get("guid") or "").strip() or None
+    return True, guid
+
+
+def get_tally_item_record_by_name(item_name: str, company_name: str | None = None) -> dict[str, Any] | None:
+    cleaned_name = str(item_name or "").strip()
+    if not cleaned_name:
+        return None
+
+    # 1) Use direct object lookup first. This matches the working MRR code approach.
+    direct_item = query_tally_stock_item_details(cleaned_name, company_name)
+    if direct_item.get("exists"):
+        LOGGER.info(
+            "Direct Tally lookup found stock item '%s' with Part No '%s' and BaseUnits '%s'.",
+            direct_item.get("name") or cleaned_name,
+            direct_item.get("partNo") or "blank",
+            direct_item.get("baseUnit") or "blank",
+        )
+        return direct_item
+
+    # 2) Fallback to bulk map lookup, useful for ERP/alias matching and older Tally responses.
+    normalized_name = normalize_lookup_token(cleaned_name)
+    stock_items = get_tally_stock_item_map(company_name)
+    return stock_items.get(normalized_name)
+
+
+def query_tally_item_by_erp(
+    erp_code: str, company_name: str | None = None
+) -> tuple[bool, str | None, str | None, str | None, str | None]:
+    normalized_erp = normalize_lookup_token(erp_code)
+    if not normalized_erp:
+        return False, None, None, None, None
+
+    # 1) Direct Tally Part No lookup. This is the preferred fallback when item name differs.
+    direct_part_item = query_tally_stock_item_by_part_no(erp_code, company_name)
+    if direct_part_item.get("exists") and direct_part_item.get("name"):
+        return (
+            True,
+            str(direct_part_item.get("name") or "").strip() or None,
+            str(direct_part_item.get("guid") or "").strip() or None,
+            str(direct_part_item.get("partNo") or "").strip() or None,
+            "part number",
+        )
+
+    # 2) Fallback to bulk map lookup.
+    stock_items = get_tally_stock_item_map(company_name)
+    matches: list[dict[str, Any]] = []
+    match_sources: list[str] = []
+    for item in stock_items.values():
+        part_no = normalize_lookup_token(item.get("partNo"))
+        aliases = [normalize_lookup_token(alias) for alias in list(item.get("aliases") or [])]
+        if normalized_erp == part_no and part_no:
+            matches.append(item)
+            match_sources.append("part number")
+            continue
+        if normalized_erp in aliases:
+            matches.append(item)
+            match_sources.append("alias")
+
+    if len(matches) == 1:
+        matched = matches[0]
+        direct_item = query_tally_stock_item_details(str(matched.get("name") or ""), company_name)
+        if direct_item.get("exists"):
+            matched = direct_item
+        return (
+            True,
+            str(matched.get("name") or "").strip() or None,
+            str(matched.get("guid") or "").strip() or None,
+            str(matched.get("partNo") or "").strip() or None,
+            match_sources[0] if match_sources else None,
+        )
+
+    if len(matches) > 1:
+        candidate_names = ", ".join(
+            sorted(
+                f"{str(match.get('name') or '').strip()} [Part No: {str(match.get('partNo') or '').strip() or 'blank'}]"
+                for match in matches
+                if match.get("name")
+            )
+        )
+        LOGGER.warning(
+            "ERP '%s' matched multiple Tally stock items: %s. Auto-match skipped to avoid ambiguity.",
+            str(erp_code or "").strip(),
+            candidate_names,
+        )
+    return False, None, None, None, None
+
+
+def resolve_tally_item_name(item_name: str, erp_code: str, company_name: str | None, item_kind: str) -> str:
+    normalized_name = str(item_name or "").strip()
+    exact_item = get_tally_item_record_by_name(normalized_name, company_name)
+    if exact_item:
+        if str(erp_code or "").strip():
+            LOGGER.info(
+                "%s '%s' found in Tally by exact name with Tally Part No '%s'.",
+                item_kind,
+                normalized_name,
+                str(exact_item.get("partNo") or "").strip() or "blank",
+            )
+        return str(exact_item.get("name") or normalized_name).strip() or normalized_name
+
+    exists_by_erp, tally_name, _guid_by_erp, tally_part_no, match_source = query_tally_item_by_erp(erp_code, company_name)
+    if exists_by_erp and tally_name:
+        LOGGER.warning(
+            "%s '%s' not found by name in Tally. ERP '%s' matched existing Tally item '%s' via %s lookup. Tally Part No='%s'. Posting will use the Tally name.",
+            item_kind,
+            normalized_name,
+            str(erp_code or "").strip(),
+            tally_name,
+            str(match_source or "part/alias"),
+            str(tally_part_no or "").strip() or "blank",
+        )
+        return tally_name
+
+    if str(erp_code or "").strip():
+        LOGGER.info(
+            "%s '%s' was not found in Tally by name, part number, or alias for ERP '%s'.",
+            item_kind,
+            normalized_name,
+            str(erp_code or "").strip(),
+        )
+
+    return normalized_name
+
+
+def _normalize_group_name(value: str) -> str:
+    return re.sub(r"[^A-Z0-9]+", "", str(value or "").strip().upper())
+
+
+def resolve_tally_target_group(preferred_group: str, tally_groups: set[str], item_kind: str) -> str:
+    cleaned_preferred = str(preferred_group or "").strip()
+    preferred_upper = cleaned_preferred.upper()
+    if preferred_upper in tally_groups:
+        return cleaned_preferred
+
+    normalized_groups = {group: _normalize_group_name(group) for group in tally_groups}
+    preferred_normalized = _normalize_group_name(cleaned_preferred)
+    if preferred_normalized:
+        for group_name, normalized in normalized_groups.items():
+            if normalized == preferred_normalized:
+                return group_name
+
+    if item_kind.upper().startswith("FG"):
+        fg_candidates = [
+            FG_GROUP_OVERRIDE,
+            cleaned_preferred,
+            FG_GROUP,
+            "FINISHED GOOD",
+            "FINISHED PRODUCTS",
+            "FINISHED PRODUCT",
+            "FG",
+            "FINISH GOODS",
+        ]
+        for candidate in fg_candidates:
+            normalized_candidate = _normalize_group_name(candidate)
+            if not normalized_candidate:
+                continue
+            for group_name, normalized in normalized_groups.items():
+                if normalized == normalized_candidate:
+                    LOGGER.warning(
+                        "FG target stock group '%s' not found in Tally. Using existing group '%s' instead.",
+                        cleaned_preferred or FG_GROUP,
+                        group_name,
+                    )
+                    return group_name
+
+        fuzzy_matches = [
+            group_name
+            for group_name, normalized in normalized_groups.items()
+            if "FINISHED" in normalized or normalized == "FG" or normalized.startswith("FG")
+        ]
+        if len(fuzzy_matches) == 1:
+            LOGGER.warning(
+                "FG target stock group '%s' not found in Tally. Using closest existing group '%s'.",
+                cleaned_preferred or FG_GROUP,
+                fuzzy_matches[0],
+            )
+            return fuzzy_matches[0]
+
+    return cleaned_preferred
+
+
+def query_tally_unit(unit_name: str, company_name: str | None = None) -> bool:
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>DATA</TYPE>
+            <ID>Units</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="ExactUnits" ISMODIFY="No">
+                            <TYPE>Unit</TYPE>
+                            <FETCH>Name</FETCH>
+                        </COLLECTION>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+    response_text = post_xml_to_tally(xml_text)
+    cleaned = clean_tally_xml(response_text)
+    try:
+        root = ET.fromstring(cleaned)
+    except ET.ParseError:
+        root = None
+    if root is not None:
+        for unit in root.findall(".//UNIT"):
+            name = unit.get("NAME") or unit.findtext("NAME")
+            if str(name or "").strip().upper() == unit_name.strip().upper():
+                return True
+        for unit in root.findall(".//EXACTUNITS.LIST/*"):
+            name = unit.get("NAME") or unit.findtext("NAME")
+            if str(name or "").strip().upper() == unit_name.strip().upper():
+                return True
+            for node in list(unit):
+                node_text = str(node.text or "").strip()
+                if node_text.upper() == unit_name.strip().upper():
+                    return True
+    return False
+
+
+def _format_material_number(value: Any) -> str:
+    numeric = to_float(value)
+    if numeric <= 0:
+        return ""
+    if abs(numeric - int(numeric)) < 0.00001:
+        return str(int(numeric))
+    return f"{numeric:.2f}".rstrip("0").rstrip(".")
+
+
+def build_reel_display_name(material: dict[str, Any], fallback_line: dict[str, Any] | None = None) -> str:
+    source = fallback_line or {}
+    erp_code = str(material.get("erpCode") or source.get("erpCode") or "").strip()
+    size = _format_material_number(material.get("size") or source.get("size"))
+    gsm = _format_material_number(material.get("gsm") or source.get("gsm"))
+    bf = _format_material_number(material.get("bf") or source.get("bf"))
+    uom = str(material.get("uom") or source.get("uom") or "CM").strip() or "CM"
+    color = str(material.get("color") or source.get("color") or "").strip()
+    if erp_code and size and gsm and bf and color:
+        return f"{erp_code} - Size: {size} {uom} X GSM: {gsm} X BF: {bf}   Color - {color}"
+    return ""
+
+
+def resolve_material_display_name(material: dict[str, Any], fallback_line: dict[str, Any] | None = None) -> str:
+    source = fallback_line or {}
+    for key in ("name", "itemName", "materialName"):
+        value = str(material.get(key) or source.get(key) or "").strip()
+        if value:
+            return value
+
+    material_type = str(material.get("type") or source.get("type") or "").strip().lower()
+    if material_type == "reel":
+        reel_name = build_reel_display_name(material, source)
+        if reel_name:
+            return reel_name
+
+    erp_code = str(material.get("erpCode") or source.get("erpCode") or "").strip()
+    if erp_code:
+        return erp_code
+
+    return ""
+
+
+def build_material_lookup_row(
+    material_id: str,
+    material_map: dict[str, dict[str, Any]],
+    npd_map: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    material = material_map.get(material_id)
+    if material:
+        return material
+
+    npd_row = npd_map.get(material_id) or {}
+    if not npd_row:
+        return {}
+
+    return {
+        "id": material_id,
+        "name": str(npd_row.get("itemName") or "").strip(),
+        "itemName": str(npd_row.get("itemName") or "").strip(),
+        "materialName": str(npd_row.get("itemName") or "").strip(),
+        "uom": str(npd_row.get("uom") or "PCS").strip() or "PCS",
+        "type": str(npd_row.get("type") or "").strip(),
+        "erpCode": str(npd_row.get("erp") or "").strip(),
+        "openingRate": to_float(npd_row.get("openingRate") or npd_row.get("rate")),
+    }
+
+
+def is_reel_like_material(material_type: str, item_name: str, target_group: str) -> bool:
+    normalized_type = str(material_type or "").strip().lower()
+    if normalized_type == "reel":
+        return True
+
+    normalized_group = str(target_group or "").strip().upper()
+    normalized_name = str(item_name or "").strip().upper()
+    if normalized_group == "KRAFT PAPER":
+        return True
+    if "SIZE:" in normalized_name and "GSM:" in normalized_name:
+        return True
+    return False
+
+
+def create_tally_unit(company_name: str | None, unit_name: str) -> tuple[bool, str]:
+    safe_unit = escape_xml(unit_name)
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Import Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <IMPORTDATA>
+                <REQUESTDESC>
+                    <REPORTNAME>All Masters</REPORTNAME>
+                    <STATICVARIABLES>
+                        {build_company_static_variables(company_name)}
+                    </STATICVARIABLES>
+                </REQUESTDESC>
+                <REQUESTDATA>
+                    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+                        <UNIT NAME="{safe_unit}" ACTION="Create">
+                            <NAME.LIST TYPE="String">
+                                <NAME>{safe_unit}</NAME>
+                            </NAME.LIST>
+                            <ORIGINALNAME>{safe_unit}</ORIGINALNAME>
+                            <FORMALNAME>{safe_unit}</FORMALNAME>
+                            <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
+                            <DECIMALPLACES>2</DECIMALPLACES>
+                        </UNIT>
+                    </TALLYMESSAGE>
+                </REQUESTDATA>
+            </IMPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    """
+    response_text = post_xml_to_tally(xml_text)
+    if "<CREATED>1</CREATED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
+        return True, "Success"
+    if "already exists" in response_text.lower() or "duplicate" in response_text.lower():
+        return True, "Already exists"
+    if query_tally_unit(unit_name, company_name):
+        return True, "Linked after import verification"
+    return False, response_error_message(response_text)
+
+
+def ensure_tally_unit_exists(company_name: str | None, unit_name: str) -> None:
+    normalized_unit = str(unit_name or "").strip() or "NOS"
+    if query_tally_unit(normalized_unit, company_name):
+        return
+
+    LOGGER.info("Unit '%s' missing in Tally. Auto-creating unit.", normalized_unit)
+    success, result = create_tally_unit(company_name, normalized_unit)
+    if not success:
+        raise RuntimeError(f"Unit '{normalized_unit}' could not be auto-created in Tally: {result}")
+    LOGGER.info("Unit '%s' accepted by Tally unit-create flow (%s)", normalized_unit, result)
+
+
+def create_tally_rm_item(
+    company_name: str | None,
+    item_name: str,
+    erp_code: str,
+    target_group: str,
+    unit_name: str,
+) -> tuple[bool, str]:
+    safe_name = escape_xml(item_name)
+    safe_group = escape_xml(target_group)
+    safe_erp = escape_xml(erp_code)
+    safe_unit = escape_xml(unit_name or "Nos")
+    xml_text = f"""
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Import Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <IMPORTDATA>
+                <REQUESTDESC>
+                    <REPORTNAME>All Masters</REPORTNAME>
+                    <STATICVARIABLES>
+                        {build_company_static_variables(company_name)}
+                    </STATICVARIABLES>
+                </REQUESTDESC>
+                <REQUESTDATA>
+                    <TALLYMESSAGE xmlns:UDF="TallyUDF">
+                        <STOCKITEM NAME="{safe_name}" ACTION="Create">
+                            <NAME.LIST>
+                                <NAME>{safe_name}</NAME>
+                            </NAME.LIST>
+                            <PARENT>{safe_group}</PARENT>
+                            <PARTNO>{safe_erp}</PARTNO>
+                            <BASEUNITS>{safe_unit}</BASEUNITS>
+                        </STOCKITEM>
+                    </TALLYMESSAGE>
+                </REQUESTDATA>
+            </IMPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    """
+    response_text = post_xml_to_tally(xml_text)
+    if "<CREATED>1</CREATED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
+        invalidate_tally_stock_item_cache(company_name)
+        return True, "Success"
+    if "already exists" in response_text.lower() or "duplicate" in response_text.lower():
+        invalidate_tally_stock_item_cache(company_name)
+        return True, "Already exists"
+    invalidate_tally_stock_item_cache(company_name)
+    exists, _guid = query_tally_item(item_name, company_name)
+    if exists:
+        return True, "Linked after import verification"
+    exists_by_erp, matched_name, _guid, _part_no, match_source = query_tally_item_by_erp(erp_code, company_name)
+    if exists_by_erp and matched_name:
+        LOGGER.info(
+            "Raw material '%s' became available in Tally after create attempt as '%s' using %s match for ERP '%s'.",
+            item_name,
+            matched_name,
+            match_source or "ERP",
+            erp_code,
+        )
+        return True, "Linked after ERP verification"
+    LOGGER.error(
+        "Tally stock-item create failed for '%s'. Request XML: %s | Response XML: %s",
+        item_name,
+        compact_xml_for_log(xml_text),
+        compact_xml_for_log(response_text),
+    )
+    return False, response_error_message(response_text)
+
+
+def voucher_response_contains_exact_voucher(response_text: str, voucher_number: str, voucher_type: str) -> bool:
+    """Match the same fields Tally exports in traxn.xml."""
+    target_number = normalize_lookup_token(voucher_number)
+    target_type = normalize_lookup_token(voucher_type)
+    cleaned = clean_tally_xml(response_text or "")
+    if not cleaned or not target_number:
+        return False
+
+    for voucher_block in re.findall(
+        r"<VOUCHER\b[^>]*>.*?</VOUCHER>",
+        cleaned,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        opening_tag = voucher_block.split(">", 1)[0]
+        type_match = re.search(r'\bVCHTYPE="([^"]*)"', opening_tag, flags=re.IGNORECASE)
+        exported_type = clean_tally_text(type_match.group(1)) if type_match else ""
+        if not exported_type:
+            exported_type = extract_first_tag_value(voucher_block, "VOUCHERTYPENAME")
+        exported_number = extract_first_tag_value(voucher_block, "VOUCHERNUMBER")
+        if (
+            normalize_lookup_token(exported_type) == target_type
+            and normalize_lookup_token(exported_number) == target_number
+        ):
+            return True
+    return False
+
+
+def build_day_book_export_xml(company_name: str | None, voucher_date: str | None = None) -> str:
+    date_text = str(voucher_date or "").strip()
+    if not re.fullmatch(r"\d{8}", date_text):
+        date_text = datetime.now().strftime("%Y%m%d")
+    return f"""
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Export Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <EXPORTDATA>
+                <REQUESTDESC>
+                    <REPORTNAME>Day Book</REPORTNAME>
+                    <STATICVARIABLES>
+                        {build_company_static_variables(company_name)}
+                        <SVFROMDATE TYPE="Date">{date_text}</SVFROMDATE>
+                        <SVTODATE TYPE="Date">{date_text}</SVTODATE>
+                        <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                    </STATICVARIABLES>
+                </REQUESTDESC>
+            </EXPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    """
+
+
+def build_all_vouchers_export_xml(company_name: str | None) -> str:
+    return f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>Export</TALLYREQUEST>
+            <TYPE>Collection</TYPE>
+            <ID>AllVoucherIndex</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="AllVoucherIndex" ISMODIFY="No">
+                            <TYPE>Voucher</TYPE>
+                            <NATIVEMETHOD>VoucherNumber</NATIVEMETHOD>
+                            <NATIVEMETHOD>VoucherTypeName</NATIVEMETHOD>
+                            <NATIVEMETHOD>Date</NATIVEMETHOD>
+                            <NATIVEMETHOD>GUID</NATIVEMETHOD>
+                            <NATIVEMETHOD>MasterID</NATIVEMETHOD>
+                        </COLLECTION>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+
+
+def get_all_vouchers_from_tally(company_name: str | None) -> str:
+    cache_key = str(company_name or "__ACTIVE_COMPANY__").strip().upper()
+    if cache_key not in TALLY_VOUCHER_EXPORT_CACHE:
+        response = post_xml_to_tally(build_all_vouchers_export_xml(company_name))
+        if "<VOUCHER" not in str(response or "").upper():
+            raise RuntimeError("Tally voucher-index export returned no voucher blocks.")
+        TALLY_VOUCHER_EXPORT_CACHE[cache_key] = response
+        LOGGER.info("Loaded live Tally voucher index for existing-journal checks.")
+    return TALLY_VOUCHER_EXPORT_CACHE[cache_key]
+
+
+def voucher_exists_in_tally(
+    company_name: str | None,
+    voucher_number: str,
+    voucher_type: str,
+    voucher_date: str | None = None,
+) -> bool:
+    """Check the live Tally voucher index by exact voucher type and number."""
+    try:
+        voucher_index = get_all_vouchers_from_tally(company_name)
+        exists = voucher_response_contains_exact_voucher(voucher_index, voucher_number, voucher_type)
+        if exists:
+            LOGGER.info("Existing %s %s found in live Tally voucher index.", voucher_type, voucher_number)
+        return exists
+    except Exception as error:
+        raise RuntimeError(
+            f"Could not verify whether {voucher_type} {voucher_number} already exists in Tally. "
+            "Posting was not attempted."
+        ) from error
+
+def build_voucher_lookup_xml(voucher_number: str, company_name: str | None, voucher_type: str) -> str:
+    safe_number = escape_xml(voucher_number)
+    safe_type = escape_xml(voucher_type)
+    return f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>COLLECTION</TYPE>
+            <ID>VoucherLookup</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVFROMDATE>20240101</SVFROMDATE>
+                    <SVTODATE>20991231</SVTODATE>
+                    <VOUCHERTYPENAME>{safe_type}</VOUCHERTYPENAME>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="VoucherLookup" ISMODIFY="No">
+                            <TYPE>Voucher</TYPE>
+                            <FETCH>VoucherNumber</FETCH>
+                            <FETCH>MasterID</FETCH>
+                            <FETCH>GUID</FETCH>
+                            <FETCH>VoucherKey</FETCH>
+                            <FETCH>RemoteID</FETCH>
+                            <FILTER>OnlyTargetVoucher</FILTER>
+                        </COLLECTION>
+                        <SYSTEM TYPE="Formulae" NAME="OnlyTargetVoucher">$$StringEqual:$VoucherNumber:"{safe_number}"</SYSTEM>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+
+
+def build_voucher_object_export_xml(id_type: str, id_value: str, company_name: str | None) -> str:
+    return f"""
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>OBJECT</TYPE>
+            <SUBTYPE>Voucher</SUBTYPE>
+            <ID TYPE="{escape_xml(id_type)}">{escape_xml(id_value)}</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    {build_company_static_variables(company_name)}
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    """
+
+
+def parse_voucher_lookup_ids(xml_text: str) -> dict[str, str]:
+    cleaned = clean_tally_xml(xml_text)
+    if not cleaned:
+        return {}
+    try:
+        root = ET.fromstring(cleaned)
+    except ET.ParseError:
+        return {}
+
+    for element in root.iter():
+        voucher_number = extract_first_tag_value(ET.tostring(element, encoding="unicode"), "VOUCHERNUMBER")
+        master_id = extract_first_tag_value(ET.tostring(element, encoding="unicode"), "MASTERID")
+        guid = extract_first_tag_value(ET.tostring(element, encoding="unicode"), "GUID")
+        voucher_key = extract_first_tag_value(ET.tostring(element, encoding="unicode"), "VOUCHERKEY")
+        remote_id = extract_first_tag_value(ET.tostring(element, encoding="unicode"), "REMOTEID")
+        if voucher_number and any((master_id, guid, voucher_key, remote_id)):
+            return {
+                "VoucherNumber": voucher_number,
+                "MasterID": master_id,
+                "GUID": guid,
+                "VoucherKey": voucher_key,
+                "RemoteID": remote_id,
+            }
+    return {}
+
+
+def fetch_voucher_xml_from_tally(company_name: str | None, voucher_number: str, voucher_type: str) -> str:
+    lookup_response = post_xml_to_tally(build_voucher_lookup_xml(voucher_number, company_name, voucher_type))
+    lookup_ids = parse_voucher_lookup_ids(lookup_response)
+
+    for id_type, key in (("MasterID", "MasterID"), ("GUID", "GUID"), ("VoucherKey", "VoucherKey"), ("RemoteID", "RemoteID")):
+        id_value = str(lookup_ids.get(key) or "").strip()
+        if not id_value:
+            continue
+        object_response = post_xml_to_tally(build_voucher_object_export_xml(id_type, id_value, company_name))
+        if "<VOUCHER" in str(object_response or "").upper():
+            return object_response
+
+    return ""
+
+
+def fetch_voucher_lookup_ids_from_tally(company_name: str | None, voucher_number: str, voucher_type: str) -> dict[str, str]:
+    lookup_response = post_xml_to_tally(build_voucher_lookup_xml(voucher_number, company_name, voucher_type))
+    return parse_voucher_lookup_ids(lookup_response)
+
+
+def voucher_contains_fg_primary_item(voucher_xml: str, fg_item_name: str) -> bool:
+    cleaned = clean_tally_xml(voucher_xml)
+    if not cleaned or not fg_item_name:
+        return False
+
+    target = normalize_lookup_token(fg_item_name)
+    for match in re.findall(r"<INVENTORYENTRIESIN\.LIST\b[^>]*>.*?</INVENTORYENTRIESIN\.LIST>", cleaned, flags=re.IGNORECASE | re.DOTALL):
+        stock_item_name = extract_first_tag_value(match, "STOCKITEMNAME")
+        is_primary = normalize_lookup_token(extract_first_tag_value(match, "ISPRIMARYITEM"))
+        if normalize_lookup_token(stock_item_name) == target and is_primary in {"YES", "TRUE"}:
+            return True
+    return False
+
+
+def build_voucher_delete_xml(master_id: str, company_name: str | None, voucher_type: str) -> str:
+    return f"""
+    <ENVELOPE>
+        <HEADER>
+            <TALLYREQUEST>Import Data</TALLYREQUEST>
+        </HEADER>
+        <BODY>
+            <IMPORTDATA>
+                <REQUESTDESC>
+                    <REPORTNAME>Vouchers</REPORTNAME>
+                    <STATICVARIABLES>
+                        {build_company_static_variables(company_name)}
+                    </STATICVARIABLES>
+                </REQUESTDESC>
+                <REQUESTDATA>
+                    <TALLYMESSAGE>
+                        <VOUCHER VCHTYPE="{escape_xml(voucher_type)}" ACTION="Delete" MASTERID="{escape_xml(master_id)}">
+                            <MASTERID>{escape_xml(master_id)}</MASTERID>
+                        </VOUCHER>
+                    </TALLYMESSAGE>
+                </REQUESTDATA>
+            </IMPORTDATA>
+        </BODY>
+    </ENVELOPE>
+    """
+
+
+def delete_voucher_from_tally(company_name: str | None, voucher_number: str, voucher_type: str) -> tuple[bool, str]:
+    lookup_ids = fetch_voucher_lookup_ids_from_tally(company_name, voucher_number, voucher_type)
+    master_id = str(lookup_ids.get("MasterID") or "").strip()
+    if not master_id:
+        return False, f"MasterID not found for {voucher_type} {voucher_number}."
+
+    delete_xml = build_voucher_delete_xml(master_id, company_name, voucher_type)
+    response_text = post_xml_to_tally(delete_xml)
+    if "<DELETED>1</DELETED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
+        return True, "Deleted from Tally"
+
+    return False, response_error_message(response_text)
+
+
+def get_latest_non_reel_rate(conn, material_id: str, opening_rate: float) -> float:
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            """
+            SELECT pol.rate
+            FROM `purchase_order_lines` pol
+            INNER JOIN `purchase_orders` po ON po.id = pol.purchaseOrderId
+            WHERE pol.materialId = %s
+            ORDER BY po.poDate DESC, po.updateTimestamp DESC, po.id DESC
+            LIMIT 1
+            """,
+            (material_id,),
+        )
+        row = cursor.fetchone()
+        latest_rate = to_float((row or {}).get("rate"))
+        if latest_rate > 0:
+            return latest_rate
+        return opening_rate
+    finally:
+        cursor.close()
+
+
+def get_latest_reel_rate_from_material_in(material_in_rows: list[dict[str, Any]], material_map: dict[str, dict[str, Any]]) -> float:
+    ranked_rows: list[tuple[datetime, dict[str, Any]]] = []
+    for row in material_in_rows:
+        parsed = _parse_tally_date(row.get("date")) or _parse_tally_date(row.get("updateTimestamp")) or _parse_tally_date(row.get("timestamp"))
+        ranked_rows.append((parsed or datetime.min, row))
+
+    ranked_rows.sort(key=lambda item: item[0], reverse=True)
+
+    for _rank, row in ranked_rows:
+        lines = parse_json_lines(row.get("lines"))
+
+        for line in lines:
+            material_id = str(line.get("materialId") or line.get("itemId") or "").strip()
+            material = material_map.get(material_id) or {}
+            if str(material.get("type") or "").strip().lower() != "reel":
+                continue
+
+            rate = to_float(line.get("invoiceRate")) or to_float(line.get("rate"))
+            if rate > 0:
+                return rate
+
+    return 0.0
 
 
 def resolve_firm(conn, firm_number: int) -> dict[str, Any]:
@@ -476,1584 +1665,849 @@ def resolve_firm(conn, firm_number: int) -> dict[str, Any]:
         port = int(str(firm.get("tallyPortNo") or "").strip())
     except ValueError as error:
         raise RuntimeError(f"{config['label']} '{firm_name}' has no valid Tally port configured.") from error
-    if not firm_id or not firm_name:
-        raise RuntimeError(f"{config['label']} configuration requires a firm ID and name.")
-    if not 1 <= port <= 65535:
-        raise RuntimeError(f"{config['label']} '{firm_name}' has an invalid Tally port configured.")
-    return {
-        **firm,
-        "id": firm_id,
-        "firmName": firm_name,
-        "tallyPortNo": port,
-        "label": config["label"],
-    }
+    if not firm_id or not firm_name or not 1 <= port <= 65535:
+        raise RuntimeError(f"{config['label']} has invalid firm configuration.")
+    return {**firm, "id": firm_id, "firmName": firm_name, "tallyPortNo": port, "label": config["label"]}
 
 
-def get_pending_mrrs(conn, firm_id: str):
-    conn = ensure_db_connection(conn)
+def get_pending_jobs(conn, firm_id: str | None = None) -> list[dict[str, Any]]:
     cursor = conn.cursor(dictionary=True)
-    cursor.execute(
+    try:
+        query = """
+            SELECT p.*
+            FROM `productions` p
+            LEFT JOIN `orders_schedule` os ON os.id = p.scheduleId
+            LEFT JOIN `orders` o ON o.id = os.orderId
+            WHERE COALESCE(p.prodFromFFG, 0) > 0
+              AND (p.cancelTimestamp IS NULL OR TRIM(p.cancelTimestamp) = '')
+              AND COALESCE(p.status, '') <> 'Cancelled'
+              AND (p.tallyTimestamp IS NULL OR TRIM(p.tallyTimestamp) = '')
+              AND (
+                    p.tallyPostingStatus IS NULL
+                 OR TRIM(p.tallyPostingStatus) = ''
+                 OR p.tallyPostingStatus IN ('Pending', 'Ready', 'Error', 'Processing')
+              )
         """
-        SELECT `id`, `transactionNo`, `mrrType`, `mrrSubType`, `date`, `timestamp`, `invoiceNo`, `invDate`, `supplierId`,
-               `totalAmount`, `totalCgst`, `totalSgst`, `totalIgst`,
-               `insurance`, `otherCharges`, `roundOff`, 0 AS `tdsAmount`, `lines`, `status`, `tallyTimestamp`
-        FROM `material_in`
-        WHERE (`tallyTimestamp` IS NULL OR `tallyTimestamp` = '')
-          AND `firmId` = %s
-        ORDER BY `timestamp` ASC, `transactionNo` ASC
-        """,
-        (firm_id,),
-    )
-    rows = cursor.fetchall()
-    cursor.close()
-    return rows
-
-
-def resolve_party_name(conn, supplier_id: str) -> tuple[str | None, str | None]:
-    conn = ensure_db_connection(conn)
-    cursor = conn.cursor(dictionary=True)
-    try:
-        cursor.execute("SELECT `name` FROM `suppliers` WHERE `id` = %s LIMIT 1", (supplier_id,))
-        row = cursor.fetchone()
-        supplier_name = str((row or {}).get("name") or "").strip()
-        if supplier_name:
-            return supplier_name, "suppliers"
-
-        cursor.execute("SELECT `name` FROM `companies` WHERE `id` = %s LIMIT 1", (supplier_id,))
-        row = cursor.fetchone()
-        company_name = str((row or {}).get("name") or "").strip()
-        if company_name:
-            return company_name, "companies"
-
-        return None, None
+        params: tuple[str, ...] = ()
+        if firm_id:
+            query += """
+              AND COALESCE(
+                    NULLIF(TRIM(p.orderFirmId), ''),
+                    NULLIF(TRIM(o.firmId), ''),
+                    NULLIF(TRIM(o.orderFirmId), '')
+                  ) = %s
+            """
+            params = (firm_id,)
+        query += " ORDER BY p.date ASC, p.transactionNo ASC"
+        cursor.execute(query, params)
+        return cursor.fetchall()
     finally:
         cursor.close()
 
 
-def get_supplier_name(conn, supplier_id: str, mrr_type: str) -> tuple[str, str]:
-    party_name, source_table = resolve_party_name(conn, supplier_id)
-    if party_name and source_table:
-        return party_name, source_table
-    group_hint = SUPPLIER_GROUP_HINT_BY_MRR.get(mrr_type, "Sundry Creditors")
-    raise RuntimeError(
-        f"Party ledger name is missing for supplierId={supplier_id}. "
-        f"Checked both suppliers and companies tables. "
-        f"Create the ledger in Tally under '{group_hint}' and keep the same name in LNPI master."
-    )
-
-
-def resolve_stock_item_name(conn, line: dict[str, Any]) -> tuple[str, str]:
-    direct_name = str(line.get("itemName") or "").strip()
-    if direct_name:
-        return direct_name, "line.itemName"
-
-    line_item_id = str(line.get("itemId") or "").strip()
-    material_id = str(line.get("materialId") or "").strip()
-    npd_id = str(line.get("npdId") or "").strip()
-    erp_code = str(line.get("erpCode") or "").strip()
-
-    lookup_keys = [
-        ("materials", material_id),
-        ("materials", line_item_id),
-        ("items", line_item_id),
-        ("npd", npd_id),
-        ("npd", line_item_id),
-    ]
-
-    conn = ensure_db_connection(conn)
-    cursor = conn.cursor(dictionary=True)
-    try:
-        for table, lookup_id in lookup_keys:
-            if not lookup_id:
-                continue
-            cache_key = f"{table}:{lookup_id}"
-            if cache_key in ITEM_NAME_CACHE:
-                cached = ITEM_NAME_CACHE[cache_key]
-                if cached:
-                    return cached, cache_key
-                continue
-
-            if table == "materials":
-                cursor.execute("SELECT `name` FROM `materials` WHERE `id` = %s LIMIT 1", (lookup_id,))
+def resolve_fg_item_profile(conn, production: dict[str, Any]) -> dict[str, str]:
+    if str(production.get("itemSource") or "FG").strip().upper() == "FG":
+        item_id = str(production.get("itemId") or "").strip()
+        if item_id:
+            cursor = conn.cursor(dictionary=True)
+            try:
+                cursor.execute(
+                    """
+                    SELECT i.`name`, i.`uom`, i.`erp`, ig.`name` AS groupName
+                    FROM `items` i
+                    LEFT JOIN `item_groups` ig ON ig.`id` = i.`groupId`
+                    WHERE i.`id` = %s
+                    LIMIT 1
+                    """,
+                    (item_id,),
+                )
                 row = cursor.fetchone()
-                resolved = str((row or {}).get("name") or "").strip() or None
-            elif table == "items":
-                cursor.execute("SELECT `name` FROM `items` WHERE `id` = %s LIMIT 1", (lookup_id,))
-                row = cursor.fetchone()
-                resolved = str((row or {}).get("name") or "").strip() or None
-            else:
-                cursor.execute("SELECT `itemName` FROM `npd` WHERE `id` = %s LIMIT 1", (lookup_id,))
-                row = cursor.fetchone()
-                resolved = str((row or {}).get("itemName") or "").strip() or None
+                name = str((row or {}).get("name") or "").strip()
+                if name:
+                    return {
+                        "name": name,
+                        "uom": str((row or {}).get("uom") or production.get("uom") or "PCS").strip(),
+                        "erpCode": str((row or {}).get("erp") or "").strip(),
+                        "groupName": str((row or {}).get("groupName") or FG_GROUP).strip() or FG_GROUP,
+                    }
+            finally:
+                cursor.close()
 
-            ITEM_NAME_CACHE[cache_key] = resolved
-            if resolved:
-                return resolved, cache_key
-    finally:
-        cursor.close()
+    for erp_code in (
+        str(production.get("erpCode") or "").strip(),
+        str(production.get("masterErp") or "").strip(),
+    ):
+        if not erp_code:
+            continue
 
-    if erp_code:
         cursor = conn.cursor(dictionary=True)
         try:
-            cursor.execute("SELECT `name` FROM `materials` WHERE `erpCode` = %s LIMIT 1", (erp_code,))
+            cursor.execute(
+                """
+                SELECT i.`name`, i.`uom`, i.`erp`, ig.`name` AS groupName
+                FROM `items` i
+                LEFT JOIN `item_groups` ig ON ig.`id` = i.`groupId`
+                WHERE TRIM(COALESCE(i.`erp`, '')) = %s
+                LIMIT 1
+                """,
+                (erp_code,),
+            )
             row = cursor.fetchone()
-            resolved = str((row or {}).get("name") or "").strip()
-            if resolved:
-                return resolved, f"materials:erpCode:{erp_code}"
+            name = str((row or {}).get("name") or "").strip()
+            if name:
+                return {
+                    "name": name,
+                    "uom": str((row or {}).get("uom") or production.get("uom") or "PCS").strip(),
+                    "erpCode": str((row or {}).get("erp") or erp_code).strip(),
+                    "groupName": str((row or {}).get("groupName") or FG_GROUP).strip() or FG_GROUP,
+                }
         finally:
             cursor.close()
 
-    raise RuntimeError(
-        "Stock item name could not be resolved. "
-        f"line.itemId={line_item_id or '-'}, materialId={material_id or '-'}, npdId={npd_id or '-'}"
-    )
-
-
-def resolve_material_master_uom(conn, line: dict[str, Any]) -> tuple[str | None, str]:
-    line_item_id = str(line.get("itemId") or "").strip()
-    material_id = str(line.get("materialId") or "").strip()
-    erp_code = str(line.get("erpCode") or "").strip()
-
-    lookup_keys = [
-        ("materials", material_id),
-        ("materials", line_item_id),
-    ]
-
-    conn = ensure_db_connection(conn)
-    cursor = conn.cursor(dictionary=True)
-    try:
-        for table, lookup_id in lookup_keys:
-            if not lookup_id:
-                continue
-            if table == "materials":
-                cursor.execute("SELECT `uom` FROM `materials` WHERE `id` = %s LIMIT 1", (lookup_id,))
-                row = cursor.fetchone()
-                resolved = str((row or {}).get("uom") or "").strip() or None
-                if resolved:
-                    return resolved, f"{table}:{lookup_id}"
-    finally:
-        cursor.close()
-
-    if erp_code:
+    npd_id = str(production.get("npdId") or "").strip()
+    if npd_id:
         cursor = conn.cursor(dictionary=True)
         try:
-            cursor.execute("SELECT `uom` FROM `materials` WHERE `erpCode` = %s LIMIT 1", (erp_code,))
+            cursor.execute("SELECT `itemName`, `uom` FROM `npd` WHERE `id` = %s LIMIT 1", (npd_id,))
             row = cursor.fetchone()
-            resolved = str((row or {}).get("uom") or "").strip() or None
-            if resolved:
-                return resolved, f"materials:erpCode:{erp_code}"
+            name = str((row or {}).get("itemName") or "").strip()
+            if name:
+                return {
+                    "name": name,
+                    "uom": str((row or {}).get("uom") or production.get("uom") or "PCS").strip(),
+                    "erpCode": str(production.get("erpCode") or production.get("masterErp") or "").strip(),
+                    "groupName": FG_GROUP,
+                }
         finally:
             cursor.close()
 
-    return None, "line.uom"
+    for erp_code in (
+        str(production.get("erpCode") or "").strip(),
+        str(production.get("masterErp") or "").strip(),
+    ):
+        if not erp_code:
+            continue
+
+        cursor = conn.cursor(dictionary=True)
+        try:
+            cursor.execute("SELECT `itemName`, `uom` FROM `npd` WHERE TRIM(COALESCE(`erp`, '')) = %s LIMIT 1", (erp_code,))
+            row = cursor.fetchone()
+            name = str((row or {}).get("itemName") or "").strip()
+            if name:
+                return {
+                    "name": name,
+                    "uom": str((row or {}).get("uom") or production.get("uom") or "PCS").strip(),
+                    "erpCode": erp_code,
+                    "groupName": FG_GROUP,
+                }
+        finally:
+            cursor.close()
+
+    raise RuntimeError(f"FG stock item name could not be resolved for job {production.get('transactionNo') or production.get('id')}.")
 
 
-def parse_lines(lines_raw: Any) -> list[dict[str, Any]]:
-    if not lines_raw:
-        return []
-    if isinstance(lines_raw, list):
-        return lines_raw
-    if isinstance(lines_raw, str):
-        return json.loads(lines_raw)
-    return list(lines_raw)
-
-
-def voucher_exists_in_tally(company_name: str | None, voucher_number: str, voucher_type: str) -> bool:
-    safe_number = escape_xml(voucher_number)
-    safe_type = escape_xml(voucher_type)
-    xml_text = f"""
-    <ENVELOPE>
-        <HEADER>
-            <TALLYREQUEST>EXPORT</TALLYREQUEST>
-            <TYPE>DATA</TYPE>
-            <ID>Voucher Number</ID>
-        </HEADER>
-        <BODY>
-            <DESC>
-                <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
-                    <SVFROMDATE>20240101</SVFROMDATE>
-                    <SVTODATE>20991231</SVTODATE>
-                    <VOUCHERTYPENAME>{safe_type}</VOUCHERTYPENAME>
-                </STATICVARIABLES>
-                <TDL>
-                    <TDLMESSAGE>
-                        <COLLECTION NAME="CheckVoucher" ISMODIFY="No">
-                            <TYPE>Voucher</TYPE>
-                            <FETCH>VoucherNumber</FETCH>
-                            <FILTERS>OnlyTargetVoucher</FILTERS>
-                        </COLLECTION>
-                        <SYSTEM TYPE="Formulae" NAME="OnlyTargetVoucher">$$StringEqual:$VoucherNumber:"{safe_number}"</SYSTEM>
-                    </TDLMESSAGE>
-                </TDL>
-            </DESC>
-        </BODY>
-    </ENVELOPE>
-    """
+def build_job_context(conn, production: dict[str, Any]) -> dict[str, Any]:
+    production_id = str(production["id"])
+    cursor = conn.cursor(dictionary=True)
     try:
-        response_text = post_xml_to_tally(xml_text, debug_step="voucher_exists_check", voucher_no=voucher_number)
-    except TallyUnavailableError:
-        raise
-    except Exception as error:
-        LOGGER.warning("Voucher existence check failed for %s: %s", voucher_number, error)
-        return False
-    return safe_number in response_text
+        cursor.execute("SELECT * FROM `materials`")
+        materials = cursor.fetchall()
+        material_map = {str(row["id"]): row for row in materials}
 
+        cursor.execute("SELECT * FROM `npd`")
+        npd_rows = cursor.fetchall()
+        npd_map = {str(row["id"]): row for row in npd_rows}
 
-def _safe_tally_text(element: ET.Element | None, tag_name: str) -> str:
-    if element is None:
-        return ""
-    child = element.find(tag_name)
-    if child is None:
-        return ""
-    return str(child.text or "").strip()
+        cursor.execute("SELECT * FROM `material_in_packing_slips`")
+        packing_slips = cursor.fetchall()
+        packing_slip_map = {str(row["id"]): row for row in packing_slips}
 
+        cursor.execute("SELECT * FROM `material_in`")
+        material_in_rows = cursor.fetchall()
+        material_in_line_map: dict[tuple[str, str], dict[str, Any]] = {}
+        for row in material_in_rows:
+            lines = parse_json_lines(row.get("lines"))
+            for line in lines:
+                material_in_line_map[(str(row["id"]), str(line.get("id") or ""))] = line
 
-def _looks_like_duplicate_check_voucher_element(element: ET.Element) -> bool:
-    return any(
-        _safe_tally_text(element, field)
-        for field in ("VOUCHERNUMBER", "REFERENCE", "NARRATION", "PARTYLEDGERNAME", "PARTYNAME")
-    )
+        latest_reel_rate = get_latest_reel_rate_from_material_in(material_in_rows, material_map)
 
+        cursor.execute(
+            """
+            SELECT mil.*, mi.productionId
+            FROM `material_issue_lines` mil
+            INNER JOIN `material_issues` mi ON mi.id = mil.materialIssueId
+            WHERE mi.productionId = %s AND COALESCE(mi.issueType, '') = 'Job'
+            """,
+            (production_id,),
+        )
+        issue_lines = cursor.fetchall()
 
-def fetch_tally_vouchers_for_duplicate_check(
-    company_name: str | None,
-    voucher_type: str,
-    supplier_name: str,
-    from_date: str,
-    to_date: str,
-) -> list[dict[str, str]]:
-    safe_type = escape_xml(voucher_type)
-    safe_supplier = escape_xml(supplier_name)
-    xml_text = f"""
-    <ENVELOPE>
-        <HEADER>
-            <VERSION>1</VERSION>
-            <TALLYREQUEST>EXPORT</TALLYREQUEST>
-            <TYPE>COLLECTION</TYPE>
-            <ID>DupCheckVouchers</ID>
-        </HEADER>
-        <BODY>
-            <DESC>
-                <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
-                    <SVFROMDATE>{from_date}</SVFROMDATE>
-                    <SVTODATE>{to_date}</SVTODATE>
-                    <VOUCHERTYPENAME>{safe_type}</VOUCHERTYPENAME>
-                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-                </STATICVARIABLES>
-                <TDL>
-                    <TDLMESSAGE>
-                        <COLLECTION NAME="DupCheckVouchers" ISMODIFY="No">
-                            <TYPE>Voucher</TYPE>
-                            <FILTERS>OnlyTargetParty</FILTERS>
-                            <FETCH>Date</FETCH>
-                            <FETCH>VoucherNumber</FETCH>
-                            <FETCH>Reference</FETCH>
-                            <FETCH>Narration</FETCH>
-                            <FETCH>PartyLedgerName</FETCH>
-                            <FETCH>PartyName</FETCH>
-                            <FETCH>VoucherTypeName</FETCH>
-                        </COLLECTION>
-                        <SYSTEM TYPE="Formulae" NAME="OnlyTargetParty">$$StringEqual:$PartyLedgerName:"{safe_supplier}"</SYSTEM>
-                    </TDLMESSAGE>
-                </TDL>
-            </DESC>
-        </BODY>
-    </ENVELOPE>
-    """
-    response_text = post_xml_to_tally(
-        xml_text,
-        debug_step=f"duplicate_check_fetch:{voucher_type}:{supplier_name}",
-        voucher_no="-",
-    )
-    cleaned = clean_tally_xml(response_text)
-    if not cleaned:
-        return []
+        cursor.execute(
+            """
+            SELECT mirl.*
+            FROM `material_issue_reel_lines` mirl
+            INNER JOIN `material_issues` mi ON mi.id = mirl.materialIssueId
+            WHERE mi.productionId = %s AND COALESCE(mi.issueType, '') = 'Job'
+            """,
+            (production_id,),
+        )
+        issue_reel_lines = cursor.fetchall()
 
-    try:
-        root = ET.fromstring(cleaned)
-    except ET.ParseError as error:
-        LOGGER.warning("Could not parse Tally duplicate-check response for supplier %s: %s", supplier_name, error)
-        return []
+        cursor.execute(
+            """
+            SELECT mrl.*, mr.productionId
+            FROM `material_return_lines` mrl
+            INNER JOIN `material_returns` mr ON mr.id = mrl.materialReturnId
+            WHERE mr.productionId = %s AND COALESCE(mr.returnType, '') = 'Job'
+            """,
+            (production_id,),
+        )
+        return_lines = cursor.fetchall()
 
-    vouchers: list[dict[str, str]] = []
-    seen_keys: set[tuple[str, str, str, str, str]] = set()
-    candidate_elements: list[ET.Element] = []
-    for element in root.iter():
-        if _looks_like_duplicate_check_voucher_element(element):
-            candidate_elements.append(element)
+        cursor.execute(
+            """
+            SELECT mrrl.*
+            FROM `material_return_reel_lines` mrrl
+            INNER JOIN `material_returns` mr ON mr.id = mrrl.materialReturnId
+            WHERE mr.productionId = %s AND COALESCE(mr.returnType, '') = 'Job'
+            """,
+            (production_id,),
+        )
+        return_reel_lines = cursor.fetchall()
+    finally:
+        cursor.close()
 
-    normalized_supplier = normalize_lookup_key(supplier_name)
-    normalized_voucher_type = normalize_lookup_key(voucher_type)
+    fg_profile = resolve_fg_item_profile(conn, production)
+    fg_name = fg_profile["name"]
+    fg_uom = fg_profile["uom"]
+    fg_qty = to_float(production.get("prodFromFFG"))
+    voucher_no = str(production.get("transactionNo") or "").strip()
+    if not voucher_no:
+        raise RuntimeError(f"Voucher number could not be derived for production {production_id}.")
+    voucher_date = format_production_date(production)
 
-    for element in candidate_elements:
-        voucher_date = _safe_tally_text(element, "DATE")
-        voucher_number = _safe_tally_text(element, "VOUCHERNUMBER")
-        reference = _safe_tally_text(element, "REFERENCE")
-        narration = _safe_tally_text(element, "NARRATION")
-        party = _safe_tally_text(element, "PARTYLEDGERNAME") or _safe_tally_text(element, "PARTYNAME")
-        fetched_voucher_type = _safe_tally_text(element, "VOUCHERTYPENAME")
-        if normalized_voucher_type and normalize_lookup_key(fetched_voucher_type) not in ("", normalized_voucher_type):
+    rm_map: dict[str, dict[str, Any]] = {}
+
+    for line in issue_reel_lines:
+        material_id = str(line.get("materialId") or "").strip()
+        if not material_id:
             continue
-        if normalized_supplier and normalize_lookup_key(party) not in ("", normalized_supplier):
+        material = build_material_lookup_row(material_id, material_map, npd_map)
+        slip = packing_slip_map.get(str(line.get("packingSlipId") or "").strip()) or {}
+        material_in_id = str(slip.get("materialInId") or "").strip()
+        material_line_id = str(slip.get("materialLineId") or "").strip()
+        source_line = material_in_line_map.get((material_in_id, material_line_id), {})
+        rate = (
+            to_float(source_line.get("invoiceRate"))
+            or to_float(source_line.get("rate"))
+            or latest_reel_rate
+            or to_float(material.get("openingRate"))
+        )
+        current = rm_map.get(material_id) or {
+            "materialId": material_id,
+            "name": resolve_material_display_name(material, line),
+            "uom": str(material.get("uom") or "KG").strip() or "KG",
+            "type": str(material.get("type") or "reel").strip() or "reel",
+            "erpCode": str(material.get("erpCode") or "").strip(),
+            "openingRate": to_float(material.get("openingRate")),
+            "issuedQty": 0.0,
+            "returnedQty": 0.0,
+            "rate": 0.0,
+        }
+        current["issuedQty"] += to_float(line.get("weightKg"))
+        if rate > 0:
+            current["rate"] = rate
+        rm_map[material_id] = current
+
+    for line in return_reel_lines:
+        material_id = str(line.get("materialId") or "").strip()
+        if not material_id:
             continue
-        key = (voucher_date, voucher_number, reference, narration, party)
-        if key in seen_keys:
+        material = build_material_lookup_row(material_id, material_map, npd_map)
+        current = rm_map.get(material_id) or {
+            "materialId": material_id,
+            "name": resolve_material_display_name(material, line),
+            "uom": str(material.get("uom") or "KG").strip() or "KG",
+            "type": str(material.get("type") or "reel").strip() or "reel",
+            "erpCode": str(material.get("erpCode") or "").strip(),
+            "openingRate": to_float(material.get("openingRate")),
+            "issuedQty": 0.0,
+            "returnedQty": 0.0,
+            "rate": 0.0,
+        }
+        current["returnedQty"] += to_float(line.get("weightKg"))
+        rm_map[material_id] = current
+
+    for line in issue_lines:
+        material_id = str(line.get("materialId") or "").strip()
+        material = build_material_lookup_row(material_id, material_map, npd_map)
+        if str(material.get("type") or "").strip().lower() == "reel":
             continue
-        seen_keys.add(key)
-        vouchers.append(
+        current = rm_map.get(material_id) or {
+            "materialId": material_id,
+            "name": resolve_material_display_name(material, line),
+            "uom": str(line.get("uom") or material.get("uom") or "NOS").strip() or "NOS",
+            "type": str(material.get("type") or "").strip(),
+            "erpCode": str(material.get("erpCode") or "").strip(),
+            "openingRate": to_float(material.get("openingRate")),
+            "issuedQty": 0.0,
+            "returnedQty": 0.0,
+            "rate": 0.0,
+        }
+        current["issuedQty"] += to_float(line.get("qty"))
+        rm_map[material_id] = current
+
+    for line in return_lines:
+        material_id = str(line.get("materialId") or "").strip()
+        material = build_material_lookup_row(material_id, material_map, npd_map)
+        if str(material.get("type") or "").strip().lower() == "reel":
+            continue
+        current = rm_map.get(material_id) or {
+            "materialId": material_id,
+            "name": resolve_material_display_name(material, line),
+            "uom": str(line.get("uom") or material.get("uom") or "NOS").strip() or "NOS",
+            "type": str(material.get("type") or "").strip(),
+            "erpCode": str(material.get("erpCode") or "").strip(),
+            "openingRate": to_float(material.get("openingRate")),
+            "issuedQty": 0.0,
+            "returnedQty": 0.0,
+            "rate": 0.0,
+        }
+        current["returnedQty"] += to_float(line.get("qty"))
+        rm_map[material_id] = current
+
+    rm_lines: list[dict[str, Any]] = []
+    for material_id, row in rm_map.items():
+        net_qty = round(row["issuedQty"] - row["returnedQty"], 5)
+        if net_qty <= 0:
+            continue
+        material_type = str(row.get("type") or "").strip().lower()
+        resolved_rate = to_float(row.get("rate"))
+        if material_type != "reel":
+            resolved_rate = get_latest_non_reel_rate(conn, material_id, to_float(row.get("openingRate")))
+        amount = round(net_qty * resolved_rate, 2)
+        rm_lines.append(
             {
-                "date": voucher_date,
-                "voucher_number": voucher_number,
-                "reference": reference,
-                "narration": narration,
-                "party": party,
-                "voucher_type": fetched_voucher_type,
+                "materialId": material_id,
+                "name": str(row.get("name") or "").strip(),
+                "uom": str(row.get("uom") or "NOS").strip() or "NOS",
+                "type": str(row.get("type") or "").strip(),
+                "erpCode": str(row.get("erpCode") or "").strip(),
+                "netQty": net_qty,
+                "rate": resolved_rate,
+                "amount": amount,
             }
         )
 
-    LOGGER.info(
-        "Fetched %s voucher(s) for duplicate check | supplier=%s | type=%s | from=%s | to=%s",
-        len(vouchers),
-        supplier_name,
-        voucher_type,
-        from_date,
-        to_date,
-    )
-    return vouchers
+    total_component_cost = round(sum(line["amount"] for line in rm_lines if line["amount"] > 0), 2)
+    effective_rate = round(total_component_cost / fg_qty, 5) if fg_qty > 0 else 0.0
 
-
-def find_duplicate_voucher(
-    company_name: str | None,
-    voucher_type: str,
-    supplier_name: str,
-    transaction_no: str,
-    invoice_no: str,
-    voucher_date: datetime,
-    mrr_type: str,
-) -> dict[str, str] | None:
-    from_date, to_date = get_financial_year_bounds(voucher_date)
-    vouchers = fetch_tally_vouchers_for_duplicate_check(
-        company_name=company_name,
-        voucher_type=voucher_type,
-        supplier_name=supplier_name,
-        from_date=from_date,
-        to_date=to_date,
-    )
-    target_narration = f"Imported from LNPI MRR {transaction_no} | Type: {mrr_type}".strip()
-    normalized_target_narration = normalize_lookup_key(target_narration)
-    normalized_transaction_no = normalize_lookup_key(transaction_no)
-    normalized_target_reference = normalize_lookup_key(invoice_no)
-
-    for voucher in vouchers:
-        narration = str(voucher.get("narration") or "").strip()
-        reference = str(voucher.get("reference") or "").strip()
-        normalized_narration = normalize_lookup_key(narration)
-        normalized_reference = normalize_lookup_key(reference)
-        if normalized_target_narration and normalized_narration == normalized_target_narration:
-            voucher["duplicate_reason"] = "transaction_no_in_narration"
-            return voucher
-        if normalized_transaction_no and normalized_transaction_no in normalized_narration:
-            voucher["duplicate_reason"] = "transaction_no_in_narration"
-            return voucher
-        if normalized_target_reference and normalized_reference == normalized_target_reference:
-            voucher["duplicate_reason"] = "supplier_invoice_reference_in_financial_year"
-            return voucher
-    return None
-
-
-def response_error_message(response_text: str) -> str:
-    match = re.search(r"<LINEERROR>(.*?)</LINEERROR>", response_text or "", re.IGNORECASE | re.DOTALL)
-    if match:
-        return re.sub(r"\s+", " ", match.group(1)).strip()
-    summary = []
-    for tag in ("CREATED", "ALTERED", "COMBINED", "IGNORED", "DELETED", "CANCELLED", "ERRORS", "EXCEPTIONS"):
-        value_match = re.search(rf"<{tag}>(.*?)</{tag}>", response_text or "", re.IGNORECASE | re.DOTALL)
-        if value_match:
-            summary.append(f"{tag.lower()}={value_match.group(1).strip()}")
-    return "Tally import failed" + (f" ({', '.join(summary)})" if summary else "")
-
-
-def normalize_tally_unit_name(unit_name: Any) -> str:
-    cleaned = str(unit_name or "").strip().upper()
-    if cleaned in {"", "NOS", "NO", "NUMBER", "NUMBERS"}:
-        return "NOS"
-    if cleaned in {"KG", "KGS", "KILOGRAM", "KILOGRAMS"}:
-        return "KGS"
-    if cleaned in {"LTR", "LTS", "LT", "LITER", "LITERS", "LITRE", "LITRES"}:
-        return "LTR"
-    if cleaned in {"PCS", "PC", "PIECE", "PIECES"}:
-        return "PCS"
-    if cleaned in {"REAM", "REEM"}:
-        return "NOS"
-    if cleaned in {"CARTON", "CARTOON", "BOX", "BOXES"}:
-        return "PCS"
-    return cleaned
-
-
-def get_unit_candidates(unit_name: Any) -> list[str]:
-    normalized = normalize_tally_unit_name(unit_name)
-    candidates: list[str] = []
-    singular_map = {
-        "KGS": "KG",
-        "PCS": "PC",
-        "LTR": "LT",
+    return {
+        "production": production,
+        "voucherNo": voucher_no,
+        "voucherDate": voucher_date,
+        "fgName": fg_name,
+        "fgQty": fg_qty,
+        "fgUom": fg_uom or str(production.get("uom") or "PCS").strip() or "PCS",
+        "fgErpCode": str(fg_profile.get("erpCode") or "").strip(),
+        "fgGroupName": str(fg_profile.get("groupName") or FG_GROUP).strip() or FG_GROUP,
+        "rmLines": rm_lines,
+        "totalComponentCost": total_component_cost,
+        "effectiveRate": effective_rate,
     }
-    singular_candidate = singular_map.get(normalized)
 
-    ordered_candidates = [normalized]
-    if singular_candidate:
-        ordered_candidates.append(singular_candidate)
 
-    for candidate in ordered_candidates:
-        cleaned = normalize_tally_unit_name(candidate)
-        if cleaned and cleaned not in candidates:
-            candidates.append(cleaned)
-    return candidates
-
-
-def extract_tally_unit_names(response_text: str) -> list[str]:
-    matches = re.findall(r"<NAME>(.*?)</NAME>", response_text or "", re.IGNORECASE | re.DOTALL)
-    units: list[str] = []
-    for match in matches:
-        cleaned = re.sub(r"\s+", " ", str(match or "")).strip()
-        if cleaned:
-            normalized = normalize_tally_unit_name(cleaned)
-            if normalized not in units:
-                units.append(normalized)
-    return units
-
-
-def is_not_applicable_unit(unit_name: Any) -> bool:
-    normalized = str(unit_name or "").strip().upper()
-    return normalized in {"NOT APPLICABLE", "NOTAPPLICABLE", "N/A", "NA"}
-
-
-def query_tally_unit(unit_name: str, company_name: str | None) -> bool:
-    normalized_unit = normalize_tally_unit_name(unit_name)
-    if normalized_unit in CONFIRMED_TALLY_UNITS:
-        LOGGER.info("Tally unit cache hit | unit=%s", normalized_unit)
-        return True
-
-    xml_text = f"""
-    <ENVELOPE>
-        <HEADER>
-            <VERSION>1</VERSION>
-            <TALLYREQUEST>EXPORT</TALLYREQUEST>
-            <TYPE>DATA</TYPE>
-            <ID>Units</ID>
-        </HEADER>
-        <BODY>
-            <DESC>
-                <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
-                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-                </STATICVARIABLES>
-                <TDL>
-                    <TDLMESSAGE>
-                        <COLLECTION NAME="ExactUnits" ISMODIFY="No">
-                            <TYPE>Unit</TYPE>
-                            <FETCH>Name</FETCH>
-                        </COLLECTION>
-                    </TDLMESSAGE>
-                </TDL>
-            </DESC>
-        </BODY>
-    </ENVELOPE>
-    """
-    try:
-        response_text = post_xml_to_tally(xml_text, debug_step=f"unit_lookup:{normalized_unit}")
-    except TallyUnavailableError:
-        raise
-    except Exception:
-        return False
-    cleaned = clean_tally_xml(response_text)
-    fetched_units: list[str] = []
-    try:
-        root = ET.fromstring(cleaned)
-    except ET.ParseError:
-        root = None
-    if root is not None:
-        for unit in root.findall(".//UNIT"):
-            candidates = [
-                unit.get("NAME") or "",
-                unit.findtext("NAME") or "",
-                unit.findtext("ORIGINALNAME") or "",
-                unit.findtext("FORMALNAME") or "",
-            ]
-            for candidate in candidates:
-                cleaned_candidate = normalize_tally_unit_name(candidate)
-                if cleaned_candidate and cleaned_candidate not in fetched_units:
-                    fetched_units.append(cleaned_candidate)
-    if not fetched_units:
-        fetched_units = extract_tally_unit_names(response_text)
-    if fetched_units:
-        LOGGER.info(
-            "Tally units fetched | count=%s | looking_for=%s | units=%s",
-            len(fetched_units),
-            normalized_unit,
-            ", ".join(fetched_units),
-        )
-    else:
-        LOGGER.warning(
-            "Tally units fetch returned no parsable unit names | looking_for=%s",
-            normalized_unit,
-        )
-    if normalized_unit in fetched_units:
-        CONFIRMED_TALLY_UNITS.add(normalized_unit)
-        return True
-    return False
-
-
-def extract_tally_stock_item_base_unit(response_text: str) -> str | None:
-    for tag in ("BASEUNITS", "BASEUNITS.LIST", "UNITNAME"):
-        match = re.search(rf"<{tag}>(.*?)</{tag}>", response_text or "", re.IGNORECASE | re.DOTALL)
-        if match:
-            cleaned = re.sub(r"\s+", " ", match.group(1)).strip()
-            if cleaned:
-                return normalize_tally_unit_name(cleaned)
-    return None
-
-
-def extract_tally_stock_items(response_text: str) -> list[tuple[str, str | None]]:
-    items: list[tuple[str, str | None]] = []
-    cleaned = clean_tally_xml(response_text)
-    try:
-        root = ET.fromstring(cleaned)
-    except ET.ParseError:
-        root = None
-
-    if root is not None:
-        for item in root.findall(".//STOCKITEM"):
-            name = str(item.get("NAME") or item.findtext("NAME") or "").strip()
-            if not name:
-                continue
-            block = ET.tostring(item, encoding="unicode")
-            items.append((name, extract_tally_stock_item_base_unit(block)))
-        for item in root.findall(".//STOCKITEMS.LIST/*"):
-            name = str(item.get("NAME") or item.findtext("NAME") or "").strip()
-            if not name:
-                continue
-            block = ET.tostring(item, encoding="unicode")
-            items.append((name, extract_tally_stock_item_base_unit(block)))
-
-    if items:
-        return items
-
-    pattern = re.compile(r"<STOCKITEM\b.*?>.*?</STOCKITEM>", re.IGNORECASE | re.DOTALL)
-    for block in pattern.findall(response_text or ""):
-        name_match = re.search(r'NAME="(.*?)"', block, re.IGNORECASE | re.DOTALL)
-        if not name_match:
-            name_match = re.search(r"<NAME>(.*?)</NAME>", block, re.IGNORECASE | re.DOTALL)
-        if not name_match:
-            continue
-        name = re.sub(r"\s+", " ", name_match.group(1)).strip()
-        if not name:
-            continue
-        items.append((name, extract_tally_stock_item_base_unit(block)))
-    return items
-
-
-def fetch_tally_stock_item_matches(item_name: str, company_name: str | None) -> list[tuple[str, str | None]]:
-    xml_text = f"""
-    <ENVELOPE>
-        <HEADER>
-            <TALLYREQUEST>EXPORT</TALLYREQUEST>
-            <TYPE>COLLECTION</TYPE>
-            <ID>StockItems</ID>
-        </HEADER>
-        <BODY>
-            <DESC>
-                <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
-                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-                </STATICVARIABLES>
-                <TDL>
-                    <TDLMESSAGE>
-                        <COLLECTION NAME="StockItems" ISMODIFY="No">
-                            <TYPE>StockItem</TYPE>
-                            <FETCH>Name</FETCH>
-                            <FETCH>BaseUnits</FETCH>
-                            <FETCH>GUID</FETCH>
-                            <FETCH>PartNo</FETCH>
-                            <FETCH>PartNumber</FETCH>
-                            <FETCH>MailingName.LIST</FETCH>
-                            <FETCH>LanguageName.LIST</FETCH>
-                            <FETCH>Parent</FETCH>
-                        </COLLECTION>
-                    </TDLMESSAGE>
-                </TDL>
-            </DESC>
-        </BODY>
-    </ENVELOPE>
-    """
-    response_text = post_xml_to_tally(xml_text, debug_step=f"stock_item_collection_lookup:{item_name}")
-    all_items = extract_tally_stock_items(response_text)
-    target_key = normalize_lookup_key(item_name)
-    matches = [(name, unit) for name, unit in all_items if normalize_lookup_key(name) == target_key]
-    LOGGER.info(
-        "Tally stock item collection fetched | target=%s | total_items=%s | matched_items=%s",
-        item_name,
-        len(all_items),
-        ", ".join(name for name, _ in matches) if matches else "-",
-    )
-    return matches
-
-
-def fetch_tally_stock_item_object(item_name: str, company_name: str | None) -> tuple[str, str | None] | None:
-    safe_item_name = escape_xml(item_name)
-    xml_text = f"""
-    <ENVELOPE>
-        <HEADER>
-            <VERSION>1</VERSION>
-            <TALLYREQUEST>EXPORT</TALLYREQUEST>
-            <TYPE>OBJECT</TYPE>
-            <SUBTYPE>Stock Item</SUBTYPE>
-            <ID TYPE="Name">{safe_item_name}</ID>
-        </HEADER>
-        <BODY>
-            <DESC>
-                <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
-                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-                </STATICVARIABLES>
-            </DESC>
-        </BODY>
-    </ENVELOPE>
-    """
-    response_text = post_xml_to_tally(xml_text, debug_step=f"stock_item_object_lookup:{item_name}")
-    all_items = extract_tally_stock_items(response_text)
-    if not all_items:
-        LOGGER.info("Tally stock item object lookup returned no parsable item | target=%s", item_name)
-        return None
-
-    target_key = normalize_lookup_key(item_name)
-    for fetched_name, fetched_unit in all_items:
-        if normalize_lookup_key(fetched_name) == target_key:
-            LOGGER.info(
-                "Tally stock item object matched | requested=%s | matched_name=%s | base_unit=%s",
-                item_name,
-                fetched_name,
-                fetched_unit or "-",
-            )
-            return fetched_name, fetched_unit
-
-    LOGGER.info(
-        "Tally stock item object returned no exact normalized name match | requested=%s",
-        item_name,
-    )
-    return None
-
-
-def create_tally_unit(company_name: str | None, unit_name: str) -> tuple[bool, str]:
-    safe_unit = escape_xml(unit_name)
-    xml_text = f"""
-    <ENVELOPE>
-        <HEADER>
-            <TALLYREQUEST>Import Data</TALLYREQUEST>
-        </HEADER>
-        <BODY>
-            <IMPORTDATA>
-                <REQUESTDESC>
-                    <REPORTNAME>All Masters</REPORTNAME>
-                    <STATICVARIABLES>
-                        {build_company_static_variables(company_name)}
-                    </STATICVARIABLES>
-                </REQUESTDESC>
-                <REQUESTDATA>
-                    <TALLYMESSAGE xmlns:UDF="TallyUDF">
-                        <UNIT NAME="{safe_unit}" ACTION="Create">
-                            <NAME.LIST TYPE="String">
-                                <NAME>{safe_unit}</NAME>
-                            </NAME.LIST>
-                            <ORIGINALNAME>{safe_unit}</ORIGINALNAME>
-                            <FORMALNAME>{safe_unit}</FORMALNAME>
-                            <ISSIMPLEUNIT>Yes</ISSIMPLEUNIT>
-                            <DECIMALPLACES>2</DECIMALPLACES>
-                        </UNIT>
-                    </TALLYMESSAGE>
-                </REQUESTDATA>
-            </IMPORTDATA>
-        </BODY>
-    </ENVELOPE>
-    """
-    response_text = post_xml_to_tally(xml_text, debug_step=f"unit_create:{normalize_tally_unit_name(unit_name)}")
-    if "<CREATED>1</CREATED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
-        CONFIRMED_TALLY_UNITS.add(normalize_tally_unit_name(unit_name))
-        return True, "Success"
-    response_lower = response_text.lower()
-    if (
-        "already exists" in response_lower
-        or "duplicate original name" in response_lower
-        or query_tally_unit(unit_name, company_name)
-    ):
-        CONFIRMED_TALLY_UNITS.add(normalize_tally_unit_name(unit_name))
-        return True, "Already exists"
-    return False, response_error_message(response_text)
-
-
-def ensure_tally_unit_exists(company_name: str | None, unit_name: Any) -> str:
-    unit_candidates = get_unit_candidates(unit_name)
-    original_unit = str(unit_name or "").strip()
-
-    for candidate in unit_candidates:
-        if query_tally_unit(candidate, company_name):
-            CONFIRMED_TALLY_UNITS.add(candidate)
-            if candidate != normalize_tally_unit_name(original_unit):
-                LOGGER.info("Unit '%s' mapped to existing Tally unit '%s'.", original_unit or "-", candidate)
-            return candidate
-
-    for candidate in unit_candidates:
-        LOGGER.info("Unit '%s' missing in Tally. Auto-creating unit.", candidate)
-        success, result = create_tally_unit(company_name, candidate)
-        if success:
-            if candidate != normalize_tally_unit_name(original_unit):
-                LOGGER.info("Unit '%s' mapped to Tally unit '%s' (%s).", original_unit or "-", candidate, result)
-            else:
-                LOGGER.info("Unit '%s' accepted by Tally unit-create flow (%s)", candidate, result)
-            return candidate
-        LOGGER.warning("Unit '%s' create attempt failed: %s", candidate, result)
-
-    raise RuntimeError(
-        f"Unit '{normalize_tally_unit_name(unit_name)}' could not be auto-created in Tally. "
-        f"Tried candidates: {', '.join(unit_candidates)}"
-    )
-
-
-def query_tally_stock_item(item_name: str, company_name: str | None) -> tuple[bool, str | None]:
-    cache_key = normalize_lookup_key(item_name)
-    if cache_key in STOCK_ITEM_LOOKUP_CACHE:
-        matched_name, matched_unit = STOCK_ITEM_LOOKUP_CACHE[cache_key]
-        LOGGER.info(
-            "Tally stock item lookup cache hit | requested=%s | matched_name=%s | base_unit=%s",
-            item_name,
-            matched_name,
-            matched_unit or "-",
-        )
-        return True, matched_unit
-
-    try:
-        matches = fetch_tally_stock_item_matches(item_name, company_name)
-    except TallyUnavailableError:
-        raise
-    except Exception:
-        matches = []
-
-    if matches:
-        matched_name, matched_unit = matches[0]
-        if matched_unit:
-            STOCK_ITEM_LOOKUP_CACHE[cache_key] = (matched_name, matched_unit)
-            LOGGER.info(
-                "Tally stock item matched by collection lookup | requested=%s | matched_name=%s | base_unit=%s",
-                item_name,
-                matched_name,
-                matched_unit or "-",
-            )
-            return True, matched_unit
-        LOGGER.info(
-            "Tally stock item collection found item but base unit was blank | requested=%s | matched_name=%s. Trying object lookup as fallback.",
-            item_name,
-            matched_name,
-        )
-
-    try:
-        object_match = fetch_tally_stock_item_object(item_name, company_name) if matches else None
-    except TallyUnavailableError:
-        raise
-    except Exception:
-        object_match = None
-
-    if object_match:
-        matched_name, matched_unit = object_match
-        STOCK_ITEM_LOOKUP_CACHE[cache_key] = (matched_name, matched_unit)
-        LOGGER.info(
-            "Tally stock item matched by object fallback | requested=%s | matched_name=%s | base_unit=%s",
-            item_name,
-            matched_name,
-            matched_unit or "-",
-        )
-        return True, matched_unit
-
-    if not matches:
-        return False, None
-
-    matched_name, matched_unit = matches[0]
-    STOCK_ITEM_LOOKUP_CACHE[cache_key] = (matched_name, matched_unit)
-    LOGGER.info(
-        "Tally stock item matched by collection lookup without confirmed unit | requested=%s | matched_name=%s | base_unit=%s",
-        item_name,
-        matched_name,
-        matched_unit or "-",
-    )
-    return True, matched_unit
-
-
-def create_tally_stock_item(company_name: str | None, item_name: str, stock_group: str, unit_name: str) -> tuple[bool, str, str | None]:
-    safe_name = escape_xml(item_name)
-    safe_group = escape_xml(stock_group)
-    safe_unit = escape_xml(unit_name)
-    xml_text = f"""
-    <ENVELOPE>
-        <HEADER>
-            <TALLYREQUEST>Import Data</TALLYREQUEST>
-        </HEADER>
-        <BODY>
-            <IMPORTDATA>
-                <REQUESTDESC>
-                    <REPORTNAME>All Masters</REPORTNAME>
-                    <STATICVARIABLES>
-                        {build_company_static_variables(company_name)}
-                    </STATICVARIABLES>
-                </REQUESTDESC>
-                <REQUESTDATA>
-                    <TALLYMESSAGE xmlns:UDF="TallyUDF">
-                        <STOCKITEM NAME="{safe_name}" ACTION="Create">
-                            <NAME.LIST>
-                                <NAME>{safe_name}</NAME>
-                            </NAME.LIST>
-                            <PARENT>{safe_group}</PARENT>
-                            <BASEUNITS>{safe_unit}</BASEUNITS>
-                        </STOCKITEM>
-                    </TALLYMESSAGE>
-                </REQUESTDATA>
-            </IMPORTDATA>
-        </BODY>
-    </ENVELOPE>
-    """
-    response_text = post_xml_to_tally(xml_text, debug_step=f"stock_item_create:{item_name}")
-    if "<CREATED>1</CREATED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
-        return True, "Success", unit_name
-    response_message = response_error_message(response_text)
-    exists_in_tally, tally_base_unit = query_tally_stock_item(item_name, company_name)
-    if "already exists" in response_text.lower() or exists_in_tally:
-        return True, "Already exists", tally_base_unit
-    if "cannot alter units" in response_message.lower():
-        LOGGER.warning(
-            "Tally reports stock item '%s' already exists with a different unit. Falling back to existing item behavior.",
-            item_name,
-        )
-        return True, "Exists with different unit", tally_base_unit
-    LOGGER.error(
-        "Tally stock-item create failed for '%s'. Response: %s",
-        item_name,
-        response_message,
-    )
-    return False, response_message, None
-
-
-def ensure_tally_stock_item_exists(company_name: str | None, item_name: str, mrr_type: str, unit_name: Any) -> str:
-    normalized_lnpi_unit = normalize_tally_unit_name(unit_name)
-    exists_in_tally, tally_base_unit = query_tally_stock_item(item_name, company_name)
-    if exists_in_tally:
-        if tally_base_unit and not is_not_applicable_unit(tally_base_unit):
-            normalized_tally_unit = normalize_tally_unit_name(tally_base_unit)
-            if normalized_tally_unit != normalized_lnpi_unit:
-                raise RuntimeError(
-                    f"Stock item '{item_name}' exists in Tally with unit '{normalized_tally_unit}' "
-                    f"but LNPI resolved unit is '{normalized_lnpi_unit}'. Posting stopped."
-                )
-            LOGGER.info(
-                "Stock item '%s' already exists in Tally. Using Tally base unit '%s' instead of LNPI unit '%s'.",
-                item_name,
-                normalized_tally_unit,
-                normalized_lnpi_unit,
-            )
-            return normalized_tally_unit
-        raise RuntimeError(
-            f"Stock item '{item_name}' already exists in Tally, but its unit could not be confirmed. "
-            f"LNPI resolved unit is '{normalized_lnpi_unit}'. Posting stopped."
-        )
-    normalized_unit = ensure_tally_unit_exists(company_name, unit_name)
-    stock_group = STOCK_GROUP_BY_MRR.get(mrr_type, "App Group")
-    LOGGER.info(
-        "Stock item '%s' missing in Tally. Auto-creating under group '%s' with unit '%s'.",
-        item_name,
-        stock_group,
-        normalized_unit,
-    )
-    success, result, resolved_tally_unit = create_tally_stock_item(company_name, item_name, stock_group, normalized_unit)
-    if not success:
-        raise RuntimeError(f"Stock item '{item_name}' could not be auto-created in Tally: {result}")
-    if result == "Exists with different unit":
-        if resolved_tally_unit and not is_not_applicable_unit(resolved_tally_unit):
-            normalized_tally_unit = normalize_tally_unit_name(resolved_tally_unit)
-            raise RuntimeError(
-                f"Stock item '{item_name}' exists in Tally with unit '{normalized_tally_unit}' "
-                f"but LNPI resolved unit is '{normalized_unit}'. Posting stopped."
-            )
-        raise RuntimeError(
-            f"Stock item '{item_name}' exists in Tally with a different unit, but Tally's unit could not be confirmed. "
-            f"LNPI resolved unit is '{normalized_unit}'. Posting stopped."
-        )
-    if result == "Already exists" and not resolved_tally_unit:
-        raise RuntimeError(
-            f"Stock item '{item_name}' already exists in Tally, but its unit could not be confirmed. "
-            f"LNPI resolved unit is '{normalized_unit}'. Posting stopped."
-        )
-    final_unit = resolved_tally_unit or normalized_unit
-    LOGGER.info("Stock item '%s' accepted by Tally stock-item create flow (%s)", item_name, result)
-    return final_unit
-
-
-def build_inventory_entries(conn, company_name: str | None, voucher_no: str, mrr_type: str, lines: list[dict[str, Any]], purchase_ledger: str) -> str:
-    entries: list[str] = []
-    for index, line in enumerate(lines, start=1):
-        if str(line.get("lineType", "Material")) == "Service":
-            continue
-
-        item_name, resolved_from = resolve_stock_item_name(conn, line)
-        qty = round_quantity(line.get("actualQty") or line.get("qty"))
-        rate = round_money(line.get("invoiceRate") or line.get("rate") or line.get("poRate"))
-        amount = _line_amount_for_tally(line)
-        saved_line_uom = str(line.get("uom") or "").strip()
-        material_master_uom, material_uom_source = resolve_material_master_uom(conn, line)
-        uom = material_master_uom or saved_line_uom or "Nos"
-
-        if qty <= Decimal("0"):
-            LOGGER.info("Skipping zero-qty line %s for voucher %s", index, voucher_no)
-            continue
-
-        normalized_uom = ensure_tally_stock_item_exists(company_name, item_name, mrr_type, uom)
-
-        LOGGER.info(
-            "Voucher %s line %s => Stock Item: %s | resolved_from=%s | qty=%s | rate=%s | amount=%s | saved_line_uom=%s | material_master_uom=%s | selected_uom=%s | uom_source=%s",
-            voucher_no,
-            index,
-            item_name,
-            resolved_from,
-            qty,
-            rate,
-            amount,
-            saved_line_uom or "-",
-            material_master_uom or "-",
-            normalized_uom,
-            material_uom_source,
-        )
-
-        entries.append(
-            f"""
-        <ALLINVENTORYENTRIES.LIST>
-            <STOCKITEMNAME>{escape_xml(item_name)}</STOCKITEMNAME>
-            <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-            <ISLASTDEEMEDPOSITIVE>Yes</ISLASTDEEMEDPOSITIVE>
-            <RATE>{format_money(rate)}/{escape_xml(normalized_uom)}</RATE>
-            <AMOUNT>-{format_money(amount)}</AMOUNT>
-            <ACTUALQTY>{format_quantity(qty)} {escape_xml(normalized_uom)}</ACTUALQTY>
-            <BILLEDQTY>{format_quantity(qty)} {escape_xml(normalized_uom)}</BILLEDQTY>
-            <ACCOUNTINGALLOCATIONS.LIST>
-                <LEDGERNAME>{escape_xml(purchase_ledger)}</LEDGERNAME>
-                <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-                <AMOUNT>-{format_money(amount)}</AMOUNT>
-            </ACCOUNTINGALLOCATIONS.LIST>
-        </ALLINVENTORYENTRIES.LIST>
-        """
-        )
-    return "\n".join(entries)
-
-
-def _line_amount_for_tally(line: dict[str, Any]) -> Decimal:
-    qty = round_quantity(line.get("actualQty") or line.get("qty"))
-    rate = round_money(line.get("invoiceRate") or line.get("rate") or line.get("poRate"))
-    amount_value = line.get("actualValue") or line.get("value") or line.get("invoiceValue")
-    if amount_value not in (None, ""):
-        return round_money(amount_value)
-    return (qty * rate).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-
-
-def calculate_purchase_component_total(mrr: dict[str, Any], lines: list[dict[str, Any]]) -> Decimal:
-    component_total = Decimal("0")
-
-    for line in lines:
-        if str(line.get("lineType", "Material")) == "Service":
-            continue
-        qty = round_quantity(line.get("actualQty") or line.get("qty"))
-        if qty <= Decimal("0"):
-            continue
-        component_total += _line_amount_for_tally(line)
-
-    component_total += round_money(mrr.get("totalCgst"))
-    component_total += round_money(mrr.get("totalSgst"))
-    component_total += round_money(mrr.get("totalIgst"))
-    component_total += round_money(mrr.get("insurance"))
-    component_total += round_money(mrr.get("otherCharges"))
-    return component_total
-
-
-def get_stored_round_off(mrr: dict[str, Any]) -> Decimal:
-    return round_money(mrr.get("roundOff"))
-
-
-def calculate_expected_round_off_from_hostinger_total(mrr: dict[str, Any], lines: list[dict[str, Any]]) -> Decimal:
-    hostinger_total_amount = round_money(mrr.get("totalAmount"))
-    component_total = calculate_purchase_component_total(mrr, lines)
-    return (hostinger_total_amount - component_total).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-
-
-def calculate_purchase_voucher_total(mrr: dict[str, Any], lines: list[dict[str, Any]]) -> Decimal:
-    component_total = calculate_purchase_component_total(mrr, lines)
-    stored_round_off = get_stored_round_off(mrr)
-    return (component_total + stored_round_off).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-
-
-def calculate_purchase_debit_total_for_xml(mrr: dict[str, Any], lines: list[dict[str, Any]]) -> Decimal:
-    return calculate_purchase_component_total(mrr, lines) + get_stored_round_off(mrr)
-
-
-def calculate_purchase_credit_total_for_xml(mrr: dict[str, Any], lines: list[dict[str, Any]]) -> Decimal:
-    return round_money(mrr.get("totalAmount"))
-
-
-def validate_purchase_voucher_payload(
-    voucher_no: str,
-    supplier_name: str,
-    purchase_ledger: str,
-    lines: list[dict[str, Any]],
-    inventory_entries: str,
-    mrr: dict[str, Any],
-) -> Decimal:
-    if not supplier_name.strip():
-        raise RuntimeError(f"Purchase voucher {voucher_no} has blank supplier name. Posting stopped.")
-    if not purchase_ledger.strip():
-        raise RuntimeError(f"Purchase voucher {voucher_no} has blank purchase ledger. Posting stopped.")
-    if not lines:
-        raise RuntimeError(f"Purchase voucher {voucher_no} has no lines. Posting stopped.")
-    if "<ALLINVENTORYENTRIES.LIST>" not in inventory_entries:
-        raise RuntimeError(f"Purchase voucher {voucher_no} has no valid inventory entries after line filtering. Posting stopped.")
-
-    component_total = calculate_purchase_component_total(mrr, lines)
-    stored_round_off = get_stored_round_off(mrr)
-    expected_round_off = calculate_expected_round_off_from_hostinger_total(mrr, lines)
-    hostinger_total_amount = round_money(mrr.get("totalAmount"))
-    effective_total = (component_total + stored_round_off).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-
-    if stored_round_off != expected_round_off:
-        raise RuntimeError(
-            f"Purchase voucher {voucher_no} round off mismatch. "
-            f"Hostinger total={hostinger_total_amount}, component total={component_total}, "
-            f"stored round off={stored_round_off}, expected round off={expected_round_off}. Posting stopped."
-        )
-
-    rendered_debit_total = calculate_purchase_debit_total_for_xml(mrr, lines).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-    rendered_credit_total = calculate_purchase_credit_total_for_xml(mrr, lines).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-    if rendered_debit_total != rendered_credit_total:
-        raise RuntimeError(
-            f"Purchase voucher {voucher_no} is out of balance before Tally import "
-            f"(debit={rendered_debit_total}, credit={rendered_credit_total}). Posting stopped."
-        )
-
-    if effective_total != hostinger_total_amount:
-        raise RuntimeError(
-            f"Purchase voucher {voucher_no} total mismatch. "
-            f"Rendered total={effective_total}, Hostinger total={hostinger_total_amount}. Posting stopped."
-        )
-
-    return effective_total
-
-
-def build_tax_ledger_entries(mrr: dict[str, Any], lines: list[dict[str, Any]], voucher_no: str) -> str:
-    entries: list[str] = []
-
-    insurance_and_other = round_money(mrr.get("insurance")) + round_money(mrr.get("otherCharges"))
-    mapped_ledgers = [
-        ("INSURANCE & OTHER EXP. ON PURCHASE", insurance_and_other),
-        ("Input CGST", round_money(mrr.get("totalCgst"))),
-        ("Input SGST", round_money(mrr.get("totalSgst"))),
-        ("Input IGST", round_money(mrr.get("totalIgst"))),
-    ]
-
-    for ledger_name, amount in mapped_ledgers:
-        if amount == Decimal("0.00"):
-            continue
-        entries.append(
-            f"""
-        <LEDGERENTRIES.LIST>
-            <LEDGERNAME>{escape_xml(ledger_name)}</LEDGERNAME>
-            <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-            <AMOUNT>-{format_money(amount)}</AMOUNT>
-        </LEDGERENTRIES.LIST>
-        """
-        )
-
-    round_off = get_stored_round_off(mrr)
-    if round_off != Decimal("0.00"):
-        entries.append(
-            f"""
-        <LEDGERENTRIES.LIST>
-            <LEDGERNAME>Round Off</LEDGERNAME>
-            <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-            <AMOUNT>{format_money(-round_off)}</AMOUNT>
-        </LEDGERENTRIES.LIST>
-        """
-        )
-
-    return "\n".join(entries)
-
-
-def get_purchase_ledger(mrr_type: str, mrr_sub_type: str = "") -> str:
-    if mrr_type == "Others":
-        return PURCHASE_LEDGER_BY_MRR_SUBTYPE.get(str(mrr_sub_type or "").strip(), "PURCHASE - OTHER RM")
-    return PURCHASE_LEDGER_BY_MRR.get(mrr_type, "PURCHASE - OTHER RM")
-
-
-def calculate_direct_service_component_total(mrr: dict[str, Any], lines: list[dict[str, Any]]) -> Decimal:
-    service_total = sum(
-        (
-            round_money(line.get("invoiceValue") if line.get("invoiceValue") not in (None, "") else _line_amount_for_tally(line))
-            for line in lines
-            if str(line.get("lineType", "Material")) == "Service"
-        ),
-        Decimal("0"),
-    )
-    return (
-        service_total
-        + round_money(mrr.get("totalCgst"))
-        + round_money(mrr.get("totalSgst"))
-        + round_money(mrr.get("totalIgst"))
-        + round_money(mrr.get("insurance"))
-        + round_money(mrr.get("otherCharges"))
-        + get_stored_round_off(mrr)
-    ).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-
-
-def build_direct_service_ledger_entries(lines: list[dict[str, Any]], voucher_no: str) -> str:
-    entries: list[str] = []
-    for line in lines:
-        if str(line.get("lineType", "Material")) != "Service":
-            continue
-        amount = round_money(line.get("invoiceValue") if line.get("invoiceValue") not in (None, "") else _line_amount_for_tally(line))
-        if amount <= Decimal("0.00"):
-            continue
-        ledger_name = str(line.get("serviceName") or line.get("itemName") or "").strip()
-        if not ledger_name:
-            raise RuntimeError(f"Direct Service voucher {voucher_no} has a service line without a ledger name. Posting stopped.")
-        entries.append(
-            f"""
-        <LEDGERENTRIES.LIST>
-            <LEDGERNAME>{escape_xml(ledger_name)}</LEDGERNAME>
-            <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-            <AMOUNT>-{format_money(amount)}</AMOUNT>
-        </LEDGERENTRIES.LIST>
-        """
-        )
-    if not entries:
-        raise RuntimeError(f"Direct Service voucher {voucher_no} has no valid service ledger entries. Posting stopped.")
-    return "\n".join(entries)
-
-
-def build_direct_service_voucher_xml(
+def validate_job_context(job: dict[str, Any]) -> None:
+    production = job["production"]
+    if job["fgQty"] <= 0:
+        raise RuntimeError(f"Prod (FFG) is missing or zero for job {production.get('transactionNo')}.")
+    if not job["voucherNo"]:
+        raise RuntimeError(f"Voucher number is blank for job {production.get('id')}.")
+    if not job["voucherDate"]:
+        raise RuntimeError(f"Voucher date is blank for job {production.get('transactionNo')}.")
+    if not str(job["fgName"]).strip():
+        raise RuntimeError(f"FG stock item name is missing for job {production.get('transactionNo')}.")
+    if not job["rmLines"]:
+        raise RuntimeError(f"No positive net material consumption found for job {production.get('transactionNo')}.")
+    for line in job["rmLines"]:
+        if not str(line.get("name") or "").strip():
+            raise RuntimeError(f"Material name could not be resolved for materialId={line.get('materialId')}.")
+        if to_float(line.get("netQty")) <= 0:
+            raise RuntimeError(f"Material quantity is invalid for {line.get('name')}.")
+        if to_float(line.get("rate")) <= 0:
+            raise RuntimeError(f"Material rate could not be resolved for {line.get('name')}.")
+    if job["totalComponentCost"] <= 0:
+        raise RuntimeError(f"Total component cost is not positive for job {production.get('transactionNo')}.")
+
+
+def ensure_stock_item_exists(
     company_name: str | None,
-    mrr: dict[str, Any],
-    supplier_name: str,
-) -> str:
-    date_str = format_tally_date(mrr)
-    voucher_no = str(mrr.get("transactionNo") or "")
-    invoice_no = str(mrr.get("invoiceNo") or "")
-    lines = parse_lines(mrr.get("lines"))
-    gross_total = round_money(mrr.get("totalAmount"))
-    tds_amount = round_money(mrr.get("tdsAmount"))
-    if tds_amount < Decimal("0.00"):
-        raise RuntimeError(f"Direct Service voucher {voucher_no} has a negative TDS amount. Posting stopped.")
-    if tds_amount > gross_total:
-        raise RuntimeError(f"Direct Service voucher {voucher_no} TDS exceeds the gross total. Posting stopped.")
+    item_name: str,
+    erp_code: str,
+    target_group: str,
+    unit_name: str,
+    tally_groups: set[str],
+    item_kind: str,
+) -> None:
+    exists, _guid = query_tally_item(item_name, company_name)
+    if exists:
+        return
 
-    rendered_debit_total = calculate_direct_service_component_total(mrr, lines)
-    if rendered_debit_total != gross_total:
+    ensure_tally_unit_exists(company_name, unit_name)
+
+    effective_group = resolve_tally_target_group(target_group, tally_groups, item_kind)
+
+    normalized_tally_groups = {_normalize_group_name(group) for group in tally_groups}
+    if _normalize_group_name(effective_group) not in normalized_tally_groups:
         raise RuntimeError(
-            f"Direct Service voucher {voucher_no} total mismatch "
-            f"(debit={rendered_debit_total}, gross total={gross_total}). Posting stopped."
+            f"{item_kind} '{item_name}' is missing in Tally and target stock group '{target_group}' does not exist."
         )
 
-    supplier_payable = (gross_total - tds_amount).quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
-    rendered_credit_total = supplier_payable + tds_amount
-    if rendered_credit_total != rendered_debit_total:
-        raise RuntimeError(
-            f"Direct Service voucher {voucher_no} is out of balance before Tally import "
-            f"(debit={rendered_debit_total}, credit={rendered_credit_total}). Posting stopped."
-        )
-
-    service_entries = build_direct_service_ledger_entries(lines, voucher_no)
-    tax_entries = build_tax_ledger_entries(mrr, lines, voucher_no)
-    tds_entry = ""
-    if tds_amount > Decimal("0.00"):
-        tds_entry = f"""
-        <LEDGERENTRIES.LIST>
-            <LEDGERNAME>TDS PAYABLE</LEDGERNAME>
-            <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-            <AMOUNT>{format_money(tds_amount)}</AMOUNT>
-        </LEDGERENTRIES.LIST>
-        """
-
-    return f"""
-<ENVELOPE>
-    <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
-    <BODY><IMPORTDATA>
-        <REQUESTDESC>
-            <REPORTNAME>Vouchers</REPORTNAME>
-            <STATICVARIABLES>{build_company_static_variables(company_name)}</STATICVARIABLES>
-        </REQUESTDESC>
-        <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
-            <VOUCHER VCHTYPE="Purchase" ACTION="Create" OBJVIEW="Accounting Voucher View">
-                <DATE>{date_str}</DATE>
-                <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
-                <PARTYNAME>{escape_xml(supplier_name)}</PARTYNAME>
-                <PARTYLEDGERNAME>{escape_xml(supplier_name)}</PARTYLEDGERNAME>
-                <REFERENCE>{escape_xml(invoice_no)}</REFERENCE>
-                <NARRATION>{escape_xml(f"Imported from LNPI MRR {voucher_no} | Type: Direct Service")}</NARRATION>
-                <PERSISTEDVIEW>Accounting Voucher View</PERSISTEDVIEW>
-                <VCHENTRYMODE>Accounting Invoice</VCHENTRYMODE>
-                <ISINVOICE>Yes</ISINVOICE>
-                <LEDGERENTRIES.LIST>
-                    <LEDGERNAME>{escape_xml(supplier_name)}</LEDGERNAME>
-                    <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-                    <AMOUNT>{format_money(supplier_payable)}</AMOUNT>
-                </LEDGERENTRIES.LIST>
-                {tds_entry}
-                {service_entries}
-                {tax_entries}
-            </VOUCHER>
-        </TALLYMESSAGE></REQUESTDATA>
-    </IMPORTDATA></BODY>
-</ENVELOPE>
-"""
-
-
-def build_purchase_voucher_xml(conn, company_name: str | None, mrr: dict[str, Any], supplier_name: str) -> str:
-    mrr_type = mrr.get("mrrType") or "Others"
-    mrr_sub_type = str(mrr.get("mrrSubType") or "").strip()
-    purchase_ledger = get_purchase_ledger(str(mrr_type), mrr_sub_type)
-    date_str = format_tally_date(mrr)
-    voucher_no = str(mrr.get("transactionNo") or "")
-    invoice_no = str(mrr.get("invoiceNo") or "")
-    lines = parse_lines(mrr.get("lines"))
-    total_amount = calculate_purchase_voucher_total(mrr, lines)
-    hostinger_total_amount = round_money(mrr.get("totalAmount"))
-    if total_amount != hostinger_total_amount:
-        LOGGER.info(
-            "Voucher %s total recalculated from components. Hostinger total=%s | Effective total=%s | Stored round off=%s",
-            voucher_no,
-            hostinger_total_amount,
-            total_amount,
-            get_stored_round_off(mrr),
-        )
-    inventory_entries = build_inventory_entries(conn, company_name, voucher_no, str(mrr_type), lines, purchase_ledger)
-    tax_entries = build_tax_ledger_entries(mrr, lines, voucher_no)
-    total_amount = validate_purchase_voucher_payload(
-        voucher_no=voucher_no,
-        supplier_name=supplier_name,
-        purchase_ledger=purchase_ledger,
-        lines=lines,
-        inventory_entries=inventory_entries,
-        mrr=mrr,
-    )
-
-    return f"""
-<ENVELOPE>
-    <HEADER>
-        <TALLYREQUEST>Import Data</TALLYREQUEST>
-    </HEADER>
-    <BODY>
-        <IMPORTDATA>
-            <REQUESTDESC>
-                <REPORTNAME>Vouchers</REPORTNAME>
-                <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
-                </STATICVARIABLES>
-            </REQUESTDESC>
-            <REQUESTDATA>
-                <TALLYMESSAGE xmlns:UDF="TallyUDF">
-                    <VOUCHER VCHTYPE="Purchase" ACTION="Create" OBJVIEW="Invoice Voucher View">
-                        <DATE>{date_str}</DATE>
-                        <VOUCHERTYPENAME>Purchase</VOUCHERTYPENAME>
-                        <PARTYNAME>{escape_xml(supplier_name)}</PARTYNAME>
-                        <PARTYLEDGERNAME>{escape_xml(supplier_name)}</PARTYLEDGERNAME>
-                        <BASICBUYERNAME>LAXMI NARAYAN PACKAGING INDUSTRIES</BASICBUYERNAME>
-                        <REFERENCE>{escape_xml(invoice_no)}</REFERENCE>
-                        <NARRATION>{escape_xml(f"Imported from LNPI MRR {voucher_no} | Type: {mrr_type}" + (f" | Sub Type: {mrr_sub_type}" if mrr_type == "Others" and mrr_sub_type else ""))}</NARRATION>
-                        <PERSISTEDVIEW>Invoice Voucher View</PERSISTEDVIEW>
-                        <VCHENTRYMODE>Item Invoice</VCHENTRYMODE>
-                        <VOUCHERTYPEORIGNAME>Purchase</VOUCHERTYPEORIGNAME>
-                        <ISINVOICE>Yes</ISINVOICE>
-
-                        <LEDGERENTRIES.LIST>
-                            <LEDGERNAME>{escape_xml(supplier_name)}</LEDGERNAME>
-                            <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-                            <AMOUNT>{format_money(total_amount)}</AMOUNT>
-                        </LEDGERENTRIES.LIST>
-
-                        {inventory_entries}
-                        {tax_entries}
-                    </VOUCHER>
-                </TALLYMESSAGE>
-            </REQUESTDATA>
-        </IMPORTDATA>
-    </BODY>
-</ENVELOPE>
-"""
-
-
-def build_journal_xml(company_name: str | None, mrr: dict[str, Any], supplier_name: str) -> str:
-    date_str = format_tally_date(mrr)
-    voucher_no = str(mrr.get("transactionNo") or "")
-    invoice_no = str(mrr.get("invoiceNo") or "")
-    mrr_type = str(mrr.get("mrrType") or "Service Return")
-    total_amount = to_float(mrr.get("totalAmount"))
-
-    return f"""
-<ENVELOPE>
-    <HEADER>
-        <TALLYREQUEST>Import Data</TALLYREQUEST>
-    </HEADER>
-    <BODY>
-        <IMPORTDATA>
-            <REQUESTDESC>
-                <REPORTNAME>Vouchers</REPORTNAME>
-                <STATICVARIABLES>
-                    {build_company_static_variables(company_name)}
-                </STATICVARIABLES>
-            </REQUESTDESC>
-            <REQUESTDATA>
-                <TALLYMESSAGE xmlns:UDF="TallyUDF">
-                    <VOUCHER VCHTYPE="Journal" ACTION="Create">
-                        <DATE>{date_str}</DATE>
-                        <VOUCHERTYPENAME>Journal</VOUCHERTYPENAME>
-                        <REFERENCE>{escape_xml(invoice_no)}</REFERENCE>
-                        <NARRATION>{escape_xml(f"Imported from LNPI MRR {voucher_no} | Type: {mrr_type}")}</NARRATION>
-
-                        <LEDGERENTRIES.LIST>
-                            <LEDGERNAME>Service Return Adjustment</LEDGERNAME>
-                            <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
-                            <AMOUNT>{total_amount}</AMOUNT>
-                        </LEDGERENTRIES.LIST>
-
-                        <LEDGERENTRIES.LIST>
-                            <LEDGERNAME>{escape_xml(supplier_name)}</LEDGERNAME>
-                            <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
-                            <AMOUNT>-{total_amount}</AMOUNT>
-                        </LEDGERENTRIES.LIST>
-                    </VOUCHER>
-                </TALLYMESSAGE>
-            </REQUESTDATA>
-        </IMPORTDATA>
-    </BODY>
-</ENVELOPE>
-"""
-
-
-def mark_mrr_completed(conn, mrr_id: str, tally_sync_remark: str | None = None) -> None:
-    conn = ensure_db_connection(conn)
-    cursor = conn.cursor()
-    now = datetime.now().isoformat()
-    cursor.execute(
-        """
-        UPDATE `material_in`
-        SET `tallyTimestamp` = %s,
-            `tallySyncRemark` = %s,
-            `status` = 'Completed',
-            `updateTimestamp` = %s
-        WHERE `id` = %s
-        """,
-        (now, tally_sync_remark, now, mrr_id),
-    )
-    conn.commit()
-    cursor.close()
-
-
-def update_mrr_tally_remark(conn, mrr_id: str, tally_sync_remark: str) -> None:
-    conn = ensure_db_connection(conn)
-    cursor = conn.cursor()
-    now = datetime.now().isoformat()
-    cursor.execute(
-        """
-        UPDATE `material_in`
-        SET `tallySyncRemark` = %s,
-            `updateTimestamp` = %s
-        WHERE `id` = %s
-        """,
-        (tally_sync_remark, now, mrr_id),
-    )
-    conn.commit()
-    cursor.close()
-
-
-def build_duplicate_mrr_remark(duplicate_voucher: dict[str, str], supplier_name: str) -> str:
-    reason = str(duplicate_voucher.get("duplicate_reason") or "").strip()
-    existing_reference = str(duplicate_voucher.get("reference") or "").strip() or "-"
-    existing_date = str(duplicate_voucher.get("date") or "").strip() or "-"
-    existing_voucher = str(duplicate_voucher.get("voucher_number") or "").strip() or "-"
-    existing_party = str(duplicate_voucher.get("party") or "").strip() or supplier_name
-
-    if reason == "transaction_no_in_narration":
-        return (
-            f"Skipped: duplicate MRR number found in Tally narration "
-            f"(supplier={existing_party}, date={existing_date}, reference={existing_reference}, voucher={existing_voucher})."
-        )
-    if reason == "supplier_invoice_reference_in_financial_year":
-        return (
-            f"Skipped: duplicate supplier invoice found in same FY "
-            f"(supplier={existing_party}, date={existing_date}, reference={existing_reference}, voucher={existing_voucher})."
-        )
-    return (
-        f"Skipped: duplicate voucher already exists in Tally "
-        f"(supplier={existing_party}, date={existing_date}, reference={existing_reference}, voucher={existing_voucher})."
-    )
-
-
-def process_one_mrr(conn, company_name: str | None, mrr: dict[str, Any]) -> None:
-    conn = ensure_db_connection(conn)
-    mrr_type = str(mrr.get("mrrType") or "Others")
-    mrr_sub_type = str(mrr.get("mrrSubType") or "").strip()
-    supplier_name, source_table = get_supplier_name(conn, str(mrr["supplierId"]), mrr_type)
-    voucher_type = "Journal" if mrr_type == "Service Return" else "Purchase"
-    voucher_no = str(mrr.get("transactionNo") or "")
-    invoice_no = str(mrr.get("invoiceNo") or "").strip()
-    purchase_ledger = get_purchase_ledger(mrr_type, mrr_sub_type)
-    voucher_date = format_tally_date(mrr)
-    voucher_datetime = resolve_voucher_datetime(mrr)
-
-    LOGGER.info("Processing MRR %s | type=%s | sub_type=%s | party=%s | source=%s | voucher_date=%s", voucher_no, mrr_type, mrr_sub_type or "-", supplier_name, source_table, voucher_date)
-    if voucher_type == "Purchase":
-        LOGGER.info("Voucher %s entries => Debit: %s | Credit: %s", voucher_no, purchase_ledger, supplier_name)
-    else:
-        LOGGER.info("Voucher %s entries => Debit: Service Return Adjustment | Credit: %s", voucher_no, supplier_name)
-
-    if voucher_type == "Purchase":
-        total_cgst = round(to_float(mrr.get("totalCgst")), 2)
-        total_sgst = round(to_float(mrr.get("totalSgst")), 2)
-        if total_cgst != total_sgst:
-            validation_remark = "CGST and SGST are not equal."
-            LOGGER.warning(
-                "Skipping %s because GST validation failed | totalCgst=%s | totalSgst=%s | remark=%s",
-                voucher_no,
-                total_cgst,
-                total_sgst,
-                validation_remark,
-            )
-            update_mrr_tally_remark(conn, str(mrr["id"]), validation_remark)
-            return
-
-    check_tally_health(company_name, reason=f"before_mrr:{voucher_no}")
-
-    duplicate_voucher = find_duplicate_voucher(
+    LOGGER.info("%s '%s' missing in Tally. Auto-creating under group '%s'.", item_kind, item_name, effective_group)
+    success, result = create_tally_rm_item(
         company_name=company_name,
-        voucher_type=voucher_type,
-        supplier_name=supplier_name,
-        transaction_no=voucher_no,
-        invoice_no=invoice_no,
-        voucher_date=voucher_datetime,
-        mrr_type=mrr_type,
+        item_name=item_name,
+        erp_code=erp_code,
+        target_group=effective_group,
+        unit_name=unit_name,
     )
-    if duplicate_voucher:
-        duplicate_remark = build_duplicate_mrr_remark(duplicate_voucher, supplier_name)
-        LOGGER.info(
-            "Skipping %s because duplicate voucher already exists in Tally | reason=%s | existing_voucher=%s | existing_reference=%s | existing_date=%s | supplier=%s | remark=%s",
-            voucher_no,
-            duplicate_voucher.get("duplicate_reason") or "-",
-            duplicate_voucher.get("voucher_number") or "-",
-            duplicate_voucher.get("reference") or "-",
-            duplicate_voucher.get("date") or "-",
-            duplicate_voucher.get("party") or supplier_name,
-            duplicate_remark,
+    if not success:
+        raise RuntimeError(f"{item_kind} '{item_name}' could not be auto-created in Tally: {result}")
+
+    exists_after, _guid_after = query_tally_item(item_name, company_name)
+    if not exists_after:
+        raise RuntimeError(f"{item_kind} '{item_name}' still does not exist in Tally after auto-create attempt.")
+
+    LOGGER.info("Auto-created %s '%s' in Tally under group '%s'", item_kind.lower(), item_name, effective_group)
+
+
+def ensure_stock_items_for_jobs(company_name: str | None, jobs: list[dict[str, Any]], tally_groups: set[str]) -> None:
+    for job in jobs:
+        job["fgTallyName"] = resolve_tally_item_name(
+            item_name=str(job.get("fgName") or ""),
+            erp_code=str(job.get("fgErpCode") or ""),
+            company_name=company_name,
+            item_kind="FG stock item",
         )
-        mark_mrr_completed(conn, str(mrr["id"]), duplicate_remark)
-        return
-
-    if mrr_type == "Service Return":
-        xml_text = build_journal_xml(company_name, mrr, supplier_name)
-    elif mrr_type == "Direct Service":
-        try:
-            xml_text = build_direct_service_voucher_xml(company_name, mrr, supplier_name)
-        except RuntimeError as error:
-            validation_remark = str(error)
+        if str(job.get("fgTallyName") or "") != str(job.get("fgName") or ""):
+            LOGGER.info("FG posting name resolved exactly from Tally: app='%s' | tally='%s'", job.get("fgName"), job.get("fgTallyName"))
+        fg_tally_details = query_tally_stock_item_details(str(job.get("fgTallyName") or job.get("fgName") or ""), company_name)
+        fg_base_unit = str(fg_tally_details.get("baseUnit") or "").strip()
+        job["fgTallyBaseUnit"] = fg_base_unit
+        if fg_tally_details.get("exists") and has_valid_tally_unit(fg_base_unit):
+            job["fgUom"] = fg_base_unit
+            LOGGER.info("Using Tally BaseUnits '%s' for FG stock item '%s'.", fg_base_unit, job.get("fgTallyName") or job.get("fgName"))
+        elif fg_tally_details.get("exists"):
+            job["fgUom"] = ""
             LOGGER.warning(
-                "Skipping %s because Direct Service voucher validation failed | remark=%s",
-                voucher_no,
-                validation_remark,
+                "FG stock item '%s' exists in Tally but BaseUnits is '%s'. FG quantity will be posted without forcing app UOM.",
+                job.get("fgTallyName") or job.get("fgName"),
+                fg_base_unit or "blank",
             )
-            update_mrr_tally_remark(conn, str(mrr["id"]), validation_remark)
-            return
-    else:
-        try:
-            xml_text = build_purchase_voucher_xml(conn, company_name, mrr, supplier_name)
-        except RuntimeError as error:
-            validation_remark = str(error)
-            LOGGER.warning(
-                "Skipping %s because purchase voucher validation failed | remark=%s",
-                voucher_no,
-                validation_remark,
+        for line in job["rmLines"]:
+            line["tallyName"] = resolve_tally_item_name(
+                item_name=str(line.get("name") or ""),
+                erp_code=str(line.get("erpCode") or ""),
+                company_name=company_name,
+                item_kind="Raw material",
             )
-            update_mrr_tally_remark(conn, str(mrr["id"]), validation_remark)
-            return
+            if str(line.get("tallyName") or "") != str(line.get("name") or ""):
+                LOGGER.info("Raw material posting name resolved exactly from Tally: app='%s' | tally='%s'", line.get("name"), line.get("tallyName"))
+            tally_item_details = query_tally_stock_item_details(str(line.get("tallyName") or line.get("name") or ""), company_name)
+            tally_base_unit = str(tally_item_details.get("baseUnit") or "").strip()
+            material_type = str(line.get("type") or "").strip().lower()
+            if tally_item_details.get("exists") and tally_base_unit:
+                line["uom"] = tally_base_unit
+                LOGGER.info("Using Tally BaseUnits '%s' for raw material '%s'.", tally_base_unit, line.get("tallyName") or line.get("name"))
+            elif tally_item_details.get("exists") and is_reel_like_material(material_type, str(line.get("tallyName") or line.get("name") or ""), REEL_GROUP):
+                # Safe fallback for reel paper items. Tally XML shows reel items use BASEUNITS=KGS.
+                line["uom"] = "KGS"
+                LOGGER.info("Tally BaseUnits blank for reel raw material '%s'. Using fallback UOM 'KGS'.", line.get("tallyName") or line.get("name"))
 
-    try:
-        response_text = post_xml_to_tally(xml_text, debug_step=f"{voucher_type.lower()}_voucher_import", voucher_no=voucher_no)
-    except TallyUnavailableError:
-        update_mrr_tally_remark(
+            # Always post the exact canonical stock-item name confirmed by Tally.
+            # Never substitute an ERP code or alias that was not itself verified.
+            line["postingName"] = str(line.get("tallyName") or "").strip()
+
+    prepared: set[tuple[str, str]] = set()
+    required_items: list[dict[str, str]] = []
+
+    for job in jobs:
+        fg_key = ("FG", str(job.get("fgTallyName") or job["fgName"]).strip().upper())
+        if fg_key not in prepared:
+            required_items.append(
+                {
+                    "kind": "FG stock item",
+                    "itemName": str(job["fgName"]),
+                    "tallyName": str(job.get("fgTallyName") or job["fgName"]),
+                    "erpCode": str(job.get("fgErpCode") or ""),
+                    "targetGroup": str(job.get("fgGroupName") or FG_GROUP),
+                    "unitName": str(job.get("fgUom") or "PCS"),
+                }
+            )
+            prepared.add(fg_key)
+
+        for line in job["rmLines"]:
+            item_name = str(line.get("name") or "").strip()
+            tally_name = str(line.get("tallyName") or item_name).strip()
+            material_type = str(line.get("type") or "").strip().lower()
+            target_group = RM_GROUP_BY_TYPE.get(material_type, OTHER_GROUP)
+            if is_reel_like_material(material_type, tally_name or item_name, target_group):
+                unit_name = "KGS"
+            else:
+                unit_name = str(line.get("uom") or "NOS").strip() or "NOS"
+            rm_key = ("RM", tally_name.upper())
+            if rm_key in prepared:
+                continue
+            required_items.append(
+                {
+                    "kind": "Raw material",
+                    "itemName": item_name,
+                    "tallyName": tally_name,
+                    "erpCode": str(line.get("erpCode") or "").strip(),
+                    "targetGroup": target_group,
+                    "unitName": unit_name,
+                }
+            )
+            prepared.add(rm_key)
+
+    LOGGER.info("Preflight stock-item scan prepared %s unique item(s) across %s job(s)", len(required_items), len(jobs))
+
+    missing_before: list[dict[str, str]] = []
+    for item in required_items:
+        exists, _guid = query_tally_item(str(item.get("tallyName") or item["itemName"]), company_name)
+        if not exists:
+            missing_before.append(item)
+
+    LOGGER.info("Preflight found %s unmatched stock item(s) in Tally", len(missing_before))
+    for item in missing_before:
+        LOGGER.error(
+            "Unmatched stock item => kind=%s | app item=%s | resolved name=%s | ERP=%s",
+            item["kind"],
+            item["itemName"],
+            str(item.get("tallyName") or ""),
+            str(item.get("erpCode") or ""),
+        )
+
+    if missing_before:
+        unmatched_names = ", ".join(
+            f"{item['kind']}: {item['itemName']}" for item in missing_before
+        )
+        raise RuntimeError(
+            f"Posting skipped because {len(missing_before)} stock item(s) did not match Tally: {unmatched_names}"
+        )
+
+
+def format_qty(quantity: float, unit_name: str) -> str:
+    qty_text = f"{quantity:.5f}".rstrip("0").rstrip(".")
+    if not qty_text:
+        qty_text = "0"
+    cleaned_unit = str(unit_name or "").strip()
+    return f"{qty_text} {cleaned_unit}".strip()
+
+
+def format_rate(rate: float, unit_name: str) -> str:
+    rate_text = f"{rate:.5f}".rstrip("0").rstrip(".")
+    if not rate_text:
+        rate_text = "0"
+    return f"{rate_text}/{unit_name}"
+
+
+def has_valid_tally_unit(unit_name: str) -> bool:
+    normalized = str(unit_name or "").strip().lower()
+    return normalized not in ("", "not applicable", "notapplicable", "n/a", "na")
+
+
+def build_manufacturing_journal_xml(company_name: str | None, job: dict[str, Any]) -> str:
+    production = job["production"]
+    narration = (
+        f"Imported from LNPI Job {production.get('transactionNo')} | "
+        f"FG {job['fgName']} | FFG Qty {job['fgQty']}"
+    )
+
+    consumption_entries = []
+    total_component_cost = 0.0
+
+    for line in job["rmLines"]:
+        material_type = str(line.get("type") or "").strip().lower()
+        item_name_for_unit = str(line.get("tallyName") or line.get("name") or "")
+
+        unit_name = str(line.get("uom") or "").strip()
+        if is_reel_like_material(material_type, item_name_for_unit, REEL_GROUP) and unit_name.upper() in ("", "KG", "KILOGRAM", "KILOGRAMS"):
+            unit_name = "KGS"
+        if not unit_name:
+            unit_name = "NOS"
+
+        qty_text = format_qty(to_float(line["netQty"]), unit_name)
+        rate_text = format_rate(to_float(line["rate"]), unit_name)
+        posting_name = str(line.get("postingName") or line.get("tallyName") or line["name"])
+        amount_value = round(to_float(line.get("amount") or line.get("netAmount") or 0), 2)
+        total_component_cost += amount_value
+
+        consumption_entries.append(
+            f"""
+<INVENTORYENTRIESOUT.LIST>
+ <STOCKITEMNAME>{escape_xml(posting_name)}</STOCKITEMNAME>
+ <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+ <ISTRACKCOMPONENT>No</ISTRACKCOMPONENT>
+ <ISTRACKPRODUCTION>No</ISTRACKPRODUCTION>
+ <ISPRIMARYITEM>No</ISPRIMARYITEM>
+ <RATE>{escape_xml(rate_text)}</RATE>
+ <ACTUALQTY>{escape_xml(qty_text)}</ACTUALQTY>
+ <BILLEDQTY>{escape_xml(qty_text)}</BILLEDQTY>
+ <BATCHALLOCATIONS.LIST>
+  <GODOWNNAME>Main Location</GODOWNNAME>
+  <BATCHNAME>Primary Batch</BATCHNAME>
+  <ACTUALQTY>{escape_xml(qty_text)}</ACTUALQTY>
+  <BILLEDQTY>{escape_xml(qty_text)}</BILLEDQTY>
+ </BATCHALLOCATIONS.LIST>
+</INVENTORYENTRIESOUT.LIST>
+"""
+        )
+
+    fg_qty_text = format_qty(job["fgQty"], str(job["fgUom"]))
+    fg_name = str(job.get("fgTallyName") or job["fgName"])
+    fg_amount_value = round(to_float(job.get("totalComponentCost") or total_component_cost), 2)
+
+    return f"""
+<ENVELOPE>
+ <HEADER>
+  <TALLYREQUEST>Import Data</TALLYREQUEST>
+ </HEADER>
+ <BODY>
+  <IMPORTDATA>
+   <REQUESTDESC>
+    <REPORTNAME>Vouchers</REPORTNAME>
+    <STATICVARIABLES>
+      {build_company_static_variables(company_name)}
+    </STATICVARIABLES>
+   </REQUESTDESC>
+   <REQUESTDATA>
+    <TALLYMESSAGE>
+     <VOUCHER VCHTYPE="Manufacturing Journal" ACTION="Create" OBJVIEW="Multi Consumption Voucher View">
+      <DATE>{job['voucherDate']}</DATE>
+      <VOUCHERTYPENAME>Manufacturing Journal</VOUCHERTYPENAME>
+      <VOUCHERNUMBER>{escape_xml(job['voucherNo'])}</VOUCHERNUMBER>
+      <PERSISTEDVIEW>Consumption Voucher View</PERSISTEDVIEW>
+      <ISINVOICE>No</ISINVOICE>
+      <NARRATION>{escape_xml(narration)}</NARRATION>
+
+      <INVENTORYENTRIESIN.LIST>
+       <STOCKITEMNAME>{escape_xml(fg_name)}</STOCKITEMNAME>
+       <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+       <ISTRACKCOMPONENT>No</ISTRACKCOMPONENT>
+       <ISTRACKPRODUCTION>No</ISTRACKPRODUCTION>
+       <ISPRIMARYITEM>No</ISPRIMARYITEM>
+       <ACTUALQTY>{escape_xml(fg_qty_text)}</ACTUALQTY>
+       <BILLEDQTY>{escape_xml(fg_qty_text)}</BILLEDQTY>
+       <BATCHALLOCATIONS.LIST>
+        <GODOWNNAME>Main Location</GODOWNNAME>
+        <BATCHNAME>Primary Batch</BATCHNAME>
+        <ACTUALQTY>{escape_xml(fg_qty_text)}</ACTUALQTY>
+        <BILLEDQTY>{escape_xml(fg_qty_text)}</BILLEDQTY>
+       </BATCHALLOCATIONS.LIST>
+      </INVENTORYENTRIESIN.LIST>
+
+      {''.join(consumption_entries)}
+     </VOUCHER>
+    </TALLYMESSAGE>
+   </REQUESTDATA>
+  </IMPORTDATA>
+ </BODY>
+</ENVELOPE>
+"""
+
+
+def update_attempt(conn, production_id: str) -> None:
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    cursor.execute(
+        """
+        UPDATE `productions`
+        SET `tallyLastAttemptAt` = %s,
+            `tallyPostingAttemptCount` = COALESCE(`tallyPostingAttemptCount`, 0) + 1,
+            `tallyPostingStatus` = 'Processing',
+            `updateTimestamp` = %s
+        WHERE `id` = %s
+        """,
+        (now, now, production_id),
+    )
+    conn.commit()
+    cursor.close()
+
+
+def mark_posted(
+    conn,
+    production_id: str,
+    voucher_no: str,
+    voucher_date: str,
+    remark: str,
+    tally_timestamp: str | None = None,
+) -> None:
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    success_time = tally_timestamp or now
+    cursor.execute(
+        """
+        UPDATE `productions`
+        SET `tallyTimestamp` = %s,
+            `tallyPostingStatus` = 'Posted',
+            `tallyVoucherNo` = %s,
+            `tallyVoucherDate` = %s,
+            `tallyPostedBy` = %s,
+            `tallyPostingRemark` = %s,
+            `tallyPostingError` = NULL,
+            `updateTimestamp` = %s
+        WHERE `id` = %s
+        """,
+        (success_time, voucher_no, voucher_date, POSTED_BY, remark, now, production_id),
+    )
+    conn.commit()
+    cursor.close()
+
+
+def mark_error(conn, production_id: str, error_text: str) -> None:
+    cursor = conn.cursor()
+    now = datetime.now().isoformat()
+    cursor.execute(
+        """
+        UPDATE `productions`
+        SET `tallyPostingStatus` = 'Error',
+            `tallyPostingRemark` = %s,
+            `tallyPostingError` = %s,
+            `updateTimestamp` = %s
+        WHERE `id` = %s
+        """,
+        (error_text[:5000], error_text[:5000], now, production_id),
+    )
+    conn.commit()
+    cursor.close()
+
+
+def process_one_job(conn, company_name: str | None, tally_groups: set[str], job: dict[str, Any]) -> None:
+    # Use the already-prepared job so the resolved Tally item names and BaseUnits are not lost.
+    production = job["production"]
+    production_id = str(production["id"])
+    voucher_no = str(production.get("transactionNo") or "").strip()
+    update_attempt(conn, production_id)
+    validate_job_context(job)
+
+    if voucher_exists_in_tally(company_name, job["voucherNo"], "Manufacturing Journal", job["voucherDate"]):
+        mark_posted(
             conn,
-            str(mrr["id"]),
-            f"Tally did not respond while importing voucher {voucher_no}. Check Tally screen/debug XML before retrying.",
+            production_id=production_id,
+            voucher_no=job["voucherNo"],
+            voucher_date=job["voucherDate"],
+            remark="Manufacturing Journal already exists in Tally. Local Tally posting details reconciled.",
         )
-        raise
-    if not str(response_text or "").strip():
-        failure_remark = (
-            f"Tally returned an empty response for voucher {voucher_no}. Posting may have hit an internal Tally error. "
-            f"Check the debug XML and Tally screen before retrying."
+        LOGGER.info(
+            "Manufacturing Journal %s already exists in Tally. Updated local Tally posting details.",
+            voucher_no,
         )
-        update_mrr_tally_remark(conn, str(mrr["id"]), failure_remark)
-        raise RuntimeError(failure_remark)
-    if "<CREATED>1</CREATED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
-        mark_mrr_completed(conn, str(mrr["id"]), "Posted successfully to Tally.")
-        LOGGER.info("Posted voucher %s successfully in company %s", voucher_no, company_name or "Current Open Company")
         return
 
-    failure_remark = response_error_message(response_text)
-    if failure_remark == "Tally import failed":
-        failure_remark = f"Tally rejected voucher {voucher_no}. Check debug XML and Tally response."
-    update_mrr_tally_remark(conn, str(mrr["id"]), failure_remark)
-    raise RuntimeError(f"Tally rejected voucher {voucher_no}: {response_text}")
+    xml_text = build_manufacturing_journal_xml(company_name, job)
+    response_text = post_xml_to_tally(xml_text)
+    if "<CREATED>1</CREATED>" in response_text or "<ALTERED>1</ALTERED>" in response_text:
+        action = "created" if "<CREATED>1</CREATED>" in response_text else "altered"
+        mark_posted(
+            conn,
+            production_id=production_id,
+            voucher_no=job["voucherNo"],
+            voucher_date=job["voucherDate"],
+            remark=(
+                f"Manufacturing Journal {action} successfully in Tally. "
+                f"FG={job['fgName']}, Qty={job['fgQty']}, Cost={job['totalComponentCost']:.2f}"
+            ),
+        )
+        LOGGER.info(
+            "Manufacturing Journal %s %s successfully. Updated local Tally posting details.",
+            job["voucherNo"],
+            action,
+        )
+        return
 
+    # Some Tally versions return an exception summary without LINEERROR for a duplicate
+    # voucher. Recheck existence before treating an ambiguous import response as failure.
+    if voucher_exists_in_tally(company_name, job["voucherNo"], "Manufacturing Journal", job["voucherDate"]):
+        mark_posted(
+            conn,
+            production_id=production_id,
+            voucher_no=job["voucherNo"],
+            voucher_date=job["voucherDate"],
+            remark="Manufacturing Journal exists in Tally after import response. Local Tally posting details reconciled.",
+        )
+        LOGGER.info(
+            "Manufacturing Journal %s exists after an ambiguous import response. Updated local Tally posting details.",
+            voucher_no,
+        )
+        return
 
-def main(firm_number: int = 1) -> None:
-    global TALLY_URL_CANDIDATES, ACTIVE_TALLY_URL
+    LOGGER.error(
+        "Tally rejected voucher %s. Request XML: %s | Response XML: %s",
+        job["voucherNo"],
+        compact_xml_for_log(xml_text, 2500),
+        compact_xml_for_log(response_text, 2500),
+    )
+    raise RuntimeError(
+        f"Tally rejected Manufacturing Journal {job['voucherNo']}: {response_error_message(response_text)}"
+    )
 
-    LOGGER.info("Starting Tally MRR posting")
-    LOGGER.info("MRR log file: %s", LOG_FILE)
-
+def main(firm_number: int | None = None) -> None:
+    LOGGER.info("Starting Tally Manufacturing Journal posting")
+    LOGGER.info("Build signature: %s", BUILD_SIGNATURE)
     conn = get_db_connection()
     try:
-        firm = resolve_firm(conn, firm_number)
-        company_name = firm["firmName"]
-        TALLY_URL_CANDIDATES = build_tally_url_candidates(firm["tallyPortNo"])
-        ACTIVE_TALLY_URL = None
-        LOGGER.info(
-            "Selected %s | firm_id=%s | company=%s | Tally port=%s",
-            firm["label"],
-            firm["id"],
-            company_name,
-            firm["tallyPortNo"],
-        )
-        LOGGER.info("Tally URL candidates: %s", ", ".join(TALLY_URL_CANDIDATES))
-        pending_mrrs = get_pending_mrrs(conn, firm["id"])
-        LOGGER.info("Found %s pending MRR(s) for %s", len(pending_mrrs), firm["label"])
-        for mrr in pending_mrrs:
-            try:
-                conn = ensure_db_connection(conn)
-                STOCK_ITEM_LOOKUP_CACHE.clear()
-                process_one_mrr(conn, company_name, mrr)
-            except TallyUnavailableError as error:
-                transaction_no = mrr.get("transactionNo")
-                LOGGER.exception("ERROR in MRR %s: %s", transaction_no, error)
-                LOGGER.error("Stopping MRR batch because Tally is unreachable/unresponsive.")
-                break
-            except Exception as error:
-                transaction_no = mrr.get("transactionNo")
-                LOGGER.exception("ERROR in MRR %s: %s", transaction_no, error)
+        firm_numbers = [firm_number] if firm_number is not None else sorted(FIRM_CONFIG)
+        for selected_firm_number in firm_numbers:
+            global TALLY_URL_CANDIDATES, ACTIVE_TALLY_URL
+            firm = resolve_firm(conn, selected_firm_number)
+            TALLY_URL_CANDIDATES = build_tally_url_candidates(firm["tallyPortNo"])
+            ACTIVE_TALLY_URL = None
+            company_name = firm["firmName"]
+            LOGGER.info(
+                "Selected %s | firm_id=%s | company=%s | Tally port=%s",
+                firm["label"], firm["id"], company_name, firm["tallyPortNo"],
+            )
+            LOGGER.info("Tally URL candidates: %s", ", ".join(TALLY_URL_CANDIDATES))
+
+            tally_groups = get_tally_groups()
+            LOGGER.info("Found %s stock group(s) in Tally", len(tally_groups))
+            pending_jobs = get_pending_jobs(conn, firm["id"])
+            LOGGER.info("Found %s eligible job(s) for %s", len(pending_jobs), firm["label"])
+            prepared_jobs: list[dict[str, Any]] = []
+            for production in pending_jobs:
+                try:
+                    job = build_job_context(conn, production)
+                    validate_job_context(job)
+                    prepared_jobs.append(job)
+                except Exception as error:
+                    transaction_no = production.get("transactionNo") or production.get("id")
+                    LOGGER.exception("ERROR in job %s: %s", transaction_no, error)
+                    mark_error(conn, str(production["id"]), str(error))
+
+            matched_jobs: list[dict[str, Any]] = []
+            for job in prepared_jobs:
+                production = job["production"]
+                try:
+                    ensure_stock_items_for_jobs(company_name, [job], tally_groups)
+                    matched_jobs.append(job)
+                except Exception as error:
+                    transaction_no = production.get("transactionNo") or production.get("id")
+                    LOGGER.exception("Stock-item matching failed for job %s: %s", transaction_no, error)
+                    mark_error(conn, str(production["id"]), str(error))
+
+            for job in matched_jobs:
+                production = job["production"]
+                try:
+                    process_one_job(conn, company_name, tally_groups, job)
+                except Exception as error:
+                    transaction_no = production.get("transactionNo") or production.get("id")
+                    LOGGER.exception("ERROR in job %s: %s", transaction_no, error)
+                    mark_error(conn, str(production["id"]), str(error))
     finally:
-        try:
-            conn.close()
-        except Exception:
-            pass
-        LOGGER.info("Finished Tally MRR posting")
+        conn.close()
+        LOGGER.info("Finished Tally Manufacturing Journal posting")
 
 
 if __name__ == "__main__":

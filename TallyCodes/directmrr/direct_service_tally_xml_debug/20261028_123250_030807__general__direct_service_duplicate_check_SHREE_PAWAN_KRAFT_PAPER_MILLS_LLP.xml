@@ -1,0 +1,36 @@
+
+    <ENVELOPE>
+        <HEADER>
+            <VERSION>1</VERSION>
+            <TALLYREQUEST>EXPORT</TALLYREQUEST>
+            <TYPE>COLLECTION</TYPE>
+            <ID>DirectServiceDuplicate</ID>
+        </HEADER>
+        <BODY>
+            <DESC>
+                <STATICVARIABLES>
+                    <SVCURRENTCOMPANY>Laxmi Narayan Corrugated Boards LLP Unit-I</SVCURRENTCOMPANY>
+                    <SVFROMDATE>20260401</SVFROMDATE>
+                    <SVTODATE>20270331</SVTODATE>
+                    <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+                <TDL>
+                    <TDLMESSAGE>
+                        <COLLECTION NAME="DirectServiceDuplicate" ISMODIFY="No">
+                            <TYPE>Voucher</TYPE>
+                            <FETCH>VoucherNumber</FETCH>
+                            <FETCH>Reference</FETCH>
+                            <FETCH>PartyLedgerName</FETCH>
+                            <FILTERS>DirectServicePurchaseFilter</FILTERS>
+                            <FILTERS>DirectServicePartyFilter</FILTERS>
+                            <FILTERS>DirectServiceReferenceFilter</FILTERS>
+                        </COLLECTION>
+                        <SYSTEM TYPE="Formulae" NAME="DirectServicePurchaseFilter">$$StringEqual:$VoucherTypeName:"Purchase"</SYSTEM>
+                        <SYSTEM TYPE="Formulae" NAME="DirectServicePartyFilter">$$StringEqual:$PartyLedgerName:"SHREE PAWAN KRAFT PAPER MILLS LLP"</SYSTEM>
+                        <SYSTEM TYPE="Formulae" NAME="DirectServiceReferenceFilter">$$StringEqual:$Reference:"111111"</SYSTEM>
+                    </TDLMESSAGE>
+                </TDL>
+            </DESC>
+        </BODY>
+    </ENVELOPE>
+    
