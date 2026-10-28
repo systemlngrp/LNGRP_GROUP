@@ -185,20 +185,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const res = await authFetch("/api/auth/me", { signal: controller.signal });
       if (!res.ok) {
+        const errorPayload = await res.json().catch(() => ({} as { error?: string; code?: string }));
         if (res.status === 401 || res.status === 403) {
           window.localStorage.removeItem("authToken");
           window.localStorage.removeItem(ACTIVE_FIRM_STORAGE_KEY);
           setUser(null);
           setActiveFirmState(null);
         }
-        if (showLoading && res.status !== 401 && res.status !== 403) setAuthError(`Authentication check failed (${res.status}).`);
+        if (showLoading && res.status !== 401 && res.status !== 403) {
+          setAuthError(errorPayload.error || `Authentication check failed (${res.status}).`);
+        }
         return;
       }
       const me = (await res.json()) as AuthUser;
       setUser({ ...me, role: normalizeRole(me.role), menuAccess: normalizeMenuAccess(me.menuAccess) });
     } catch (error) {
       if (showLoading) {
-        setAuthError((error as Error)?.name === "AbortError" ? "The server took too long to respond." : "Unable to verify your session.");
+        setAuthError((error as Error)?.name === "AbortError"
+          ? "The ERP server or database did not respond within 10 seconds. Check /api/health or the server logs."
+          : "Unable to verify your session. Check that the ERP server is running and the database is reachable.");
       }
       // Keep the current user during a temporary background connectivity failure.
     } finally {

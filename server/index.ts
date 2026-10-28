@@ -1156,13 +1156,13 @@ app.post("/api/auth/login", async (req, res) => {
     const db = await getPool();
     if (!db) return res.status(503).json({ error: "Database connection is not configured" });
 
-    const [rows] = await db.query(
+    const [rows] = await queryWithTimeout<[any[]]>(db,
       "SELECT * FROM `users` WHERE userId = ? OR email = ? LIMIT 1",
       [identifier, identifier]
     );
     const row = (rows as any[])[0];
     if (!row) {
-      const [truckRows] = await db.query(
+      const [truckRows] = await queryWithTimeout<[any[]]>(db,
         "SELECT * FROM `trucks` WHERE driverLoginId = ? LIMIT 1",
         [identifier]
       );
@@ -1240,18 +1240,25 @@ app.post("/api/auth/login", async (req, res) => {
 });
 
 app.get("/api/auth/me", requireAuth, async (req, res) => {
-  const user = await getRequestUser(req);
-  if (!user) return res.status(401).json({ error: "Unauthorized" });
-  res.json({
-    id: user.id,
-    userId: user.userId,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    menuAccess: user.menuAccess,
-    truckId: user.truckId,
-  });
+  const startedAt = Date.now();
+  try {
+    const user = await getRequestUser(req);
+    if (!user) return res.status(401).json({ error: "Unauthorized" });
+    res.json({
+      id: user.id,
+      userId: user.userId,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      menuAccess: user.menuAccess,
+      truckId: user.truckId,
+    });
+  } catch (error) {
+    const safeError = safeDatabaseError(error);
+    console.error(`[AUTH] Session lookup failed after ${Date.now() - startedAt}ms (${safeError.code}): ${safeError.message}`);
+    return res.status(503).json({ error: safeError.message, code: safeError.code });
+  }
 });
 
 app.post("/api/auth/logout", requireAuth, async (_req, res) => {
@@ -1332,6 +1339,7 @@ app.use("/api", (req, res, next) => {
   if (
     req.path.startsWith("/auth/") ||
     req.path === "/version" ||
+    req.path === "/health" ||
     req.path === "/db-status" ||
     req.path.startsWith("/public/") ||
     // Read-only stock report is intentionally accessible from a direct browser URL.
@@ -2007,6 +2015,41 @@ app.post("/api/tally/sync", async (req, res) => {
 let pool: mysql.Pool | null = null;
 let dailyConsumptionSchemaPromise: Promise<void> | null = null;
 let databaseInitializationPromise: Promise<void> | null = null;
+type DatabaseInitializationState = "not_started" | "running" | "ready" | "failed";
+let databaseInitializationState: DatabaseInitializationState = "not_started";
+let databaseInitializationError = "";
+const AUTH_DB_QUERY_TIMEOUT_MS = 8_000;
+const HEALTH_DB_QUERY_TIMEOUT_MS = 2_000;
+
+function safeDatabaseError(error: unknown) {
+  const details = error as any;
+  const code = String(details?.code || "").trim();
+  const messages: Record<string, string> = {
+    ECONNREFUSED: "Database connection was refused. Check the database host, port, and firewall allowlist.",
+    ETIMEDOUT: "Database connection timed out. Check remote MySQL access and firewall rules.",
+    ER_ACCESS_DENIED_ERROR: "Database rejected the configured username or password.",
+    ER_BAD_DB_ERROR: "The configured database name does not exist or is not accessible.",
+    ER_CON_COUNT_ERROR: "The database has reached its connection limit.",
+    PROTOCOL_CONNECTION_LOST: "The database connection was lost.",
+    DB_QUERY_TIMEOUT: "The database query timed out.",
+  };
+  return {
+    code: code || "DATABASE_ERROR",
+    message: messages[code] || "The ERP server could not complete the database request.",
+  };
+}
+
+async function queryWithTimeout<T extends any[]>(db: mysql.Pool, sql: string, values: unknown[] = [], timeoutMs = AUTH_DB_QUERY_TIMEOUT_MS): Promise<T> {
+  const timeout = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => {
+      const error = new Error("Database query timed out.") as Error & { code?: string };
+      error.code = "DB_QUERY_TIMEOUT";
+      reject(error);
+    }, timeoutMs);
+    timer.unref?.();
+  });
+  return Promise.race([db.query({ sql, timeout: timeoutMs } as any, values) as unknown as Promise<T>, timeout]);
+}
 
 type DeleteReference = { table: string; column: string; label: string };
 const DELETE_REFERENCES: Record<string, DeleteReference[]> = {
@@ -5355,10 +5398,10 @@ async function getPool() {
 
 async function loadAuthUserByIdOnce(userId: string): Promise<AuthUser | null> {
   const db = await getPool();
-  if (!db) return null;
+  if (!db) throw Object.assign(new Error("Database connection is not configured."), { code: "DB_NOT_CONFIGURED" });
   if (userId.startsWith("truck:")) {
     const truckId = userId.slice("truck:".length);
-    const [truckRows] = await db.query("SELECT * FROM `trucks` WHERE id = ? LIMIT 1", [truckId]);
+    const [truckRows] = await queryWithTimeout<[any[]]>(db, "SELECT * FROM `trucks` WHERE id = ? LIMIT 1", [truckId]);
     const truck = (truckRows as any[])[0];
     if (!truck) return null;
     return {
@@ -5372,7 +5415,7 @@ async function loadAuthUserByIdOnce(userId: string): Promise<AuthUser | null> {
       truckId: String(truck.id),
     };
   }
-  const [rows] = await db.query("SELECT * FROM `users` WHERE id = ? LIMIT 1", [userId]);
+  const [rows] = await queryWithTimeout<[any[]]>(db, "SELECT * FROM `users` WHERE id = ? LIMIT 1", [userId]);
   const rawRow = (rows as any[])[0];
   if (!rawRow) return null;
   const row = normalizeFetchedRow("users", rawRow);
@@ -6479,6 +6522,50 @@ async function generateDynamicInvoiceNo(db: mysql.Pool | mysql.PoolConnection, d
 
   return buildInvoiceNumber(prefix, fy, separator, lastNumber + 1, paddingLength);
 }
+
+app.get("/api/health", async (_req, res) => {
+  const startedAt = Date.now();
+  const configured = Boolean(String(process.env.DB_HOST || "").trim() && String(process.env.DB_USER || "").trim() && String(process.env.DB_NAME || "").trim());
+  if (!configured) {
+    return res.status(503).json({
+      server: "ok",
+      database: "unavailable",
+      databaseConfigured: false,
+      initialization: databaseInitializationState,
+      initializationError: databaseInitializationError || undefined,
+      error: "Database connection is not configured.",
+      latencyMs: Date.now() - startedAt,
+    });
+  }
+
+  try {
+    const db = await getPool();
+    if (!db) throw Object.assign(new Error("Database connection is not configured."), { code: "DB_NOT_CONFIGURED" });
+    await queryWithTimeout(db, "SELECT 1 AS connected", [], HEALTH_DB_QUERY_TIMEOUT_MS);
+    await queryWithTimeout(db, "SELECT id FROM `users` LIMIT 1", [], HEALTH_DB_QUERY_TIMEOUT_MS);
+    return res.json({
+      server: "ok",
+      database: "connected",
+      userLookup: "ok",
+      databaseConfigured: true,
+      initialization: databaseInitializationState,
+      initializationError: databaseInitializationError || undefined,
+      latencyMs: Date.now() - startedAt,
+    });
+  } catch (error) {
+    const safeError = safeDatabaseError(error);
+    return res.status(503).json({
+      server: "ok",
+      database: "unavailable",
+      databaseConfigured: true,
+      initialization: databaseInitializationState,
+      initializationError: databaseInitializationError || undefined,
+      error: safeError.message,
+      code: safeError.code,
+      latencyMs: Date.now() - startedAt,
+    });
+  }
+});
 
 // Health check endpoint to verify DB status
 app.get("/api/db-status", async (req, res) => {
@@ -17308,12 +17395,20 @@ app.post("/api/table-column-widths", async (req, res) => {
 registerSalesOrderSync(app, getPool);
 
 async function startServer() {
+  databaseInitializationState = "running";
+  databaseInitializationError = "";
   databaseInitializationPromise = (async () => {
     await initDb();
     const db = await getPool();
-    if (db) await ensureProductionProcessingAuditColumns(db);
+    if (!db) throw Object.assign(new Error("Database connection is not configured."), { code: "DB_NOT_CONFIGURED" });
+    await queryWithTimeout(db, "SELECT 1 AS connected", [], HEALTH_DB_QUERY_TIMEOUT_MS);
+    await ensureProductionProcessingAuditColumns(db);
+    databaseInitializationState = "ready";
   })().catch((error) => {
-    console.error("[SERVER] Database initialization failed:", error);
+    const safeError = safeDatabaseError(error);
+    databaseInitializationState = "failed";
+    databaseInitializationError = safeError.message;
+    console.error(`[SERVER] Database initialization failed (${safeError.code}): ${safeError.message}`);
     throw error;
   });
 
