@@ -1,2 +1,17 @@
 2026-10-28 11:58:15,797 | INFO | Starting Direct Service MRR Tally posting
 2026-10-28 11:58:17,503 | INFO | Finished Direct Service MRR Tally posting
+2026-10-28 12:01:30,012 | INFO | Starting Direct Service MRR Tally posting
+2026-10-28 12:01:31,425 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 12:01:31,597 | INFO | Found 0 pending Direct Service MRR(s) for Firm-1
+2026-10-28 12:01:31,724 | INFO | Selected Firm-2 | firm_id=334aa279-b7f3-450d-8b34-ee538a70e802 | company=Laxmi Narayan Corrugated Boards LLP (Unit-II) | Tally port=9002
+2026-10-28 12:01:31,894 | INFO | Found 0 pending Direct Service MRR(s) for Firm-2
+2026-10-28 12:01:32,020 | INFO | Selected Firm-3 | firm_id=106cec9f-54f7-4b32-bb3a-6973d1993ea1 | company=LAXMI NARAYAN KRAFT INDUSTRIES | Tally port=9003
+2026-10-28 12:01:32,177 | INFO | Found 1 pending Direct Service MRR(s) for Firm-3
+2026-10-28 12:01:32,505 | INFO | Processing Direct Service MRR LNKI/MRR/26-27/00007 | party=SHREE PAWAN KRAFT PAPER MILLS LLP | source=companies | service_ledgers=exact line names
+2026-10-28 12:01:32,507 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_120132_506269__general__health_check_before_direct_service_mrr_LNKI_MRR_26-27_00007.xml
+2026-10-28 12:01:36,988 | WARNING | Tally not reachable | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | url=http://localhost:9003 | error=HTTPConnectionPool(host='localhost', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='localhost', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:01:36,988 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | url=http://127.0.0.1:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_120132_506269__general__health_check_before_direct_service_mrr_LNKI_MRR_26-27_00007.xml
+2026-10-28 12:01:39,277 | WARNING | Tally not reachable | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | url=http://127.0.0.1:9003 | error=HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:01:39,278 | ERROR | Tally unavailable while processing LNKI/MRR/26-27/00007: Cannot connect to Tally at http://localhost:9003, http://127.0.0.1:9003. Enable Tally XML/HTTP or set LNPI_TALLY_URL. Last error: HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
+2026-10-28 12:01:39,278 | ERROR | TallyPrime is not accepting XML requests for Firm-3. Enable its HTTP/XML service on port 9003, then run this script again.
+2026-10-28 12:01:39,280 | INFO | Finished Direct Service MRR Tally posting

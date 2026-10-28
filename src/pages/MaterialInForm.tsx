@@ -1399,6 +1399,25 @@ export function MaterialInForm() {
     );
   };
 
+  const updateDirectServiceGstRate = (lineId: string, value: string) => {
+    const gstRate = Number(value || 0);
+    setLines((prev) =>
+      prev.map((line) => {
+        if (line.id !== lineId) return line;
+        return recalculateMaterialLine({
+          ...line,
+          gstRate,
+          cgstRate: 0,
+          sgstRate: 0,
+          igstRate: 0,
+        }, {
+          invoiceCurrency: normalizedInvoiceCurrency,
+          exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+        });
+      })
+    );
+  };
+
   const handleRemoveLine = (lineId: string) => {
     setLines((prev) => prev.filter((line) => line.id !== lineId));
     setPackingSlipDrafts((prev) => {
@@ -2258,7 +2277,7 @@ export function MaterialInForm() {
             invoiceQty: 1,
             actualQty: 1,
             uom: "NOS",
-            gstRate: 0,
+            gstRate: Number(line.gstRate || 0),
             cgstRate: 0,
             sgstRate: 0,
             igstRate: 0,
@@ -3277,14 +3296,14 @@ export function MaterialInForm() {
                             />
                           </td>
                           <td className="px-4 py-3 text-sm text-black border border-black min-w-[220px]">
-                            {isDirectService ? "0" : (
-                              <Select
-                                options={gstRateOptions}
-                                value={String(Number(line.gstRate || 0))}
-                                onChange={(value) => updateLine(line.id, { gstRate: Number(value || 0) })}
-                                placeholder="Select GST..."
-                              />
-                            )}
+                            <Select
+                              options={gstRateOptions}
+                              value={String(Number(line.gstRate || 0))}
+                              onChange={(value) => isDirectService
+                                ? updateDirectServiceGstRate(line.id, value)
+                                : updateLine(line.id, { gstRate: Number(value || 0) })}
+                              placeholder="Select GST..."
+                            />
                           </td>
                           <td className="px-4 py-3 text-sm font-medium text-black border border-black">{Number(line.invoiceValue || 0).toFixed(2)}</td>
                           {!isInterState ? (

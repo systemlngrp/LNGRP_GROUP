@@ -48,8 +48,16 @@ LOGGER = setup_logger()
 
 
 def load_env_file() -> None:
-    env_path = BASE_DIR / ".env"
-    if not env_path.exists():
+    explicit_env = os.getenv("LNPI_ENV_FILE")
+    candidates = [
+        Path(explicit_env).expanduser() if explicit_env else None,
+        Path.cwd() / ".env",
+        BASE_DIR / ".env",
+        BASE_DIR.parent / ".env",
+        BASE_DIR.parent.parent / ".env",
+    ]
+    env_path = next((path for path in candidates if path and path.is_file()), None)
+    if env_path is None:
         return
     for raw_line in env_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -67,11 +75,11 @@ TALLY_CONNECT_TIMEOUT = float(os.getenv("TALLY_CONNECT_TIMEOUT", "5"))
 TALLY_READ_TIMEOUT = float(os.getenv("TALLY_READ_TIMEOUT", "120"))
 REQUEST_TIMEOUT = (TALLY_CONNECT_TIMEOUT, TALLY_READ_TIMEOUT)
 DB_CONFIG = {
-    "host": os.getenv("LNPI_DB_HOST", "193.203.184.152"),
-    "user": os.getenv("LNPI_DB_USER", "u380633007_lnpidata"),
-    "password": os.getenv("LNPI_DB_PASSWORD", "!Office1@"),
-    "database": os.getenv("LNPI_DB_NAME", "u380633007_lnpidata"),
-    "port": int(os.getenv("LNPI_DB_PORT", "3306")),
+    "host": os.getenv("DB_HOST") or os.getenv("LNPI_DB_HOST", "193.203.184.152"),
+    "user": os.getenv("DB_USER") or os.getenv("LNPI_DB_USER", "u380633007_lnpidata"),
+    "password": os.getenv("DB_PASSWORD") or os.getenv("LNPI_DB_PASSWORD", "!Office1@"),
+    "database": os.getenv("DB_NAME") or os.getenv("LNPI_DB_NAME", "u380633007_lnpidata"),
+    "port": int(os.getenv("DB_PORT") or os.getenv("LNPI_DB_PORT", "3306")),
     "use_pure": True,
 }
 
