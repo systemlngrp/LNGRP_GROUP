@@ -8,3 +8,47 @@
 2026-10-28 12:41:21,296 | INFO | Connected to Tally at http://localhost:9001
 2026-10-28 12:41:21,386 | INFO | Found 392 stock group(s) in Tally
 2026-10-28 12:41:21,524 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 12:50:31,087 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 12:50:31,088 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 12:50:31,990 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 12:50:31,990 | INFO | Tally URL candidates: http://localhost:9001, http://127.0.0.1:9001
+2026-10-28 12:50:32,033 | INFO | Connected to Tally at http://localhost:9001
+2026-10-28 12:50:32,043 | INFO | Found 392 stock group(s) in Tally
+2026-10-28 12:50:32,165 | INFO | Found 0 eligible job(s) for Firm-1
+2026-10-28 12:50:32,166 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 12:51:20,450 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 12:51:20,451 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 12:51:22,015 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 12:51:22,029 | INFO | Tally URL candidates: http://localhost:9001, http://127.0.0.1:9001
+2026-10-28 12:51:22,125 | INFO | Connected to Tally at http://localhost:9001
+2026-10-28 12:51:22,151 | INFO | Found 392 stock group(s) in Tally
+2026-10-28 12:51:22,296 | INFO | Found 0 eligible job(s) for Firm-1
+2026-10-28 12:51:22,316 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 12:53:16,499 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 12:53:16,499 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 12:53:17,992 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 12:53:17,992 | INFO | Tally URL candidates: http://localhost:9001, http://127.0.0.1:9001
+2026-10-28 12:53:18,034 | INFO | Connected to Tally at http://localhost:9001
+2026-10-28 12:53:18,045 | INFO | Found 392 stock group(s) in Tally
+2026-10-28 12:53:18,164 | INFO | Found 0 eligible job(s) for Firm-1
+2026-10-28 12:53:18,165 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 13:00:27,379 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 13:00:27,380 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 13:01:14,164 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 13:01:14,167 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 13:02:06,297 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 13:02:06,297 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 13:07:04,183 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 13:07:04,184 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 13:07:05,786 | INFO | Selected Firm-2 | firm_id=334aa279-b7f3-450d-8b34-ee538a70e802 | company=Laxmi Narayan Corrugated Boards LLP (Unit-II) | Tally port=9002
+2026-10-28 13:07:05,787 | INFO | Tally URL candidates: http://localhost:9002, http://127.0.0.1:9002
+2026-10-28 13:07:09,847 | WARNING | Tally not reachable at http://localhost:9002
+2026-10-28 13:07:11,879 | WARNING | Tally not reachable at http://127.0.0.1:9002
+2026-10-28 13:07:11,880 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 13:10:22,208 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 13:10:22,208 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 13:10:23,582 | INFO | Selected Firm-2 | firm_id=334aa279-b7f3-450d-8b34-ee538a70e802 | company=Laxmi Narayan Corrugated Boards LLP (Unit-II) | Tally port=9002
+2026-10-28 13:10:23,584 | INFO | Tally URL candidates: http://localhost:9002, http://127.0.0.1:9002
+2026-10-28 13:10:27,656 | WARNING | Tally not reachable at http://localhost:9002
+2026-10-28 13:10:29,698 | WARNING | Tally not reachable at http://127.0.0.1:9002
+2026-10-28 13:10:29,699 | INFO | Finished Tally Manufacturing Journal posting
