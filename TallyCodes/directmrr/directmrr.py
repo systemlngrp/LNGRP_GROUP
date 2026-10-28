@@ -252,6 +252,13 @@ def get_db_connection():
     try:
         return mysql.connector.connect(**DB_CONFIG)
     except mysql.connector.Error as error:
+        if getattr(error, "errno", None) == 1226:
+            raise RuntimeError(
+                "MySQL rejected the connection because the account has exceeded "
+                "max_connections_per_hour=500. Stop retrying and ask the hosting "
+                "provider to reset or increase this limit for "
+                f"{DB_CONFIG['user']!r}."
+            ) from error
         raise RuntimeError(f"Cannot connect to MySQL at {DB_CONFIG['host']}:{DB_CONFIG['port']}: {error}") from error
 
 
@@ -873,4 +880,8 @@ if __name__ == "__main__":
         help="Process only one firm. Without this option, Firm 1, Firm 2, and Firm 3 are processed.",
     )
     args = parser.parse_args()
-    main(args.firm)
+    try:
+        main(args.firm)
+    except RuntimeError as error:
+        LOGGER.error("%s", error)
+        raise SystemExit(1) from error

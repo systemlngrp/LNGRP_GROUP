@@ -52,3 +52,84 @@
 2026-10-28 13:10:27,656 | WARNING | Tally not reachable at http://localhost:9002
 2026-10-28 13:10:29,698 | WARNING | Tally not reachable at http://127.0.0.1:9002
 2026-10-28 13:10:29,699 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 15:30:54,474 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 15:30:54,480 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 15:30:56,232 | INFO | Selected Firm-2 | firm_id=334aa279-b7f3-450d-8b34-ee538a70e802 | company=Laxmi Narayan Corrugated Boards LLP (Unit-II) | Tally port=9002
+2026-10-28 15:30:56,238 | INFO | Tally URL candidates: http://localhost:9002, http://127.0.0.1:9002
+2026-10-28 15:30:56,293 | INFO | Connected to Tally at http://localhost:9002
+2026-10-28 15:30:56,316 | INFO | Found 368 stock group(s) in Tally
+2026-10-28 15:30:56,434 | INFO | Found 1 eligible job(s) for Firm-2
+2026-10-28 15:30:58,854 | INFO | Direct Tally lookup found stock item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:30:58,855 | INFO | Direct Tally lookup found stock item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' with Part No 'blank' and BaseUnits 'blank'.
+2026-10-28 15:30:58,856 | INFO | FG stock item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' found in Tally by exact name with Tally Part No 'blank'.
+2026-10-28 15:30:58,865 | INFO | Direct Tally lookup found stock item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:30:58,871 | WARNING | FG stock item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' exists in Tally but BaseUnits is 'blank'. FG quantity will be posted without forcing app UOM.
+2026-10-28 15:31:02,830 | INFO | Loaded 5843 Tally stock item(s) for company key 'LAXMI NARAYAN CORRUGATED BOARDS LLP (UNIT-II)'
+2026-10-28 15:31:03,206 | INFO | Raw material '7220444 - Size: 203 CM X GSM: 140 X BF: 18   Color - LG' was not found in Tally by name, part number, or alias for ERP '7220444'.
+2026-10-28 15:31:03,216 | INFO | Preflight stock-item scan prepared 2 unique item(s) across 1 job(s)
+2026-10-28 15:31:03,228 | INFO | Direct Tally lookup found stock item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:31:03,229 | INFO | Direct Tally lookup found stock item 'OC-MCDLUXTTN-BLD-G180- 8.64-WP2P-KT3P7V13' with Part No 'blank' and BaseUnits 'blank'.
+2026-10-28 15:31:03,236 | INFO | Preflight found 1 unmatched stock item(s) in Tally
+2026-10-28 15:31:03,237 | ERROR | Unmatched stock item => kind=Raw material | app item=7220444 - Size: 203 CM X GSM: 140 X BF: 18   Color - LG | resolved name=7220444 - Size: 203 CM X GSM: 140 X BF: 18   Color - LG | ERP=7220444
+2026-10-28 15:31:03,238 | ERROR | Stock-item matching failed for job LNCB-2/JOB/26-27/11: Posting skipped because 1 stock item(s) did not match Tally: Raw material: 7220444 - Size: 203 CM X GSM: 140 X BF: 18   Color - LG
+Traceback (most recent call last):
+  File "d:\LNGRP\TallyCodes\mrr\tally_mrr.py", line 2493, in main
+    ensure_stock_items_for_jobs(company_name, [job], tally_groups)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\LNGRP\TallyCodes\mrr\tally_mrr.py", line 2196, in ensure_stock_items_for_jobs
+    raise RuntimeError(
+        f"Posting skipped because {len(missing_before)} stock item(s) did not match Tally: {unmatched_names}"
+    )
+RuntimeError: Posting skipped because 1 stock item(s) did not match Tally: Raw material: 7220444 - Size: 203 CM X GSM: 140 X BF: 18   Color - LG
+2026-10-28 15:31:03,433 | INFO | Finished Tally Manufacturing Journal posting
+2026-10-28 15:37:02,549 | INFO | Starting Tally Manufacturing Journal posting
+2026-10-28 15:37:02,549 | INFO | Build signature: 2026-08-17 TALLY_CONFIGURABLE_TIMEOUTS
+2026-10-28 15:37:04,910 | INFO | Selected Firm-3 | firm_id=106cec9f-54f7-4b32-bb3a-6973d1993ea1 | company=LAXMI NARAYAN KRAFT INDUSTRIES | Tally port=9003
+2026-10-28 15:37:04,910 | INFO | Tally URL candidates: http://localhost:9003, http://127.0.0.1:9003
+2026-10-28 15:37:04,936 | INFO | Connected to Tally at http://localhost:9003
+2026-10-28 15:37:04,943 | INFO | Found 154 stock group(s) in Tally
+2026-10-28 15:37:05,054 | INFO | Found 2 eligible job(s) for Firm-3
+2026-10-28 15:37:08,265 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:37:08,266 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part No 'blank' and BaseUnits 'blank'.
+2026-10-28 15:37:08,266 | INFO | FG stock item 'SHIPPER N210 (285X235X185 MM)-377050' found in Tally by exact name with Tally Part No 'blank'.
+2026-10-28 15:37:08,273 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:37:08,273 | WARNING | FG stock item 'SHIPPER N210 (285X235X185 MM)-377050' exists in Tally but BaseUnits is 'blank'. FG quantity will be posted without forcing app UOM.
+2026-10-28 15:37:09,331 | INFO | Loaded 3014 Tally stock item(s) for company key 'LAXMI NARAYAN KRAFT INDUSTRIES'
+2026-10-28 15:37:09,455 | INFO | Raw material '7020244 - Size: 179 CM X GSM: 170 X BF: 18   Color - LG' was not found in Tally by name, part number, or alias for ERP '7020244'.
+2026-10-28 15:37:09,462 | INFO | Preflight stock-item scan prepared 2 unique item(s) across 1 job(s)
+2026-10-28 15:37:09,470 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:37:09,471 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part No 'blank' and BaseUnits 'blank'.
+2026-10-28 15:37:09,478 | INFO | Preflight found 1 unmatched stock item(s) in Tally
+2026-10-28 15:37:09,478 | ERROR | Unmatched stock item => kind=Raw material | app item=7020244 - Size: 179 CM X GSM: 170 X BF: 18   Color - LG | resolved name=7020244 - Size: 179 CM X GSM: 170 X BF: 18   Color - LG | ERP=7020244
+2026-10-28 15:37:09,479 | ERROR | Stock-item matching failed for job LNKI/JOB/26-27/16: Posting skipped because 1 stock item(s) did not match Tally: Raw material: 7020244 - Size: 179 CM X GSM: 170 X BF: 18   Color - LG
+Traceback (most recent call last):
+  File "d:\LNGRP\TallyCodes\mrr\tally_mrr.py", line 2493, in main
+    ensure_stock_items_for_jobs(company_name, [job], tally_groups)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\LNGRP\TallyCodes\mrr\tally_mrr.py", line 2196, in ensure_stock_items_for_jobs
+    raise RuntimeError(
+        f"Posting skipped because {len(missing_before)} stock item(s) did not match Tally: {unmatched_names}"
+    )
+RuntimeError: Posting skipped because 1 stock item(s) did not match Tally: Raw material: 7020244 - Size: 179 CM X GSM: 170 X BF: 18   Color - LG
+2026-10-28 15:37:09,633 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:37:09,633 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part No 'blank' and BaseUnits 'blank'.
+2026-10-28 15:37:09,634 | INFO | FG stock item 'SHIPPER N210 (285X235X185 MM)-377050' found in Tally by exact name with Tally Part No 'blank'.
+2026-10-28 15:37:09,642 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:37:09,642 | WARNING | FG stock item 'SHIPPER N210 (285X235X185 MM)-377050' exists in Tally but BaseUnits is 'blank'. FG quantity will be posted without forcing app UOM.
+2026-10-28 15:37:09,772 | INFO | Raw material '7020186 - Size: 200 CM X GSM: 120 X BF: 18   Color - LG' was not found in Tally by name, part number, or alias for ERP '7020186'.
+2026-10-28 15:37:09,779 | INFO | Preflight stock-item scan prepared 2 unique item(s) across 1 job(s)
+2026-10-28 15:37:09,788 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part/Mailing No 'blank', BaseUnits 'blank', Parent 'blank'.
+2026-10-28 15:37:09,789 | INFO | Direct Tally lookup found stock item 'SHIPPER N210 (285X235X185 MM)-377050' with Part No 'blank' and BaseUnits 'blank'.
+2026-10-28 15:37:09,795 | INFO | Preflight found 1 unmatched stock item(s) in Tally
+2026-10-28 15:37:09,796 | ERROR | Unmatched stock item => kind=Raw material | app item=7020186 - Size: 200 CM X GSM: 120 X BF: 18   Color - LG | resolved name=7020186 - Size: 200 CM X GSM: 120 X BF: 18   Color - LG | ERP=7020186
+2026-10-28 15:37:09,796 | ERROR | Stock-item matching failed for job LNKI/JOB/26-27/17: Posting skipped because 1 stock item(s) did not match Tally: Raw material: 7020186 - Size: 200 CM X GSM: 120 X BF: 18   Color - LG
+Traceback (most recent call last):
+  File "d:\LNGRP\TallyCodes\mrr\tally_mrr.py", line 2493, in main
+    ensure_stock_items_for_jobs(company_name, [job], tally_groups)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "d:\LNGRP\TallyCodes\mrr\tally_mrr.py", line 2196, in ensure_stock_items_for_jobs
+    raise RuntimeError(
+        f"Posting skipped because {len(missing_before)} stock item(s) did not match Tally: {unmatched_names}"
+    )
+RuntimeError: Posting skipped because 1 stock item(s) did not match Tally: Raw material: 7020186 - Size: 200 CM X GSM: 120 X BF: 18   Color - LG
+2026-10-28 15:37:09,940 | INFO | Finished Tally Manufacturing Journal posting

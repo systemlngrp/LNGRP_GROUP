@@ -1,0 +1,19 @@
+
+    <ENVELOPE>
+        <HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER>
+        <BODY><IMPORTDATA>
+            <REQUESTDESC>
+                <REPORTNAME>All Masters</REPORTNAME>
+                <STATICVARIABLES><SVCURRENTCOMPANY>LAXMI NARAYAN KRAFT INDUSTRIES</SVCURRENTCOMPANY></STATICVARIABLES>
+            </REQUESTDESC>
+            <REQUESTDATA><TALLYMESSAGE xmlns:UDF="TallyUDF">
+                <LEDGER NAME="Other Charges" ACTION="Create">
+                    <NAME.LIST TYPE="String"><NAME>Other Charges</NAME></NAME.LIST>
+                    <PARENT>Indirect Expenses</PARENT>
+                    <ISBILLWISEON>No</ISBILLWISEON>
+                    <AFFECTSSTOCK>No</AFFECTSSTOCK>
+                </LEDGER>
+            </TALLYMESSAGE></REQUESTDATA>
+        </IMPORTDATA></BODY>
+    </ENVELOPE>
+    

@@ -101,3 +101,35 @@ RuntimeError: Tally rejected Direct Service voucher LNCB-1/MRR/26-27/00002: <RES
 2026-10-28 12:33:06,693 | ERROR | Tally unavailable while processing LNKI/MRR/26-27/00007: Cannot connect to Tally at http://localhost:9003, http://127.0.0.1:9003. Enable Tally XML/HTTP or set LNPI_TALLY_URL. Last error: HTTPConnectionPool(host='127.0.0.1', port=9003): Max retries exceeded with url: / (Caused by NewConnectionError("HTTPConnection(host='127.0.0.1', port=9003): Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it"))
 2026-10-28 12:33:06,695 | ERROR | TallyPrime is not accepting XML requests for Firm-3. Enable its HTTP/XML service on port 9003, then run this script again.
 2026-10-28 12:33:06,697 | INFO | Finished Direct Service MRR Tally posting
+2026-10-28 15:50:12,783 | INFO | Starting Direct Service MRR Tally posting
+2026-10-28 15:50:14,366 | INFO | Selected Firm-1 | firm_id=aa3fba0d-fef9-4b6f-88c3-ba073b6f6388 | company=Laxmi Narayan Corrugated Boards LLP Unit-I | Tally port=9001
+2026-10-28 15:50:14,584 | INFO | Found 0 pending Direct Service MRR(s) for Firm-1
+2026-10-28 15:50:14,730 | INFO | Selected Firm-2 | firm_id=334aa279-b7f3-450d-8b34-ee538a70e802 | company=Laxmi Narayan Corrugated Boards LLP (Unit-II) | Tally port=9002
+2026-10-28 15:50:14,914 | INFO | Found 0 pending Direct Service MRR(s) for Firm-2
+2026-10-28 15:50:15,022 | INFO | Selected Firm-3 | firm_id=106cec9f-54f7-4b32-bb3a-6973d1993ea1 | company=LAXMI NARAYAN KRAFT INDUSTRIES | Tally port=9003
+2026-10-28 15:50:15,185 | INFO | Found 1 pending Direct Service MRR(s) for Firm-3
+2026-10-28 15:50:15,480 | INFO | Processing Direct Service MRR LNKI/MRR/26-27/00007 | party=SHREE PAWAN KRAFT PAPER MILLS LLP | source=companies | service_ledgers=exact line names
+2026-10-28 15:50:15,482 | INFO | Sending Tally XML | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_155015_481265__general__health_check_before_direct_service_mrr_LNKI_MRR_26-27_00007.xml
+2026-10-28 15:50:15,663 | INFO | Tally XML completed | step=health_check:before_direct_service_mrr:LNKI/MRR/26-27/00007 | voucher=- | response_chars=214
+2026-10-28 15:50:15,666 | INFO | Sending Tally XML | step=direct_service_duplicate_check:SHREE PAWAN KRAFT PAPER MILLS LLP | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_155015_665045__general__direct_service_duplicate_check_SHREE_PAWAN_KRAFT_PAPER_MILLS_LLP.xml
+2026-10-28 15:50:16,601 | INFO | Tally XML completed | step=direct_service_duplicate_check:SHREE PAWAN KRAFT PAPER MILLS LLP | voucher=- | response_chars=1511
+2026-10-28 15:50:16,603 | INFO | Sending Tally XML | step=direct_service_ledger_check:Other Charges | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_155016_602697__general__direct_service_ledger_check_Other_Charges.xml
+2026-10-28 15:50:16,655 | INFO | Tally XML completed | step=direct_service_ledger_check:Other Charges | voucher=- | response_chars=1497
+2026-10-28 15:50:16,656 | INFO | Direct Service ledger 'Other Charges' is missing. Creating it under 'Indirect Expenses'.
+2026-10-28 15:50:16,657 | INFO | Sending Tally XML | step=direct_service_ledger_create:Other Charges | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_155016_656413__general__direct_service_ledger_create_Other_Charges.xml
+2026-10-28 15:50:16,996 | INFO | Tally XML completed | step=direct_service_ledger_create:Other Charges | voucher=- | response_chars=269
+2026-10-28 15:50:17,003 | INFO | Created Direct Service ledger 'Other Charges' under 'Indirect Expenses'.
+2026-10-28 15:50:17,006 | INFO | Sending Tally XML | step=direct_service_ledger_check:Repairing | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_155017_005627__general__direct_service_ledger_check_Repairing.xml
+2026-10-28 15:50:17,048 | INFO | Tally XML completed | step=direct_service_ledger_check:Repairing | voucher=- | response_chars=1497
+2026-10-28 15:50:17,064 | INFO | Direct Service ledger 'Repairing' is missing. Creating it under 'Indirect Expenses'.
+2026-10-28 15:50:17,066 | INFO | Sending Tally XML | step=direct_service_ledger_create:Repairing | voucher=- | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_155017_064969__general__direct_service_ledger_create_Repairing.xml
+2026-10-28 15:50:17,319 | INFO | Tally XML completed | step=direct_service_ledger_create:Repairing | voucher=- | response_chars=269
+2026-10-28 15:50:17,321 | INFO | Created Direct Service ledger 'Repairing' under 'Indirect Expenses'.
+2026-10-28 15:50:17,328 | INFO | Sending Tally XML | step=direct_service_purchase_import | voucher=LNKI/MRR/26-27/00007 | url=http://localhost:9003 | payload=D:\LNGRP\TallyCodes\directmrr\direct_service_tally_xml_debug\20261028_155017_327061__LNKI_MRR_26-27_00007__direct_service_purchase_import.xml
+2026-10-28 15:50:17,934 | INFO | Tally XML completed | step=direct_service_purchase_import | voucher=LNKI/MRR/26-27/00007 | response_chars=272
+2026-10-28 15:50:18,144 | INFO | Posted Direct Service voucher LNKI/MRR/26-27/00007 successfully
+2026-10-28 15:50:18,147 | INFO | Finished Direct Service MRR Tally posting
+2026-10-28 15:56:56,783 | INFO | Starting Direct Service MRR Tally posting
+2026-10-28 15:57:40,712 | INFO | Starting Direct Service MRR Tally posting
+2026-10-28 15:59:13,799 | INFO | Starting Direct Service MRR Tally posting
+2026-10-28 15:59:14,527 | ERROR | MySQL rejected the connection because the account has exceeded max_connections_per_hour=500. Stop retrying and ask the hosting provider to reset or increase this limit for 'u380633007_lngrpgroup'.
