@@ -8,6 +8,9 @@
     "start": "node server.js",
     "build": "node scripts/build.mjs",
     "build:server": "tsc -p tsconfig.server.json",
+    "test:api": "node --import tsx --test server/apiContract.test.ts",
+    "test:api:20": "node scripts/run-api-matrix-20.mjs",
+    "test:audit": "node --import tsx scripts/auditRoutes.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

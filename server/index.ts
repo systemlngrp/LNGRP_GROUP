@@ -37,6 +37,15 @@ import {
 } from "./config.js";
 
 const execPromise = util.promisify(exec);
+type TallySyncRunner = (command: string) => Promise<{ stdout: string; stderr: string }>;
+let tallySyncRunner: TallySyncRunner = execPromise;
+
+export function setTestTallySyncRunner(testRunner: TallySyncRunner | null) {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("setTestTallySyncRunner is only available in test mode.");
+  }
+  tallySyncRunner = testRunner || execPromise;
+}
 
 const MATERIAL_IN_SUB_TYPES = ["Other RM", "Spare parts", "Others"] as const;
 const MATERIAL_IN_SUB_TYPE_LEDGER: Record<(typeof MATERIAL_IN_SUB_TYPES)[number], string> = {
@@ -1433,7 +1442,6 @@ function extractJsonObject(text: string) {
 app.post("/api/material-in/ai-fetch", async (req, res) => {
   const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
-  if (!GEMINI_API_KEY) return res.status(503).json({ error: "GEMINI_API_KEY is not configured on the server." });
 
   const photos = Array.isArray(req.body?.photos) ? req.body.photos : [];
   if (photos.length === 0) return res.status(400).json({ error: "At least one invoice photo or PDF is required." });
@@ -1485,6 +1493,7 @@ Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, 
   }
 
   if (parts.length === 1) return res.status(400).json({ error: "No readable file data was supplied." });
+  if (!GEMINI_API_KEY) return res.status(503).json({ error: "GEMINI_API_KEY is not configured on the server." });
 
   try {
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -1987,7 +1996,7 @@ app.post("/api/tally/sync", async (req, res) => {
     
     console.log("[Tally Sync] Starting sync process...");
     // Run the python script and capture output
-    const { stdout, stderr } = await execPromise("python scripts/tally_sync.py");
+    const { stdout, stderr } = await tallySyncRunner("python scripts/tally_sync.py");
     
     console.log("[Tally Sync] Output:", stdout);
     if (stderr) {
@@ -2020,6 +2029,13 @@ let databaseInitializationState: DatabaseInitializationState = "not_started";
 let databaseInitializationError = "";
 const AUTH_DB_QUERY_TIMEOUT_MS = 8_000;
 const HEALTH_DB_QUERY_TIMEOUT_MS = 2_000;
+
+export function setTestDatabasePool(testPool: mysql.Pool | null) {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("setTestDatabasePool is only available in test mode.");
+  }
+  pool = testPool;
+}
 
 function safeDatabaseError(error: unknown) {
   const details = error as any;
@@ -17454,7 +17470,11 @@ async function startServer() {
   }).catch(() => undefined);
 }
 
-startServer().catch((error) => {
-  console.error("[SERVER] Startup failed:", error);
-  process.exitCode = 1;
-});
+export { app };
+
+if (process.env.NODE_ENV !== "test") {
+  startServer().catch((error) => {
+    console.error("[SERVER] Startup failed:", error);
+    process.exitCode = 1;
+  });
+}
