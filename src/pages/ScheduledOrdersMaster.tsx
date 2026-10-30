@@ -38,8 +38,17 @@ type ScheduledOrdersMasterProps = {
 };
 
 export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMasterProps = {}) {
-  const [schedules, setSchedules, schedulesLoading] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
+  // The master must show schedules created for every firm.  In particular,
+  // BK migration schedules belong to Firm-II and should not disappear when
+  // the active-firm selector is set to Firm-I (or another firm).
+  const [schedules, setSchedules, schedulesLoading] = useData<OrderSchedule>("orders_schedule", [], {
+    firmScope: "all",
+    storageKey: "orders-schedule-all-firms",
+  });
+  const [orders] = useData<Order>("orders", [], {
+    firmScope: "all",
+    storageKey: "orders-all-firms",
+  });
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", []);
   const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();

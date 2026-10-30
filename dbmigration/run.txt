@@ -1,0 +1,15 @@
+& D:\LNGRP\dbmigration\.venv\Scripts\python.exe `
+  D:\LNGRP\dbmigration\migrate_daily_bk_orders_jobs.py `
+  --apply
+
+
+
+& D:\LNGRP\dbmigration\.venv\Scripts\python.exe `
+  D:\LNGRP\dbmigration\repair_production_job_links.py `
+  --apply
+
+
+  
+
+
+

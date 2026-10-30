@@ -1,2 +1,4 @@
 .env
+/dbmigration/service-account.json
+/dbmigration/.venv/db-migrations.json
 /node_modules

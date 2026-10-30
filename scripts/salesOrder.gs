@@ -2,14 +2,12 @@
  * The backend reads the Hostinger IMPORT_KEY environment variable.
  */
 const SALES_ORDER_SYNC_CONFIG = {
-  spreadsheetId: '1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg',
-  tabName: 'Order Master',
-  startDate: '2026-04-01',
-  firmName: 'Unit-2',
+  spreadsheetId: '1IP3xnNElvdvNLDYPK9Za6E8Nl8nnw3CByeLDUSCD4BY',
+  tabName: 'New Order Master',
+  bkTabName: 'Daily Production Master',
   endpoint: 'https://system.lngrp.in/api/sales-order-sync',
   secret: '1234567890',
-  batchSize: 10,
-  maxRows: 10,
+  batchSize: 100,
 };
 
 const ORDER_IMPORT_COLUMNS = [
@@ -26,7 +24,12 @@ function syncSalesOrdersFromSheet() {
   const sheet = SpreadsheetApp.openById(SALES_ORDER_SYNC_CONFIG.spreadsheetId)
     .getSheetByName(SALES_ORDER_SYNC_CONFIG.tabName);
   if (!sheet) throw new Error('Order Master tab not found.');
+  const bkSheet = SpreadsheetApp.openById(SALES_ORDER_SYNC_CONFIG.spreadsheetId)
+    .getSheetByName(SALES_ORDER_SYNC_CONFIG.bkTabName);
+  if (!bkSheet) throw new Error('Daily Production Master tab not found.');
   const values = sheet.getDataRange().getDisplayValues();
+  const bkValues = bkSheet.getRange(1, 63, Math.max(bkSheet.getLastRow(), 1), 1).getDisplayValues();
+  const bkOrderIds = new Set(bkValues.slice(1).map(row => String(row[0] || '').trim()).filter(Boolean));
   if (values.length < 2) return { ok: true, processed: 0, message: 'No order rows.' };
   const headers = values[0].map(h => String(h || '').trim());
   const rows = [];
@@ -37,13 +40,8 @@ function syncSalesOrdersFromSheet() {
     headers.forEach((header, column) => {
       if (header && ORDER_IMPORT_COLUMNS.indexOf(header) !== -1) payload[header] = row[column] || '';
     });
-    payload['Firm Name'] = SALES_ORDER_SYNC_CONFIG.firmName;
     if (!payload['Order Id']) continue;
-    const orderDate = parseSalesOrderDate_(payload['Order Date']);
-    if (orderDate && orderDate >= SALES_ORDER_SYNC_CONFIG.startDate) {
-      rows.push(payload);
-      if (rows.length >= SALES_ORDER_SYNC_CONFIG.maxRows) break;
-    }
+    rows.push(payload);
   }
   const results = [];
   for (let offset = 0; offset < rows.length; offset += SALES_ORDER_SYNC_CONFIG.batchSize) {
@@ -56,6 +54,7 @@ function syncSalesOrdersFromSheet() {
         spreadsheetId: SALES_ORDER_SYNC_CONFIG.spreadsheetId,
         tabName: SALES_ORDER_SYNC_CONFIG.tabName,
         rows: batch,
+        bkOrderIds: Array.from(bkOrderIds),
       }),
       muteHttpExceptions: true,
     });

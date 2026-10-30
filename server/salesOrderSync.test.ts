@@ -5,7 +5,7 @@ import type mysql from "mysql2/promise";
 import { ORDER_SYNC_SECRET } from "./config.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 
-const spreadsheetId = "1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg";
+const spreadsheetId = "1IP3xnNElvdvNLDYPK9Za6E8Nl8nnw3CByeLDUSCD4BY";
 const baseRow = {
   "Order Id": "sheet-order-1", "Order Date": "04/01/2026", "Company Name": "Customer",
   "ERP Code": "99240145", Item: "Wrong sheet name", Qty: "10", Rate: "5", "Firm Name": "Unit-2",
@@ -45,7 +45,7 @@ async function sync(db: mysql.Pool, row = baseRow) {
   registerSalesOrderSync({ post: (_path: string, callback: any) => { handler = callback; } } as unknown as Express, async () => db);
   let body: any;
   const res = { status: () => res, json: (value: any) => { body = value; return res; } };
-  await handler({ headers: { "x-order-sync-secret": ORDER_SYNC_SECRET }, body: { spreadsheetId, tabName: "Order Master", rows: [row] } }, res);
+  await handler({ headers: { "x-order-sync-secret": ORDER_SYNC_SECRET }, body: { spreadsheetId, tabName: "New Order Master", rows: [row], bkOrderIds: [row["Order Id"]] } }, res);
   return body.results[0];
 }
 

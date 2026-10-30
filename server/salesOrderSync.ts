@@ -3,8 +3,7 @@ import type { Express } from "express";
 import type mysql from "mysql2/promise";
 import { ORDER_SYNC_SECRET } from "./config.js";
 
-const SHEET_ID = "1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg";
-const FIRST_DATE = "2026-04-01";
+const SHEET_ID = "1IP3xnNElvdvNLDYPK9Za6E8Nl8nnw3CByeLDUSCD4BY";
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 const cell = (row: Record<string, unknown>, name: string) => String(row[name] ?? "").trim();
 
@@ -37,7 +36,6 @@ export function parseSalesOrderRow(raw: Record<string, unknown>) {
   if (!sourceId || sourceId.length > 100) throw new Error("Order Id is missing or too long");
   const orderDate = parseSheetDate(row["Order Date"]);
   if (!orderDate) throw new Error("Order Date is invalid");
-  if (orderDate < FIRST_DATE) return null;
   const company = cell(row, "Company Name");
   const erp = cell(row, "ERP Code");
   if (!company || !erp) throw new Error("Company Name and ERP Code are required");
@@ -77,13 +75,10 @@ async function oneMatch(conn: mysql.PoolConnection, sql: string, params: unknown
   return matches[0];
 }
 
-async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
+async function syncOne(conn: mysql.PoolConnection, raw: Record<string, unknown>) {
   const parsed = parseSalesOrderRow(raw);
   if (!parsed) return { status: "before_start_date" };
-  const conn = await db.getConnection();
-  try {
-    await conn.beginTransaction();
-    const company = await oneMatch(conn, "SELECT id, name FROM companies WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.company], `Company ${parsed.company}`);
+  const company = await oneMatch(conn, "SELECT id, name FROM companies WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.company], `Company ${parsed.company}`);
     const itemCandidates: any[] = [];
     const addCandidates = (rows: any[], source: string) => rows.forEach(row => itemCandidates.push({ ...row, source, resolvedId: String(row.id || row.itemId || "") }));
     try {
@@ -161,12 +156,7 @@ async function syncOne(db: mysql.Pool, raw: Record<string, unknown>) {
       await conn.query("DELETE FROM sales_order_sheet_schedule_links WHERE spreadsheetId=? AND sourceOrderId=? AND slotNo=?", [SHEET_ID, parsed.sourceId, prior.slotNo]);
       await conn.query("DELETE FROM orders_schedule WHERE id=?", [prior.scheduleId]);
     }
-    await conn.commit();
-    return { status: old ? "updated" : "inserted", orderId, itemName: String(item.itemName ?? "").trim() };
-  } catch (error) {
-    await conn.rollback();
-    throw error;
-  } finally { conn.release(); }
+  return { status: old ? "updated" : "inserted", orderId, itemName: String(item.itemName ?? "").trim() };
 }
 
 export function registerSalesOrderSync(app: Express, getPool: () => Promise<mysql.Pool | null>) {
@@ -174,21 +164,43 @@ export function registerSalesOrderSync(app: Express, getPool: () => Promise<mysq
     const secret = ORDER_SYNC_SECRET;
     if (!secret) return res.status(503).json({ error: "ORDER_SYNC_SECRET is not configured" });
     if (req.headers["x-order-sync-secret"] !== secret) return res.status(401).json({ error: "Invalid sync secret" });
-    if (req.body?.spreadsheetId !== SHEET_ID || req.body?.tabName !== "Order Master" || !Array.isArray(req.body?.rows) || req.body.rows.length > 100) return res.status(400).json({ error: "Invalid sheet or batch (maximum 100 rows)" });
+    if (req.body?.spreadsheetId !== SHEET_ID || req.body?.tabName !== "New Order Master" || !Array.isArray(req.body?.rows) || !Array.isArray(req.body?.bkOrderIds)) return res.status(400).json({ error: "Invalid sheet, BK scope, or batch" });
+    const bkOrderIds = new Set((req.body.bkOrderIds as unknown[]).map((value) => String(value ?? "").trim()).filter(Boolean));
+    if (!bkOrderIds.size) return res.status(400).json({ error: "BK Order Id scope is empty" });
     const db = await getPool();
     if (!db) return res.status(503).json({ error: "Database unavailable" });
     try {
       await ensureSchema(db);
+      const conn = await db.getConnection();
       const seen = new Set<string>();
       const results = [];
-      for (const row of req.body.rows as Record<string, unknown>[]) {
-        const sourceId = String(row?.["Order Id"] ?? "").trim();
-        if (seen.has(sourceId)) { results.push({ sourceId, status: "error", error: "Duplicate Order Id in batch" }); continue; }
-        seen.add(sourceId);
-        try { results.push({ sourceId, ...await syncOne(db, row) }); }
-        catch (error) { results.push({ sourceId, status: "error", error: (error as Error).message }); }
+      try {
+        await conn.beginTransaction();
+        let savepoint = 0;
+        for (const row of req.body.rows as Record<string, unknown>[]) {
+          const sourceId = String(row?.["Order Id"] ?? "").trim();
+          if (!bkOrderIds.has(sourceId)) { results.push({ sourceId, status: "skipped", error: "Order Id is not present in Daily Production Master BK" }); continue; }
+          if (seen.has(sourceId)) { results.push({ sourceId, status: "error", error: "Duplicate Order Id in batch" }); continue; }
+          seen.add(sourceId);
+          savepoint += 1;
+          const savepointName = `sales_order_row_${savepoint}`;
+          await conn.query(`SAVEPOINT ${savepointName}`);
+          try {
+            results.push({ sourceId, ...await syncOne(conn, row) });
+            await conn.query(`RELEASE SAVEPOINT ${savepointName}`);
+          } catch (error) {
+            await conn.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+            results.push({ sourceId, status: "error", error: (error as Error).message });
+          }
+        }
+        await conn.commit();
+        return res.json({ ok: true, results });
+      } catch (error) {
+        await conn.rollback();
+        throw error;
+      } finally {
+        conn.release();
       }
-      return res.json({ ok: true, results });
     } catch (error) { return res.status(500).json({ error: (error as Error).message }); }
   });
 }
