@@ -10705,7 +10705,11 @@ const createHandlers = (tableName) => {
                 if (tableName === "states") {
                     await ensureIndianStatesSeed(db);
                 }
-                const requestFirmId = getRequestFirmId(req);
+                // Scheduled Orders Master explicitly requests all firms.  Honour that
+                // request even when an older browser session still sends X-Firm-Id.
+                const requestFirmId = tableName === "orders_schedule" && String(req.query.firmScope || "").toLowerCase() === "all"
+                    ? ""
+                    : getRequestFirmId(req);
                 if (isFirmScopedTable(tableName))
                     await assertRequestFirm(db, requestFirmId);
                 const firmWhere = isFirmScopedTable(tableName) && requestFirmId ? buildFirmScopeCondition("", requestFirmId) : "";

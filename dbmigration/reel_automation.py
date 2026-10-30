@@ -177,7 +177,11 @@ def parse_args() -> argparse.Namespace:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="Read and report only (default).")
     mode.add_argument("--apply", action="store_true", help="Write issue rows and DBREEL statuses.")
-    parser.add_argument("--credentials", default=os.getenv("GOOGLE_SERVICE_ACCOUNT", "service_account.json"))
+    parser.add_argument(
+        "--credentials",
+        default=os.getenv("GOOGLE_SERVICE_ACCOUNT", ""),
+        help="Service-account JSON path. Defaults to dbmigration/service-account.json or service_account.json.",
+    )
     parser.add_argument("--spreadsheet-id", default=SPREADSHEET_ID)
     parser.add_argument("--start-date", default=DEFAULT_START_DATE.isoformat())
     parser.add_argument("--log", default="reel_automation_log.csv")
@@ -189,6 +193,24 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     return parser.parse_args()
+
+
+def resolve_credentials_path(requested: str) -> Path:
+    if requested:
+        return Path(requested).expanduser()
+    script_dir = Path(__file__).resolve().parent
+    candidates = [
+        script_dir / ".venv" / "db-migrations.json",
+        script_dir / "service-account.json",
+        script_dir / "service_account.json",
+        Path.cwd() / "service-account.json",
+        Path.cwd() / "service_account.json",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    # Return the conventional project path so the error points to one clear location.
+    return script_dir / "service-account.json"
 
 
 def authorize(credentials_path: str) -> gspread.Client:
@@ -228,10 +250,12 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
         if not production_date or production_date < start_date or not job_no:
             continue
         reel_codes = parse_reel_codes(get_any(row, daily, "ERP CODE REEL"))
-        jobs.setdefault(
-            job_no,
-            JobPlan(job_no, production_date, reel_codes, 0.0),
-        ).reel_codes = reel_codes or jobs[job_no].reel_codes
+        plan = jobs.get(job_no)
+        if plan is None:
+            plan = JobPlan(job_no, production_date, reel_codes, 0.0)
+            jobs[job_no] = plan
+        elif reel_codes:
+            plan.reel_codes = reel_codes
 
     pending_headers, pending_rows = data[SHEET_PENDING]
     pending = header_map(pending_headers)
@@ -262,7 +286,7 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
                 gsm=get(row, stock, "GSM"),
                 bf=get(row, stock, "BF"),
                 available_weight=number(get(row, stock, "Available Weight")),
-                rate=number(get(row, stock, "Invoice Rate", "Opening Rate")),
+                rate=number(get_any(row, stock, "Invoice Rate", "Opening Rate")),
             )
         )
 
@@ -368,6 +392,12 @@ def write_values_batch(book: gspread.Spreadsheet, updates: list[dict[str, Any]])
     book.values_batch_update({"valueInputOption": "USER_ENTERED", "data": updates})
 
 
+def ensure_rows(worksheet: gspread.Worksheet, required_last_row: int) -> None:
+    """Expand a worksheet grid before writing past its current row limit."""
+    if required_last_row > worksheet.row_count:
+        worksheet.add_rows(required_last_row - worksheet.row_count)
+
+
 def apply_issue_rows(book: gspread.Spreadsheet, plans: Sequence[JobPlan]) -> int:
     worksheet = book.worksheet(SHEET_ISSUE)
     existing = worksheet.get_all_values()
@@ -384,6 +414,7 @@ def apply_issue_rows(book: gspread.Spreadsheet, plans: Sequence[JobPlan]) -> int
                 {"range": f"'REEL ISSUE'!AE{next_row}:AG{next_row}", "values": [[issue["issue_date"], issue_id, item_id]]},
             ])
             next_row += 1
+    ensure_rows(worksheet, next_row - 1)
     write_values_batch(book, updates)
     return len(updates) // 3
 
@@ -405,6 +436,7 @@ def apply_return_rows(book: gspread.Spreadsheet, return_rows: Sequence[Mapping[s
             {"range": f"'REEL RETURN'!M{next_row}:N{next_row}", "values": [[item_id, return_id]]},
         ])
         next_row += 1
+    ensure_rows(worksheet, next_row - 1)
     write_values_batch(book, updates)
     return len(return_rows)
 
@@ -422,6 +454,7 @@ def apply_db_rows(book: gspread.Spreadsheet, rows: Sequence[Sequence[Any]]) -> i
             last_row += 1
             target = last_row
         updates.append({"range": f"DBREEL!A{target}:F{target}", "values": [list(row)]})
+    ensure_rows(worksheet, last_row)
     write_values_batch(book, updates)
     return len(rows)
 
@@ -458,10 +491,11 @@ def main() -> int:
     start_date = as_date(args.start_date)
     if not start_date:
         raise SystemExit(f"Invalid --start-date: {args.start_date}")
-    credentials = Path(args.credentials)
+    credentials = resolve_credentials_path(args.credentials)
     if not credentials.exists():
         raise SystemExit(
-            f"Credentials not found: {credentials}. Download a Google service-account key and share the workbook with its email."
+            f"Credentials not found: {credentials}. Download a Google service-account key, save it there, "
+            "and share the workbook with the service-account email."
         )
 
     book = authorize(str(credentials)).open_by_key(args.spreadsheet_id)

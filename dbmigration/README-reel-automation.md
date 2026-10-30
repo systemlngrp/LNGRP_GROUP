@@ -7,8 +7,8 @@ and writes a six-column status view to `DBREEL`.
 ## Setup
 
 1. Create a Google service account with access to the Sheets API.
-2. Download its JSON key as `service_account.json` outside Git, for example in
-   `D:\LNGRP\secrets\service_account.json`.
+2. Download its JSON key as `service-account.json` into
+   `D:\LNGRP\dbmigration\service-account.json` (this filename is ignored by Git).
 3. Share the workbook with the service-account email as Editor.
 4. Install dependencies:
 
@@ -19,8 +19,8 @@ and writes a six-column status view to `DBREEL`.
 ## Dry run
 
 ```powershell
-py D:\LNGRP\scripts\reel_automation.py `
-  --credentials D:\LNGRP\secrets\service_account.json `
+py D:\LNGRP\dbmigration\reel_automation.py `
+  --credentials D:\LNGRP\dbmigration\service-account.json `
   --dry-run `
   --log D:\LNGRP\reel_automation_log.csv
 ```
@@ -31,8 +31,8 @@ The dry run never changes Google Sheets. Review the CSV before using
 ## Apply
 
 ```powershell
-py D:\LNGRP\scripts\reel_automation.py `
-  --credentials D:\LNGRP\secrets\service_account.json `
+py D:\LNGRP\dbmigration\reel_automation.py `
+  --credentials D:\LNGRP\dbmigration\service-account.json `
   --apply `
   --log D:\LNGRP\reel_automation_log.csv
 ```

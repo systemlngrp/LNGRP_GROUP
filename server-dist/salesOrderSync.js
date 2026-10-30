@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import { ORDER_SYNC_SECRET } from "./config.js";
-const SHEET_ID = "1UMXRwrnrxSS9SEAfA6TUdU6cD2Sm3Y55vIr0YXwW5Lg";
-const FIRST_DATE = "2026-04-01";
+const SHEET_ID = "1IP3xnNElvdvNLDYPK9Za6E8Nl8nnw3CByeLDUSCD4BY";
 const normalize = (value) => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 const cell = (row, name) => String(row[name] ?? "").trim();
 export function parseSheetDate(value) {
@@ -35,8 +34,6 @@ export function parseSalesOrderRow(raw) {
     const orderDate = parseSheetDate(row["Order Date"]);
     if (!orderDate)
         throw new Error("Order Date is invalid");
-    if (orderDate < FIRST_DATE)
-        return null;
     const company = cell(row, "Company Name");
     const erp = cell(row, "ERP Code");
     if (!company || !erp)
@@ -78,110 +75,98 @@ async function oneMatch(conn, sql, params, label) {
         throw new Error(`${label}: ${matches.length ? "ambiguous" : "not found"}`);
     return matches[0];
 }
-async function syncOne(db, raw) {
+async function syncOne(conn, raw) {
     const parsed = parseSalesOrderRow(raw);
     if (!parsed)
         return { status: "before_start_date" };
-    const conn = await db.getConnection();
+    const company = await oneMatch(conn, "SELECT id, name FROM companies WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.company], `Company ${parsed.company}`);
+    const itemCandidates = [];
+    const addCandidates = (rows, source) => rows.forEach(row => itemCandidates.push({ ...row, source, resolvedId: String(row.id || row.itemId || "") }));
     try {
-        await conn.beginTransaction();
-        const company = await oneMatch(conn, "SELECT id, name FROM companies WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.company], `Company ${parsed.company}`);
-        const itemCandidates = [];
-        const addCandidates = (rows, source) => rows.forEach(row => itemCandidates.push({ ...row, source, resolvedId: String(row.id || row.itemId || "") }));
-        try {
-            const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE TRIM(erp) = ? AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp]);
-            addCandidates(npdRows, "FG");
-        }
-        catch (error) {
-            console.warn("[SALES_ORDER_SYNC] Skipping NPD lookup:", error.message);
-        }
-        try {
-            const [itemRows] = await conn.query("SELECT id, name AS itemName, erp AS erp, NULL AS companyId FROM items WHERE TRIM(CAST(erp AS CHAR)) = ? LIMIT 5", [parsed.erp]);
-            addCandidates(itemRows, "FG");
-        }
-        catch (error) {
-            console.warn("[SALES_ORDER_SYNC] Skipping legacy items lookup:", error.message);
-        }
-        for (const source of ["PHP", "PLATE"]) {
-            const table = source === "PHP" ? "php_item_master" : "plate_item_master";
-            try {
-                const [rows] = await conn.query(`SELECT id, itemId, itemName, erp, company FROM \`${table}\` WHERE TRIM(COALESCE(erp, '')) = ? AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5`, [parsed.erp]);
-                addCandidates(rows, source);
-            }
-            catch (error) {
-                console.warn(`[SALES_ORDER_SYNC] Skipping ${table} lookup:`, error.message);
-            }
-        }
-        const distinctItems = itemCandidates.filter((item, index, all) => item.resolvedId && all.findIndex(other => other.resolvedId === item.resolvedId && other.source === item.source) === index);
-        if (distinctItems.length !== 1)
-            throw new Error(`Item ERP ${parsed.erp}: ${distinctItems.length ? "ambiguous" : "not found"}`);
-        const item = distinctItems[0];
-        if (item.companyId && String(item.companyId).trim() !== company.id && normalize(item.companyId) !== normalize(company.name))
-            throw new Error(`Item ${parsed.itemName || parsed.erp} belongs to a different company`);
-        const [linkRows] = await conn.query("SELECT orderId FROM sales_order_sheet_links WHERE spreadsheetId = ? AND sourceOrderId = ? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
-        const orderId = linkRows[0]?.orderId || crypto.randomUUID();
-        const [oldRows] = await conn.query("SELECT id, firmId, firmName, orderBy FROM orders WHERE id = ? FOR UPDATE", [orderId]);
-        const old = oldRows[0];
-        // The NPD master does not store firmId. Existing orders for this ERP/item provide the only safe inference.
-        const [firmRows] = await conn.query("SELECT DISTINCT f.id, f.firmName FROM orders o JOIN firms f ON f.id = o.firmId WHERE o.itemId = ? AND COALESCE(o.firmId, '') <> '' LIMIT 2", [item.resolvedId]);
-        const firms = firmRows;
-        const requestedFirm = parsed.firmName ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE LOWER(REPLACE(REPLACE(TRIM(firmName), '-', ''), ' ', '')) = LOWER(REPLACE(REPLACE(TRIM(?), '-', ''), ' ', '')) LIMIT 2", [parsed.firmName], `Firm ${parsed.firmName}`) : null;
-        const firm = requestedFirm || (old?.firmId
-            ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE id = ? LIMIT 2", [old.firmId], "Existing order firm")
-            : firms.length === 1 ? firms[0] : null);
-        if (!firm)
-            throw new Error(`Firm for ERP ${parsed.erp}: ${firms.length ? "ambiguous" : "not found"}`);
-        let orderBy = old?.orderBy || "";
-        if (parsed.orderBy) {
-            const [userRows] = await conn.query("SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.orderBy]);
-            if (userRows.length !== 1)
-                throw new Error(`Order By ${parsed.orderBy}: ${userRows.length ? "ambiguous" : "not found"}`);
-            orderBy = userRows[0].id;
-        }
-        if (old) {
-            await conn.query(`UPDATE orders SET orderDate=?, companyId=?, poNumber=?, erpCode=?, itemId=?, itemSource=?, npdId=?, qty=?, rate=?, orderAmount=?, orderBy=?, poType=?, remarks=?, updatedBy='Salesman App Sync', updateTimestamp=? WHERE id=?`, [parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString(), orderId]);
-        }
-        else {
-            await conn.query(`INSERT INTO orders (id, firmId, firmName, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, orderBy, poType, remarks, status, updatedBy, updateTimestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending PH', 'Salesman App Sync', ?)`, [orderId, firm.id, firm.firmName, parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString()]);
-            await conn.query("INSERT INTO sales_order_sheet_links (spreadsheetId, sourceOrderId, orderId) VALUES (?, ?, ?)", [SHEET_ID, parsed.sourceId, orderId]);
-        }
-        const [scheduleRows] = await conn.query("SELECT l.slotNo, l.scheduleId, s.scheduledDate, s.qty, s.producedQty, s.canceledQty FROM sales_order_sheet_schedule_links l JOIN orders_schedule s ON s.id=l.scheduleId WHERE l.spreadsheetId=? AND l.sourceOrderId=? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
-        const existing = new Map(scheduleRows.map((row) => [Number(row.slotNo), row]));
-        for (const schedule of parsed.schedules) {
-            const prior = existing.get(schedule.slot);
-            if (prior) {
-                existing.delete(schedule.slot);
-                if (prior.scheduledDate !== schedule.date || Number(prior.qty) !== schedule.qty) {
-                    const [productionRows] = await conn.query("SELECT id FROM productions WHERE scheduleId = ? LIMIT 1", [prior.scheduleId]);
-                    if (productionRows.length || Number(prior.producedQty) || Number(prior.canceledQty))
-                        throw new Error(`Schedule ${schedule.slot} has production or fulfillment and cannot be changed`);
-                    await conn.query("UPDATE orders_schedule SET scheduledDate=?, qty=?, updatedBy='Salesman App Sync', updateTimestamp=? WHERE id=?", [schedule.date, schedule.qty, new Date().toISOString(), prior.scheduleId]);
-                }
-            }
-            else {
-                const scheduleId = crypto.randomUUID();
-                await conn.query("INSERT INTO orders_schedule (id, orderId, firmId, firmName, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'Salesman App Sync', ?)", [scheduleId, orderId, firm.id, firm.firmName, schedule.date, schedule.qty, new Date().toISOString()]);
-                await conn.query("INSERT INTO sales_order_sheet_schedule_links (spreadsheetId, sourceOrderId, slotNo, scheduleId) VALUES (?, ?, ?, ?)", [SHEET_ID, parsed.sourceId, schedule.slot, scheduleId]);
-            }
-        }
-        for (const prior of existing.values()) {
-            const [productionRows] = await conn.query("SELECT id FROM productions WHERE scheduleId = ? LIMIT 1", [prior.scheduleId]);
-            if (productionRows.length || Number(prior.producedQty) || Number(prior.canceledQty))
-                throw new Error(`Schedule ${prior.slotNo} has production or fulfillment and cannot be removed`);
-            await conn.query("DELETE FROM sales_order_sheet_schedule_links WHERE spreadsheetId=? AND sourceOrderId=? AND slotNo=?", [SHEET_ID, parsed.sourceId, prior.slotNo]);
-            await conn.query("DELETE FROM orders_schedule WHERE id=?", [prior.scheduleId]);
-        }
-        await conn.commit();
-        return { status: old ? "updated" : "inserted", orderId, itemName: String(item.itemName ?? "").trim() };
+        const [npdRows] = await conn.query("SELECT id, erp, itemName, companyId FROM npd WHERE TRIM(erp) = ? AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5", [parsed.erp]);
+        addCandidates(npdRows, "FG");
     }
     catch (error) {
-        await conn.rollback();
-        throw error;
+        console.warn("[SALES_ORDER_SYNC] Skipping NPD lookup:", error.message);
     }
-    finally {
-        conn.release();
+    try {
+        const [itemRows] = await conn.query("SELECT id, name AS itemName, erp AS erp, NULL AS companyId FROM items WHERE TRIM(CAST(erp AS CHAR)) = ? LIMIT 5", [parsed.erp]);
+        addCandidates(itemRows, "FG");
     }
+    catch (error) {
+        console.warn("[SALES_ORDER_SYNC] Skipping legacy items lookup:", error.message);
+    }
+    for (const source of ["PHP", "PLATE"]) {
+        const table = source === "PHP" ? "php_item_master" : "plate_item_master";
+        try {
+            const [rows] = await conn.query(`SELECT id, itemId, itemName, erp, company FROM \`${table}\` WHERE TRIM(COALESCE(erp, '')) = ? AND COALESCE(syncStatus, 'active') <> 'removed' LIMIT 5`, [parsed.erp]);
+            addCandidates(rows, source);
+        }
+        catch (error) {
+            console.warn(`[SALES_ORDER_SYNC] Skipping ${table} lookup:`, error.message);
+        }
+    }
+    const distinctItems = itemCandidates.filter((item, index, all) => item.resolvedId && all.findIndex(other => other.resolvedId === item.resolvedId && other.source === item.source) === index);
+    if (distinctItems.length !== 1)
+        throw new Error(`Item ERP ${parsed.erp}: ${distinctItems.length ? "ambiguous" : "not found"}`);
+    const item = distinctItems[0];
+    if (item.companyId && String(item.companyId).trim() !== company.id && normalize(item.companyId) !== normalize(company.name))
+        throw new Error(`Item ${parsed.itemName || parsed.erp} belongs to a different company`);
+    const [linkRows] = await conn.query("SELECT orderId FROM sales_order_sheet_links WHERE spreadsheetId = ? AND sourceOrderId = ? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
+    const orderId = linkRows[0]?.orderId || crypto.randomUUID();
+    const [oldRows] = await conn.query("SELECT id, firmId, firmName, orderBy FROM orders WHERE id = ? FOR UPDATE", [orderId]);
+    const old = oldRows[0];
+    // The NPD master does not store firmId. Existing orders for this ERP/item provide the only safe inference.
+    const [firmRows] = await conn.query("SELECT DISTINCT f.id, f.firmName FROM orders o JOIN firms f ON f.id = o.firmId WHERE o.itemId = ? AND COALESCE(o.firmId, '') <> '' LIMIT 2", [item.resolvedId]);
+    const firms = firmRows;
+    const requestedFirm = parsed.firmName ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE LOWER(REPLACE(REPLACE(TRIM(firmName), '-', ''), ' ', '')) = LOWER(REPLACE(REPLACE(TRIM(?), '-', ''), ' ', '')) LIMIT 2", [parsed.firmName], `Firm ${parsed.firmName}`) : null;
+    const firm = requestedFirm || (old?.firmId
+        ? await oneMatch(conn, "SELECT id, firmName FROM firms WHERE id = ? LIMIT 2", [old.firmId], "Existing order firm")
+        : firms.length === 1 ? firms[0] : null);
+    if (!firm)
+        throw new Error(`Firm for ERP ${parsed.erp}: ${firms.length ? "ambiguous" : "not found"}`);
+    let orderBy = old?.orderBy || "";
+    if (parsed.orderBy) {
+        const [userRows] = await conn.query("SELECT id FROM users WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 2", [parsed.orderBy]);
+        if (userRows.length !== 1)
+            throw new Error(`Order By ${parsed.orderBy}: ${userRows.length ? "ambiguous" : "not found"}`);
+        orderBy = userRows[0].id;
+    }
+    if (old) {
+        await conn.query(`UPDATE orders SET orderDate=?, companyId=?, poNumber=?, erpCode=?, itemId=?, itemSource=?, npdId=?, qty=?, rate=?, orderAmount=?, orderBy=?, poType=?, remarks=?, updatedBy='Salesman App Sync', updateTimestamp=? WHERE id=?`, [parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString(), orderId]);
+    }
+    else {
+        await conn.query(`INSERT INTO orders (id, firmId, firmName, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, orderBy, poType, remarks, status, updatedBy, updateTimestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending PH', 'Salesman App Sync', ?)`, [orderId, firm.id, firm.firmName, parsed.orderDate, company.id, parsed.poNumber, parsed.erp, item.resolvedId, item.source, item.source === "FG" ? item.resolvedId : null, parsed.qty, parsed.rate, parsed.qty * parsed.rate, orderBy, parsed.poType, parsed.remarks, new Date().toISOString()]);
+        await conn.query("INSERT INTO sales_order_sheet_links (spreadsheetId, sourceOrderId, orderId) VALUES (?, ?, ?)", [SHEET_ID, parsed.sourceId, orderId]);
+    }
+    const [scheduleRows] = await conn.query("SELECT l.slotNo, l.scheduleId, s.scheduledDate, s.qty, s.producedQty, s.canceledQty FROM sales_order_sheet_schedule_links l JOIN orders_schedule s ON s.id=l.scheduleId WHERE l.spreadsheetId=? AND l.sourceOrderId=? FOR UPDATE", [SHEET_ID, parsed.sourceId]);
+    const existing = new Map(scheduleRows.map((row) => [Number(row.slotNo), row]));
+    for (const schedule of parsed.schedules) {
+        const prior = existing.get(schedule.slot);
+        if (prior) {
+            existing.delete(schedule.slot);
+            if (prior.scheduledDate !== schedule.date || Number(prior.qty) !== schedule.qty) {
+                const [productionRows] = await conn.query("SELECT id FROM productions WHERE scheduleId = ? LIMIT 1", [prior.scheduleId]);
+                if (productionRows.length || Number(prior.producedQty) || Number(prior.canceledQty))
+                    throw new Error(`Schedule ${schedule.slot} has production or fulfillment and cannot be changed`);
+                await conn.query("UPDATE orders_schedule SET scheduledDate=?, qty=?, updatedBy='Salesman App Sync', updateTimestamp=? WHERE id=?", [schedule.date, schedule.qty, new Date().toISOString(), prior.scheduleId]);
+            }
+        }
+        else {
+            const scheduleId = crypto.randomUUID();
+            await conn.query("INSERT INTO orders_schedule (id, orderId, firmId, firmName, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'Salesman App Sync', ?)", [scheduleId, orderId, firm.id, firm.firmName, schedule.date, schedule.qty, new Date().toISOString()]);
+            await conn.query("INSERT INTO sales_order_sheet_schedule_links (spreadsheetId, sourceOrderId, slotNo, scheduleId) VALUES (?, ?, ?, ?)", [SHEET_ID, parsed.sourceId, schedule.slot, scheduleId]);
+        }
+    }
+    for (const prior of existing.values()) {
+        const [productionRows] = await conn.query("SELECT id FROM productions WHERE scheduleId = ? LIMIT 1", [prior.scheduleId]);
+        if (productionRows.length || Number(prior.producedQty) || Number(prior.canceledQty))
+            throw new Error(`Schedule ${prior.slotNo} has production or fulfillment and cannot be removed`);
+        await conn.query("DELETE FROM sales_order_sheet_schedule_links WHERE spreadsheetId=? AND sourceOrderId=? AND slotNo=?", [SHEET_ID, parsed.sourceId, prior.slotNo]);
+        await conn.query("DELETE FROM orders_schedule WHERE id=?", [prior.scheduleId]);
+    }
+    return { status: old ? "updated" : "inserted", orderId, itemName: String(item.itemName ?? "").trim() };
 }
 export function registerSalesOrderSync(app, getPool) {
     app.post("/api/sales-order-sync", async (req, res) => {
@@ -190,30 +175,55 @@ export function registerSalesOrderSync(app, getPool) {
             return res.status(503).json({ error: "ORDER_SYNC_SECRET is not configured" });
         if (req.headers["x-order-sync-secret"] !== secret)
             return res.status(401).json({ error: "Invalid sync secret" });
-        if (req.body?.spreadsheetId !== SHEET_ID || req.body?.tabName !== "Order Master" || !Array.isArray(req.body?.rows) || req.body.rows.length > 100)
-            return res.status(400).json({ error: "Invalid sheet or batch (maximum 100 rows)" });
+        if (req.body?.spreadsheetId !== SHEET_ID || req.body?.tabName !== "New Order Master" || !Array.isArray(req.body?.rows) || !Array.isArray(req.body?.bkOrderIds))
+            return res.status(400).json({ error: "Invalid sheet, BK scope, or batch" });
+        const bkOrderIds = new Set(req.body.bkOrderIds.map((value) => String(value ?? "").trim()).filter(Boolean));
+        if (!bkOrderIds.size)
+            return res.status(400).json({ error: "BK Order Id scope is empty" });
         const db = await getPool();
         if (!db)
             return res.status(503).json({ error: "Database unavailable" });
         try {
             await ensureSchema(db);
+            const conn = await db.getConnection();
             const seen = new Set();
             const results = [];
-            for (const row of req.body.rows) {
-                const sourceId = String(row?.["Order Id"] ?? "").trim();
-                if (seen.has(sourceId)) {
-                    results.push({ sourceId, status: "error", error: "Duplicate Order Id in batch" });
-                    continue;
+            try {
+                await conn.beginTransaction();
+                let savepoint = 0;
+                for (const row of req.body.rows) {
+                    const sourceId = String(row?.["Order Id"] ?? "").trim();
+                    if (!bkOrderIds.has(sourceId)) {
+                        results.push({ sourceId, status: "skipped", error: "Order Id is not present in Daily Production Master BK" });
+                        continue;
+                    }
+                    if (seen.has(sourceId)) {
+                        results.push({ sourceId, status: "error", error: "Duplicate Order Id in batch" });
+                        continue;
+                    }
+                    seen.add(sourceId);
+                    savepoint += 1;
+                    const savepointName = `sales_order_row_${savepoint}`;
+                    await conn.query(`SAVEPOINT ${savepointName}`);
+                    try {
+                        results.push({ sourceId, ...await syncOne(conn, row) });
+                        await conn.query(`RELEASE SAVEPOINT ${savepointName}`);
+                    }
+                    catch (error) {
+                        await conn.query(`ROLLBACK TO SAVEPOINT ${savepointName}`);
+                        results.push({ sourceId, status: "error", error: error.message });
+                    }
                 }
-                seen.add(sourceId);
-                try {
-                    results.push({ sourceId, ...await syncOne(db, row) });
-                }
-                catch (error) {
-                    results.push({ sourceId, status: "error", error: error.message });
-                }
+                await conn.commit();
+                return res.json({ ok: true, results });
             }
-            return res.json({ ok: true, results });
+            catch (error) {
+                await conn.rollback();
+                throw error;
+            }
+            finally {
+                conn.release();
+            }
         }
         catch (error) {
             return res.status(500).json({ error: error.message });

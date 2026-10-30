@@ -257,12 +257,26 @@ def sheet_rows(include_all_daily=False):
     return bk, [row for row in grouped.values() if row["schedules"]], eligible_jobs
 
 def connect():
-    return pymysql.connect(
-        host=os.environ["DB_HOST"], port=int(os.getenv("DB_PORT", "3306")),
-        user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"], database=os.environ["DB_NAME"],
-        connect_timeout=15, read_timeout=180, write_timeout=180,
-        cursorclass=pymysql.cursors.Cursor, autocommit=False
-    )
+    try:
+        return pymysql.connect(
+            host=os.environ["DB_HOST"], port=int(os.getenv("DB_PORT", "3306")),
+            user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"], database=os.environ["DB_NAME"],
+            connect_timeout=15, read_timeout=180, write_timeout=180,
+            cursorclass=pymysql.cursors.Cursor, autocommit=False
+        )
+    except pymysql.err.OperationalError as exc:
+        # Hostinger error 1226 is a server-side max_connections_per_hour
+        # quota. Retrying here only consumes more connection attempts and
+        # cannot make the database available sooner.
+        if exc.args and int(exc.args[0]) == 1226:
+            raise RuntimeError(
+                "Database connection blocked by the hosting account's "
+                "max_connections_per_hour quota (MySQL 1226). No migration "
+                "work was started. Wait for the quota window to reset or ask "
+                "Hostinger to reset/increase the quota, then run this command "
+                "once. Do not retry repeatedly while this error is present."
+            ) from exc
+        raise
 
 
 def safe_rollback(db):

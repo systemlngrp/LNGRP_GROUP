@@ -41,9 +41,10 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   // The master must show schedules created for every firm.  In particular,
   // BK migration schedules belong to Firm-II and should not disappear when
   // the active-firm selector is set to Firm-I (or another firm).
-  const [schedules, setSchedules, schedulesLoading] = useData<OrderSchedule>("orders_schedule", [], {
+  const [schedules, setSchedules, schedulesLoading, schedulesState] = useData<OrderSchedule>("orders_schedule", [], {
     firmScope: "all",
     storageKey: "orders-schedule-all-firms",
+    endpointOverride: "/api/orders-schedule?firmScope=all",
   });
   const [orders] = useData<Order>("orders", [], {
     firmScope: "all",
@@ -418,6 +419,19 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
           />
         </div>
       </div>
+
+      {schedulesState.error ? (
+        <div className="flex items-center justify-between gap-4 rounded border-2 border-red-700 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
+          <span>Could not load scheduled orders: {schedulesState.error}</span>
+          <button
+            type="button"
+            onClick={() => void schedulesState.refresh({ force: true })}
+            className="rounded bg-red-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-800"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         <div className="overflow-x-auto">
