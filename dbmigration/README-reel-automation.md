@@ -1,8 +1,10 @@
 # Reel automation
 
 This utility reconciles jobs from `DAILY PRODUCTION MASTER` dated from 1 April
-2026 onward. It checks `ITEM MASTER` and `REEL WISE STOCK`, plans issue rows,
-and writes a six-column status view to `DBREEL`.
+2026 onward. It processes jobs sequentially inside 50-job batches:
+material, reel, issue, real return check, then DBREEL. It checks `ITEM MASTER`
+and `REEL WISE STOCK`, creates missing master records from `HELPER SHEET`, and
+writes a status view to `DBREEL`. Column G is `QC SCAN / OUR REEL NO.`.
 
 ## Setup
 
@@ -13,7 +15,7 @@ and writes a six-column status view to `DBREEL`.
 4. Install dependencies:
 
    ```powershell
-   py -m pip install -r D:\LNGRP\scripts\requirements-reel-automation.txt
+   py -m pip install -r D:\LNGRP\dbmigration\requirements-reel-automation.txt
    ```
 
 ## Dry run
@@ -34,9 +36,23 @@ The dry run never changes Google Sheets. Review the CSV before using
 py D:\LNGRP\dbmigration\reel_automation.py `
   --credentials D:\LNGRP\dbmigration\service-account.json `
   --apply `
+  --batch-size 50 `
   --log D:\LNGRP\reel_automation_log.csv
 ```
 
+To resume from a particular job after a stopped run:
+
+```powershell
+py D:\LNGRP\dbmigration\reel_automation.py `
+  --apply `
+  --batch-size 50 `
+  --resume-from-job 6935
+```
+
 Issue rows are created only when material, stock, reel ID, and required weight
-are available. Returns are never invented. To import genuine return rows, pass
-`--return-source` with a CSV containing `job_no,our_reel_no,weight,return_date`.
+are available. Returns are matched only from real existing `REEL RETURN` rows;
+the script never invents return IDs, weights, or dates. Each completed job is
+logged before the next job starts.
+
+Before applying, the script checks whether `REEL ISSUE` or `REEL RETURN` is
+protected. If a required tab is protected, it stops before any write.

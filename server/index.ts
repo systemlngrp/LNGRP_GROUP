@@ -11313,6 +11313,139 @@ app.get("/api/reports/printing-shift", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "Database unavailable." });
+
+    const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName");
+    const unitOne = (firmRows as any[]).find((row) => {
+      const normalized = String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+      return normalized.endsWith("unit1") || normalized.endsWith("uniti");
+    });
+    if (!unitOne?.id) return res.status(500).json({ error: "Unit-I firm is not configured." });
+
+    const [rows] = await db.query(`
+      SELECT
+        ps.id AS slipId,
+        ps.materialId,
+        ps.materialInId,
+        ps.materialLineId,
+        ps.supplierId AS openingSupplierId,
+        ps.ourReelNo,
+        ps.weightKg,
+        ps.openingRate,
+        m.erpCode,
+        m.name AS itemName,
+        m.gsm,
+        m.size,
+        m.bf,
+        m.openingRate AS materialOpeningRate,
+        COALESCE(s.name, '') AS openingSupplierName,
+        COALESCE(mi.transactionNo, '') AS transactionNo,
+        COALESCE(mi.date, '') AS mrrDate,
+        COALESCE(mi.supplierId, '') AS receiptSupplierId,
+        mi.lines,
+        COALESCE(receipts.issuedWeight, 0) AS issuedWeight,
+        COALESCE(returns.returnedWeight, 0) AS returnedWeight
+      FROM \`material_in_packing_slips\` ps
+      INNER JOIN \`materials\` m ON m.id = ps.materialId
+      LEFT JOIN \`suppliers\` s ON s.id = ps.supplierId
+      LEFT JOIN \`material_in\` mi
+        ON mi.id = ps.materialInId
+        AND UPPER(TRIM(ps.materialInId)) <> 'OPENING'
+      LEFT JOIN (
+        SELECT packingSlipId, SUM(COALESCE(weightKg, 0)) AS issuedWeight
+        FROM \`material_issue_reel_lines\`
+        GROUP BY packingSlipId
+      ) receipts ON receipts.packingSlipId = ps.id
+      LEFT JOIN (
+        SELECT packingSlipId, SUM(COALESCE(weightKg, 0)) AS returnedWeight
+        FROM \`material_return_reel_lines\`
+        GROUP BY packingSlipId
+      ) returns ON returns.packingSlipId = ps.id
+      WHERE ps.firmId = ?
+        AND LOWER(TRIM(COALESCE(m.type, ''))) = 'reel'
+        AND LOWER(TRIM(COALESCE(m.active, 'yes'))) <> 'no'
+        AND (
+          UPPER(TRIM(ps.materialInId)) = 'OPENING'
+          OR mi.id IS NOT NULL
+        )
+      ORDER BY COALESCE(mi.date, ''), ps.ourReelNo, ps.id
+    `, [unitOne.id]);
+
+    const [supplierRows] = await db.query("SELECT id, name FROM `suppliers`");
+    const supplierNames = new Map((supplierRows as any[]).map((row) => [String(row.id || ""), String(row.name || "")]));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const toNumber = (value: unknown) => Number(value || 0);
+    const parseLines = (value: unknown): any[] => {
+      if (Array.isArray(value)) return value;
+      try {
+        const parsed = JSON.parse(String(value || "[]"));
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    };
+    const ageDays = (dateValue: unknown) => {
+      const dateText = String(dateValue || "").trim();
+      if (!dateText) return 0;
+      const date = new Date(dateText);
+      if (Number.isNaN(date.getTime())) return 0;
+      date.setHours(0, 0, 0, 0);
+      return Math.max(0, Math.floor((today.getTime() - date.getTime()) / 86400000));
+    };
+
+    const reportRows = (rows as any[]).map((row) => {
+      const isOpening = String(row.materialInId || "").trim().toLowerCase() === "opening";
+      const weightKg = toNumber(row.weightKg);
+      const issuedWeight = toNumber(row.issuedWeight);
+      const returnedWeight = toNumber(row.returnedWeight);
+      const availableWeight = Math.max(0, weightKg + returnedWeight - issuedWeight);
+      const lines = parseLines(row.lines);
+      const receiptLine = lines.find((line) => String(line?.id || "") === String(row.materialLineId || ""))
+        || lines.find((line) => String(line?.itemId || "") === String(row.materialId || ""));
+      const rate = isOpening
+        ? toNumber(row.openingRate || row.materialOpeningRate)
+        : toNumber(receiptLine?.invoiceRate ?? receiptLine?.poRate ?? receiptLine?.rate ?? row.materialOpeningRate);
+      const mrrDate = isOpening ? "" : String(row.mrrDate || "");
+      return {
+        slipId: String(row.slipId || ""),
+        materialId: String(row.materialId || ""),
+        mrrDate,
+        mrrNo: isOpening ? "Opening" : String(row.transactionNo || ""),
+        ourReelNo: String(row.ourReelNo || ""),
+        erp: String(row.erpCode || ""),
+        itemName: String(row.itemName || ""),
+        firmId: String(unitOne.id),
+        firmName: String(unitOne.firmName || ""),
+        supplierName: isOpening
+          ? String(row.openingSupplierName || supplierNames.get(String(row.openingSupplierId || "")) || "-")
+          : String(supplierNames.get(String(row.receiptSupplierId || "")) || ""),
+        gsm: toNumber(row.gsm),
+        size: toNumber(row.size),
+        bf: toNumber(row.bf),
+        issuedWeight: Number(issuedWeight.toFixed(2)),
+        returnedWeight: Number(returnedWeight.toFixed(2)),
+        netIssuedWeight: Number((issuedWeight - returnedWeight).toFixed(2)),
+        availableWeight: Number(availableWeight.toFixed(2)),
+        mrrQty: isOpening ? 0 : Number(weightKg.toFixed(2)),
+        openingQty: isOpening ? Number(weightKg.toFixed(2)) : 0,
+        rate: availableWeight > 0 ? Number(rate.toFixed(2)) : 0,
+        valuation: availableWeight > 0 ? Number((availableWeight * rate).toFixed(2)) : 0,
+        ageDays: ageDays(mrrDate),
+        isOpening,
+      };
+    });
+
+    return res.json({ rows: reportRows, total: reportRows.length, unitOneFirm: unitOne });
+  } catch (error) {
+    console.error("[REELWISE_STOCK] failed:", error);
+    return res.status(500).json({ error: "Could not load Reelwise Stock report." });
+  }
+});
+
 const createHandlers = (tableName: string) => {
   return {
     getAll: async (req: express.Request, res: express.Response) => {

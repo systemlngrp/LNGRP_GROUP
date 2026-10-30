@@ -21,6 +21,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import gspread
 from google.oauth2.service_account import Credentials
+from gspread.exceptions import APIError
 
 
 SPREADSHEET_ID = os.getenv(
@@ -110,6 +111,18 @@ def parse_reel_codes(value: Any) -> list[str]:
     return codes
 
 
+def unique_values(values: Iterable[Any]) -> list[str]:
+    """Return non-empty values once, preserving their original order."""
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = clean(value)
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
+
+
 @dataclass
 class StockReel:
     our_reel_no: str
@@ -120,6 +133,7 @@ class StockReel:
     bf: str
     available_weight: float
     rate: float
+    supplier_reel_no: str = ""
 
 
 @dataclass
@@ -131,6 +145,9 @@ class JobPlan:
     material_missing: list[str] = field(default_factory=list)
     reel_missing: list[str] = field(default_factory=list)
     no_stock: list[str] = field(default_factory=list)
+    qc_scans: list[str] = field(default_factory=list)
+    material_create_rows: list[list[Any]] = field(default_factory=list)
+    reel_create_rows: list[list[Any]] = field(default_factory=list)
     issue_rows: list[dict[str, Any]] = field(default_factory=list)
     existing_issue_weight: float = 0.0
     existing_return_weight: float = 0.0
@@ -171,6 +188,18 @@ class JobPlan:
             return "PARTIAL / REVIEW"
         return "PENDING - REAL RETURN DATA REQUIRED"
 
+    @property
+    def final_status(self) -> str:
+        if self.material_missing:
+            return "BLOCKED - MATERIAL MASTER REVIEW"
+        if self.reel_missing or self.no_stock:
+            return "BLOCKED - REEL STOCK REVIEW"
+        if self.issue_rows and not self.existing_issue_count:
+            return "PENDING - ISSUE CREATION"
+        if self.return_status == "COMPLETE":
+            return "COMPLETE"
+        return "PENDING - REAL RETURN DATA REQUIRED"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -184,6 +213,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--spreadsheet-id", default=SPREADSHEET_ID)
     parser.add_argument("--start-date", default=DEFAULT_START_DATE.isoformat())
+    parser.add_argument("--batch-size", type=int, default=50)
+    parser.add_argument("--start-batch", type=int, default=1)
+    parser.add_argument(
+        "--resume-from-job",
+        default="",
+        help=(
+            "Resume at this production job number. Use AUTO (or omit this option) "
+            "to use DAILY PRODUCTION MASTER order."
+        ),
+    )
+    parser.add_argument("--max-batches", type=int, default=0, help="0 processes all batches; use 1 for a controlled first batch.")
     parser.add_argument("--log", default="reel_automation_log.csv")
     parser.add_argument(
         "--return-source",
@@ -219,12 +259,13 @@ def authorize(credentials_path: str) -> gspread.Client:
 
 
 def records(worksheet: gspread.Worksheet) -> tuple[list[str], list[list[str]]]:
-    values = worksheet.get_all_values()
+    # Keep raw numeric precision; formatted cells such as 0.4 kg may display as 0.
+    values = worksheet.get_all_values(value_render_option="UNFORMATTED_VALUE")
     return (values[0] if values else [], values[1:] if len(values) > 1 else [])
 
 
 def load_source_book(book: gspread.Spreadsheet) -> dict[str, tuple[list[str], list[list[str]]]]:
-    names = [SHEET_DAILY, SHEET_PENDING, SHEET_ITEMS, SHEET_STOCK, SHEET_ISSUE, SHEET_RETURN, SHEET_DB]
+    names = ["HELPER SHEET", SHEET_DAILY, SHEET_PENDING, SHEET_ITEMS, SHEET_STOCK, SHEET_ISSUE, SHEET_RETURN, SHEET_DB]
     return {name: records(book.worksheet(name)) for name in names}
 
 
@@ -269,6 +310,28 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
     item = header_map(item_headers)
     material_erps = {get(row, item, "ERP") for row in item_rows if get(row, item, "ERP")}
 
+    helper_headers, helper_rows = data["HELPER SHEET"]
+    helper = header_map(helper_headers)
+    helper_by_erp: dict[str, list[dict[str, str]]] = defaultdict(list)
+    helper_by_reel: dict[str, dict[str, str]] = {}
+    for raw in helper_rows:
+        row = pad(raw, len(helper_headers))
+        record = {
+            "our_reel_no": get(row, helper, "Our Reel Number"),
+            "supplier_reel_no": get(row, helper, "Supplier Reel No."),
+            "erp": get(row, helper, "ERP Code"),
+            "supplier": get(row, helper, "SUPPLIER"),
+            "size": get(row, helper, "Size"),
+            "gsm": get(row, helper, "GSM"),
+            "bf": get(row, helper, "BF"),
+            "weight": get(row, helper, "Weight"),
+            "rate": get(row, helper, "Rate"),
+        }
+        if record["erp"]:
+            helper_by_erp[record["erp"]].append(record)
+        if record["our_reel_no"]:
+            helper_by_reel[record["our_reel_no"]] = record
+
     stock_headers, stock_rows = data[SHEET_STOCK]
     stock = header_map(stock_headers)
     stock_by_erp: dict[str, list[StockReel]] = defaultdict(list)
@@ -287,6 +350,7 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
                 bf=get(row, stock, "BF"),
                 available_weight=number(get(row, stock, "Available Weight")),
                 rate=number(get_any(row, stock, "Invoice Rate", "Opening Rate")),
+                supplier_reel_no=get(row, stock, "SUPLIEER REEL"),
             )
         )
 
@@ -311,22 +375,68 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
             return_by_job[job_no].append((reel_no, number(get(row, returned, "Weight"))))
 
     for plan in jobs.values():
-        plan.material_missing = [code for code in plan.reel_codes if code not in material_erps]
+        existing_issue = issue_by_job.get(plan.job_no, [])
+        issue_reels = {reel_no for reel_no, _ in existing_issue if reel_no}
+        existing_return = [
+            item for item in return_by_job.get(plan.job_no, [])
+            if item[0] and item[0] in issue_reels
+        ]
+        plan.existing_issue_count = len(existing_issue)
+        plan.existing_return_count = len(existing_return)
+        plan.existing_issue_weight = sum(weight for _, weight in existing_issue)
+        plan.existing_return_weight = sum(weight for _, weight in existing_return)
+        plan.qc_scans = unique_values(reel_no for reel_no, _ in existing_issue)
+
+        plan.material_missing = []
+        for code in plan.reel_codes:
+            if code in material_erps:
+                continue
+            helper_record = next((r for r in helper_by_erp.get(code, []) if all(r[k] for k in ("supplier", "size", "gsm", "bf"))), None)
+            if helper_record:
+                plan.material_create_rows.append([
+                    code, helper_record["supplier"], helper_record["size"], helper_record["gsm"], helper_record["bf"],
+                ])
+                material_erps.add(code)
+            else:
+                plan.material_missing.append(code)
+
         available_reels: list[StockReel] = []
         for code in plan.reel_codes:
             candidates = stock_by_erp.get(code, [])
+            if not candidates:
+                for qc_scan in plan.qc_scans:
+                    helper_record = helper_by_reel.get(qc_scan)
+                    if helper_record and helper_record["erp"] == code and all(helper_record[k] for k in ("size", "gsm", "bf", "weight", "rate")):
+                        created = {
+                            "our_reel_no": helper_record["our_reel_no"],
+                            "erp": code,
+                            "supplier": helper_record["supplier"],
+                            "size": helper_record["size"],
+                            "gsm": helper_record["gsm"],
+                            "bf": helper_record["bf"],
+                            "weight": number(helper_record["weight"]),
+                            "rate": number(helper_record["rate"]),
+                            "supplier_reel_no": helper_record["supplier_reel_no"],
+                        }
+                        plan.reel_create_rows.append(created)
+                        candidates = [StockReel(
+                            our_reel_no=created["our_reel_no"],
+                            erp=created["erp"],
+                            supplier=created["supplier"],
+                            size=created["size"],
+                            gsm=created["gsm"],
+                            bf=created["bf"],
+                            available_weight=created["weight"],
+                            rate=created["rate"],
+                            supplier_reel_no=created["supplier_reel_no"],
+                        )]
+                        stock_by_erp[code].extend(candidates)
+                        break
             if not candidates:
                 plan.reel_missing.append(code)
             elif not any(reel.available_weight > 0 for reel in candidates):
                 plan.no_stock.append(code)
             available_reels.extend(reel for reel in candidates if reel.available_weight > 0)
-
-        existing_issue = issue_by_job.get(plan.job_no, [])
-        existing_return = return_by_job.get(plan.job_no, [])
-        plan.existing_issue_count = len(existing_issue)
-        plan.existing_return_count = len(existing_return)
-        plan.existing_issue_weight = sum(weight for _, weight in existing_issue)
-        plan.existing_return_weight = sum(weight for _, weight in existing_return)
 
         if plan.material_missing or plan.reel_missing or plan.no_stock or plan.required_weight <= 0:
             continue
@@ -351,6 +461,7 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
                     "rate": reel.rate,
                 }
             )
+            plan.qc_scans = unique_values([*plan.qc_scans, reel.our_reel_no])
             remaining -= issue_weight
         if remaining > 0:
             plan.messages.append(f"Insufficient available stock for {remaining:.3f} kg")
@@ -361,7 +472,7 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
 def make_db_rows(plans: Iterable[JobPlan]) -> list[list[Any]]:
     rows = []
     for plan in plans:
-        action = "; ".join(plan.messages) if plan.messages else plan.issue_status
+        action = plan.final_status
         rows.append([
             plan.job_no,
             plan.issue_status,
@@ -369,6 +480,7 @@ def make_db_rows(plans: Iterable[JobPlan]) -> list[list[Any]]:
             plan.material_status,
             plan.reel_status,
             action,
+            ", ".join(plan.qc_scans),
         ])
     return rows
 
@@ -387,15 +499,21 @@ def read_existing_db_rows(headers: Sequence[Any], rows: Sequence[Sequence[Any]])
 
 
 def write_values_batch(book: gspread.Spreadsheet, updates: list[dict[str, Any]]) -> None:
-    if not updates:
-        return
-    book.values_batch_update({"valueInputOption": "USER_ENTERED", "data": updates})
+    for start in range(0, len(updates), 200):
+        chunk = updates[start : start + 200]
+        book.values_batch_update({"valueInputOption": "USER_ENTERED", "data": chunk})
 
 
 def ensure_rows(worksheet: gspread.Worksheet, required_last_row: int) -> None:
     """Expand a worksheet grid before writing past its current row limit."""
     if required_last_row > worksheet.row_count:
-        worksheet.add_rows(required_last_row - worksheet.row_count)
+        try:
+            worksheet.add_rows(required_last_row - worksheet.row_count)
+        except APIError as exc:
+            raise SystemExit(
+                f"Cannot expand {worksheet.title} to row {required_last_row}. "
+                "The service account may lack edit permission for the protected range or sheet grid."
+            ) from exc
 
 
 def apply_issue_rows(book: gspread.Spreadsheet, plans: Sequence[JobPlan]) -> int:
@@ -417,6 +535,58 @@ def apply_issue_rows(book: gspread.Spreadsheet, plans: Sequence[JobPlan]) -> int
     ensure_rows(worksheet, next_row - 1)
     write_values_batch(book, updates)
     return len(updates) // 3
+
+
+def apply_material_rows(book: gspread.Spreadsheet, plans: Sequence[JobPlan]) -> int:
+    worksheet = book.worksheet(SHEET_ITEMS)
+    headers, existing_rows = records(worksheet)
+    existing_erps = {clean(row[0]) for row in existing_rows if row}
+    rows: list[list[Any]] = []
+    seen: set[str] = set()
+    for plan in plans:
+        for row in plan.material_create_rows:
+            erp = clean(row[0])
+            if erp and erp not in existing_erps and erp not in seen:
+                rows.append(row)
+                seen.add(erp)
+    if not rows:
+        return 0
+    last_row = max((index for index, row in enumerate(existing_rows, start=2) if row and clean(row[0])), default=1)
+    updates = []
+    for offset, row in enumerate(rows, start=last_row + 1):
+        updates.append({"range": f"'ITEM MASTER'!A{offset}:E{offset}", "values": [row]})
+    ensure_rows(worksheet, last_row + len(rows))
+    write_values_batch(book, updates)
+    return len(rows)
+
+
+def apply_reel_rows(book: gspread.Spreadsheet, plans: Sequence[JobPlan]) -> int:
+    worksheet = book.worksheet(SHEET_STOCK)
+    headers, existing_rows = records(worksheet)
+    existing_reels = {clean(row[0]) for row in existing_rows if row}
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for plan in plans:
+        for row in plan.reel_create_rows:
+            reel_no = clean(row["our_reel_no"])
+            if reel_no and reel_no not in existing_reels and reel_no not in seen:
+                rows.append(row)
+                seen.add(reel_no)
+    if not rows:
+        return 0
+    last_row = max((index for index, row in enumerate(existing_rows, start=2) if row and clean(row[0])), default=1)
+    updates = []
+    for offset, row in enumerate(rows, start=last_row + 1):
+        updates.extend([
+            {"range": f"'REEL WISE STOCK'!A{offset}:H{offset}", "values": [[
+                row["our_reel_no"], row["erp"], row["supplier"], row["size"], row["gsm"], row["bf"], row["weight"], row["rate"],
+            ]]},
+            {"range": f"'REEL WISE STOCK'!J{offset}:J{offset}", "values": [[row["rate"]]]},
+            {"range": f"'REEL WISE STOCK'!R{offset}:R{offset}", "values": [[row["supplier_reel_no"]]]},
+        ])
+    ensure_rows(worksheet, last_row + len(rows))
+    write_values_batch(book, updates)
+    return len(rows)
 
 
 def apply_return_rows(book: gspread.Spreadsheet, return_rows: Sequence[Mapping[str, Any]]) -> int:
@@ -447,29 +617,32 @@ def apply_db_rows(book: gspread.Spreadsheet, rows: Sequence[Sequence[Any]]) -> i
     existing_map = read_existing_db_rows(headers, existing_rows)
     last_row = max((index for index, row in enumerate(existing_rows, start=2) if row and clean(row[0])), default=1)
     updates: list[dict[str, Any]] = []
+    if header_map(headers).get("qc scan / our reel no.") is None:
+        updates.append({"range": "DBREEL!G1", "values": [["QC SCAN / OUR REEL NO."]]})
     for row in rows:
         job_no = clean(row[0])
         target = existing_map.get(job_no)
         if target is None:
             last_row += 1
             target = last_row
-        updates.append({"range": f"DBREEL!A{target}:F{target}", "values": [list(row)]})
+        updates.append({"range": f"DBREEL!A{target}:G{target}", "values": [list(row)]})
     ensure_rows(worksheet, last_row)
     write_values_batch(book, updates)
     return len(rows)
 
 
-def write_log(path: str, plans: Sequence[JobPlan]) -> None:
+def write_log(path: str, plans: Sequence[JobPlan], batch_size: int) -> None:
     fields = [
-        "job_no", "production_date", "reel_codes", "required_weight", "material_status",
-        "reel_status", "issue_status", "return_status", "issue_rows", "existing_issue_weight",
-        "existing_return_weight", "messages",
+        "batch_number", "job_no", "production_date", "reel_codes", "required_weight", "material_status",
+        "reel_status", "issue_status", "return_status", "issue_rows", "material_rows", "reel_rows",
+        "existing_issue_weight", "existing_return_weight", "qc_scans", "messages",
     ]
     with open(path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
-        for plan in plans:
+        for index, plan in enumerate(plans):
             writer.writerow({
+                "batch_number": (index // batch_size) + 1,
                 "job_no": plan.job_no,
                 "production_date": plan.production_date.isoformat(),
                 "reel_codes": ", ".join(plan.reel_codes),
@@ -479,10 +652,135 @@ def write_log(path: str, plans: Sequence[JobPlan]) -> None:
                 "issue_status": plan.issue_status,
                 "return_status": plan.return_status,
                 "issue_rows": len(plan.issue_rows),
+                "material_rows": len(plan.material_create_rows),
+                "reel_rows": len(plan.reel_create_rows),
                 "existing_issue_weight": f"{plan.existing_issue_weight:.3f}",
                 "existing_return_weight": f"{plan.existing_return_weight:.3f}",
+                "qc_scans": ", ".join(plan.qc_scans),
                 "messages": "; ".join(plan.messages),
             })
+
+
+def protected_sheet_access(
+    metadata: Mapping[str, Any],
+    title: str,
+    service_account_email: str,
+) -> tuple[bool, bool]:
+    """Return (has_protection, can_edit) for a sheet from Sheets metadata."""
+    for sheet in metadata.get("sheets", []):
+        if sheet.get("properties", {}).get("title") != title:
+            continue
+        ranges = sheet.get("protectedRanges", [])
+        if not ranges:
+            return False, True
+        for protected_range in ranges:
+            if protected_range.get("requestingUserCanEdit") is True:
+                continue
+            editors = protected_range.get("editors", {}).get("users", [])
+            if service_account_email and service_account_email in editors:
+                continue
+            return True, False
+        return True, True
+    return False, True
+
+
+def protected_sheet_titles(book: gspread.Spreadsheet) -> set[str]:
+    metadata = book.fetch_sheet_metadata({
+        "includeGridData": False,
+        "fields": "sheets(properties(title),protectedRanges(requestingUserCanEdit,editors/users,range))",
+    })
+    return {
+        sheet["properties"]["title"]
+        for sheet in metadata.get("sheets", [])
+        if sheet.get("protectedRanges")
+    }
+
+
+def preflight_apply(book: gspread.Spreadsheet, plans: Sequence[JobPlan], return_rows: Sequence[Mapping[str, Any]]) -> None:
+    metadata = book.fetch_sheet_metadata({
+        "includeGridData": False,
+        "fields": "sheets(properties(title),protectedRanges(requestingUserCanEdit,editors/users,range))",
+    })
+    service_account_email = getattr(book.client.auth, "service_account_email", "")
+    required = []
+    if any(plan.issue_rows for plan in plans):
+        required.append(SHEET_ISSUE)
+    if any(plan.material_create_rows for plan in plans):
+        required.append(SHEET_ITEMS)
+    if any(plan.reel_create_rows for plan in plans):
+        required.append(SHEET_STOCK)
+    if return_rows:
+        required.append(SHEET_RETURN)
+    blocked = []
+    authorized_protection = []
+    for sheet in required:
+        has_protection, can_edit = protected_sheet_access(metadata, sheet, service_account_email)
+        if has_protection and can_edit:
+            authorized_protection.append(sheet)
+        elif has_protection and not can_edit:
+            blocked.append(sheet)
+    if authorized_protection:
+        logging.info("Protected sheet(s) authorized for service account: %s", ", ".join(authorized_protection))
+    if blocked:
+        names = ", ".join(blocked)
+        raise SystemExit(
+            f"Apply blocked before any write: protected sheet(s) not authorized for this service account: {names}. "
+            "Add the service account as an editor of the protected range or remove the protection."
+        )
+
+
+def make_batches(plans: Sequence[JobPlan], batch_size: int, start_batch: int, max_batches: int) -> list[tuple[int, list[JobPlan]]]:
+    if batch_size <= 0:
+        raise SystemExit("--batch-size must be greater than zero")
+    if start_batch <= 0:
+        raise SystemExit("--start-batch must be at least 1")
+    first = (start_batch - 1) * batch_size
+    selected = plans[first:]
+    batches = []
+    for offset in range(0, len(selected), batch_size):
+        if max_batches and len(batches) >= max_batches:
+            break
+        batches.append((start_batch + len(batches), list(selected[offset : offset + batch_size])))
+    return batches
+
+
+def is_production_order_resume(value: Any) -> bool:
+    """Return true when the CLI value means 'take jobs from production order'."""
+    token = re.sub(r"[^A-Z0-9]+", "", clean(value).upper())
+    return token in {"", "AUTO", "PRODUCTION", "PRODUCTIONORDER", "JOBNUMBER", "JOBNO"}
+
+
+def apply_issue_result(plan: JobPlan, issue_count: int) -> None:
+    if issue_count:
+        plan.existing_issue_count += issue_count
+        plan.existing_issue_weight += sum(number(row["weight"]) for row in plan.issue_rows)
+        plan.issue_rows = []
+
+
+RUNTIME_LOG_FIELDS = [
+    "batch_number", "job_no", "material_action", "reel_action", "issue_action",
+    "return_action", "final_status", "qc_scans", "error",
+]
+
+
+def initialize_runtime_log(path: str) -> None:
+    with open(path, "w", newline="", encoding="utf-8") as handle:
+        csv.DictWriter(handle, fieldnames=RUNTIME_LOG_FIELDS).writeheader()
+
+
+def append_runtime_log(path: str, batch_number: int, plan: JobPlan, material_action: str, reel_action: str, issue_action: str, error: str = "") -> None:
+    with open(path, "a", newline="", encoding="utf-8") as handle:
+        csv.DictWriter(handle, fieldnames=RUNTIME_LOG_FIELDS).writerow({
+            "batch_number": batch_number,
+            "job_no": plan.job_no,
+            "material_action": material_action,
+            "reel_action": reel_action,
+            "issue_action": issue_action,
+            "return_action": plan.return_status,
+            "final_status": plan.final_status,
+            "qc_scans": ", ".join(plan.qc_scans),
+            "error": error,
+        })
 
 
 def main() -> int:
@@ -501,22 +799,80 @@ def main() -> int:
     book = authorize(str(credentials)).open_by_key(args.spreadsheet_id)
     data = load_source_book(book)
     plans = build_plans(data, start_date)
-    return_rows = load_return_csv(args.return_source)
-    db_rows = make_db_rows(plans)
-    write_log(args.log, plans)
+    if args.return_source:
+        raise SystemExit("--return-source is not supported in this workflow; returns come only from existing REEL RETURN rows.")
+    if is_production_order_resume(args.resume_from_job):
+        logging.info("Using job numbers from DAILY PRODUCTION MASTER in production order")
+        args.resume_from_job = ""
+    if args.resume_from_job:
+        requested_job = clean(args.resume_from_job)
+        resume_index = next((index for index, plan in enumerate(plans) if plan.job_no == requested_job), None)
+        if resume_index is None:
+            examples = ", ".join(plan.job_no for plan in plans[:10]) or "none"
+            raise SystemExit(
+                f"--resume-from-job not found in DAILY PRODUCTION MASTER: {requested_job}. "
+                f"Example production jobs: {examples}"
+            )
+        plans = plans[resume_index:]
+    batches = make_batches(plans, args.batch_size, args.start_batch, args.max_batches)
+    selected_plans = [plan for _, batch in batches for plan in batch]
+    write_log(args.log, plans, args.batch_size)
 
     logging.info("Found %d jobs from %s onward", len(plans), start_date.isoformat())
+    logging.info("Batch size: %d; batches selected: %d", args.batch_size, len(batches))
     logging.info("Wrote decision log: %s", args.log)
-    logging.info("Issue rows planned: %d", sum(len(plan.issue_rows) for plan in plans))
-    logging.info("Return rows supplied: %d", len(return_rows))
+    logging.info("Selected issue rows planned: %d", sum(len(plan.issue_rows) for plan in selected_plans))
+    logging.info("Returns: existing REEL RETURN rows only; no return rows will be invented")
     if not args.apply:
         logging.info("DRY RUN: no Google Sheet cells were changed")
         return 0
 
-    issue_count = apply_issue_rows(book, plans)
-    return_count = apply_return_rows(book, return_rows)
-    db_count = apply_db_rows(book, db_rows)
-    logging.info("Applied %d issue rows, %d return rows, %d DBREEL rows", issue_count, return_count, db_count)
+    preflight_apply(book, selected_plans, [])
+    initialize_runtime_log(args.log)
+    total_materials = total_reels = total_issues = total_db = 0
+    for batch_number, batch in batches:
+        logging.info("Starting batch %d (%d jobs)", batch_number, len(batch))
+        batch_materials = batch_reels = batch_issues = batch_db = 0
+        for plan in batch:
+            material_count = reel_count = issue_count = db_count = 0
+            try:
+                material_count = apply_material_rows(book, [plan])
+                material_action = f"CREATED {material_count}" if material_count else plan.material_status
+                reel_count = apply_reel_rows(book, [plan])
+                reel_action = f"CREATED {reel_count}" if reel_count else plan.reel_status
+                issue_count = apply_issue_rows(book, [plan])
+                issue_action = f"CREATED {issue_count}" if issue_count else plan.issue_status
+                apply_issue_result(plan, issue_count)
+                # Returns are read from the source snapshot; no synthetic return is created.
+                db_count = apply_db_rows(book, make_db_rows([plan]))
+                append_runtime_log(args.log, batch_number, plan, material_action, reel_action, issue_action)
+            except (Exception, SystemExit) as exc:
+                append_runtime_log(
+                    args.log,
+                    batch_number,
+                    plan,
+                    f"CREATED {material_count}" if material_count else plan.material_status,
+                    f"CREATED {reel_count}" if reel_count else plan.reel_status,
+                    f"CREATED {issue_count}" if issue_count else plan.issue_status,
+                    str(exc),
+                )
+                raise SystemExit(f"Batch {batch_number} stopped at job {plan.job_no}: {exc}") from exc
+            batch_materials += material_count
+            batch_reels += reel_count
+            batch_issues += issue_count
+            batch_db += db_count
+        total_materials += batch_materials
+        total_reels += batch_reels
+        total_issues += batch_issues
+        total_db += batch_db
+        logging.info(
+            "Completed batch %d: materials=%d reels=%d issues=%d DBREEL=%d",
+            batch_number, batch_materials, batch_reels, batch_issues, batch_db,
+        )
+    logging.info(
+        "Applied totals: materials=%d reels=%d issues=%d returns=0 DBREEL=%d",
+        total_materials, total_reels, total_issues, total_db,
+    )
     return 0
 
 

@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Search, FileText, Download } from "lucide-react";
 import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
+import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import {
   Company,
@@ -12,13 +13,10 @@ import {
   Material,
   MaterialIn,
   MaterialInPackingSlip,
-  MaterialIssueReelLine,
-  MaterialReturnReelLine,
   Setting,
   Supplier,
 } from "../types";
-import { buildReelStockRows, type ReelStockCalculationRow } from "../lib/reelStock";
-import { findUnitOneFirm } from "../lib/unitOneFirm";
+import type { ReelStockCalculationRow } from "../lib/reelStock";
 import { formatDate } from "../lib/utils";
 
 type AvailabilityFilter = "all" | "gt500" | "lt500";
@@ -66,15 +64,41 @@ function safeFileName(value: string) {
 
 export function ReelwiseStockReport() {
   const [materials] = useData<Material>("materials", [], { firmScope: "all", cacheToLocalStorage: false });
-  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", cacheToLocalStorage: false });
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", cacheToLocalStorage: false });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", cacheToLocalStorage: false });
   const [suppliers] = useData<Supplier>("suppliers", [], { firmScope: "all", cacheToLocalStorage: false });
   const [companies] = useData<Company>("companies", [], { firmScope: "all", cacheToLocalStorage: false });
   const [settings] = useData<Setting>("settings", [], { cacheToLocalStorage: false });
-  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
+  const [reportRows, setReportRows] = useState<ReelwiseStockRow[]>([]);
+  const [reportLoading, setReportLoading] = useState(true);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const loadReport = useCallback(async () => {
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const response = await fetch("/api/reports/reelwise-stock", {
+        headers: getDataAuthHeaders(false),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload?.error || `Failed to load Reelwise Stock report (${response.status}).`));
+      if (!Array.isArray(payload?.rows)) throw new Error("Reelwise Stock report returned an invalid response.");
+      setReportRows(payload.rows as ReelwiseStockRow[]);
+    } catch (error) {
+      console.error("Failed to load Reelwise Stock report", error);
+      setReportRows([]);
+      setReportError(error instanceof Error ? error.message : "Failed to load Reelwise Stock report.");
+    } finally {
+      setReportLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadReport();
+  }, [loadReport]);
+
+  useAutoRefreshEffect(() => {
+    void loadReport();
+  });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
@@ -90,18 +114,7 @@ export function ReelwiseStockReport() {
   const [sizeFilter, setSizeFilter] = useState("");
   const [bfFilter, setBfFilter] = useState("");
 
-  const allRows = useMemo<ReelwiseStockRow[]>(() => {
-    return buildReelStockRows({
-      materials,
-      materialIn,
-      packingSlips,
-      issueReelLines,
-      returnReelLines,
-      firms,
-      unitOneFirm,
-      suppliers,
-    });
-  }, [firms, issueReelLines, materialIn, materials, packingSlips, returnReelLines, suppliers, unitOneFirm]);
+  const allRows = reportRows;
 
   const mrrOptions = useMemo(() => makeOptions(allRows.map((row) => row.mrrNo)), [allRows]);
   const erpOptions = useMemo(() => makeOptions(allRows.map((row) => row.erp)), [allRows]);
@@ -338,6 +351,8 @@ export function ReelwiseStockReport() {
         invoiceNo: "",
         invDate: "",
         supplierId: "",
+        status: "Approved",
+        totalAmount: 0,
         lines: [],
       };
       qrPayload = JSON.stringify({
@@ -351,17 +366,39 @@ export function ReelwiseStockReport() {
         materialCode: row.erp,
       });
     } else {
-      slip = packingSlips.find((entry) => entry.id === row.slipId);
-      if (!slip) {
-        alert("Packing slip not found for this reel.");
-        return;
-      }
-
-      mrr = materialIn.find((entry) => entry.id === slip.materialInId);
-      if (!mrr) {
-        alert("MRR not found for this reel.");
-        return;
-      }
+      const receiptId = `report-mrr-${row.slipId}`;
+      const lineId = `report-line-${row.materialId}`;
+      slip = {
+        id: row.slipId,
+        firmId: row.firmId,
+        materialInId: receiptId,
+        materialLineId: lineId,
+        materialId: row.materialId,
+        ourReelNo: row.ourReelNo,
+        weightKg: Number(row.availableWeight || 0),
+      };
+      mrr = {
+        id: receiptId,
+        firmId: row.firmId,
+        transactionNo: row.mrrNo,
+        mrrType: "Reel",
+        timestamp: new Date().toISOString(),
+        entryEmailId: "",
+        date: row.mrrDate,
+        invoiceNo: "",
+        invDate: "",
+        supplierId: "",
+        status: "Approved",
+        totalAmount: Number(row.availableWeight || 0) * Number(row.rate || 0),
+        lines: [{
+          id: lineId,
+          itemId: row.materialId,
+          qty: Number(row.mrrQty || row.openingQty || row.availableWeight || 0),
+          uom: "KGS",
+          rate: Number(row.rate || 0),
+          value: Number(row.availableWeight || 0) * Number(row.rate || 0),
+        }],
+      };
       qrPayload = JSON.stringify({
         reelNo: row.ourReelNo,
         weight: Number(row.availableWeight || 0).toFixed(2),
@@ -399,6 +436,16 @@ export function ReelwiseStockReport() {
           <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · all jobs and firms</p>
         </div>
       </div>
+
+      {reportLoading ? (
+        <div className="rounded border-2 border-indigo-300 bg-indigo-50 px-4 py-3 text-sm font-bold text-indigo-900">
+          Loading Reelwise Stock…
+        </div>
+      ) : reportError ? (
+        <div className="rounded border-2 border-red-300 bg-red-50 px-4 py-3 text-sm font-bold text-red-900">
+          Unable to load Reelwise Stock: {reportError}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded border border-emerald-300 bg-emerald-50 p-4">
@@ -551,7 +598,19 @@ export function ReelwiseStockReport() {
               ) : null}
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {reportLoading ? (
+                <tr>
+                  <td colSpan={tableColumns.length} className="px-6 py-10 text-center text-indigo-900 font-bold border-2 border-black">
+                    Loading Reelwise Stock…
+                  </td>
+                </tr>
+              ) : reportError ? (
+                <tr>
+                  <td colSpan={tableColumns.length} className="px-6 py-10 text-center text-red-900 font-bold border-2 border-black">
+                    {reportError}
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={tableColumns.length} className="px-6 py-10 text-center text-black font-medium border-2 border-black">
                     No reel rows match the current filters.
