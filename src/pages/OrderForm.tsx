@@ -46,6 +46,8 @@ export function OrderForm() {
   const [orderDate, setOrderDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [isUniversal, setIsUniversal] = useState(false);
   const [firmId, setFirmId] = useState("");
+  const [bulkUploadFirmId, setBulkUploadFirmId] = useState("");
+  const [isBulkFirmDialogOpen, setIsBulkFirmDialogOpen] = useState(false);
   const [companyId, setCompanyId] = useState("");
   const [poType, setPoType] = useState<"Verbal" | "Ref No.">("Verbal");
   const [poNumber, setPoNumber] = useState("");
@@ -211,7 +213,10 @@ export function OrderForm() {
 
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      setBulkUploadFirmId("");
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -226,7 +231,7 @@ export function OrderForm() {
         // handled atomically by the server. Keep the legacy XLSX format below
         // for compatibility with existing users.
         if (file.name.toLowerCase().endsWith(".csv")) {
-          if (!firmId) {
+          if (!bulkUploadFirmId) {
             alert("Select a firm before uploading the CSV.");
             return;
           }
@@ -278,7 +283,7 @@ export function OrderForm() {
             const response = await fetch("/api/orders/bulk-upload", {
               method: "POST",
               headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-              body: JSON.stringify({ firmId, rows }),
+              body: JSON.stringify({ firmId: bulkUploadFirmId, rows }),
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(result.error || "Bulk order upload failed.");
@@ -286,6 +291,7 @@ export function OrderForm() {
             alert(`Successfully uploaded ${rows.length} orders and schedules.`);
           } finally {
             setIsSubmitting(false);
+            setBulkUploadFirmId("");
             if (fileInputRef.current) fileInputRef.current.value = "";
           }
           return;
@@ -480,6 +486,7 @@ export function OrderForm() {
         alert(error instanceof Error ? error.message : "Failed to parse or upload the Excel file.");
       } finally {
         setIsSubmitting(false);
+        setBulkUploadFirmId("");
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     };
@@ -693,7 +700,10 @@ export function OrderForm() {
             <Download size={18} className="mr-2" /> Template
           </button>
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              setBulkUploadFirmId("");
+              setIsBulkFirmDialogOpen(true);
+            }}
             disabled={isSubmitting}
             className="bg-white text-black border-2 border-black px-3 py-2 rounded font-bold hover:bg-slate-100 transition flex items-center text-sm disabled:opacity-50"
           >
@@ -706,6 +716,43 @@ export function OrderForm() {
             accept=".csv, .xlsx, .xls"
             className="hidden"
           />
+          {isBulkFirmDialogOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div className="w-full max-w-md rounded-lg border-2 border-black bg-white p-6 shadow-2xl">
+                <h3 className="mb-2 text-lg font-bold uppercase">Select Firm for Bulk Upload</h3>
+                <p className="mb-4 text-sm text-slate-600">All orders and schedules in this file will be assigned to the selected firm.</p>
+                <Select
+                  value={bulkUploadFirmId}
+                  onChange={setBulkUploadFirmId}
+                  options={firmOptions}
+                  placeholder="Select Firm..."
+                />
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkUploadFirmId("");
+                      setIsBulkFirmDialogOpen(false);
+                    }}
+                    className="rounded border-2 border-slate-400 px-4 py-2 font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!bulkUploadFirmId}
+                    onClick={() => {
+                      setIsBulkFirmDialogOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                    className="rounded bg-indigo-600 px-4 py-2 font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Continue to Upload
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           {!isFormOpen && (
             <button onClick={() => setIsFormOpen(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition shadow">
               <Plus size={18} /> New Order
