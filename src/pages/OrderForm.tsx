@@ -201,17 +201,12 @@ export function OrderForm() {
     .map((user) => ({ value: user.id, label: user.name }));
 
   const downloadTemplate = () => {
-    const headers = ["Firm Name", "Order Date", "Company Name", "PO Type", "PO Number", "Item Name", "ERP Code", "Qty", "Rate", "Order By", "Remarks"];
-    const exampleFirms = [
-      "Laxmi Narayan Corrugated Boards LLP Unit-I",
-      "Laxmi Narayan Corrugated Boards LLP (Unit-II)",
-      "LAXMI NARAYAN KRAFT INDUSTRIES",
-    ];
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...exampleFirms.map((name) => [name])]);
-    ws["!cols"] = [{ wch: 52 }, { wch: 16 }, { wch: 32 }, { wch: 14 }, { wch: 20 }, { wch: 56 }, { wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 24 }, { wch: 32 }];
+    const headers = ["Order Id", "Order Date", "Company Name", "PO Number", "ERP Code", "Item", "Qty", "Rate", "Scheduled Date"];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ["6040", "2026-10-31", "NAMHAH MARKETING", "26-27/1", "94960072", "", 200, 32.5, "2026-11-01"]]);
+    ws["!cols"] = [{ wch: 14 }, { wch: 16 }, { wch: 32 }, { wch: 20 }, { wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 12 }, { wch: 18 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Orders");
-    XLSX.writeFile(wb, "Orders_Bulk_Upload_Template.xlsx");
+    XLSX.writeFile(wb, "Orders_Schedules_Bulk_Upload_Template.csv", { bookType: "csv" });
   };
 
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,6 +221,75 @@ export function OrderForm() {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { raw: true });
+
+        // The CSV order/schedule format uses the currently selected firm and is
+        // handled atomically by the server. Keep the legacy XLSX format below
+        // for compatibility with existing users.
+        if (file.name.toLowerCase().endsWith(".csv")) {
+          if (!firmId) {
+            alert("Select a firm before uploading the CSV.");
+            return;
+          }
+          const seen = new Set<string>();
+          const errors: string[] = [];
+          const csvItemMap = new Map<string, OrderCatalogItem>();
+          fgItems.forEach((item) => {
+            [item.name, item.erp].map((value) => normalizeText(value)).filter(Boolean).forEach((key) => {
+              if (!csvItemMap.has(key)) csvItemMap.set(key, item);
+            });
+          });
+          const rows = data.map((row, index) => {
+            const rowNumber = index + 2;
+            const orderNo = String(row["Order Id"] ?? "").trim();
+            const orderDateValue = normalizeOrderDate(row["Order Date"]);
+            const scheduledDateValue = normalizeOrderDate(row["Scheduled Date"]);
+            const qtyValue = Number(row["Qty"] ?? 0);
+            const rateValue = Number(row["Rate"] ?? 0);
+            const erpValue = String(row["ERP Code"] ?? "").trim();
+            const itemValue = String(row["Item"] ?? "").trim();
+            const companyValue = String(row["Company Name"] ?? "").trim();
+            const key = orderNo.toLowerCase();
+            if (!orderNo) errors.push(`Row ${rowNumber}: Order Id is required.`);
+            else if (seen.has(key)) errors.push(`Row ${rowNumber}: Order Id ${orderNo} appears more than once in this CSV.`);
+            else seen.add(key);
+            if (!orderDateValue) errors.push(`Row ${rowNumber}: Order Date is required.`);
+            if (!scheduledDateValue) errors.push(`Row ${rowNumber}: Scheduled Date is required.`);
+            if (!companyValue) errors.push(`Row ${rowNumber}: Company Name is required.`);
+            if (!Number.isFinite(qtyValue) || qtyValue <= 0) errors.push(`Row ${rowNumber}: Qty must be greater than 0.`);
+            if (!Number.isFinite(rateValue) || rateValue < 0) errors.push(`Row ${rowNumber}: Rate must be a valid non-negative number.`);
+            const matchedItem = csvItemMap.get(normalizeText(erpValue || itemValue));
+            if (!matchedItem) errors.push(`Row ${rowNumber}: ERP Code or Item was not found (${erpValue || itemValue}).`);
+            const matchedCompany = companies.find((company) => normalizeCompanyName(company.name) === normalizeCompanyName(companyValue));
+            if (!matchedCompany) errors.push(`Row ${rowNumber}: Company not found (${companyValue}).`);
+            return {
+              rowNumber, orderNo, orderDate: orderDateValue, companyId: matchedCompany?.id || "",
+              poNumber: String(row["PO Number"] ?? "").trim(), erpCode: matchedItem?.erp || erpValue,
+              itemId: matchedItem?.id || "", itemSource: matchedItem?.source || "FG", npdId: matchedItem?.source === "FG" ? matchedItem.id : "",
+              qty: qtyValue, rate: rateValue, scheduledDate: scheduledDateValue,
+            };
+          });
+          if (errors.length) {
+            alert(`CSV upload blocked.\n\n${errors.join("\n")}`);
+            return;
+          }
+          setIsSubmitting(true);
+          try {
+            const token = window.localStorage.getItem("authToken") || "";
+            const response = await fetch("/api/orders/bulk-upload", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+              body: JSON.stringify({ firmId, rows }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error || "Bulk order upload failed.");
+            window.dispatchEvent(new CustomEvent("sync-data-orders"));
+            alert(`Successfully uploaded ${rows.length} orders and schedules.`);
+          } finally {
+            setIsSubmitting(false);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }
+          return;
+        }
         const orderRows = data
           .map((row, index) => ({ row, rowNumber: index + 2 }))
           .filter(({ row }) => Object.entries(row).some(([key, value]) =>
@@ -639,7 +703,7 @@ export function OrderForm() {
             type="file"
             ref={fileInputRef}
             onChange={handleBulkUpload}
-            accept=".xlsx, .xls"
+            accept=".csv, .xlsx, .xls"
             className="hidden"
           />
           {!isFormOpen && (

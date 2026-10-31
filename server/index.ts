@@ -17480,6 +17480,68 @@ for (const action of ["finalize", "reopen"] as const) {
   });
 }
 
+app.post("/api/orders/bulk-upload", requireAuth, async (req, res) => {
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "Database unavailable." });
+  const firmId = String(req.body?.firmId || "").trim();
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!firmId || !rows.length) return res.status(400).json({ error: "Firm and at least one order row are required." });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms` WHERE id = ? AND COALESCE(active, 'Yes') <> 'No' LIMIT 1", [firmId]);
+    const firm = (firmRows as any[])[0];
+    if (!firm) { await conn.rollback(); return res.status(400).json({ error: "Selected firm was not found or is inactive." }); }
+
+    const seen = new Set<string>();
+    const normalized = rows.map((row: any, index: number) => {
+      const rowNo = Number(row.rowNumber || index + 2);
+      const orderNo = String(row.orderNo || "").trim();
+      const key = orderNo.toLowerCase();
+      if (!orderNo) throw new Error(`Row ${rowNo}: Order Id is required.`);
+      if (seen.has(key)) throw new Error(`Row ${rowNo}: Order Id ${orderNo} appears more than once in this CSV.`);
+      seen.add(key);
+      const qty = Number(row.qty), rate = Number(row.rate);
+      if (!row.orderDate || !row.scheduledDate) throw new Error(`Row ${rowNo}: Order Date and Scheduled Date are required.`);
+      if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Row ${rowNo}: Qty must be greater than 0.`);
+      if (!Number.isFinite(rate) || rate < 0) throw new Error(`Row ${rowNo}: Rate must be valid.`);
+      if (!String(row.companyId || "").trim() || !String(row.itemId || "").trim()) throw new Error(`Row ${rowNo}: Company and item are required.`);
+      return { ...row, rowNo, orderNo, qty, rate, amount: Number((qty * rate).toFixed(2)) };
+    });
+
+    const placeholders = normalized.map(() => "?").join(",");
+    const [existingRows] = await conn.query(`SELECT id, orderNo, firmId FROM \`orders\` WHERE LOWER(TRIM(orderNo)) IN (${placeholders}) FOR UPDATE`, normalized.map((row: any) => row.orderNo.toLowerCase()));
+    if ((existingRows as any[]).length) {
+      const details = (existingRows as any[]).map((row) => `Order Id ${row.orderNo} already exists in the database (firm ${row.firmId || "unassigned"}).`);
+      await conn.rollback();
+      return res.status(409).json({ error: `Upload blocked:\n${details.join("\n")}` });
+    }
+
+    const now = new Date().toISOString();
+    for (const row of normalized) {
+      const orderId = crypto.randomUUID();
+      await conn.query(
+        `INSERT INTO \`orders\` (id, firmId, firmName, orderNo, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, status, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending PH', ?, ?)`,
+        [orderId, firm.id, firm.firmName, row.orderNo, row.orderDate, row.companyId, row.poNumber || "", row.erpCode || "", row.itemId, row.itemSource || "FG", row.npdId || null, row.qty, row.rate, row.amount, "Bulk CSV Upload", now]
+      );
+      await conn.query(
+        `INSERT INTO \`orders_schedule\` (id, orderId, firmId, firmName, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+        [crypto.randomUUID(), orderId, firm.id, firm.firmName, row.scheduledDate, row.qty, "Bulk CSV Upload", now]
+      );
+    }
+    await conn.commit();
+    publishRealtimeDataChange(["orders", "orders_schedule"]);
+    return res.status(201).json({ success: true, created: normalized.length });
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    return res.status(400).json({ error: (error as Error).message || "Bulk upload failed." });
+  } finally {
+    conn.release();
+  }
+});
+
 entities.forEach(entity => {
   const handlers = createHandlers(entity);
   const route = `/api/${entity.replace(/_/g, "-")}`;
