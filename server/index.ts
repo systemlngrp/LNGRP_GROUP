@@ -17489,7 +17489,9 @@ app.post("/api/orders/bulk-upload", requireAuth, async (req, res) => {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms` WHERE id = ? AND COALESCE(active, 'Yes') <> 'No' LIMIT 1", [firmId]);
+    // The deployed firms table intentionally has no active/status column.
+    // Existence is the firm-validity check for this upload.
+    const [firmRows] = await conn.query("SELECT id, firmName FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
     const firm = (firmRows as any[])[0];
     if (!firm) { await conn.rollback(); return res.status(400).json({ error: "Selected firm was not found or is inactive." }); }
 
