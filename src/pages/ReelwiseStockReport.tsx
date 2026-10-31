@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Search, FileText, Download } from "lucide-react";
@@ -71,35 +71,12 @@ export function ReelwiseStockReport() {
   const [reportRows, setReportRows] = useState<ReelwiseStockRow[]>([]);
   const [reportLoading, setReportLoading] = useState(true);
   const [reportError, setReportError] = useState<string | null>(null);
-
-  const loadReport = useCallback(async () => {
-    setReportLoading(true);
-    setReportError(null);
-    try {
-      const response = await fetch("/api/reports/reelwise-stock", {
-        headers: getDataAuthHeaders(false),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(String(payload?.error || `Failed to load Reelwise Stock report (${response.status}).`));
-      if (!Array.isArray(payload?.rows)) throw new Error("Reelwise Stock report returned an invalid response.");
-      setReportRows(payload.rows as ReelwiseStockRow[]);
-    } catch (error) {
-      console.error("Failed to load Reelwise Stock report", error);
-      setReportRows([]);
-      setReportError(error instanceof Error ? error.message : "Failed to load Reelwise Stock report.");
-    } finally {
-      setReportLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadReport();
-  }, [loadReport]);
-
-  useAutoRefreshEffect(() => {
-    void loadReport();
-  });
-
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
+  const [totalRows, setTotalRows] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [serverSummary, setServerSummary] = useState<any>(null);
+  const [serverOptions, setServerOptions] = useState<Record<string, string[]>>({ mrr: [], erp: [], gsm: [], size: [], bf: [] });
   const [searchTerm, setSearchTerm] = useState("");
   const [availabilityFilter, setAvailabilityFilter] = useState<AvailabilityFilter>("all");
   const [stockYetToIssueOnly, setStockYetToIssueOnly] = useState(false);
@@ -113,64 +90,75 @@ export function ReelwiseStockReport() {
   const [gsmFilter, setGsmFilter] = useState("");
   const [sizeFilter, setSizeFilter] = useState("");
   const [bfFilter, setBfFilter] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+
+  const loadReport = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setReportLoading(true);
+    setReportError(null);
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize), availability: availabilityFilter });
+      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      if (mrrFilter) params.set("mrr", mrrFilter);
+      if (erpFilter) params.set("erp", erpFilter);
+      if (gsmFilter) params.set("gsm", gsmFilter);
+      if (sizeFilter) params.set("size", sizeFilter);
+      if (bfFilter) params.set("bf", bfFilter);
+      if (mrrDateFrom) params.set("dateFrom", mrrDateFrom);
+      if (mrrDateTo) params.set("dateTo", mrrDateTo);
+      if (minAge) params.set("minAge", minAge);
+      if (maxAge) params.set("maxAge", maxAge);
+      if (stockYetToIssueOnly) params.set("stockYetToIssue", "true");
+      if (excludeZeroAvailable) params.set("excludeZero", "true");
+      const response = await fetch(`/api/reports/reelwise-stock?${params}`, {
+        headers: getDataAuthHeaders(false),
+        signal: controller.signal,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload?.error || `Failed to load Reelwise Stock report (${response.status}).`));
+      if (!Array.isArray(payload?.rows)) throw new Error("Reelwise Stock report returned an invalid response.");
+      setReportRows(payload.rows as ReelwiseStockRow[]);
+      setTotalRows(Number(payload.totalRows) || 0);
+      setTotalPages(Number(payload.totalPages) || 1);
+      setServerSummary(payload.summary || null);
+      setServerOptions(payload.options || {});
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      console.error("Failed to load Reelwise Stock report", error);
+      setReportRows([]);
+      setReportError(error instanceof Error ? error.message : "Failed to load Reelwise Stock report.");
+    } finally {
+      setReportLoading(false);
+    }
+  }, [availabilityFilter, bfFilter, erpFilter, excludeZeroAvailable, gsmFilter, maxAge, minAge, mrrDateFrom, mrrDateTo, mrrFilter, page, pageSize, searchTerm, sizeFilter, stockYetToIssueOnly]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadReport(), 300);
+    return () => { window.clearTimeout(timer); abortRef.current?.abort(); };
+  }, [loadReport]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [availabilityFilter, bfFilter, erpFilter, excludeZeroAvailable, gsmFilter, maxAge, minAge, mrrDateFrom, mrrDateTo, mrrFilter, searchTerm, sizeFilter, stockYetToIssueOnly]);
+
+  useAutoRefreshEffect(() => {
+    void loadReport();
+  });
 
   const allRows = reportRows;
 
-  const mrrOptions = useMemo(() => makeOptions(allRows.map((row) => row.mrrNo)), [allRows]);
-  const erpOptions = useMemo(() => makeOptions(allRows.map((row) => row.erp)), [allRows]);
-  const gsmOptions = useMemo(() => makeOptions(allRows.map((row) => row.gsm || "")), [allRows]);
-  const sizeOptions = useMemo(() => makeOptions(allRows.map((row) => row.size || "")), [allRows]);
-  const bfOptions = useMemo(() => makeOptions(allRows.map((row) => row.bf || "")), [allRows]);
+  const mrrOptions = useMemo(() => makeOptions(serverOptions.mrr || []), [serverOptions]);
+  const erpOptions = useMemo(() => makeOptions(serverOptions.erp || []), [serverOptions]);
+  const gsmOptions = useMemo(() => makeOptions(serverOptions.gsm || []), [serverOptions]);
+  const sizeOptions = useMemo(() => makeOptions(serverOptions.size || []), [serverOptions]);
+  const bfOptions = useMemo(() => makeOptions(serverOptions.bf || []), [serverOptions]);
 
-  const rows = useMemo<ReelwiseStockRow[]>(() => {
-    const loweredSearch = searchTerm.trim().toLowerCase();
-    const minAgeNumber = Number(minAge || 0);
-    const maxAgeNumber = Number(maxAge || 0);
-    const fromMs = mrrDateFrom ? new Date(mrrDateFrom).getTime() : null;
-    const toMs = mrrDateTo ? new Date(mrrDateTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
-
-    return allRows.filter((row) => {
-      if (
-        loweredSearch &&
-        ![
-          row.ourReelNo,
-          row.erp,
-          row.firmName,
-          row.supplierName,
-          row.mrrNo,
-          row.gsm,
-          row.size,
-          row.bf,
-        ].some((value) => String(value || "").toLowerCase().includes(loweredSearch))
-      ) {
-        return false;
-      }
-
-      if (mrrFilter && row.mrrNo !== mrrFilter) return false;
-      if (availabilityFilter === "gt500" && row.availableWeight <= 500) return false;
-      if (availabilityFilter === "lt500" && row.availableWeight >= 500) return false;
-      if (stockYetToIssueOnly && !(row.issuedWeight === 0 && row.availableWeight > 0)) return false;
-      if (excludeZeroAvailable && row.availableWeight <= 0) return false;
-      if (fromMs != null && new Date(row.mrrDate || 0).getTime() < fromMs) return false;
-      if (toMs != null && new Date(row.mrrDate || 0).getTime() > toMs) return false;
-      if (minAge && row.ageDays < minAgeNumber) return false;
-      if (maxAge && row.ageDays > maxAgeNumber) return false;
-      if (erpFilter && row.erp !== erpFilter) return false;
-      if (gsmFilter && String(row.gsm) !== gsmFilter) return false;
-      if (sizeFilter && String(row.size) !== sizeFilter) return false;
-      if (bfFilter && String(row.bf) !== bfFilter) return false;
-
-      return true;
-    }).sort((a, b) => {
-      const availabilityDiff = Number(a.availableWeight <= 0) - Number(b.availableWeight <= 0);
-      if (availabilityDiff !== 0) return availabilityDiff;
-      const dateDiff = new Date(b.mrrDate || 0).getTime() - new Date(a.mrrDate || 0).getTime();
-      if (dateDiff !== 0) return dateDiff;
-      return a.ourReelNo.localeCompare(b.ourReelNo);
-    });
-  }, [allRows, availabilityFilter, bfFilter, erpFilter, excludeZeroAvailable, gsmFilter, maxAge, minAge, mrrDateFrom, mrrDateTo, mrrFilter, searchTerm, sizeFilter, stockYetToIssueOnly]);
+  const rows = allRows;
 
   const summary = useMemo(() => {
+    if (serverSummary) return serverSummary;
     return {
       totalAvailableStock: rows.reduce((sum, row) => sum + row.availableWeight, 0),
       totalReels: rows.filter((row) => row.availableWeight > 0).length,
@@ -653,6 +641,19 @@ export function ReelwiseStockReport() {
               )}
             </tbody>
           </table>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-black bg-slate-50 px-3 py-2 text-xs font-bold">
+          <span>Showing {rows.length ? (page - 1) * pageSize + 1 : 0}-{Math.min(page * pageSize, totalRows)} of {totalRows} rows</span>
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1">Rows
+              <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="rounded border border-black bg-white px-1 py-1">
+                {[50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
+              </select>
+            </label>
+            <button type="button" disabled={page <= 1 || reportLoading} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50">Previous</button>
+            <span>Page {page} of {totalPages}</span>
+            <button type="button" disabled={page >= totalPages || reportLoading} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50">Next</button>
+          </div>
         </div>
       </div>
     </div>

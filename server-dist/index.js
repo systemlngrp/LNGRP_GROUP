@@ -10821,7 +10821,66 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
                 isOpening,
             };
         });
-        return res.json({ rows: reportRows, total: reportRows.length, unitOneFirm: unitOne });
+        const query = _req.query;
+        const exportAll = String(query.export || "") === "1";
+        const pageSize = exportAll ? 1000000 : Math.min(100, Math.max(1, Number(query.pageSize) || 100));
+        const requestedPage = Math.max(1, Number(query.page) || 1);
+        const text = String(query.search || "").trim().toLowerCase();
+        const equals = (name, value) => !String(query[name] || "").trim() || String(value ?? "") === String(query[name]).trim();
+        const from = String(query.dateFrom || "").trim();
+        const to = String(query.dateTo || "").trim();
+        const minAge = query.minAge === undefined || query.minAge === "" ? null : Number(query.minAge);
+        const maxAge = query.maxAge === undefined || query.maxAge === "" ? null : Number(query.maxAge);
+        const filteredRows = reportRows.filter((row) => {
+            const haystack = [row.ourReelNo, row.erp, row.firmName, row.supplierName, row.mrrNo, row.gsm, row.size, row.bf].join(" ").toLowerCase();
+            if (text && !haystack.includes(text))
+                return false;
+            if (!equals("mrr", row.mrrNo) || !equals("erp", row.erp) || !equals("gsm", row.gsm) || !equals("size", row.size) || !equals("bf", row.bf))
+                return false;
+            if (from && String(row.mrrDate || "") < from)
+                return false;
+            if (to && String(row.mrrDate || "") > to)
+                return false;
+            if (minAge !== null && row.ageDays < minAge)
+                return false;
+            if (maxAge !== null && row.ageDays > maxAge)
+                return false;
+            if (query.availability === "gt500" && row.availableWeight <= 500)
+                return false;
+            if (query.availability === "lt500" && row.availableWeight >= 500)
+                return false;
+            if (query.stockYetToIssue === "true" && !(row.issuedWeight === 0 && row.availableWeight > 0))
+                return false;
+            if (query.excludeZero === "true" && row.availableWeight <= 0)
+                return false;
+            return true;
+        }).sort((a, b) => {
+            const availability = Number(a.availableWeight <= 0) - Number(b.availableWeight <= 0);
+            if (availability)
+                return availability;
+            const date = new Date(b.mrrDate || 0).getTime() - new Date(a.mrrDate || 0).getTime();
+            if (date)
+                return date;
+            return String(a.ourReelNo).localeCompare(String(b.ourReelNo), undefined, { numeric: true }) || String(a.slipId).localeCompare(String(b.slipId));
+        });
+        const summary = filteredRows.reduce((sum, row) => ({
+            totalAvailableStock: sum.totalAvailableStock + row.availableWeight,
+            totalReels: sum.totalReels + (row.availableWeight > 0 ? 1 : 0),
+            totalValuation: sum.totalValuation + row.valuation,
+            totalMrrQty: sum.totalMrrQty + row.mrrQty,
+            totalOpeningQty: sum.totalOpeningQty + row.openingQty,
+            totalIssued: sum.totalIssued + row.issuedWeight,
+            totalReturned: sum.totalReturned + row.returnedWeight,
+            totalNetIssued: sum.totalNetIssued + row.netIssuedWeight,
+        }), { totalAvailableStock: 0, totalReels: 0, totalValuation: 0, totalMrrQty: 0, totalOpeningQty: 0, totalIssued: 0, totalReturned: 0, totalNetIssued: 0 });
+        const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+        const page = Math.min(requestedPage, totalPages);
+        const options = (field) => Array.from(new Set(filteredRows.map((row) => String(row[field] ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const start = (page - 1) * pageSize;
+        return res.json({
+            rows: filteredRows.slice(start, start + pageSize), totalRows: filteredRows.length, page, pageSize: exportAll ? filteredRows.length : pageSize, totalPages,
+            summary, options: { mrr: options("mrrNo"), erp: options("erp"), gsm: options("gsm"), size: options("size"), bf: options("bf") }, unitOneFirm: unitOne,
+        });
     }
     catch (error) {
         console.error("[REELWISE_STOCK] failed:", error);

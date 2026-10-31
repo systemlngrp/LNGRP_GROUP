@@ -1,2 +1,3 @@
 gspread>=6.1,<7
 google-auth>=2.29,<3
+pymysql>=1.1,<2

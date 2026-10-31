@@ -153,6 +153,7 @@ def build_import_rows(
     mrr_rows: list[dict[str, Any]],
     helper_rows: list[dict[str, Any]],
     start_date: dt.date,
+    allowed_erps: set[str] | None = None,
 ) -> tuple[list[ReelRow], dict[str, Any]]:
     eligible_mrr: dict[str, dict[str, Any]] = {}
     for row in mrr_rows:
@@ -212,9 +213,14 @@ def build_import_rows(
     duplicate_reels = {reel for reel, matching_rows in rows_by_reel.items() if len(matching_rows) > 1}
     conflicting_erps = {erp for erp, signatures in material_signatures.items() if len(signatures) > 1}
     safe_rows = [row for row in rows if key(row.our_reel_no) not in duplicate_reels and row.erp_code not in conflicting_erps]
+    missing_erp_rows = [row for row in safe_rows if allowed_erps is not None and row.erp_code not in allowed_erps]
+    if allowed_erps is not None:
+        safe_rows = [row for row in safe_rows if row.erp_code in allowed_erps]
     skipped = {
         "duplicate_reel_numbers": sorted(duplicate_reels),
         "conflicting_erp_codes": sorted(conflicting_erps),
+        "missing_erp_codes": sorted({row.erp_code for row in missing_erp_rows}),
+        "missing_erp_rows": len(missing_erp_rows),
         "skipped_rows": len(rows) - len(safe_rows),
     }
     return safe_rows, skipped
@@ -264,6 +270,20 @@ def unit_one(cur: pymysql.cursors.Cursor) -> dict[str, str]:
     raise RuntimeError("Configured Unit-I firm was not found.")
 
 
+def existing_unit_one_reel_erps() -> set[str]:
+    db = connect()
+    try:
+        with db.cursor() as cur:
+            firm = unit_one(cur)
+            cur.execute(
+                "SELECT erpCode FROM materials WHERE firmId=%s AND LOWER(TRIM(COALESCE(type,'')))='reel' AND UPPER(TRIM(COALESCE(uom,'')))='KGS' AND LOWER(TRIM(COALESCE(active,'yes'))) <> 'no'",
+                (firm["id"],),
+            )
+            return {clean(row["erpCode"]) for row in cur.fetchall() if clean(row["erpCode"])}
+    finally:
+        db.close()
+
+
 def dec(value: Any) -> Decimal:
     return Decimal(str(value or 0)).quantize(Decimal("0.01"))
 
@@ -273,16 +293,21 @@ def chunks(values: list[ReelRow], size: int) -> Iterable[list[ReelRow]]:
         yield values[offset : offset + size]
 
 
-def preview(rows: list[ReelRow], skipped: dict[str, Any], start_date: dt.date) -> None:
+def preview(rows: list[ReelRow], skipped: dict[str, Any], start_date: dt.date, existing_erps: set[str]) -> None:
     print(f"Source cutoff: {start_date.isoformat()}")
     print(f"Eligible MRR numbers: {len({row.mrr_no for row in rows})}")
     print(f"Helper rows / Our Reels: {len(rows)}")
     print(f"Unique ERP materials: {len({row.erp_code for row in rows})}")
-    print(f"Rows skipped as non-unique: {skipped['skipped_rows']}")
+    print(f"Matching rows selected: {len(rows)}")
+    print(f"Existing Unit-I Reel ERPs: {len(existing_erps)}")
+    print(f"Rows skipped: {skipped['skipped_rows']}")
+    print(f"Rows skipped for missing database ERP: {skipped['missing_erp_rows']}")
     if skipped["duplicate_reel_numbers"]:
         print(f"Duplicate Our Reel numbers skipped: {', '.join(skipped['duplicate_reel_numbers'])}")
     if skipped["conflicting_erp_codes"]:
         print(f"Conflicting ERP codes skipped: {', '.join(skipped['conflicting_erp_codes'])}")
+    if skipped["missing_erp_codes"]:
+        print(f"Missing database ERP codes skipped: {', '.join(skipped['missing_erp_codes'])}")
     print("Sample rows:")
     for row in rows[:10]:
         print(json.dumps({"sourceRow": row.source_row, "mrrNo": row.mrr_no, "erp": row.erp_code, "ourReelNo": row.our_reel_no, "weightKg": str(row.weight_kg), "rate": str(row.opening_rate)}))
@@ -294,13 +319,7 @@ def import_rows(db: pymysql.connections.Connection, rows: list[ReelRow]) -> tupl
         firm = unit_one(cur)
         cur.execute("SELECT id, name FROM suppliers")
         suppliers = {key(row["name"]): row for row in cur.fetchall()}
-        cur.execute("SELECT id, name FROM material_groups")
-        groups = {key(row["name"]): row for row in cur.fetchall()}
-        reel_group = groups.get("reel")
-        if not reel_group:
-            reel_group = {"id": str(uuid.uuid4()), "name": "Reel"}
-            cur.execute("INSERT INTO material_groups (id, name, updatedBy, updateTimestamp) VALUES (%s, %s, %s, %s)", (reel_group["id"], "Reel", "MRR Reel Import", now))
-        cur.execute("SELECT id, erpCode FROM materials")
+        cur.execute("SELECT id, erpCode FROM materials WHERE firmId=%s AND LOWER(TRIM(COALESCE(type,'')))='reel' AND UPPER(TRIM(COALESCE(uom,'')))='KGS' AND LOWER(TRIM(COALESCE(active,'yes'))) <> 'no'", (firm["id"],))
         materials = {}
         for existing in cur.fetchall():
             erp = clean(existing["erpCode"])
@@ -308,7 +327,7 @@ def import_rows(db: pymysql.connections.Connection, rows: list[ReelRow]) -> tupl
                 if erp in materials:
                     raise RuntimeError(f"Duplicate ERP Code {erp} already exists in materials.")
                 materials[erp] = existing
-        cur.execute("SELECT * FROM material_in_packing_slips")
+        cur.execute("SELECT * FROM material_in_packing_slips WHERE firmId=%s", (firm["id"],))
         slips = {}
         for existing in cur.fetchall():
             reel_key = key(existing["ourReelNo"])
@@ -328,17 +347,10 @@ def import_rows(db: pymysql.connections.Connection, rows: list[ReelRow]) -> tupl
         created_materials = 0
         updated_materials = 0
         for erp_code in sorted({row.erp_code for row in rows}):
-            sample = next(row for row in rows if row.erp_code == erp_code)
             material = materials.get(erp_code)
-            material_id = clean(material["id"]) if material else str(uuid.uuid4())
-            name = f"{erp_code} - Size: {sample.size} CM X GSM: {sample.gsm} X BF: {sample.bf}   Color - {sample.color}"
-            if material:
-                cur.execute("UPDATE materials SET firmId=%s, type='Reel', name=%s, uom='KGS', materialGroupId=%s, color=%s, size=%s, gsm=%s, bf=%s, active='Yes', updatedBy=%s, updateTimestamp=%s WHERE id=%s", (firm["id"], name, reel_group["id"], sample.color, sample.size, sample.gsm, sample.bf, "MRR Reel Import", now, material_id))
-                updated_materials += 1
-            else:
-                cur.execute("INSERT INTO materials (id, firmId, type, erpCode, name, uom, materialGroupId, color, size, gsm, bf, active, updatedBy, updateTimestamp) VALUES (%s, %s, 'Reel', %s, %s, 'KGS', %s, %s, %s, %s, %s, 'Yes', %s, %s)", (material_id, firm["id"], erp_code, name, reel_group["id"], sample.color, sample.size, sample.gsm, sample.bf, "MRR Reel Import", now))
-                created_materials += 1
-            material_ids[erp_code] = material_id
+            if not material:
+                raise RuntimeError(f"ERP {erp_code} is not an existing active Unit-I Reel material.")
+            material_ids[erp_code] = clean(material["id"])
 
         inserted_reels = 0
         updated_reels = 0
@@ -455,8 +467,9 @@ def main() -> int:
         load_runtime_env()
         credentials = credential_path(args.credentials)
         mrr_rows, helper_rows = load_sheet_rows(credentials, args.spreadsheet_id)
-        rows, skipped = build_import_rows(mrr_rows, helper_rows, start_date)
-        preview(rows, skipped, start_date)
+        existing_erps = existing_unit_one_reel_erps()
+        rows, skipped = build_import_rows(mrr_rows, helper_rows, start_date, existing_erps)
+        preview(rows, skipped, start_date, existing_erps)
         if not rows:
             print("No eligible helper rows found; no database changes made.")
             return 0

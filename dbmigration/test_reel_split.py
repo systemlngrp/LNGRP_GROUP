@@ -6,6 +6,7 @@ from pathlib import Path
 from reel_automation import JobPlan
 from reel_issue_to_dbreel import block_apply_for_zero_stock, stock_block_diagnostics
 from reel_return_to_dbreel import load_return_csv, return_key, validate_and_filter_returns
+from reel_db_stock import calculate_available_weight, normalize_erp
 
 
 class ReelSplitTests(unittest.TestCase):
@@ -15,7 +16,7 @@ class ReelSplitTests(unittest.TestCase):
             ["ERP", "Available Weight"],
             [["7020897", "0"], ["7020897", "0"]],
         )}
-        diagnostics = stock_block_diagnostics(source, [plan])
+        diagnostics = stock_block_diagnostics(source, [plan], stock_source="sheet")
         self.assertEqual(diagnostics[0]["job_no"], "6935")
         self.assertEqual(diagnostics[0]["matching_reel_count"], 2)
         self.assertEqual(diagnostics[0]["available_weight"], 0)
@@ -28,9 +29,32 @@ class ReelSplitTests(unittest.TestCase):
             ["ERP", "Available Weight"],
             [["7020897", "2500"]],
         )}
-        diagnostics = stock_block_diagnostics(source, [plan])
+        diagnostics = stock_block_diagnostics(source, [plan], stock_source="sheet")
         self.assertEqual(diagnostics, [])
         block_apply_for_zero_stock(diagnostics)
+
+    def test_database_stock_is_positive_for_matching_reel(self):
+        plan = JobPlan("10754", dt.date(2026, 10, 31), ["7220425"], 1620)
+        source = {
+            "DATABASE STOCK": (
+                ["ERP", "Available Weight"],
+                [[" 7220425 ", "5590"]],
+            )
+        }
+        diagnostics = stock_block_diagnostics(source, [plan])
+        self.assertEqual(diagnostics, [])
+
+    def test_database_stock_missing_erp_is_reported(self):
+        plan = JobPlan("10706", dt.date(2026, 10, 31), ["7220534"], 1062)
+        source = {"DATABASE STOCK": (["ERP", "Available Weight"], [])}
+        diagnostics = stock_block_diagnostics(source, [plan])
+        self.assertEqual(diagnostics[0]["reason"], "no matching reel exists in database")
+
+    def test_database_stock_available_weight_and_erp_normalization(self):
+        self.assertEqual(normalize_erp(" 7220482 "), "7220482")
+        self.assertEqual(normalize_erp(7220482.0), "7220482")
+        self.assertEqual(calculate_available_weight("6524", "100", "500"), 6124.0)
+        self.assertEqual(calculate_available_weight("100", "0", "125"), 0.0)
 
     def test_return_csv_requires_business_columns(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -23,6 +23,8 @@ import gspread
 from google.oauth2.service_account import Credentials
 from gspread.exceptions import APIError
 
+from reel_db_stock import load_unit_one_reel_stock, normalize_erp
+
 
 SPREADSHEET_ID = os.getenv(
     "REEL_SPREADSHEET_ID",
@@ -41,6 +43,7 @@ SHEET_STOCK = "REEL WISE STOCK"
 SHEET_ISSUE = "REEL ISSUE"
 SHEET_RETURN = "REEL RETURN"
 SHEET_DB = "DBREEL"
+DATABASE_STOCK = "DATABASE STOCK"
 
 
 def clean(value: Any) -> str:
@@ -213,6 +216,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--spreadsheet-id", default=SPREADSHEET_ID)
     parser.add_argument("--start-date", default=DEFAULT_START_DATE.isoformat())
+    parser.add_argument("--stock-source", choices=("database", "sheet"), default="database")
     parser.add_argument("--batch-size", type=int, default=50)
     parser.add_argument("--start-batch", type=int, default=1)
     parser.add_argument(
@@ -264,8 +268,10 @@ def records(worksheet: gspread.Worksheet) -> tuple[list[str], list[list[str]]]:
     return (values[0] if values else [], values[1:] if len(values) > 1 else [])
 
 
-def load_source_book(book: gspread.Spreadsheet) -> dict[str, tuple[list[str], list[list[str]]]]:
-    names = ["HELPER SHEET", SHEET_DAILY, SHEET_PENDING, SHEET_ITEMS, SHEET_STOCK, SHEET_ISSUE, SHEET_RETURN, SHEET_DB]
+def load_source_book(book: gspread.Spreadsheet, include_stock: bool = False) -> dict[str, tuple[list[str], list[list[str]]]]:
+    names = ["HELPER SHEET", SHEET_DAILY, SHEET_PENDING, SHEET_ITEMS, SHEET_ISSUE, SHEET_RETURN, SHEET_DB]
+    if include_stock:
+        names.insert(4, SHEET_STOCK)
     return {name: records(book.worksheet(name)) for name in names}
 
 
@@ -280,7 +286,11 @@ def load_return_csv(path: str | None) -> list[dict[str, str]]:
     return rows
 
 
-def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: dt.date) -> list[JobPlan]:
+def build_plans(
+    data: dict[str, tuple[list[str], list[list[str]]]],
+    start_date: dt.date,
+    stock_source: str = "database",
+) -> list[JobPlan]:
     daily_headers, daily_rows = data[SHEET_DAILY]
     daily = header_map(daily_headers)
     jobs: dict[str, JobPlan] = {}
@@ -290,7 +300,7 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
         job_no = get_any(row, daily, "Job Card No.", "JOB NO.")
         if not production_date or production_date < start_date or not job_no:
             continue
-        reel_codes = parse_reel_codes(get_any(row, daily, "ERP CODE REEL"))
+        reel_codes = [normalize_erp(code) for code in parse_reel_codes(get_any(row, daily, "ERP CODE REEL"))]
         plan = jobs.get(job_no)
         if plan is None:
             plan = JobPlan(job_no, production_date, reel_codes, 0.0)
@@ -308,7 +318,11 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
 
     item_headers, item_rows = data[SHEET_ITEMS]
     item = header_map(item_headers)
-    material_erps = {get(row, item, "ERP") for row in item_rows if get(row, item, "ERP")}
+    material_erps = {
+        normalize_erp(get(row, item, "ERP"))
+        for row in item_rows
+        if get(row, item, "ERP")
+    }
 
     helper_headers, helper_rows = data["HELPER SHEET"]
     helper = header_map(helper_headers)
@@ -319,7 +333,7 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
         record = {
             "our_reel_no": get(row, helper, "Our Reel Number"),
             "supplier_reel_no": get(row, helper, "Supplier Reel No."),
-            "erp": get(row, helper, "ERP Code"),
+            "erp": normalize_erp(get(row, helper, "ERP Code")),
             "supplier": get(row, helper, "SUPPLIER"),
             "size": get(row, helper, "Size"),
             "gsm": get(row, helper, "GSM"),
@@ -332,12 +346,13 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
         if record["our_reel_no"]:
             helper_by_reel[record["our_reel_no"]] = record
 
-    stock_headers, stock_rows = data[SHEET_STOCK]
+    stock_sheet_name = DATABASE_STOCK if stock_source == "database" else SHEET_STOCK
+    stock_headers, stock_rows = data[stock_sheet_name]
     stock = header_map(stock_headers)
     stock_by_erp: dict[str, list[StockReel]] = defaultdict(list)
     for raw in stock_rows:
         row = pad(raw, len(stock_headers))
-        erp = get(row, stock, "ERP")
+        erp = normalize_erp(get(row, stock, "ERP"))
         if not erp:
             continue
         stock_by_erp[erp].append(
@@ -357,22 +372,36 @@ def build_plans(data: dict[str, tuple[list[str], list[list[str]]]], start_date: 
     issue_headers, issue_rows = data[SHEET_ISSUE]
     issue = header_map(issue_headers)
     issue_by_job: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    issue_by_reel: dict[str, float] = defaultdict(float)
     for raw in issue_rows:
         row = pad(raw, len(issue_headers))
         job_no = get_any(row, issue, "JOB NO.", "JOB")
         reel_no = get_any(row, issue, "QR Scan", "Our Reel Number")
         if job_no:
             issue_by_job[job_no].append((reel_no, number(get(row, issue, "Weight"))))
+        if reel_no:
+            issue_by_reel[reel_no] += number(get(row, issue, "Weight"))
 
     return_headers, return_rows = data[SHEET_RETURN]
     returned = header_map(return_headers)
     return_by_job: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    return_by_reel: dict[str, float] = defaultdict(float)
     for raw in return_rows:
         row = pad(raw, len(return_headers))
         job_no = get_any(row, returned, "JOB", "JOB NO.")
         reel_no = get_any(row, returned, "QR Scan", "Our Reel Number")
         if job_no:
             return_by_job[job_no].append((reel_no, number(get(row, returned, "Weight"))))
+        if reel_no:
+            return_by_reel[reel_no] += number(get(row, returned, "Weight"))
+
+    # Database mode is deliberately authoritative for stock availability.  The
+    # database stock loader already applies database issue/return aggregates.
+    # Sheet issue/return rows remain available below for job history,
+    # duplicate-prevention, and the legacy sheet mode, but must not be applied
+    # a second time to database quantities.  Those rows can include historical
+    # transactions for reels that were imported as opening stock and may exceed
+    # the imported opening quantity.
 
     for plan in jobs.values():
         existing_issue = issue_by_job.get(plan.job_no, [])
@@ -797,8 +826,20 @@ def main() -> int:
         )
 
     book = authorize(str(credentials)).open_by_key(args.spreadsheet_id)
-    data = load_source_book(book)
-    plans = build_plans(data, start_date)
+    data = load_source_book(book, include_stock=args.stock_source == "sheet")
+    if args.stock_source == "database":
+        database_stock = load_unit_one_reel_stock()
+        data[DATABASE_STOCK] = (
+            ["Our Reel No.", "ERP", "Suppliers Name", "SIZE", "GSM", "BF", "Weight", "Available Weight", "Opening Rate", "SUPLIEER REEL"],
+            [
+                [
+                    row["our_reel_no"], row["erp"], row["supplier"], row["size"], row["gsm"], row["bf"],
+                    row["weight"], row["available_weight"], row["rate"], row.get("supplier_reel_no", ""),
+                ]
+                for row in database_stock
+            ],
+        )
+    plans = build_plans(data, start_date, stock_source=args.stock_source)
     if args.return_source:
         raise SystemExit("--return-source is not supported in this workflow; returns come only from existing REEL RETURN rows.")
     if is_production_order_resume(args.resume_from_job):

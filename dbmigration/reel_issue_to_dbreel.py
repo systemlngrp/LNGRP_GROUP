@@ -24,6 +24,7 @@ from reel_automation import (
     authorize,
     build_plans,
     clean,
+    DATABASE_STOCK,
     is_production_order_resume,
     load_source_book,
     make_batches,
@@ -32,14 +33,16 @@ from reel_automation import (
     resolve_credentials_path,
     write_log,
 )
+from reel_db_stock import load_unit_one_reel_stock, normalize_erp
 
 
 def stock_block_diagnostics(
     source_data: Mapping[str, tuple[list[str], list[list[str]]]],
     plans: Sequence[JobPlan],
+    stock_source: str = "database",
 ) -> list[dict[str, Any]]:
     """Return one diagnostic per plan/ERP with no positive stock available."""
-    headers, rows = source_data["REEL WISE STOCK"]
+    headers, rows = source_data[DATABASE_STOCK if stock_source == "database" else "REEL WISE STOCK"]
     indexes = {clean(value).casefold(): index for index, value in enumerate(headers)}
     erp_index = indexes.get("erp")
     available_index = indexes.get("available weight")
@@ -50,7 +53,7 @@ def stock_block_diagnostics(
     for row in rows:
         if len(row) <= max(erp_index, available_index):
             continue
-        erp = clean(row[erp_index])
+        erp = normalize_erp(row[erp_index])
         if erp:
             stock_by_erp[erp].append(number(row[available_index]))
 
@@ -62,7 +65,11 @@ def stock_block_diagnostics(
             if values and available <= 0:
                 reason = "all matching reels are exhausted (available weight is zero)"
             elif not values:
-                reason = "no matching reel exists in REEL WISE STOCK"
+                reason = (
+                    "no matching reel exists in database"
+                    if stock_source == "database"
+                    else "no matching reel exists in REEL WISE STOCK"
+                )
             else:
                 continue
             diagnostics.append({
@@ -89,7 +96,7 @@ def block_apply_for_zero_stock(diagnostics: Sequence[Mapping[str, Any]]) -> None
     raise SystemExit(
         "Apply blocked before any write because selected jobs have no usable stock: "
         + details
-        + ". Add/receive unused reels in REEL WISE STOCK and rerun --dry-run."
+        + ". Add/receive unused database reels and rerun --dry-run."
     )
 
 
@@ -104,6 +111,7 @@ def parse_args() -> argparse.Namespace:
         default="1MAZwiGb5bgNXyAW-Bv4LfrdBF6mtYLyNco5IUDPnCfQ",
     )
     parser.add_argument("--start-date", default=DEFAULT_START_DATE.isoformat())
+    parser.add_argument("--stock-source", choices=("database", "sheet"), default="database")
     parser.add_argument("--batch-size", type=int, default=50)
     parser.add_argument("--start-batch", type=int, default=1)
     parser.add_argument("--max-batches", type=int, default=0)
@@ -127,8 +135,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     book = authorize(str(credentials)).open_by_key(args.spreadsheet_id)
-    source_data = load_source_book(book)
-    plans = build_plans(source_data, start_date)
+    source_data = load_source_book(book, include_stock=args.stock_source == "sheet")
+    if args.stock_source == "database":
+        database_stock = load_unit_one_reel_stock()
+        source_data[DATABASE_STOCK] = (
+            [
+                "Our Reel No.", "ERP", "Suppliers Name", "SIZE", "GSM", "BF",
+                "Weight", "Available Weight", "Opening Rate", "SUPLIEER REEL",
+            ],
+            [
+                [
+                    row["our_reel_no"], row["erp"], row["supplier"], row["size"], row["gsm"], row["bf"],
+                    row["weight"], row["available_weight"], row["rate"], row.get("supplier_reel_no", ""),
+                ]
+                for row in database_stock
+            ],
+        )
+    plans = build_plans(source_data, start_date, stock_source=args.stock_source)
 
     if is_production_order_resume(args.resume_from_job):
         args.resume_from_job = ""
@@ -141,7 +164,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     batches = make_batches(plans, args.batch_size, args.start_batch, args.max_batches)
     selected_plans = [plan for _, batch in batches for plan in batch]
-    diagnostics = stock_block_diagnostics(source_data, selected_plans)
+    diagnostics = stock_block_diagnostics(source_data, selected_plans, stock_source=args.stock_source)
     write_log(args.log, plans, args.batch_size)
     logging.info("Found %d jobs from %s onward", len(plans), start_date.isoformat())
     logging.info("Planned issue rows: %d", sum(len(plan.issue_rows) for plan in selected_plans))
