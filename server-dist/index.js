@@ -11804,6 +11804,14 @@ const createHandlers = (tableName) => {
                 // New Order Numbers are assigned by the firm-document generator below.
                 if (tableName === 'orders') {
                     try {
+                        const requestedStatus = String(data.status || "Pending PH").trim();
+                        if (!["Cancelled", "Canceled"].includes(requestedStatus)) {
+                            // Salesman approval is automatic. Orders enter scheduling directly
+                            // and retain an audit timestamp/user for traceability.
+                            data.status = "Pending Scheduling";
+                            data.approvedTimestamp = String(data.approvedTimestamp || new Date().toISOString());
+                            data.approvedEmail = String(data.approvedEmail || data.updatedBy || data.orderBy || "System").trim() || "System";
+                        }
                         const orderQty = Number(data.qty || 0);
                         const orderRate = Number(data.rate || 0);
                         data.orderAmount =
@@ -11815,7 +11823,7 @@ const createHandlers = (tableName) => {
                         // 2) Punch Date (orderDate) falls into a Realization Rate Chart range
                         // 3) Last RAPC 1 (latest productions.realizationPerKg for same item) >= Realization Rate (from chart)
                         // If auto-approved: fill approvedTimestamp + approvedEmail
-                        const currentStatus = String(data.status || "Pending PH").trim();
+                        const currentStatus = String(data.status || "Pending Scheduling").trim();
                         const alreadyApproved = hasWorkflowValue(data.approvedTimestamp) || hasWorkflowValue(data.approvedEmail);
                         if (!alreadyApproved && (currentStatus === "Pending PH" || !currentStatus)) {
                             const itemSource = normalizeOrderItemSourceValue(data.itemSource);
@@ -12416,6 +12424,13 @@ const createHandlers = (tableName) => {
                 const placeholders = keys.map(() => "?").join(",");
                 const columnNames = keys.map(k => `\`${k}\``).join(",");
                 const updates = keys.map(k => `\`${k}\`=VALUES(\`${k}\`)`).join(",");
+                if (tableName === "orders" && String(data.orderNo || "").trim()) {
+                    const duplicateId = String(data.id || "").trim();
+                    const [duplicateRows] = await db.query("SELECT id, orderNo FROM `orders` WHERE LOWER(TRIM(orderNo)) = LOWER(TRIM(?)) AND id <> ? LIMIT 1", [String(data.orderNo).trim(), duplicateId]);
+                    if (duplicateRows[0]?.id) {
+                        return res.status(409).json({ error: `Order No. ${data.orderNo} already exists. Order numbers must be unique.` });
+                    }
+                }
                 const query = `INSERT INTO \`${tableName}\` (${columnNames}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updates}`;
                 if (tableName === "orders") {
                     const approvalStatuses = new Set(["Pending Scheduling", "Scheduled"]);
@@ -16524,8 +16539,8 @@ app.post("/api/orders/bulk-upload", requireAuth, async (req, res) => {
         const now = new Date().toISOString();
         for (const row of normalized) {
             const orderId = crypto.randomUUID();
-            await conn.query(`INSERT INTO \`orders\` (id, firmId, firmName, orderNo, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, status, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending PH', ?, ?)`, [orderId, firm.id, firm.firmName, row.orderNo, row.orderDate, row.companyId, row.poNumber || "", row.erpCode || "", row.itemId, row.itemSource || "FG", row.npdId || null, row.qty, row.rate, row.amount, "Bulk CSV Upload", now]);
+            await conn.query(`INSERT INTO \`orders\` (id, firmId, firmName, orderNo, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, status, approvedTimestamp, approvedEmail, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Scheduling', ?, ?, ?, ?)`, [orderId, firm.id, firm.firmName, row.orderNo, row.orderDate, row.companyId, row.poNumber || "", row.erpCode || "", row.itemId, row.itemSource || "FG", row.npdId || null, row.qty, row.rate, row.amount, now, "Bulk CSV Upload", "Bulk CSV Upload", now]);
             await conn.query(`INSERT INTO \`orders_schedule\` (id, orderId, firmId, firmName, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp)
          VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`, [crypto.randomUUID(), orderId, firm.id, firm.firmName, row.scheduledDate, row.qty, "Bulk CSV Upload", now]);
         }
