@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import {
   Material,
   MaterialIn,
@@ -62,6 +62,27 @@ export function ErpWiseReelStockReport() {
   const [sizeFilter, setSizeFilter] = useState("");
   const [gsmFilter, setGsmFilter] = useState("");
   const [bfFilter, setBfFilter] = useState("");
+  const [apiRows, setApiRows] = useState<ReelStockRow[]>([]);
+  const [apiLoading, setApiLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [apiTotals, setApiTotals] = useState<any>(null);
+  const [apiOptions, setApiOptions] = useState<any>({});
+  const abortRef = useRef<AbortController | null>(null);
+  const loadApiReport = async () => {
+    abortRef.current?.abort(); const controller = new AbortController(); abortRef.current = controller;
+    setApiLoading(true); setApiError(null);
+    try {
+      const params = new URLSearchParams({ page: "1", pageSize: "100" });
+      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      if (mrrFilter) params.set("mrr", mrrFilter); if (erpFilter) params.set("erp", erpFilter);
+      if (sizeFilter) params.set("size", sizeFilter); if (gsmFilter) params.set("gsm", gsmFilter); if (bfFilter) params.set("bf", bfFilter);
+      const response = await fetch(`/api/reports/erp-wise-reel-stock?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal });
+      const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body?.error || response.statusText);
+      setApiRows(Array.isArray(body.rows) ? body.rows : []); setApiTotals(body.summary || null); setApiOptions(body.options || {});
+    } catch (error) { if ((error as Error).name !== "AbortError") { setApiRows([]); setApiError(error instanceof Error ? error.message : "Unable to load ERP Wise Reel Stock."); } }
+    finally { if (!controller.signal.aborted) setApiLoading(false); }
+  };
+  useEffect(() => { const timer = window.setTimeout(() => void loadApiReport(), 250); return () => { window.clearTimeout(timer); abortRef.current?.abort(); }; }, [searchTerm, mrrFilter, erpFilter, sizeFilter, gsmFilter, bfFilter]);
 
   const allReelRows = useMemo(() => buildReelStockRows({
     materials,
@@ -117,12 +138,12 @@ export function ErpWiseReelStockReport() {
       .sort((a, b) => a.erp.localeCompare(b.erp) || a.size - b.size || a.gsm - b.gsm || a.bf - b.bf);
   }, [allReelRows, materials, mrrFilter]);
   const mrrOptions = useMemo(() => makeOptions(allReelRows.map((row) => row.mrrNo)), [allReelRows]);
-  const erpOptions = useMemo(() => makeOptions(allRows.map((row) => row.erp)), [allRows]);
-  const sizeOptions = useMemo(() => makeOptions(allRows.map((row) => row.size || "")), [allRows]);
-  const gsmOptions = useMemo(() => makeOptions(allRows.map((row) => row.gsm || "")), [allRows]);
-  const bfOptions = useMemo(() => makeOptions(allRows.map((row) => row.bf || "")), [allRows]);
+  const erpOptions = useMemo(() => makeOptions(apiOptions.erp || allRows.map((row) => row.erp)), [apiOptions, allRows]);
+  const sizeOptions = useMemo(() => makeOptions(apiOptions.size || allRows.map((row) => row.size || "")), [apiOptions, allRows]);
+  const gsmOptions = useMemo(() => makeOptions(apiOptions.gsm || allRows.map((row) => row.gsm || "")), [apiOptions, allRows]);
+  const bfOptions = useMemo(() => makeOptions(apiOptions.bf || allRows.map((row) => row.bf || "")), [apiOptions, allRows]);
 
-  const rows = useMemo<ReelStockRow[]>(() => {
+  const clientRows = useMemo<ReelStockRow[]>(() => {
     const query = searchTerm.trim().toLowerCase();
     return allRows
       .filter((row) => {
@@ -140,10 +161,11 @@ export function ErpWiseReelStockReport() {
         return a.erp.localeCompare(b.erp) || a.size - b.size || a.gsm - b.gsm || a.bf - b.bf;
       });
   }, [allRows, bfFilter, erpFilter, gsmFilter, searchTerm, sizeFilter]);
+  const rows = apiRows.length ? apiRows : clientRows;
 
   const totals = useMemo(
     () =>
-      rows.reduce(
+      (apiTotals || rows.reduce(
         (acc, row) => ({
           openingStock: acc.openingStock + row.openingStock,
           receipts: acc.receipts + row.receipts,
@@ -157,13 +179,13 @@ export function ErpWiseReelStockReport() {
           noOfReels: acc.noOfReels + row.noOfReels,
         }),
         { openingStock: 0, receipts: 0, issued: 0, returned: 0, netIssued: 0, availableWeight: 0, tallyStock: 0, stockDifference: 0, valuation: 0, noOfReels: 0 }
-      ),
-    [rows]
+      ) ),
+    [apiTotals, rows]
   );
 
   const totalErps = useMemo(
-    () => new Set(rows.map((row) => row.erp).filter(Boolean)).size,
-    [rows]
+    () => apiOptions.erp?.length || new Set(rows.map((row) => row.erp).filter(Boolean)).size,
+    [apiOptions, rows]
   );
 
   const hasActiveFilters = Boolean(searchTerm || mrrFilter || erpFilter || sizeFilter || gsmFilter || bfFilter);
@@ -304,7 +326,11 @@ export function ErpWiseReelStockReport() {
               ) : null}
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {apiLoading ? (
+                <tr><td colSpan={16} className="px-6 py-10 text-center text-indigo-900 font-bold border-2 border-black">Loading ERP Wise Reel Stock…</td></tr>
+              ) : apiError ? (
+                <tr><td colSpan={16} className="px-6 py-10 text-center text-red-900 font-bold border-2 border-black">Unable to load ERP Wise Reel Stock: {apiError}</td></tr>
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={16} className="px-6 py-10 text-center text-black font-medium border-2 border-black">
                     No reel stock rows found.

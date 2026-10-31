@@ -11313,6 +11313,55 @@ app.get("/api/reports/printing-shift", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/reports/erp-wise-reel-stock", requireAuth, async (req, res) => {
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "Database unavailable." });
+    const [firms] = await db.query("SELECT id, firmName FROM firms ORDER BY firmName");
+    const unitOne = (firms as any[]).find((row) => String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "").match(/(unit1|uniti)$/));
+    if (!unitOne?.id) return res.status(500).json({ error: "Unit-I firm is not configured." });
+    const [rawRows] = await db.query(`
+      SELECT ps.id slipId, ps.materialId, ps.materialInId, ps.weightKg, ps.openingRate,
+             ps.ourReelNo, m.erpCode, m.name itemName, m.size, m.gsm, m.bf,
+             m.openingRate materialOpeningRate, COALESCE(mi.date, '') mrrDate,
+             mi.lines, COALESCE(i.issuedWeight,0) issuedWeight, COALESCE(r.returnedWeight,0) returnedWeight,
+             COALESCE(mfo.openingQty,0) tallyStock
+      FROM material_in_packing_slips ps
+      JOIN materials m ON m.id=ps.materialId
+      LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING'
+      LEFT JOIN (SELECT packingSlipId,SUM(COALESCE(weightKg,0)) issuedWeight FROM material_issue_reel_lines GROUP BY packingSlipId) i ON i.packingSlipId=ps.id
+      LEFT JOIN (SELECT packingSlipId,SUM(COALESCE(weightKg,0)) returnedWeight FROM material_return_reel_lines GROUP BY packingSlipId) r ON r.packingSlipId=ps.id
+      LEFT JOIN material_firm_openings mfo ON mfo.materialId=ps.materialId AND mfo.firmId=?
+      WHERE ps.firmId=? AND LOWER(TRIM(COALESCE(m.type,'')))='reel' AND LOWER(TRIM(COALESCE(m.active,'yes'))) <> 'no'
+        AND (UPPER(TRIM(ps.materialInId))='OPENING' OR mi.id IS NOT NULL)
+    `, [unitOne.id, unitOne.id]);
+    const num = (v: unknown) => Number(v || 0);
+    const lines = (v: unknown): any[] => { try { const x = Array.isArray(v) ? v : JSON.parse(String(v || '[]')); return Array.isArray(x) ? x : []; } catch { return []; } };
+    const groups = new Map<string, any>();
+    for (const row of rawRows as any[]) {
+      const erp = String(row.erpCode || '').trim(); if (!erp) continue;
+      const opening = String(row.materialInId || '').trim().toLowerCase() === 'opening';
+      const weight = num(row.weightKg), issued = num(row.issuedWeight), returned = num(row.returnedWeight);
+      const available = Math.max(0, weight + returned - issued);
+      const line = lines(row.lines).find((x) => String(x?.itemId || '') === String(row.materialId || ''));
+      const rate = opening ? num(row.openingRate || row.materialOpeningRate) : num(line?.invoiceRate ?? line?.poRate ?? line?.rate ?? row.materialOpeningRate);
+      const current = groups.get(erp) || { materialId: String(row.materialId), erp, itemName: String(row.itemName || ''), size: num(row.size), gsm: num(row.gsm), bf: num(row.bf), openingStock: 0, receipts: 0, issued: 0, returned: 0, availableWeight: 0, tallyStock: num(row.tallyStock), valuation: 0, noOfReels: 0 };
+      if (opening) current.openingStock += weight; else current.receipts += weight;
+      current.issued += issued; current.returned += returned; current.availableWeight += available; current.valuation += available * rate;
+      if (available > 0) current.noOfReels += 1;
+      groups.set(erp, current);
+    }
+    let rows = Array.from(groups.values()).map((row) => ({ ...row, openingStock: Number(row.openingStock.toFixed(2)), receipts: Number(row.receipts.toFixed(2)), issued: Number(row.issued.toFixed(2)), returned: Number(row.returned.toFixed(2)), netIssued: Number((row.issued-row.returned).toFixed(2)), availableWeight: Number(row.availableWeight.toFixed(2)), valuation: Number(row.valuation.toFixed(2)), rate: row.availableWeight > 0 ? Number((row.valuation/row.availableWeight).toFixed(2)) : 0, stockDifference: row.tallyStock ? Number((row.tallyStock-row.availableWeight).toFixed(2)) : null }));
+    const q = req.query as Record<string, unknown>; const search = String(q.search || '').trim().toLowerCase();
+    rows = rows.filter((row) => (!search || [row.erp,row.itemName,row.size,row.gsm,row.bf].join(' ').toLowerCase().includes(search)) && (!q.erp || row.erp === String(q.erp)) && (!q.size || String(row.size) === String(q.size)) && (!q.gsm || String(row.gsm) === String(q.gsm)) && (!q.bf || String(row.bf) === String(q.bf)));
+    rows.sort((a,b) => Number(b.availableWeight>0)-Number(a.availableWeight>0) || a.erp.localeCompare(b.erp, undefined, {numeric:true}) || a.size-b.size || a.gsm-b.gsm || a.bf-b.bf);
+    const summary = rows.reduce((s,r) => ({ openingStock:s.openingStock+r.openingStock, receipts:s.receipts+r.receipts, issued:s.issued+r.issued, returned:s.returned+r.returned, netIssued:s.netIssued+r.netIssued, availableWeight:s.availableWeight+r.availableWeight, tallyStock:s.tallyStock+r.tallyStock, stockDifference:s.stockDifference+(r.stockDifference||0), valuation:s.valuation+r.valuation, noOfReels:s.noOfReels+r.noOfReels }), { openingStock:0, receipts:0, issued:0, returned:0, netIssued:0, availableWeight:0, tallyStock:0, stockDifference:0, valuation:0, noOfReels:0 });
+    const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 100)); const totalRows=rows.length; const totalPages=Math.max(1,Math.ceil(totalRows/pageSize)); const page=Math.min(totalPages,Math.max(1,Number(q.page)||1));
+    const options=(field:string)=>Array.from(new Set(rows.map((r:any)=>String(r[field]??'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+    return res.json({ rows: rows.slice((page-1)*pageSize,page*pageSize), totalRows, page, pageSize, totalPages, summary, options:{erp:options('erp'),size:options('size'),gsm:options('gsm'),bf:options('bf')}, unitOneFirm: unitOne });
+  } catch (error) { console.error('[ERP_WISE_REEL_STOCK] failed:', error); return res.status(500).json({ error: 'Could not load ERP Wise Reel Stock report.' }); }
+});
+
 app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
   try {
     const db = await getPool();
