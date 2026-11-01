@@ -11839,7 +11839,7 @@ const createHandlers = (tableName: string) => {
         requestUser
       );
       let materialOpening: null | { firmId: string; qty: number; rate: number; value: number } = null;
-      let whatsappDelivery: { status: "Sent" | "Failed" | "Not Configured" | "Already Sent" | "In Progress"; error?: string; failedStage?: WhatsappSendStage; sentAt?: string } | undefined;
+      let whatsappDelivery: WhatsappComplaintDelivery | undefined;
       try {
         if (tableName === "whatsapp_configs") {
           const id = String(data.id || "").trim();
