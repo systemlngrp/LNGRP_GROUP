@@ -28,7 +28,10 @@ export function MaterialInMaster() {
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [services] = useData<Service>("services", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
+  // Reel details are already embedded in Reel MRR line JSON. Do not load the
+  // entire packing-slip table on the master list; it can contain thousands of
+  // rows and freezes the browser during initial render.
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { enabled: false });
   const [settings] = useData<Setting>("settings", []);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [reelLabelMenuId, setReelLabelMenuId] = useState<string | null>(null);

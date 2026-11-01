@@ -6009,7 +6009,7 @@ async function generateStandaloneProductionJobNumber(
   return `${prefix}/${fy}/${String(last + 1).padStart(5, "0")}`;
 }
 
-async function generateScheduleNo(db: mysql.Pool, scheduledDate?: string) {
+async function generateScheduleNo(db: mysql.Pool | mysql.PoolConnection, scheduledDate?: string) {
   return generateSimpleTransactionNumber(db, "orders_schedule", "scheduleNo", "SCH", scheduledDate);
 }
 
@@ -7098,6 +7098,7 @@ async function initDb(retries = 5) {
         CREATE TABLE IF NOT EXISTS \`orders\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`orderNo\` VARCHAR(100),
+          \`externalOrderId\` VARCHAR(100),
           \`orderDate\` VARCHAR(50) NOT NULL,
           \`companyId\` VARCHAR(36) NOT NULL,
           \`poNumber\` VARCHAR(100),
@@ -9386,6 +9387,7 @@ await db.query(`
         { table: "users", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "users", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "orders", column: "orderDate", type: "VARCHAR(50) NOT NULL" },
+        { table: "orders", column: "externalOrderId", type: "VARCHAR(100)" },
         { table: "orders", column: "companyId", type: "VARCHAR(36) NOT NULL" },
         { table: "orders", column: "itemId", type: "VARCHAR(36) NOT NULL" },
         { table: "orders", column: "itemSource", type: "VARCHAR(20) NOT NULL DEFAULT 'FG'" },
@@ -17541,15 +17543,16 @@ app.post("/api/orders/bulk-upload", requireAuth, async (req, res) => {
     const now = new Date().toISOString();
     for (const row of normalized) {
       const orderId = crypto.randomUUID();
+      const scheduleNo = await generateScheduleNo(conn, row.scheduledDate);
       await conn.query(
-        `INSERT INTO \`orders\` (id, firmId, firmName, orderNo, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, status, approvedTimestamp, approvedEmail, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Scheduling', ?, ?, ?, ?)`,
-        [orderId, firm.id, firm.firmName, row.orderNo, row.orderDate, row.companyId, row.poNumber || "", row.erpCode || "", row.itemId, row.itemSource || "FG", row.npdId || null, row.qty, row.rate, row.amount, now, "Bulk CSV Upload", "Bulk CSV Upload", now]
+        `INSERT INTO \`orders\` (id, firmId, firmName, orderNo, externalOrderId, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, status, approvedTimestamp, approvedEmail, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Scheduled', ?, ?, ?, ?)`,
+        [orderId, firm.id, firm.firmName, row.orderNo, row.externalOrderId || null, row.orderDate, row.companyId, row.poNumber || "", row.erpCode || "", row.itemId, row.itemSource || "FG", row.npdId || null, row.qty, row.rate, row.amount, now, "Bulk CSV Upload", "Bulk CSV Upload", now]
       );
       await conn.query(
-        `INSERT INTO \`orders_schedule\` (id, orderId, firmId, firmName, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
-        [crypto.randomUUID(), orderId, firm.id, firm.firmName, row.scheduledDate, row.qty, "Bulk CSV Upload", now]
+        `INSERT INTO \`orders_schedule\` (id, orderId, firmId, firmName, scheduleNo, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`,
+        [crypto.randomUUID(), orderId, firm.id, firm.firmName, scheduleNo, row.scheduledDate, row.qty, "Bulk CSV Upload", now]
       );
     }
     await conn.commit();
