@@ -27,11 +27,13 @@ export function MaterialInItemMaster() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
+  const [activeTab, setActiveTab] = useState<"others" | "reel-summary" | "reel-details">("others");
+  const needsReelData = activeTab !== "others";
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all" });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: needsReelData });
   const [materials] = useData<Material>("materials", []);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false });
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false });
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
   const [gateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
@@ -41,7 +43,6 @@ export function MaterialInItemMaster() {
   const [editQty, setEditQty] = useState<number | "">("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"others" | "reel-summary" | "reel-details">("others");
   const [mrrFilter, setMrrFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
