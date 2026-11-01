@@ -23,7 +23,11 @@ def n(v):
 def norm(v): return re.sub(r"\s+", " ", s(v)).casefold()
 def mrr_no(source):
     raw = s(source)
-    return f"LNCB-1/MRR/26-27/{int(raw):05d}" if raw.isdigit() else f"LNCB-1/MRR/26-27/{raw}"
+    # The sheet contains both plain values (371) and values such as
+    # 26-27/0374 or MI/26-27/00372. The application number uses only the
+    # final segment, padded to the established five-digit format.
+    suffix = raw.rsplit("/", 1)[-1].strip()
+    return f"LNCB-1/MRR/26-27/{int(suffix):05d}" if suffix.isdigit() else f"LNCB-1/MRR/26-27/{suffix}"
 def chunks(xs, size): return [xs[i:i + size] for i in range(0, len(xs), size)]
 def next_no(cur, table, column, prefix):
     cur.execute(f"SELECT `{column}` FROM `{table}` WHERE `{column}` LIKE %s ORDER BY CAST(SUBSTRING_INDEX(`{column}`, '/', -1) AS UNSIGNED) DESC LIMIT 1", (prefix + "%",))
@@ -98,9 +102,12 @@ def create_one(cur, firm, suppliers, materials, parent):
     return tx, indent_no, po_no, gate_no, sum(len(g["reels"]) for g in groups.values())
 
 def main():
-    p = argparse.ArgumentParser(); p.add_argument("--apply", action="store_true"); p.add_argument("--batch-size", type=int, default=1); p.add_argument("--start-batch", type=int, default=1); p.add_argument("--max-batches", type=int); p.add_argument("--pause-seconds", type=float, default=3); a = p.parse_args()
+    p = argparse.ArgumentParser(); p.add_argument("--apply", action="store_true"); p.add_argument("--batch-size", type=int, default=1); p.add_argument("--start-batch", type=int, default=1); p.add_argument("--max-batches", type=int); p.add_argument("--through-mrr", type=int); p.add_argument("--pause-seconds", type=float, default=3); a = p.parse_args()
     if a.batch_size < 1: raise SystemExit("--batch-size must be positive")
-    load_runtime_env(); source = load_source(); db = connect()
+    load_runtime_env(); source = load_source()
+    if a.through_mrr is not None:
+        source = [row for row in source if row["sourceNo"].isdigit() and int(row["sourceNo"]) <= a.through_mrr]
+    db = connect()
     try:
         cur = db.cursor(); firm = find_unit_one(cur)
         if not firm: raise RuntimeError("Unit-I firm not found")
