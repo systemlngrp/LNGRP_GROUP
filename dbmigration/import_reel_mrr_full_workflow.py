@@ -73,7 +73,7 @@ def create_one(cur, firm, suppliers, materials, parent):
     po_no = next_no(cur, "purchase_orders", "poNo", "PO/26-27/")
     gate_no = next_no(cur, "gate_entries", "gateEntryNo", "GE/26-27/")
     indent_lines = []
-    cur.execute("INSERT INTO indents (id,firmId,firmName,indentNo,requestedBy,requisitionDate,requiredDate,indentType,status,approvedTimestamp,approvedBy,updatedBy,updateTimestamp) VALUES (%s,%s,%s,%s,'Sheet MRR Import',%s,%s,'Raw Material','Approved',%s,'Sheet MRR Import','Sheet MRR Import',%s)", (indent_id, firm[0], firm[1], indent_no, date, date, now, now))
+    cur.execute("INSERT INTO indents (id,firmId,firmName,indentNo,requestedBy,requisitionDate,requiredDate,indentType,status,approvedTimestamp,approvedBy,updatedBy,updateTimestamp) VALUES (%s,%s,%s,%s,'Sheet MRR Import',%s,%s,'Reel','Approved',%s,'Sheet MRR Import','Sheet MRR Import',%s)", (indent_id, firm[0], firm[1], indent_no, date, date, now, now))
     for erp, g in groups.items():
         lid = str(uuid.uuid4()); indent_lines.append((lid, erp, g))
         cur.execute("INSERT INTO indent_lines (id,indentId,erpCode,materialId,uom,qty,targetDeliveryDate,orderedQty,cancelledQty,balanceQty,updatedBy,updateTimestamp) VALUES (%s,%s,%s,%s,'KG',%s,%s,0,0,%s,'Sheet MRR Import',%s)", (lid, indent_id, erp, g["materialId"], g["qty"], date, g["qty"], now))
