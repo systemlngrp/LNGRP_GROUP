@@ -21,7 +21,7 @@ function makeOptions(values: Array<string | number>) {
 export function MaterialInMaster() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
-  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  const [materialIn, setMaterialIn, materialInLoading, materialInState] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
@@ -470,7 +470,11 @@ export function MaterialInMaster() {
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
-              {filteredMaterialIn.length === 0 ? (
+              {materialInLoading ? (
+                <tr><td colSpan={29} className="px-6 py-8 text-center text-indigo-700 font-medium">Loading material receipts...</td></tr>
+              ) : materialInState.error ? (
+                <tr><td colSpan={29} className="px-6 py-8 text-center text-red-700 font-medium">Unable to load material receipts: {materialInState.error}</td></tr>
+              ) : filteredMaterialIn.length === 0 ? (
                 <tr>
                   <td colSpan={29} className="px-6 py-8 text-center text-black font-medium italic">No material receipt records found.</td>
                 </tr>
