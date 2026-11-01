@@ -10844,7 +10844,7 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
             return res.status(500).json({ error: "Unit-I firm is not configured." });
         const [materials] = await db.query("SELECT id,name FROM materials");
         const names = new Map(materials.map((r) => [String(r.id), String(r.name || "Unknown")]));
-        const [parents] = await db.query("SELECT id,transactionNo,date,invoiceNo,supplierId,gateEntryNo,`lines` FROM material_in WHERE firmId=? AND LOWER(TRIM(COALESCE(mrrType,'')))='reel' ORDER BY date,transactionNo", [unitOne.id]);
+        const [parents] = await db.query("SELECT mi.id,mi.transactionNo,mi.date,mi.invoiceNo,mi.supplierId,mi.gateEntryId,COALESCE(NULLIF(mi.gateEntryNo,''),ge.gateEntryNo,'-') AS resolvedGateEntryNo,COALESCE(NULLIF(ge.truckNo,''),'-') AS resolvedVehicleNo,mi.`lines` FROM material_in mi LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE mi.firmId=? AND LOWER(TRIM(COALESCE(mi.mrrType,'')))='reel' ORDER BY mi.date,mi.transactionNo", [unitOne.id]);
         const parse = (v) => { try {
             const x = Array.isArray(v) ? v : JSON.parse(String(v || "[]"));
             return Array.isArray(x) ? x : [];
@@ -10855,7 +10855,7 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
         const all = [];
         for (const parent of parents)
             for (const line of parse(parent.lines))
-                all.push({ ...line, id: `${parent.id}:${line.id || line.itemId}`, parentId: parent.id, parentStatus: "Completed", parentTransactionNo: String(parent.transactionNo || ""), parentDate: String(parent.date || ""), parentInvoiceNo: String(parent.invoiceNo || ""), parentSupplierId: String(parent.supplierId || ""), parentGateEntryNo: String(parent.gateEntryNo || "-"), parentVehicleNo: "-", mrrType: "Reel", itemName: names.get(String(line.itemId)) || "Unknown", qty: Number(line.qty || 0), rate: Number(line.rate ?? line.invoiceRate ?? 0), value: Number(line.value ?? line.actualValue ?? line.invoiceValue ?? 0) });
+                all.push({ ...line, id: `${parent.id}:${line.id || line.itemId}`, parentId: parent.id, parentStatus: "Completed", parentTransactionNo: String(parent.transactionNo || ""), parentDate: String(parent.date || ""), parentInvoiceNo: String(parent.invoiceNo || ""), parentSupplierId: String(parent.supplierId || ""), parentGateEntryNo: String(parent.resolvedGateEntryNo || "-"), parentVehicleNo: String(parent.resolvedVehicleNo || "-"), mrrType: "Reel", itemName: names.get(String(line.itemId)) || "Unknown", qty: Number(line.qty || 0), rate: Number(line.rate ?? line.invoiceRate ?? line.poRate ?? 0), value: Number((line.value ?? line.actualValue ?? line.invoiceValue ?? (Number(line.qty || 0) * Number(line.rate ?? line.invoiceRate ?? line.poRate ?? 0))) || 0) });
         const q = req.query;
         const search = String(q.search || "").trim().toLowerCase();
         let rows = all.filter((r) => (!search || [r.parentTransactionNo, r.parentInvoiceNo, r.itemName].join(" ").toLowerCase().includes(search)) && (!q.mrr || r.parentTransactionNo === String(q.mrr)) && (!q.dateFrom || r.parentDate >= String(q.dateFrom)) && (!q.dateTo || r.parentDate <= String(q.dateTo)));
