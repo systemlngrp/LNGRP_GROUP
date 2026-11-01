@@ -554,9 +554,10 @@ export function MaterialInItemMaster() {
         </div>
       </div>
 
-      <div className="flex border-b border-black mt-2">
+      <div className="relative z-[100] flex border-b border-black mt-2 pointer-events-auto">
         <button
           type="button"
+          onMouseDown={() => setActiveTab("others")}
           onClick={() => setActiveTab("others")}
           className={`relative z-40 pointer-events-auto cursor-pointer px-4 py-2 text-[10px] font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] flex items-center gap-2 transition-all ${
             activeTab === "others" ? "bg-white border-b-transparent text-indigo-700 shadow-[0_-2px_0_0_#4f46e5]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
@@ -566,6 +567,7 @@ export function MaterialInItemMaster() {
         </button>
         <button
           type="button"
+          onMouseDown={() => setActiveTab("reel-summary")}
           onClick={() => setActiveTab("reel-summary")}
           className={`relative z-40 pointer-events-auto cursor-pointer px-4 py-2 text-[10px] font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
             activeTab === "reel-summary" ? "bg-white border-b-transparent text-emerald-700 shadow-[0_-2px_0_0_#059669]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
@@ -575,6 +577,7 @@ export function MaterialInItemMaster() {
         </button>
         <button
           type="button"
+          onMouseDown={() => setActiveTab("reel-details")}
           onClick={() => setActiveTab("reel-details")}
           className={`relative z-40 pointer-events-auto cursor-pointer px-4 py-2 text-[10px] font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
             activeTab === "reel-details" ? "bg-white border-b-transparent text-amber-700 shadow-[0_-2px_0_0_#d97706]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
