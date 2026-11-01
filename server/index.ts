@@ -10785,6 +10785,9 @@ async function processLoadingSlipWhatsappDelivery(db: mysql.Pool, tableName: Loa
 }
 
 async function processMrrWhatsappDelivery(db: mysql.Pool, mrrId: string): Promise<WhatsappComplaintDelivery> {
+  if (String(process.env.DISABLE_MRR_WHATSAPP || "").trim().toLowerCase() === "true") {
+    return { status: "Disabled", error: "MRR WhatsApp sending is temporarily disabled for migration." };
+  }
   const nowIso = new Date().toISOString();
   const staleBeforeIso = new Date(Date.now() - 60_000).toISOString();
   try {
@@ -10961,10 +10964,12 @@ async function retryPendingWhatsappComplaints() {
         if (result.status === "Failed" || result.status === "Not Configured") console.warn(`[WHATSAPP] Automatic ${tableName} retry pending for loading slip ${String(row.id || "")}: ${result.status}`);
       }
     }
-    const [mrrRows] = await db.query("SELECT id FROM `material_in` WHERE COALESCE(TRIM(whatsappSentAt), '') = '' ORDER BY updateTimestamp ASC LIMIT 50");
-    for (const row of mrrRows as any[]) {
-      const result = await processMrrWhatsappDelivery(db, String(row.id || "").trim());
-      if (result.status === "Failed" || result.status === "Not Configured") console.warn(`[WHATSAPP] Automatic MRR retry pending for ${String(row.id || "")}: ${result.status}`);
+    if (String(process.env.DISABLE_MRR_WHATSAPP || "").trim().toLowerCase() !== "true") {
+      const [mrrRows] = await db.query("SELECT id FROM `material_in` WHERE COALESCE(TRIM(whatsappSentAt), '') = '' ORDER BY updateTimestamp ASC LIMIT 50");
+      for (const row of mrrRows as any[]) {
+        const result = await processMrrWhatsappDelivery(db, String(row.id || "").trim());
+        if (result.status === "Failed" || result.status === "Not Configured") console.warn(`[WHATSAPP] Automatic MRR retry pending for ${String(row.id || "")}: ${result.status}`);
+      }
     }
     const [reelReturnRows] = await db.query("SELECT id FROM `material_returns` WHERE EXISTS (SELECT 1 FROM material_return_reel_lines r WHERE r.materialReturnId = material_returns.id) AND COALESCE(TRIM(whatsappSentAt), '') = '' ORDER BY updateTimestamp ASC LIMIT 50");
     for (const row of reelReturnRows as any[]) {
