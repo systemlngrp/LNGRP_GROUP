@@ -349,7 +349,7 @@ export function MaterialInItemMaster() {
             <button type="button" disabled={remoteDetailsPage >= remoteDetailsTotalPages} onClick={() => setRemoteDetailsPage((p) => Math.min(remoteDetailsTotalPages, p + 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40">Next</button>
           </div>
         </div>
-        <table data-table-pagination="external" className="min-w-full divide-y divide-black border-collapse border border-black">
+        <table data-table-pagination="true" className="min-w-full divide-y divide-black border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GE No</th>
@@ -395,7 +395,7 @@ export function MaterialInItemMaster() {
           </div>
         </div>
       ) : null}
-      <table data-table-pagination={activeTab === "reel-summary" ? "external" : undefined} className="min-w-full divide-y divide-black border-collapse border border-black">
+      <table data-table-pagination={activeTab === "reel-summary" ? "true" : undefined} className="min-w-full divide-y divide-black border-collapse border border-black">
         <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
           <tr className="divide-x divide-black">
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GE No</th>
