@@ -25,6 +25,7 @@ const queue: QueueEntry[] = [];
 let activeRequests = 0;
 let sidebarReleased = false;
 const NPD_CACHE_TTL_MS = 30_000;
+const REQUEST_TIMEOUT_MS = 25_000;
 const completedNpdLoads = new Map<string, { expiresAt: number; rows: any[]; total: number | null }>();
 
 // The shell may register dozens of badge requests before the route mounts.
@@ -62,7 +63,11 @@ function queuedFetch(url: string, headers: Record<string, string>, priority: Pri
       signal,
       reject,
       run: () => {
+        const timeoutId = window.setTimeout(() => {
+          if (!signal.aborted) reject(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s: ${url}`));
+        }, REQUEST_TIMEOUT_MS);
         fetch(url, { headers, signal }).then(resolve, reject).finally(() => {
+          window.clearTimeout(timeoutId);
           activeRequests -= 1;
           pumpQueue();
         });
