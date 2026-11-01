@@ -1897,6 +1897,9 @@ app.post("/api/tally/sync", async (req, res) => {
 });
 // Database connection pool
 let pool = null;
+// Prevent concurrent requests from creating multiple pools during startup or
+// after a transient connection loss.
+let poolCreationPromise = null;
 let dailyConsumptionSchemaPromise = null;
 let databaseInitializationPromise = null;
 let databaseInitializationState = "not_started";
@@ -5002,6 +5005,8 @@ function parseMandatoryMachinesByType(setting) {
 async function getPool() {
     if (pool)
         return pool;
+    if (poolCreationPromise)
+        return poolCreationPromise;
     const clean = (val) => val?.trim().replace(/^["']|["']$/g, '');
     const host = clean(process.env.DB_HOST);
     const user = clean(process.env.DB_USER);
@@ -5028,24 +5033,35 @@ async function getPool() {
         database,
         port,
         waitForConnections: true,
-        connectionLimit: 10,
-        maxIdle: 10, // max idle connections, the default value is the same as `connectionLimit`
+        // Hostinger shared MySQL counts every new connection against an hourly
+        // quota. Keep the pool deliberately small; the application is primarily
+        // a single-user ERP and does not need ten concurrent DB sessions.
+        connectionLimit: 3,
+        maxIdle: 2,
         idleTimeout: 60000, // idle connections timeout, in milliseconds, the default value 60000
-        queueLimit: 0,
+        queueLimit: 20,
         connectTimeout: 10000, // 10 seconds timeout
-        enableKeepAlive: true,
-        keepAliveInitialDelay: 10000
+        enableKeepAlive: false,
     };
-    pool = mysql.createPool(config);
-    // Add error handler to the pool to prevent it from crashing the process
-    pool.on('error', (err) => {
-        console.error('[DB] Unexpected error on idle client', err);
-        if (err && (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNRESET')) {
-            console.warn('[DB] Pool connection closed, will reconnect on next request');
-            pool = null; // Reset pool so it gets recreated
-        }
+    poolCreationPromise = Promise.resolve().then(() => {
+        const createdPool = mysql.createPool(config);
+        pool = createdPool;
+        // Add error handler to the pool to prevent it from crashing the process
+        createdPool.on('error', (err) => {
+            console.error('[DB] Unexpected error on idle client', err);
+            if (err && (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNRESET')) {
+                console.warn('[DB] Pool connection closed, will reconnect on next request');
+                pool = null; // Reset pool so it gets recreated
+            }
+        });
+        return createdPool;
     });
-    return pool;
+    try {
+        return await poolCreationPromise;
+    }
+    finally {
+        poolCreationPromise = null;
+    }
 }
 async function loadAuthUserByIdOnce(userId) {
     const db = await getPool();
@@ -6617,6 +6633,7 @@ async function initDb(retries = 5) {
         CREATE TABLE IF NOT EXISTS \`orders\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`orderNo\` VARCHAR(100),
+          \`externalOrderId\` VARCHAR(100),
           \`orderDate\` VARCHAR(50) NOT NULL,
           \`companyId\` VARCHAR(36) NOT NULL,
           \`poNumber\` VARCHAR(100),
@@ -8845,6 +8862,7 @@ async function initDb(retries = 5) {
                 { table: "users", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "users", column: "updateTimestamp", type: "VARCHAR(255)" },
                 { table: "orders", column: "orderDate", type: "VARCHAR(50) NOT NULL" },
+                { table: "orders", column: "externalOrderId", type: "VARCHAR(100)" },
                 { table: "orders", column: "companyId", type: "VARCHAR(36) NOT NULL" },
                 { table: "orders", column: "itemId", type: "VARCHAR(36) NOT NULL" },
                 { table: "orders", column: "itemSource", type: "VARCHAR(20) NOT NULL DEFAULT 'FG'" },
@@ -10765,6 +10783,49 @@ app.get("/api/reports/erp-wise-reel-stock", requireAuth, async (req, res) => {
     catch (error) {
         console.error('[ERP_WISE_REEL_STOCK] failed:', error);
         return res.status(500).json({ error: 'Could not load ERP Wise Reel Stock report.' });
+    }
+});
+app.get("/api/reports/reel-details", requireAuth, async (req, res) => {
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ error: "Database unavailable." });
+        const [firms] = await db.query("SELECT id, firmName FROM firms ORDER BY firmName");
+        const unitOne = firms.find((row) => String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "").match(/(unit1|uniti)$/));
+        if (!unitOne?.id)
+            return res.status(500).json({ error: "Unit-I firm is not configured." });
+        const q = req.query;
+        const where = ["ps.firmId = ?", "LOWER(TRIM(COALESCE(m.type,'')))='reel'", "LOWER(TRIM(COALESCE(m.active,'yes'))) <> 'no'", "(UPPER(TRIM(ps.materialInId))='OPENING' OR mi.id IS NOT NULL)"];
+        const params = [unitOne.id];
+        const search = String(q.search || "").trim();
+        if (search) {
+            where.push("(ps.ourReelNo LIKE ? OR ps.supplierReelNo LIKE ? OR mi.transactionNo LIKE ? OR m.erpCode LIKE ? OR s.name LIKE ?)");
+            params.push(...Array(5).fill(`%${search}%`));
+        }
+        if (q.mrr) {
+            where.push("mi.transactionNo = ?");
+            params.push(String(q.mrr));
+        }
+        if (q.dateFrom) {
+            where.push("mi.date >= ?");
+            params.push(String(q.dateFrom));
+        }
+        if (q.dateTo) {
+            where.push("mi.date <= ?");
+            params.push(String(q.dateTo));
+        }
+        const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 100));
+        const page = Math.max(1, Number(q.page) || 1);
+        const [countRows] = await db.query(`SELECT COUNT(*) totalRows FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) WHERE ${where.join(" AND ")}`, params);
+        const totalRows = Number(countRows[0]?.totalRows || 0);
+        const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+        const safePage = Math.min(page, totalPages);
+        const [rows] = await db.query(`SELECT ps.id, ps.ourReelNo, ps.supplierReelNo, ps.weightKg, ps.materialId, m.erpCode, m.gsm, m.bf, m.size, COALESCE(mi.transactionNo,'Opening') parentTransactionNo, COALESCE(mi.date,'') parentDate, COALESCE(mi.supplierId,ps.supplierId) parentSupplierId, COALESCE(mi.gateEntryNo,'-') parentGateEntryNo, COALESCE(ge.truckNo,'-') parentVehicleNo, COALESCE(s.name,'-') supplierName FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE ${where.join(" AND ")} ORDER BY COALESCE(mi.date,''), ps.ourReelNo, ps.id LIMIT ? OFFSET ?`, [...params, pageSize, (safePage - 1) * pageSize]);
+        return res.json({ rows, totalRows, page: safePage, pageSize, totalPages });
+    }
+    catch (error) {
+        console.error('[REEL_DETAILS] failed:', error);
+        return res.status(500).json({ error: 'Could not load Reel details.' });
     }
 });
 app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
@@ -13344,7 +13405,7 @@ app.post("/api/materials/reel-materials/bulk", async (req, res) => {
             const size = Number(firstPopulatedValue(raw?.size, raw?.["Size"]));
             const gsm = Number(firstPopulatedValue(raw?.gsm, raw?.["GSM"]));
             const bf = Number(firstPopulatedValue(raw?.bf, raw?.["BF"]));
-            const color = String(firstPopulatedValue(raw?.color, raw?.["Color"]) || "LG").trim();
+            const color = String(firstPopulatedValue(raw?.color, raw?.["Color"]) || "Natural").trim();
             if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0)
                 fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
             if (!Number.isFinite(size) || size <= 0)
@@ -16539,10 +16600,11 @@ app.post("/api/orders/bulk-upload", requireAuth, async (req, res) => {
         const now = new Date().toISOString();
         for (const row of normalized) {
             const orderId = crypto.randomUUID();
-            await conn.query(`INSERT INTO \`orders\` (id, firmId, firmName, orderNo, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, status, approvedTimestamp, approvedEmail, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending Scheduling', ?, ?, ?, ?)`, [orderId, firm.id, firm.firmName, row.orderNo, row.orderDate, row.companyId, row.poNumber || "", row.erpCode || "", row.itemId, row.itemSource || "FG", row.npdId || null, row.qty, row.rate, row.amount, now, "Bulk CSV Upload", "Bulk CSV Upload", now]);
-            await conn.query(`INSERT INTO \`orders_schedule\` (id, orderId, firmId, firmName, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`, [crypto.randomUUID(), orderId, firm.id, firm.firmName, row.scheduledDate, row.qty, "Bulk CSV Upload", now]);
+            const scheduleNo = await generateScheduleNo(conn, row.scheduledDate);
+            await conn.query(`INSERT INTO \`orders\` (id, firmId, firmName, orderNo, externalOrderId, orderDate, companyId, poNumber, erpCode, itemId, itemSource, npdId, qty, rate, orderAmount, status, approvedTimestamp, approvedEmail, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Scheduled', ?, ?, ?, ?)`, [orderId, firm.id, firm.firmName, row.orderNo, row.externalOrderId || null, row.orderDate, row.companyId, row.poNumber || "", row.erpCode || "", row.itemId, row.itemSource || "FG", row.npdId || null, row.qty, row.rate, row.amount, now, "Bulk CSV Upload", "Bulk CSV Upload", now]);
+            await conn.query(`INSERT INTO \`orders_schedule\` (id, orderId, firmId, firmName, scheduleNo, scheduledDate, qty, producedQty, canceledQty, updatedBy, updateTimestamp)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)`, [crypto.randomUUID(), orderId, firm.id, firm.firmName, scheduleNo, row.scheduledDate, row.qty, "Bulk CSV Upload", now]);
         }
         await conn.commit();
         publishRealtimeDataChange(["orders", "orders_schedule"]);
