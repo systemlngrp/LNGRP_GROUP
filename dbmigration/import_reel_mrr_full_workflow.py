@@ -23,6 +23,8 @@ def n(v):
 def norm(v): return re.sub(r"\s+", " ", s(v)).casefold()
 def mrr_no(source):
     raw = s(source)
+    if raw == "26-27/0602":
+        return "LNCB-1/MRR/26-27/00602A"
     # The sheet contains both plain values (371) and values such as
     # 26-27/0374 or MI/26-27/00372. The application number uses only the
     # final segment, padded to the established five-digit format.
@@ -102,11 +104,13 @@ def create_one(cur, firm, suppliers, materials, parent):
     return tx, indent_no, po_no, gate_no, sum(len(g["reels"]) for g in groups.values())
 
 def main():
-    p = argparse.ArgumentParser(); p.add_argument("--apply", action="store_true"); p.add_argument("--batch-size", type=int, default=1); p.add_argument("--start-batch", type=int, default=1); p.add_argument("--max-batches", type=int); p.add_argument("--through-mrr", type=int); p.add_argument("--pause-seconds", type=float, default=3); a = p.parse_args()
+    p = argparse.ArgumentParser(); p.add_argument("--apply", action="store_true"); p.add_argument("--batch-size", type=int, default=1); p.add_argument("--start-batch", type=int, default=1); p.add_argument("--max-batches", type=int); p.add_argument("--through-mrr", type=int); p.add_argument("--source-mrr"); p.add_argument("--pause-seconds", type=float, default=3); a = p.parse_args()
     if a.batch_size < 1: raise SystemExit("--batch-size must be positive")
     load_runtime_env(); source = load_source()
     if a.through_mrr is not None:
         source = [row for row in source if row["sourceNo"].isdigit() and int(row["sourceNo"]) <= a.through_mrr]
+    if a.source_mrr:
+        source = [row for row in source if row["sourceNo"] == a.source_mrr]
     db = connect()
     try:
         cur = db.cursor(); firm = find_unit_one(cur)
