@@ -35,6 +35,9 @@ export function MaterialInItemMaster() {
   const [remoteSummaryMetrics, setRemoteSummaryMetrics] = useState({ receiptQty: 0, receiptValue: 0, totalReceipts: 0 });
   const [remoteSummaryLoading, setRemoteSummaryLoading] = useState(false);
   const [remoteSummaryError, setRemoteSummaryError] = useState<string | null>(null);
+  const [remoteSummaryPage, setRemoteSummaryPage] = useState(1);
+  const [remoteSummaryTotalPages, setRemoteSummaryTotalPages] = useState(1);
+  const [remoteSummaryTotalRows, setRemoteSummaryTotalRows] = useState(0);
   const [remoteReelDetails, setRemoteReelDetails] = useState<any[]>([]);
   const [remoteDetailsLoading, setRemoteDetailsLoading] = useState(false);
   const [remoteDetailsError, setRemoteDetailsError] = useState<string | null>(null);
@@ -86,16 +89,16 @@ export function MaterialInItemMaster() {
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setRemoteSummaryLoading(true); setRemoteSummaryError(null);
-      const params = new URLSearchParams({ page: "1", pageSize: "100" });
+      const params = new URLSearchParams({ page: String(remoteSummaryPage), pageSize: "100" });
       if (searchTerm.trim()) params.set("search", searchTerm.trim()); if (mrrFilter) params.set("mrr", mrrFilter); if (fromDate) params.set("dateFrom", fromDate); if (toDate) params.set("dateTo", toDate);
-      try { const response = await fetch(`/api/reports/reel-summary?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(body?.error || response.statusText)); setRemoteReelSummary(Array.isArray(body.rows) ? body.rows : []); setRemoteSummaryMetrics({ receiptQty: Number(body.summary?.receiptQty || 0), receiptValue: Number(body.summary?.receiptValue || 0), totalReceipts: Number(body.summary?.totalReceipts || 0) }); }
+      try { const response = await fetch(`/api/reports/reel-summary?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(body?.error || response.statusText)); setRemoteReelSummary(Array.isArray(body.rows) ? body.rows : []); setRemoteSummaryTotalRows(Number(body.totalRows) || 0); setRemoteSummaryTotalPages(Number(body.totalPages) || 1); setRemoteSummaryMetrics({ receiptQty: Number(body.summary?.receiptQty || 0), receiptValue: Number(body.summary?.receiptValue || 0), totalReceipts: Number(body.summary?.totalReceipts || 0) }); }
       catch (error) { if ((error as Error).name !== "AbortError") { setRemoteReelSummary([]); setRemoteSummaryMetrics({ receiptQty: 0, receiptValue: 0, totalReceipts: 0 }); setRemoteSummaryError(error instanceof Error ? error.message : "Unable to load Reel Summary."); } }
       finally { if (!controller.signal.aborted) setRemoteSummaryLoading(false); }
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [fromDate, mrrFilter, searchTerm, toDate]);
+  }, [fromDate, mrrFilter, remoteSummaryPage, searchTerm, toDate]);
 
-  useEffect(() => { setRemoteDetailsPage(1); }, [fromDate, mrrFilter, searchTerm, toDate]);
+  useEffect(() => { setRemoteDetailsPage(1); setRemoteSummaryPage(1); }, [fromDate, mrrFilter, searchTerm, toDate]);
 
   const materialMap = useMemo(() => new Map(materials.map(m => [m.id, m])), [materials]);
   const mrrOptions = useMemo(() => makeOptions(materialIn.map((entry) => entry.transactionNo)), [materialIn]);
@@ -337,7 +340,7 @@ export function MaterialInItemMaster() {
 
     if (activeTab === "reel-details") {
       return (
-        <table className="min-w-full divide-y divide-black border-collapse border border-black">
+        <table data-table-pagination="external" className="min-w-full divide-y divide-black border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GE No</th>
@@ -371,7 +374,8 @@ export function MaterialInItemMaster() {
     }
 
     return (
-      <table className="min-w-full divide-y divide-black border-collapse border border-black">
+      <>
+      <table data-table-pagination={activeTab === "reel-summary" ? "external" : undefined} className="min-w-full divide-y divide-black border-collapse border border-black">
         <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
           <tr className="divide-x divide-black">
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GE No</th>
@@ -466,6 +470,17 @@ export function MaterialInItemMaster() {
           })}
         </tbody>
       </table>
+      {activeTab === "reel-summary" ? (
+        <div className="flex items-center justify-between border border-black bg-white px-3 py-2 text-xs font-bold">
+          <span>Showing {remoteReelSummary.length ? ((remoteSummaryPage - 1) * 100 + 1) : 0}-{Math.min(remoteSummaryPage * 100, remoteSummaryTotalRows)} of {remoteSummaryTotalRows}</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={remoteSummaryPage <= 1} onClick={() => setRemoteSummaryPage((p) => Math.max(1, p - 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40">Prev</button>
+            <span>Page {remoteSummaryPage} / {remoteSummaryTotalPages}</span>
+            <button type="button" disabled={remoteSummaryPage >= remoteSummaryTotalPages} onClick={() => setRemoteSummaryPage((p) => Math.min(remoteSummaryTotalPages, p + 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40">Next</button>
+          </div>
+        </div>
+      ) : null}
+      </>
     );
   };
 
@@ -575,7 +590,7 @@ export function MaterialInItemMaster() {
             activeTab === "reel-summary" ? "bg-white border-b-transparent text-emerald-700 shadow-[0_-2px_0_0_#059669]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
           }`}
         >
-          <Layers size={14} /> Reel Summary ({remoteReelSummary.length})
+          <Layers size={14} /> Reel Summary ({remoteSummaryTotalRows})
         </button>
         <button
           type="button"
