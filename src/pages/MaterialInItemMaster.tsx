@@ -30,7 +30,7 @@ export function MaterialInItemMaster() {
   const [activeTab, setActiveTab] = useState<"others" | "reel-summary" | "reel-details">("others");
   const needsReelData = activeTab !== "others";
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: needsReelData });
+  const [packingSlips, , reelDataLoading, reelDataMeta] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: needsReelData, cacheToLocalStorage: false });
   const [materials] = useData<Material>("materials", []);
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
@@ -271,6 +271,12 @@ export function MaterialInItemMaster() {
                  activeTab === "reel-summary" ? processedData.reelSummary : 
                  processedData.reelDetails;
 
+    if (needsReelData && reelDataLoading) {
+      return <div className="px-4 py-10 text-center text-indigo-700 font-bold">Loading Reel data…</div>;
+    }
+    if (needsReelData && reelDataMeta?.error) {
+      return <div className="px-4 py-10 text-center text-red-700 font-bold">Unable to load Reel details: {reelDataMeta.error}</div>;
+    }
     if (data.length === 0) {
       return (
         <div className="px-4 py-8 text-center text-black font-medium italic">No items found for the current filters.</div>
@@ -500,6 +506,7 @@ export function MaterialInItemMaster() {
 
       <div className="flex border-b border-black mt-2">
         <button
+          type="button"
           onClick={() => setActiveTab("others")}
           className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] flex items-center gap-2 transition-all ${
             activeTab === "others" ? "bg-white border-b-transparent text-indigo-700 shadow-[0_-2px_0_0_#4f46e5]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
@@ -508,6 +515,7 @@ export function MaterialInItemMaster() {
           <Package size={14} /> General Material ({processedData.others.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("reel-summary")}
           className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
             activeTab === "reel-summary" ? "bg-white border-b-transparent text-emerald-700 shadow-[0_-2px_0_0_#059669]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
@@ -516,6 +524,7 @@ export function MaterialInItemMaster() {
           <Layers size={14} /> Reel Summary ({processedData.reelSummary.length})
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab("reel-details")}
           className={`px-4 py-2 text-[10px] font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
             activeTab === "reel-details" ? "bg-white border-b-transparent text-amber-700 shadow-[0_-2px_0_0_#d97706]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
