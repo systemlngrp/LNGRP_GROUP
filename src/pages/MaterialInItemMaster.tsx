@@ -32,6 +32,7 @@ export function MaterialInItemMaster() {
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: false, cacheToLocalStorage: false });
   const [remoteReelSummary, setRemoteReelSummary] = useState<any[]>([]);
+  const [remoteSummaryMetrics, setRemoteSummaryMetrics] = useState({ receiptQty: 0, receiptValue: 0, totalReceipts: 0 });
   const [remoteSummaryLoading, setRemoteSummaryLoading] = useState(false);
   const [remoteSummaryError, setRemoteSummaryError] = useState<string | null>(null);
   const [remoteReelDetails, setRemoteReelDetails] = useState<any[]>([]);
@@ -87,8 +88,8 @@ export function MaterialInItemMaster() {
       setRemoteSummaryLoading(true); setRemoteSummaryError(null);
       const params = new URLSearchParams({ page: "1", pageSize: "100" });
       if (searchTerm.trim()) params.set("search", searchTerm.trim()); if (mrrFilter) params.set("mrr", mrrFilter); if (fromDate) params.set("dateFrom", fromDate); if (toDate) params.set("dateTo", toDate);
-      try { const response = await fetch(`/api/reports/reel-summary?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(body?.error || response.statusText)); setRemoteReelSummary(Array.isArray(body.rows) ? body.rows : []); }
-      catch (error) { if ((error as Error).name !== "AbortError") { setRemoteReelSummary([]); setRemoteSummaryError(error instanceof Error ? error.message : "Unable to load Reel Summary."); } }
+      try { const response = await fetch(`/api/reports/reel-summary?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(body?.error || response.statusText)); setRemoteReelSummary(Array.isArray(body.rows) ? body.rows : []); setRemoteSummaryMetrics({ receiptQty: Number(body.summary?.receiptQty || 0), receiptValue: Number(body.summary?.receiptValue || 0), totalReceipts: Number(body.summary?.totalReceipts || 0) }); }
+      catch (error) { if ((error as Error).name !== "AbortError") { setRemoteReelSummary([]); setRemoteSummaryMetrics({ receiptQty: 0, receiptValue: 0, totalReceipts: 0 }); setRemoteSummaryError(error instanceof Error ? error.message : "Unable to load Reel Summary."); } }
       finally { if (!controller.signal.aborted) setRemoteSummaryLoading(false); }
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
@@ -262,12 +263,12 @@ export function MaterialInItemMaster() {
     // Calculate Metrics
     const metrics = {
       openingQty: openingLines.reduce((sum, l) => sum + Number(l.actualQty ?? l.qty ?? 0), 0),
-      receiptQty: receiptLines.reduce((sum, l) => sum + Number(l.actualQty ?? l.qty ?? 0), 0),
+      receiptQty: remoteSummaryMetrics.receiptQty || receiptLines.reduce((sum, l) => sum + Number(l.actualQty ?? l.qty ?? 0), 0),
       openingValue: reelStockRows.reduce((sum, row) => sum + (Number(row.openingQty || 0) * Number(row.rate || 0)), 0),
-      receiptValue: reelStockRows.reduce((sum, row) => sum + (Number(row.mrrQty || 0) * Number(row.rate || 0)), 0),
+      receiptValue: remoteSummaryMetrics.receiptValue || reelStockRows.reduce((sum, row) => sum + (Number(row.mrrQty || 0) * Number(row.rate || 0)), 0),
       openingReelWeight: reelStockRows.reduce((sum, row) => sum + Number(row.openingQty || 0), 0),
       receiptReelWeight: reelStockRows.reduce((sum, row) => sum + Number(row.mrrQty || 0), 0),
-      totalReceipts: new Set(receiptLines.map(l => l.parentId)).size,
+      totalReceipts: remoteSummaryMetrics.totalReceipts || new Set(receiptLines.map(l => l.parentId)).size,
       othersValue: others.reduce((sum, l) => sum + Number(l.value || 0), 0),
       reelValue: reelSummary.reduce((sum, l) => sum + Number(l.value || 0), 0)
     };
@@ -278,7 +279,7 @@ export function MaterialInItemMaster() {
       reelDetails: filteredReelDetails.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
       metrics
     };
-  }, [materialIn, packingSlips, materials, issueReelLines, returnReelLines, npdItems, suppliers, searchTerm, fromDate, toDate, mrrFilter, materialMap, gateEntryMap]);
+  }, [materialIn, packingSlips, materials, issueReelLines, returnReelLines, npdItems, suppliers, searchTerm, fromDate, toDate, mrrFilter, materialMap, gateEntryMap, remoteSummaryMetrics]);
 
 
 

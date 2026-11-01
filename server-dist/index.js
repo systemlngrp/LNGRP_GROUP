@@ -10863,7 +10863,12 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
         const totalRows = rows.length;
         const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
         const page = Math.min(totalPages, Math.max(1, Number(q.page) || 1));
-        return res.json({ rows: rows.slice((page - 1) * pageSize, page * pageSize), totalRows, page, pageSize, totalPages });
+        const summary = rows.reduce((sum, row) => ({
+            receiptQty: sum.receiptQty + Number(row.qty || 0),
+            receiptValue: sum.receiptValue + Number(row.value || 0),
+            totalReceipts: sum.totalReceipts,
+        }), { receiptQty: 0, receiptValue: 0, totalReceipts: new Set(rows.map((row) => String(row.parentId || ""))).size });
+        return res.json({ rows: rows.slice((page - 1) * pageSize, page * pageSize), totalRows, page, pageSize, totalPages, summary });
     }
     catch (error) {
         console.error('[REEL_SUMMARY] failed:', error);

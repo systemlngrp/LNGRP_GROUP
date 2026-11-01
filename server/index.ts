@@ -11420,7 +11420,12 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
     const all: any[] = []; for (const parent of parents as any[]) for (const line of parse(parent.lines)) all.push({ ...line, id: `${parent.id}:${line.id || line.itemId}`, parentId: parent.id, parentStatus: "Completed", parentTransactionNo: String(parent.transactionNo || ""), parentDate: String(parent.date || ""), parentInvoiceNo: String(parent.invoiceNo || ""), parentSupplierId: String(parent.supplierId || ""), parentGateEntryNo: String(parent.gateEntryNo || "-"), parentVehicleNo: "-", mrrType: "Reel", itemName: names.get(String(line.itemId)) || "Unknown", qty: Number(line.qty || 0), rate: Number(line.rate ?? line.invoiceRate ?? 0), value: Number(line.value ?? line.actualValue ?? line.invoiceValue ?? 0) });
     const q = req.query as Record<string, unknown>; const search = String(q.search || "").trim().toLowerCase(); let rows = all.filter((r) => (!search || [r.parentTransactionNo,r.parentInvoiceNo,r.itemName].join(" ").toLowerCase().includes(search)) && (!q.mrr || r.parentTransactionNo === String(q.mrr)) && (!q.dateFrom || r.parentDate >= String(q.dateFrom)) && (!q.dateTo || r.parentDate <= String(q.dateTo)));
     const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 100)); const totalRows = rows.length; const totalPages = Math.max(1, Math.ceil(totalRows / pageSize)); const page = Math.min(totalPages, Math.max(1, Number(q.page) || 1));
-    return res.json({ rows: rows.slice((page - 1) * pageSize, page * pageSize), totalRows, page, pageSize, totalPages });
+    const summary = rows.reduce((sum, row) => ({
+      receiptQty: sum.receiptQty + Number(row.qty || 0),
+      receiptValue: sum.receiptValue + Number(row.value || 0),
+      totalReceipts: sum.totalReceipts,
+    }), { receiptQty: 0, receiptValue: 0, totalReceipts: new Set(rows.map((row) => String(row.parentId || ""))).size });
+    return res.json({ rows: rows.slice((page - 1) * pageSize, page * pageSize), totalRows, page, pageSize, totalPages, summary });
   } catch (error) { console.error('[REEL_SUMMARY] failed:', error); return res.status(503).json({ error: 'Reel Summary is temporarily unavailable.' }); }
 });
 
