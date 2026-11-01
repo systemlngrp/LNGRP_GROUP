@@ -744,7 +744,23 @@ export function ResizableTables() {
     };
 
     enhance();
-    const observer = new MutationObserver(enhance);
+    // Ignore DOM changes made by this enhancer itself. Otherwise pagination,
+    // resize handles, and colgroups trigger enhance() again indefinitely.
+    const isOwnNode = (node: Node | null) => {
+      const element = node instanceof Element ? node : node?.parentElement;
+      return Boolean(element?.closest(".app-table-pagination, .app-table-column-resizer, colgroup[data-resizable-columns]"));
+    };
+    const isOwnMutation = (record: MutationRecord) =>
+      (record.type === "attributes" && isOwnNode(record.target)) ||
+      (record.type === "childList" &&
+      (isOwnNode(record.target) ||
+        [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].every((node) =>
+          node instanceof Element && (node.matches(".app-table-pagination, .app-table-column-resizer, colgroup[data-resizable-columns], col"))
+        ) && record.addedNodes.length + record.removedNodes.length > 0));
+    const observer = new MutationObserver((records) => {
+      if (records.every(isOwnMutation)) return;
+      enhance();
+    });
     observer.observe(content, {
       childList: true,
       subtree: true,
