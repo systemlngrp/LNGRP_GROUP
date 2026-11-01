@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
+import { getDataAuthHeaders } from "../hooks/useData";
 import { Material, MaterialIn, Item, Supplier, MaterialInPackingSlip, GateEntry, Company, MaterialIssueReelLine, MaterialReturnReelLine } from "../types";
 import { Edit2, Check, X, Search, Package, Layers, Disc, ExternalLink } from "lucide-react";
 import { Spinner } from "../components/Spinner";
@@ -30,7 +31,12 @@ export function MaterialInItemMaster() {
   const [activeTab, setActiveTab] = useState<"others" | "reel-summary" | "reel-details">("others");
   const needsReelData = activeTab !== "others";
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
-  const [packingSlips, , reelDataLoading, reelDataMeta] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: needsReelData, cacheToLocalStorage: false });
+  const [packingSlips, , reelDataLoading, reelDataMeta] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: activeTab === "reel-summary", cacheToLocalStorage: false });
+  const [remoteReelDetails, setRemoteReelDetails] = useState<any[]>([]);
+  const [remoteDetailsLoading, setRemoteDetailsLoading] = useState(false);
+  const [remoteDetailsError, setRemoteDetailsError] = useState<string | null>(null);
+  const [remoteDetailsPage, setRemoteDetailsPage] = useState(1);
+  const [remoteDetailsTotalPages, setRemoteDetailsTotalPages] = useState(1);
   const [materials] = useData<Material>("materials", []);
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
@@ -46,6 +52,31 @@ export function MaterialInItemMaster() {
   const [mrrFilter, setMrrFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+
+  useEffect(() => {
+    if (activeTab !== "reel-details") return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setRemoteDetailsLoading(true); setRemoteDetailsError(null);
+      const params = new URLSearchParams({ page: String(remoteDetailsPage), pageSize: "100" });
+      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      if (mrrFilter) params.set("mrr", mrrFilter);
+      if (fromDate) params.set("dateFrom", fromDate);
+      if (toDate) params.set("dateTo", toDate);
+      try {
+        const response = await fetch(`/api/reports/reel-details?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(String(body?.error || response.statusText));
+        setRemoteReelDetails(Array.isArray(body.rows) ? body.rows.map((row: any) => ({ ...row, specs: `${row.gsm || "-"} GSM / ${row.bf || "-"} BF / ${row.size || "-"}`, weightKg: Number(row.weightKg || 0) })) : []);
+        setRemoteDetailsTotalPages(Number(body.totalPages) || 1);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") { setRemoteReelDetails([]); setRemoteDetailsError(error instanceof Error ? error.message : "Unable to load Reel details."); }
+      } finally { if (!controller.signal.aborted) setRemoteDetailsLoading(false); }
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [activeTab, fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
+
+  useEffect(() => { setRemoteDetailsPage(1); }, [fromDate, mrrFilter, searchTerm, toDate]);
 
   const materialMap = useMemo(() => new Map(materials.map(m => [m.id, m])), [materials]);
   const mrrOptions = useMemo(() => makeOptions(materialIn.map((entry) => entry.transactionNo)), [materialIn]);
@@ -269,14 +300,16 @@ export function MaterialInItemMaster() {
   const renderTable = () => {
     const data = activeTab === "others" ? processedData.others : 
                  activeTab === "reel-summary" ? processedData.reelSummary : 
-                 processedData.reelDetails;
+                 remoteReelDetails;
 
-    if (needsReelData && reelDataLoading) {
+    if (activeTab === "reel-details" && remoteDetailsLoading) {
       return <div className="px-4 py-10 text-center text-indigo-700 font-bold">Loading Reel data…</div>;
     }
-    if (needsReelData && reelDataMeta?.error) {
-      return <div className="px-4 py-10 text-center text-red-700 font-bold">Unable to load Reel details: {reelDataMeta.error}</div>;
+    if (activeTab === "reel-details" && remoteDetailsError) {
+      return <div className="px-4 py-10 text-center text-red-700 font-bold">Unable to load Reel details: {remoteDetailsError}</div>;
     }
+    if (activeTab === "reel-summary" && reelDataLoading) return <div className="px-4 py-10 text-center text-indigo-700 font-bold">Loading Reel summary…</div>;
+    if (activeTab === "reel-summary" && reelDataMeta?.error) return <div className="px-4 py-10 text-center text-red-700 font-bold">Unable to load Reel summary: {reelDataMeta.error}</div>;
     if (data.length === 0) {
       return (
         <div className="px-4 py-8 text-center text-black font-medium italic">No items found for the current filters.</div>

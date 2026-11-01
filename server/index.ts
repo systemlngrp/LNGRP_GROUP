@@ -11379,6 +11379,30 @@ app.get("/api/reports/erp-wise-reel-stock", requireAuth, async (req, res) => {
   } catch (error) { console.error('[ERP_WISE_REEL_STOCK] failed:', error); return res.status(500).json({ error: 'Could not load ERP Wise Reel Stock report.' }); }
 });
 
+app.get("/api/reports/reel-details", requireAuth, async (req, res) => {
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "Database unavailable." });
+    const [firms] = await db.query("SELECT id, firmName FROM firms ORDER BY firmName");
+    const unitOne = (firms as any[]).find((row) => String(row.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "").match(/(unit1|uniti)$/));
+    if (!unitOne?.id) return res.status(500).json({ error: "Unit-I firm is not configured." });
+    const q = req.query as Record<string, unknown>;
+    const where = ["ps.firmId = ?", "LOWER(TRIM(COALESCE(m.type,'')))='reel'", "LOWER(TRIM(COALESCE(m.active,'yes'))) <> 'no'", "(UPPER(TRIM(ps.materialInId))='OPENING' OR mi.id IS NOT NULL)"];
+    const params: any[] = [unitOne.id];
+    const search = String(q.search || "").trim();
+    if (search) { where.push("(ps.ourReelNo LIKE ? OR ps.supplierReelNo LIKE ? OR mi.transactionNo LIKE ? OR m.erpCode LIKE ? OR s.name LIKE ?)"); params.push(...Array(5).fill(`%${search}%`)); }
+    if (q.mrr) { where.push("mi.transactionNo = ?"); params.push(String(q.mrr)); }
+    if (q.dateFrom) { where.push("mi.date >= ?"); params.push(String(q.dateFrom)); }
+    if (q.dateTo) { where.push("mi.date <= ?"); params.push(String(q.dateTo)); }
+    const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 100));
+    const page = Math.max(1, Number(q.page) || 1);
+    const [countRows] = await db.query(`SELECT COUNT(*) totalRows FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) WHERE ${where.join(" AND ")}`, params);
+    const totalRows = Number((countRows as any[])[0]?.totalRows || 0); const totalPages = Math.max(1, Math.ceil(totalRows / pageSize)); const safePage = Math.min(page, totalPages);
+    const [rows] = await db.query(`SELECT ps.id, ps.ourReelNo, ps.supplierReelNo, ps.weightKg, ps.materialId, m.erpCode, m.gsm, m.bf, m.size, COALESCE(mi.transactionNo,'Opening') parentTransactionNo, COALESCE(mi.date,'') parentDate, COALESCE(mi.supplierId,ps.supplierId) parentSupplierId, COALESCE(mi.gateEntryNo,'-') parentGateEntryNo, COALESCE(ge.truckNo,'-') parentVehicleNo, COALESCE(s.name,'-') supplierName FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE ${where.join(" AND ")} ORDER BY COALESCE(mi.date,''), ps.ourReelNo, ps.id LIMIT ? OFFSET ?`, [...params, pageSize, (safePage - 1) * pageSize]);
+    return res.json({ rows, totalRows, page: safePage, pageSize, totalPages });
+  } catch (error) { console.error('[REEL_DETAILS] failed:', error); return res.status(500).json({ error: 'Could not load Reel details.' }); }
+});
+
 app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
   try {
     const db = await getPool();
