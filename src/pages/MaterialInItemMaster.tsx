@@ -29,9 +29,8 @@ export function MaterialInItemMaster() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
   const [activeTab, setActiveTab] = useState<"others" | "reel-summary" | "reel-details">("others");
-  const needsReelData = activeTab !== "others";
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
-  const [packingSlips, , reelDataLoading, reelDataMeta] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: false, cacheToLocalStorage: false });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: false, cacheToLocalStorage: false });
   const [remoteReelSummary, setRemoteReelSummary] = useState<any[]>([]);
   const [remoteSummaryLoading, setRemoteSummaryLoading] = useState(false);
   const [remoteSummaryError, setRemoteSummaryError] = useState<string | null>(null);
@@ -42,8 +41,10 @@ export function MaterialInItemMaster() {
   const [remoteDetailsTotalPages, setRemoteDetailsTotalPages] = useState(1);
   const [remoteDetailsTotalRows, setRemoteDetailsTotalRows] = useState(0);
   const [materials] = useData<Material>("materials", []);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
+  // Reel Summary and Reel Details are server-paginated. Do not download every
+  // issue/return line into the browser when switching tabs.
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: false });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: false });
   const [gateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);
