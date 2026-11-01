@@ -10825,7 +10825,7 @@ app.get("/api/reports/reel-details", requireAuth, async (req, res) => {
         const totalRows = Number(countRows[0]?.totalRows || 0);
         const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
         const safePage = Math.min(page, totalPages);
-        const [rows] = await db.query(`SELECT ps.id, ps.ourReelNo, ps.supplierReelNo, ps.weightKg, ps.materialId, m.erpCode, m.gsm, m.bf, m.size, COALESCE(mi.transactionNo,'Opening') parentTransactionNo, COALESCE(mi.date,'') parentDate, COALESCE(mi.supplierId,ps.supplierId) parentSupplierId, COALESCE(mi.gateEntryNo,'-') parentGateEntryNo, COALESCE(ge.truckNo,'-') parentVehicleNo, COALESCE(s.name,'-') supplierName FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE ${where.join(" AND ")} ORDER BY COALESCE(mi.date,''), ps.ourReelNo, ps.id LIMIT ? OFFSET ?`, [...params, pageSize, (safePage - 1) * pageSize]);
+        const [rows] = await db.query(`SELECT ps.id, ps.ourReelNo, ps.supplierReelNo, ps.weightKg, ps.materialId, m.erpCode, m.gsm, m.bf, m.size, COALESCE(mi.transactionNo,'Opening') parentTransactionNo, COALESCE(mi.date,'') parentDate, COALESCE(mi.supplierId,ps.supplierId) parentSupplierId, COALESCE(mi.gateEntryNo,'-') parentGateEntryNo, UPPER(COALESCE(ge.truckNo,'-')) parentVehicleNo, COALESCE(s.name,'-') supplierName FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE ${where.join(" AND ")} ORDER BY COALESCE(mi.date,''), ps.ourReelNo, ps.id LIMIT ? OFFSET ?`, [...params, pageSize, (safePage - 1) * pageSize]);
         return res.json({ rows, totalRows, page: safePage, pageSize, totalPages });
     }
     catch (error) {
@@ -10844,7 +10844,7 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
             return res.status(500).json({ error: "Unit-I firm is not configured." });
         const [materials] = await db.query("SELECT id,name FROM materials");
         const names = new Map(materials.map((r) => [String(r.id), String(r.name || "Unknown")]));
-        const [parents] = await db.query("SELECT mi.id,mi.transactionNo,mi.date,mi.invoiceNo,mi.supplierId,mi.gateEntryId,COALESCE(NULLIF(mi.gateEntryNo,''),ge.gateEntryNo,'-') AS resolvedGateEntryNo,COALESCE(NULLIF(ge.truckNo,''),'-') AS resolvedVehicleNo,mi.`lines` FROM material_in mi LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE mi.firmId=? AND LOWER(TRIM(COALESCE(mi.mrrType,'')))='reel' ORDER BY mi.date,mi.transactionNo", [unitOne.id]);
+        const [parents] = await db.query("SELECT mi.id,mi.transactionNo,mi.date,mi.invoiceNo,mi.supplierId,mi.gateEntryId,COALESCE(NULLIF(mi.gateEntryNo,''),ge.gateEntryNo,'-') AS resolvedGateEntryNo,UPPER(COALESCE(NULLIF(ge.truckNo,''),'-')) AS resolvedVehicleNo,mi.`lines` FROM material_in mi LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE mi.firmId=? AND LOWER(TRIM(COALESCE(mi.mrrType,'')))='reel' ORDER BY mi.date,mi.transactionNo", [unitOne.id]);
         const parse = (v) => { try {
             const x = Array.isArray(v) ? v : JSON.parse(String(v || "[]"));
             return Array.isArray(x) ? x : [];
