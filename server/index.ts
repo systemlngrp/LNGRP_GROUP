@@ -2022,6 +2022,9 @@ app.post("/api/tally/sync", async (req, res) => {
 
 // Database connection pool
 let pool: mysql.Pool | null = null;
+// Prevent concurrent requests from creating multiple pools during startup or
+// after a transient connection loss.
+let poolCreationPromise: Promise<mysql.Pool> | null = null;
 let dailyConsumptionSchemaPromise: Promise<void> | null = null;
 let databaseInitializationPromise: Promise<void> | null = null;
 type DatabaseInitializationState = "not_started" | "running" | "ready" | "failed";
@@ -5361,6 +5364,7 @@ function parseMandatoryMachinesByType(setting?: any | null): Record<string, stri
 
 async function getPool() {
   if (pool) return pool;
+  if (poolCreationPromise) return poolCreationPromise;
   
   const clean = (val: string | undefined) => val?.trim().replace(/^["']|["']$/g, '');
   
@@ -5400,18 +5404,27 @@ async function getPool() {
     enableKeepAlive: false,
   };
 
-  pool = mysql.createPool(config);
+  poolCreationPromise = Promise.resolve().then(() => {
+    const createdPool = mysql.createPool(config);
+    pool = createdPool;
 
-  // Add error handler to the pool to prevent it from crashing the process
-  (pool as any).on('error', (err: any) => {
-    console.error('[DB] Unexpected error on idle client', err);
-    if (err && (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNRESET')) {
-      console.warn('[DB] Pool connection closed, will reconnect on next request');
-      pool = null; // Reset pool so it gets recreated
-    }
+    // Add error handler to the pool to prevent it from crashing the process
+    (createdPool as any).on('error', (err: any) => {
+      console.error('[DB] Unexpected error on idle client', err);
+      if (err && (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNRESET')) {
+        console.warn('[DB] Pool connection closed, will reconnect on next request');
+        pool = null; // Reset pool so it gets recreated
+      }
+    });
+
+    return createdPool;
   });
 
-  return pool;
+  try {
+    return await poolCreationPromise;
+  } finally {
+    poolCreationPromise = null;
+  }
 }
 
 async function loadAuthUserByIdOnce(userId: string): Promise<AuthUser | null> {
