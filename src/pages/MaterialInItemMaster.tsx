@@ -267,7 +267,7 @@ export function MaterialInItemMaster() {
       openingValue: reelStockRows.reduce((sum, row) => sum + (Number(row.openingQty || 0) * Number(row.rate || 0)), 0),
       receiptValue: remoteSummaryMetrics.receiptValue || reelStockRows.reduce((sum, row) => sum + (Number(row.mrrQty || 0) * Number(row.rate || 0)), 0),
       openingReelWeight: reelStockRows.reduce((sum, row) => sum + Number(row.openingQty || 0), 0),
-      receiptReelWeight: reelStockRows.reduce((sum, row) => sum + Number(row.mrrQty || 0), 0),
+      receiptReelWeight: remoteSummaryMetrics.receiptQty || reelStockRows.reduce((sum, row) => sum + Number(row.mrrQty || 0), 0),
       totalReceipts: remoteSummaryMetrics.totalReceipts || new Set(receiptLines.map(l => l.parentId)).size,
       othersValue: others.reduce((sum, l) => sum + Number(l.value || 0), 0),
       reelValue: reelSummary.reduce((sum, l) => sum + Number(l.value || 0), 0)
