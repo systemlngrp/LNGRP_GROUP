@@ -21,15 +21,25 @@ def n(v):
     try: return float(s(v).replace(",", "") or 0)
     except Exception: return 0.0
 def norm(v): return re.sub(r"\s+", " ", s(v)).casefold()
-def mrr_no(source):
+def base_mrr_no(source):
     raw = s(source)
-    if raw == "26-27/0602":
-        return "LNCB-1/MRR/26-27/00602A"
     # The sheet contains both plain values (371) and values such as
     # 26-27/0374 or MI/26-27/00372. The application number uses only the
     # final segment, padded to the established five-digit format.
     suffix = raw.rsplit("/", 1)[-1].strip()
     return f"LNCB-1/MRR/26-27/{int(suffix):05d}" if suffix.isdigit() else f"LNCB-1/MRR/26-27/{suffix}"
+
+def alpha_suffix(index):
+    """Excel-style alphabet suffix: 0=A, 25=Z, 26=AA."""
+    out = ""
+    index += 1
+    while index:
+        index, rem = divmod(index - 1, 26)
+        out = chr(65 + rem) + out
+    return out
+
+def mrr_no(source):
+    return base_mrr_no(source)
 def chunks(xs, size): return [xs[i:i + size] for i in range(0, len(xs), size)]
 def next_no(cur, table, column, prefix):
     cur.execute(f"SELECT `{column}` FROM `{table}` WHERE `{column}` LIKE %s ORDER BY CAST(SUBSTRING_INDEX(`{column}`, '/', -1) AS UNSIGNED) DESC LIMIT 1", (prefix + "%",))
@@ -61,7 +71,7 @@ def find_unit_one(cur):
     return next((r for r in cur.fetchall() if re.search(r"unit\s*[- ]?i\b", s(r[1]), re.I) and not re.search(r"unit\s*[- ]?ii\b", s(r[1]), re.I)), None)
 
 def create_one(cur, firm, suppliers, materials, parent):
-    source_no = parent["sourceNo"]; tx = mrr_no(source_no)
+    source_no = parent["sourceNo"]; tx = parent.get("transactionNo") or mrr_no(source_no)
     cur.execute("SELECT id FROM material_in WHERE transactionNo=%s", (tx,))
     if cur.fetchone(): raise RuntimeError(f"MRR already exists: {tx}")
     supplier_id = suppliers.get(norm(parent["supplier"]))
@@ -118,14 +128,55 @@ def main():
         cur.execute("SELECT id,name FROM suppliers"); suppliers = {norm(r[1]): r[0] for r in cur.fetchall()}
         cur.execute("SELECT id,erpCode FROM materials WHERE firmId=%s AND LOWER(type)='reel' AND LOWER(COALESCE(uom,'')) IN ('kg','kgs')", (firm[0],)); materials = {s(r[1]): r[0] for r in cur.fetchall()}
         cur.execute("SELECT transactionNo FROM material_in"); existing = {s(r[0]) for r in cur.fetchall()}
+        # Resolve normalized source-number collisions before any write.  The
+        # first source keeps the base number; later distinct source values get
+        # A, B, ... suffixes. This keeps separate receipts separate and makes
+        # reruns deterministic (e.g. 602 and 26-27/0602 -> 602 and 602A).
+        by_base = defaultdict(list)
+        for parent in source:
+            by_base[base_mrr_no(parent["sourceNo"])].append(parent)
+        aliases = []
+        for base, parents in by_base.items():
+            seen_sources = set()
+            for index, parent in enumerate(parents):
+                source_key = parent["sourceNo"]
+                if source_key in seen_sources:
+                    continue
+                seen_sources.add(source_key)
+                parent["transactionNo"] = base if index == 0 else base + alpha_suffix(index - 1)
+                if index > 0:
+                    aliases.append((source_key, parent["transactionNo"]))
+        for source_no, tx in aliases:
+            print(f"ALIAS source_mrr={source_no} transactionNo={tx}")
         plans = []; skipped = []
         for parent in source:
-            tx = mrr_no(parent["sourceNo"]); erps = {s(r[9]) for r in parent["rows"]}; reels = [s(r[6]) for r in parent["rows"]]; missing = sorted(e for e in erps if e not in materials)
+            tx = parent["transactionNo"]; erps = {s(r[9]) for r in parent["rows"]}; reels = [s(r[6]) for r in parent["rows"]]; missing = sorted(e for e in erps if e not in materials)
             if tx in existing: skipped.append((parent["sourceNo"], "already exists")); continue
             if missing: skipped.append((parent["sourceNo"], "ERP missing " + ",".join(missing))); continue
             if len(reels) != len(set(reels)): skipped.append((parent["sourceNo"], "duplicate Our Reel")); continue
             if not suppliers.get(norm(parent["supplier"])): skipped.append((parent["sourceNo"], "supplier missing")); continue
             plans.append(parent)
+        # Our Reel numbers are also unique in the database. If a separate
+        # receipt reuses a source number already present on an earlier MRR,
+        # retain both physical receipts with an alphabetic suffix instead of
+        # merging or overwriting the earlier reel.
+        cur.execute("SELECT ourReelNo FROM material_in_packing_slips WHERE ourReelNo IS NOT NULL AND ourReelNo <> ''")
+        used_reels = {s(r[0]) for r in cur.fetchall()}
+        reel_aliases = []
+        for parent in plans:
+            for row in parent["rows"]:
+                original = s(row[6])
+                candidate = original
+                suffix_index = 0
+                while candidate in used_reels:
+                    candidate = original + alpha_suffix(suffix_index)
+                    suffix_index += 1
+                if candidate != original:
+                    reel_aliases.append((parent["sourceNo"], original, candidate))
+                    row[6] = candidate
+                used_reels.add(candidate)
+        for source_no, original, candidate in reel_aliases:
+            print(f"REEL ALIAS source_mrr={source_no} ourReelNo={original} -> {candidate}")
         batches = chunks(plans, a.batch_size); selected = batches[a.start_batch - 1:(a.start_batch - 1 + a.max_batches if a.max_batches else None)]
         print(f"Eligible MRRs={len(plans)}; skipped={len(skipped)}; batches={len(batches)}; selected={len(selected)}")
         for row in skipped[:20]: print("SKIP", row[0], row[1])
