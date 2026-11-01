@@ -11403,6 +11403,22 @@ app.get("/api/reports/reel-details", requireAuth, async (req, res) => {
   } catch (error) { console.error('[REEL_DETAILS] failed:', error); return res.status(500).json({ error: 'Could not load Reel details.' }); }
 });
 
+app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
+  try {
+    const db = await getPool(); if (!db) return res.status(503).json({ error: "Database unavailable." });
+    const [firms] = await db.query("SELECT id, firmName FROM firms ORDER BY firmName");
+    const unitOne = (firms as any[]).find((r) => String(r.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "").match(/(unit1|uniti)$/));
+    if (!unitOne?.id) return res.status(500).json({ error: "Unit-I firm is not configured." });
+    const [materials] = await db.query("SELECT id,name FROM materials"); const names = new Map((materials as any[]).map((r) => [String(r.id), String(r.name || "Unknown")]));
+    const [parents] = await db.query("SELECT id,transactionNo,date,invoiceNo,supplierId,gateEntryNo,`lines` FROM material_in WHERE firmId=? AND LOWER(TRIM(COALESCE(mrrType,'')))='reel' ORDER BY date,transactionNo", [unitOne.id]);
+    const parse = (v: any) => { try { const x = Array.isArray(v) ? v : JSON.parse(String(v || "[]")); return Array.isArray(x) ? x : []; } catch { return []; } };
+    const all: any[] = []; for (const parent of parents as any[]) for (const line of parse(parent.lines)) all.push({ ...line, id: `${parent.id}:${line.id || line.itemId}`, parentId: parent.id, parentStatus: "Completed", parentTransactionNo: String(parent.transactionNo || ""), parentDate: String(parent.date || ""), parentInvoiceNo: String(parent.invoiceNo || ""), parentSupplierId: String(parent.supplierId || ""), parentGateEntryNo: String(parent.gateEntryNo || "-"), parentVehicleNo: "-", mrrType: "Reel", itemName: names.get(String(line.itemId)) || "Unknown", qty: Number(line.qty || 0), rate: Number(line.rate ?? line.invoiceRate ?? 0), value: Number(line.value ?? line.actualValue ?? line.invoiceValue ?? 0) });
+    const q = req.query as Record<string, unknown>; const search = String(q.search || "").trim().toLowerCase(); let rows = all.filter((r) => (!search || [r.parentTransactionNo,r.parentInvoiceNo,r.itemName].join(" ").toLowerCase().includes(search)) && (!q.mrr || r.parentTransactionNo === String(q.mrr)) && (!q.dateFrom || r.parentDate >= String(q.dateFrom)) && (!q.dateTo || r.parentDate <= String(q.dateTo)));
+    const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 100)); const totalRows = rows.length; const totalPages = Math.max(1, Math.ceil(totalRows / pageSize)); const page = Math.min(totalPages, Math.max(1, Number(q.page) || 1));
+    return res.json({ rows: rows.slice((page - 1) * pageSize, page * pageSize), totalRows, page, pageSize, totalPages });
+  } catch (error) { console.error('[REEL_SUMMARY] failed:', error); return res.status(503).json({ error: 'Reel Summary is temporarily unavailable.' }); }
+});
+
 app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
   try {
     const db = await getPool();

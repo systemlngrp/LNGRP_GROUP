@@ -31,7 +31,10 @@ export function MaterialInItemMaster() {
   const [activeTab, setActiveTab] = useState<"others" | "reel-summary" | "reel-details">("others");
   const needsReelData = activeTab !== "others";
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
-  const [packingSlips, , reelDataLoading, reelDataMeta] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: activeTab === "reel-summary", cacheToLocalStorage: false });
+  const [packingSlips, , reelDataLoading, reelDataMeta] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", enabled: false, cacheToLocalStorage: false });
+  const [remoteReelSummary, setRemoteReelSummary] = useState<any[]>([]);
+  const [remoteSummaryLoading, setRemoteSummaryLoading] = useState(false);
+  const [remoteSummaryError, setRemoteSummaryError] = useState<string | null>(null);
   const [remoteReelDetails, setRemoteReelDetails] = useState<any[]>([]);
   const [remoteDetailsLoading, setRemoteDetailsLoading] = useState(false);
   const [remoteDetailsError, setRemoteDetailsError] = useState<string | null>(null);
@@ -76,6 +79,19 @@ export function MaterialInItemMaster() {
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setRemoteSummaryLoading(true); setRemoteSummaryError(null);
+      const params = new URLSearchParams({ page: "1", pageSize: "100" });
+      if (searchTerm.trim()) params.set("search", searchTerm.trim()); if (mrrFilter) params.set("mrr", mrrFilter); if (fromDate) params.set("dateFrom", fromDate); if (toDate) params.set("dateTo", toDate);
+      try { const response = await fetch(`/api/reports/reel-summary?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(body?.error || response.statusText)); setRemoteReelSummary(Array.isArray(body.rows) ? body.rows : []); }
+      catch (error) { if ((error as Error).name !== "AbortError") { setRemoteReelSummary([]); setRemoteSummaryError(error instanceof Error ? error.message : "Unable to load Reel Summary."); } }
+      finally { if (!controller.signal.aborted) setRemoteSummaryLoading(false); }
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [fromDate, mrrFilter, searchTerm, toDate]);
 
   useEffect(() => { setRemoteDetailsPage(1); }, [fromDate, mrrFilter, searchTerm, toDate]);
 
@@ -300,7 +316,7 @@ export function MaterialInItemMaster() {
   }, [activeTab, processedData, materials, npdItems, suppliers, companies]);
   const renderTable = () => {
     const data = activeTab === "others" ? processedData.others : 
-                 activeTab === "reel-summary" ? processedData.reelSummary : 
+                 activeTab === "reel-summary" ? remoteReelSummary : 
                  remoteReelDetails;
 
     if (activeTab === "reel-details" && remoteDetailsLoading) {
@@ -309,8 +325,8 @@ export function MaterialInItemMaster() {
     if (activeTab === "reel-details" && remoteDetailsError) {
       return <div className="px-4 py-10 text-center text-red-700 font-bold">Unable to load Reel details: {remoteDetailsError}</div>;
     }
-    if (activeTab === "reel-summary" && reelDataLoading) return <div className="px-4 py-10 text-center text-indigo-700 font-bold">Loading Reel summary…</div>;
-    if (activeTab === "reel-summary" && reelDataMeta?.error) return <div className="px-4 py-10 text-center text-red-700 font-bold">Unable to load Reel summary: {reelDataMeta.error}</div>;
+    if (activeTab === "reel-summary" && remoteSummaryLoading) return <div className="px-4 py-10 text-center text-indigo-700 font-bold">Loading Reel summary…</div>;
+    if (activeTab === "reel-summary" && remoteSummaryError) return <div className="px-4 py-10 text-center text-red-700 font-bold">Unable to load Reel summary: {remoteSummaryError}</div>;
     if (data.length === 0) {
       return (
         <div className="px-4 py-8 text-center text-black font-medium italic">No items found for the current filters.</div>
@@ -555,7 +571,7 @@ export function MaterialInItemMaster() {
             activeTab === "reel-summary" ? "bg-white border-b-transparent text-emerald-700 shadow-[0_-2px_0_0_#059669]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
           }`}
         >
-          <Layers size={14} /> Reel Summary ({processedData.reelSummary.length})
+          <Layers size={14} /> Reel Summary ({remoteReelSummary.length})
         </button>
         <button
           type="button"
