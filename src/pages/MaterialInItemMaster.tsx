@@ -273,7 +273,9 @@ export function MaterialInItemMaster() {
       receiptReelWeight: remoteSummaryMetrics.receiptQty || reelStockRows.reduce((sum, row) => sum + Number(row.mrrQty || 0), 0),
       totalReceipts: remoteSummaryMetrics.totalReceipts || new Set(receiptLines.map(l => l.parentId)).size,
       othersValue: others.reduce((sum, l) => sum + Number(l.value || 0), 0),
-      reelValue: reelSummary.reduce((sum, l) => sum + Number(l.value || 0), 0)
+      // Reel Summary is server-paginated; use the server's full filtered
+      // total instead of summing only the currently loaded page/raw cache.
+      reelValue: remoteSummaryMetrics.receiptValue || reelSummary.reduce((sum, l) => sum + Number(l.value || 0), 0)
     };
 
     return {
