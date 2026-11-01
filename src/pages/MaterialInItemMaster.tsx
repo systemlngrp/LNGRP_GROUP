@@ -37,6 +37,7 @@ export function MaterialInItemMaster() {
   const [remoteDetailsError, setRemoteDetailsError] = useState<string | null>(null);
   const [remoteDetailsPage, setRemoteDetailsPage] = useState(1);
   const [remoteDetailsTotalPages, setRemoteDetailsTotalPages] = useState(1);
+  const [remoteDetailsTotalRows, setRemoteDetailsTotalRows] = useState(0);
   const [materials] = useData<Material>("materials", []);
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: needsReelData });
@@ -54,7 +55,6 @@ export function MaterialInItemMaster() {
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
-    if (activeTab !== "reel-details") return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setRemoteDetailsLoading(true); setRemoteDetailsError(null);
@@ -68,13 +68,14 @@ export function MaterialInItemMaster() {
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(String(body?.error || response.statusText));
         setRemoteReelDetails(Array.isArray(body.rows) ? body.rows.map((row: any) => ({ ...row, specs: `${row.gsm || "-"} GSM / ${row.bf || "-"} BF / ${row.size || "-"}`, weightKg: Number(row.weightKg || 0) })) : []);
+        setRemoteDetailsTotalRows(Number(body.totalRows) || 0);
         setRemoteDetailsTotalPages(Number(body.totalPages) || 1);
       } catch (error) {
         if ((error as Error).name !== "AbortError") { setRemoteReelDetails([]); setRemoteDetailsError(error instanceof Error ? error.message : "Unable to load Reel details."); }
       } finally { if (!controller.signal.aborted) setRemoteDetailsLoading(false); }
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [activeTab, fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
+  }, [fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
 
   useEffect(() => { setRemoteDetailsPage(1); }, [fromDate, mrrFilter, searchTerm, toDate]);
 
@@ -563,7 +564,7 @@ export function MaterialInItemMaster() {
             activeTab === "reel-details" ? "bg-white border-b-transparent text-amber-700 shadow-[0_-2px_0_0_#d97706]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
           }`}
         >
-          <Disc size={14} /> Reel Details ({processedData.reelDetails.length})
+          <Disc size={14} /> Reel Details ({remoteDetailsTotalRows})
         </button>
       </div>
 
