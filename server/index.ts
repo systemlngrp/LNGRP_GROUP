@@ -10489,7 +10489,7 @@ app.post("/api/physical-stock/close-session", requireAuth, requirePhysicalStockA
 });
 // Generic API wrapper for simple CRUD
 type WhatsappComplaintDelivery = {
-  status: "Sent" | "Failed" | "Not Configured" | "Already Sent" | "In Progress";
+  status: "Sent" | "Failed" | "Not Configured" | "Already Sent" | "In Progress" | "Disabled";
   error?: string;
   warning?: string;
   failedStage?: WhatsappSendStage;
