@@ -5389,13 +5389,15 @@ async function getPool() {
     database,
     port,
     waitForConnections: true,
-    connectionLimit: 10,
-    maxIdle: 10, // max idle connections, the default value is the same as `connectionLimit`
+    // Hostinger shared MySQL counts every new connection against an hourly
+    // quota. Keep the pool deliberately small; the application is primarily
+    // a single-user ERP and does not need ten concurrent DB sessions.
+    connectionLimit: 3,
+    maxIdle: 2,
     idleTimeout: 60000, // idle connections timeout, in milliseconds, the default value 60000
-    queueLimit: 0,
+    queueLimit: 20,
     connectTimeout: 10000, // 10 seconds timeout
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 10000
+    enableKeepAlive: false,
   };
 
   pool = mysql.createPool(config);
@@ -14187,7 +14189,7 @@ app.post("/api/materials/reel-materials/bulk", async (req, res) => {
       const size = Number(firstPopulatedValue(raw?.size, raw?.["Size"]));
       const gsm = Number(firstPopulatedValue(raw?.gsm, raw?.["GSM"]));
       const bf = Number(firstPopulatedValue(raw?.bf, raw?.["BF"]));
-      const color = String(firstPopulatedValue(raw?.color, raw?.["Color"]) || "LG").trim();
+      const color = String(firstPopulatedValue(raw?.color, raw?.["Color"]) || "Natural").trim();
       if (!/^\d+$/.test(rawErp) || !Number.isSafeInteger(Number(rawErp)) || Number(rawErp) <= 0) fail(`Row ${rowNumber}: ERP Code must be a positive whole number.`);
       if (!Number.isFinite(size) || size <= 0) fail(`Row ${rowNumber}: Size must be greater than 0.`);
       if (!Number.isFinite(gsm) || gsm <= 0) fail(`Row ${rowNumber}: GSM must be greater than 0.`);
