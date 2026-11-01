@@ -330,6 +330,7 @@ function isSpanningTableRow(row: HTMLTableRowElement, columnCount: number) {
 }
 
 function isExternallyPaginated(table: HTMLTableElement) {
+  if (table.closest("[data-disable-table-pagination]")) return true;
   if (table.dataset[TABLE_PAGINATION_EXTERNAL] === "true") return true;
 
   let current: Element | null = table;

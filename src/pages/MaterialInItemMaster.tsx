@@ -495,7 +495,7 @@ export function MaterialInItemMaster() {
   };
 
   return (
-    <div className="space-y-6">
+    <div data-disable-table-pagination="true" className="space-y-6">
       <div className="flex justify-between items-center pb-4 border-b border-black">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Material Receipt Item Master</h2>
       </div>
