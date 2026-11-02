@@ -465,7 +465,7 @@ export function ProductionStageQueue({
                 ) : null}
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
                   <button type="button" onClick={() => toggleSort("qty")} className="inline-flex items-center gap-1">
-                    Qty <SortIcon column="qty" />
+                    Qty (Kgs) <SortIcon column="qty" />
                   </button>
                 </th>
                 {!hideActualPaperUsedColumn ? (
@@ -532,7 +532,7 @@ export function ProductionStageQueue({
                         {prereqQty > 0 ? prereqQty.toFixed(2) : "-"}
                       </td>
                     ) : null}
-                    <td className="px-4 py-4 text-right text-xs font-medium text-emerald-700 border border-black whitespace-nowrap">{production.qty} {production.uom}</td>
+                    <td className="px-4 py-4 text-right text-xs font-medium text-emerald-700 border border-black whitespace-nowrap">{production.qty}</td>
                     {!hideActualPaperUsedColumn ? (
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{actualPaperUsed > 0 ? actualPaperUsed : "-"}</td>
                     ) : null}
@@ -783,4 +783,3 @@ export function ProductionPendingFFG() {
     />
   );
 }
-
