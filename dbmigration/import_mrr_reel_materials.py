@@ -49,7 +49,7 @@ class ReelRow:
     supplier_reel_no: str
     weight_kg: Decimal
     opening_rate: Decimal
-    color: str = "LG"
+    color: str = "Natural"
 
 
 def load_runtime_env() -> None:

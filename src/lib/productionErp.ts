@@ -26,6 +26,25 @@ const itemErps = (item: OrderCatalogItem) => {
     .filter(Boolean);
 };
 
+type CatalogIndex = { byId: Map<string, number[]>; byErp: Map<string, number[]> };
+const catalogIndexCache = new WeakMap<OrderCatalogItem[], CatalogIndex>();
+const getCatalogIndex = (items: OrderCatalogItem[]): CatalogIndex => {
+  let index = catalogIndexCache.get(items);
+  if (index) return index;
+  index = { byId: new Map(), byErp: new Map() };
+  const add = (map: Map<string, number[]>, key: string, position: number) => {
+    const list = map.get(key);
+    if (!list) map.set(key, [position]);
+    else if (list[list.length - 1] !== position) list.push(position);
+  };
+  items.forEach((item, position) => {
+    itemIds(item).forEach((key) => add(index!.byId, key, position));
+    itemErps(item).forEach((key) => add(index!.byErp, key, position));
+  });
+  catalogIndexCache.set(items, index);
+  return index;
+};
+
 const explicitSource = (value: unknown): ProductionItemSource | undefined => {
   const normalized = String(value ?? "").trim().toUpperCase();
   return ["FG", "PHP", "PLATE"].includes(normalized)
@@ -49,8 +68,8 @@ export function resolveProductionSource(
     .filter(Boolean);
 
   for (const source of ["PHP", "PLATE"] as const) {
-    const items = catalogs[source] || [];
-    if (items.some((item) => (id && itemIds(item).includes(id)) || erps.some((erp) => itemErps(item).includes(erp)))) {
+    const index = getCatalogIndex(catalogs[source] || []);
+    if ((id && index.byId.has(id)) || erps.some((erp) => index.byErp.has(erp))) {
       return source;
     }
   }
@@ -72,12 +91,14 @@ export function resolveProductionItem(
   const erps = [production.erpCode, production.masterErp, order?.erpCode]
     .map((value) => String(value ?? "").trim().toLowerCase())
     .filter(Boolean);
-  const idMatches = (item: OrderCatalogItem) => Boolean(id && itemIds(item).includes(id));
-  const erpMatches = (item: OrderCatalogItem) => erps.some((erp) => itemErps(item).includes(erp));
-
-  return items.find((item) => idMatches(item) && erpMatches(item))
-    || items.find(erpMatches)
-    || items.find(idMatches);
+  const index = getCatalogIndex(items);
+  const idList = id ? index.byId.get(id) || [] : [];
+  const erpPositions = new Set<number>();
+  erps.forEach((erp) => index.byErp.get(erp)?.forEach((position) => erpPositions.add(position)));
+  const both = idList.find((position) => erpPositions.has(position));
+  if (both !== undefined) return items[both];
+  if (erpPositions.size) return items[Math.min(...erpPositions)];
+  return idList.length ? items[idList[0]] : undefined;
 }
 
 export function resolveProductionErp(

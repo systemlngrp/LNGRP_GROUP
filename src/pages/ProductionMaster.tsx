@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { useData } from "../hooks/useData";
+import { useData, getDataAuthHeaders } from "../hooks/useData";
+import { loadCollection } from "../lib/collectionLoader";
 import { Production, OrderSchedule, Order, Company, Firm, ProductionProcessing, Setting, LoadingSlip, LoadingSlipLine, Machine, Material, MaterialInPackingSlip, MaterialIssueReelLine, MaterialReturnReelLine } from "../types";
 import { formatDate } from "../lib/serial";
 import { Select } from "../components/Select";
@@ -76,10 +77,14 @@ export function ProductionMaster() {
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [machines] = useData<Machine>("machines", []);
   const [materials] = useData<Material>("materials", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  // Reel data is loaded only when a Job Card PDF is requested.
   const { resolveOrderItem, phpItems, plateItems, itemsBySource } = useOrderItemCatalog();
+  const scheduleById = useMemo(() => new Map(schedules.map((row) => [row.id, row])), [schedules]);
+  const orderById = useMemo(() => new Map(orders.map((row) => [row.id, row])), [orders]);
+  const companyById = useMemo(() => new Map(companies.map((row) => [row.id, row])), [companies]);
+  const productionById = useMemo(() => new Map(productions.map((row) => [row.id, row])), [productions]);
+  const phpJobById = useMemo(() => new Map(phpJobs.map((row) => [String(row.id), row])), [phpJobs]);
+  const plateJobById = useMemo(() => new Map(plateJobs.map((row) => [String(row.id), row])), [plateJobs]);
   const firmMap = useMemo(() => new Map(firms.map((firm) => [String(firm.id), getFirmDisplayName(firm)])), [firms]);
   
   const [searchTerm, setSearchTerm] = useState("");
@@ -194,7 +199,7 @@ export function ProductionMaster() {
   const processingTotalsMap = useMemo(() => {
     const map = new Map<string, Record<string, number>>();
     processing.forEach((entry) => {
-      const production = productions.find((row) => row.id === entry.productionId);
+      const production = productionById.get(entry.productionId);
       const item = resolveProductionItem(production);
       const machineName = normalizeMachineName(entry.machineName);
       const requiredMachines = production
@@ -213,7 +218,7 @@ export function ProductionMaster() {
       map.set(entry.productionId, totals);
     });
     return map;
-  }, [processing, productions, phpJobs, plateJobs, mandatoryMachinesByType, machines]);
+  }, [processing, productionById, phpJobs, plateJobs, mandatoryMachinesByType, machines]);
 
   const corrugationWastageTotalsMap = useMemo(() => {
     const map = new Map<string, Record<string, number>>();
@@ -424,10 +429,10 @@ export function ProductionMaster() {
 
   const productionFilterRows = useMemo(() => {
     return visibleProductions.map((production) => {
-      const schedule = schedules.find((s) => s.id === production.scheduleId);
-      const order = orders.find((o) => o.id === schedule?.orderId || o.id === (production as Production & { orderId?: string }).orderId);
+      const schedule = production.scheduleId ? scheduleById.get(production.scheduleId) : undefined;
+      const order = (schedule?.orderId ? orderById.get(schedule.orderId) : undefined) || orderById.get(String((production as Production & { orderId?: string }).orderId || ""));
       const item = resolveProductionItem(production, order) || resolveOrderItem(order);
-      const company = companies.find((c) => c.id === order?.companyId);
+      const company = order?.companyId ? companyById.get(order.companyId) : undefined;
       const itemName = String(item?.name || "").trim();
       const itemErp = resolveProductionErp(production, order, item);
       const fallbackErps = [production.erpCode, production.masterErp, order?.erpCode, item?.erp]
@@ -464,7 +469,7 @@ export function ProductionMaster() {
         ].join(" ").toLowerCase(),
       };
     });
-  }, [visibleProductions, schedules, orders, companies, firmMap, resolveOrderItem]);
+  }, [visibleProductions, scheduleById, orderById, companyById, firmMap, resolveOrderItem]);
 
   const companyOptions = useMemo(() => {
     const names = Array.from(new Set(productionFilterRows.map((row) => row.companyName).filter(Boolean)));
@@ -515,13 +520,20 @@ export function ProductionMaster() {
 
   const handleDownloadJobCard = async (production: Production) => {
     try {
-      const schedule = production.scheduleId ? schedules.find((row) => row.id === production.scheduleId) || null : null;
-      const order = schedule ? orders.find((row) => row.id === schedule.orderId) || null : null;
-      const company = order ? companies.find((row) => row.id === order.companyId) || null : null;
+      const schedule = production.scheduleId ? scheduleById.get(production.scheduleId) || null : null;
+      const order = schedule?.orderId ? orderById.get(schedule.orderId) || null : null;
+      const company = order?.companyId ? companyById.get(order.companyId) || null : null;
       const item = resolveProductionItem(production, order) || null;
       const itemErp = resolveProductionErp(production, order, item);
       const phpItem = itemErp ? findLinkedItemByErp(phpItems, itemErp) || null : null;
       const plateItem = itemErp ? findLinkedItemByErp(plateItems, itemErp) || null : null;
+      const loadAll = <T extends { id: string }>(endpoint: string) =>
+        loadCollection<T>(endpoint, getDataAuthHeaders(true), "page", () => {}).promise;
+      const [packingSlips, issueReelLines, returnReelLines] = await Promise.all([
+        loadAll<MaterialInPackingSlip>("/api/material-in-packing-slips"),
+        loadAll<MaterialIssueReelLine>("/api/material-issue-reel-lines"),
+        loadAll<MaterialReturnReelLine>("/api/material-return-reel-lines"),
+      ]);
       await downloadJobCardPdf({
         production,
         schedule,
@@ -554,8 +566,8 @@ export function ProductionMaster() {
   };
 
   const cancelTarget = cancelModalJobId ? productions.find((p) => p.id === cancelModalJobId) : null;
-  const cancelTargetSchedule = cancelTarget?.scheduleId ? schedules.find((schedule) => schedule.id === cancelTarget.scheduleId) : null;
-  const cancelTargetOrder = cancelTargetSchedule ? orders.find((order) => order.id === cancelTargetSchedule.orderId) : null;
+  const cancelTargetSchedule = cancelTarget?.scheduleId ? scheduleById.get(cancelTarget.scheduleId) : null;
+  const cancelTargetOrder = cancelTargetSchedule?.orderId ? orderById.get(cancelTargetSchedule.orderId) : null;
   const cancelTargetItem = cancelTarget ? resolveProductionItem(cancelTarget) || null : null;
 
   return (
@@ -655,9 +667,9 @@ export function ProductionMaster() {
         {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4 p-2">
             {paginatedList.map((p) => {
-                const schedule = schedules.find(s => s.id === p.scheduleId);
-                const order = orders.find(o => o.id === schedule?.orderId);
-                const company = companies.find(c => c.id === order?.companyId);
+                const schedule = p.scheduleId ? scheduleById.get(p.scheduleId) : undefined;
+                const order = schedule?.orderId ? orderById.get(schedule.orderId) : undefined;
+                const company = order?.companyId ? companyById.get(order.companyId) : undefined;
                 const item = resolveProductionItem(p);
                 const normalizedFields = getProductionMatchingFields(p, item);
                 const displayRow = { ...p, ...normalizedFields };
@@ -854,9 +866,9 @@ export function ProductionMaster() {
               ) : (
                 paginatedList.map((p, idx) => {
                   const srNo = (page - 1) * pageSize + idx + 1;
-                  const schedule = schedules.find(s => s.id === p.scheduleId);
-                  const order = orders.find(o => o.id === schedule?.orderId || o.id === (p as Production & { orderId?: string }).orderId);
-                  const company = companies.find(c => c.id === order?.companyId);
+                  const schedule = p.scheduleId ? scheduleById.get(p.scheduleId) : undefined;
+                  const order = (schedule?.orderId ? orderById.get(schedule.orderId) : undefined) || orderById.get(String((p as Production & { orderId?: string }).orderId || ""));
+                  const company = order?.companyId ? companyById.get(order.companyId) : undefined;
                   const item = resolveProductionItem(p, order);
                   const normalizedFields = getProductionMatchingFields(p, item);
                   const displayRow = { ...p, ...normalizedFields, erpCode: resolveProductionErp(p, order, item) };
