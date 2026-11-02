@@ -41,7 +41,8 @@ export function PendingNpd() {
         };
       })
       .filter(Boolean)
-      .filter((row) => row.item && !row.boxType && !row.rapcValue)
+      // Show incomplete NPD setup when either required field is missing.
+      .filter((row) => row.item && (!row.boxType || !row.rapcValue))
       .filter((row) => !firmFilter || row.firmId === firmFilter);
 
     const needle = searchTerm.trim().toLowerCase();
