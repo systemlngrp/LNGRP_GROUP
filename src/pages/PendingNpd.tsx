@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { Company, Firm, Order, OrderSchedule } from "../types";
 import { formatDate } from "../lib/serial";
@@ -14,7 +14,7 @@ export function PendingNpd() {
   const [schedules] = useData<OrderSchedule>("orders_schedule", []);
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const npdItems = useNpdItems();
+  const { fgItems: npdItems } = useOrderItemCatalog({ includeMaterials: false });
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
 
