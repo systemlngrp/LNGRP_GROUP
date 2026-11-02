@@ -2975,7 +2975,7 @@ async function fetchNpdCatalogItems(db: mysql.Pool, options: { search?: string; 
     params.push(like, like, like, like, like, like);
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const columns = ["id", "npdId", "itemName", "erp", "erpCode", "erpItemCode", "masterItemNameErpCode", "customerName", "companyName", "companyId", "boxType", "rate", "gstRate", "uom"];
+  const columns = ["id", "npdId", "itemName", "erp", "erpCode", "erpItemCode", "masterItemNameErpCode", "customerName", "companyName", "companyId", "boxType", "rapc", "rate", "gstRate", "uom"];
   const [columnRows] = await db.query("SHOW COLUMNS FROM `npd`");
   const available = new Set((columnRows as any[]).map((row) => String(row.Field || "")));
   const selected = columns.filter((column) => available.has(column)).map((column) => `n.\`${column}\``).join(", ");

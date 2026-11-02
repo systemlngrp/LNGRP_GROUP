@@ -10,8 +10,9 @@ import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 export function PendingNpd() {
-  const [orders] = useData<Order>("orders", []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
+  // Load every firm's orders/schedules; the page's own Firm filter narrows them.
+  const [orders] = useData<Order>("orders", [], { firmScope: "all" });
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const { fgItems: npdItems } = useOrderItemCatalog({ includeMaterials: false });
@@ -27,8 +28,9 @@ export function PendingNpd() {
         const item = npdItems.find((row) => row.id === String(order.itemId || "").trim());
         const company = companies.find((row) => row.id === order.companyId);
         const firmId = String(schedule.firmId || order.firmId || "");
-        const boxType = String((item as any)?.boxType || "").trim();
-        const rapcValue = String((item as any)?.rapc ?? "").trim();
+        // Catalog items keep the original NPD row in `raw` (RAPC is stored there).
+        const boxType = String((item as any)?.boxType || (item as any)?.raw?.boxType || "").trim();
+        const rapcValue = String((item as any)?.raw?.rapc ?? (item as any)?.rapc ?? "").trim();
         return {
           schedule,
           order,
@@ -57,9 +59,9 @@ export function PendingNpd() {
         company?.name,
         firmName,
         item?.name,
-        (item as any)?.itemName,
-        (item as any)?.customerName,
-        (item as any)?.contactPerson,
+        (item as any)?.raw?.itemName,
+        (item as any)?.raw?.customerName,
+        (item as any)?.raw?.contactPerson,
         boxType,
         rapcValue,
       ]
