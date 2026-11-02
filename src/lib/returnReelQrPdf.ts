@@ -64,6 +64,8 @@ export async function downloadReturnReelQrPdf({
   reelNo,
   weight,
   setting = null,
+  firmId,
+  firms = [],
 }: ReturnReelQrPdfArgs) {
   const doc = new jsPDF("p", "mm", "a4");
   const pageW = doc.internal.pageSize.getWidth();

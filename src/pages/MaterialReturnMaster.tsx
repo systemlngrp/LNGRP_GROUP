@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Material, Production, Setting } from "../types";
+import { MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Material, Production, Setting, Firm } from "../types";
 import { Select } from "../components/Select";
 import { Trash2, Package, Layers, Disc, Search, Download } from "lucide-react";
 import { formatDate } from "../lib/serial";
@@ -38,6 +38,7 @@ export function MaterialReturnMaster() {
   const [materials] = useData<Material>("materials", [], { firmScope: "all" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -221,6 +222,8 @@ export function MaterialReturnMaster() {
         reelNo: row.ourReelNo || "",
         weight: Number(row.weightKg || 0),
         setting: settings[0] || null,
+        firmId: row.firmId || undefined,
+        firms,
       });
     } catch (error) {
       console.error("Failed to generate return reel QR PDF", error);
