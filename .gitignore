@@ -9,8 +9,9 @@ node_modules/
 /dbmigration/.venv/db-migrations.json
 
 # Build output
-dist/
-server-dist/
+# dist/ and server-dist/ are deliberately NOT ignored: Hostinger serves the
+# committed build, so every build file must be committed. Ignoring them caused
+# blank-screen deploys (new bundle files left out of commits).
 *.tsbuildinfo
 
 # Test and coverage output
