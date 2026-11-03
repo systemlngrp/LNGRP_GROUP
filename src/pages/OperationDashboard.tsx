@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useSettledValue } from "../hooks/useSettledValue";
+import { Spinner } from "../components/Spinner";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import type {
   Company,
@@ -208,40 +209,44 @@ export function OperationDashboard() {
   // Compute the dashboard once, after every list has finished loading, instead
   // of re-running all figures after each 250-row batch (~280 times on a cold load).
   // Background refreshes keep the previous figures until fresh data is complete.
-  const dataReady = !(productionsLoading ||
-    firmsLoading ||
-    phpJobMasterLoading ||
-    plateJobMasterLoading ||
-    npdItemsLoading ||
-    catalogLoading ||
-    materialsLoading ||
-    materialInLoading ||
-    packingSlipsLoading ||
-    schedulesLoading ||
-    ordersLoading ||
-    companiesLoading ||
-    gateEntriesLoading ||
-    dispatchPlansLoading ||
-    processingLoading ||
-    loadingSlipsLoading ||
-    materialIssuesLoading ||
-    materialIssueLinesLoading ||
-    issueReelLinesLoading ||
-    materialReturnsLoading ||
-    materialReturnLinesLoading ||
-    returnReelLinesLoading ||
-    invoicesLoading ||
-    invoiceLineItemsLoading ||
-    consumptionsLoading ||
-    sampleRequestsLoading ||
-    indentsLoading ||
-    indentLinesLoading ||
-    purchaseOrdersLoading ||
-    phpLoadingSlipsLoading ||
-    plateLoadingSlipsLoading ||
-    gatePassesLoading ||
-    machinesLoading ||
-    settingsLoading);
+  const loadingFlags = [
+    productionsLoading,
+    firmsLoading,
+    phpJobMasterLoading,
+    plateJobMasterLoading,
+    npdItemsLoading,
+    catalogLoading,
+    materialsLoading,
+    materialInLoading,
+    packingSlipsLoading,
+    schedulesLoading,
+    ordersLoading,
+    companiesLoading,
+    gateEntriesLoading,
+    dispatchPlansLoading,
+    processingLoading,
+    loadingSlipsLoading,
+    materialIssuesLoading,
+    materialIssueLinesLoading,
+    issueReelLinesLoading,
+    materialReturnsLoading,
+    materialReturnLinesLoading,
+    returnReelLinesLoading,
+    invoicesLoading,
+    invoiceLineItemsLoading,
+    consumptionsLoading,
+    sampleRequestsLoading,
+    indentsLoading,
+    indentLinesLoading,
+    purchaseOrdersLoading,
+    phpLoadingSlipsLoading,
+    plateLoadingSlipsLoading,
+    gatePassesLoading,
+    machinesLoading,
+    settingsLoading,
+  ];
+  const dataReady = !loadingFlags.some(Boolean);
+  const loadedListCount = loadingFlags.filter((isLoading) => !isLoading).length;
   const productions = useSettledValue(productionsRaw, dataReady);
   const firms = useSettledValue(firmsRaw, dataReady);
   const phpJobMaster = useSettledValue(phpJobMasterRaw, dataReady);
@@ -676,7 +681,10 @@ export function OperationDashboard() {
   }, [rows]);
 
   return (
-    <div className="space-y-4">
+    <div
+      className={`space-y-4 ${dataReady ? "" : "[&>*:not(:first-child)]:pointer-events-none [&>*:not(:first-child)]:opacity-40"}`}
+      aria-busy={!dataReady}
+    >
       {/* Top Banner Control Section */}
       <div className="overflow-hidden rounded-xl border-2 border-slate-900 bg-white shadow-[4px_4px_0px_0px_rgba(15,23,42,1)]">
         <div className="bg-white px-3 py-3">
@@ -686,8 +694,11 @@ export function OperationDashboard() {
                 Operation Dashboard
               </h2>
               {!dataReady ? (
-                <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-indigo-700" role="status">
-                  Loading latest data… figures will appear once all records are loaded.
+                <div className="mt-1.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-indigo-700" role="status" aria-live="polite">
+                  <Spinner size={16} />
+                  <span>
+                    Loading latest data ({loadedListCount} of {loadingFlags.length} lists)… figures will appear once all records are loaded.
+                  </span>
                 </div>
               ) : null}
             </div>
