@@ -4,17 +4,20 @@ import { Camera, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getAllReturnableReelLines } from "../lib/materialMovement";
-import type { MaterialIssueReelLine, MaterialReturnReelLine, Production } from "../types";
+import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
+import type { MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
 
 export function PendingMaterialReturn() {
   const navigate = useNavigate();
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [issueReels] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
   const [returnReels] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all" });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const { findItemAcrossSources } = useOrderItemCatalog();
 
   const rows = useMemo(() => {
-    const returnable = getAllReturnableReelLines(issueReels, returnReels, productions);
+    const returnable = getAllReturnableReelLines(issueReels, returnReels, productions)
+      .filter((line) => isCorrugationLinerComplete(processing, line.productionId));
     const byProduction = new Map<string, { reelIds: Set<string>; weight: number }>();
     returnable.forEach((line) => {
       const current = byProduction.get(line.productionId) || { reelIds: new Set<string>(), weight: 0 };
@@ -41,7 +44,7 @@ export function PendingMaterialReturn() {
         };
       })
       .sort((a, b) => String(b.production.date || "").localeCompare(String(a.production.date || "")));
-  }, [findItemAcrossSources, issueReels, productions, returnReels]);
+  }, [findItemAcrossSources, issueReels, processing, productions, returnReels]);
 
   const openReturn = (production: Production, mode: "manual" | "qr") => {
     const params = new URLSearchParams({
