@@ -19,6 +19,19 @@ function run(command, args) {
 try {
   run(process.execPath, [join(root, "node_modules/vite/bin/vite.js"), "build", "--outDir", tempPath]);
   run(process.execPath, [join(root, "node_modules/typescript/bin/tsc"), "-p", "tsconfig.server.json"]);
+  // Bundle the shared dashboard calculation module (src/lib) for the server's
+  // /api/operations-dashboard/summary endpoint. Kept out of the tsc server build
+  // because src/lib uses bundler-style imports.
+  const { build: esbuild } = await import("esbuild");
+  await esbuild({
+    entryPoints: [join(root, "src/lib/operationDashboardCompute.ts")],
+    outfile: join(root, "server-dist/dashboard-summary.mjs"),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node18",
+    logLevel: "warning",
+  });
 
   const backupPath = `${distPath}.previous`;
   rmSync(backupPath, { recursive: true, force: true });

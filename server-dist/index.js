@@ -16802,6 +16802,217 @@ app.post("/api/orders/bulk-upload", requireAuth, async (req, res) => {
         conn.release();
     }
 });
+// ---------------------------------------------------------------------------
+// Operation Dashboard server-side summary.
+// Loads the same lists the dashboard page used to download (through the same
+// list handler, page by page, with the same firm scoping), runs the shared
+// calculation module (src/lib/operationDashboardCompute.ts, bundled into
+// server-dist/dashboard-summary.mjs) and returns only the results.
+// ---------------------------------------------------------------------------
+let dashboardSummaryModulePromise = null;
+function loadDashboardSummaryModule() {
+    if (!dashboardSummaryModulePromise) {
+        const candidates = [
+            new URL("./dashboard-summary.mjs", import.meta.url).href,
+            new URL("../server-dist/dashboard-summary.mjs", import.meta.url).href,
+        ];
+        dashboardSummaryModulePromise = (async () => {
+            let lastError;
+            for (const candidate of candidates) {
+                try {
+                    return await import(candidate);
+                }
+                catch (error) {
+                    lastError = error;
+                }
+            }
+            throw lastError;
+        })();
+        dashboardSummaryModulePromise.catch(() => { dashboardSummaryModulePromise = null; });
+    }
+    return dashboardSummaryModulePromise;
+}
+function callCollectionHandler(entity, query, firmId, authUserId) {
+    return new Promise((resolve, reject) => {
+        const headers = firmId ? { "x-firm-id": firmId } : {};
+        const fakeReq = {
+            method: "GET",
+            query,
+            headers,
+            authUserId,
+            header: (name) => headers[String(name || "").toLowerCase()],
+        };
+        const fakeRes = {
+            statusCode: 200,
+            status(code) { this.statusCode = code; return this; },
+            setHeader() { return this; },
+            json(body) { resolve({ status: this.statusCode, body }); return this; },
+            send(body) { resolve({ status: this.statusCode, body }); return this; },
+            end() { resolve({ status: this.statusCode, body: null }); return this; },
+        };
+        Promise.resolve(createHandlers(entity).getAll(fakeReq, fakeRes)).catch(reject);
+    });
+}
+// Mirrors src/lib/collectionLoader.ts: cursor pages (500 here, the handler's
+// maximum; page size does not change the rows or their order), rows
+// de-duplicated by String(id) keeping first position. A failed list yields [] (the page treated a
+// failed list as empty too).
+async function loadCollectionLikeClient(entity, firmId, authUserId) {
+    const rowsById = new Map();
+    let cursor = "";
+    for (let guard = 0; guard < 10000; guard++) {
+        const query = { limit: "500" };
+        if (cursor)
+            query.cursor = cursor;
+        const { status, body } = await callCollectionHandler(entity, query, firmId, authUserId);
+        if (status >= 400) {
+            console.warn(`[DASHBOARD_SUMMARY] ${entity} returned ${status}`);
+            return [];
+        }
+        const batch = Array.isArray(body) ? body : Array.isArray(body?.rows) ? body.rows : [];
+        batch.forEach((row) => rowsById.set(String(row?.id), row));
+        const nextCursor = typeof body?.nextCursor === "string" && body.nextCursor ? body.nextCursor : "";
+        if (Array.isArray(body) || !nextCursor)
+            break;
+        cursor = nextCursor;
+    }
+    return Array.from(rowsById.values());
+}
+async function loadNpdPagesLikeClient(fetchPage) {
+    const rowsById = new Map();
+    for (let page = 1; page < 10000; page++) {
+        const result = await fetchPage((page - 1) * 250);
+        const batch = Array.isArray(result?.rows) ? result.rows : [];
+        const total = Number.isFinite(Number(result?.total)) ? Number(result.total) : null;
+        batch.forEach((row) => rowsById.set(String(row?.id), row));
+        if (batch.length === 0 || batch.length < 250 || (total !== null && page * 250 >= total))
+            break;
+    }
+    return Array.from(rowsById.values());
+}
+const DASHBOARD_SUMMARY_CACHE_TTL_MS = 30_000;
+const dashboardSummaryCache = new Map();
+const dashboardSummaryInflight = new Map();
+app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
+    const startedAt = Date.now();
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database unavailable" });
+    let user = null;
+    try {
+        user = await getRequestUser(req);
+    }
+    catch {
+        return res.status(503).json({ error: "Unable to verify user authorization. Please try again." });
+    }
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (user.role === "TruckDriver" || !hasPermission(user, "/operations-dashboard")) {
+        return res.status(403).json({ error: "Forbidden" });
+    }
+    try {
+        const authUserId = String(req.authUserId || "");
+        const firmId = getRequestFirmId(req);
+        const from = String(req.body?.from || "").slice(0, 10);
+        const to = String(req.body?.to || "").slice(0, 10);
+        const closedJobFilter = ["all", "yes", "no"].includes(String(req.body?.closedJobFilter)) ? String(req.body.closedJobFilter) : "no";
+        const includeExportRows = req.body?.includeExportRows === true;
+        // Every authenticated user may read these lists, so results can be shared
+        // between users for a short time (same firm + filters).
+        const cacheKey = JSON.stringify([firmId, from, to, closedJobFilter, includeExportRows]);
+        const cached = dashboardSummaryCache.get(cacheKey);
+        if (cached && cached.expiresAt > Date.now()) {
+            res.setHeader("Cache-Control", "no-store");
+            return res.json({ ...cached.value, cached: true });
+        }
+        const inflight = dashboardSummaryInflight.get(cacheKey);
+        if (inflight) {
+            const value = await inflight;
+            res.setHeader("Cache-Control", "no-store");
+            return res.json({ ...value, cached: true });
+        }
+        let resolveInflight;
+        let rejectInflight;
+        const inflightPromise = new Promise((resolve, reject) => { resolveInflight = resolve; rejectInflight = reject; });
+        inflightPromise.catch(() => undefined);
+        dashboardSummaryInflight.set(cacheKey, inflightPromise);
+        try {
+            const withFirm = (entity) => loadCollectionLikeClient(entity, firmId, authUserId);
+            const allFirms = (entity) => loadCollectionLikeClient(entity, "", authUserId);
+            // Load sequentially: one DB connection at a time (hosting connection quota).
+            const lists = {};
+            const plan = [
+                ["productions", () => withFirm("productions")],
+                ["firms", () => withFirm("firms")],
+                ["phpJobMaster", () => withFirm("php_job_master")],
+                ["plateJobMaster", () => withFirm("plate_job_master")],
+                ["materials", () => withFirm("materials")],
+                ["materialIn", () => withFirm("material_in")],
+                ["packingSlips", () => withFirm("material_in_packing_slips")],
+                ["schedules", () => withFirm("orders_schedule")],
+                ["orders", () => withFirm("orders")],
+                ["companies", () => withFirm("companies")],
+                ["gateEntries", () => withFirm("gate_entries")],
+                ["dispatchPlans", () => withFirm("dispatch_plans")],
+                ["processing", () => withFirm("production_processing")],
+                ["loadingSlips", () => withFirm("loading_slips")],
+                ["materialIssues", () => withFirm("material_issues")],
+                ["materialIssueLines", () => withFirm("material_issue_lines")],
+                ["issueReelLines", () => withFirm("material_issue_reel_lines")],
+                ["materialReturns", () => withFirm("material_returns")],
+                ["materialReturnLines", () => withFirm("material_return_lines")],
+                ["returnReelLines", () => withFirm("material_return_reel_lines")],
+                ["invoices", () => withFirm("invoices")],
+                ["invoiceLineItems", () => withFirm("invoice_line_items")],
+                ["consumptions", () => withFirm("consumptions")],
+                ["sampleRequests", () => withFirm("sample_requests")],
+                ["indents", () => withFirm("indents")],
+                ["indentLines", () => withFirm("indent_lines")],
+                ["purchaseOrders", () => withFirm("purchase_orders")],
+                ["phpLoadingSlips", () => withFirm("php_loading_slips")],
+                ["plateLoadingSlips", () => withFirm("plate_loading_slips")],
+                ["gatePasses", () => withFirm("gate_passes")],
+                ["machines", () => withFirm("machines")],
+                ["settings", () => withFirm("settings")],
+                ["catalogPhpRows", () => allFirms("php_item_master")],
+                ["catalogPlateRows", () => allFirms("plate_item_master")],
+                ["catalogMaterialRows", () => allFirms("materials")],
+                ["npdFirmWiseRows", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }))],
+                ["catalogFgRows", () => loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }))],
+            ];
+            for (const [key, load] of plan) {
+                lists[key] = await load();
+            }
+            const loadedMs = Date.now() - startedAt;
+            const { computeOperationDashboard } = await loadDashboardSummaryModule();
+            const result = computeOperationDashboard(lists, {
+                dateRange: { from, to },
+                closedJobFilter,
+                includeExportRows,
+            });
+            const totalMs = Date.now() - startedAt;
+            console.info(`[DASHBOARD_SUMMARY] loadMs=${loadedMs} totalMs=${totalMs} export=${includeExportRows}`);
+            const value = { ...result, generatedAt: new Date().toISOString(), timings: { loadMs: loadedMs, totalMs } };
+            dashboardSummaryCache.set(cacheKey, { expiresAt: Date.now() + DASHBOARD_SUMMARY_CACHE_TTL_MS, value });
+            if (dashboardSummaryCache.size > 50)
+                dashboardSummaryCache.delete(dashboardSummaryCache.keys().next().value);
+            resolveInflight(value);
+            res.setHeader("Cache-Control", "no-store");
+            return res.json(value);
+        }
+        catch (error) {
+            rejectInflight(error);
+            throw error;
+        }
+        finally {
+            dashboardSummaryInflight.delete(cacheKey);
+        }
+    }
+    catch (error) {
+        console.error("[DASHBOARD_SUMMARY] failed:", error);
+        return res.status(500).json({ error: "Failed to build dashboard summary" });
+    }
+});
 entities.forEach(entity => {
     const handlers = createHandlers(entity);
     const route = `/api/${entity.replace(/_/g, "-")}`;

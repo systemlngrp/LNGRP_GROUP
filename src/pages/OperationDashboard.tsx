@@ -1,6 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
+import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useSettledValue } from "../hooks/useSettledValue";
 import { Spinner } from "../components/Spinner";
@@ -39,44 +41,16 @@ import type {
   SampleRequest,
   Setting,
 } from "../types";
-import { ExcelExport } from "../components/ExcelExport";
 import { exportsAllowed } from "../lib/exportPolicy";
-import { buildProductionMaterialUsageMap, getProductionActualPaperUsed } from "../lib/productionMaterialUsage";
-import { normalizeMachineName } from "../lib/productionMachineNames";
-import { PROCESSING_MACHINE_COLUMNS } from "../lib/productionProcessingSummary";
-import { formatDate } from "../lib/serial";
 import { cn, formatCurrency, formatNumber } from "../lib/utils";
+import { getPendingTaskGroups } from "../lib/pendingTaskCounts";
 import {
-  buildOperationDashboardSummary,
-  getSafeRange,
-  isDateWithinRange,
-} from "../lib/operationDashboard";
-import { buildPendingTaskCounts, getPendingTaskGroups } from "../lib/pendingTaskCounts";
-import { buildScrapInvoiceRows, summarizeScrapInvoiceRows } from "../lib/wastageReport";
+  computeOperationDashboard,
+  type OperationDashboardLists,
+  type OperationDashboardResult,
+} from "../lib/operationDashboardCompute";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 
-type ProcessingTotals = {
-  paper: number;
-  liner: number;
-  printing: number;
-  pasting: number;
-  stitching: number;
-  punching: number;
-  gluing: number;
-};
-
-type OperationRow = {
-  srNo: number;
-  production: Production;
-  item?: Item;
-  schedule?: OrderSchedule;
-  order?: Order;
-  company?: Company;
-  processingTotals: ProcessingTotals;
-  loadedQty: number;
-  leastGsm: number | null;
-  actualPaperUsed: number;
-};
 
 type SummaryCardConfig = {
   id: string;
@@ -128,21 +102,7 @@ const SUMMARY_GROUP_CONFIGS: SummaryGroupConfig[] = [
   },
 ];
 
-const PROCESSING_MACHINE_CARD_ORDER = [
-  "Corrugation Paper",
-  "Corrugation Liner",
-  "Printing",
-  "Pasting",
-  "Rotary",
-  "Slotting",
-  "Stitching",
-  "Punching",
-  "Gluing",
-] as const;
 
-function getPlanPaper(p: Production) {
-  return Number(p.totalPaperWeight || 0);
-}
 
 function formatMetricValue(card: OperationDashboardMetricCard) {
   if (card.status === "unavailable" || card.value === null) return "Pending";
@@ -163,128 +123,18 @@ function getSummaryCard(summary: OperationDashboardSummary, cardId: string) {
   return summary.groups.flatMap((group) => group.cards).find((card) => card.id === cardId) || null;
 }
 
+const EMPTY_DASHBOARD_LISTS: OperationDashboardLists = {
+  productions: [], firms: [], phpJobMaster: [], plateJobMaster: [], npdFirmWiseRows: [], catalogFgRows: [],
+  catalogPhpRows: [], catalogPlateRows: [], catalogMaterialRows: [], materials: [], materialIn: [], packingSlips: [],
+  schedules: [], orders: [], companies: [], gateEntries: [], dispatchPlans: [], processing: [], loadingSlips: [],
+  materialIssues: [], materialIssueLines: [], issueReelLines: [], materialReturns: [], materialReturnLines: [],
+  returnReelLines: [], invoices: [], invoiceLineItems: [], consumptions: [], sampleRequests: [], indents: [],
+  indentLines: [], purchaseOrders: [], phpLoadingSlips: [], plateLoadingSlips: [], gatePasses: [], machines: [],
+  settings: [],
+};
+
 export function OperationDashboard() {
   const navigate = useNavigate();
-  const [productionsRaw, , productionsLoading] = useData<Production>("productions", []);
-  const [firmsRaw, , firmsLoading] = useData<Firm>("firms", []);
-  const [phpJobMasterRaw, , phpJobMasterLoading] = useData<Production>("php_job_master", []);
-  const [plateJobMasterRaw, , plateJobMasterLoading] = useData<Production>("plate_job_master", []);
-  const { items: npdItemsRaw, loading: npdItemsLoading } = useNpdItemsWithStatus();
-  const {
-    resolveOrderItem: resolveOrderItemRaw,
-    findItem: findItemRaw,
-    findItemAcrossSources: findItemAcrossSourcesRaw,
-    itemsBySource: itemsBySourceRaw,
-    loading: catalogLoading,
-  } = useOrderItemCatalog();
-  const [materialsRaw, , materialsLoading] = useData<Material>("materials", []);
-  const [materialInRaw, , materialInLoading] = useData<MaterialIn>("material-in", []);
-  const [packingSlipsRaw, , packingSlipsLoading] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [schedulesRaw, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", []);
-  const [ordersRaw, , ordersLoading] = useData<Order>("orders", []);
-  const [companiesRaw, , companiesLoading] = useData<Company>("companies", []);
-  const [gateEntriesRaw, , gateEntriesLoading] = useData<GateEntry>("gate-entries", []);
-  const [dispatchPlansRaw, , dispatchPlansLoading] = useData<DispatchPlan>("dispatch_plans", []);
-  const [processingRaw, , processingLoading] = useData<ProductionProcessing>("production_processing", []);
-  const [loadingSlipsRaw, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", []);
-  const [materialIssuesRaw, , materialIssuesLoading] = useData<MaterialIssue>("material-issues", []);
-  const [materialIssueLinesRaw, , materialIssueLinesLoading] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [issueReelLinesRaw, , issueReelLinesLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturnsRaw, , materialReturnsLoading] = useData<MaterialReturn>("material-returns", []);
-  const [materialReturnLinesRaw, , materialReturnLinesLoading] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [returnReelLinesRaw, , returnReelLinesLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const [invoicesRaw, , invoicesLoading] = useData<Invoice>("invoices", []);
-  const [invoiceLineItemsRaw, , invoiceLineItemsLoading] = useData<InvoiceLineItem>("invoice_line_items", []);
-  const [consumptionsRaw, , consumptionsLoading] = useData<Consumption>("consumptions", []);
-  const [sampleRequestsRaw, , sampleRequestsLoading] = useData<SampleRequest>("sample_requests", []);
-  const [indentsRaw, , indentsLoading] = useData<Indent>("indents", []);
-  const [indentLinesRaw, , indentLinesLoading] = useData<IndentLine>("indent-lines", []);
-  const [purchaseOrdersRaw, , purchaseOrdersLoading] = useData<PurchaseOrder>("purchase-orders", []);
-  const [phpLoadingSlipsRaw, , phpLoadingSlipsLoading] = useData<LoadingSlip>("php_loading_slips", []);
-  const [plateLoadingSlipsRaw, , plateLoadingSlipsLoading] = useData<LoadingSlip>("plate_loading_slips", []);
-  const [gatePassesRaw, , gatePassesLoading] = useData<GatePass>("gate_passes", []);
-  const [machinesRaw, , machinesLoading] = useData<Machine>("machines", []);
-  const [settingsRaw, , settingsLoading] = useData<Setting>("settings", []);
-
-  // Compute the dashboard once, after every list has finished loading, instead
-  // of re-running all figures after each 250-row batch (~280 times on a cold load).
-  // Background refreshes keep the previous figures until fresh data is complete.
-  const loadingFlags = [
-    productionsLoading,
-    firmsLoading,
-    phpJobMasterLoading,
-    plateJobMasterLoading,
-    npdItemsLoading,
-    catalogLoading,
-    materialsLoading,
-    materialInLoading,
-    packingSlipsLoading,
-    schedulesLoading,
-    ordersLoading,
-    companiesLoading,
-    gateEntriesLoading,
-    dispatchPlansLoading,
-    processingLoading,
-    loadingSlipsLoading,
-    materialIssuesLoading,
-    materialIssueLinesLoading,
-    issueReelLinesLoading,
-    materialReturnsLoading,
-    materialReturnLinesLoading,
-    returnReelLinesLoading,
-    invoicesLoading,
-    invoiceLineItemsLoading,
-    consumptionsLoading,
-    sampleRequestsLoading,
-    indentsLoading,
-    indentLinesLoading,
-    purchaseOrdersLoading,
-    phpLoadingSlipsLoading,
-    plateLoadingSlipsLoading,
-    gatePassesLoading,
-    machinesLoading,
-    settingsLoading,
-  ];
-  const dataReady = !loadingFlags.some(Boolean);
-  const loadedListCount = loadingFlags.filter((isLoading) => !isLoading).length;
-  const productions = useSettledValue(productionsRaw, dataReady);
-  const firms = useSettledValue(firmsRaw, dataReady);
-  const phpJobMaster = useSettledValue(phpJobMasterRaw, dataReady);
-  const plateJobMaster = useSettledValue(plateJobMasterRaw, dataReady);
-  const npdItems = useSettledValue(npdItemsRaw, dataReady);
-  const resolveOrderItem = useSettledValue(resolveOrderItemRaw, dataReady);
-  const findItem = useSettledValue(findItemRaw, dataReady);
-  const findItemAcrossSources = useSettledValue(findItemAcrossSourcesRaw, dataReady);
-  const itemsBySource = useSettledValue(itemsBySourceRaw, dataReady);
-  const materials = useSettledValue(materialsRaw, dataReady);
-  const materialIn = useSettledValue(materialInRaw, dataReady);
-  const packingSlips = useSettledValue(packingSlipsRaw, dataReady);
-  const schedules = useSettledValue(schedulesRaw, dataReady);
-  const orders = useSettledValue(ordersRaw, dataReady);
-  const companies = useSettledValue(companiesRaw, dataReady);
-  const gateEntries = useSettledValue(gateEntriesRaw, dataReady);
-  const dispatchPlans = useSettledValue(dispatchPlansRaw, dataReady);
-  const processing = useSettledValue(processingRaw, dataReady);
-  const loadingSlips = useSettledValue(loadingSlipsRaw, dataReady);
-  const materialIssues = useSettledValue(materialIssuesRaw, dataReady);
-  const materialIssueLines = useSettledValue(materialIssueLinesRaw, dataReady);
-  const issueReelLines = useSettledValue(issueReelLinesRaw, dataReady);
-  const materialReturns = useSettledValue(materialReturnsRaw, dataReady);
-  const materialReturnLines = useSettledValue(materialReturnLinesRaw, dataReady);
-  const returnReelLines = useSettledValue(returnReelLinesRaw, dataReady);
-  const invoices = useSettledValue(invoicesRaw, dataReady);
-  const invoiceLineItems = useSettledValue(invoiceLineItemsRaw, dataReady);
-  const consumptions = useSettledValue(consumptionsRaw, dataReady);
-  const sampleRequests = useSettledValue(sampleRequestsRaw, dataReady);
-  const indents = useSettledValue(indentsRaw, dataReady);
-  const indentLines = useSettledValue(indentLinesRaw, dataReady);
-  const purchaseOrders = useSettledValue(purchaseOrdersRaw, dataReady);
-  const phpLoadingSlips = useSettledValue(phpLoadingSlipsRaw, dataReady);
-  const plateLoadingSlips = useSettledValue(plateLoadingSlipsRaw, dataReady);
-  const gatePasses = useSettledValue(gatePassesRaw, dataReady);
-  const machines = useSettledValue(machinesRaw, dataReady);
-  const settings = useSettledValue(settingsRaw, dataReady);
-
   const allowExports = exportsAllowed();
   const [dateRange, setDateRange] = useState(getDefaultRange);
   const [closedJobFilter, setClosedJobFilter] = useState<ClosedJobFilter>("no");
@@ -296,6 +146,177 @@ export function OperationDashboard() {
     dateRange.from && dateRange.to
       ? `Operation_Dashboard_${dateRange.from}_${dateRange.to}`
       : "Operation_Dashboard_All_Dates";
+
+  // Figures are computed on the server (/api/operations-dashboard/summary) and
+  // only the results are downloaded. If the server cannot provide them (older
+  // server build, error), fall back to loading every list in the browser.
+  const [mode, setMode] = useState<"server" | "client">("server");
+  const clientMode = mode === "client";
+  const [serverResult, setServerResult] = useState<OperationDashboardResult | null>(null);
+  const [serverLoading, setServerLoading] = useState(true);
+  const [serverRefreshKey, setServerRefreshKey] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const serverRequestRef = useRef(0);
+
+  const requestServerSummary = useCallback(
+    async (body: Record<string, unknown>) => {
+      const response = await fetch("/api/operations-dashboard/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) throw new Error(`Dashboard summary failed (${response.status})`);
+      return (await response.json()) as OperationDashboardResult;
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (clientMode) return;
+    const requestId = ++serverRequestRef.current;
+    const background = serverRefreshKey > 0 && serverResult !== null;
+    if (!background) setServerLoading(true);
+    requestServerSummary({ from: dateRange.from, to: dateRange.to, closedJobFilter })
+      .then((result) => {
+        if (requestId !== serverRequestRef.current) return;
+        setServerResult(result);
+        setServerLoading(false);
+      })
+      .catch((error) => {
+        if (requestId !== serverRequestRef.current) return;
+        console.warn("[OperationDashboard] Server summary unavailable; loading lists in the browser.", error);
+        setMode("client");
+        setServerLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientMode, dateRange.from, dateRange.to, closedJobFilter, serverRefreshKey, requestServerSummary]);
+
+  useAutoRefreshEffect(() => setServerRefreshKey((value) => value + 1), !clientMode);
+
+  // ---- Browser fallback: same lists and the same shared calculation module. ----
+  const listOptions = { enabled: clientMode };
+  const [productionsRaw, , productionsLoading] = useData<Production>("productions", [], listOptions);
+  const [firmsRaw, , firmsLoading] = useData<Firm>("firms", [], listOptions);
+  const [phpJobMasterRaw, , phpJobMasterLoading] = useData<Production>("php_job_master", [], listOptions);
+  const [plateJobMasterRaw, , plateJobMasterLoading] = useData<Production>("plate_job_master", [], listOptions);
+  const { rows: npdFirmWiseRowsRaw, loading: npdItemsLoading } = useNpdItemsWithStatus({ enabled: clientMode });
+  const {
+    fgRows: catalogFgRowsRaw,
+    phpRows: catalogPhpRowsRaw,
+    plateRows: catalogPlateRowsRaw,
+    materialRows: catalogMaterialRowsRaw,
+    loading: catalogLoading,
+  } = useOrderItemCatalog({ enabled: clientMode });
+  const [materialsRaw, , materialsLoading] = useData<Material>("materials", [], listOptions);
+  const [materialInRaw, , materialInLoading] = useData<MaterialIn>("material-in", [], listOptions);
+  const [packingSlipsRaw, , packingSlipsLoading] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], listOptions);
+  const [schedulesRaw, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", [], listOptions);
+  const [ordersRaw, , ordersLoading] = useData<Order>("orders", [], listOptions);
+  const [companiesRaw, , companiesLoading] = useData<Company>("companies", [], listOptions);
+  const [gateEntriesRaw, , gateEntriesLoading] = useData<GateEntry>("gate-entries", [], listOptions);
+  const [dispatchPlansRaw, , dispatchPlansLoading] = useData<DispatchPlan>("dispatch_plans", [], listOptions);
+  const [processingRaw, , processingLoading] = useData<ProductionProcessing>("production_processing", [], listOptions);
+  const [loadingSlipsRaw, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", [], listOptions);
+  const [materialIssuesRaw, , materialIssuesLoading] = useData<MaterialIssue>("material-issues", [], listOptions);
+  const [materialIssueLinesRaw, , materialIssueLinesLoading] = useData<MaterialIssueLine>("material-issue-lines", [], listOptions);
+  const [issueReelLinesRaw, , issueReelLinesLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], listOptions);
+  const [materialReturnsRaw, , materialReturnsLoading] = useData<MaterialReturn>("material-returns", [], listOptions);
+  const [materialReturnLinesRaw, , materialReturnLinesLoading] = useData<MaterialReturnLine>("material-return-lines", [], listOptions);
+  const [returnReelLinesRaw, , returnReelLinesLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], listOptions);
+  const [invoicesRaw, , invoicesLoading] = useData<Invoice>("invoices", [], listOptions);
+  const [invoiceLineItemsRaw, , invoiceLineItemsLoading] = useData<InvoiceLineItem>("invoice_line_items", [], listOptions);
+  const [consumptionsRaw, , consumptionsLoading] = useData<Consumption>("consumptions", [], listOptions);
+  const [sampleRequestsRaw, , sampleRequestsLoading] = useData<SampleRequest>("sample_requests", [], listOptions);
+  const [indentsRaw, , indentsLoading] = useData<Indent>("indents", [], listOptions);
+  const [indentLinesRaw, , indentLinesLoading] = useData<IndentLine>("indent-lines", [], listOptions);
+  const [purchaseOrdersRaw, , purchaseOrdersLoading] = useData<PurchaseOrder>("purchase-orders", [], listOptions);
+  const [phpLoadingSlipsRaw, , phpLoadingSlipsLoading] = useData<LoadingSlip>("php_loading_slips", [], listOptions);
+  const [plateLoadingSlipsRaw, , plateLoadingSlipsLoading] = useData<LoadingSlip>("plate_loading_slips", [], listOptions);
+  const [gatePassesRaw, , gatePassesLoading] = useData<GatePass>("gate_passes", [], listOptions);
+  const [machinesRaw, , machinesLoading] = useData<Machine>("machines", [], listOptions);
+  const [settingsRaw, , settingsLoading] = useData<Setting>("settings", [], listOptions);
+
+  const loadingFlags = [
+    productionsLoading, firmsLoading, phpJobMasterLoading, plateJobMasterLoading, npdItemsLoading, catalogLoading,
+    materialsLoading, materialInLoading, packingSlipsLoading, schedulesLoading, ordersLoading, companiesLoading,
+    gateEntriesLoading, dispatchPlansLoading, processingLoading, loadingSlipsLoading, materialIssuesLoading,
+    materialIssueLinesLoading, issueReelLinesLoading, materialReturnsLoading, materialReturnLinesLoading,
+    returnReelLinesLoading, invoicesLoading, invoiceLineItemsLoading, consumptionsLoading, sampleRequestsLoading,
+    indentsLoading, indentLinesLoading, purchaseOrdersLoading, phpLoadingSlipsLoading, plateLoadingSlipsLoading,
+    gatePassesLoading, machinesLoading, settingsLoading,
+  ];
+  const clientListsReady = clientMode && !loadingFlags.some(Boolean);
+  const loadedListCount = loadingFlags.filter((isLoading) => !isLoading).length;
+
+  // Compute once, after every list has loaded (not after each 250-row batch).
+  const liveClientLists = useMemo<OperationDashboardLists>(() => ({
+    productions: productionsRaw, firms: firmsRaw, phpJobMaster: phpJobMasterRaw, plateJobMaster: plateJobMasterRaw,
+    npdFirmWiseRows: npdFirmWiseRowsRaw, catalogFgRows: catalogFgRowsRaw, catalogPhpRows: catalogPhpRowsRaw,
+    catalogPlateRows: catalogPlateRowsRaw, catalogMaterialRows: catalogMaterialRowsRaw, materials: materialsRaw,
+    materialIn: materialInRaw, packingSlips: packingSlipsRaw, schedules: schedulesRaw, orders: ordersRaw,
+    companies: companiesRaw, gateEntries: gateEntriesRaw, dispatchPlans: dispatchPlansRaw, processing: processingRaw,
+    loadingSlips: loadingSlipsRaw, materialIssues: materialIssuesRaw, materialIssueLines: materialIssueLinesRaw,
+    issueReelLines: issueReelLinesRaw, materialReturns: materialReturnsRaw, materialReturnLines: materialReturnLinesRaw,
+    returnReelLines: returnReelLinesRaw, invoices: invoicesRaw, invoiceLineItems: invoiceLineItemsRaw,
+    consumptions: consumptionsRaw, sampleRequests: sampleRequestsRaw, indents: indentsRaw, indentLines: indentLinesRaw,
+    purchaseOrders: purchaseOrdersRaw, phpLoadingSlips: phpLoadingSlipsRaw, plateLoadingSlips: plateLoadingSlipsRaw,
+    gatePasses: gatePassesRaw, machines: machinesRaw, settings: settingsRaw,
+  }),
+    [
+      productionsRaw,
+      firmsRaw,
+      phpJobMasterRaw,
+      plateJobMasterRaw,
+      npdFirmWiseRowsRaw,
+      catalogFgRowsRaw,
+      catalogPhpRowsRaw,
+      catalogPlateRowsRaw,
+      catalogMaterialRowsRaw,
+      materialsRaw,
+      materialInRaw,
+      packingSlipsRaw,
+      schedulesRaw,
+      ordersRaw,
+      companiesRaw,
+      gateEntriesRaw,
+      dispatchPlansRaw,
+      processingRaw,
+      loadingSlipsRaw,
+      materialIssuesRaw,
+      materialIssueLinesRaw,
+      issueReelLinesRaw,
+      materialReturnsRaw,
+      materialReturnLinesRaw,
+      returnReelLinesRaw,
+      invoicesRaw,
+      invoiceLineItemsRaw,
+      consumptionsRaw,
+      sampleRequestsRaw,
+      indentsRaw,
+      indentLinesRaw,
+      purchaseOrdersRaw,
+      phpLoadingSlipsRaw,
+      plateLoadingSlipsRaw,
+      gatePassesRaw,
+      machinesRaw,
+      settingsRaw,
+    ]
+  );
+  const clientLists = useSettledValue(liveClientLists, clientListsReady);
+  const clientResult = useMemo(
+    () => (clientListsReady || clientLists.productions.length
+      ? computeOperationDashboard(clientLists, { dateRange, closedJobFilter, includeExportRows: true })
+      : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [clientLists, dateRange, closedJobFilter]
+  );
+
+  const emptyResult = useMemo(
+    () => computeOperationDashboard(EMPTY_DASHBOARD_LISTS, { dateRange, closedJobFilter }),
+    [dateRange, closedJobFilter]
+  );
+  const result = (clientMode ? clientResult : serverResult) || emptyResult;
+  const dataReady = clientMode ? clientListsReady : !serverLoading && serverResult !== null;
 
   useEffect(() => {
     const refreshPendingJobClosureCount = async () => {
@@ -327,358 +348,33 @@ export function OperationDashboard() {
 
   useTrackPageLoading(pendingJobClosureLoading, pendingJobClosureError, () => setPendingJobClosureRetryKey((value) => value + 1));
 
-  const safeRange = useMemo(() => getSafeRange(dateRange), [dateRange]);
-
-  const filteredProductions = useMemo(
-    () => (safeRange ? productions.filter((entry) => isDateWithinRange(entry.date, safeRange)) : productions),
-    [productions, safeRange]
+  const summary = result.summary;
+  const processingMachineCards = result.processingMachineCards;
+  const pendingTaskSummary = useMemo(
+    () => getPendingTaskGroups({ ...result.pendingCounts, "/production/pending-job-closure": pendingJobClosureCount || 0 }),
+    [result.pendingCounts, pendingJobClosureCount]
   );
 
-  const processingTotalsMap = useMemo(() => {
-    const map = new Map<string, ProcessingTotals>();
-    processing.forEach((row) => {
-      const totals = map.get(row.productionId) || { paper: 0, liner: 0, printing: 0, pasting: 0, stitching: 0, punching: 0, gluing: 0 };
-      const machineColumn = PROCESSING_MACHINE_COLUMNS.find((col) =>
-        (col.machineNames as readonly string[]).includes(row.machineName)
-      );
-      if (machineColumn) totals[machineColumn.key] += Number(row.qty || 0);
-      map.set(row.productionId, totals);
-    });
-    return map;
-  }, [processing]);
-
-  const loadedQtyByProductionId = useMemo(() => {
-    const map = new Map<string, number>();
-    const getJobAllocations = (line: LoadingSlipLine) =>
-      Array.isArray(line.allocations)
-        ? line.allocations.filter((allocation) => allocation.sourceType === "job")
-        : [];
-
-    loadingSlips
-      .filter((slip) => slip.status !== "Cancelled")
-      .forEach((slip) => {
-        slip.lines.forEach((line) => {
-          getJobAllocations(line).forEach((allocation) => {
-            map.set(allocation.jobId, (map.get(allocation.jobId) || 0) + Number(allocation.qty || 0));
-          });
-        });
-      });
-    return map;
-  }, [loadingSlips]);
-
-  const erpLeastGsmMap = useMemo(() => {
-    const map = new Map<string, number>();
-    productions.forEach((p) => {
-      if (p.status === "Cancelled" || p.cancelTimestamp) return;
-      const erp = String(p.erpCode || "").trim();
-      const gsm = Number(p.gsm || 0);
-      if (erp && gsm > 0) {
-        if (!map.has(erp) || gsm < map.get(erp)!) map.set(erp, gsm);
-      }
-    });
-    return map;
-  }, [productions]);
-
-  const filteredMaterialIssues = useMemo(
-    () => (safeRange ? materialIssues.filter((entry) => isDateWithinRange(entry.date, safeRange)) : materialIssues),
-    [materialIssues, safeRange]
-  );
-  const filteredMaterialReturns = useMemo(
-    () => (safeRange ? materialReturns.filter((entry) => isDateWithinRange(entry.date, safeRange)) : materialReturns),
-    [materialReturns, safeRange]
-  );
-
-  const productionUsageMap = useMemo(() => {
-    return buildProductionMaterialUsageMap(
-      filteredMaterialIssues,
-      materialIssueLines,
-      filteredMaterialReturns,
-      materialReturnLines,
-      issueReelLines,
-      returnReelLines
-    );
-  }, [filteredMaterialIssues, materialIssueLines, filteredMaterialReturns, materialReturnLines, issueReelLines, returnReelLines]);
-
-  const scrapInvoiceSummary = useMemo(() => {
-    const scrapRows = buildScrapInvoiceRows({
-      invoices,
-      lineItems: invoiceLineItems,
-      companies,
-      filters: { fromDate: dateRange.from, toDate: dateRange.to },
-      findItem,
-      findItemAcrossSources,
-    });
-    return summarizeScrapInvoiceRows(scrapRows);
-  }, [companies, dateRange.from, dateRange.to, findItem, findItemAcrossSources, invoiceLineItems, invoices]);
-  const rows: OperationRow[] = useMemo(() => {
-    const sorted = filteredProductions
-      .map((p) => {
-        const schedule = schedules.find((s) => s.id === p.scheduleId);
-        const order = orders.find((o) => o.id === schedule?.orderId);
-        const company = companies.find((c) => c.id === order?.companyId);
-        const item = npdItems.find((i) => i.id === p.itemId);
-
-        const processingTotals =
-          processingTotalsMap.get(p.id) || { paper: 0, liner: 0, printing: 0, pasting: 0, stitching: 0, punching: 0, gluing: 0 };
-        const loadedQty = Number(loadedQtyByProductionId.get(p.id) || 0);
-        const erp = String(p.erpCode || "").trim();
-        const leastGsm = erp ? (erpLeastGsmMap.get(erp) ?? null) : null;
-
-        const actualPaperUsed = getProductionActualPaperUsed(p, productionUsageMap);
-
-        return {
-          srNo: 0,
-          production: p,
-          item,
-          schedule,
-          order,
-          company,
-          processingTotals,
-          loadedQty,
-          leastGsm,
-          actualPaperUsed,
-        };
-      })
-      .filter((row) => {
-        const isClosedJob = Boolean(row.production.closeDate || row.production.closeBy || row.production.status === "Completed");
-        if (closedJobFilter === "yes" && !isClosedJob) return false;
-        if (closedJobFilter === "no" && isClosedJob) return false;
-
-        return true;
-      })
-      .sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }));
-
-    return sorted.map((row, idx) => ({ ...row, srNo: idx + 1 }));
-  }, [
-    filteredProductions,
-    schedules,
-    orders,
-    companies,
-    npdItems,
-    processingTotalsMap,
-    loadedQtyByProductionId,
-    erpLeastGsmMap,
-    productionUsageMap,
-    closedJobFilter,
-  ]);
-
-  const summary = useMemo(
-    () =>
-      buildOperationDashboardSummary({
-        dateRange,
-        productions,
-        schedules,
-        orders,
-        dispatchPlans,
-        loadingSlips,
-        invoices,
-        scrapSoldQty: scrapInvoiceSummary.totalQty,
-        items: npdItems,
-        materials,
-        materialIn,
-        packingSlips,
-        processing,
-        materialIssues,
-        materialIssueLines,
-        issueReelLines,
-        materialReturns,
-        materialReturnLines,
-        returnReelLines,
-      }),
-    [
-      dateRange,
-      productions,
-      schedules,
-      orders,
-      dispatchPlans,
-      loadingSlips,
-      invoices,
-      scrapInvoiceSummary.totalQty,
-      npdItems,
-      materials,
-      materialIn,
-      packingSlips,
-      processing,
-      materialIssues,
-      materialIssueLines,
-      issueReelLines,
-      materialReturns,
-      materialReturnLines,
-      returnReelLines,
-    ]
-  );
-
-  const pendingTaskSummary = useMemo(() => {
-    const counts = buildPendingTaskCounts({
-      firms,
-      materialIn,
-      productions,
-      phpJobMaster,
-      plateJobMaster,
-      materials,
-      orders,
-      npdItems,
-      consumptions,
-      materialIssues,
-      materialIssueLines,
-      materialIssueReelLines: issueReelLines,
-      materialReturns,
-      materialReturnLines,
-      materialReturnReelLines: returnReelLines,
-      sampleRequests,
-      indents,
-      indentLines,
-      purchaseOrders,
-      gateEntries,
-      schedules,
-      dispatchPlans,
-      loadingSlips,
-      phpLoadingSlips,
-      plateLoadingSlips,
-      invoices,
-      gatePasses,
-      machines,
-      processing,
-      settings,
-      pendingJobClosureCount,
-      resolveOrderItem,
-      findItemAcrossSources,
-      itemsBySource,
-    });
-    return getPendingTaskGroups(counts);
-  }, [
-    firms,
-    materialIn,
-    productions,
-    phpJobMaster,
-    plateJobMaster,
-    materials,
-    orders,
-    npdItems,
-    consumptions,
-    materialIssues,
-    materialIssueLines,
-    issueReelLines,
-    materialReturns,
-    materialReturnLines,
-    returnReelLines,
-    sampleRequests,
-    indents,
-    indentLines,
-    purchaseOrders,
-    gateEntries,
-    schedules,
-    dispatchPlans,
-    loadingSlips,
-    phpLoadingSlips,
-    plateLoadingSlips,
-    invoices,
-    gatePasses,
-    machines,
-    processing,
-    settings,
-    pendingJobClosureCount,
-    resolveOrderItem,
-    findItemAcrossSources,
-    itemsBySource,
-  ]);
-  const processingMachineCards = useMemo(() => {
-    const machineMap = new Map<string, { qty: number; entries: number }>();
-
-    processing
-      .filter((entry) => (safeRange ? isDateWithinRange(entry.date, safeRange) : true))
-      .forEach((entry) => {
-        const machineName = normalizeMachineName(entry.machineName || "").trim();
-        if (!machineName) return;
-        const current = machineMap.get(machineName) || { qty: 0, entries: 0 };
-        current.qty += Number(entry.qty || 0);
-        current.entries += 1;
-        machineMap.set(machineName, current);
-      });
-
-    const cards: OperationDashboardMetricCard[] = PROCESSING_MACHINE_CARD_ORDER.map((machineName) => {
-      const totals = machineMap.get(machineName) || { qty: 0, entries: 0 };
-      return {
-        id: `processing-${machineName.toLowerCase().replace(/\s+/g, "-")}`,
-        label: machineName,
-        value: totals.qty,
-        format: "number" as const,
-        note: `${totals.entries} entr${totals.entries === 1 ? "y" : "ies"}`,
-        status: "ready" as const,
-      };
-    });
-
-    machineMap.forEach((totals, machineName) => {
-      if (PROCESSING_MACHINE_CARD_ORDER.includes(machineName as (typeof PROCESSING_MACHINE_CARD_ORDER)[number])) return;
-      cards.push({
-        id: `processing-${machineName.toLowerCase().replace(/\s+/g, "-")}`,
-        label: machineName,
-        value: totals.qty,
-        format: "number" as const,
-        note: `${totals.entries} entr${totals.entries === 1 ? "y" : "ies"}`,
-        status: "ready" as const,
-      });
-    });
-
-    return cards;
-  }, [processing, safeRange]);
-
-  const exportData = useMemo(() => {
-    return rows.map((r) => ({
-      "Sr. No.": r.srNo,
-      "Job No.": r.production.transactionNo || "-",
-      "Order No.": r.order?.orderNo || "-",
-      "ERP Code": r.production.erpCode || "-",
-      Company: r.company?.name || "-",
-      "Plan Date": formatDate(r.production.date),
-      "Item Name": r.item?.name || "-",
-      Sample: (r.item as any)?.isSample ? "Yes" : "-",
-      Type: (r.item as any)?.boxType || "-",
-      "Planned Qty": `${r.production.qty ?? "-"} ${r.production.uom || ""}`.trim(),
-      UPS: r.production.ups || (r.item as any)?.ups || "-",
-      "Loaded Qty": r.loadedQty,
-      Paper: r.processingTotals.paper,
-      Liner: r.processingTotals.liner,
-      Print: r.processingTotals.printing,
-      Paste: r.processingTotals.pasting,
-      Stitch: r.processingTotals.stitching,
-      Punch: r.processingTotals.punching,
-      Glue: r.processingTotals.gluing,
-      L: r.production.length ?? "-",
-      B: r.production.breadth ?? "-",
-      H: r.production.height ?? "-",
-      "L (OD)": r.item?.lOd ?? "-",
-      "W (OD)": r.item?.wOd ?? "-",
-      "H (OD)": r.item?.hOd ?? "-",
-      Ply: r.production.ply ?? "-",
-      Flute: r.production.flute ?? "-",
-      L1: r.production.l1 || (r.item as any)?.l1 || "-",
-      F1: r.production.f1 || (r.item as any)?.f1 || "-",
-      L2: r.production.l2 || (r.item as any)?.l2 || "-",
-      F2: r.production.f2 || (r.item as any)?.f2 || "-",
-      L3: r.production.l3 || (r.item as any)?.l3 || "-",
-      "L1 Paper": r.production.l1 ?? "-",
-      GSM: r.production.gsm ?? "-",
-      "Least GSM": r.leastGsm === null ? "-" : r.leastGsm,
-      "Color 1": r.production.color1 ?? "-",
-      "Color 2": r.production.color2 ?? "-",
-      "Printing Color": r.production.printingColor ?? "-",
-      "Total Wt": r.production.totalPaperWeight ?? "-",
-      "Real/KG": Number(r.production.realizationPerKg || 0) ? Number(r.production.realizationPerKg || 0).toFixed(2) : "-",
-      "Reel (Calc)": (r.production as any).reelAsPerCalc || "-",
-      "Reel Trim": (r.production as any).reelActualWithTrimming || "-",
-      "Cutting Trim": (r.production as any).cuttingWithTrimming || r.item?.cuttingSize || "-",
-      "Planned Prod (M)": r.production.plannedProductionInMeter ?? "-",
-      "Sheet Wt": r.production.sheetWeight || "-",
-      "Flute Batch": r.production.fluteBatches || "-",
-      Rate: Number(r.production.rate) ? Number(r.production.rate).toFixed(2) : (r.production.rate || "-"),
-      Value: Number(r.production.qty || 0) && Number(r.production.rate || 0) ? (Number(r.production.qty || 0) * Number(r.production.rate || 0)).toLocaleString() : "-",
-      "Production FFG": Number(r.production.prodFromFFG || 0),
-      "Actual Paper (KG)": Number(r.actualPaperUsed.toFixed(2)),
-      "Job Closer": r.production.closeBy || "-",
-      "Close Date": r.production.closeDate || "-",
-    }));
-  }, [rows]);
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const rows = clientMode
+        ? clientResult?.exportRows || []
+        : (await requestServerSummary({ from: dateRange.from, to: dateRange.to, closedJobFilter, includeExportRows: true })).exportRows || [];
+      if (!rows.length) return;
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      XLSX.writeFile(wb, `${operationExportFileName}.xlsx`);
+    } catch (error) {
+      console.error("[OperationDashboard] Export failed", error);
+      alert("Could not prepare the Excel export. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div
@@ -697,7 +393,9 @@ export function OperationDashboard() {
                 <div className="mt-1.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-indigo-700" role="status" aria-live="polite">
                   <Spinner size={16} />
                   <span>
-                    Loading latest data ({loadedListCount} of {loadingFlags.length} lists)… figures will appear once all records are loaded.
+                    {clientMode
+                      ? `Loading latest data (${loadedListCount} of ${loadingFlags.length} lists)… figures will appear once all records are loaded.`
+                      : "Calculating latest figures…"}
                   </span>
                 </div>
               ) : null}
@@ -728,7 +426,16 @@ export function OperationDashboard() {
                 </select>
               </div>
               {allowExports ? (
-                <ExcelExport data={exportData} fileName={operationExportFileName} />
+                <button
+                  type="button"
+                  onClick={() => void handleExport()}
+                  disabled={exporting || !dataReady}
+                  className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-1.5 text-sm font-bold uppercase text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-wait disabled:opacity-60"
+                  title="Download Excel"
+                >
+                  {exporting ? <Spinner size={16} /> : <Download size={16} />}
+                  <span>Excel</span>
+                </button>
               ) : null}
             </div>
           </div>
