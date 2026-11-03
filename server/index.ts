@@ -1057,14 +1057,119 @@ const SIDEBAR_COUNT_KEYS = [
   "/gate-pass/pending-returnable",
 ] as const;
 
+// Mirrors isProductionPendingConsumption() used by the Pending Material Issue
+// page: open (not cancelled, not tally-posted) jobs with no net paper usage.
+// Net usage = Job issue lines - Job return lines (+/- reel lines that have no
+// item line), or any net corrugated-sheet usage.
+const PENDING_MATERIAL_ISSUE_COUNT_SQL = `
+  SELECT COUNT(*) AS count
+  FROM productions p
+  LEFT JOIN (
+    SELECT productionId, SUM(qty) AS netQty, SUM(sheetQty) AS sheetQty
+    FROM (
+      SELECT mi.productionId, COALESCE(mil.qty, 0) AS qty,
+        CASE WHEN LOWER(COALESCE(m.name, '')) LIKE '%corrugated sheet%' THEN COALESCE(mil.qty, 0) ELSE 0 END AS sheetQty
+      FROM material_issue_lines mil
+      JOIN material_issues mi ON mi.id = mil.materialIssueId AND mi.issueType = 'Job'
+      LEFT JOIN materials m ON m.id = mil.materialId
+      WHERE COALESCE(mi.productionId, '') <> ''
+      UNION ALL
+      SELECT mr.productionId, -COALESCE(mrl.qty, 0),
+        CASE WHEN LOWER(COALESCE(m.name, '')) LIKE '%corrugated sheet%' THEN -COALESCE(mrl.qty, 0) ELSE 0 END
+      FROM material_return_lines mrl
+      JOIN material_returns mr ON mr.id = mrl.materialReturnId AND mr.returnType = 'Job'
+      LEFT JOIN materials m ON m.id = mrl.materialId
+      WHERE COALESCE(mr.productionId, '') <> ''
+      UNION ALL
+      SELECT COALESCE(NULLIF(irl.productionId, ''), mi.productionId), COALESCE(irl.weightKg, 0), 0
+      FROM material_issue_reel_lines irl
+      LEFT JOIN material_issue_lines mil ON mil.id = irl.materialIssueLineId
+      LEFT JOIN material_issues mi ON mi.id = irl.materialIssueId AND mi.issueType = 'Job'
+      WHERE mil.id IS NULL
+      UNION ALL
+      SELECT COALESCE(NULLIF(rrl.productionId, ''), mr.productionId), -COALESCE(rrl.weightKg, 0), 0
+      FROM material_return_reel_lines rrl
+      LEFT JOIN material_return_lines mrl ON mrl.id = rrl.materialReturnLineId
+      LEFT JOIN material_returns mr ON mr.id = rrl.materialReturnId AND mr.returnType = 'Job'
+      WHERE mrl.id IS NULL
+    ) usageRows
+    WHERE COALESCE(productionId, '') <> ''
+    GROUP BY productionId
+  ) u ON u.productionId = p.id
+  WHERE COALESCE(p.cancelTimestamp, '') = ''
+    AND COALESCE(p.tallyTimestamp, '') = ''
+    -- Jobs with no issue/return rows fall back to the stored actualPaperUsed.
+    AND (CASE WHEN u.productionId IS NULL THEN COALESCE(p.actualPaperUsed, 0) ELSE u.netQty END) <= 0
+    AND COALESCE(u.sheetQty, 0) <= 0
+`;
+
+// Mirrors getAllReturnableReelLines() used by the Pending Material Return page:
+// active jobs with an issued reel (by packing slip or reel no.) that the same
+// job has not returned.
+// Job number (transactionNo or jobCardNo) -> production id, used when a reel
+// line has no valid productionId (same fallback as the client resolver).
+const JOB_NO_TO_PRODUCTION_SQL = `
+  SELECT jobKey, MAX(id) AS id FROM (
+    SELECT LOWER(TRIM(transactionNo)) AS jobKey, id FROM productions WHERE COALESCE(TRIM(transactionNo), '') <> ''
+    UNION ALL
+    SELECT LOWER(TRIM(jobCardNo)) AS jobKey, id FROM productions WHERE COALESCE(TRIM(jobCardNo), '') <> ''
+  ) jobKeys GROUP BY jobKey
+`;
+
+const RESOLVED_RETURN_REEL_LINES_SQL = `
+  SELECT
+    CASE WHEN pd.id IS NOT NULL THEN pd.id ELSE COALESCE(jm.id, NULLIF(TRIM(rrl.productionId), '')) END AS pid,
+    rrl.packingSlipId, rrl.ourReelNo
+  FROM material_return_reel_lines rrl
+  LEFT JOIN productions pd ON pd.id = TRIM(rrl.productionId)
+  LEFT JOIN (${JOB_NO_TO_PRODUCTION_SQL}) jm ON jm.jobKey = LOWER(TRIM(rrl.jobNo))
+  WHERE COALESCE(rrl.weightKg, 0) > 0.004
+`;
+
+const PENDING_MATERIAL_RETURN_COUNT_SQL = `
+  SELECT COUNT(DISTINCT iss.pid) AS count
+  FROM (
+    SELECT
+      CASE WHEN pd.id IS NOT NULL THEN pd.id ELSE COALESCE(jm.id, NULLIF(TRIM(irl.productionId), '')) END AS pid,
+      irl.packingSlipId, irl.ourReelNo, irl.weightKg
+    FROM material_issue_reel_lines irl
+    LEFT JOIN productions pd ON pd.id = TRIM(irl.productionId)
+    LEFT JOIN (${JOB_NO_TO_PRODUCTION_SQL}) jm ON jm.jobKey = LOWER(TRIM(irl.jobNo))
+  ) iss
+  JOIN productions p ON p.id = iss.pid
+  LEFT JOIN (
+    SELECT DISTINCT ret.pid, LOWER(TRIM(ret.packingSlipId)) AS slipKey
+    FROM (${RESOLVED_RETURN_REEL_LINES_SQL}) ret
+    WHERE COALESCE(TRIM(ret.packingSlipId), '') <> ''
+  ) rs ON rs.pid = iss.pid AND rs.slipKey = LOWER(TRIM(iss.packingSlipId))
+  LEFT JOIN (
+    SELECT DISTINCT ret.pid, LOWER(TRIM(ret.ourReelNo)) AS reelKey
+    FROM (${RESOLVED_RETURN_REEL_LINES_SQL}) ret
+    WHERE COALESCE(TRIM(ret.ourReelNo), '') <> ''
+  ) rn ON rn.pid = iss.pid AND rn.reelKey = LOWER(TRIM(iss.ourReelNo))
+  WHERE COALESCE(p.status, '') <> 'Cancelled'
+    AND COALESCE(p.cancelTimestamp, '') = ''
+    AND COALESCE(iss.weightKg, 0) > 0.004
+    AND (COALESCE(TRIM(iss.packingSlipId), '') <> '' OR COALESCE(TRIM(iss.ourReelNo), '') <> '')
+    AND rs.pid IS NULL
+    AND rn.pid IS NULL
+`;
+
 async function buildSidebarPendingCounts(db: mysql.Pool) {
   const counts = Object.fromEntries(SIDEBAR_COUNT_KEYS.map((key) => [key, 0])) as Record<string, number>;
-  const count = async (key: string, sql: string, params: any[] = []) => {
+  const count = async (key: string, sql: string, params: any[] = [], fallbackSql?: string) => {
     try {
       const [rows] = await db.query(sql, params);
       counts[key] = Number((rows as any[])[0]?.count || 0);
     } catch (error) {
       console.warn(`[SIDEBAR_COUNTS] ${key} query failed:`, (error as Error).message);
+      if (!fallbackSql) return;
+      try {
+        const [rows] = await db.query(fallbackSql);
+        counts[key] = Number((rows as any[])[0]?.count || 0);
+      } catch (fallbackError) {
+        console.warn(`[SIDEBAR_COUNTS] ${key} fallback query failed:`, (fallbackError as Error).message);
+      }
     }
   };
   await Promise.all([
@@ -1082,9 +1187,11 @@ async function buildSidebarPendingCounts(db: mysql.Pool) {
     count("/orders/pending-scheduling", "SELECT COUNT(*) AS count FROM orders WHERE status = 'Pending Scheduling'"),
     count("/samples/pending", "SELECT COUNT(*) AS count FROM sample_requests WHERE COALESCE(jobCardNo, '') = '' AND COALESCE(cancelTimestamp, '') = ''"),
     count("/production/pending", "SELECT COUNT(*) AS count FROM productions WHERE status IN ('Pending PH', 'Pending Production', 'Pending Planning')"),
-    count("/production/pending-consumption", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(status, '') NOT IN ('Cancelled', 'Completed')"),
+    count("/production/pending-consumption", PENDING_MATERIAL_ISSUE_COUNT_SQL, [],
+      "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(status, '') NOT IN ('Cancelled', 'Completed')"),
     count("/production/pending-tally", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(tallyPostingStatus, '') <> 'Completed' AND COALESCE(tallyTimestamp, '') = '' AND COALESCE(status, '') NOT IN ('Cancelled', 'Pending PH')"),
-    count("/production/pending-material-return", "SELECT COUNT(DISTINCT productionId) AS count FROM material_issue_reel_lines WHERE COALESCE(productionId, '') <> ''"),
+    count("/production/pending-material-return", PENDING_MATERIAL_RETURN_COUNT_SQL, [],
+      "SELECT COUNT(DISTINCT productionId) AS count FROM material_issue_reel_lines WHERE COALESCE(productionId, '') <> ''"),
     count("/production/pending-machine-processing", "SELECT COUNT(*) AS count FROM production_processing WHERE COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
     count("/production/pending-printing", "SELECT COUNT(*) AS count FROM production_processing WHERE LOWER(COALESCE(machineName, '')) LIKE '%printing%' AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
     count("/loading/php/pending-tally", "SELECT COUNT(*) AS count FROM php_loading_slips WHERE COALESCE(phpConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),

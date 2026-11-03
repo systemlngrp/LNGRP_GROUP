@@ -103,6 +103,8 @@ function isAllowed(user: AuthUser | null, href: string) {
   if (user.role === "Admin") return true;
   if (user.status !== "Active") return false;
   if (user.role === "TruckDriver") return href === "/" || TRUCK_DRIVER_ALLOWED_PATHS.includes(href);
+  // Home only lists the pages this user may open, so every active user may see it.
+  if (href === "/home") return true;
   const list = getEffectiveMenuAccess(user);
   if (list.includes("*")) return true;
   if (href === "/material-movement/reel-transfer" && list.includes("/material-movement/issue")) return true;

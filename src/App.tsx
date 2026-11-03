@@ -101,6 +101,7 @@ const ProductionPendingConsumption = lazy(() => import("./pages/ProductionStageQ
 const ProductionPendingReelIssueScan = lazy(() => import("./pages/ProductionStageQueue").then((module) => ({ default: module.ProductionPendingReelIssueScan })));
 const ProductionPlan = lazy(() => import("./pages/ProductionPlan").then((module) => ({ default: module.ProductionPlan })));
 const PendingNpd = lazy(() => import("./pages/PendingNpd").then((module) => ({ default: module.PendingNpd })));
+const Home = lazy(() => import("./pages/Home").then((module) => ({ default: module.Home })));
 const OperationDashboard = lazy(() => import("./pages/OperationDashboard").then((module) => ({ default: module.OperationDashboard })));
 const AuditDashboard = lazy(() => import("./pages/AuditDashboard").then((module) => ({ default: module.AuditDashboard })));
 const PendingJobClosure = lazy(() => import("./pages/PendingJobClosure").then((module) => ({ default: module.PendingJobClosure })));
@@ -225,8 +226,9 @@ function HomeRedirect() {
   if (user?.role === "TruckDriver") {
     return <Navigate to="/truck/status-update" replace />;
   }
-  const firstAssignedView = user?.menuAccess.find((path) => path.startsWith("/") && path !== "/" && !path.includes("*"));
-  return <Navigate to={firstAssignedView || "/operations-dashboard"} replace />;
+  // Land on the light Home screen; heavy pages (e.g. Operation Dashboard) load
+  // only when opened from there or from the menu.
+  return <Navigate to="/home" replace />;
 }
 
 function HashRouteSync() {
@@ -387,6 +389,7 @@ export default function App() {
           <Route path="production/plate/scheduling" element={<PlateProductionScheduling />} />
           <Route path="production/plate/pending-production" element={<PlateProductionExecution />} />
           <Route path="production/plan" element={<ProductionPlan />} />
+          <Route path="home" element={<Home />} />
           <Route path="operations-dashboard" element={<OperationDashboard />} />
           <Route path="audit-dashboard" element={<AuditDashboard />} />
           <Route path="production-processing/form" element={<ProductionProcessingForm />} />
@@ -431,7 +434,8 @@ export default function App() {
           <Route path="quality/complaints/:id/capa" element={<QualityComplaintCapa />} />
           <Route path="quality/capa/master" element={<QualityCapaMaster />} />
           <Route path="quality/spec-card-issue-return" element={<QcSpecCardIssueReturn />} />
-          <Route path="quality/spec-card-issue-return/form" element={<QcSpecCardIssueReturnForm />} />          <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
+          <Route path="quality/spec-card-issue-return/form" element={<QcSpecCardIssueReturnForm />} />
+          <Route path="quality/block-location-master" element={<QcBlockLocationMaster />} />
           <Route path="quality/pre-dispatch-inspection" element={<PreDispatchInspection />} />
           <Route path="quality/pre-dispatch-inspection/form" element={<PreDispatchInspectionForm />} />
           <Route path="quality/coa/form" element={<CoaForm />} />

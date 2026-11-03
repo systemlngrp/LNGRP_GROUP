@@ -1,7 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-export const APP_BACK_FALLBACK = "/operations-dashboard";
+export const APP_BACK_FALLBACK = "/home";
 
 export function hasPreviousAppHistory(state: unknown) {
   const index = Number((state as { idx?: unknown } | null)?.idx);

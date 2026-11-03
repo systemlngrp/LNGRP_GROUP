@@ -10,5 +10,5 @@ test("back navigation uses the router history index when available", () => {
 test("back navigation falls back when browser history is unavailable", () => {
   assert.equal(hasPreviousAppHistory(null), false);
   assert.equal(hasPreviousAppHistory(undefined), false);
-  assert.equal(APP_BACK_FALLBACK, "/operations-dashboard");
+  assert.equal(APP_BACK_FALLBACK, "/home");
 });
