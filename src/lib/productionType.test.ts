@@ -26,3 +26,7 @@ test("linked PHP and Plate Corrugation jobs use Corrugation Liner then Printing"
 test("regular FG processing keeps its configured route", () => {
   assert.deepEqual(getRequiredMachinesForProduction({ itemSource: "FG" }, { boxType: "RSC" }, { RSC: ["Corrugation Liner", "Printing"] }, machines), ["Corrugation Liner", "Printing"]);
 });
+
+test("FG jobs with an empty box type use the temporary Corrugation Liner then Printing route", () => {
+  assert.deepEqual(getRequiredMachinesForProduction({ itemSource: "FG" }, { boxType: "" }, {}, machines), ["Corrugation Liner", "Printing"]);
+});
