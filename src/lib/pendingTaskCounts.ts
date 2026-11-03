@@ -38,7 +38,7 @@ import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
 import { isProductionPendingConsumption, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
 import { getAllReturnableReelLines } from "./materialMovement";
-import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "./reelTransfer";
+import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrugationFullTime } from "./reelTransfer";
 import { countEligibleLoadingPlans } from "./pendingLoadingEligibility";
 import { isPendingDailyConsumableTally } from "./materialIssueClassification";
 
@@ -171,15 +171,48 @@ function toOptionalNumber(value: unknown) {
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : undefined;
 }
 
-function findItemByErp(items: OrderCatalogItem[], erpCode: string) {
+/** Group rows by key, keeping the original row order inside each group. */
+function groupBy<T, K>(rows: T[], getKey: (row: T) => K) {
+  const groups = new Map<K, T[]>();
+  rows.forEach((row) => {
+    const key = getKey(row);
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  });
+  return groups;
+}
+
+/** Map key -> first row with that key (same result as Array.find on that key). */
+function firstBy<T, K>(rows: T[], getKey: (row: T) => K) {
+  const index = new Map<K, T>();
+  rows.forEach((row) => {
+    const key = getKey(row);
+    if (!index.has(key)) index.set(key, row);
+  });
+  return index;
+}
+
+/**
+ * Normalized ERP -> first item (in list order) carrying that ERP in any of its
+ * ERP fields. Equivalent to scanning the list with items.find(...).
+ */
+function indexItemsByErp(items: OrderCatalogItem[]) {
+  const index = new Map<string, OrderCatalogItem>();
+  items.forEach((item) => {
+    const raw = item.raw || {};
+    [item.erp, raw.erpItemCode, raw.masterItemNameErpCode].forEach((value) => {
+      const key = normalizeErpCode(value);
+      if (!index.has(key)) index.set(key, item);
+    });
+  });
+  return index;
+}
+
+function findItemByErpIndexed(index: Map<string, OrderCatalogItem>, erpCode: string) {
   const normalizedErp = normalizeErpCode(erpCode);
   if (!normalizedErp) return undefined;
-  return items.find((item) => {
-    const raw = item.raw || {};
-    return [item.erp, raw.erpItemCode, raw.masterItemNameErpCode].some(
-      (value) => normalizeErpCode(value) === normalizedErp
-    );
-  });
+  return index.get(normalizedErp);
 }
 
 function getSetsPerBox(item?: OrderCatalogItem) {
@@ -242,15 +275,19 @@ function getPendingLinkedPlanningCount(
     plannedQtyByScheduleId.set(row.scheduleId, (plannedQtyByScheduleId.get(row.scheduleId) || 0) + effectiveQty);
   });
 
+  const orderById = firstBy(orders, (order) => order.id);
+  const sourceItemById = firstBy(sourceItems, (item) => item.id);
+  const sourceItemByErp = indexItemsByErp(sourceItems);
+
   return schedules.filter((schedule) => {
-    const order = orders.find((row) => row.id === schedule.orderId);
+    const order = orderById.get(schedule.orderId);
     const fgItem = resolveOrderItem?.(order);
     const scheduledQty = getScheduledQty(schedule);
     const isDirectSourceOrder = order?.itemSource === source;
     const scheduleErp = String(order?.erpCode || fgItem?.erp || "").trim();
     const linkedItem = isDirectSourceOrder
-      ? sourceItems.find((item) => item.id === String(order?.itemId || "").trim())
-      : findItemByErp(sourceItems, scheduleErp);
+      ? sourceItemById.get(String(order?.itemId || "").trim())
+      : findItemByErpIndexed(sourceItemByErp, scheduleErp);
     const setsPerBox = getSetsPerBox(linkedItem);
     const requiredQty = isDirectSourceOrder ? scheduledQty : linkedItem && setsPerBox ? Number((scheduledQty * setsPerBox).toFixed(2)) : 0;
     const alreadyPlannedQty = Number(plannedQtyByScheduleId.get(schedule.id) || 0);
@@ -288,10 +325,13 @@ function getPendingMachineProcessingCount(
     return assignedIds.includes(String(user.id || "")) || assignedNames.some((name) => String(name || "").trim().toLowerCase() === normalizedUserName);
   };
   const visibleMachineIds = new Set(machines.filter(isMachineAssignedToOperator).map((machine) => machine.id));
+  const processingByProductionId = groupBy(processing, (row) => row.productionId);
 
   return productions
     .filter((p) => p.status !== "Completed" && p.status !== "Cancelled" && !p.cancelTimestamp && !p.tallyTimestamp)
     .reduce((count, production) => {
+      // Only this job's processing rows; every helper below filters by productionId anyway.
+      const processing = processingByProductionId.get(production.id) || [];
       const item = findItemAcrossSources?.(String(production.itemId || "").trim(), production.itemSource, production.erpCode);
       const requiredMachines = Array.from(
         new Set(
@@ -343,9 +383,29 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
   const getPoLineCancelledQty = (line: PurchaseOrderLine) => Math.max(0, Number(line.cancelledQty || 0));
   const getPoLinePendingQty = (line: PurchaseOrderLine) =>
     Math.max(0, Number(line.qty || 0) - Number(receivedQtyByPoLineId.get(line.id) || 0) - getPoLineCancelledQty(line));
+  // Index once instead of scanning whole lists inside loops. Every index keeps
+  // the original list order (and first-match semantics for single lookups), so
+  // all counts are identical to the previous nested find/filter/some versions.
+  const indentLinesByIndentId = groupBy(args.indentLines, (line) => line.indentId);
   const normalizedIndents = args.indents.map((indent) =>
-    withIndentTotals(indent, args.indentLines.filter((line) => line.indentId === indent.id))
+    withIndentTotals(indent, indentLinesByIndentId.get(indent.id) || [])
   );
+  const approvedIndentIds = new Set(
+    normalizedIndents.filter((indent) => indent.status === "Approved").map((indent) => indent.id)
+  );
+  const orderById = firstBy(args.orders, (order) => order.id);
+  const npdItemById = firstBy(args.npdItems, (item) => item.id);
+  const activeProductionIds = new Set(
+    args.productions
+      .filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp)
+      .map((production) => production.id)
+  );
+  const processingByProductionId = groupBy(args.processing || [], (row) => row.productionId);
+  const plannedQtyByScheduleId = new Map<unknown, number>();
+  args.dispatchPlans.forEach((plan) => {
+    plannedQtyByScheduleId.set(plan.scheduleId, (plannedQtyByScheduleId.get(plan.scheduleId) || 0) + Number(plan.plannedQty || 0));
+  });
+  const upcomingConsumptionByScheduleId = buildScheduleConsumptionByScheduleId(args.productions, args.phpJobMaster, args.plateJobMaster);
   const productionUsageMap = buildProductionMaterialUsageMap(
     args.materialIssues,
     args.materialIssueLines,
@@ -390,9 +450,9 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/material-receipt/pending-tally": args.materialIn.filter((m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in").length,
     "/production/pending": getPendingProductionPlanCount(args.schedules, args.productions, args.phpJobMaster, args.plateJobMaster),
     "/production/pending-npd": args.schedules.filter((schedule) => {
-      const order = args.orders.find((row) => row.id === schedule.orderId);
+      const order = orderById.get(schedule.orderId);
       if (!order || order.status === "Cancelled") return false;
-      const item = args.npdItems.find((row) => row.id === String(order.itemId || "").trim());
+      const item = npdItemById.get(String(order.itemId || "").trim());
       if (!item) return false;
       const boxType = String(item.boxType || "").trim();
       const rapcValue = String(item.rapc ?? "").trim();
@@ -403,26 +463,32 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     ).length,
     "/production/pending-material-return": new Set(
       getAllReturnableReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions)
-        .filter((line) => args.productions.some((production) =>
-          production.id === line.productionId &&
-          production.status !== "Cancelled" &&
-          !production.cancelTimestamp
-        ))
+        .filter((line) => activeProductionIds.has(line.productionId))
         .map((line) => line.productionId)
     ).size,
-    "/production/pending-job-transfer": args.productions.filter((production) => {
-      if (production.status === "Cancelled" || production.cancelTimestamp) return false;
+    "/production/pending-job-transfer": (() => {
       const windowHours = Number(args.settings?.[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
-      return buildReelTransferContext(
-        production,
-        args.processing || [],
-        args.materialIssueReelLines,
-        args.materialReturnReelLines,
-        args.materialIssueLines,
-        args.productions,
-        windowHours
-      ).eligible;
-    }).length,
+      const now = Date.now();
+      return args.productions.filter((production) => {
+        if (production.status === "Cancelled" || production.cancelTimestamp) return false;
+        // A job can only be eligible once Corrugation Liner is Full and the
+        // transfer window is still open (buildReelTransferContext returns
+        // corrugation_incomplete / window_expired first). Check that cheaply
+        // before building the full reel-balance context.
+        const fullTime = getCorrugationFullTime(processingByProductionId.get(production.id) || [], production.id);
+        if (!fullTime || now > fullTime + windowHours * 60 * 60 * 1000) return false;
+        return buildReelTransferContext(
+          production,
+          args.processing || [],
+          args.materialIssueReelLines,
+          args.materialReturnReelLines,
+          args.materialIssueLines,
+          args.productions,
+          windowHours,
+          now
+        ).eligible;
+      }).length;
+    })(),
     "/production/pending-tally": args.productions.filter((p) =>
       isProductionReadyForTally(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
@@ -467,7 +533,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/production/php-plate/pending-production": getPendingPhpPlateProductionCount(args.phpJobMaster, args.plateJobMaster),
     "/indent/pending": normalizedIndents.filter((i) => i.status === "Pending").length,
     "/purchase-orders/pending-indent-lines": args.indentLines.filter((line) =>
-      normalizedIndents.some((indent) => indent.id === line.indentId && indent.status === "Approved") &&
+      approvedIndentIds.has(line.indentId) &&
       Number(line.qty || 0) - Number(line.cancelledQty || 0) - Number(line.orderedQty || 0) > 0
     ).length,
     "/purchase-orders/pending-approval": args.purchaseOrders.filter((po) => po.status === "Pending Approval").length,
@@ -491,9 +557,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(23, 59, 59, 999);
       const schedDate = new Date(schedule.scheduledDate);
-      const alreadyPlanned = args.dispatchPlans
-        .filter((plan) => plan.scheduleId === schedule.id)
-        .reduce((sum, plan) => sum + Number(plan.plannedQty || 0), 0);
+      const alreadyPlanned = plannedQtyByScheduleId.get(schedule.id) || 0;
       const balance = Number(schedule.qty || 0) - alreadyPlanned;
       return !Number.isNaN(schedDate.getTime()) && schedDate <= tomorrow && balance > 0;
     }).length,
@@ -518,7 +582,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       const cutoffDate = new Date(today);
       cutoffDate.setDate(cutoffDate.getDate() + 2);
       cutoffDate.setHours(23, 59, 59, 999);
-      const consumptionByScheduleId = buildScheduleConsumptionByScheduleId(args.productions, args.phpJobMaster, args.plateJobMaster);
+      const consumptionByScheduleId = upcomingConsumptionByScheduleId;
       const getPendingProductionQty = (row: OrderSchedule) =>
         Math.max(
           Number(row.qty || 0) - Number(consumptionByScheduleId.get(row.id)?.effectiveConsumedQty || 0) - Number(row.canceledQty || 0),

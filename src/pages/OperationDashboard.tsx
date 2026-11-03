@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
+import { useSettledValue } from "../hooks/useSettledValue";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import type {
   Company,
@@ -163,40 +164,121 @@ function getSummaryCard(summary: OperationDashboardSummary, cardId: string) {
 
 export function OperationDashboard() {
   const navigate = useNavigate();
-  const [productions] = useData<Production>("productions", []);
-  const [firms] = useData<Firm>("firms", []);
-  const [phpJobMaster] = useData<Production>("php_job_master", []);
-  const [plateJobMaster] = useData<Production>("plate_job_master", []);
-  const npdItems = useNpdItems();
-  const { resolveOrderItem, findItem, findItemAcrossSources, itemsBySource } = useOrderItemCatalog();
-  const [materials] = useData<Material>("materials", []);
-  const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", []);
-  const [orders] = useData<Order>("orders", []);
-  const [companies] = useData<Company>("companies", []);
-  const [gateEntries] = useData<GateEntry>("gate-entries", []);
-  const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturns] = useData<MaterialReturn>("material-returns", []);
-  const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const [invoices] = useData<Invoice>("invoices", []);
-  const [invoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
-  const [consumptions] = useData<Consumption>("consumptions", []);
-  const [sampleRequests] = useData<SampleRequest>("sample_requests", []);
-  const [indents] = useData<Indent>("indents", []);
-  const [indentLines] = useData<IndentLine>("indent-lines", []);
-  const [purchaseOrders] = useData<PurchaseOrder>("purchase-orders", []);
-  const [phpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
-  const [plateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
-  const [gatePasses] = useData<GatePass>("gate_passes", []);
-  const [machines] = useData<Machine>("machines", []);
-  const [settings] = useData<Setting>("settings", []);
+  const [productionsRaw, , productionsLoading] = useData<Production>("productions", []);
+  const [firmsRaw, , firmsLoading] = useData<Firm>("firms", []);
+  const [phpJobMasterRaw, , phpJobMasterLoading] = useData<Production>("php_job_master", []);
+  const [plateJobMasterRaw, , plateJobMasterLoading] = useData<Production>("plate_job_master", []);
+  const { items: npdItemsRaw, loading: npdItemsLoading } = useNpdItemsWithStatus();
+  const {
+    resolveOrderItem: resolveOrderItemRaw,
+    findItem: findItemRaw,
+    findItemAcrossSources: findItemAcrossSourcesRaw,
+    itemsBySource: itemsBySourceRaw,
+    loading: catalogLoading,
+  } = useOrderItemCatalog();
+  const [materialsRaw, , materialsLoading] = useData<Material>("materials", []);
+  const [materialInRaw, , materialInLoading] = useData<MaterialIn>("material-in", []);
+  const [packingSlipsRaw, , packingSlipsLoading] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
+  const [schedulesRaw, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", []);
+  const [ordersRaw, , ordersLoading] = useData<Order>("orders", []);
+  const [companiesRaw, , companiesLoading] = useData<Company>("companies", []);
+  const [gateEntriesRaw, , gateEntriesLoading] = useData<GateEntry>("gate-entries", []);
+  const [dispatchPlansRaw, , dispatchPlansLoading] = useData<DispatchPlan>("dispatch_plans", []);
+  const [processingRaw, , processingLoading] = useData<ProductionProcessing>("production_processing", []);
+  const [loadingSlipsRaw, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", []);
+  const [materialIssuesRaw, , materialIssuesLoading] = useData<MaterialIssue>("material-issues", []);
+  const [materialIssueLinesRaw, , materialIssueLinesLoading] = useData<MaterialIssueLine>("material-issue-lines", []);
+  const [issueReelLinesRaw, , issueReelLinesLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
+  const [materialReturnsRaw, , materialReturnsLoading] = useData<MaterialReturn>("material-returns", []);
+  const [materialReturnLinesRaw, , materialReturnLinesLoading] = useData<MaterialReturnLine>("material-return-lines", []);
+  const [returnReelLinesRaw, , returnReelLinesLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  const [invoicesRaw, , invoicesLoading] = useData<Invoice>("invoices", []);
+  const [invoiceLineItemsRaw, , invoiceLineItemsLoading] = useData<InvoiceLineItem>("invoice_line_items", []);
+  const [consumptionsRaw, , consumptionsLoading] = useData<Consumption>("consumptions", []);
+  const [sampleRequestsRaw, , sampleRequestsLoading] = useData<SampleRequest>("sample_requests", []);
+  const [indentsRaw, , indentsLoading] = useData<Indent>("indents", []);
+  const [indentLinesRaw, , indentLinesLoading] = useData<IndentLine>("indent-lines", []);
+  const [purchaseOrdersRaw, , purchaseOrdersLoading] = useData<PurchaseOrder>("purchase-orders", []);
+  const [phpLoadingSlipsRaw, , phpLoadingSlipsLoading] = useData<LoadingSlip>("php_loading_slips", []);
+  const [plateLoadingSlipsRaw, , plateLoadingSlipsLoading] = useData<LoadingSlip>("plate_loading_slips", []);
+  const [gatePassesRaw, , gatePassesLoading] = useData<GatePass>("gate_passes", []);
+  const [machinesRaw, , machinesLoading] = useData<Machine>("machines", []);
+  const [settingsRaw, , settingsLoading] = useData<Setting>("settings", []);
+
+  // Compute the dashboard once, after every list has finished loading, instead
+  // of re-running all figures after each 250-row batch (~280 times on a cold load).
+  // Background refreshes keep the previous figures until fresh data is complete.
+  const dataReady = !(productionsLoading ||
+    firmsLoading ||
+    phpJobMasterLoading ||
+    plateJobMasterLoading ||
+    npdItemsLoading ||
+    catalogLoading ||
+    materialsLoading ||
+    materialInLoading ||
+    packingSlipsLoading ||
+    schedulesLoading ||
+    ordersLoading ||
+    companiesLoading ||
+    gateEntriesLoading ||
+    dispatchPlansLoading ||
+    processingLoading ||
+    loadingSlipsLoading ||
+    materialIssuesLoading ||
+    materialIssueLinesLoading ||
+    issueReelLinesLoading ||
+    materialReturnsLoading ||
+    materialReturnLinesLoading ||
+    returnReelLinesLoading ||
+    invoicesLoading ||
+    invoiceLineItemsLoading ||
+    consumptionsLoading ||
+    sampleRequestsLoading ||
+    indentsLoading ||
+    indentLinesLoading ||
+    purchaseOrdersLoading ||
+    phpLoadingSlipsLoading ||
+    plateLoadingSlipsLoading ||
+    gatePassesLoading ||
+    machinesLoading ||
+    settingsLoading);
+  const productions = useSettledValue(productionsRaw, dataReady);
+  const firms = useSettledValue(firmsRaw, dataReady);
+  const phpJobMaster = useSettledValue(phpJobMasterRaw, dataReady);
+  const plateJobMaster = useSettledValue(plateJobMasterRaw, dataReady);
+  const npdItems = useSettledValue(npdItemsRaw, dataReady);
+  const resolveOrderItem = useSettledValue(resolveOrderItemRaw, dataReady);
+  const findItem = useSettledValue(findItemRaw, dataReady);
+  const findItemAcrossSources = useSettledValue(findItemAcrossSourcesRaw, dataReady);
+  const itemsBySource = useSettledValue(itemsBySourceRaw, dataReady);
+  const materials = useSettledValue(materialsRaw, dataReady);
+  const materialIn = useSettledValue(materialInRaw, dataReady);
+  const packingSlips = useSettledValue(packingSlipsRaw, dataReady);
+  const schedules = useSettledValue(schedulesRaw, dataReady);
+  const orders = useSettledValue(ordersRaw, dataReady);
+  const companies = useSettledValue(companiesRaw, dataReady);
+  const gateEntries = useSettledValue(gateEntriesRaw, dataReady);
+  const dispatchPlans = useSettledValue(dispatchPlansRaw, dataReady);
+  const processing = useSettledValue(processingRaw, dataReady);
+  const loadingSlips = useSettledValue(loadingSlipsRaw, dataReady);
+  const materialIssues = useSettledValue(materialIssuesRaw, dataReady);
+  const materialIssueLines = useSettledValue(materialIssueLinesRaw, dataReady);
+  const issueReelLines = useSettledValue(issueReelLinesRaw, dataReady);
+  const materialReturns = useSettledValue(materialReturnsRaw, dataReady);
+  const materialReturnLines = useSettledValue(materialReturnLinesRaw, dataReady);
+  const returnReelLines = useSettledValue(returnReelLinesRaw, dataReady);
+  const invoices = useSettledValue(invoicesRaw, dataReady);
+  const invoiceLineItems = useSettledValue(invoiceLineItemsRaw, dataReady);
+  const consumptions = useSettledValue(consumptionsRaw, dataReady);
+  const sampleRequests = useSettledValue(sampleRequestsRaw, dataReady);
+  const indents = useSettledValue(indentsRaw, dataReady);
+  const indentLines = useSettledValue(indentLinesRaw, dataReady);
+  const purchaseOrders = useSettledValue(purchaseOrdersRaw, dataReady);
+  const phpLoadingSlips = useSettledValue(phpLoadingSlipsRaw, dataReady);
+  const plateLoadingSlips = useSettledValue(plateLoadingSlipsRaw, dataReady);
+  const gatePasses = useSettledValue(gatePassesRaw, dataReady);
+  const machines = useSettledValue(machinesRaw, dataReady);
+  const settings = useSettledValue(settingsRaw, dataReady);
 
   const allowExports = exportsAllowed();
   const [dateRange, setDateRange] = useState(getDefaultRange);
@@ -603,6 +685,11 @@ export function OperationDashboard() {
               <h2 className="text-xl font-black uppercase tracking-tight text-slate-950 md:text-2xl">
                 Operation Dashboard
               </h2>
+              {!dataReady ? (
+                <div className="mt-1 text-[11px] font-bold uppercase tracking-wide text-indigo-700" role="status">
+                  Loading latest data… figures will appear once all records are loaded.
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap items-stretch justify-end gap-1.5">
               <DateInput value={dateRange.from} onChange={(value) => setDateRange((prev) => ({ ...prev, from: value }))} />
