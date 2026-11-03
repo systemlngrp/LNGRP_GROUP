@@ -28,6 +28,7 @@ import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import {
   buildProductionCorrugatedSheetUsageMap,
+  buildProductionGrossIssuedQtyMap,
   buildProductionMaterialUsageMap,
   getProductionActualPaperUsed,
   hasProductionCorrugatedSheetUsage,
@@ -70,6 +71,7 @@ export function ProductionStageQueue({
   hideStatusColumn = false,
   hideProdFfgColumn = false,
   hideActualPaperUsedColumn = false,
+  showTotalIssuedQty = false,
   issuePrereqMachineName,
   issueActionPath = "/material-movement/reel-issue-return",
   issueActionLabel = "Issue Material",
@@ -86,6 +88,7 @@ export function ProductionStageQueue({
   hideStatusColumn?: boolean;
   hideProdFfgColumn?: boolean;
   hideActualPaperUsedColumn?: boolean;
+  showTotalIssuedQty?: boolean;
   issuePrereqMachineName?: string;
   issueActionPath?: string;
   issueActionLabel?: string;
@@ -141,6 +144,10 @@ export function ProductionStageQueue({
       ),
     [materialIssueLines, materialIssues, materialReturnLines, materialReturns, materials]
   );
+  const grossIssuedQtyMap = useMemo(
+    () => buildProductionGrossIssuedQtyMap(materialIssues, materialIssueLines, materialIssueReelLines, productions),
+    [materialIssueLines, materialIssueReelLines, materialIssues, productions]
+  );
 
   const toggleSort = (nextKey: SortKey) => {
     if (nextKey === sortKey) {
@@ -179,6 +186,7 @@ export function ProductionStageQueue({
           item,
           company,
           actualPaperUsed: getProductionActualPaperUsed(production, usageMap),
+          totalIssuedQty: grossIssuedQtyMap.get(production.id) || 0,
           requiredMachines,
           prereqQty,
         };
@@ -502,6 +510,7 @@ export function ProductionStageQueue({
                   <td
                     colSpan={
                       (11 - (hideStatusColumn ? 1 : 0) - (hideProdFfgColumn ? 1 : 0) - (hideActualPaperUsedColumn ? 1 : 0)) +
+                      (showTotalIssuedQty ? 1 : 0) +
                       (issuePrereqMachineName ? 1 : 0) +
                       (enableCloseAction ? 1 : 0) +
                       (enableFfgEditing ? 1 : 0) +
@@ -513,7 +522,7 @@ export function ProductionStageQueue({
                   </td>
                 </tr>
               ) : (
-                paginatedRows.map(({ production, order, item, company, actualPaperUsed, prereqQty, requiredMachines }, index) => (
+                paginatedRows.map(({ production, order, item, company, actualPaperUsed, totalIssuedQty, prereqQty, requiredMachines }, index) => (
                   <tr key={production.id} className="hover:bg-slate-50 divide-x divide-black">
                     <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
                     <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{production.transactionNo}</td>
@@ -533,6 +542,11 @@ export function ProductionStageQueue({
                       </td>
                     ) : null}
                     <td className="px-4 py-4 text-right text-xs font-medium text-emerald-700 border border-black whitespace-nowrap">{production.qty}</td>
+                    {showTotalIssuedQty ? (
+                      <td className="px-4 py-4 text-right text-xs font-medium text-black border border-black whitespace-nowrap">
+                        {totalIssuedQty > 0 ? totalIssuedQty.toFixed(2) : "-"}
+                      </td>
+                    ) : null}
                     {!hideActualPaperUsedColumn ? (
                       <td className="px-4 py-4 text-right text-xs text-black border border-black whitespace-nowrap">{actualPaperUsed > 0 ? actualPaperUsed : "-"}</td>
                     ) : null}
@@ -745,6 +759,7 @@ export function ProductionPendingConsumption() {
       enableIssueAction
       hideStatusColumn
       hideActualPaperUsedColumn
+      showTotalIssuedQty
       hideProdFfgColumn
       issueActionPath="/material-movement/reel-issue-return-scan/form"
       issueActionLabel="QR Issue"

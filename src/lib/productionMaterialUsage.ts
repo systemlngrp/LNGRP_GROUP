@@ -104,6 +104,54 @@ export function buildProductionMaterialUsageMap(
   return totals;
 }
 
+export function buildProductionGrossIssuedQtyMap(
+  materialIssues: MaterialIssue[],
+  materialIssueLines: MaterialIssueLine[],
+  materialIssueReelLines: MaterialIssueReelLine[] = [],
+  productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []
+) {
+  const productionIds = new Set(productions.map((production) => production.id));
+  const productionIdByJobNo = new Map<string, string>();
+  productions.forEach((production) => {
+    for (const value of [production.transactionNo, production.jobCardNo]) {
+      const jobNo = String(value || "").trim().toLowerCase();
+      if (jobNo && !productionIdByJobNo.has(jobNo)) productionIdByJobNo.set(jobNo, production.id);
+    }
+  });
+  const resolveProductionId = (productionId?: string, jobNo?: string) => {
+    const id = String(productionId || "").trim();
+    if (id && (productions.length === 0 || productionIds.has(id))) return id;
+    return productionIdByJobNo.get(String(jobNo || "").trim().toLowerCase());
+  };
+  const issueProductionMap = new Map(
+    materialIssues
+      .filter((issue) => issue.issueType === "Job")
+      .map((issue) => [issue.id, resolveProductionId(issue.productionId, issue.jobNo)])
+      .filter((entry): entry is [string, string] => Boolean(entry[1]))
+  );
+  const totals = new Map<string, number>();
+  const existingIssueLineIds = new Set(materialIssueLines.map((line) => line.id));
+
+  materialIssueLines.forEach((line) => {
+    const productionId = issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.qty || 0));
+  });
+
+  materialIssueReelLines.forEach((line) => {
+    if (existingIssueLineIds.has(line.materialIssueLineId)) return;
+    const productionId = resolveProductionId(line.productionId, line.jobNo) || issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.weightKg || 0));
+  });
+
+  totals.forEach((value, key) => {
+    totals.set(key, Math.max(0, Number(value.toFixed(5))));
+  });
+
+  return totals;
+}
+
 export function buildProductionCorrugatedSheetUsageMap(
   materials: Pick<Material, "id" | "name">[],
   materialIssues: MaterialIssue[],

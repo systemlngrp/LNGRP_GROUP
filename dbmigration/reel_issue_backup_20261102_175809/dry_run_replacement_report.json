@@ -1,0 +1,30 @@
+{
+  "backup_dir": "D:\\LNGRP\\dbmigration\\reel_issue_backup_20261102_175809",
+  "backup_counts": {
+    "material_issues": 5744,
+    "material_issue_lines": 4973,
+    "material_issue_reel_lines": 14153,
+    "material_returns": 0,
+    "material_return_reel_lines": 0,
+    "reel_transfers": 0,
+    "reel_transfer_lines": 0
+  },
+  "part_b": {
+    "old_item_lines_to_delete": 4973,
+    "new_item_lines_to_create": 9019,
+    "reel_lines_to_repoint": 14153,
+    "reel_weight_kg": 11146337.0,
+    "old_item_line_weight_kg": null,
+    "new_item_line_weight_kg": 11146337.0,
+    "mixed_item_lines_to_fix": 1991
+  },
+  "part_c": {
+    "source_trf_rows_selected": 66,
+    "trf_headers_to_create": 37,
+    "trf_item_lines_to_create": 45,
+    "trf_reel_lines_to_create": 66,
+    "trf_weight_kg": 53893.0,
+    "missing_productions": 0,
+    "missing_production_rows": []
+  }
+}
