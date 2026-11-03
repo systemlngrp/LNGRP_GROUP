@@ -476,6 +476,11 @@ export function ProductionStageQueue({
                     Qty (Kgs) <SortIcon column="qty" />
                   </button>
                 </th>
+                {showTotalIssuedQty ? (
+                  <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
+                    Total Issued Qty
+                  </th>
+                ) : null}
                 {!hideActualPaperUsedColumn ? (
                   <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
                     <button type="button" onClick={() => toggleSort("actualPaperUsed")} className="inline-flex items-center gap-1">
