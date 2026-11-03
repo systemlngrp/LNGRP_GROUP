@@ -3879,6 +3879,34 @@ async function syncCorrugationLinerOutput(db, processingId) {
     console.log("[CORRUGATION-OUTPUT] Updated source job", { processingId, source: source.kind, sourceId: source.id, qty });
     return { updated: true, source: source.kind, sourceId: source.id, qty };
 }
+/** Keep the main production's Sheet Plant quantity synchronized with all
+ * Corrugation Liner reports, including both Part and Full submissions. */
+async function syncProductionSheetPlantOutput(db, productionId, updatedBy, updateTimestamp) {
+    const normalizedProductionId = String(productionId || "").trim();
+    if (!normalizedProductionId)
+        return { updated: false, reason: "missing-production" };
+    const [rows] = await db.query(`SELECT COALESCE(SUM(COALESCE(qty, 0)), 0) AS sheetPlantQty
+     FROM production_processing
+     WHERE productionId = ?
+       AND LOWER(TRIM(machineName)) = 'corrugation liner'`, [normalizedProductionId]);
+    const sheetPlantQty = Math.max(0, Number(rows[0]?.sheetPlantQty || 0));
+    const timestamp = updateTimestamp || new Date().toISOString();
+    await db.query("UPDATE productions SET prodFromSheetPlant = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [sheetPlantQty, updatedBy || "System", timestamp, normalizedProductionId]);
+    return { updated: true, productionId: normalizedProductionId, sheetPlantQty };
+}
+async function syncProductionSheetPlantOutputForProcessing(db, processing, previousProcessing) {
+    const currentMachine = normalizeMachineName(String(processing?.machineName || ""));
+    const previousMachine = normalizeMachineName(String(previousProcessing?.machineName || ""));
+    if (currentMachine !== "Corrugation Liner" && previousMachine !== "Corrugation Liner")
+        return;
+    const productionIds = [...new Set([
+            currentMachine === "Corrugation Liner" ? processing?.productionId : "",
+            previousMachine === "Corrugation Liner" ? previousProcessing?.productionId : "",
+        ].map((value) => String(value || "").trim()).filter(Boolean))];
+    for (const productionId of productionIds) {
+        await syncProductionSheetPlantOutput(db, productionId, processing?.updatedBy, processing?.updateTimestamp);
+    }
+}
 async function backfillCorrugationLinerOutput(db) {
     const [rows] = await db.query(`SELECT pp.id, pp.productionId, pp.date, pp.updateTimestamp
     FROM production_processing pp JOIN productions p ON p.id = pp.productionId
@@ -12714,6 +12742,7 @@ const createHandlers = (tableName) => {
                         await withPrintingOutputTransaction(db, (processingMachineName === "Printing" || normalizeMachineName(String(previousProcessing?.machineName || "")) === "Printing") ? [String(data.productionId || ""), String(previousProcessing?.productionId || "")] : [], async (conn) => {
                             await conn.query(query, values);
                             await syncCorrugationLinerOutput(conn, String(data.id || ""));
+                            await syncProductionSheetPlantOutputForProcessing(conn, data, previousProcessing);
                         });
                         return res.json({ success: true, warning: printingValidation.warning });
                     }
@@ -12726,6 +12755,7 @@ const createHandlers = (tableName) => {
                         console.log(`[DB] Atomically upserting ${tableName} with inter-firm automation`, { id: data.id });
                         await conn.query(query, values);
                         await syncCorrugationLinerOutput(conn, String(data.id || ""));
+                        await syncProductionSheetPlantOutputForProcessing(conn, data, previousProcessing);
                         if (normalizeMachineName(String(data.machineName || "")) === "Printing" ||
                             normalizeMachineName(String(previousProcessing?.machineName || "")) === "Printing") {
                             await syncLinkedPrintingOutput(conn, String(data.productionId || ""));
@@ -12780,6 +12810,7 @@ const createHandlers = (tableName) => {
                     await withPrintingOutputTransaction(db, printingChanged ? [String(data.productionId || ""), String(previousProcessing?.productionId || "")] : [], async (conn) => {
                         await conn.query(query, values);
                         await syncCorrugationLinerOutput(conn, String(data.id || ""));
+                        await syncProductionSheetPlantOutputForProcessing(conn, data, previousProcessing);
                     });
                 }
                 else {
