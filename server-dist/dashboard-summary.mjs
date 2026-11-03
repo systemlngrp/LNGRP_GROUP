@@ -960,6 +960,12 @@ function getRequiredMachinesForProduction(production, item, mapping, machines) {
     }
     return [];
   }
+  if (!source) {
+    return [
+      normalizeMachineName("Corrugation Liner"),
+      normalizeMachineName("Printing")
+    ];
+  }
   return getRequiredMachinesForType(mapping, getProductionEffectiveType(production, item));
 }
 
