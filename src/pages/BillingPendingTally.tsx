@@ -48,6 +48,9 @@ export function BillingPendingTally() {
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
   const [orders] = useData<Order>("orders", []);
   const [interFirmPending] = useData<InterFirmPendingInvoice>("inter_firm_pending_invoices", [], { firmScope: "all", storageKey: "inter-firm-pending-all-firms" });
+  // The customer order of an inter-firm transfer belongs to the destination
+  // firm, so look it up across all firms rather than the active firm only.
+  const [allFirmOrders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -126,7 +129,7 @@ export function BillingPendingTally() {
     if (poNums.size === 0) {
       const invoice = invoices.find((row) => row.id === invoiceId) as any;
       const pending = invoice && interFirmPending.find((row) => row.id === invoice.sourceTransactionId);
-      const order = pending?.customerOrderId ? orders.find((o) => o.id === pending.customerOrderId) : undefined;
+      const order = pending?.customerOrderId ? allFirmOrders.find((o) => o.id === pending.customerOrderId) : undefined;
       if (order?.poNumber) poNums.add(order.poNumber);
     }
 
@@ -177,7 +180,7 @@ export function BillingPendingTally() {
         return searchStr.includes(searchTerm.toLowerCase());
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoices, companies, companyFilter, itemFilter, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, searchTerm]);
+  }, [invoices, companies, companyFilter, itemFilter, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, searchTerm]);
 
   const companyOptions = useMemo(() => Array.from(new Map(processedInvoices.map((inv) => [inv.companyId, { value: inv.companyId, label: inv.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [processedInvoices]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); processedInvoices.forEach((inv) => inv.details.forEach((line: any) => { const key = line.itemId || `${line.itemName || ""}::${line.erp || ""}`; if (!key || map.has(key)) return; const name = line.itemName || ""; const erp = line.erp || ""; map.set(key, { value: key, label: erp && name && !name.toLowerCase().includes(String(erp).toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }); })); return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)); }, [processedInvoices]);
