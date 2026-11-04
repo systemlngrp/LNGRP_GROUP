@@ -9,7 +9,8 @@ import {
   Item,
   LoadingSlip,
   DispatchPlan,
-  Order
+  Order,
+  InterFirmPendingInvoice
 } from "../types";
 import { 
   Search, 
@@ -42,10 +43,11 @@ export function BillingPendingTally() {
   const [invoices, setInvoices, isLoading] = useData<Invoice>("invoices", []);
   const [lineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
   const [companies] = useData<Company>("companies", []);
-  const { findItem, resolveOrderItem } = useOrderItemCatalog();
+  const { findItem, findItemAcrossSources, resolveOrderItem } = useOrderItemCatalog();
   const [slips] = useData<LoadingSlip>("loading_slips", []);
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
   const [orders] = useData<Order>("orders", []);
+  const [interFirmPending] = useData<InterFirmPendingInvoice>("inter_firm_pending_invoices", [], { firmScope: "all", storageKey: "inter-firm-pending-all-firms" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -119,6 +121,15 @@ export function BillingPendingTally() {
       });
     });
 
+    // Inter-firm invoices have no loading slip: take the PO from the
+    // customer order of the job that triggered the transfer.
+    if (poNums.size === 0) {
+      const invoice = invoices.find((row) => row.id === invoiceId) as any;
+      const pending = invoice && interFirmPending.find((row) => row.id === invoice.sourceTransactionId);
+      const order = pending?.customerOrderId ? orders.find((o) => o.id === pending.customerOrderId) : undefined;
+      if (order?.poNumber) poNums.add(order.poNumber);
+    }
+
     return Array.from(poNums);
   };
 
@@ -133,7 +144,7 @@ export function BillingPendingTally() {
         const details = invLines.length > 0
           ? invLines.map((li) => {
               const itemSource = normalizeOrderItemSource(li.itemSource);
-              const item = findItem(itemSource, li.itemId);
+              const item = findItem(itemSource, li.itemId) || findItemAcrossSources(li.itemId, itemSource);
               return {
                 ...li,
                 itemName: item?.name || "Unknown",
@@ -166,7 +177,7 @@ export function BillingPendingTally() {
         return searchStr.includes(searchTerm.toLowerCase());
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoices, companies, companyFilter, itemFilter, lineItems, findItem, slips, dispatchPlans, orders, searchTerm]);
+  }, [invoices, companies, companyFilter, itemFilter, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, searchTerm]);
 
   const companyOptions = useMemo(() => Array.from(new Map(processedInvoices.map((inv) => [inv.companyId, { value: inv.companyId, label: inv.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [processedInvoices]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); processedInvoices.forEach((inv) => inv.details.forEach((line: any) => { const key = line.itemId || `${line.itemName || ""}::${line.erp || ""}`; if (!key || map.has(key)) return; const name = line.itemName || ""; const erp = line.erp || ""; map.set(key, { value: key, label: erp && name && !name.toLowerCase().includes(String(erp).toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }); })); return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)); }, [processedInvoices]);

@@ -13180,6 +13180,24 @@ async function fetchTallyInvoiceContext(db, invoiceId) {
             }
         }
     }
+    // Inter-firm invoices have no loading slip; take the PO from the customer
+    // order of the job that triggered the transfer.
+    if (!orderNos.length && String(invoiceRow.interFirmFlow || "").trim().toLowerCase() === "yes") {
+        const [interFirmOrderRows] = await db.query(`SELECT o.poNumber, o.orderDate
+         FROM \`inter_firm_pending_invoices\` ip
+         INNER JOIN \`orders\` o ON o.id = ip.customerOrderId
+        WHERE ip.id = ? LIMIT 1`, [String(invoiceRow.sourceTransactionId || "")]);
+        for (const row of interFirmOrderRows) {
+            const poNumber = String(row.poNumber || "").trim();
+            const orderDate = String(row.orderDate || "").trim();
+            if (poNumber)
+                orderNos.push(poNumber);
+            if (orderDate)
+                orderDates.push(orderDate);
+            if (poNumber)
+                orderDetails.push({ poNumber, orderDate });
+        }
+    }
     return {
         invoiceRow: normalizedInvoiceRow,
         firmRow: {},
