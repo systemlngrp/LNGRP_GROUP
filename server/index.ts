@@ -3257,7 +3257,9 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       const [invoices] = await db.query(`
         SELECT inv.invoiceNo,
           COALESCE(NULLIF(ili.sourceFirmId, ''), NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), NULLIF(ili.orderFirmId, ''), NULLIF(inv.orderFirmId, '')) firmId,
-          COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) itemId,
+          CASE WHEN UPPER(COALESCE(ili.itemSource, '')) = 'MATERIAL' AND COALESCE(NULLIF(ip.npdId, ''), '') <> ''
+            THEN ip.npdId
+            ELSE COALESCE(NULLIF(ili.npdId,''), NULLIF(ili.itemId,''), p.npdId, p.itemId, p.erpCode, ip.npdId, ip.itemId) END itemId,
           COALESCE(ili.qty,0) qty
         FROM invoice_line_items ili
         JOIN invoices inv ON inv.id = ili.invoiceId
@@ -3403,7 +3405,7 @@ async function ensureInterFirmSchema(db: mysql.Pool, database: string) {
     customerOrderId VARCHAR(36), jobId VARCHAR(36), jobNo VARCHAR(100),
     sourceTransactionType VARCHAR(80) NOT NULL, sourceTransactionId VARCHAR(36) NOT NULL,
     itemId VARCHAR(36) NOT NULL, itemSource VARCHAR(20), npdId VARCHAR(36),
-    lines LONGTEXT,
+    \`lines\` LONGTEXT,
     qty DECIMAL(15,2) NOT NULL DEFAULT 0, uom VARCHAR(50), rate DECIMAL(15,2) NOT NULL DEFAULT 0,
     gstRate DECIMAL(5,2) NOT NULL DEFAULT 0, linkedGateEntryId VARCHAR(36), linkedMrrId VARCHAR(36),
     linkedInvoiceId VARCHAR(36), status VARCHAR(30) NOT NULL DEFAULT 'Pending', remarks TEXT,
@@ -3742,6 +3744,9 @@ async function ensureInterFirmAutomationSchema(db: mysql.Pool, database: string)
   }
 }
 
+// Material Master item that Unit-I transfers to Unit-II on Corrugation Liner.
+const CORRUGATED_BOARD_ERP = "99020017";
+
 async function automateInterFirmProduction(
   db: mysql.Pool,
   sourceId: string,
@@ -3832,6 +3837,7 @@ async function automateInterFirmProduction(
     const sourceTransactionId = sourceId;
     const sourceTransactionType = sourceType;
     const now = new Date().toISOString();
+    const automationWarnings: string[] = [];
     const qty = Number(
       sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0
     );
@@ -3867,10 +3873,33 @@ async function automateInterFirmProduction(
     // Inter-firm transfers use the fixed internal GST rate, independent of
     // the customer order/item GST configuration. Manual MRRs are unaffected.
     const gstRate = 18;
+    // Unit-I's output is corrugated board, not the customer's finished box.
+    // The Unit-I -> Unit-II documents (issue, MRR, invoice) therefore carry
+    // the Corrugated Boards material, while the job's own NPD stays on the
+    // pending record so firm-wise FG stock still relieves the job item.
+    const jobNpdId = String(sourceRecord.npdId || production.npdId || itemId);
+    let docItemId = itemId;
+    let docItemSource = String(sourceRecord.itemSource || production.itemSource || "FG");
+    let docNpdId: string | null = jobNpdId;
+    let docUom = String(sourceRecord.uom || production.uom || "");
+    if (normalizedMachine === "Corrugation Liner") {
+      const [boardRows] = await conn.query(
+        "SELECT id, uom FROM `materials` WHERE TRIM(erpCode) = ? AND COALESCE(active, 'Yes') <> 'No' LIMIT 1",
+        [CORRUGATED_BOARD_ERP]
+      );
+      const board = (boardRows as any[])[0];
+      if (!board?.id) {
+        throw new Error(`Corrugated Boards material (ERP ${CORRUGATED_BOARD_ERP}) is missing in Material Master; inter-firm transfer cannot be created.`);
+      }
+      docItemId = String(board.id);
+      docItemSource = "MATERIAL";
+      docNpdId = null;
+      docUom = String(board.uom || "PCS");
+    }
     const pendingInvoiceLines = [{
-      itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG",
-      npdId: sourceRecord.npdId || production.npdId || itemId, qty,
-      uom: sourceRecord.uom || production.uom || "", rate, gstRate,
+      itemId: docItemId, itemSource: docItemSource,
+      npdId: jobNpdId, qty,
+      uom: docUom, rate, gstRate,
     }];
     const [orphanPendingRows] = await conn.query(
       `SELECT ip.* FROM inter_firm_pending_invoices ip
@@ -3896,32 +3925,12 @@ async function automateInterFirmProduction(
       await conn.query("UPDATE inter_firm_pending_invoices SET sourceTransactionId = ?, updateTimestamp = ? WHERE id = ?", [sourceId, now, orphanPending.id]);
     }
     const pendingId = String(orphanPending?.id || crypto.randomUUID());
-    await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, \`lines\`, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), \`lines\`=VALUES(\`lines\`), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, itemId, sourceRecord.itemSource || production.itemSource || "FG", sourceRecord.npdId || production.npdId || itemId, qty, sourceRecord.uom || production.uom || "", rate, gstRate, JSON.stringify(pendingInvoiceLines), now]);
+    await conn.query(`INSERT INTO inter_firm_pending_invoices (id, firmId, orderFirmId, sourceFirmId, destinationFirmId, customerOrderId, jobId, jobNo, sourceTransactionType, sourceTransactionId, itemId, itemSource, npdId, qty, uom, rate, gstRate, \`lines\`, status, updatedBy, updateTimestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', 'System', ?) ON DUPLICATE KEY UPDATE itemId=VALUES(itemId), itemSource=VALUES(itemSource), npdId=VALUES(npdId), uom=VALUES(uom), qty=VALUES(qty), rate=VALUES(rate), gstRate=VALUES(gstRate), \`lines\`=VALUES(\`lines\`), updateTimestamp=VALUES(updateTimestamp)`, [pendingId, sourceFirmId, orderFirmId, sourceFirmId, destinationFirmId, production.orderId || null, production.id, production.jobCardNo || production.transactionNo || null, sourceTransactionType, sourceTransactionId, docItemId, docItemSource, jobNpdId, qty, docUom, rate, gstRate, JSON.stringify(pendingInvoiceLines), now]);
     const [pendingRows] = await conn.query("SELECT * FROM `inter_firm_pending_invoices` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1", [sourceTransactionType, sourceTransactionId, destinationFirmId]);
     const pending = (pendingRows as any[])[0];
-    const [existingIssue] = await conn.query(
-      "SELECT id, issueNo FROM `material_issues` WHERE sourceTransactionType = ? AND sourceTransactionId = ? AND destinationFirmId = ? LIMIT 1",
-      [sourceTransactionType, sourceTransactionId, destinationFirmId]
-    );
-    let sourceIssue = (existingIssue as any[])[0];
-    if (!sourceIssue) {
-      const issueId = crypto.randomUUID();
-      const issueDate = String(sourceRecord.date || production.date || now.slice(0, 10));
-      const issueNo = await generateSimpleTransactionNumber(conn, "material_issues", "issueNo", "MIS", issueDate);
-      const issueLineId = crypto.randomUUID();
-      const amount = Number((qty * rate).toFixed(2));
-      await conn.query(
-        `INSERT INTO material_issues (id, issueNo, date, issueType, firmId, remarks, interFirmFlow, autoGenerated, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, 'Without Job', ?, ?, 'Yes', 'Yes', ?, ?, ?, ?, 'System', ?)`,
-        [issueId, issueNo, issueDate, sourceFirmId, `Inter-firm transfer to ${destinationFirmId}`, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, now]
-      );
-      await conn.query(
-        `INSERT INTO material_issue_lines (id, materialIssueId, materialId, qty, uom, lastPurchaseRate, openingRate, rate, amount, updatedBy, updateTimestamp)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'System', ?)`,
-        [issueLineId, issueId, itemId, qty, sourceRecord.uom || production.uom || "", rate, rate, rate, amount, now]
-      );
-      sourceIssue = { id: issueId, issueNo };
-    }
+    // No Material Issue is created for the inter-firm handoff: the source
+    // firm's stock is relieved by the inter-firm invoice itself, and a second
+    // issue voucher would reduce stock twice (in the app and in Tally).
     const [internalSupplierRows] = await conn.query("SELECT id FROM `suppliers` WHERE firmId = ? LIMIT 1", [sourceFirmId]);
     const internalSupplierId = String((internalSupplierRows as any[])[0]?.id || "").trim();
     if (!internalSupplierId) {
@@ -3934,7 +3943,7 @@ async function automateInterFirmProduction(
       // Use the same transaction connection so counter locking and the MRR
       // insert commit atomically with the pending invoice and gate entry.
       const transactionNo = await generateLockedMrrNo(conn, String(sourceRecord.date || production.date || now.slice(0, 10)), destinationFirmId);
-      await conn.query(`INSERT INTO material_in (id, firmId, transactionNo, mrrType, timestamp, entryEmailId, date, invoiceNo, supplierId, totalPoValue, totalInvoiceValue, totalActualValue, totalInvoiceValueAfterGst, totalAmount, \`lines\`, status, mrrSource, autoGenerated, interFirmFlow, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, linkedInvoiceId, \`updatedBy\`) VALUES (?, ?, ?, 'FG Purchase', ?, 'system', ?, '', ?, ?, ?, ?, ?, ?, ?, 'Pending Tally', 'System Generated', 'Yes', 'Yes', ?, ?, ?, ?, NULL, 'System')`, [mrrId, destinationFirmId, transactionNo, now, String(sourceRecord.date || production.date || now.slice(0, 10)), internalSupplierId, qty * rate, qty * rate, qty * rate, qty * rate * (1 + gstRate / 100), qty * rate * (1 + gstRate / 100), JSON.stringify([{ itemId, qty, rate, gstRate }]), sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId]);
+      await conn.query(`INSERT INTO material_in (id, firmId, transactionNo, mrrType, timestamp, entryEmailId, date, invoiceNo, supplierId, totalPoValue, totalInvoiceValue, totalActualValue, totalInvoiceValueAfterGst, totalAmount, \`lines\`, status, mrrSource, autoGenerated, interFirmFlow, sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId, linkedInvoiceId, \`updatedBy\`) VALUES (?, ?, ?, 'FG Purchase', ?, 'system', ?, '', ?, ?, ?, ?, ?, ?, ?, 'Pending Tally', 'System Generated', 'Yes', 'Yes', ?, ?, ?, ?, NULL, 'System')`, [mrrId, destinationFirmId, transactionNo, now, String(sourceRecord.date || production.date || now.slice(0, 10)), internalSupplierId, qty * rate, qty * rate, qty * rate, qty * rate * (1 + gstRate / 100), qty * rate * (1 + gstRate / 100), JSON.stringify([{ itemId: docItemId, qty, rate, gstRate, uom: docUom }]), sourceFirmId, destinationFirmId, sourceTransactionType, sourceTransactionId]);
       await conn.query(
         `UPDATE material_in
          SET phTimestamp = ?, phEmailId = ?, plant_head_remark = ?,
@@ -3957,7 +3966,7 @@ async function automateInterFirmProduction(
          SET \`lines\` = ?, totalPoValue = ?, totalInvoiceValue = ?, totalActualValue = ?,
              totalInvoiceValueAfterGst = ?, totalAmount = ?, supplierId = ?
          WHERE id = ?`,
-        [JSON.stringify([{ itemId, qty, rate, gstRate }]), qty * rate, qty * rate,
+        [JSON.stringify([{ itemId: docItemId, qty, rate, gstRate, uom: docUom }]), qty * rate, qty * rate,
           qty * rate, qty * rate * (1 + gstRate / 100), qty * rate * (1 + gstRate / 100),
           internalSupplierId, mrr.id]
       );
@@ -3981,8 +3990,8 @@ async function automateInterFirmProduction(
     }
     const invoiceDate = String(sourceRecord.date || production.date || now.slice(0, 10));
     const invoiceLines = [{
-      itemId, itemSource: sourceRecord.itemSource || production.itemSource || "FG",
-      npdId: sourceRecord.npdId || production.npdId || itemId, qty, rate, gstRate,
+      itemId: docItemId, itemSource: docItemSource,
+      npdId: docNpdId, qty, rate, gstRate,
     }];
     const invoiceTotalBeforeGst = Number(invoiceLines.reduce((sum, line) => sum + (Number(line.qty || 0) * Number(line.rate || 0)), 0).toFixed(2));
     const invoiceTax = Number(invoiceLines.reduce((sum, line) => sum + (Number(line.qty || 0) * Number(line.rate || 0) * Number(line.gstRate || 0) / 100), 0).toFixed(2));
@@ -4007,8 +4016,28 @@ async function automateInterFirmProduction(
         await conn.query(
           `INSERT INTO \`invoice_line_items\` (id, invoiceId, loadingSlipId, itemId, itemSource, npdId, qty, rate, amount, gstRate, cgst, sgst, igst, sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, linkedGateEntryId, linkedMrrId, linkedInvoiceId, updateTimestamp)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [crypto.randomUUID(), createdInvoiceId, null, line.itemId, line.itemSource, line.npdId, line.qty, line.rate, amount, line.gstRate, Number((lineTax / 2).toFixed(2)), Number((lineTax / 2).toFixed(2)), sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, line.itemSource === "FG" ? gate.id : null, line.itemSource === "FG" ? mrr.id : null, createdInvoiceId, now]
+          [crypto.randomUUID(), createdInvoiceId, null, line.itemId, line.itemSource, line.npdId, line.qty, line.rate, amount, line.gstRate, Number((lineTax / 2).toFixed(2)), Number((lineTax / 2).toFixed(2)), sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, gate.id, mrr.id, createdInvoiceId, now]
         );
+      }
+    } else {
+      const [postedRows] = await conn.query("SELECT tallyTimestamp FROM `invoices` WHERE id = ? LIMIT 1", [createdInvoiceId]);
+      if (String((postedRows as any[])[0]?.tallyTimestamp || "").trim()) {
+        automationWarnings.push(`Invoice ${invoiceNo} is already posted to Tally; it was not changed.`);
+      } else {
+        await conn.query(
+          `UPDATE \`invoices\` SET gstRate = ?, totalBeforeGst = ?, cgst = ?, sgst = ?, igst = 0, totalAfterGst = ?, updateTimestamp = ? WHERE id = ?`,
+          [gstRate, invoiceTotalBeforeGst, Number((invoiceTax / 2).toFixed(2)), Number((invoiceTax / 2).toFixed(2)), Number((invoiceTotalBeforeGst + invoiceTax).toFixed(2)), now, createdInvoiceId]
+        );
+        await conn.query("DELETE FROM `invoice_line_items` WHERE invoiceId = ? AND loadingSlipId IS NULL", [createdInvoiceId]);
+        for (const line of invoiceLines) {
+          const amount = Number((Number(line.qty || 0) * Number(line.rate || 0)).toFixed(2));
+          const lineTax = Number((amount * Number(line.gstRate || 0) / 100).toFixed(2));
+          await conn.query(
+            `INSERT INTO \`invoice_line_items\` (id, invoiceId, loadingSlipId, itemId, itemSource, npdId, qty, rate, amount, gstRate, cgst, sgst, igst, sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, linkedGateEntryId, linkedMrrId, linkedInvoiceId, updateTimestamp)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [crypto.randomUUID(), createdInvoiceId, null, line.itemId, line.itemSource, line.npdId, line.qty, line.rate, amount, line.gstRate, Number((lineTax / 2).toFixed(2)), Number((lineTax / 2).toFixed(2)), sourceTransactionType, sourceTransactionId, sourceFirmId, destinationFirmId, gate.id, mrr.id, createdInvoiceId, now]
+          );
+        }
       }
     }
     await conn.query("UPDATE `inter_firm_pending_invoices` SET linkedGateEntryId = ?, linkedMrrId = ?, linkedInvoiceId = ?, status = 'Invoiced', updateTimestamp = ? WHERE id = ?", [gate.id, mrr.id, createdInvoiceId, now, pending.id]);
@@ -4020,7 +4049,7 @@ async function automateInterFirmProduction(
     }
     console.log("[INTER-FIRM] Automation applied", { sourceId, sourceType, productionId, sourceFirmId, destinationFirmId, orderFirmId, qty, pendingId: pending.id, mrrId: mrr.id, gateEntryId: gate.id, gateEntryNo: gate.gateEntryNo || "existing", invoiceId: createdInvoiceId, invoiceNo });
     if (ownsConnection) await conn.commit();
-    return { warnings: [] };
+    return { warnings: automationWarnings };
   } catch (error) {
     if (ownsConnection) await conn.rollback();
     throw error;

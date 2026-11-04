@@ -14,6 +14,7 @@ import {
   DispatchPlan,
   Order,
   Setting,
+  Material,
 } from "../types";
 import {
   Search,
@@ -74,6 +75,7 @@ export function InvoicesMaster() {
   const [trucks] = useData<Truck>("trucks", []);
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
   const [orders] = useData<Order>("orders", []);
+  const [materials] = useData<Material>("materials", []);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -190,7 +192,12 @@ export function InvoicesMaster() {
 
     return invLines.map((line, index) => {
       const masterId = resolveInvoiceLineItemMasterId(line);
-      const item = npdItems.find((row) => row.id === masterId);
+      const material = String(line.itemSource || "").toUpperCase() === "MATERIAL"
+        ? materials.find((row) => row.id === line.itemId)
+        : undefined;
+      const item = material
+        ? ({ name: material.name, erp: material.erpCode } as any)
+        : npdItems.find((row) => row.id === masterId);
       const slip = slips.find((row) => row.id === line.loadingSlipId);
       const truck = trucks.find((row) => row.id === slip?.truckId);
       return {
@@ -328,7 +335,7 @@ export function InvoicesMaster() {
         if (bSort.numeric !== aSort.numeric) return bSort.numeric - aSort.numeric;
         return bSort.raw.localeCompare(aSort.raw, undefined, { sensitivity: "base" });
       });
-  }, [invoices, companies, searchTerm, companyFilter, itemFilter, lineItems, npdItems, slips, trucks, dispatchPlans, orders]);
+  }, [invoices, companies, searchTerm, companyFilter, itemFilter, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials]);
 
   const billingSummary = useMemo(
     () => ({
@@ -357,7 +364,7 @@ export function InvoicesMaster() {
       });
     });
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
-  }, [invoices, lineItems, npdItems, slips, trucks, dispatchPlans, orders]);
+  }, [invoices, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials]);
 
   const {
     page,
@@ -371,7 +378,7 @@ export function InvoicesMaster() {
   const invoiceDetails = useMemo(() => {
     if (!selectedInvoice) return [];
     return buildInvoiceDetails(selectedInvoice);
-  }, [selectedInvoice, lineItems, npdItems, slips, trucks, dispatchPlans, orders]);
+  }, [selectedInvoice, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials]);
 
   return (
     <div className="space-y-6">
