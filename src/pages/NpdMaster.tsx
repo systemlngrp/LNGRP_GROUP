@@ -508,7 +508,7 @@ export function NpdMaster() {
                           const key = `${row.id}|${firm.id}`;
                           const state = openingSaving[key];
                           return (
-                            <td key={`${firm.id}-${column.key}`} className="border border-black px-1 py-2 text-right align-top">
+                            <td key={`${firm.id}-${column.key}`} className="border border-black p-1 text-right align-top min-w-[72px]">
                               <input
                                 type="number"
                                 min="0"
@@ -518,7 +518,7 @@ export function NpdMaster() {
                                 onChange={(e) => setOpeningDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
                                 onBlur={() => void saveOpening(row, String(firm.id))}
                                 onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                                className={`w-24 rounded border px-1 py-1 text-right text-sm font-bold ${state === "error" ? "border-red-600" : "border-black"} disabled:opacity-50`}
+                                className={`box-border block w-full min-w-0 max-w-full rounded border px-1 py-1 text-right text-sm font-bold [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${state === "error" ? "border-red-600" : "border-black"} disabled:opacity-50`}
                                 title="Opening stock (Admin). Press Enter or click outside to save."
                               />
                             </td>
