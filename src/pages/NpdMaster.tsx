@@ -12,7 +12,6 @@ import { normalizeOrderCatalogItem } from "../lib/orderItems";
 import { calculateInternalRapc, calculateInternalUps } from "../lib/internalUps";
 import { useAuth } from "../auth/AuthContext";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
-import { NpdFirmOpeningsPanel } from "../components/NpdFirmOpeningsPanel";
 import type { Firm, NpdFirmStock, Setting } from "../types";
 
 type NpdRecord = {
@@ -59,7 +58,10 @@ function formatStockValue(rate: NpdRecord[string], balance: NpdRecord[string]) {
 }
 
 export function NpdMaster() {
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading, user } = useAuth();
+  const isAdmin = String(user?.role || "").trim().toLowerCase() === "admin";
+  const [openingDrafts, setOpeningDrafts] = useState<Record<string, string>>({});
+  const [openingSaving, setOpeningSaving] = useState<Record<string, "saving" | "error">>({});
   const [rows, setRows] = useState<NpdRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -72,7 +74,6 @@ export function NpdMaster() {
   const [consumableDrafts, setConsumableDrafts] = useState<Record<string, boolean>>({});
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});
   const [rowSaveStates, setRowSaveStates] = useState<Record<string, RowSaveState>>({});
-  const [showOpenings, setShowOpenings] = useState(false);
   const [allFirms] = useData<Firm>("firms", [], { firmScope: "all" });
   const firms = useMemo(() => allFirms.filter((firm) => String((firm as any).active || "Yes").toLowerCase() !== "no"), [allFirms]);
   const [phpRows] = useData<any>("php_item_master", []);
@@ -284,11 +285,42 @@ export function NpdMaster() {
     }
   };
 
+  const saveOpening = async (row: NpdRecord, firmId: string) => {
+    const key = `${row.id}|${firmId}`;
+    const draft = openingDrafts[key];
+    if (draft === undefined) return;
+    const current = Number(row.firmStocks?.[firmId]?.opening || 0);
+    const qty = draft.trim() === "" ? 0 : Number(draft);
+    if (!Number.isFinite(qty) || qty < 0) {
+      alert("Opening must be zero or more.");
+      return;
+    }
+    if (qty === current) {
+      setOpeningDrafts((prev) => { const next = { ...prev }; delete next[key]; return next; });
+      return;
+    }
+    setOpeningSaving((prev) => ({ ...prev, [key]: "saving" }));
+    try {
+      const token = window.localStorage.getItem("authToken") || "";
+      const response = await fetch("/api/npd-firm-openings/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ rows: [{ rowNumber: 1, firmId, npdId: row.id, openingQty: qty }] }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Failed to save opening.");
+      await loadRows(false);
+      setOpeningDrafts((prev) => { const next = { ...prev }; delete next[key]; return next; });
+      setOpeningSaving((prev) => { const next = { ...prev }; delete next[key]; return next; });
+    } catch (error) {
+      setOpeningSaving((prev) => ({ ...prev, [key]: "error" }));
+      alert((error as Error).message || "Failed to save opening.");
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {showOpenings ? (
-        <NpdFirmOpeningsPanel firms={firms} onClose={() => setShowOpenings(false)} onSaved={() => void loadRows(false)} />
-      ) : null}
+
       <div className="flex flex-col gap-4 border-b border-black pb-4 md:flex-row md:items-center md:justify-between">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">NPD Items</h2>
         <div className="relative w-full md:w-72">
@@ -317,13 +349,6 @@ export function NpdMaster() {
             <span>{loading ? "Loading NPD items..." : pageLabel}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowOpenings(true)}
-              className="rounded border border-black bg-white px-3 py-1 text-xs font-black uppercase hover:bg-slate-100"
-            >
-              Firm Opening Stock
-            </button>
             <ExcelExport data={exportRows} fileName="npd-items-firm-wise" sheetName="NPD Items" />
             <label className="flex items-center gap-2 text-xs font-black uppercase">
               Rows
@@ -479,6 +504,26 @@ export function NpdMaster() {
                       {displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => {
                         const stock = row.firmStocks?.[firm.id];
                         const value = stock?.[column.key];
+                        if (column.key === "opening" && isAdmin && !String(firm.firmName || "").includes("Unknown")) {
+                          const key = `${row.id}|${firm.id}`;
+                          const state = openingSaving[key];
+                          return (
+                            <td key={`${firm.id}-${column.key}`} className="border border-black px-1 py-2 text-right align-top">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={openingDrafts[key] ?? String(Number(value || 0))}
+                                disabled={state === "saving"}
+                                onChange={(e) => setOpeningDrafts((prev) => ({ ...prev, [key]: e.target.value }))}
+                                onBlur={() => void saveOpening(row, String(firm.id))}
+                                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                                className={`w-24 rounded border px-1 py-1 text-right text-sm font-bold ${state === "error" ? "border-red-600" : "border-black"} disabled:opacity-50`}
+                                title="Opening stock (Admin). Press Enter or click outside to save."
+                              />
+                            </td>
+                          );
+                        }
                         return <td key={`${firm.id}-${column.key}`} className="border border-black px-2 py-3 text-right text-sm text-black align-top whitespace-nowrap">{value === null || value === undefined || value === "" ? "-" : column.key === "tallyTimestamp" ? String(value) : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>;
                       }))}
                       <td className="border border-black px-3 py-3 text-sm text-black align-top">

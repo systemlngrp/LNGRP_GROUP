@@ -7531,7 +7531,6 @@ async function initDb(retries = 5) {
           \`openingQty\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`openingRate\` DECIMAL(15,2) NOT NULL DEFAULT 0,
           \`openingValue\` DECIMAL(15,2) NOT NULL DEFAULT 0,
-          \`asOnDate\` VARCHAR(10),
           \`remarks\` VARCHAR(500),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255),
@@ -7539,6 +7538,11 @@ async function initDb(retries = 5) {
           KEY \`idx_npd_firm_openings_firmId\` (\`firmId\`)
         )
       `);
+            {
+                const [nfoCols] = await db.query("SHOW COLUMNS FROM `npd_firm_openings` LIKE 'asOnDate'");
+                if (nfoCols.length)
+                    await db.query("ALTER TABLE `npd_firm_openings` DROP COLUMN `asOnDate`");
+            }
             await db.query(`
         CREATE TABLE IF NOT EXISTS \`reel_transfer_lines\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
@@ -13887,23 +13891,6 @@ app.get("/api/material-firm-openings", requireAuth, async (req, res) => {
         return res.status(Number(error?.statusCode || 500)).json({ error: error.message });
     }
 });
-function normalizeNpdOpeningDate(value) {
-    if (value === null || value === undefined || String(value).trim() === "")
-        return "2026-04-01";
-    if (typeof value === "number" && Number.isFinite(value)) {
-        const ms = Math.round((value - 25569) * 86400000);
-        const d = new Date(ms);
-        return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
-    }
-    const text = String(value).trim();
-    let m = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (m)
-        return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-    m = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
-    if (m)
-        return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
-    return "";
-}
 app.get("/api/npd-firm-openings", requireAuth, async (req, res) => {
     try {
         const db = await getPool();
@@ -13921,14 +13908,14 @@ app.get("/api/npd-firm-openings", requireAuth, async (req, res) => {
         return res.status(500).json({ error: error.message });
     }
 });
-// Upsert firm-wise NPD openings. Rows: { firm | firmId, erp | npdId, openingQty, openingRate?, asOnDate?, remarks? }.
+// Upsert firm-wise NPD openings (Admin only). Rows: { firm | firmId, erp | npdId, openingQty, openingRate?, remarks? }.
 // Validates every row first; nothing is saved if any row fails.
 app.post("/api/npd-firm-openings/bulk", requireAuth, async (req, res) => {
     const user = await getRequestUser(req);
     if (!user)
         return res.status(401).json({ error: "Unauthorized" });
-    if (!hasPermission(user, "/masters/npd"))
-        return res.status(403).json({ error: "Forbidden" });
+    if (String(user.role || "").trim().toLowerCase() !== "admin")
+        return res.status(403).json({ error: "Only Admin can save opening stock." });
     const inputRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
     if (inputRows.length === 0)
         return res.status(400).json({ error: "No opening rows were provided." });
@@ -13990,16 +13977,13 @@ app.post("/api/npd-firm-openings/bulk", requireAuth, async (req, res) => {
             const rate = String(rateRaw).trim() === "" ? 0 : Number(rateRaw);
             if (!Number.isFinite(rate) || rate < 0)
                 errors.push(`Row ${rowNo}: Opening Rate must be zero or more.`);
-            const asOnDate = normalizeNpdOpeningDate(pick(raw, ["asOnDate", "As On Date"]));
-            if (!asOnDate)
-                errors.push(`Row ${rowNo}: As On Date is not a valid date (use DD-MM-YYYY).`);
             const remarks = String(pick(raw, ["remarks", "Remarks"]) || "").slice(0, 500);
             if (firm && npd) {
                 const key = `${npd.id}|${firm.id}`;
                 if (prepared.has(key))
                     errors.push(`Row ${rowNo}: duplicate of row ${prepared.get(key).rowNo} (same item and firm).`);
                 const valueRate = rate > 0 ? rate : Number(npd.rate || 0);
-                prepared.set(key, { rowNo, npdId: String(npd.id), firmId: String(firm.id), qty: Number(qty.toFixed(2)), rate: Number(rate.toFixed(2)), value: Number((qty * valueRate).toFixed(2)), asOnDate, remarks });
+                prepared.set(key, { rowNo, npdId: String(npd.id), firmId: String(firm.id), qty: Number(qty.toFixed(2)), rate: Number(rate.toFixed(2)), value: Number((qty * valueRate).toFixed(2)), remarks });
             }
         });
         if (errors.length)
@@ -14008,10 +13992,10 @@ app.post("/api/npd-firm-openings/bulk", requireAuth, async (req, res) => {
         const timestamp = new Date().toISOString();
         await conn.beginTransaction();
         for (const row of prepared.values()) {
-            await conn.query(`INSERT INTO \`npd_firm_openings\` (id, npdId, firmId, openingQty, openingRate, openingValue, asOnDate, remarks, updatedBy, updateTimestamp)
-         VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            await conn.query(`INSERT INTO \`npd_firm_openings\` (id, npdId, firmId, openingQty, openingRate, openingValue, remarks, updatedBy, updateTimestamp)
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?)
          ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue),
-           asOnDate = VALUES(asOnDate), remarks = VALUES(remarks), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`, [row.npdId, row.firmId, row.qty, row.rate, row.value, row.asOnDate, row.remarks, actor, timestamp]);
+           remarks = VALUES(remarks), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`, [row.npdId, row.firmId, row.qty, row.rate, row.value, row.remarks, actor, timestamp]);
         }
         await conn.commit();
         invalidateNpdCache();
@@ -14032,8 +14016,8 @@ app.post("/api/npd-firm-openings/bulk", requireAuth, async (req, res) => {
 app.delete("/api/npd-firm-openings/:id", requireAuth, async (req, res) => {
     try {
         const user = await getRequestUser(req);
-        if (!user || !hasPermission(user, "/masters/npd"))
-            return res.status(403).json({ error: "Forbidden" });
+        if (!user || String(user.role || "").trim().toLowerCase() !== "admin")
+            return res.status(403).json({ error: "Only Admin can delete opening stock." });
         const db = await getPool();
         if (!db)
             return res.status(500).json({ error: "DB connection not available" });
