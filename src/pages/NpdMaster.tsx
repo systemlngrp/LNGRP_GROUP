@@ -12,6 +12,7 @@ import { normalizeOrderCatalogItem } from "../lib/orderItems";
 import { calculateInternalRapc, calculateInternalUps } from "../lib/internalUps";
 import { useAuth } from "../auth/AuthContext";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
+import { NpdFirmOpeningsPanel } from "../components/NpdFirmOpeningsPanel";
 import type { Firm, NpdFirmStock, Setting } from "../types";
 
 type NpdRecord = {
@@ -71,6 +72,7 @@ export function NpdMaster() {
   const [consumableDrafts, setConsumableDrafts] = useState<Record<string, boolean>>({});
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});
   const [rowSaveStates, setRowSaveStates] = useState<Record<string, RowSaveState>>({});
+  const [showOpenings, setShowOpenings] = useState(false);
   const [allFirms] = useData<Firm>("firms", [], { firmScope: "all" });
   const firms = useMemo(() => allFirms.filter((firm) => String((firm as any).active || "Yes").toLowerCase() !== "no"), [allFirms]);
   const [phpRows] = useData<any>("php_item_master", []);
@@ -83,6 +85,7 @@ export function NpdMaster() {
     const isUnit1 = name.includes("unit-i") || name.includes("unit 1") || name.endsWith("uniti");
     const isUnit2 = name.includes("unit-ii") || name.includes("unit 2") || name.endsWith("unitii");
     const columns = [
+      { key: "opening", label: "Opening" },
       ...(isUnit1 ? [{ key: "corrugation", label: "Corrugation Liner" }] : []),
       { key: "receipt", label: "FG Purchase Receipt" },
       ...(isUnit2 ? [{ key: "production", label: "Printing" }] : []),
@@ -283,6 +286,9 @@ export function NpdMaster() {
 
   return (
     <div className="space-y-6">
+      {showOpenings ? (
+        <NpdFirmOpeningsPanel firms={firms} onClose={() => setShowOpenings(false)} onSaved={() => void loadRows(false)} />
+      ) : null}
       <div className="flex flex-col gap-4 border-b border-black pb-4 md:flex-row md:items-center md:justify-between">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">NPD Items</h2>
         <div className="relative w-full md:w-72">
@@ -311,6 +317,13 @@ export function NpdMaster() {
             <span>{loading ? "Loading NPD items..." : pageLabel}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowOpenings(true)}
+              className="rounded border border-black bg-white px-3 py-1 text-xs font-black uppercase hover:bg-slate-100"
+            >
+              Firm Opening Stock
+            </button>
             <ExcelExport data={exportRows} fileName="npd-items-firm-wise" sheetName="NPD Items" />
             <label className="flex items-center gap-2 text-xs font-black uppercase">
               Rows

@@ -2924,7 +2924,8 @@ async function fetchActiveNpdItems(
 ) {
   const [npdColumnsRows] = await db.query("SHOW COLUMNS FROM `npd`");
   const npdColumns = new Set((npdColumnsRows as any[]).map((row) => String(row.Field || "").trim()));
-  const openingExpr = npdColumns.has("opening") ? "COALESCE(n.opening, 0)" : "0";
+  const firmOpeningExpr = "COALESCE((SELECT SUM(nfo.openingQty) FROM `npd_firm_openings` nfo WHERE nfo.npdId = n.id), 0)";
+  const openingExpr = npdColumns.has("opening") ? `(COALESCE(n.opening, 0) + ${firmOpeningExpr})` : firmOpeningExpr;
   const requestedStatus = String(options?.status || "active").trim().toLowerCase();
   const syncStatusExpr = "COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active')";
   const syncStatusFilter = !npdColumns.has("syncStatus")
@@ -3201,6 +3202,12 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   if (itemIds.length) {
     let aggregationStage = "initialization";
     try {
+      aggregationStage = "firm openings";
+      const [firmOpenings] = await db.query("SELECT npdId, firmId, openingQty FROM `npd_firm_openings`");
+      for (const row of firmOpenings as any[]) {
+        const stock = ensure(resolveStockItemId(row.npdId), String(row.firmId || "").trim());
+        if (stock) stock.opening += Number(row.openingQty || 0);
+      }
       aggregationStage = "material receipts";
       // FG Purchase/Rejection In is a physical receipt as soon as the MRR is
       // created. The Unit-I -> Unit-II automatic transfer is accounted for by
@@ -8035,6 +8042,24 @@ async function initDb(retries = 5) {
           COALESCE(openingValue, COALESCE(openingQty, 0) * COALESCE(openingRate, 0)), updatedBy, updateTimestamp
         FROM \`materials\`
         WHERE firmId IS NOT NULL AND TRIM(firmId) <> ''
+      `);
+
+      // Firm-wise opening FG stock for NPD items (one row per item per firm).
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`npd_firm_openings\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`npdId\` VARCHAR(36) NOT NULL,
+          \`firmId\` VARCHAR(36) NOT NULL,
+          \`openingQty\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`openingRate\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`openingValue\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`asOnDate\` VARCHAR(10),
+          \`remarks\` VARCHAR(500),
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255),
+          UNIQUE KEY \`uq_npd_firm_opening\` (\`npdId\`, \`firmId\`),
+          KEY \`idx_npd_firm_openings_firmId\` (\`firmId\`)
+        )
       `);
 
       await db.query(`
@@ -14677,6 +14702,142 @@ app.get("/api/material-firm-openings", requireAuth, async (req, res) => {
     return res.json((rows as any[]).map((row) => normalizeFetchedRow("material_firm_openings", row)));
   } catch (error) {
     return res.status(Number((error as any)?.statusCode || 500)).json({ error: (error as Error).message });
+  }
+});
+
+function normalizeNpdOpeningDate(value: unknown): string {
+  if (value === null || value === undefined || String(value).trim() === "") return "2026-04-01";
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = Math.round((value - 25569) * 86400000);
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  }
+  const text = String(value).trim();
+  let m = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return "";
+}
+
+app.get("/api/npd-firm-openings", requireAuth, async (req, res) => {
+  try {
+    const db = await getPool();
+    if (!db) return res.status(500).json({ error: "DB connection not available" });
+    const firmId = String(req.query.firmId || "").trim();
+    const [rows] = await db.query(
+      `SELECT nfo.*, n.erp, n.npdId AS npdCode, n.itemName, n.customerName, n.uom
+       FROM \`npd_firm_openings\` nfo
+       LEFT JOIN \`npd\` n ON n.id = nfo.npdId
+       ${firmId && firmId !== "all" ? "WHERE nfo.firmId = ?" : ""}
+       ORDER BY n.erp ASC`,
+      firmId && firmId !== "all" ? [firmId] : []
+    );
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Upsert firm-wise NPD openings. Rows: { firm | firmId, erp | npdId, openingQty, openingRate?, asOnDate?, remarks? }.
+// Validates every row first; nothing is saved if any row fails.
+app.post("/api/npd-firm-openings/bulk", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!hasPermission(user, "/masters/npd")) return res.status(403).json({ error: "Forbidden" });
+  const inputRows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (inputRows.length === 0) return res.status(400).json({ error: "No opening rows were provided." });
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  try {
+    const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
+    const pick = (raw: any, keys: string[]) => {
+      for (const key of keys) if (raw?.[key] !== undefined && String(raw[key]).trim() !== "") return raw[key];
+      return "";
+    };
+    const [firmRows] = await conn.query("SELECT id, firmName, shortName FROM `firms`");
+    const firmByKey = new Map<string, any>();
+    for (const f of firmRows as any[]) [f.id, f.firmName, f.shortName].forEach((k) => { if (norm(k)) firmByKey.set(norm(k), f); });
+    const [npdRows] = await conn.query("SELECT id, erp, itemName, rate, COALESCE(NULLIF(TRIM(syncStatus), ''), 'active') syncStatus FROM `npd`");
+    const npdById = new Map<string, any>();
+    const npdByErp = new Map<string, any[]>();
+    for (const n of npdRows as any[]) {
+      npdById.set(String(n.id), n);
+      const erp = norm(n.erp);
+      if (erp) npdByErp.set(erp, [...(npdByErp.get(erp) || []), n]);
+    }
+    const errors: string[] = [];
+    const prepared = new Map<string, any>();
+    inputRows.forEach((raw: any, index: number) => {
+      const rowNo = Number(raw?.rowNumber || index + 2);
+      const firmKey = pick(raw, ["firmId", "Firm", "Firm Name / Short Name", "Firm Name"]);
+      const firm = firmByKey.get(norm(firmKey));
+      if (!firm) errors.push(`Row ${rowNo}: firm "${firmKey}" not found.`);
+      let npd: any = null;
+      const npdId = String(pick(raw, ["npdId"]) || "").trim();
+      const erp = String(pick(raw, ["erp", "ERP Code", "ERP"]) || "").trim();
+      if (npdId) npd = npdById.get(npdId);
+      else if (erp) {
+        const matches = npdByErp.get(norm(erp)) || [];
+        const active = matches.filter((m) => m.syncStatus !== "removed");
+        const pool = active.length ? active : matches;
+        if (pool.length > 1) errors.push(`Row ${rowNo}: ERP ${erp} matches ${pool.length} NPD items.`);
+        else npd = pool[0] || null;
+      }
+      if (!npd && !(erp && (npdByErp.get(norm(erp)) || []).length > 1)) errors.push(`Row ${rowNo}: NPD item "${npdId || erp}" not found.`);
+      const qtyRaw = pick(raw, ["openingQty", "Opening Qty", "Opening Stock"]);
+      const qty = Number(qtyRaw);
+      if (String(qtyRaw).trim() === "" || !Number.isFinite(qty) || qty < 0) errors.push(`Row ${rowNo}: Opening Qty must be zero or more.`);
+      const rateRaw = pick(raw, ["openingRate", "Opening Rate", "Rate"]);
+      const rate = String(rateRaw).trim() === "" ? 0 : Number(rateRaw);
+      if (!Number.isFinite(rate) || rate < 0) errors.push(`Row ${rowNo}: Opening Rate must be zero or more.`);
+      const asOnDate = normalizeNpdOpeningDate(pick(raw, ["asOnDate", "As On Date"]));
+      if (!asOnDate) errors.push(`Row ${rowNo}: As On Date is not a valid date (use DD-MM-YYYY).`);
+      const remarks = String(pick(raw, ["remarks", "Remarks"]) || "").slice(0, 500);
+      if (firm && npd) {
+        const key = `${npd.id}|${firm.id}`;
+        if (prepared.has(key)) errors.push(`Row ${rowNo}: duplicate of row ${prepared.get(key).rowNo} (same item and firm).`);
+        const valueRate = rate > 0 ? rate : Number(npd.rate || 0);
+        prepared.set(key, { rowNo, npdId: String(npd.id), firmId: String(firm.id), qty: Number(qty.toFixed(2)), rate: Number(rate.toFixed(2)), value: Number((qty * valueRate).toFixed(2)), asOnDate, remarks });
+      }
+    });
+    if (errors.length) return res.status(400).json({ error: errors.slice(0, 50).join("\n"), errors });
+    const actor = String(user.name || user.userId || "System").trim() || "System";
+    const timestamp = new Date().toISOString();
+    await conn.beginTransaction();
+    for (const row of prepared.values()) {
+      await conn.query(
+        `INSERT INTO \`npd_firm_openings\` (id, npdId, firmId, openingQty, openingRate, openingValue, asOnDate, remarks, updatedBy, updateTimestamp)
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE openingQty = VALUES(openingQty), openingRate = VALUES(openingRate), openingValue = VALUES(openingValue),
+           asOnDate = VALUES(asOnDate), remarks = VALUES(remarks), updatedBy = VALUES(updatedBy), updateTimestamp = VALUES(updateTimestamp)`,
+        [row.npdId, row.firmId, row.qty, row.rate, row.value, row.asOnDate, row.remarks, actor, timestamp]
+      );
+    }
+    await conn.commit();
+    invalidateNpdCache();
+    return res.json({ ok: true, saved: prepared.size });
+  } catch (error) {
+    try { await conn.rollback(); } catch {}
+    console.error("[NPD_FIRM_OPENINGS] save failed:", error);
+    return res.status(500).json({ error: (error as Error).message || "Saving openings failed." });
+  } finally {
+    conn.release();
+  }
+});
+
+app.delete("/api/npd-firm-openings/:id", requireAuth, async (req, res) => {
+  try {
+    const user = await getRequestUser(req);
+    if (!user || !hasPermission(user, "/masters/npd")) return res.status(403).json({ error: "Forbidden" });
+    const db = await getPool();
+    if (!db) return res.status(500).json({ error: "DB connection not available" });
+    const [result] = await db.query("DELETE FROM `npd_firm_openings` WHERE id = ?", [String(req.params.id || "")]);
+    invalidateNpdCache();
+    return res.json({ ok: true, deleted: Number((result as any)?.affectedRows || 0) });
+  } catch (error) {
+    return res.status(500).json({ error: (error as Error).message });
   }
 });
 
