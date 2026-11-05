@@ -3403,6 +3403,29 @@ async function resolveInvoiceCompanyId(db, database, companyId) {
     await db.query(`INSERT INTO \`companies\` (${columns.map((column) => `\`${column}\``).join(", ")}) VALUES (${placeholders})${updates ? ` ON DUPLICATE KEY UPDATE ${updates}` : ""}`, columns.map((column) => valuesByColumn[column]));
     return requestedId;
 }
+// Allocate the next value of a transaction counter. The increment and the
+// LAST_INSERT_ID() read must run on the SAME connection: with a pool, two
+// separate db.query() calls can land on different connections, which returned
+// another request's value (duplicate numbers) or 0 under load.
+async function allocateCounterValue(db, counterKey) {
+    const ownsConnection = typeof db.getConnection === "function";
+    const connection = ownsConnection ? await db.getConnection() : db;
+    try {
+        await connection.query(`INSERT INTO transaction_counters (counterKey, lastValue)
+       VALUES (?, 0)
+       ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [counterKey]);
+        await connection.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [counterKey]);
+        const [rows] = await connection.query("SELECT LAST_INSERT_ID() AS nextValue");
+        const nextValue = Number(rows[0]?.nextValue || 0);
+        if (!Number.isFinite(nextValue) || nextValue <= 0)
+            throw new Error(`Could not allocate a number for ${counterKey}.`);
+        return nextValue;
+    }
+    finally {
+        if (ownsConnection)
+            connection.release();
+    }
+}
 async function generateFirmDocumentNo(db, firmId, documentCode, dateStr) {
     const fy = getShortFinancialYear(dateStr);
     if (!fy)
@@ -3411,12 +3434,7 @@ async function generateFirmDocumentNo(db, firmId, documentCode, dateStr) {
     const firmPrefix = await getFirmDocumentPrefix(db, normalizedFirmId);
     const code = String(documentCode || "DOC").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "") || "DOC";
     const key = `${firmPrefix}/${code}/${fy}`;
-    await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
-     VALUES (?, 0)
-     ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [key]);
-    await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [key]);
-    const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
-    const nextValue = String(Number(rows[0]?.nextValue || 0));
+    const nextValue = String(await allocateCounterValue(db, key));
     return [key, code === "ORD" ? nextValue : nextValue.padStart(5, "0")].join("/");
 }
 async function generateFirmConsumptionNo(db, firmId, dateStr) {
@@ -3477,12 +3495,7 @@ async function generateProductionFirmNo(db, firmId, documentCode, dateStr) {
         throw new Error("Could not generate production job number because date is invalid.");
     const firmPrefix = await getFirmDocumentPrefix(db, firmId);
     const counterKey = `${documentCode}/${fy}`;
-    await db.query(`INSERT INTO transaction_counters (counterKey, lastValue)
-     VALUES (?, 0)
-     ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [counterKey]);
-    await db.query(`UPDATE transaction_counters SET lastValue = LAST_INSERT_ID(lastValue + 1) WHERE counterKey = ?`, [counterKey]);
-    const [rows] = await db.query("SELECT LAST_INSERT_ID() AS nextValue");
-    const nextValue = String(Number(rows[0]?.nextValue || 0));
+    const nextValue = String(await allocateCounterValue(db, counterKey));
     return `${firmPrefix}/${counterKey}/${documentCode === "JOB" ? nextValue : nextValue.padStart(5, "0")}`;
 }
 async function generateLockedMrrNo(db, dateStr, firmId) {
@@ -13889,6 +13902,97 @@ app.get("/api/material-firm-openings", requireAuth, async (req, res) => {
     }
     catch (error) {
         return res.status(Number(error?.statusCode || 500)).json({ error: error.message });
+    }
+});
+// Duplicate / zero document numbers caused by the old counter bug.
+// GET reports every firm document table; POST repairs dispatch plans and
+// loading slips only (they never go to Tally). The earliest record in a
+// duplicate group keeps its number; the others get fresh numbers.
+const DOC_NUMBER_TABLES = [
+    { table: "dispatch_plans", field: "planNo" },
+    { table: "loading_slips", field: "slipNo" },
+    { table: "orders", field: "orderNo", dateField: "orderDate" },
+    { table: "gate_entries", field: "gateEntryNo" },
+    { table: "material_in", field: "transactionNo" },
+    { table: "invoices", field: "invoiceNo" },
+    { table: "productions", field: "transactionNo" },
+    { table: "gate_passes", field: "gatePassNo" },
+];
+const DOC_NUMBER_REPAIRABLE = new Set(["dispatch_plans", "loading_slips"]);
+async function findDocumentNumberProblems(db, table, field, dateField = "date") {
+    const [rows] = await db.query(`SELECT id, \`${field}\` AS docNo, \`${dateField}\` AS date, updateTimestamp FROM \`${table}\``);
+    const groups = new Map();
+    const zero = [];
+    for (const row of rows) {
+        const no = String(row.docNo || "").trim();
+        if (!no || /\/0+$/.test(no)) {
+            zero.push(row);
+            continue;
+        }
+        groups.set(no, [...(groups.get(no) || []), row]);
+    }
+    const order = (a, b) => String(a.updateTimestamp || "").localeCompare(String(b.updateTimestamp || "")) || String(a.id).localeCompare(String(b.id));
+    const duplicates = [...groups.entries()].filter(([, list]) => list.length > 1).map(([no, list]) => ({ no, rows: [...list].sort(order) }));
+    const toRenumber = [...zero, ...duplicates.flatMap((group) => group.rows.slice(1))];
+    return { total: rows.length, zero, duplicates, toRenumber };
+}
+app.get("/api/admin/document-number-problems", requireAuth, async (req, res) => {
+    try {
+        const user = await getRequestUser(req);
+        if (!user || String(user.role || "").trim().toLowerCase() !== "admin")
+            return res.status(403).json({ error: "Admin only." });
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const report = [];
+        for (const { table, field, dateField } of DOC_NUMBER_TABLES) {
+            try {
+                const r = await findDocumentNumberProblems(db, table, field, dateField);
+                report.push({ table, total: r.total, zeroOrBlank: r.zero.length, duplicateNumbers: r.duplicates.length, recordsToRenumber: r.toRenumber.length, repairable: DOC_NUMBER_REPAIRABLE.has(table), samples: r.duplicates.slice(0, 5).map((g) => g.no) });
+            }
+            catch (error) {
+                report.push({ table, error: error.message });
+            }
+        }
+        return res.json({ report });
+    }
+    catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+});
+app.post("/api/admin/document-number-problems/repair", requireAuth, async (req, res) => {
+    try {
+        const user = await getRequestUser(req);
+        if (!user || String(user.role || "").trim().toLowerCase() !== "admin")
+            return res.status(403).json({ error: "Admin only." });
+        const table = String(req.body?.table || "").trim();
+        if (!DOC_NUMBER_REPAIRABLE.has(table))
+            return res.status(400).json({ error: "Only dispatch_plans and loading_slips can be repaired here." });
+        const field = table === "dispatch_plans" ? "planNo" : "slipNo";
+        const code = table === "dispatch_plans" ? "DP" : "LS";
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const problems = await findDocumentNumberProblems(db, table, field);
+        const changes = [];
+        for (const row of problems.toRenumber) {
+            let firmId = "";
+            if (table === "dispatch_plans") {
+                const [planRows] = await db.query("SELECT orderId FROM `dispatch_plans` WHERE id = ? LIMIT 1", [row.id]);
+                firmId = await resolveDispatchOrderFirmId(db, String(planRows[0]?.orderId || ""));
+            }
+            else {
+                const [slipRows] = await db.query("SELECT orderFirmId, firmId FROM `loading_slips` WHERE id = ? LIMIT 1", [row.id]);
+                firmId = String(slipRows[0]?.orderFirmId || slipRows[0]?.firmId || "");
+            }
+            const newNo = await generateFirmDocumentNo(db, firmId, code, String(row.date || new Date().toISOString().slice(0, 10)));
+            await db.query(`UPDATE \`${table}\` SET \`${field}\` = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?`, [newNo, "Document Number Repair", new Date().toISOString(), row.id]);
+            changes.push({ id: String(row.id), oldNo: String(row.docNo || ""), newNo });
+        }
+        return res.json({ ok: true, table, renumbered: changes.length, changes });
+    }
+    catch (error) {
+        return res.status(500).json({ error: error.message });
     }
 });
 app.get("/api/npd-firm-openings", requireAuth, async (req, res) => {
