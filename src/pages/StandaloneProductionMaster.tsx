@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
@@ -48,6 +48,8 @@ function getFgCellClasses(isBlocked: boolean, requiresFgGate: boolean) {
   return "bg-slate-50 text-black font-semibold";
 }
 
+const MASTER_COLUMNS = ["Job No", "Date", "Firm", "Shift", "Category", "Master ERP", "ERP", "Item", "Sets/Pcs per Box", "Length", "Breadth", "Height", "Ply", "No of Holes in PHP", "Flute Type", "L1", "F1", "L2", "F2", "L3", "Board GSM (Req)", "Brusting Strength (Req)", "Weight/Pc Set (Req)", "Printing Colour", "Required Qnt", "Planning ID", "Scheduled Date", "Planned Qnt", "Methodology", "FG Value", "Job Type", "Sequence", "Job Completion Time", "Output", "Qty", "UOM", "Status", "Remarks", "Action"];
+
 export function StandaloneProductionMaster({ source }: StandaloneProductionMasterProps) {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
@@ -58,6 +60,20 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const { itemsBySource } = useOrderItemCatalog();
   const items = itemsBySource[source] || [];
+  const hiddenColumnsKey = `pp-master-hidden-columns:${source}`;
+  const [hiddenColumns, setHiddenColumns] = useState<number[]>(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(hiddenColumnsKey) || "[]");
+      return Array.isArray(saved) ? saved.filter((value) => Number.isInteger(value) && value >= 0 && value < MASTER_COLUMNS.length) : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(hiddenColumnsKey, JSON.stringify(hiddenColumns)); } catch { /* storage unavailable */ }
+  }, [hiddenColumns, hiddenColumnsKey]);
+  const toggleColumn = (index: number) => setHiddenColumns((current) => current.includes(index) ? current.filter((value) => value !== index) : [...current, index].sort((a, b) => a - b));
+  const hiddenColumnsCss = hiddenColumns.map((index) => `.pp-master-table tr > :nth-child(${index + 1}) { display: none; }`).join("\n");
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
@@ -165,7 +181,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{sourceLabel} Production Master</h2>
       </div>
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,1fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_150px_150px_auto] md:items-center">
+      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,1fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_150px_150px_auto_auto] md:items-center">
         <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search job, ERP, company, item..." />
         <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
@@ -175,9 +191,25 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         {(searchTerm || companyFilter || itemFilter || firmFilter || fromDate || toDate) ? (
           <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setFirmFilter(""); setFromDate(""); setToDate(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
         ) : null}
+        <details className="relative">
+          <summary className="cursor-pointer select-none rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black">Columns ({MASTER_COLUMNS.length - hiddenColumns.length}/{MASTER_COLUMNS.length})</summary>
+          <div className="absolute right-0 z-40 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">
+            <div className="mb-2 flex gap-2">
+              <button type="button" onClick={() => setHiddenColumns([])} className="rounded border border-black px-2 py-1 text-xs font-bold">Show all</button>
+              <button type="button" onClick={() => setHiddenColumns(MASTER_COLUMNS.map((_, index) => index).filter((index) => index !== 0))} className="rounded border border-black px-2 py-1 text-xs font-bold">Hide all</button>
+            </div>
+            {MASTER_COLUMNS.map((label, index) => (
+              <label key={label} className="flex items-center gap-2 py-1 text-xs">
+                <input type="checkbox" checked={!hiddenColumns.includes(index)} disabled={index === 0} onChange={() => toggleColumn(index)} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </details>
       </div>
+      {hiddenColumnsCss ? <style>{hiddenColumnsCss}</style> : null}
       <div className="bg-white border border-black rounded shadow-sm overflow-auto">
-        <table className="min-w-[3320px] w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-slate-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_td]:align-middle">
+        <table className="pp-master-table w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-slate-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_td]:align-middle">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
