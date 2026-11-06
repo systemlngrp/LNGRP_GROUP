@@ -14,6 +14,7 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
+import { getChangesSince, getTrackedChanges, instrumentPool, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
@@ -1002,6 +1003,7 @@ function publishRealtimeDataChange(entities = ["*"]) {
         invalidateNpdCache();
     }
     realtimeDataVersion += 1;
+    recordChangeVersion(realtimeDataVersion, entities.length ? entities : ["*"]);
     sidebarCountCache = null;
 }
 const SIDEBAR_COUNT_KEYS = [
@@ -1209,7 +1211,10 @@ function requireAuth(req, res, next) {
 }
 app.get("/api/realtime/updates", requireAuth, (req, res) => {
     res.setHeader("Cache-Control", "no-store");
-    return res.json({ version: realtimeDataVersion });
+    const since = req.query.since === undefined ? NaN : Number(req.query.since);
+    if (!Number.isFinite(since))
+        return res.json({ version: realtimeDataVersion });
+    return res.json({ version: realtimeDataVersion, entities: getChangesSince(since, realtimeDataVersion) });
 });
 app.post("/api/auth/login", async (req, res) => {
     const identifier = String(req.body?.identifier || req.body?.userId || req.body?.email || "").trim();
@@ -1425,11 +1430,20 @@ app.use("/api", (req, res, next) => {
     const isReadOnlyPost = req.path === "/get-pending-job-closure";
     if (!isMutation || isReadOnlyPost || req.path.startsWith("/auth/") || req.path.startsWith("/realtime/"))
         return next();
-    res.on("finish", () => {
-        if (res.statusCode >= 200 && res.statusCode < 300)
-            publishRealtimeDataChange();
+    runWithChangeTracking(() => {
+        res.on("finish", () => {
+            if (res.statusCode < 200 || res.statusCode >= 300)
+                return;
+            // Publish only the tables this request wrote. Fall back to a full
+            // refresh whenever the written tables could not be determined.
+            const tracked = getTrackedChanges();
+            if (!tracked || tracked.unknown)
+                publishRealtimeDataChange();
+            else if (tracked.tables.length)
+                publishRealtimeDataChange(tracked.tables);
+        });
+        next();
     });
-    next();
 });
 // Ensure uploads directory exists
 if (!fs.existsSync(path.join(process.cwd(), "uploads"))) {
@@ -5239,7 +5253,7 @@ async function getPool() {
         enableKeepAlive: false,
     };
     poolCreationPromise = Promise.resolve().then(() => {
-        const createdPool = mysql.createPool(config);
+        const createdPool = instrumentPool(mysql.createPool(config));
         pool = createdPool;
         // Add error handler to the pool to prevent it from crashing the process
         createdPool.on('error', (err) => {

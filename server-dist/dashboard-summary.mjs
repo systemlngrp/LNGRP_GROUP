@@ -1937,6 +1937,61 @@ var MAX_CONCURRENT_REQUESTS = 4;
 var queue = [];
 var activeRequests = 0;
 var sidebarReleased = false;
+var completedNpdLoads = /* @__PURE__ */ new Map();
+var completedLoads = /* @__PURE__ */ new Map();
+var DERIVED_ENTITIES = /* @__PURE__ */ new Set([
+  "npd",
+  "items",
+  "npd_firm_wise",
+  "npd_catalog",
+  "materials",
+  "invoice_line_items",
+  "production_processing"
+]);
+function normalizeEntityName(name) {
+  return String(name || "").trim().toLowerCase().replace(/^\/?api\//, "").replace(/[-/]/g, "_");
+}
+function realtimeChangeAffects(changed, entities, derived = false) {
+  if (!changed.length || changed.includes("*")) return true;
+  const names = entities.map(normalizeEntityName);
+  if (derived || names.some((name) => DERIVED_ENTITIES.has(name))) return true;
+  const changedNames = new Set(changed.map(normalizeEntityName));
+  return names.some((name) => changedNames.has(name));
+}
+function clearCollectionCache(changed = ["*"]) {
+  sharedLoads.forEach((task) => {
+    task.invalidated = true;
+  });
+  if (!changed.length || changed.includes("*")) {
+    completedLoads.clear();
+    completedNpdLoads.clear();
+    return;
+  }
+  for (const [key, entry] of completedLoads) {
+    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key);
+  }
+  completedNpdLoads.clear();
+}
+if (typeof window !== "undefined" && !window.__lngrpCollectionCacheHooks) {
+  window.__lngrpCollectionCacheHooks = true;
+  window.addEventListener("app-realtime-data-changed", (event) => {
+    clearCollectionCache(event.detail?.entities || ["*"]);
+  });
+  window.addEventListener("active-firm-changed", () => clearCollectionCache());
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => {
+    try {
+      const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (method !== "GET" && method !== "HEAD") {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (/\/api\//.test(url) && !/\/api\/(?:get-pending-job-closure|realtime\/)/.test(url)) clearCollectionCache();
+      }
+    } catch {
+      clearCollectionCache();
+    }
+    return originalFetch(input, init);
+  };
+}
 if (typeof window !== "undefined") {
   window.setTimeout(() => {
     sidebarReleased = true;
@@ -1956,6 +2011,7 @@ function pumpQueue() {
     entry.run();
   }
 }
+var sharedLoads = /* @__PURE__ */ new Map();
 
 // src/lib/npdItems.ts
 function normalizeConsumableValue(raw) {

@@ -40,16 +40,23 @@ export function useRealtimeDataSync(enabled = true) {
 
     const poll = async () => {
       try {
-        const response = await fetch("/api/realtime/updates", {
+        const url = lastVersion === null ? "/api/realtime/updates" : `/api/realtime/updates?since=${lastVersion}`;
+        const response = await fetch(url, {
           cache: "no-store",
           credentials: "same-origin",
         });
         if (disposed) return;
         if (!response.ok) return;
-        const payload = await response.json() as { version?: number };
+        const payload = await response.json() as { version?: number; entities?: string[] };
         const version = Number(payload.version);
         if (!Number.isFinite(version)) return;
-        if (lastVersion !== null && version !== lastVersion) emit({ entities: ["*"] }, true);
+        if (lastVersion !== null && version !== lastVersion) {
+          // The server reports which tables changed since our last poll, so
+          // screens reload only the affected collections. Older servers (or a
+          // restart) answer without a list, which means "reload everything".
+          const entities = Array.isArray(payload.entities) && payload.entities.length ? payload.entities : ["*"];
+          emit({ entities }, true);
+        }
         lastVersion = version;
       } catch {
         // A transient network failure is retried on the next polling cycle.
