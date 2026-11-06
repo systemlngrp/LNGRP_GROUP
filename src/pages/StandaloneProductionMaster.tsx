@@ -177,7 +177,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         ) : null}
       </div>
       <div className="bg-white border border-black rounded shadow-sm overflow-auto">
-        <table className="min-w-[3320px] w-full divide-y divide-black border-collapse">
+        <table className="min-w-[3320px] w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-slate-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_td]:align-middle">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
@@ -231,7 +231,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
                 const item = items.find((entry) => entry.id === String(row.itemId || "").trim());
                 const fgState = resolvePhpPlateFgLink(row, fgProductions, source);
                 return (
-                  <tr key={row.id} className="border-t border-black">
+                  <tr key={row.id} className="hover:bg-slate-50">
                     <td className="px-3 py-2 text-sm font-semibold">{formatCell(row.transactionNo)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.date)}</td>
                     <td className="px-3 py-2 text-sm">{getFirmDisplayNameById(resolvePhpPlateFirmId(row, schedules, orders), firms)}</td>
@@ -273,7 +273,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.qty)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.uom || item?.uom)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.status)}</td>
-                    <td className="px-3 py-2 text-sm">{formatCell(row.cancelRemarks || row.remarks)}</td>
+                    <td className="px-3 py-2 text-sm max-w-[420px] truncate" title={String(row.cancelRemarks || row.remarks || "")}>{formatCell(row.cancelRemarks || row.remarks)}</td>
                     <td className="px-3 py-2 text-center text-sm">
                       {canManage ? <button
                         type="button"
