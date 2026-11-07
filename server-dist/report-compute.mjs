@@ -1,9 +1,9 @@
 // src/lib/orderItems.ts
 function normalizeOrderItemSource(value) {
-  const normalized = String(value || "").trim().toUpperCase();
-  if (normalized === "PHP") return "PHP";
-  if (normalized === "PLATE") return "PLATE";
-  if (normalized === "MATERIAL") return "MATERIAL";
+  const normalized2 = String(value || "").trim().toUpperCase();
+  if (normalized2 === "PHP") return "PHP";
+  if (normalized2 === "PLATE") return "PLATE";
+  if (normalized2 === "MATERIAL") return "MATERIAL";
   return "FG";
 }
 function getOrderItemCompositeKey(source, itemId) {
@@ -80,9 +80,9 @@ function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRows }) {
     const map = /* @__PURE__ */ new Map();
     Object.keys(itemsBySource).forEach((source) => {
       itemsBySource[source].forEach((item) => {
-        getLookupKeys(source, item).forEach((key3) => {
-          if (!map.has(key3)) {
-            map.set(key3, item);
+        getLookupKeys(source, item).forEach((key4) => {
+          if (!map.has(key4)) {
+            map.set(key4, item);
           }
         });
       });
@@ -372,27 +372,27 @@ function buildReelStockRows({
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
   const issueLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredIssueLines.forEach((line) => {
-    const key3 = String(line.packingSlipId || "");
-    if (!key3) return;
-    const rows = issueLinesByPackingSlipId.get(key3) || [];
+    const key4 = String(line.packingSlipId || "");
+    if (!key4) return;
+    const rows = issueLinesByPackingSlipId.get(key4) || [];
     rows.push(line);
-    issueLinesByPackingSlipId.set(key3, rows);
+    issueLinesByPackingSlipId.set(key4, rows);
   });
   const returnLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredReturnLines.forEach((line) => {
-    const key3 = String(line.packingSlipId || "");
-    if (!key3) return;
-    const rows = returnLinesByPackingSlipId.get(key3) || [];
+    const key4 = String(line.packingSlipId || "");
+    if (!key4) return;
+    const rows = returnLinesByPackingSlipId.get(key4) || [];
     rows.push(line);
-    returnLinesByPackingSlipId.set(key3, rows);
+    returnLinesByPackingSlipId.set(key4, rows);
   });
   const getRelatedLines = (map, keys) => {
     const rows = [];
     const seen = /* @__PURE__ */ new Set();
-    keys.forEach((key3) => {
-      if (seen.has(key3)) return;
-      seen.add(key3);
-      rows.push(...map.get(key3) || []);
+    keys.forEach((key4) => {
+      if (seen.has(key4)) return;
+      seen.add(key4);
+      rows.push(...map.get(key4) || []);
     });
     return rows;
   };
@@ -498,8 +498,8 @@ var takeUpFactorMap = {
 };
 function calculateTakeUpFactor(flute) {
   if (!flute) return "";
-  const normalized = flute.toUpperCase().trim().replace(/\s+/g, "");
-  return takeUpFactorMap[normalized] ?? "";
+  const normalized2 = flute.toUpperCase().trim().replace(/\s+/g, "");
+  return takeUpFactorMap[normalized2] ?? "";
 }
 
 // src/lib/productionCalculations.ts
@@ -575,8 +575,8 @@ function round24(value) {
 function makeKey(rapcRange, gsm) {
   return `${rapcRange}__${gsm}`;
 }
-function parseKey(key3) {
-  const [rapcRangeRaw, gsmRaw] = key3.split("__");
+function parseKey(key4) {
+  const [rapcRangeRaw, gsmRaw] = key4.split("__");
   return { rapcRange: rapcRangeRaw === "Unmapped" ? "Unmapped" : Number(rapcRangeRaw || 0), gsm: Number(gsmRaw || 0) };
 }
 function resolveRapcValue(input, ranges) {
@@ -592,8 +592,8 @@ function getMaterialRapcInput(material) {
 }
 function addToMap(map, row, qty) {
   if (!row.gsm || !Number.isFinite(row.gsm) || !Number.isFinite(qty) || qty === 0) return;
-  const key3 = makeKey(row.rapcRange, row.gsm);
-  map.set(key3, (map.get(key3) || 0) + qty);
+  const key4 = makeKey(row.rapcRange, row.gsm);
+  map.set(key4, (map.get(key4) || 0) + qty);
 }
 function firstPositiveNumber(...values) {
   for (const value of values) {
@@ -602,15 +602,15 @@ function firstPositiveNumber(...values) {
   }
   return 0;
 }
-function getRawValue(item, key3) {
-  return item?.raw?.[key3] ?? item?.[key3];
+function getRawValue(item, key4) {
+  return item?.raw?.[key4] ?? item?.[key4];
 }
 function getItemNumber(item, ...keys) {
-  return firstPositiveNumber(...keys.map((key3) => getRawValue(item, key3)));
+  return firstPositiveNumber(...keys.map((key4) => getRawValue(item, key4)));
 }
 function getItemText(item, ...keys) {
-  for (const key3 of keys) {
-    const value = String(getRawValue(item, key3) ?? "").trim();
+  for (const key4 of keys) {
+    const value = String(getRawValue(item, key4) ?? "").trim();
     if (value) return value;
   }
   return "";
@@ -773,12 +773,12 @@ function computePaperRequirement(lists, options) {
     ...Array.from(pendingPoByKey.keys()),
     ...Array.from(consumptionByKey.keys())
   ]);
-  return Array.from(allKeys).map((key3) => {
-    const { rapcRange, gsm } = parseKey(key3);
-    const totalPaperRequirement = round24(requirementByKey.get(key3) || 0);
-    const totalClosingStock = round24(stockByKey.get(key3) || 0);
-    const totalPendingPo = round24(pendingPoByKey.get(key3) || 0);
-    const consumption = round24(Math.max(0, consumptionByKey.get(key3) || 0));
+  return Array.from(allKeys).map((key4) => {
+    const { rapcRange, gsm } = parseKey(key4);
+    const totalPaperRequirement = round24(requirementByKey.get(key4) || 0);
+    const totalClosingStock = round24(stockByKey.get(key4) || 0);
+    const totalPendingPo = round24(pendingPoByKey.get(key4) || 0);
+    const consumption = round24(Math.max(0, consumptionByKey.get(key4) || 0));
     const mil = round24(consumption * 7 / 90);
     const calculatedNetPaperToOrder = totalClosingStock > mil ? round24(totalPaperRequirement - totalClosingStock - totalPendingPo) : round24(mil - totalClosingStock + (totalPaperRequirement - totalClosingStock - totalPendingPo));
     const netPaperToOrder = Math.max(0, calculatedNetPaperToOrder);
@@ -948,8 +948,8 @@ function clearCollectionCache(changed = ["*"]) {
     completedNpdLoads.clear();
     return;
   }
-  for (const [key3, entry] of completedLoads) {
-    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key3);
+  for (const [key4, entry] of completedLoads) {
+    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key4);
   }
   completedNpdLoads.clear();
 }
@@ -998,10 +998,10 @@ var sharedLoads = /* @__PURE__ */ new Map();
 function normalizeConsumableValue(raw) {
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "number") return raw === 1;
-  const normalized = String(raw || "").trim().toLowerCase();
-  if (!normalized) return false;
+  const normalized2 = String(raw || "").trim().toLowerCase();
+  if (!normalized2) return false;
   const truthy = /* @__PURE__ */ new Set(["1", "true", "yes", "y", "on"]);
-  return truthy.has(normalized);
+  return truthy.has(normalized2);
 }
 function getNpdItemDisplayName(item) {
   return String(item?.name || item?.itemName || item?.erp || "").trim();
@@ -1541,11 +1541,11 @@ function normalizeText(value) {
 function normalizeLoose(value) {
   return normalizeText(value).replace(/[^a-z0-9]+/g, "");
 }
-function getBucketForText(text2, source) {
-  const normalized = normalizeText(text2);
+function getBucketForText(text3, source) {
+  const normalized2 = normalizeText(text3);
   return factoryBuckets.find((bucket) => {
     if (bucket.source !== "both" && bucket.source !== source) return false;
-    return bucket.keywords.some((keyword) => normalized.includes(keyword));
+    return bucket.keywords.some((keyword) => normalized2.includes(keyword));
   });
 }
 function getLineAmount2(line, materials, materialIn) {
@@ -1712,8 +1712,8 @@ function isCancelledIssue(issue) {
   return String(issue.tallyPostingStatus || "").trim().toLowerCase() === "cancelled";
 }
 function isNotApplicableIssue(issue) {
-  const normalized = String(issue.notApplicable || "").trim().toLowerCase();
-  return normalized === "yes" || normalized === "true" || normalized === "1";
+  const normalized2 = String(issue.notApplicable || "").trim().toLowerCase();
+  return normalized2 === "yes" || normalized2 === "true" || normalized2 === "1";
 }
 function isDebitNotePostedToTally(entry) {
   return String(entry.debitTallySync || "").trim() !== "";
@@ -1847,6 +1847,322 @@ function computeAuditDashboard(lists, npdItems) {
   return { appValues: computeAuditAppValues(lists, npdItems), negativeOpeningNpdRows: computeNegativeOpeningNpdRows(npdItems) };
 }
 
+// src/lib/productionMaterialUsage.ts
+function hasPaperNotRequiredBypass(production) {
+  return Boolean(production.paperNotRequired) && String(production.paperNotRequiredReason || "").trim().length > 0;
+}
+function normalizeMaterialText(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+function isCorrugatedSheetMaterial(material) {
+  const normalizedName = normalizeMaterialText(material?.name);
+  return normalizedName.includes("corrugated sheet");
+}
+function buildProductionMaterialUsageMap(materialIssues, materialIssueLines, materialReturns, materialReturnLines, materialIssueReelLines = [], materialReturnReelLines = [], productions = []) {
+  const productionIds = new Set(productions.map((production) => production.id));
+  const productionIdByJobNo = /* @__PURE__ */ new Map();
+  productions.forEach((production) => {
+    for (const value of [production.transactionNo, production.jobCardNo]) {
+      const jobNo = String(value || "").trim().toLowerCase();
+      if (jobNo && !productionIdByJobNo.has(jobNo)) productionIdByJobNo.set(jobNo, production.id);
+    }
+  });
+  const resolveProductionId = (productionId, jobNo) => {
+    const id = String(productionId || "").trim();
+    if (id && (productions.length === 0 || productionIds.has(id))) return id;
+    return productionIdByJobNo.get(String(jobNo || "").trim().toLowerCase());
+  };
+  const issueProductionMap = new Map(
+    materialIssues.filter((issue) => issue.issueType === "Job").map((issue) => [issue.id, resolveProductionId(issue.productionId, issue.jobNo)]).filter((entry) => Boolean(entry[1]))
+  );
+  const returnProductionMap = new Map(
+    materialReturns.filter((entry) => entry.returnType === "Job").map((entry) => [entry.id, resolveProductionId(entry.productionId, entry.jobNo)]).filter((entry) => Boolean(entry[1]))
+  );
+  const totals = /* @__PURE__ */ new Map();
+  const existingIssueLineIds = new Set(materialIssueLines.map((line) => line.id));
+  const existingReturnLineIds = new Set(materialReturnLines.map((line) => line.id));
+  materialIssueLines.forEach((line) => {
+    const productionId = issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.qty || 0));
+  });
+  materialReturnLines.forEach((line) => {
+    const productionId = returnProductionMap.get(line.materialReturnId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
+  });
+  materialIssueReelLines.forEach((line) => {
+    if (existingIssueLineIds.has(line.materialIssueLineId)) return;
+    const productionId = resolveProductionId(line.productionId, line.jobNo) || issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.weightKg || 0));
+  });
+  materialReturnReelLines.forEach((line) => {
+    if (existingReturnLineIds.has(line.materialReturnLineId)) return;
+    const productionId = resolveProductionId(line.productionId, line.jobNo) || returnProductionMap.get(line.materialReturnId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.weightKg || 0));
+  });
+  totals.forEach((value, key4) => {
+    totals.set(key4, Math.max(0, Number(value.toFixed(5))));
+  });
+  return totals;
+}
+function buildProductionCorrugatedSheetUsageMap(materials, materialIssues, materialIssueLines, materialReturns, materialReturnLines) {
+  const materialMap = new Map(materials.map((material) => [material.id, material]));
+  const issueProductionMap = new Map(
+    materialIssues.filter((issue) => issue.issueType === "Job" && issue.productionId).map((issue) => [issue.id, issue.productionId])
+  );
+  const returnProductionMap = new Map(
+    materialReturns.filter((entry) => entry.returnType === "Job" && entry.productionId).map((entry) => [entry.id, entry.productionId])
+  );
+  const totals = /* @__PURE__ */ new Map();
+  materialIssueLines.forEach((line) => {
+    const material = materialMap.get(line.materialId);
+    if (!isCorrugatedSheetMaterial(material)) return;
+    const productionId = issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.qty || 0));
+  });
+  materialReturnLines.forEach((line) => {
+    const material = materialMap.get(line.materialId);
+    if (!isCorrugatedSheetMaterial(material)) return;
+    const productionId = returnProductionMap.get(line.materialReturnId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
+  });
+  totals.forEach((value, key4) => {
+    totals.set(key4, Math.max(0, Number(value.toFixed(5))));
+  });
+  return totals;
+}
+function hasProductionCorrugatedSheetUsage(production, usageMap) {
+  return Number(usageMap?.get(production.id) || 0) > 0;
+}
+function getProductionActualPaperUsed(production, usageMap) {
+  if (usageMap?.has(production.id)) {
+    return usageMap.get(production.id) || 0;
+  }
+  return Number(production.actualPaperUsed || 0);
+}
+
+// src/lib/productionProcessingProgress.ts
+function isProcessingStepFull(entry) {
+  return !entry.completionStatus || entry.completionStatus === "Full";
+}
+function isMachineStepFull(processing, productionId, machineName) {
+  const normalizedName = normalizeMachineName(machineName);
+  return processing.some(
+    (entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === normalizedName && isProcessingStepFull(entry)
+  );
+}
+function isCorrugationLinerComplete(processing, productionId) {
+  return Boolean(productionId) && processing.some(
+    (entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && isProcessingStepFull(entry)
+  );
+}
+
+// src/lib/jobCellColors.ts
+var dateKey = (value) => {
+  const raw = String(value ?? "").trim().slice(0, 10);
+  const match = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw.match(/^(\d{4})-(\d{2})-(\d{2})$/) : raw.match(/^(\d{2})[-\/]?(\d{2})[-\/]?(\d{4})$/);
+  if (!match) return "";
+  const [year, month, day] = match[1].length === 4 ? [Number(match[1]), Number(match[2]), Number(match[3])] : [Number(match[3]), Number(match[2]), Number(match[1])];
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+};
+var normalizeQcResult = (value) => {
+  const normalized2 = String(value ?? "").trim().toLowerCase();
+  if (["qc pass", "pass"].includes(normalized2)) return "QC PASS";
+  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized2)) return "QC FAIL";
+  return String(value ?? "").trim();
+};
+
+// src/lib/pdiReportData.ts
+var text2 = (value) => String(value ?? "").trim();
+var normalized = (value) => text2(value).toLowerCase();
+function findLatestInspection(inspections, productionId, jobNo) {
+  const byProduction = productionId ? inspections.filter((inspection) => normalized(inspection.productionId) === normalized(productionId)) : [];
+  const matches = byProduction.length ? byProduction : jobNo ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo)) : [];
+  const latest = [...matches].sort(
+    (left, right) => text2(left.updateTimestamp || left.inspectionDate).localeCompare(text2(right.updateTimestamp || right.inspectionDate))
+  ).at(-1);
+  return latest ? { ...latest, result: normalizeQcResult(latest.result) } : void 0;
+}
+
+// src/lib/samplingPlanQty.ts
+var DEFAULT_SAMPLING_PLAN_QTY_DIVISOR = 2e3;
+var DEFAULT_SAMPLING_PLAN_QTY_MIN = 2;
+var DEFAULT_SAMPLING_PLAN_QTY_MAX = 4;
+function normalizePlanQuantity(value) {
+  if (typeof value === "string") {
+    const normalized2 = value.replace(/,/g, "").trim();
+    if (!normalized2) return "";
+    value = normalized2;
+  } else if (typeof value !== "number") {
+    return "";
+  }
+  const quantity2 = Number(value);
+  return Number.isFinite(quantity2) && quantity2 > 0 ? quantity2 : "";
+}
+function resolvePlanQuantity(...values) {
+  for (const value of values) {
+    const quantity2 = normalizePlanQuantity(value);
+    if (quantity2 !== "") return quantity2;
+  }
+  return "";
+}
+function getSamplingPlanQtySettings(settings) {
+  const divisor = Number(settings?.samplingPlanQtyDivisor);
+  const minimum = Number(settings?.samplingPlanQtyMin);
+  const maximum = Number(settings?.samplingPlanQtyMax);
+  const safeDivisor = Number.isFinite(divisor) && divisor > 0 ? divisor : DEFAULT_SAMPLING_PLAN_QTY_DIVISOR;
+  const safeMinimum = Number.isInteger(minimum) && minimum > 0 ? minimum : DEFAULT_SAMPLING_PLAN_QTY_MIN;
+  const safeMaximum = Number.isInteger(maximum) && maximum >= safeMinimum ? maximum : Math.max(DEFAULT_SAMPLING_PLAN_QTY_MAX, safeMinimum);
+  return { divisor: safeDivisor, minimum: safeMinimum, maximum: safeMaximum };
+}
+function calculateSamplingPlanQty(planQty, settings) {
+  const quantity2 = normalizePlanQuantity(planQty);
+  if (quantity2 === "") return "";
+  const { divisor, minimum, maximum } = getSamplingPlanQtySettings(settings);
+  return Math.min(maximum, Math.max(minimum, Math.ceil(quantity2 / divisor)));
+}
+
+// src/lib/reports/qcView.ts
+var s2 = (v) => String(v ?? "").trim();
+var key3 = (v) => s2(v).toLowerCase();
+var n2 = (v) => v === "" || v == null ? "" : Number.isFinite(Number(v)) ? Number(v) : s2(v);
+var formatDate = (value) => {
+  const normalized2 = dateKey(value);
+  return normalized2 ? `${normalized2.slice(8, 10)}-${normalized2.slice(5, 7)}-${normalized2.slice(0, 4)}` : s2(value);
+};
+var formatFlapHeightFlap = (left, height, right) => {
+  const values = [s2(left), s2(height), s2(right)];
+  return values.some(Boolean) ? values.join(" - ") : "";
+};
+var whole = (value) => {
+  if (value === "" || value == null) return "";
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric) : s2(value);
+};
+var formatWholeFlapHeightFlap = (left, height, right) => {
+  const values = [left, height, right].map(whole);
+  return values.some((value) => value !== "") ? values.join(" - ") : "";
+};
+var checkColumnValues = (checkNo, operatorValue, driveValue, cuttingValue) => {
+  const index = Number.parseInt(s2(checkNo), 10);
+  const values = ["", "", "", ""];
+  if (index < 1 || index > 4) return { checks: values, cutting: ["", "", "", ""] };
+  const combined = [operatorValue && `OS ${operatorValue}`, driveValue && `DS ${driveValue}`].filter(Boolean).join(" | ");
+  values[index - 1] = combined;
+  const cutting = ["", "", "", ""];
+  cutting[index - 1] = String(cuttingValue);
+  return { checks: values, cutting };
+};
+var hasPositiveQuantity = (value) => Number(value || 0) > 0;
+function getQcProductionStatus(production, actualPaperUsed, hasCorrugatedSheetUsage, processing) {
+  if (production.status === "Cancelled" || production.cancelTimestamp || production.tallyTimestamp || production.status === "Completed") return s2(production.status);
+  if (!hasPaperNotRequiredBypass(production) && actualPaperUsed <= 0 && !hasCorrugatedSheetUsage) return "Pending Reel Issue";
+  if (!isCorrugationLinerComplete(processing, s2(production.id))) return "Pending Corrugation";
+  if (!isMachineStepFull(processing, s2(production.id), "Printing")) return "Pending Printing";
+  return s2(production.status);
+}
+function toQcItems(npdItems) {
+  return npdItems.map((item) => ({ ...item, artwork: item.url, spec: item.artwork }));
+}
+function computeQcViewRows(lists, items) {
+  const { productions, processing, boardline, printing, inspections, loadingSlips, plans, settings, materials, materialIssues, materialIssueLines, materialIssueReelLines, materialReturns, materialReturnLines, materialReturnReelLines, qcUpdates, blockRecords, controlRecords } = lists;
+  const materialUsageMap = buildProductionMaterialUsageMap(materialIssues, materialIssueLines, materialReturns, materialReturnLines, materialIssueReelLines, materialReturnReelLines, productions);
+  const corrugatedSheetUsageMap = buildProductionCorrugatedSheetUsageMap(materials, materialIssues, materialIssueLines, materialReturns, materialReturnLines);
+  const loadingByJob = buildJobLoadingRecords(productions, loadingSlips, plans);
+  const lastByJob = (rows) => {
+    const map = /* @__PURE__ */ new Map();
+    rows.forEach((row) => map.set(key3(row.jobNo), row));
+    return map;
+  };
+  const lastBoardlineByJob = lastByJob(boardline);
+  const lastPrintingByJob = lastByJob(printing);
+  const latestByErp = (rows) => {
+    const map = /* @__PURE__ */ new Map();
+    rows.forEach((row) => {
+      const erpKey = key3(row.erpCode || row.erpNo);
+      const current = map.get(erpKey);
+      if (!current || s2(row.updateTimestamp).localeCompare(s2(current.updateTimestamp)) > 0) map.set(erpKey, row);
+    });
+    return map;
+  };
+  const latestQcUpdateByErp = latestByErp(qcUpdates);
+  const latestBlockByErp = latestByErp(blockRecords);
+  const latestControlByErp = latestByErp(controlRecords);
+  const firstIndex = (values) => {
+    const map = /* @__PURE__ */ new Map();
+    values.forEach((value, index) => {
+      if (!map.has(value)) map.set(value, index);
+    });
+    return map;
+  };
+  const itemIndexById = firstIndex(items.map((i) => key3(i.id)));
+  const itemIndexByErp = firstIndex(items.map((i) => key3(i.erp)));
+  const findItem = (p, erp) => {
+    const candidates = [itemIndexById.get(key3(p.itemId)), itemIndexById.get(key3(p.npdId)), itemIndexByErp.get(key3(erp))].filter((index) => index !== void 0);
+    return candidates.length ? items[Math.min(...candidates)] : void 0;
+  };
+  const processingByProductionId = /* @__PURE__ */ new Map();
+  processing.forEach((row) => {
+    const list = processingByProductionId.get(row.productionId);
+    if (list) list.push(row);
+    else processingByProductionId.set(row.productionId, [row]);
+  });
+  const qtyIndexById = /* @__PURE__ */ new Map();
+  const qtyIndexByJob = /* @__PURE__ */ new Map();
+  processing.forEach((record, index) => {
+    const machine = key3(record.machineName);
+    const byId = `${machine}|${key3(record.productionId)}`;
+    const byJob = `${machine}|${key3(record.jobNo)}`;
+    (qtyIndexById.get(byId) || qtyIndexById.set(byId, []).get(byId)).push(index);
+    (qtyIndexByJob.get(byJob) || qtyIndexByJob.set(byJob, []).get(byJob)).push(index);
+  });
+  const processingQuantity = (production, job, machine) => {
+    const a = qtyIndexById.get(`${key3(machine)}|${key3(production.id)}`) || [];
+    const b = qtyIndexByJob.get(`${key3(machine)}|${key3(job)}`) || [];
+    let total = 0;
+    let i = 0;
+    let j = 0;
+    let last = -1;
+    while (i < a.length || j < b.length) {
+      const next = j >= b.length || i < a.length && a[i] <= b[j] ? a[i++] : b[j++];
+      if (next === last) continue;
+      last = next;
+      const record = processing[next];
+      total += hasPositiveQuantity(record.qty) ? Number(record.qty) : 0;
+    }
+    return total;
+  };
+  return productions.filter((p) => p.status !== "Cancelled" && !(key3(p.closeBy) === "yes" && s2(p.closeDate)) && s2(p.transactionNo || p.jobCardNo)).map((p) => {
+    const job = s2(p.transactionNo || p.jobCardNo);
+    const b = lastBoardlineByJob.get(key3(job));
+    const pr = lastPrintingByJob.get(key3(job));
+    const erp = s2(p.erpCode || b?.erp || pr?.erp);
+    const item = findItem(p, erp);
+    const itemName = s2(p.itemName || item?.name || b?.itemName || pr?.itemName);
+    const qcUpdate = latestQcUpdateByErp.get(key3(erp));
+    const block = latestBlockByErp.get(key3(erp));
+    const control = latestControlByErp.get(key3(erp));
+    const pdi = findLatestInspection(inspections, s2(p.id), job);
+    const pdiResult = s2(pdi?.result);
+    const planQty = resolvePlanQuantity(p.plannedQty, p.qty, b?.planQty, pr?.planQty);
+    const operatorCheck = formatWholeFlapHeightFlap(b?.flapAchievedOs, b?.heightAchievedOs, b?.flapLAchievedOs);
+    const driveCheck = formatWholeFlapHeightFlap(b?.flapAchievedDs, b?.heightAchievedDs, b?.flapLAchievedDs);
+    const mappedChecks = checkColumnValues(b?.checkNo, operatorCheck, driveCheck, whole(b?.cuttingSizeMm));
+    const tolerance = Number(settings[0]?.qcBgsmTolerancePercent ?? 3);
+    const bgsmTolerance = tolerance >= 0 ? tolerance : 3;
+    const requiredBgsm = Number(b?.boardGsm || 0);
+    const bgsmMin = whole(requiredBgsm * (1 - bgsmTolerance / 100));
+    const bgsmMax = whole(requiredBgsm * (1 + bgsmTolerance / 100));
+    return { __rowKey: s2(p.id) || `${job}|${s2(p.date)}|${erp}`, "Job No.": job, Date: formatDate(p.date), "Party Name": s2(p.companyName || b?.partyName || pr?.partyName), "Item Name": itemName, "ERP Code": erp, "Plan Quantity": planQty, "Item Status": getQcProductionStatus(p, getProductionActualPaperUsed(p, materialUsageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap), processingByProductionId.get(s2(p.id)) || []), Artwork: s2(item?.artwork), Spec: s2(item?.spec), "File No.": s2(qcUpdate?.fileNo), "Index No": s2(qcUpdate?.indexNo), "Sample No.": s2(qcUpdate?.sampleNo), "Block Location": s2(block?.blockLocation), "Block No.": s2(block?.blockNo), "Sample Location": s2(qcUpdate?.location), "Sample No. (Control)": s2(control?.sampleNo), "Boardline AUTO-CORRECTION Message": [b?.systemAutoCorrection1, b?.systemAutoCorrection2, b?.systemAutoCorrection3, b?.systemAutoCorrection4, b?.systemAutoCorrection5].filter(Boolean).join(" | "), "Previous Customer Complaint": s2(b?.previousCustomerComplaintWarning || pr?.previousCustomerComplaintWarning), "PDI RESULT": pdiResult, "Boardline Production": n2(processingQuantity(p, job, "Corrugation Liner")), "Printing Production": n2(processingQuantity(p, job, "Printing")), "Loaded Quantity": n2((loadingByJob.get(p.id) || []).reduce((total, record) => total + record.qty, 0)), Length: n2(p.length || b?.length || pr?.lengthId), Width: n2(p.breadth || b?.width || pr?.widthId), Height: n2(p.height || b?.heightOd || pr?.heightId), "L-OD": n2(b?.length), "W-OD": n2(b?.width), "H-OD": n2(b?.heightOd), FLAP: n2(b?.flap), Ply: n2(b?.ply), "No. Of parts": s2(b?.part), "SAMPLING PLAN QTY": calculateSamplingPlanQty(planQty, settings[0]), "Required Size": s2(b?.standard) || formatFlapHeightFlap(b?.flap, b?.heightOd, b?.flap) || s2(pr?.standardBoxSize), "Check 1": mappedChecks.checks[0], "Check 2": mappedChecks.checks[1], "Check 3": mappedChecks.checks[2], "Check 4": mappedChecks.checks[3], "Required Cutting Size": whole(b?.cuttingSizeRequired), "Cutting Check 1": mappedChecks.cutting[0], "Cutting Check 2": mappedChecks.cutting[1], "Cutting Check 3": mappedChecks.cutting[2], "Cutting Check 4": mappedChecks.cutting[3], "Required B.GSM": whole(b?.boardGsm), "BGSM MIN": bgsmMin, "BGSM MAX": bgsmMax, "GSM Check 1": bgsmMin, "GSM Check 2": bgsmMax, "GSM Check 3": bgsmMin, "GSM Check 4": bgsmMax, "PLY": whole(b?.ply), "Flute Check": s2(b?.typeOfFlute), "Moisture Check": whole(b?.moisture), "Board Thickness Achieved": whole(b?.boardThickness || pr?.boardThickness), "BS Achieved": whole(b?.bsAchieved || pr?.bsAchieved), "Board Weight Achieved (Grams)": whole(b?.sheetWeightGrams || pr?.boxWeightGrams), "QC Remarks": s2(b?.boardlineRemarks || pr?.column40) };
+  });
+}
+
 // src/lib/reports/serverReports.ts
 function catalogFrom(helpers) {
   const rows = helpers.catalogRows || { fgRows: [], phpRows: [], plateRows: [], materialRows: [] };
@@ -1974,6 +2290,31 @@ REPORT_DEFINITIONS["audit-dashboard"] = {
     { key: "suppliers", entity: "suppliers", scope: "firm" }
   ],
   compute: (lists, _params, helpers) => computeAuditDashboard(lists, (helpers.npdItems || []).map(normalizeNpdItem))
+};
+REPORT_DEFINITIONS["qc-view"] = {
+  permission: "/quality/qc-view",
+  npdItems: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+    { key: "boardline", entity: "boardline_qc_checks", scope: "firm" },
+    { key: "printing", entity: "printing_qc_checks", scope: "firm" },
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" },
+    { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "settings", entity: "settings", scope: "firm" },
+    { key: "materials", entity: "materials", scope: "firm" },
+    { key: "materialIssues", entity: "material_issues", scope: "all" },
+    { key: "materialIssueLines", entity: "material_issue_lines", scope: "all" },
+    { key: "materialIssueReelLines", entity: "material_issue_reel_lines", scope: "all" },
+    { key: "materialReturns", entity: "material_returns", scope: "all" },
+    { key: "materialReturnLines", entity: "material_return_lines", scope: "all" },
+    { key: "materialReturnReelLines", entity: "material_return_reel_lines", scope: "all" },
+    { key: "qcUpdates", entity: "qc_update_records", scope: "all" },
+    { key: "blockRecords", entity: "qc_block_records", scope: "all" },
+    { key: "controlRecords", entity: "control_records", scope: "all" }
+  ],
+  compute: (lists, _params, helpers) => computeQcViewRows(lists, toQcItems((helpers.npdItems || []).map(normalizeNpdItem)))
 };
 function runReport(name, lists, params, helpers) {
   const definition = REPORT_DEFINITIONS[name];
