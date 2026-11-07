@@ -1,1 +1,0 @@
-import{j as o}from"./index-D0rGVOjY.js";import{S as r}from"./StandaloneLoadingMaster-MQx3JTzL.js";import"./TableControls-jb5CQUP1.js";import"./ClientPagination-C3HcHp6x.js";import"./useClientPagination-MZc8hvBG.js";import"./useOrderItemCatalog-CI8-_HAl.js";import"./orderItems-n80WwIwt.js";function e(){return o.jsx(r,{source:"PHP"})}export{e as PhpLoadingMaster};

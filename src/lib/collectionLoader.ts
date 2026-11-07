@@ -13,6 +13,7 @@ export class CollectionHttpError extends Error {
 
 type Priority = "page" | "sidebar";
 type QueueEntry = {
+  urgent?: boolean;
   run: () => void;
   reject: (reason: unknown) => void;
   signal: AbortSignal;
@@ -148,7 +149,9 @@ export function releaseSidebarRequests() {
 
 function pumpQueue() {
   while (activeRequests < MAX_CONCURRENT_REQUESTS && queue.length) {
-    const index = queue.findIndex((entry) => entry.priority === "page");
+    // Small lists (settings, firms…) are never held back: the header, firm
+    // selector and table widths need them as soon as the page opens.
+    const index = queue.findIndex((entry) => entry.priority === "page" || entry.urgent);
     if (index < 0 && !sidebarReleased) return;
     const [entry] = queue.splice(index < 0 ? 0 : index, 1);
     if (entry.signal.aborted) {
@@ -165,6 +168,7 @@ function queuedFetch(url: string, headers: Record<string, string>, priority: Pri
     // Small lists go to the front of the queue so they are not stuck behind
     // multi-megabyte downloads.
     queue[urgent ? "unshift" : "push"]({
+      urgent,
       priority,
       signal,
       reject,

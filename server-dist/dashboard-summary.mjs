@@ -2014,7 +2014,7 @@ if (typeof window !== "undefined") {
 }
 function pumpQueue() {
   while (activeRequests < MAX_CONCURRENT_REQUESTS && queue.length) {
-    const index = queue.findIndex((entry2) => entry2.priority === "page");
+    const index = queue.findIndex((entry2) => entry2.priority === "page" || entry2.urgent);
     if (index < 0 && !sidebarReleased) return;
     const [entry] = queue.splice(index < 0 ? 0 : index, 1);
     if (entry.signal.aborted) {
