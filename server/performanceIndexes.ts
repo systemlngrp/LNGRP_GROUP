@@ -72,9 +72,17 @@ const INDEXABLE_TYPES = new Set(["varchar", "char", "int", "bigint", "smallint",
 
 export async function ensurePerformanceIndexes(db: mysql.Pool, database: string, log: (message: string) => void = console.log) {
   let added = 0;
+  // Use one dedicated connection with a short lock wait: if a table is busy,
+  // skip its index this time instead of making every other query queue
+  // behind the index build (metadata-lock pile-up).
+  const connection = await db.getConnection();
+  try {
+    await connection.query("SET SESSION lock_wait_timeout = 3");
+  } catch { /* older servers: keep the default */ }
+  try {
   for (const [table, column] of PERFORMANCE_INDEXES) {
     try {
-      const [columns] = await db.query(
+      const [columns] = await connection.query(
         "SELECT DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
         [database, table, column]
       );
@@ -83,18 +91,21 @@ export async function ensurePerformanceIndexes(db: mysql.Pool, database: string,
       const dataType = String(info.DATA_TYPE || "").toLowerCase();
       if (!INDEXABLE_TYPES.has(dataType)) continue;
       if ((dataType === "varchar" || dataType === "char") && Number(info.CHARACTER_MAXIMUM_LENGTH || 0) > 255) continue;
-      const [existing] = await db.query(
+      const [existing] = await connection.query(
         "SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ? AND SEQ_IN_INDEX = 1 LIMIT 1",
         [database, table, column]
       );
       if ((existing as any[]).length) continue;
       const indexName = `idx_perf_${table}_${column}`.slice(0, 64);
-      await db.query(`CREATE INDEX \`${indexName}\` ON \`${table}\` (\`${column}\`)`);
+      await connection.query(`ALTER TABLE \`${table}\` ADD INDEX \`${indexName}\` (\`${column}\`), ALGORITHM=INPLACE, LOCK=NONE`);
       added += 1;
       log(`[DB] Added performance index ${indexName}`);
     } catch (error) {
       log(`[DB] Skipped performance index ${table}(${column}): ${(error as Error).message}`);
     }
+  }
+  } finally {
+    connection.release();
   }
   log(`[DB] Performance indexes checked (${PERFORMANCE_INDEXES.length}), added ${added}`);
   return added;

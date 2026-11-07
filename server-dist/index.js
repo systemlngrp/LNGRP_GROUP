@@ -17538,38 +17538,60 @@ app.post("/api/reports/:name", requireAuth, async (req, res) => {
         if (cached && cached.expiresAt > Date.now() && cached.version === realtimeDataVersion) {
             return res.json({ result: cached.value, cached: true });
         }
-        const version = realtimeDataVersion;
-        const lists = {};
-        // One list at a time: the database allows only a few connections.
-        for (const spec of definition.lists) {
-            lists[spec.key] = await loadCollectionLikeClient(spec.entity, spec.scope === "all" ? "" : firmId, authUserId);
+        // Build in the background and wait at most ~25s, so the request never
+        // hits the hosting proxy's 60s limit. The client polls on 202.
+        let job = reportJobs.get(cacheKey);
+        if (!job) {
+            job = buildServerReport(module, name, definition, firmId, authUserId, params, cacheKey, db)
+                .finally(() => { reportJobs.delete(cacheKey); });
+            job.catch(() => undefined);
+            reportJobs.set(cacheKey, job);
         }
-        const helpers = {};
-        if (definition.catalog) {
-            helpers.catalogRows = {
-                fgRows: await loadCatalogFgRowsCached(db),
-                phpRows: await loadCollectionLikeClient("php_item_master", "", authUserId),
-                plateRows: await loadCollectionLikeClient("plate_item_master", "", authUserId),
-                materialRows: await loadCollectionLikeClient("materials", "", authUserId),
-            };
-        }
-        if (definition.npdItems) {
-            helpers.npdItems = await loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }));
-        }
-        const loadMs = Date.now() - startedAt;
-        const result = module.runReport(name, lists, params, helpers);
-        reportResultCache.set(cacheKey, { expiresAt: Date.now() + REPORT_RESULT_CACHE_TTL_MS, version, value: result });
-        if (reportResultCache.size > 100)
-            reportResultCache.delete(reportResultCache.keys().next().value);
-        console.info(`[REPORT] ${name} loadMs=${loadMs} totalMs=${Date.now() - startedAt}`);
+        const outcome = await Promise.race([
+            job.then((result) => ({ done: true, result })),
+            new Promise((resolve) => setTimeout(() => resolve({ done: false }), REPORT_WAIT_MS)),
+        ]);
         res.setHeader("Cache-Control", "no-store");
-        return res.json({ result, generatedAt: new Date().toISOString() });
+        if (!outcome.done)
+            return res.status(202).json({ pending: true });
+        console.info(`[REPORT] ${name} served in ${Date.now() - startedAt}ms`);
+        return res.json({ result: outcome.result, generatedAt: new Date().toISOString() });
     }
     catch (error) {
         console.error("[REPORT] failed:", error);
         return res.status(500).json({ error: "Failed to build report" });
     }
 });
+const REPORT_WAIT_MS = 25_000;
+const reportJobs = new Map();
+async function buildServerReport(module, name, definition, firmId, authUserId, params, cacheKey, db) {
+    const startedAt = Date.now();
+    const version = realtimeDataVersion;
+    const lists = {};
+    // One list at a time: the database allows only a few connections.
+    for (const spec of definition.lists) {
+        lists[spec.key] = await loadCollectionLikeClient(spec.entity, spec.scope === "all" ? "" : firmId, authUserId);
+    }
+    const helpers = {};
+    if (definition.catalog) {
+        helpers.catalogRows = {
+            fgRows: await loadCatalogFgRowsCached(db),
+            phpRows: await loadCollectionLikeClient("php_item_master", "", authUserId),
+            plateRows: await loadCollectionLikeClient("plate_item_master", "", authUserId),
+            materialRows: await loadCollectionLikeClient("materials", "", authUserId),
+        };
+    }
+    if (definition.npdItems) {
+        helpers.npdItems = await loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }));
+    }
+    const loadMs = Date.now() - startedAt;
+    const result = module.runReport(name, lists, params, helpers);
+    reportResultCache.set(cacheKey, { expiresAt: Date.now() + REPORT_RESULT_CACHE_TTL_MS, version, value: result });
+    if (reportResultCache.size > 100)
+        reportResultCache.delete(reportResultCache.keys().next().value);
+    console.info(`[REPORT] ${name} built loadMs=${loadMs} totalMs=${Date.now() - startedAt}`);
+    return result;
+}
 app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
     const startedAt = Date.now();
     const db = await getPool();
@@ -17946,16 +17968,36 @@ async function startServer() {
             void retryPrintingShiftReports();
         }, 60_000);
         void retryPrintingShiftReports();
-        // Add missing filter/join indexes in the background, a few minutes after
-        // startup so it does not compete with the first users of the day.
-        setTimeout(() => {
-            void (async () => {
-                const db = await getPool();
-                const database = process.env.DB_NAME || "u380633007_Inpidata";
-                if (db)
-                    await ensurePerformanceIndexes(db, database);
-            })().catch((error) => console.warn("[DB] Performance index check failed:", error.message));
-        }, 3 * 60_000);
+        // Add missing filter/join indexes only at night (1-5 AM India time) so the
+        // index build never competes with users. Set PERF_INDEXES=off to disable,
+        // or PERF_INDEXES=now to run it a few minutes after startup.
+        const perfIndexMode = String(process.env.PERF_INDEXES || "night").toLowerCase();
+        if (perfIndexMode !== "off") {
+            let perfIndexesDone = false;
+            const runPerfIndexes = () => {
+                if (perfIndexesDone)
+                    return;
+                perfIndexesDone = true;
+                void (async () => {
+                    const db = await getPool();
+                    const database = process.env.DB_NAME || "u380633007_Inpidata";
+                    if (db)
+                        await ensurePerformanceIndexes(db, database);
+                })().catch((error) => console.warn("[DB] Performance index check failed:", error.message));
+            };
+            if (perfIndexMode === "now") {
+                setTimeout(runPerfIndexes, 3 * 60_000);
+            }
+            else {
+                const timer = setInterval(() => {
+                    const istHour = new Date(Date.now() + 330 * 60_000).getUTCHours();
+                    if (istHour >= 1 && istHour < 5) {
+                        clearInterval(timer);
+                        runPerfIndexes();
+                    }
+                }, 10 * 60_000);
+            }
+        }
     }).catch(() => undefined);
 }
 export { app };

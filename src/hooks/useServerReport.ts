@@ -22,14 +22,25 @@ export function useServerReport<T>(name: string, params: Record<string, unknown>
   tablesRef.current = tables;
 
   const run = useCallback(async () => {
-    const response = await fetch(`/api/reports/${name}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
-      body: paramsKey,
-    });
-    if (!response.ok) throw new Error(`Report ${name} failed (${response.status})`);
-    const payload = await response.json();
-    return payload?.result as T;
+    // The server answers 202 while it is still building the report (first
+    // build after a restart can take a while); keep asking until it is ready.
+    const deadline = Date.now() + 5 * 60_000;
+    for (;;) {
+      const response = await fetch(`/api/reports/${name}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
+        body: paramsKey,
+      });
+      if (response.status === 202 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        continue;
+      }
+      if (!response.ok) throw new Error(`Report ${name} failed (${response.status})`);
+      const contentType = response.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) throw new Error(`Report ${name} returned a non-JSON response`);
+      const payload = await response.json();
+      return payload?.result as T;
+    }
   }, [name, paramsKey]);
 
   useEffect(() => {
