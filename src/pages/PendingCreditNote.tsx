@@ -7,7 +7,7 @@ import { useData } from "../hooks/useData";
 import { formatDate } from "../lib/serial";
 import { Company, Firm, Material, MaterialIn, Supplier } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 
 function getCreditNoteTaxableAmount(mrr: MaterialIn) {
@@ -27,7 +27,7 @@ export function PendingCreditNote() {
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
   const [materials] = useData<Material>("materials", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames(); // names only: no stock calculation needed
 
   const [firmFilter, setFirmFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");

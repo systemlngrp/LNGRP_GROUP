@@ -7,7 +7,7 @@ import { MaterialReceiptFilters } from "../components/MaterialReceiptFilters";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { CheckCircle, ChevronDown, ChevronRight } from "lucide-react";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
@@ -27,7 +27,7 @@ export function PendingTallyEntry() {
     storageKey: "material-in-pending-tally",
   });
   const [materials] = useData<Material>("materials", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames(); // names only: no stock calculation needed
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
   const [submittingId, setSubmittingId] = useState<string | null>(null);

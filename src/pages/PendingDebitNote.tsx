@@ -7,7 +7,7 @@ import { CheckCircle } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 
 export function PendingDebitNote() {
@@ -17,7 +17,7 @@ export function PendingDebitNote() {
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
   const [materials] = useData<Material>("materials", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames(); // names only: no stock calculation needed
   
   const [firmFilter, setFirmFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");

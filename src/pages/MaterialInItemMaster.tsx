@@ -8,7 +8,7 @@ import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -50,7 +50,7 @@ export function MaterialInItemMaster() {
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: false });
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: false });
   const [gateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames(); // names only: no stock calculation needed
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
 

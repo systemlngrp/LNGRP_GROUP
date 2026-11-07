@@ -7,7 +7,7 @@ import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { normalizeMaterialInRecord, recalculateMaterialLine } from "../lib/materialInTaxes";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
@@ -25,7 +25,7 @@ export function MaterialInMaster() {
   const canManage = canManageMasterRecords(user?.role);
   const [materialIn, setMaterialIn, materialInLoading, materialInState] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames(); // names only: no stock calculation needed
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });

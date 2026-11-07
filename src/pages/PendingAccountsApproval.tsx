@@ -6,7 +6,7 @@ import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { CheckCircle, Edit2, X, Save } from "lucide-react";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { ApprovalFilters } from "../components/ApprovalFilters";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { applySupplyTypeTaxRates, normalizeMaterialInRecord, recalculateMaterialLine } from "../lib/materialInTaxes";
@@ -24,7 +24,7 @@ export function PendingAccountsApproval() {
     storageKey: "material-in-all-firms",
   });
   const [materials] = useData<Material>("materials", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames(); // names only: no stock calculation needed
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
