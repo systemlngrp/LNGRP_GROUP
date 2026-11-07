@@ -11438,9 +11438,19 @@ const createHandlers = (tableName) => {
                         return res.status(400).json({ error: "limit must be an integer from 1 to 500" });
                     }
                     const cursor = String(req.query.cursor || "").trim();
-                    const conditions = [firmWhere, cursor ? "id > ?" : ""].filter(Boolean);
+                    // Optional ?status=A,B (exact match): screens that list only records
+                    // in a given status (e.g. Pending Tally) skip the rest of the table.
+                    const statusValues = String(req.query.status || "").split(",").map((value) => value.trim()).filter(Boolean);
+                    let statusWhere = "";
+                    if (statusValues.length) {
+                        const database = process.env.DB_NAME || "u380633007_Inpidata";
+                        const columns = await getExistingColumnNames(db, database, tableName);
+                        if (columns.has("status"))
+                            statusWhere = "`status` IN (" + statusValues.map(() => "?").join(", ") + ")";
+                    }
+                    const conditions = [firmWhere, statusWhere, cursor ? "id > ?" : ""].filter(Boolean);
                     const whereSql = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
-                    const params = [...firmParams, ...(cursor ? [cursor] : [])];
+                    const params = [...firmParams, ...(statusWhere ? statusValues : []), ...(cursor ? [cursor] : [])];
                     const quotedTableName = `\`${tableName.replace(/`/g, "")}\``;
                     // Optional column list (?fields=a,b,c): screens that only look up a
                     // few values from a large table ask for just those columns.
@@ -11459,7 +11469,8 @@ const createHandlers = (tableName) => {
                     const selected = batch.slice(0, limit);
                     let total;
                     if (!cursor) {
-                        const [countRows] = await db.query("SELECT COUNT(*) AS total FROM " + quotedTableName + " " + (firmWhere ? "WHERE " + firmWhere : ""), firmParams);
+                        const countConditions = [firmWhere, statusWhere].filter(Boolean);
+                        const [countRows] = await db.query("SELECT COUNT(*) AS total FROM " + quotedTableName + " " + (countConditions.length ? "WHERE " + countConditions.join(" AND ") : ""), [...firmParams, ...(statusWhere ? statusValues : [])]);
                         total = Number(countRows[0]?.total || 0);
                     }
                     return res.json({

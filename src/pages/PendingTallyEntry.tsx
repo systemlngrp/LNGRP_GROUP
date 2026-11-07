@@ -20,7 +20,12 @@ export function PendingTallyEntry() {
   const [supplierFilter, setSupplierFilter] = useState('');
   const [mrrFilter, setMrrFilter] = useState('');
 
-  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  // Only receipts in Pending Tally are listed (all columns, so saves are unchanged).
+  const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", [], {
+    firmScope: "all",
+    endpointOverride: "/api/material-in?status=Pending%20Tally",
+    storageKey: "material-in-pending-tally",
+  });
   const [materials] = useData<Material>("materials", []);
   const npdItems = useNpdItems();
   const [suppliers] = useData<Supplier>("suppliers", []);

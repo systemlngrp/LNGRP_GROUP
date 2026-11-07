@@ -95,7 +95,9 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const endpoint = options?.endpointOverride || `/api/${resolvedEntity.replace(/_/g, "-")}${fieldsParam ? `?fields=${encodeURIComponent(fieldsParam)}` : ""}`;
   const storageKey = `udc_${options?.storageKey || resolvedEntity}${fieldsParam ? `:${fieldsParam}` : ""}`;
   // Saves always go to the plain entity URL, never with a column list.
-  const writeEndpoint = fieldsParam ? endpoint.split("?")[0] : endpoint;
+  // Saves and deletes always go to the plain entity URL (never with a column
+  // list or a filter in the query string).
+  const writeEndpoint = endpoint.split("?")[0];
   const syncEvent = options?.syncEventKey || `sync-data-${resolvedEntity}`;
   const shouldCacheToLocalStorage = options?.cacheToLocalStorage !== false;
   const includeActiveFirm = options?.firmScope !== "all";
@@ -358,7 +360,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       dataRef.current = nextData;
       if (shouldCacheToLocalStorage && nextData.length <= LOCAL_STORAGE_MAX_ROWS) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getDataAuthHeaders(includeActiveFirm);
-      const response = await fetch(endpoint, {
+      const response = await fetch(writeEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify(item),
@@ -384,7 +386,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       dataRef.current = nextData;
       if (shouldCacheToLocalStorage && nextData.length <= LOCAL_STORAGE_MAX_ROWS) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getDataAuthHeaders(includeActiveFirm);
-      const response = await fetch(`${endpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
+      const response = await fetch(`${writeEndpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
       if (!response.ok) {
         throw new Error("Failed to delete item");
       }
@@ -403,7 +405,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       dataRef.current = nextData;
       if (shouldCacheToLocalStorage && nextData.length <= LOCAL_STORAGE_MAX_ROWS) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getDataAuthHeaders(includeActiveFirm);
-      const response = await fetch(endpoint, {
+      const response = await fetch(writeEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify(item),
