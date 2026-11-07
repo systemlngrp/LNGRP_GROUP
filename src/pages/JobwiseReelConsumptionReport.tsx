@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { ExcelExport } from "../components/ExcelExport";
@@ -15,6 +15,8 @@ import { computeJobwiseReelConsumptionRows } from "../lib/reports/jobwiseReelCon
 import type { JobwiseReelConsumptionRow } from "../lib/reports/jobwiseReelConsumption";
 import { useServerReport } from "../hooks/useServerReport";
 import { formatDate } from "../lib/serial";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 
 const JOBWISE_REEL_TABLES = ["productions", "production_processing", "materials", "material_in", "material_in_packing_slips", "material_issue_reel_lines", "material_return_reel_lines"];
 
@@ -58,6 +60,11 @@ export function JobwiseReelConsumptionReport() {
         return a.jobNo.localeCompare(b.jobNo);
       });
   }, [baseRows, dateFrom, dateTo, minGpPercent, searchTerm]);
+
+  // Totals and Excel use every matching job; the table draws one page at a
+  // time so thousands of rows do not freeze the screen.
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(rows, 100);
+  useEffect(() => { setPage(1); }, [dateFrom, dateTo, minGpPercent, searchTerm, setPage]);
 
   const summary = useMemo(() => {
     return rows.reduce(
@@ -224,7 +231,7 @@ export function JobwiseReelConsumptionReport() {
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                pagedRows.map((row) => (
                   <tr key={row.productionId} className="text-black hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3 font-bold">{row.jobNo}</td>
                     <td className="border-2 border-black px-3 py-3 whitespace-nowrap">{formatDate(row.corrugationDate)}</td>
@@ -243,6 +250,14 @@ export function JobwiseReelConsumptionReport() {
             </tbody>
           </table>
         </div>
+        <ClientPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[100, 250, 500]}
+        />
       </div>
     </div>
   );
