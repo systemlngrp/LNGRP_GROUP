@@ -11,7 +11,7 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-slate-50 p-6 text-center">
         <Spinner />
-        <div className="text-sm font-bold text-slate-700">Loading LNGRP ERP…</div>
+        <div className="text-sm font-bold text-slate-700">Loading LNGRP GROUP…</div>
       </div>
     );
   }

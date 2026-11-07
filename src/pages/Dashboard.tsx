@@ -326,7 +326,7 @@ export function Dashboard() {
     <div className="min-h-screen bg-[linear-gradient(180deg,#fffdf5_0%,#eef6ff_45%,#f6f0ff_100%)] text-black font-sans p-4 md:p-8 space-y-8">
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 border-b-4 border-black pb-6">
         <div>
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black uppercase italic">LNGRP ERP</h1>
+          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-black uppercase italic">LNGRP GROUP</h1>
         </div>
         <div className="flex flex-wrap items-center gap-4">
           <DateInput label="From" value={dateRange.from} onChange={(value) => setDateRange((prev) => ({ ...prev, from: value }))} />
