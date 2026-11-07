@@ -24,6 +24,14 @@ const MAX_CONCURRENT_REQUESTS = 4;
 // Server cursor pages accept up to 500 rows; NPD endpoints cap at 250.
 const BATCH_SIZE = 500;
 const NPD_BATCH_SIZE = 250;
+/** Long lists of small rows (issue/return lines, reels, packing slips): read
+ * 2000 rows per request instead of 500, so a screen needs a quarter of the
+ * round trips. Same rows, same order. */
+const LARGE_BATCH_SIZE = 2000;
+const LARGE_BATCH_LISTS = new Set([
+  "material_issue_reel_lines", "material_return_reel_lines", "material_issue_lines", "material_return_lines",
+  "material_in_packing_slips", "material_issues", "material_returns",
+]);
 const queue: QueueEntry[] = [];
 let activeRequests = 0;
 let sidebarReleased = false;
@@ -203,7 +211,7 @@ function pageUrl(endpoint: string, cursor: string | null, page: number) {
     url.searchParams.set("page", String(page));
     url.searchParams.set("pageSize", String(NPD_BATCH_SIZE));
   } else {
-    url.searchParams.set("limit", String(BATCH_SIZE));
+    url.searchParams.set("limit", String(LARGE_BATCH_LISTS.has(normalizeEntityName(url.pathname)) ? LARGE_BATCH_SIZE : BATCH_SIZE));
     if (cursor) url.searchParams.set("cursor", cursor);
     else url.searchParams.delete("cursor");
   }

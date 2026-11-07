@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { useData } from "../hooks/useData";
+import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { useNpdItemNames } from "../hooks/useNpdItems";
-import { fetchNpdItems } from "../lib/npdItems";
+import { fetchNpdItems, normalizeNpdItem } from "../lib/npdItems";
 import { Select } from "../components/Select";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { buildNpdCardPdf, getNpdCardPdfFileName } from "../lib/npdCardPdf";
@@ -34,19 +34,25 @@ function Table({ headers, rows, headerClass = "bg-slate-200" }: { headers: strin
 }
 
 // The ERP list comes from the light NPD name list so the page opens at once.
-// The full item rows for the card (the same rows the screen used before) load
-// in the background and are only waited for when Search is pressed.
+// On Search only the chosen item's row is read (its own fields, no stock
+// calculation); if that fails, the full NPD list is used as before.
+async function fetchSpecNpdRow(itemId: string): Promise<Row | null> {
+  try {
+    const response = await fetch(`/api/npd/catalog/item/${encodeURIComponent(itemId)}`, { headers: getDataAuthHeaders(false) });
+    if (response.ok) {
+      const payload = await response.json();
+      if (payload?.row) return normalizeNpdItem(payload.row) as unknown as Row;
+    }
+  } catch (error) {
+    console.warn("NPD item read failed, using the full list:", error);
+  }
+  const all = await fetchNpdItems();
+  return (all.find((row) => text(row.id) === itemId) as unknown as Row) || null;
+}
+
 export function NewSpec() {
   const { user, loading: authLoading } = useAuth();
   const npdItems = useNpdItemNames();
-  const fullNpdRowsRef = useRef<Promise<Row[]> | null>(null);
-  const loadFullNpdRows = () => {
-    if (!fullNpdRowsRef.current) {
-      fullNpdRowsRef.current = fetchNpdItems().then((rows) => rows as unknown as Row[]).catch((error) => { fullNpdRowsRef.current = null; throw error; });
-    }
-    return fullNpdRowsRef.current;
-  };
-  useEffect(() => { void loadFullNpdRows().catch(() => undefined); }, []);
   const [phpRows] = useData<any>("php_item_master", []);
   const [plateRows] = useData<any>("plate_item_master", []);
   const [qcUpdates] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all" });
@@ -96,7 +102,7 @@ export function NewSpec() {
     if (!item) return setMessage(`ERP ${normalizedErp} was not found in the item master.`);
     setMessage(""); setStatus("generating");
     try {
-      const npdRow = (await loadFullNpdRows()).find((row) => text(row.id) === text(item.id)) || null;
+      const npdRow = await fetchSpecNpdRow(text(item.id));
       if (!npdRow) { setMessage(`ERP ${normalizedErp} was not found in the item master.`); return; }
       const nextPhp = (findLinkedItemByErp(phpItems as any, normalizedErp)?.raw || null) as Row | null;
       const nextPlate = (findLinkedItemByErp(plateItems as any, normalizedErp)?.raw || null) as Row | null;

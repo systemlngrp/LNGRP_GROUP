@@ -285,6 +285,13 @@ export function MaterialIssueForm() {
 
     const fgItems = new Map<string, IssueMaterialOption>();
     const fgErpKeys = new Set<string>();
+    // First NPD item per id (same pick as the earlier list search), built once
+    // instead of scanning the whole NPD list for every receipt line.
+    const npdItemById = new Map<string, (typeof npdItems)[number]>();
+    npdItems.forEach((entry) => {
+      const key = String(entry.id);
+      if (!npdItemById.has(key)) npdItemById.set(key, entry);
+    });
 
     materialIn.forEach((receipt) => {
       if (receipt.mrrType !== "FG Purchase" && receipt.mrrType !== "Rejection In") return;
@@ -293,7 +300,7 @@ export function MaterialIssueForm() {
         const itemId = String(line.itemId || line.npdId || "").trim();
         if (!itemId || existingMaterialIds.has(itemId) || fgItems.has(itemId)) return;
 
-        const npdItem = npdItems.find((entry) => String(entry.id) === itemId);
+        const npdItem = npdItemById.get(itemId);
         if (!npdItem) return;
 
         const erpCode = String(npdItem.erp || "").trim().toLowerCase();
@@ -317,6 +324,8 @@ export function MaterialIssueForm() {
 
     const npdConsumableItems: IssueMaterialOption[] = [];
     const npdCorrugatedSheetItems: IssueMaterialOption[] = [];
+    const npdConsumableIds = new Set<string>();
+    const npdCorrugatedSheetIds = new Set<string>();
 
     if (issueType === "Job") {
       npdItems.forEach((item) => {
@@ -328,7 +337,8 @@ export function MaterialIssueForm() {
 
         if (isCorrugatedSheetOnly && isCorrugatedSheetMaterial({ name: item.name })) {
           const syntheticId = `npd:${itemId}`;
-          if (!npdCorrugatedSheetItems.some((entry) => String(entry.id) === syntheticId)) {
+          if (!npdCorrugatedSheetIds.has(syntheticId)) {
+            npdCorrugatedSheetIds.add(syntheticId);
             npdCorrugatedSheetItems.push({
               id: syntheticId,
               type: "Other",
@@ -351,7 +361,8 @@ export function MaterialIssueForm() {
         if (fgErpKeys.has(erpKey)) return;
 
         const syntheticId = `npd:${itemId}`;
-        if (npdConsumableItems.some((entry) => String(entry.id) === syntheticId)) return;
+        if (npdConsumableIds.has(syntheticId)) return;
+        npdConsumableIds.add(syntheticId);
 
         npdConsumableItems.push({
           id: syntheticId,

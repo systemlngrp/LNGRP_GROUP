@@ -1485,6 +1485,24 @@ app.get("/api/npd-firm-wise", async (req, res) => {
   }
 });
 
+  // One NPD item row without the stock calculation (the Spec card needs only
+  // the item's own fields; stock figures come back as zero here).
+  app.get("/api/npd/catalog/item/:id", requireAuth, async (req, res) => {
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  try {
+    const id = String(req.params.id || "").trim();
+    if (!id) return res.status(400).json({ error: "Item id is required" });
+    const [rows] = await db.query("SELECT n.* FROM `npd` n WHERE n.id = ? LIMIT 1", [id]);
+    const row = (rows as any[])[0];
+    if (!row) return res.status(404).json({ error: "NPD item not found" });
+    return res.json({ row: normalizeNpdRowForItemConsumers(row) });
+  } catch (error) {
+    console.error("[DB] Error fetching NPD item:", error);
+    return res.status(500).json({ error: (error as Error).message || "Failed to fetch NPD item" });
+  }
+});
+
   app.get("/api/npd/catalog", requireAuth, async (req, res) => {
   const db = await getPool();
   if (!db) return res.status(500).json({ error: "DB connection not available" });
@@ -12016,8 +12034,8 @@ const createHandlers = (tableName: string) => {
         ]);
         if (req.query.limit !== undefined && !customListTables.has(tableName)) {
           const limit = Number(req.query.limit);
-          if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-            return res.status(400).json({ error: "limit must be an integer from 1 to 500" });
+          if (!Number.isInteger(limit) || limit < 1 || limit > 2000) {
+            return res.status(400).json({ error: "limit must be an integer from 1 to 2000" });
           }
           const cursor = String(req.query.cursor || "").trim();
           // Optional ?status=A,B (exact match): screens that list only records
