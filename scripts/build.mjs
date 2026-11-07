@@ -32,6 +32,16 @@ try {
     target: "node18",
     logLevel: "warning",
   });
+  // Server-side reports (/api/reports/<name>), same calculation code as the pages.
+  await esbuild({
+    entryPoints: [join(root, "src/lib/reports/serverReports.ts")],
+    outfile: join(root, "server-dist/report-compute.mjs"),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node18",
+    logLevel: "warning",
+  });
 
   const backupPath = `${distPath}.previous`;
   rmSync(backupPath, { recursive: true, force: true });

@@ -14,6 +14,6 @@ export function useNpdItemsWithStatus(options?: { enabled?: boolean }) {
   return { items, rows, loading, error };
 }
 
-export function useNpdItems() {
-  return useNpdItemsWithStatus().items;
+export function useNpdItems(options?: { enabled?: boolean }) {
+  return useNpdItemsWithStatus(options).items;
 }

@@ -1051,6 +1051,7 @@ function publishRealtimeDataChange(entities: string[] = ["*"]) {
   }
   realtimeDataVersion += 1;
   recordChangeVersion(realtimeDataVersion, entities.length ? entities : ["*"]);
+  markSnapshotTablesChanged(entities);
   // Keep the last sidebar numbers and mark them for a background refresh,
   // instead of making the next page wait for 25 count queries.
   if (sidebarCountCache) sidebarCountCache.expiresAt = 0;
@@ -18326,7 +18327,70 @@ function callCollectionHandler(entity: string, query: Record<string, string>, fi
 // maximum; page size does not change the rows or their order), rows
 // de-duplicated by String(id) keeping first position. A failed list yields [] (the page treated a
 // failed list as empty too).
+// Server-side snapshot of whole lists for dashboards and reports computed on
+// the server. A snapshot is reused until its table changes (per-table change
+// tracking in publishRealtimeDataChange), or after SNAPSHOT_MAX_AGE_MS as a
+// safety net for writes made outside API requests. Lists built from joins are
+// refreshed on any change.
+const SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
+const SNAPSHOT_IDLE_EVICT_MS = 15 * 60_000;
+const SNAPSHOT_DERIVED_ENTITIES = new Set(["materials", "items", "npd", "invoice_line_items", "production_processing"]);
+const collectionSnapshots = new Map<string, { rows: any[]; builtAt: number; usedAt: number; tableVersion: number; globalVersion: number }>();
+const snapshotTableVersions = new Map<string, number>();
+// Versions bumped only by writes to the table itself (no join-based bumps).
+const snapshotRawTableVersions = new Map<string, number>();
+let snapshotGlobalVersion = 0;
+
+function markSnapshotTablesChanged(entities: string[]) {
+  if (!entities.length || entities.includes("*")) {
+    snapshotGlobalVersion += 1;
+    return;
+  }
+  for (const entity of entities) {
+    const table = String(entity || "").replace(/-/g, "_");
+    snapshotTableVersions.set(table, (snapshotTableVersions.get(table) || 0) + 1);
+    snapshotRawTableVersions.set(table, (snapshotRawTableVersions.get(table) || 0) + 1);
+  }
+  // Join-based lists depend on several tables.
+  for (const derived of SNAPSHOT_DERIVED_ENTITIES) snapshotTableVersions.set(derived, (snapshotTableVersions.get(derived) || 0) + 1);
+}
+
+setInterval(() => {
+  const cutoff = Date.now() - SNAPSHOT_IDLE_EVICT_MS;
+  for (const [key, entry] of collectionSnapshots) if (entry.usedAt < cutoff) collectionSnapshots.delete(key);
+}, 60_000).unref?.();
+
 async function loadCollectionLikeClient(entity: string, firmId: string, authUserId: string) {
+  const table = entity.replace(/-/g, "_");
+  const key = `${table}|${firmId}`;
+  const cached = collectionSnapshots.get(key);
+  const now = Date.now();
+  if (
+    cached &&
+    cached.tableVersion === (snapshotTableVersions.get(table) || 0) &&
+    cached.globalVersion === snapshotGlobalVersion &&
+    now - cached.builtAt < SNAPSHOT_MAX_AGE_MS
+  ) {
+    cached.usedAt = now;
+    return cached.rows;
+  }
+  const pending = collectionSnapshotInflight.get(key);
+  if (pending) return pending;
+  const tableVersion = snapshotTableVersions.get(table) || 0;
+  const globalVersion = snapshotGlobalVersion;
+  const load = loadCollectionFromHandler(entity, firmId, authUserId)
+    .then((rows) => {
+      // A failed load returns []; never keep that as a snapshot.
+      if (rows.length) collectionSnapshots.set(key, { rows, builtAt: now, usedAt: now, tableVersion, globalVersion });
+      return rows;
+    })
+    .finally(() => collectionSnapshotInflight.delete(key));
+  collectionSnapshotInflight.set(key, load);
+  return load;
+}
+const collectionSnapshotInflight = new Map<string, Promise<any[]>>();
+
+async function loadCollectionFromHandler(entity: string, firmId: string, authUserId: string) {
   const rowsById = new Map<string, any>();
   let cursor = "";
   for (let guard = 0; guard < 10000; guard++) {
@@ -18361,6 +18425,103 @@ async function loadNpdPagesLikeClient(fetchPage: (offset: number) => Promise<{ r
 const DASHBOARD_SUMMARY_CACHE_TTL_MS = 30_000;
 const dashboardSummaryCache = new Map<string, { expiresAt: number; value: any }>();
 const dashboardSummaryInflight = new Map<string, Promise<any>>();
+
+// FG catalog rows for server reports, kept until the NPD table changes.
+let catalogFgRowsCache: { rows: any[]; version: number; globalVersion: number; builtAt: number } | null = null;
+async function loadCatalogFgRowsCached(db: mysql.Pool) {
+  const version = snapshotRawTableVersions.get("npd") || 0;
+  if (catalogFgRowsCache && catalogFgRowsCache.version === version && catalogFgRowsCache.globalVersion === snapshotGlobalVersion && Date.now() - catalogFgRowsCache.builtAt < SNAPSHOT_MAX_AGE_MS) {
+    return catalogFgRowsCache.rows;
+  }
+  const globalVersion = snapshotGlobalVersion;
+  const rows = await loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }));
+  if (rows.length) catalogFgRowsCache = { rows, version, globalVersion, builtAt: Date.now() };
+  return rows;
+}
+
+let reportModulePromise: Promise<any> | null = null;
+function loadReportModule() {
+  if (!reportModulePromise) {
+    const candidates = [
+      new URL("./report-compute.mjs", import.meta.url).href,
+      new URL("../server-dist/report-compute.mjs", import.meta.url).href,
+    ];
+    reportModulePromise = (async () => {
+      let lastError: unknown;
+      for (const candidate of candidates) {
+        try {
+          return await import(candidate);
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      reportModulePromise = null;
+      throw lastError;
+    })();
+  }
+  return reportModulePromise;
+}
+
+// Reports calculated on the server with the same code the page used to run in
+// the browser (src/lib/reports). Lists come from the shared snapshot cache, so
+// only changed tables are re-read.
+const REPORT_RESULT_CACHE_TTL_MS = 30_000;
+const reportResultCache = new Map<string, { expiresAt: number; version: number; value: any }>();
+app.post("/api/reports/:name", requireAuth, async (req, res) => {
+  const startedAt = Date.now();
+  const db = await getPool();
+  if (!db) return res.status(503).json({ error: "Database unavailable" });
+  let user: AuthUser | null = null;
+  try {
+    user = await getRequestUser(req);
+  } catch {
+    return res.status(503).json({ error: "Unable to verify user authorization. Please try again." });
+  }
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const module = await loadReportModule();
+    const name = String(req.params.name || "");
+    const definition = module.REPORT_DEFINITIONS?.[name];
+    if (!definition) return res.status(404).json({ error: "Unknown report" });
+    if (user.role === "TruckDriver" || !hasPermission(user, definition.permission)) return res.status(403).json({ error: "Forbidden" });
+    const authUserId = String((req as any).authUserId || "");
+    const firmId = getRequestFirmId(req);
+    const params = (req.body && typeof req.body === "object") ? req.body : {};
+    const cacheKey = JSON.stringify([name, firmId, params]);
+    const cached = reportResultCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now() && cached.version === realtimeDataVersion) {
+      return res.json({ result: cached.value, cached: true });
+    }
+    const version = realtimeDataVersion;
+    const lists: Record<string, any[]> = {};
+    // One list at a time: the database allows only a few connections.
+    for (const spec of definition.lists as Array<{ key: string; entity: string; scope: "firm" | "all" }>) {
+      lists[spec.key] = await loadCollectionLikeClient(spec.entity, spec.scope === "all" ? "" : firmId, authUserId);
+    }
+    const helpers: Record<string, any> = {};
+    if (definition.catalog) {
+      helpers.catalogRows = {
+        fgRows: await loadCatalogFgRowsCached(db),
+        phpRows: await loadCollectionLikeClient("php_item_master", "", authUserId),
+        plateRows: await loadCollectionLikeClient("plate_item_master", "", authUserId),
+        materialRows: await loadCollectionLikeClient("materials", "", authUserId),
+      };
+    }
+    if (definition.npdItems) {
+      helpers.npdItems = await loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }));
+    }
+    const loadMs = Date.now() - startedAt;
+    const result = module.runReport(name, lists, params, helpers);
+    reportResultCache.set(cacheKey, { expiresAt: Date.now() + REPORT_RESULT_CACHE_TTL_MS, version, value: result });
+    if (reportResultCache.size > 100) reportResultCache.delete(reportResultCache.keys().next().value as string);
+    console.info(`[REPORT] ${name} loadMs=${loadMs} totalMs=${Date.now() - startedAt}`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ result, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[REPORT] failed:", error);
+    return res.status(500).json({ error: "Failed to build report" });
+  }
+});
 
 app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
   const startedAt = Date.now();

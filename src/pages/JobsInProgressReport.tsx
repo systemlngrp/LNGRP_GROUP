@@ -3,108 +3,41 @@ import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { formatDate } from "../lib/serial";
-import { normalizeMachineName } from "../lib/productionMachineNames";
 import { DispatchPlan, InvoiceLineItem, LoadingSlip, Production, ProductionProcessing } from "../types";
 
-type JobMovementRow = {
-  productionId: string;
-  jobNo: string;
-  jobDate: string;
-  erp: string;
-  company: string;
-  itemName: string;
-  planQty: number;
-  corrugation: number;
-  fg: number;
-  invoiced: number;
-  loading: number;
-  balance: number;
-};
+import { computeJobsInProgressRows, text, key, quantity, roundQuantity, formatQty, addQuantity, getLineItemIdentity } from "../lib/reports/jobsInProgress";
+import type { JobMovementRow } from "../lib/reports/jobsInProgress";
+import { useServerReport } from "../hooks/useServerReport";
 
-function text(value: unknown) { return String(value ?? "").trim(); }
-function key(value: unknown) { return text(value).toLowerCase(); }
-function quantity(value: unknown) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
-function roundQuantity(value: number) { return Number(quantity(value).toFixed(2)); }
-function formatQty(value: number) { return roundQuantity(value).toFixed(2); }
-function addQuantity(map: Map<string, number>, id: string, amount: number) { if (id && Number.isFinite(amount)) map.set(id, roundQuantity((map.get(id) || 0) + amount)); }
-function getLineItemIdentity(line: { itemId?: string; itemSource?: string; npdId?: string }) { return `${key(line.itemSource)}::${key(line.itemId)}::${key(line.npdId)}`; }
+const JOBS_IN_PROGRESS_TABLES = ["productions", "production_processing", "dispatch_plans", "loading_slips", "invoice_line_items", "invoices", "npd"];
 
 export function JobsInProgressReport() {
-  const [productions] = useData<Production>("productions", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
-  const [plans] = useData<DispatchPlan>("dispatch_plans", []);
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
-  const [invoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-lines-all-firms" });
-  const items = useNpdItems();
+  // Base rows are calculated on the server; if it cannot, the lists are loaded
+  // and calculated here as before.
+  const serverReport = useServerReport<JobMovementRow[]>("jobs-in-progress", {}, JOBS_IN_PROGRESS_TABLES);
+  const browserFallback = serverReport.failed;
+  const [productions] = useData<Production>("productions", [], { enabled: browserFallback });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { enabled: browserFallback });
+  const [plans] = useData<DispatchPlan>("dispatch_plans", [], { enabled: browserFallback });
+  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms", enabled: browserFallback });
+  const [invoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-lines-all-firms", enabled: browserFallback });
+  const items = useNpdItems({ enabled: browserFallback });
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
+  const clientBaseRows = useMemo<JobMovementRow[]>(
+    () => (browserFallback ? computeJobsInProgressRows({ productions, processing, plans, loadingSlips, invoiceLineItems }, items) : []),
+    [browserFallback, invoiceLineItems, items, loadingSlips, plans, processing, productions]
+  );
+  const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
   const rows = useMemo<JobMovementRow[]>(() => {
-    const productionById = new Map(productions.map((production) => [production.id, production]));
-    const productionByJob = new Map<string, Production>();
-    productions.forEach((production) => { const jobNo = key(production.transactionNo || production.jobCardNo); if (jobNo) productionByJob.set(jobNo, production); });
-    const planById = new Map(plans.map((plan) => [plan.id, plan]));
-    const loadingByProduction = new Map<string, number>();
-    const loadingEvidence = new Set<string>();
-    const companyByProduction = new Map<string, string>();
-    const itemNameByProduction = new Map<string, string>();
-    const loadingAllocationsBySlip = new Map<string, Array<{ productionId: string; qty: number; identity: string }>>();
-    const resolveProductionId = (jobId: unknown, jobNo: unknown) => { const directId = text(jobId); if (directId && productionById.has(directId)) return directId; return productionByJob.get(key(jobNo))?.id || ""; };
-    const recordLoadingMetadata = (productionId: string, line: LoadingSlip["lines"][number]) => {
-      if (text(line.companyName)) companyByProduction.set(productionId, text(line.companyName));
-      if (text(line.itemName)) itemNameByProduction.set(productionId, text(line.itemName));
-    };
-
-    loadingSlips.forEach((slip) => {
-      if (slip.status === "Cancelled") return;
-      const slipAllocations: Array<{ productionId: string; qty: number; identity: string }> = [];
-      slip.lines.forEach((line) => {
-        const plan = planById.get(line.dispatchPlanId);
-        const allocations = (line.allocations || []).filter((allocation) => allocation.sourceType === "job");
-        const resolvedAllocations = allocations.map((allocation) => ({ productionId: resolveProductionId(allocation.jobId, allocation.jobNo), qty: quantity(allocation.qty) })).filter((allocation) => allocation.productionId && allocation.qty > 0);
-        if (resolvedAllocations.length) {
-          resolvedAllocations.forEach((allocation) => { const identity = getLineItemIdentity(line); recordLoadingMetadata(allocation.productionId, line); addQuantity(loadingByProduction, allocation.productionId, allocation.qty); loadingEvidence.add(allocation.productionId); slipAllocations.push({ ...allocation, identity }); });
-          return;
-        }
-        const planProductionId = text(plan?.productionId);
-        const jobNumbers = (line.jobNos || []).map(key).filter(Boolean);
-        const fallbackProductionId = planProductionId && productionById.has(planProductionId) ? planProductionId : jobNumbers.length === 1 ? productionByJob.get(jobNumbers[0])?.id || "" : "";
-        if (!fallbackProductionId || quantity(line.loadedQty) <= 0) return;
-        const fallback = { productionId: fallbackProductionId, qty: quantity(line.loadedQty), identity: getLineItemIdentity(line) };
-        recordLoadingMetadata(fallback.productionId, line);
-        addQuantity(loadingByProduction, fallback.productionId, fallback.qty); loadingEvidence.add(fallback.productionId); slipAllocations.push(fallback);
-      });
-      if (slipAllocations.length) loadingAllocationsBySlip.set(slip.id, slipAllocations);
-    });
-
-    plans.forEach((plan) => { const productionId = text(plan.productionId); if (productionId && !loadingEvidence.has(productionId)) addQuantity(loadingByProduction, productionId, quantity(plan.loadedQty)); });
-
-    const invoicedByProduction = new Map<string, number>();
-    invoiceLineItems.forEach((invoiceLine) => {
-      const invoiceQty = quantity(invoiceLine.qty); if (invoiceQty <= 0) return;
-      const allocations = loadingAllocationsBySlip.get(invoiceLine.loadingSlipId) || [];
-      const invoiceIdentity = getLineItemIdentity(invoiceLine);
-      const matchingAllocations = allocations.filter((allocation) => allocation.identity === invoiceIdentity || allocation.identity.split("::")[1] === key(invoiceLine.itemId) || allocation.identity.split("::")[2] === key(invoiceLine.npdId));
-      const candidates = matchingAllocations.length ? matchingAllocations : allocations;
-      const totalAllocated = candidates.reduce((sum, allocation) => sum + allocation.qty, 0);
-      if (totalAllocated > 0) candidates.forEach((allocation) => addQuantity(invoicedByProduction, allocation.productionId, invoiceQty * allocation.qty / totalAllocated));
-    });
-
-    const corrugationByProduction = new Map<string, number>();
-    processing.forEach((entry) => { if (normalizeMachineName(entry.machineName).startsWith("Corrugation")) addQuantity(corrugationByProduction, entry.productionId, quantity(entry.qty)); });
     const query = key(searchTerm); const fromMs = dateFrom ? new Date(dateFrom).getTime() : null; const toMs = dateTo ? new Date(dateTo).getTime() : null;
-
-    return productions.filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp).map((production) => {
-      const erp = text(production.erpCode || production.masterErp);
-      const item = items.find((candidate: any) => key(candidate.id) === key(production.itemId) || key(candidate.id) === key(production.npdId) || key(candidate.erp) === key(erp));
-      const planQty = quantity(production.plannedQty || production.qty); const loading = roundQuantity(loadingByProduction.get(production.id) || 0);
-      return { productionId: production.id, jobNo: text(production.transactionNo || production.jobCardNo), jobDate: text(production.date), erp, company: text(production.companyName || (item as any)?.companyName || companyByProduction.get(production.id)), itemName: text((production as Production & { itemName?: string }).itemName || (item as any)?.name || (item as any)?.itemName || itemNameByProduction.get(production.id) || production.itemId), planQty, corrugation: roundQuantity(corrugationByProduction.get(production.id) || 0), fg: roundQuantity(production.prodFromFFG), invoiced: roundQuantity(invoicedByProduction.get(production.id) || 0), loading, balance: roundQuantity(Math.max(0, planQty - loading)) };
-    }).filter((row) => {
+    return baseRows.filter((row) => {
       const haystack = [row.jobNo, row.erp, row.company, row.itemName].map(key).join(" "); if (query && !haystack.includes(query)) return false;
       const jobDateMs = row.jobDate ? new Date(row.jobDate).getTime() : NaN; if (fromMs != null && (!Number.isFinite(jobDateMs) || jobDateMs < fromMs)) return false; if (toMs != null && (!Number.isFinite(jobDateMs) || jobDateMs > toMs)) return false; return true;
     }).sort((a, b) => { const dateDiff = new Date(b.jobDate || 0).getTime() - new Date(a.jobDate || 0).getTime(); return dateDiff || a.jobNo.localeCompare(b.jobNo, undefined, { numeric: true, sensitivity: "base" }); });
-  }, [dateFrom, dateTo, invoiceLineItems, items, loadingSlips, plans, processing, productions, searchTerm]);
+  }, [baseRows, dateFrom, dateTo, searchTerm]);
 
   const summary = useMemo(() => rows.reduce((acc, row) => ({ jobs: acc.jobs + 1, planned: acc.planned + row.planQty, fg: acc.fg + row.fg, loading: acc.loading + row.loading, balance: acc.balance + row.balance }), { jobs: 0, planned: 0, fg: 0, loading: 0, balance: 0 }), [rows]);
   const handleClear = () => { setSearchTerm(""); setDateFrom(""); setDateTo(""); };
