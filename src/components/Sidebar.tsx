@@ -27,11 +27,8 @@ import {
   ,ArrowLeftRight
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { REALTIME_DATA_CHANGE_EVENT } from "../hooks/useRealtimeDataSync";
-import { usePendingTaskCounts } from "../hooks/usePendingTaskCounts";
 import { useAuth } from "../auth/AuthContext";
 import { cn } from "../lib/utils";
-import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -485,48 +482,8 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const { hasAccess, user } = useAuth();
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [menuSearchTerm, setMenuSearchTerm] = useState("");
-  const { counts } = usePendingTaskCounts();
-
-  const [pendingJobClosureCount, setPendingJobClosureCount] = useState<number>(0);
-
-  const refreshPendingJobClosureCount = useCallback(async () => {
-    try {
-      const token = window.localStorage.getItem("authToken") || "";
-      // Count-only endpoint: the badge needs a number, not the full list.
-      const response = await fetch("/api/pending-job-closure/count", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const payload = await response.json();
-      setPendingJobClosureCount(Number(payload?.count || 0));
-    } catch {
-      setPendingJobClosureCount(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshPendingJobClosureCount();
-  }, [refreshPendingJobClosureCount]);
-
-  useEffect(() => {
-    const handleRealtimeDataChange = () => {
-      void refreshPendingJobClosureCount();
-    };
-
-    window.addEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
-    return () => {
-      window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleRealtimeDataChange);
-    };
-  }, [refreshPendingJobClosureCount]);
-
-  useAutoRefreshEffect(() => {
-    void refreshPendingJobClosureCount();
-  });
-
-  const visibleCounts = useMemo(
-    () => ({ ...counts, "/production/pending-job-closure": pendingJobClosureCount }),
-    [counts, pendingJobClosureCount]
-  );
+  // Menu items show no counts: the menu no longer asks the server for pending
+  // counts (that ran ~25 count queries on every change across the app).
 
   const navigation = useMemo<NavGroup[]>(() => {
     if (user?.role === "TruckDriver") {
@@ -652,7 +609,6 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
 
   const renderNavLink = (item: NavItem, nested = false) => {
     const isActive = isActiveItem(item);
-    const count = item.countKey ? visibleCounts[item.countKey] : (item as any).count || 0;
     const Icon = typeof item.icon === "function" ? item.icon : FileText;
 
     if (item.disabled) {
@@ -704,14 +660,6 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
             </span>
           )}
         </div>
-        {count > 0 && !isCollapsed && (
-          <span className={cn(
-            "mt-0.5 flex h-4.5 min-w-[18px] shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-black tracking-tighter",
-            isActive ? "bg-black text-white" : "bg-white text-black"
-          )}>
-            {count}
-          </span>
-        )}
       </Link>
     );
   };
