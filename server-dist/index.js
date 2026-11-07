@@ -17559,7 +17559,7 @@ app.post("/api/reports/:name", requireAuth, async (req, res) => {
     }
     catch (error) {
         console.error("[REPORT] failed:", error);
-        return res.status(500).json({ error: "Failed to build report" });
+        return res.status(500).json({ error: "Failed to build report", detail: String(error?.message || error).slice(0, 300) });
     }
 });
 const REPORT_WAIT_MS = 25_000;
@@ -17581,6 +17581,7 @@ async function buildServerReport(module, name, definition, firmId, authUserId, p
     const steps = [];
     const timed = async (label, load) => {
         const stepStart = Date.now();
+        reportBuildTimings.set(name, { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [...steps, [`${label} (running)`, 0, -1]] });
         const value = await load();
         steps.push([label, Date.now() - stepStart, Array.isArray(value) ? value.length : -1]);
         return value;
@@ -17602,7 +17603,14 @@ async function buildServerReport(module, name, definition, firmId, authUserId, p
     }
     const loadMs = Date.now() - startedAt;
     const computeStart = Date.now();
-    const result = module.runReport(name, lists, params, helpers);
+    let result;
+    try {
+        result = module.runReport(name, lists, params, helpers);
+    }
+    catch (error) {
+        reportBuildTimings.set(name, { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [...steps, [`compute failed: ${String(error?.stack || error).slice(0, 400)}`, Date.now() - computeStart, -1]] });
+        throw error;
+    }
     steps.push(["compute", Date.now() - computeStart, -1]);
     reportBuildTimings.set(name, { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps });
     reportResultCache.set(cacheKey, { expiresAt: Date.now() + REPORT_RESULT_CACHE_TTL_MS, version, value: result });
