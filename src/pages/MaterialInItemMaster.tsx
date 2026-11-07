@@ -6,6 +6,8 @@ import { Edit2, Check, X, Search, Package, Layers, Disc, ExternalLink } from "lu
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { useNpdItemNames } from "../hooks/useNpdItems";
@@ -314,6 +316,11 @@ export function MaterialInItemMaster() {
 
 
 
+  // "Others" tab: 25 rows per page (it drew every receipt line at once).
+  const othersPagination = useClientPagination(processedData.others, 25);
+  const { setPage: setOthersPage } = othersPagination;
+  useEffect(() => { setOthersPage(1); }, [searchTerm, fromDate, toDate, mrrFilter, activeTab, setOthersPage]);
+
   const excelRows = useMemo(() => {
     if (activeTab === "reel-details") {
       return processedData.reelDetails.map((reel: any) => ({
@@ -329,7 +336,7 @@ export function MaterialInItemMaster() {
       }));
     }
 
-    const data = activeTab === "others" ? processedData.others : processedData.reelSummary;
+    const data = activeTab === "others" ? othersPagination.paginatedItems : processedData.reelSummary;
     return data.map((line: any) => {
       const itemName = itemNameOf(line.itemId) || "Unknown";
       return {
@@ -348,7 +355,7 @@ export function MaterialInItemMaster() {
     });
   }, [activeTab, processedData, materials, npdItems, suppliers, companies]);
   const renderTable = () => {
-    const data = activeTab === "others" ? processedData.others : 
+    const data = activeTab === "others" ? othersPagination.paginatedItems : 
                  activeTab === "reel-summary" ? remoteReelSummary : 
                  remoteReelDetails;
 
@@ -638,13 +645,23 @@ export function MaterialInItemMaster() {
             activeTab === "reel-details" ? "bg-white border-b-transparent text-amber-700 shadow-[0_-2px_0_0_#d97706]" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
           }`}
         >
-          <Disc size={14} /> Reel Details ({remoteDetailsTotalRows})
+          {/* The count is known once the tab has been opened (the report runs then). */}
+          <Disc size={14} /> Reel Details{remoteDetailsTotalRows || activeTab === "reel-details" ? ` (${remoteDetailsTotalRows})` : ""}
         </button>
       </div>
 
       <div className="bg-white rounded-b shadow-sm overflow-hidden border border-black">
         <div className="overflow-x-auto">
           {renderTable()}
+          {activeTab === "others" ? (
+            <ClientPagination
+              page={othersPagination.page}
+              pageSize={othersPagination.pageSize}
+              totalItems={othersPagination.totalItems}
+              onPageChange={othersPagination.setPage}
+              onPageSizeChange={othersPagination.setPageSize}
+            />
+          ) : null}
         </div>
       </div>
     </div>
