@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { Firm, Order, OrderSchedule, Production, QcSpecCardMovement, User } from "../types";
 import { qcPersonOptions } from "../utils/qcPeople";
@@ -22,7 +22,7 @@ function useSpecCardData() {
   const [records, , loading, api] = useData<QcSpecCardMovement>("qc_spec_card_movements", [], { firmScope: "all" });
   const [people] = useData<User>("users", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   return { productions, schedules, orders, records, loading, api, people, firms, items };
 }
 

@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Production, Item } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Upload } from "lucide-react";
@@ -35,7 +35,7 @@ interface LeastCostRecord {
 
 export function ItemwiseLeastCost() {
   const [productions, , prodsLoading] = useData<Production>("productions", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [, , , itemActions] = useData<Item>("items", []);
   const itemsLoading = false;
   const [companyFilter, setCompanyFilter] = useState("");

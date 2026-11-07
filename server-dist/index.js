@@ -1466,7 +1466,11 @@ app.get("/api/npd/catalog", requireAuth, async (req, res) => {
         const statusParam = String(req.query.status || "active").trim().toLowerCase();
         const status = statusParam === "removed" || statusParam === "all" ? statusParam : "active";
         const search = String(req.query.search || "").trim();
-        const result = await fetchNpdCatalogItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
+        // ?full=1: every NPD column in the stock list's order, without the stock
+        // calculation (screens that need item details but no stock figures).
+        const result = String(req.query.full || "") === "1"
+            ? await fetchNpdFullRowsWithoutStock(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize })
+            : await fetchNpdCatalogItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
         return res.json({ ...result, page, pageSize, search, status });
     }
     catch (error) {
@@ -2939,6 +2943,28 @@ async function fetchActiveNpdItems(db, options) {
         rows: normalizedRows,
         total: Number(countRows?.[0]?.total || 0),
     };
+}
+async function fetchNpdFullRowsWithoutStock(db, options) {
+    const status = String(options.status || "active").trim().toLowerCase();
+    const where = [];
+    const params = [];
+    if (status !== "all") {
+        where.push(status === "removed"
+            ? "COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') = 'removed'"
+            : "COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') <> 'removed'");
+    }
+    const search = String(options.search || "").trim();
+    if (search) {
+        const like = `%${search}%`;
+        where.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
+        params.push(like, like, like, like, like, like);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    // Same order as the firm-wise stock list, so "first match" lookups pick the same item.
+    const orderSql = "ORDER BY COALESCE(NULLIF(TRIM(n.updateTimestamp), ''), NULLIF(TRIM(n.timestamp), ''), NULLIF(TRIM(n.date), '')) DESC, n.npdId ASC";
+    const [rows] = await db.query(`SELECT n.* FROM \`npd\` n ${whereSql} ${orderSql} LIMIT ? OFFSET ?`, [...params, options.limit, options.offset]);
+    const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
+    return { rows: rows.map((row) => normalizeNpdRowForItemConsumers(row)), total: Number(countRows[0]?.total || 0) };
 }
 async function fetchNpdCatalogItems(db, options) {
     const status = String(options.status || "active").trim().toLowerCase();

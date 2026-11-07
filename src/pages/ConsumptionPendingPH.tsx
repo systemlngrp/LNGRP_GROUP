@@ -7,7 +7,7 @@ import { TableControls } from "../components/TableControls";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { CheckCircle } from "lucide-react";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 
 export function ConsumptionPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,7 +23,7 @@ export function ConsumptionPendingPH() {
   }, [searchTerm]);
 
   const [consumptions, setConsumptions] = useData<Consumption>("consumptions", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const isPendingPH = (status?: string | null) => !status || status === "Pending PH";
 
   const [submittingId, setSubmittingId] = useState<string | null>(null);

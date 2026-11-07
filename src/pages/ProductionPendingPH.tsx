@@ -8,7 +8,7 @@ import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { CheckCircle, XCircle } from "lucide-react";
 import { isProductionPendingPH } from "../lib/productionStageFilters";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 
 export function ProductionPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,7 +24,7 @@ export function ProductionPendingPH() {
   }, [searchTerm]);
 
   const [productions, setProductions] = useData<Production>("productions", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);

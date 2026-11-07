@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { DispatchPlan, Production, ProductionProcessing, QualityComplaint, User } from "../types";
 import { qcPersonOptions } from "../utils/qcPeople";
@@ -51,7 +51,7 @@ export function QualityComplaintFormUpdated() {
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all" });
   const [people] = useData<User>("users", []);
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [, , , api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
   const [form, setForm] = useState<FormState>(blank);
   const [message, setMessage] = useState("");

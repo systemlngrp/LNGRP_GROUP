@@ -3,7 +3,7 @@ import { Edit, ExternalLink, Plus, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { Firm, Item, Order, OrderSchedule, Production, PreDispatchInspection as Inspection, User } from "../types";
 import { isActiveQcPerson, qcPersonOptions } from "../utils/qcPeople";
@@ -54,7 +54,7 @@ function useInspectionData() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const normalizedRecords = records.map(record => ({ ...record, result: normalizeQcResult(record.result) }));
   return { productions, records: normalizedRecords, loading, api, people, firms, orders, schedules, items };
 }

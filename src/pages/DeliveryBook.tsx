@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { LoadingSlip, DispatchPlan, Order, Company, Item, Truck } from "../types";
 import { Search, BookOpen, Calendar, MapPin, Package, User } from "lucide-react";
@@ -12,7 +12,7 @@ export function DeliveryBook() {
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
   const [orders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const { resolveOrderItem } = useOrderItemCatalog();
   const [trucks] = useData<Truck>("trucks", []);
 

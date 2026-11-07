@@ -6,7 +6,7 @@ import { TableControls } from "../components/TableControls";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { RefreshCw } from "lucide-react";
 import { Spinner } from "../components/Spinner";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useConfirm } from "../components/ConfirmDialog";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
@@ -14,7 +14,7 @@ import { getFirmDisplayNameById } from "../lib/firmDisplay";
 export function CanceledProductions() {
   const confirm = useConfirm();
   const [productions, setProductions] = useData<Production>("productions", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
   const [orders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);

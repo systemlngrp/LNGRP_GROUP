@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { Firm, Item, QcSampleRequirement } from "../types";
 
 const input = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const blank: QcSampleRequirement = { id: "", receivingDate: new Date().toISOString().slice(0,10), partyName: "", itemName: "", blockNo: "", blockLocation: "" };
 export function QcSampleRequirement() {
-  const [rows, , loading, api] = useData<QcSampleRequirement>("qc_sample_requirements", [], { firmScope: "all" }); const [firms] = useData<Firm>("firms", [], { firmScope: "all" }); const items = useNpdItems();
+  const [rows, , loading, api] = useData<QcSampleRequirement>("qc_sample_requirements", [], { firmScope: "all" }); const [firms] = useData<Firm>("firms", [], { firmScope: "all" }); const items = useNpdItemsWithoutStock();
   const [form, setForm] = useState<QcSampleRequirement>(blank); const [show, setShow] = useState(false); const [message, setMessage] = useState("");
   const itemOptions = useMemo(() => (items as Item[]).map(i => ({ value: i.id, label: `${i.name}${i.erp ? ` (${i.erp})` : ""}`, searchText: `${i.name} ${i.erp || ""} ${i.customer || ""}` })), [items]); const firmOptions = firms.map(f => ({ value: f.id, label: f.firmName }));
   const update = (key: keyof QcSampleRequirement, value: string) => setForm(f => ({ ...f, [key]: value })); const selectItem = (id: string) => { const i = (items as Item[]).find(x => x.id === id); setForm(f => ({ ...f, itemName: i?.name || "", partyName: i?.customer || "" })); };

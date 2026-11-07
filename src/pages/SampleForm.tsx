@@ -3,11 +3,11 @@ import { useData } from "../hooks/useData";
 import { SampleRequest } from "../types";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 
 export function SampleForm() {
   const [, setSampleRequests] = useData<SampleRequest>("sample_requests", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
 
   const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [itemId, setItemId] = useState("");

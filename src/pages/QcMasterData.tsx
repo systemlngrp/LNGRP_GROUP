@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { ClientPagination } from "../components/ClientPagination";
 import { ExcelExport } from "../components/ExcelExport";
@@ -39,7 +39,7 @@ const columnSizing = (column: string) => {
 const printingPill = (value: unknown) => { const label = text(value); if (!label) return null; const normalized = label.toLowerCase(); const styles = normalized.includes("red") ? "bg-[#c00000] text-white" : normalized.includes("blue") ? "bg-[#075aaa] text-white" : normalized.includes("black") ? "bg-[#3f3f3f] text-white" : normalized.includes("green") ? "bg-[#8bc34a] text-black" : normalized.includes("brown") ? "bg-[#8a4b08] text-white" : "bg-[#d9dde2] text-black"; return <span title={label} aria-label={`Printing colour: ${label}`} className={`inline-flex max-w-full items-center justify-center rounded-full px-3 py-0.5 text-[10px] font-extrabold uppercase leading-none shadow-sm ${styles}`}>{label}</span>; };
 
 export function QcMasterData() {
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "qc-master-orders" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
   const [boardChecks] = useData<BoardLineQcCheck>("boardline_qc_checks", [], { firmScope: "all", storageKey: "qc-master-board-checks" });

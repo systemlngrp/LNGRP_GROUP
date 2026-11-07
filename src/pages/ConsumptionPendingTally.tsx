@@ -5,13 +5,13 @@ import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
 import { CheckCircle, Search } from "lucide-react";
 import { cn } from "../lib/utils";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 
 export function ConsumptionPendingTally() {
   const { user } = useAuth();
   const [consumptions, setConsumptions] = useData<Consumption>("consumptions", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");

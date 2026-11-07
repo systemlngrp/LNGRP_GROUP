@@ -8,7 +8,7 @@ import { useData } from "../hooks/useData";
 import { Company, Item, Order, OrderSchedule, Production, Setting } from "../types";
 import { formatDate, getFinancialYear } from "../lib/serial";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 
 type TargetRow = {
@@ -144,7 +144,7 @@ export function RealizationReport() {
   const [schedules] = useData<OrderSchedule>("orders_schedule", []);
   const [companies] = useData<Company>("companies", []);
   const [settings] = useData<Setting>("settings", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
 
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");

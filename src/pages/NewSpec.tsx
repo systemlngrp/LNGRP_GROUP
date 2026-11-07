@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
-import { getDataAuthHeaders, useData } from "../hooks/useData";
-import { useNpdItemNames } from "../hooks/useNpdItems";
-import { fetchNpdItems, normalizeNpdItem } from "../lib/npdItems";
+import { useData } from "../hooks/useData";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { buildNpdCardPdf, getNpdCardPdfFileName } from "../lib/npdCardPdf";
@@ -33,26 +32,11 @@ function Table({ headers, rows, headerClass = "bg-slate-200" }: { headers: strin
   return <div className="overflow-x-auto"><table className="w-full min-w-[700px] border-collapse text-xs"><thead className={headerClass}><tr>{headers.map((header) => <th key={header} className="border border-black px-2 py-2 text-center font-black uppercase">{header}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((item, cellIndex) => <td key={cellIndex} className="border border-black px-2 py-2 text-center font-bold">{item || "-"}</td>)}</tr>)}</tbody></table></div>;
 }
 
-// The ERP list comes from the light NPD name list so the page opens at once.
-// On Search only the chosen item's row is read (its own fields, no stock
-// calculation); if that fails, the full NPD list is used as before.
-async function fetchSpecNpdRow(itemId: string): Promise<Row | null> {
-  try {
-    const response = await fetch(`/api/npd/catalog/item/${encodeURIComponent(itemId)}`, { headers: getDataAuthHeaders(false) });
-    if (response.ok) {
-      const payload = await response.json();
-      if (payload?.row) return normalizeNpdItem(payload.row) as unknown as Row;
-    }
-  } catch (error) {
-    console.warn("NPD item read failed, using the full list:", error);
-  }
-  const all = await fetchNpdItems();
-  return (all.find((row) => text(row.id) === itemId) as unknown as Row) || null;
-}
-
+// Item details come from the NPD list without the stock calculation (same
+// rows and order as before; the spec card uses no stock figures).
 export function NewSpec() {
   const { user, loading: authLoading } = useAuth();
-  const npdItems = useNpdItemNames();
+  const npdItems = useNpdItemsWithoutStock();
   const [phpRows] = useData<any>("php_item_master", []);
   const [plateRows] = useData<any>("plate_item_master", []);
   const [qcUpdates] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all" });
@@ -102,8 +86,7 @@ export function NewSpec() {
     if (!item) return setMessage(`ERP ${normalizedErp} was not found in the item master.`);
     setMessage(""); setStatus("generating");
     try {
-      const npdRow = await fetchSpecNpdRow(text(item.id));
-      if (!npdRow) { setMessage(`ERP ${normalizedErp} was not found in the item master.`); return; }
+      const npdRow = item as unknown as Row;
       const nextPhp = (findLinkedItemByErp(phpItems as any, normalizedErp)?.raw || null) as Row | null;
       const nextPlate = (findLinkedItemByErp(plateItems as any, normalizedErp)?.raw || null) as Row | null;
       const nextFileNo = resolveNpdFileNo(npdRow, qcUpdates);

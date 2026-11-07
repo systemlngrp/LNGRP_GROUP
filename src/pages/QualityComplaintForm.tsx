@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { Company, Firm, Order, Production, QualityComplaint, User } from "../types";
 import { qcPersonOptions } from "../utils/qcPeople";
@@ -11,7 +11,7 @@ const key = (value: unknown) => String(value ?? "").trim().toLowerCase();
 const dateValue = (value: unknown) => new Date(String(value || "")).getTime() || 0;
 
 export function QualityComplaintForm() {
-  const [firms] = useData<Firm>("firms", [], { firmScope: "all" }); const [companies] = useData<Company>("companies", [], { firmScope: "all" }); const [productions] = useData<Production>("productions", [], { firmScope: "all" }); const [orders] = useData<Order>("orders", [], { firmScope: "all" }); const [people] = useData<User>("users", []); const items = useNpdItems(); const [, , , api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" }); const [companies] = useData<Company>("companies", [], { firmScope: "all" }); const [productions] = useData<Production>("productions", [], { firmScope: "all" }); const [orders] = useData<Order>("orders", [], { firmScope: "all" }); const [people] = useData<User>("users", []); const items = useNpdItemsWithoutStock(); const [, , , api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
   const [form, setForm] = useState(blank); const [message, setMessage] = useState(""); const [hint, setHint] = useState("");
   const selectedFirm = firms.find((f) => f.id === form.firmId);
   const partyOptions = useMemo(() => [...new Set([...companies.map((c) => c.name), ...productions.map((p) => p.companyName || ""), ...items.map((i: any) => i.customer || "")].map((v) => String(v || "").trim()).filter(Boolean))].sort(), [companies, items, productions]);

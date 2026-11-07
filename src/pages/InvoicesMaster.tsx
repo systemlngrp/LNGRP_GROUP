@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -70,7 +70,7 @@ export function InvoicesMaster() {
   const [lineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [companies] = useData<Company>("companies", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [slips] = useData<LoadingSlip>("loading_slips", []);
   const [trucks] = useData<Truck>("trucks", []);
   const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);

@@ -9,7 +9,7 @@ import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { CheckCircle, Truck, XCircle, ClipboardList, Package } from "lucide-react";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 
 type Tab = "all" | "material-in" | "orders" | "consumption";
 
@@ -32,7 +32,7 @@ export function PlantHeadUnified() {
   const [consumptions, setConsumptions] = useData<Consumption>("consumptions", []);
   const [materials] = useData<Material>("materials", []);
   const { resolveOrderItem } = useOrderItemCatalog();
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
 

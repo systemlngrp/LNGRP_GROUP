@@ -5,12 +5,12 @@ import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { generateTransactionNo, formatDate } from "../lib/serial";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 
 export function ConsumptionForm() {
   const [consumptions, setConsumptions] = useData<Consumption>("consumptions", []);
   const [items, setItems] = useData<Item>("items", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [productions, setProductions] = useData<Production>("productions", []);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();

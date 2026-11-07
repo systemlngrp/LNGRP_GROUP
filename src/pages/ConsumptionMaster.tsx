@@ -4,7 +4,7 @@ import { Consumption } from "../types";
 import { formatDate } from "../lib/serial";
 import { TableControls } from "../components/TableControls";
 import { Trash2 } from "lucide-react";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 
@@ -12,7 +12,7 @@ export function ConsumptionMaster() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
   const [consumptions, setConsumptions] = useData<Consumption>("consumptions", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 

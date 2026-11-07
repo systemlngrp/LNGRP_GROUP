@@ -3,7 +3,7 @@ import { CheckCircle2, RotateCcw, Save } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { Select } from "../components/Select";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import type { QcBlockLocationMaster, QcFileNoMaster, QcUpdateRecord } from "../types";
 import { fileNoOptions } from "../lib/qcFileNo";
 
@@ -13,7 +13,7 @@ const inputClass = "w-full rounded border border-black bg-white p-2 text-sm";
 
 export function QcUpdateForm() {
   const { user } = useAuth();
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [locations] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
   const [fileNos] = useData<QcFileNoMaster>("qc_file_no_masters", [], { firmScope: "all" });
   const [savedRecords] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all" });

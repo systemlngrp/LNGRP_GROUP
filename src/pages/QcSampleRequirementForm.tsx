@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Save, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { Firm, Item, QcSampleRequirement } from "../types";
 
@@ -17,7 +17,7 @@ export function QcSampleRequirementForm() {
   const navigate = useNavigate();
   const [, , , api] = useData<QcSampleRequirement>("qc_sample_requirements", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [form, setForm] = useState<QcSampleRequirement>(blank);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);

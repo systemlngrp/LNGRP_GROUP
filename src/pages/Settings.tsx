@@ -8,7 +8,7 @@ import { TableControls } from "../components/TableControls";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { getFinancialYear } from "../lib/serial";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { PO_MANDATORY_MRR_TYPES, parsePoMandatoryMrrTypes } from "../lib/materialInPoMandatory";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useAuth } from "../auth/AuthContext";
@@ -332,7 +332,7 @@ export function SettingsPage() {
   const [firms] = useData<Firm>("firms", []);
   const [users] = useData<User>("users", []);
   const [machines] = useData<Machine>("machines", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const { allItems: globalRenameItems } = useOrderItemCatalog();
   const [saving, setSaving] = useState(false);
   const [coreResetConfirmation, setCoreResetConfirmation] = useState("");

@@ -34,3 +34,20 @@ export function useNpdItemNames(options?: { enabled?: boolean }) {
   });
   return useMemo(() => rows.map(normalizeNpdItem), [rows]);
 }
+
+/**
+ * NPD items with all their own details (specs, ERP, customer, rates…) in the
+ * same order as useNpdItems, but without the firm-wise stock calculation:
+ * stock figures (opening, receipt, production, invoiced, balance, firmStocks)
+ * are not filled. For screens that never show or use stock.
+ */
+export function useNpdItemsWithoutStock(options?: { enabled?: boolean }) {
+  const [rows] = useData<Item>("npd", [], {
+    cacheToLocalStorage: false,
+    endpointOverride: "/api/npd/catalog?status=all&full=1",
+    storageKey: "npd_full_catalog",
+    syncEventKey: "sync-data-npd",
+    enabled: options?.enabled !== false,
+  });
+  return useMemo(() => rows.map(normalizeNpdItem), [rows]);
+}

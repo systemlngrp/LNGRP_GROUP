@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { 
@@ -105,7 +105,7 @@ export function PendingInvoicing() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [loadingSlips, , , loadingSlipApi] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const { resolveOrderItem, findItemAcrossSources } = useOrderItemCatalog();
   const [plans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });

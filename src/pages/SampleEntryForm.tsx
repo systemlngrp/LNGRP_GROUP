@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import type { QcBlockLocationMaster } from "../types";
 
 const input = "w-full rounded border-2 border-black bg-white px-3 py-2";
@@ -10,7 +10,7 @@ const clean = (value: unknown) => String(value ?? "").trim();
 
 export function SampleEntryForm() {
   const navigate = useNavigate();
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [locations] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
   const [npdId, setNpdId] = useState("");
   const [location, setLocation] = useState("");

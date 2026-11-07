@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { QcBlockLocationMaster } from "../types";
 
@@ -12,7 +12,7 @@ const clean = (value: unknown) => String(value ?? "").trim();
 export function QcBlockRecordForm() {
   const navigate = useNavigate();
   const [locations] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [npdId, setNpdId] = useState("");
   const [location, setLocation] = useState("");
   const [blockNo, setBlockNo] = useState("");

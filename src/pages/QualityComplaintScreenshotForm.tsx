@@ -1,7 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Upload } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import type { Firm, Production, QualityComplaint } from "../types";
 
 type PhotoKey = "photo1" | "photo2";
@@ -38,7 +38,7 @@ function fileDataUrl(file: File) {
 export function QualityComplaintScreenshotForm() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [, , , api] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all" });
   const [form, setForm] = useState<FormState>(blank);
   const [message, setMessage] = useState("");

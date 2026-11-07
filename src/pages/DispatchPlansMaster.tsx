@@ -6,7 +6,7 @@ import { useData } from "../hooks/useData";
 import { DispatchPlan, Truck, Order, Company, OrderSchedule, LoadingSlip } from "../types";
 import { formatDate } from "../lib/serial";
 import { Pencil, Save, Trash2, X } from "lucide-react";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -28,7 +28,7 @@ export function DispatchPlansMaster() {
   const [trucks] = useData<Truck>("trucks", []);
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const { resolveOrderItem } = useOrderItemCatalog();
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });

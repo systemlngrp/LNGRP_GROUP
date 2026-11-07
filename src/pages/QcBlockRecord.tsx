@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import type { Firm, Item, QcBlockLocationMaster, QcBlockRecord } from "../types";
 
@@ -15,7 +15,7 @@ export function QcBlockRecord() {
   const [records, , loading, api] = useData<QcBlockRecord>("qc_block_records", [], { firmScope: "all" });
   const [locations] = useData<QcBlockLocationMaster>("qc_block_location_masters", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const items = useNpdItems();
+  const items = useNpdItemsWithoutStock();
   const [showForm, setShowForm] = useState(false);
   const [firmId, setFirmId] = useState(""); const [erp, setErp] = useState(""); const [location, setLocation] = useState(""); const [blockNo, setBlockNo] = useState(""); const [party, setParty] = useState(""); const [item, setItem] = useState(""); const [message, setMessage] = useState(""); const [filters, setFilters] = useState<Filters>(emptyFilters);
   const erpOptions = useMemo(() => (items as Item[]).filter(i => i.erp !== undefined).map(i => ({ value: String(i.erp), label: `${i.erp} — ${i.name}`, searchText: `${i.erp} ${i.name} ${i.customer || ""}` })), [items]);
