@@ -36,6 +36,24 @@ export function PendingTallyEntry() {
   const formatMoney = (value?: number) =>
     `${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+  // Lookups built once (the row loops used to search the full material, NPD,
+  // supplier and firm lists for every line on every render). First match
+  // wins, the same as .find().
+  const firstNameById = (rows: Array<{ id: string; name?: string }>) => {
+    const map = new Map<string, string | undefined>();
+    rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row.name); });
+    return map;
+  };
+  const materialNameById = useMemo(() => firstNameById(materials as any), [materials]);
+  const npdNameById = useMemo(() => firstNameById(npdItems as any), [npdItems]);
+  const supplierNameById = useMemo(() => firstNameById(suppliers as any), [suppliers]);
+  const firmIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    firms.forEach((firm, index) => { if (!map.has(firm.id)) map.set(firm.id, index); });
+    return map;
+  }, [firms]);
+  const itemNameFor = (itemId: string) => materialNameById.get(itemId) || npdNameById.get(itemId);
+
   const pendingList = useMemo(() => {
     return materialIn
       .filter((m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in")
@@ -46,7 +64,8 @@ export function PendingTallyEntry() {
         return (!firmFilter || firmName === firmFilter) && (!itemFilter || itemNames.includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || supplierName === supplierFilter) && (!mrrFilter || String(m.transactionNo || "").toLowerCase().includes(mrrFilter.trim().toLowerCase()));
       })
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter, materialNameById, npdNameById, supplierNameById, firmIndexById]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -112,7 +131,7 @@ export function PendingTallyEntry() {
     return (
       <ul className="list-none space-y-1">
         {lines.map((l, idx) => {
-          const itemName = materials.find(i => i.id === l.itemId)?.name || npdItems.find(i => i.id === l.itemId)?.name;
+          const itemName = itemNameFor(l.itemId);
           return (
             <li key={idx} className="whitespace-normal break-words border-b border-black last:border-0 pb-1 last:pb-0 mb-1 last:mb-0 text-[10px]">
               <span className="font-medium text-black">{itemName || 'Unknown'}</span>
@@ -132,14 +151,18 @@ export function PendingTallyEntry() {
     }, 0);
 
   function getSupplierName(id: string) {
-    return suppliers.find(s => s.id === id)?.name || id;
+    return supplierNameById.get(id) || id;
   }
   function getFirmName(mrr: MaterialIn) {
-    const firm = firms.find((entry) => entry.id === mrr.firmId || entry.id === mrr.destinationFirmId);
+    // Earliest firm in the list matching either id (same as the old .find).
+    const indexes = [mrr.firmId, mrr.destinationFirmId]
+      .map((id) => (id === undefined || id === null ? undefined : firmIndexById.get(id)))
+      .filter((index): index is number => index !== undefined);
+    const firm = indexes.length ? firms[Math.min(...indexes)] : undefined;
     return getFirmDisplayName(firm || (mrr.firmName ? { firmName: mrr.firmName } : null));
   }
   function getItemNames(mrr: MaterialIn) {
-    return mrr.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
+    return mrr.lines.map((line) => itemNameFor(line.itemId) || "Unknown").join(" ");
   }
   const firmOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Tally").map(getFirmName))).sort();
   const supplierOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Tally").map((m) => getSupplierName(m.supplierId)))).sort();
