@@ -314,6 +314,19 @@ function removeResizeHandles(table: HTMLTableElement) {
   table.querySelectorAll<HTMLElement>(".app-resizable-header").forEach((header) => header.classList.remove("app-resizable-header"));
 }
 
+// Stable numbers for row elements, so "did the rows change?" is a cheap
+// comparison of ids instead of reading every row's text.
+const rowIds = new WeakMap<Element, number>();
+let nextRowId = 1;
+function rowIdentity(row: Element) {
+  let id = rowIds.get(row);
+  if (!id) {
+    id = nextRowId++;
+    rowIds.set(row, id);
+  }
+  return id;
+}
+
 function getDirectTableRows(table: HTMLTableElement) {
   return Array.from(table.tBodies).flatMap((tbody) => Array.from(tbody.rows))
     .filter((row) => row.closest("table") === table);
@@ -416,7 +429,15 @@ function enhanceTablePagination(table: HTMLTableElement, content: HTMLElement, p
         return;
       }
 
-      const nextSignature = dataRows.map((row) => `${row.textContent || ""}`).join("\u0001");
+      // Row count + row element identities, plus the first and last row text
+      // (catches rows reused with new content after a filter), instead of the
+      // text of every row.
+      const nextSignature = [
+        dataRows.length,
+        dataRows.map(rowIdentity).join(","),
+        dataRows[0]?.textContent || "",
+        dataRows[dataRows.length - 1]?.textContent || "",
+      ].join("\u0001");
       if (nextSignature !== rowSignature) {
         rowSignature = nextSignature;
         page = 1;
@@ -429,6 +450,10 @@ function enhanceTablePagination(table: HTMLTableElement, content: HTMLElement, p
       dataRows.forEach((row, rowIndex) => setPaginationHidden(row, rowIndex < startIndex || rowIndex >= endIndex));
       staticRows.forEach((row) => setPaginationHidden(row, false));
       host.hidden = false;
+      // Rebuild the pager only when what it shows changed.
+      const renderKey = `${dataRows.length}|${page}|${pageSize}`;
+      if (host.dataset.renderKey === renderKey && host.childElementCount > 0) return;
+      host.dataset.renderKey = renderKey;
       host.replaceChildren();
 
       const summary = document.createElement("div");
@@ -630,6 +655,27 @@ function addResizeHandles(
   const key = tableKey(pathname, table, index);
   table.dataset.tableResizeKey = key;
   const columnCount = getColumnCount(headerRow);
+
+  // Same columns, same rows, same shared widths and permission as last time:
+  // nothing to measure again (measuring forces a page layout).
+  const enhanceSignature = [
+    key,
+    columnCount,
+    canResize ? 1 : 0,
+    JSON.stringify(sharedWidths[key] || null),
+    getDirectTableRows(table).map(rowIdentity).join(","),
+  ].join("\u0001");
+  if (table.dataset.tableResizeReady === "true" && table.dataset.enhanceSignature === enhanceSignature) {
+    if (canResize && !table.querySelector(".app-table-column-resizer")) {
+      // Handles removed by a re-render: install them again with the current widths.
+      const currentWidths = Array.from(table.querySelectorAll<HTMLTableColElement>("colgroup[data-resizable-columns] col"))
+        .map((column) => Number.parseFloat(column.style.width) || MIN_COLUMN_WIDTH);
+      installResizeHandles(table, headerRow, currentWidths, getActionColumnIndexes(table, columnCount), key, onResize);
+    }
+    return;
+  }
+  table.dataset.enhanceSignature = enhanceSignature;
+
   const actionColumns = getActionColumnIndexes(table, columnCount);
   markActionColumns(table, actionColumns, columnCount);
 
@@ -758,9 +804,26 @@ export function ResizableTables() {
         [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].every((node) =>
           node instanceof Element && (node.matches(".app-table-pagination, .app-table-column-resizer, colgroup[data-resizable-columns], col"))
         ) && record.addedNodes.length + record.removedNodes.length > 0));
+    // Re-process at most once per ~150 ms, on an animation frame, instead of
+    // after every single DOM change.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let frame: number | null = null;
+    let lastRun = performance.now();
+    const scheduleEnhance = () => {
+      if (timer !== null || frame !== null) return;
+      const wait = Math.max(0, 150 - (performance.now() - lastRun));
+      timer = setTimeout(() => {
+        timer = null;
+        frame = requestAnimationFrame(() => {
+          frame = null;
+          lastRun = performance.now();
+          enhance();
+        });
+      }, wait);
+    };
     const observer = new MutationObserver((records) => {
       if (records.every(isOwnMutation)) return;
-      enhance();
+      scheduleEnhance();
     });
     observer.observe(content, {
       childList: true,
@@ -768,7 +831,11 @@ export function ResizableTables() {
       attributes: true,
       attributeFilter: ["data-table-pagination-external"],
     });
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (timer !== null) clearTimeout(timer);
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
   }, [canResize, location.pathname, setting?.tableColumnWidths]);
 
   return null;
