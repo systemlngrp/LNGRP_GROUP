@@ -188,7 +188,7 @@ export function NpdMaster() {
     void loadRows();
   }, [loadRows]);
 
-  useTrackPageLoading(loading, loadError || null, () => void loadRows(), rows.length, total);
+  useTrackPageLoading(loading, loadError || null, () => void loadRows(), rows.length, total, "Loading NPD items…");
 
   useAutoRefreshEffect(() => {
     void loadRows(false, searchTerm);
@@ -346,7 +346,6 @@ export function NpdMaster() {
       <div className="overflow-hidden rounded border border-black bg-white shadow-sm">
         <div className="flex flex-col gap-3 border-b border-black bg-slate-50 px-4 py-3 text-sm font-semibold text-black md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3">
-            {loading ? <Spinner size={18} /> : null}
             <span>{loading ? "Loading NPD items..." : pageLabel}</span>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -425,7 +424,6 @@ export function NpdMaster() {
                 <tr>
                   <td colSpan={1 + tableColumns.length + firmColumnCount + 1} className="px-6 py-12">
                     <div className="flex items-center justify-center gap-3 text-black">
-                      <Spinner size={28} />
                       <span className="font-semibold">Loading NPD items...</span>
                     </div>
                   </td>

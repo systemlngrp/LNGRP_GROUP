@@ -159,13 +159,8 @@ export function ItemwiseLeastCost() {
     paginatedItems: paginatedData,
   } = useClientPagination(filteredData, 25);
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Spinner size={40} />
-      </div>
-    );
-  }
+  // The centred loading card comes from the page loading boundary.
+  if (isLoading) return null;
 
   return (
     <div className="space-y-6">

@@ -678,9 +678,7 @@ export function Users() {
                   {usersLoading ? (
                     <tr>
                       <td colSpan={8} className="px-6 py-8 text-center text-black">
-                        <div className="flex justify-center">
-                          <Spinner />
-                        </div>
+                        Loading…
                       </td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (

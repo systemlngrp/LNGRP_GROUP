@@ -94,7 +94,7 @@ export function ConversionCostDetailsReport() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-900 pb-3">
-        <div><h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Details</h1>{serverReport.loading && !serverReport.failed && <p className="text-xs font-bold text-indigo-700">Calculating report…</p>}</div>
+        <div><h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Details</h1></div>
         <button className="inline-flex items-center gap-2 rounded border border-gray-900 px-3 py-2 text-sm font-bold" type="button" onClick={resetReport}>
           <RotateCcw size={16} /> Reset
         </button>

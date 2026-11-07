@@ -390,6 +390,19 @@ export function OperationDashboard() {
   }, [pendingJobClosureRetryKey]);
 
   useTrackPageLoading(pendingJobClosureLoading, pendingJobClosureError, () => setPendingJobClosureRetryKey((value) => value + 1));
+  // Centred loading card while the server calculates the figures (in browser
+  // mode the lists' own loading shows the card).
+  useTrackPageLoading(
+    !clientMode && !dataReady && !serverFailed,
+    null,
+    () => setServerRefreshKey((value) => value + 1),
+    0,
+    null,
+    "Calculating latest figures…",
+    waitingSeconds >= 20
+      ? `${waitingSeconds}s — the first load after a server restart can take a few minutes`
+      : `${waitingSeconds}s`,
+  );
 
   const summary = result.summary;
   const processingMachineCards = result.processingMachineCards;
@@ -442,24 +455,6 @@ export function OperationDashboard() {
                   >
                     Retry
                   </button>
-                </div>
-              ) : !dataReady ? (
-                <div className="mt-2 flex items-center gap-3 rounded-md border-2 border-indigo-700 bg-indigo-50 px-3 py-2 text-indigo-800" role="status" aria-live="polite">
-                  <Spinner size={22} />
-                  <div className="leading-tight">
-                    <div className="text-xs font-black uppercase tracking-wide">
-                      {clientMode
-                        ? `Loading latest data (${loadedListCount} of ${loadingFlags.length} lists)…`
-                        : `Calculating latest figures… ${waitingSeconds}s`}
-                    </div>
-                    <div className="text-[10px] font-bold">
-                      {clientMode
-                        ? "Figures will appear once all records are loaded."
-                        : waitingSeconds >= 20
-                          ? "The first load after a server restart can take a few minutes. Figures below are not loaded yet."
-                          : "Figures below are not loaded yet."}
-                    </div>
-                  </div>
                 </div>
               ) : null}
             </div>

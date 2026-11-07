@@ -1,9 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { releaseSidebarRequests } from "../lib/collectionLoader";
+import { CenteredLoader } from "./Spinner";
 
 export type DataLoadState = {
   loading: boolean;
+  /** Optional text for the centred loading card (e.g. "Calculating report…"). */
+  label?: string;
+  detail?: string;
   error: string | null;
   loaded: number;
   total: number | null;
@@ -30,7 +34,7 @@ export function RouteMountMarker() {
   return null;
 }
 
-export function useTrackPageLoading(loading: boolean, error: string | null, retry: () => void, loaded = 0, total: number | null = null) {
+export function useTrackPageLoading(loading: boolean, error: string | null, retry: () => void, loaded = 0, total: number | null = null, label?: string, detail?: string) {
   const registry = useContext(DataLoadingContext);
   const id = useId();
   const retryRef = useRef(retry);
@@ -42,8 +46,8 @@ export function useTrackPageLoading(loading: boolean, error: string | null, retr
     return () => registry.unregister(id);
   }, [registry, id, stableRetry]);
   useEffect(() => {
-    registry?.update(id, { loading, error, loaded, total, retry: stableRetry });
-  }, [registry, id, loading, error, loaded, total, stableRetry]);
+    registry?.update(id, { loading, error, loaded, total, retry: stableRetry, label, detail });
+  }, [registry, id, loading, error, loaded, total, stableRetry, label, detail]);
 }
 
 export function DataLoadingBoundary({ children }: { children: ReactNode }) {
@@ -58,7 +62,8 @@ export function DataLoadingBoundary({ children }: { children: ReactNode }) {
     setEntries((current) => {
       const previous = current[id];
       if (previous && previous.loading === state.loading && previous.error === state.error &&
-          previous.loaded === state.loaded && previous.total === state.total) return current;
+          previous.loaded === state.loaded && previous.total === state.total &&
+          previous.label === state.label && previous.detail === state.detail) return current;
       return { ...current, [id]: state };
     });
   }, []);
@@ -89,6 +94,14 @@ export function DataLoadingBoundary({ children }: { children: ReactNode }) {
       <div ref={contentRef}>
         {children}
       </div>
+      {loading && failed.length === 0 ? (() => {
+        // One loading card in the middle of the screen for the whole page.
+        const labelled = states.find((state) => state.loading && state.label);
+        const detail = labelled?.detail || (loaded > 0
+          ? `${loaded.toLocaleString("en-IN")}${allTotalsKnown && knownTotal > loaded ? ` of ${knownTotal.toLocaleString("en-IN")}` : ""} records loaded`
+          : undefined);
+        return <CenteredLoader message={labelled?.label || "Loading data…"} detail={detail} />;
+      })() : null}
     </PageDataStatusContext.Provider>
     </DataLoadingContext.Provider>
   );

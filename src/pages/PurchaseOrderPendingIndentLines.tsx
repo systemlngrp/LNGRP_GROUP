@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Eye, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { Spinner } from "../components/Spinner";
+import { Spinner, CenteredLoader } from "../components/Spinner";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import { formatDate } from "../lib/serial";
 import { ExcelExport } from "../components/ExcelExport";
@@ -382,7 +382,7 @@ export function PurchaseOrderPendingIndentLines() {
     }
   };
 
-  if (loading && rows.length === 0) return <Spinner />;
+  if (loading && rows.length === 0) return <CenteredLoader message="Loading data…" />;
 
   return (
     <div className="space-y-6">

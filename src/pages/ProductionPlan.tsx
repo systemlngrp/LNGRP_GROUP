@@ -281,10 +281,7 @@ export function ProductionPlan() {
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         {isLoading ? (
           <div className="flex min-h-[220px] items-center justify-center px-6 py-12">
-            <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
-              <Spinner size={28} />
-              <span>Loading production plan...</span>
-            </div>
+            {/* The centred loading card comes from the page loading boundary. */}
           </div>
         ) : (
         <div className="overflow-x-auto max-h-[70vh]">

@@ -213,7 +213,7 @@ export function FirmMaster() {
               {sortedFirms.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center font-medium text-black border border-black">
-                    {isLoading ? <div className="flex justify-center"><Spinner /></div> : "No firms found."}
+                    {isLoading ? "Loading…" : "No firms found."}
                   </td>
                 </tr>
               ) : (

@@ -493,7 +493,7 @@ export function Suppliers() {
                 {filteredSuppliers.length === 0 ? (
                   <tr>
                     <td colSpan={12} className="px-6 py-8 text-center text-black font-medium tracking-wide">
-                      {suppliersLoading || isSubmitting ? <Spinner /> : "No suppliers found."}
+                      {suppliersLoading || isSubmitting ? "Loading…" : "No suppliers found."}
                     </td>
                   </tr>
                 ) : (

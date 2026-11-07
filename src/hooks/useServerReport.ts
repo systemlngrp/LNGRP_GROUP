@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getDataAuthHeaders } from "./useData";
 import { realtimeChangeAffects } from "../lib/collectionLoader";
 import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
+import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 
 /**
  * Runs a report on the server (/api/reports/<name>) and returns only its
@@ -78,6 +79,27 @@ export function useServerReport<T>(name: string, params: Record<string, unknown>
       window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleChange);
     };
   }, [enabled, failed]);
+
+  // Centred loading card while the server calculates (first build after a
+  // restart can take a while, so say so after 20 s).
+  const [startedAt] = useState(() => Date.now());
+  const [, setTick] = useState(0);
+  const showLoader = enabled && loading && !failed;
+  useEffect(() => {
+    if (!showLoader) return;
+    const timer = setInterval(() => setTick((value) => value + 1), 1000);
+    return () => clearInterval(timer);
+  }, [showLoader]);
+  const waited = Math.round((Date.now() - startedAt) / 1000);
+  useTrackPageLoading(
+    showLoader,
+    null,
+    () => setRefreshKey((key) => key + 1),
+    0,
+    null,
+    "Calculating report…",
+    waited >= 20 ? `${waited}s — the first load after a server restart can take a few minutes` : undefined,
+  );
 
   return { result, loading, failed, refresh: () => setRefreshKey((key) => key + 1) };
 }

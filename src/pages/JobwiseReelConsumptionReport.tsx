@@ -117,7 +117,7 @@ export function JobwiseReelConsumptionReport() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Jobwise Reel Consumption Report</h2>
-        {serverReport.loading && !serverReport.failed && <p className="text-xs font-bold text-indigo-700">Calculating report…</p>}
+        
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">

@@ -73,7 +73,7 @@ export function ReelTransferForm() {
     finally { setSaving(false); }
   };
 
-  if (productionsLoading || processingLoading || issuesLoading || returnsLoading) return <Spinner />;
+  if (productionsLoading || processingLoading || issuesLoading || returnsLoading) return null; // centred loading card comes from the page loading boundary
   return <div className="mx-auto max-w-7xl text-black">
     <form onSubmit={submit} className="space-y-4 rounded border border-black bg-white p-4 shadow-sm md:p-6">
       <div className="flex flex-col justify-between gap-3 border-b border-black pb-3 md:flex-row md:items-center">

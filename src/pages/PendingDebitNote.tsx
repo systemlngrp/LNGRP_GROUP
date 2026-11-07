@@ -100,7 +100,7 @@ export function PendingDebitNote() {
               {debitNoteList.length === 0 ? (
                 <tr>
                   <td colSpan={columnCount} className="px-4 py-20 text-center font-bold text-slate-400 uppercase tracking-widest text-sm">
-                    {isLoading ? <Spinner /> : "No pending debit notes found"}
+                    {isLoading ? "Loading…" : "No pending debit notes found"}
                   </td>
                 </tr>
               ) : (

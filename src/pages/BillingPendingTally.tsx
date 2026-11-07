@@ -252,7 +252,7 @@ export function BillingPendingTally() {
             {processedInvoices.length === 0 ? (
               <tr>
                 <td colSpan={tableColumnCount} className="px-6 py-12 text-center text-slate-500 italic">
-                  {isLoading ? <Spinner /> : "No pending invoices for Tally posting."}
+                  {isLoading ? "Loading…" : "No pending invoices for Tally posting."}
                 </td>
               </tr>
             ) : (

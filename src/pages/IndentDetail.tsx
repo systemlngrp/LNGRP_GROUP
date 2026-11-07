@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { Firm, Indent, IndentLine, Material, Setting } from "../types";
-import { Spinner } from "../components/Spinner";
+import { Spinner, CenteredLoader } from "../components/Spinner";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 
 import { TableControls } from "../components/TableControls";
@@ -157,7 +157,7 @@ export function IndentDetail() {
   };
 
   if (detailLoading) {
-    return <Spinner />;
+    return <CenteredLoader message="Loading indent…" />;
   }
 
   if (detailStatus === 403) {

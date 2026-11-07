@@ -13,15 +13,10 @@ import { useRealtimeDataSync } from "../hooks/useRealtimeDataSync";
 import { ResizableTables } from "./ResizableTables";
 import { FullscreenViewControl } from "./FullscreenViewControl";
 import { BackNavigationControl } from "./BackNavigationControl";
-import { Spinner } from "./Spinner";
 
 function PageLoadingFallback() {
-  return (
-    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 p-6 text-center">
-      <Spinner />
-      <div className="text-sm font-bold text-slate-700">Loading page…</div>
-    </div>
-  );
+  // The page's loading boundary shows the centred loading card meanwhile.
+  return null;
 }
 
 export function Layout() {

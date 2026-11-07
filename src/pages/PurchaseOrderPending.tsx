@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Supplier, Material } from "../types";
 import { formatDate } from "../lib/serial";
-import { Spinner } from "../components/Spinner";
+import { Spinner, CenteredLoader } from "../components/Spinner";
 import { Search, ChevronDown, ChevronUp, CheckSquare, Square } from "lucide-react";
 import { useAutoRefreshEffect, useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
@@ -196,7 +196,7 @@ export function PurchaseOrderPending() {
     }
   };
 
-  if (loading && rows.length === 0) return <Spinner />;
+  if (loading && rows.length === 0) return <CenteredLoader message="Loading data…" />;
 
   return (
     <div className="space-y-6">

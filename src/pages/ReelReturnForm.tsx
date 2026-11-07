@@ -223,7 +223,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
     finally { setIsSubmitting(false); }
   };
 
-  if (materialsLoading || productionsLoading || issueReelsLoading || returnReelsLoading) return <Spinner />;
+  if (materialsLoading || productionsLoading || issueReelsLoading || returnReelsLoading) return null; // centred loading card comes from the page loading boundary
   const displayedRows = mode === "manual" ? reelsForJob : selectedRows;
   return <div className="min-w-0 overflow-hidden rounded border border-black bg-white p-3 text-black shadow-sm md:p-6">
     <div className="mb-4 flex flex-col items-start gap-3 border-b border-black pb-3 sm:flex-row sm:items-center md:mb-6"><div><h2 className="break-words text-lg font-bold uppercase tracking-tight md:text-xl">{mode === "qr" ? "QR Reel Return" : "Manual Reel Return"}</h2></div>{returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="inline-flex w-full items-center justify-center gap-1 rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase hover:bg-slate-100 sm:ml-auto sm:w-auto"><ArrowLeft size={15} /> Pending Returns</button> : null}</div>

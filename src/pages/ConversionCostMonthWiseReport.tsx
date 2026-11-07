@@ -85,7 +85,7 @@ export function ConversionCostMonthWiseReport() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-900 pb-3">
-        <div><h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Month Wise</h1>{serverReport.loading && !serverReport.failed && <p className="text-xs font-bold text-indigo-700">Calculating report…</p>}</div>
+        <div><h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Month Wise</h1></div>
         <div className="flex flex-wrap items-center gap-2">
           <select className="rounded border border-gray-900 p-2 text-sm font-bold" value={fy} onChange={(event) => setFy(event.target.value)}>
             {fyOptions.map((option) => (

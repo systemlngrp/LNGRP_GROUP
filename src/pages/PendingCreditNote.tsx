@@ -116,7 +116,7 @@ export function PendingCreditNote() {
               {creditNoteList.length === 0 ? (
                 <tr>
                   <td colSpan={columnCount} className="px-4 py-20 text-center font-bold text-slate-400 uppercase tracking-widest text-sm">
-                    {isLoading ? <Spinner /> : "No pending credit notes found"}
+                    {isLoading ? "Loading…" : "No pending credit notes found"}
                   </td>
                 </tr>
               ) : (
