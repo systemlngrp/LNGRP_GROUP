@@ -18335,6 +18335,15 @@ function callCollectionHandler(entity: string, query: Record<string, string>, fi
 const SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
 const SNAPSHOT_IDLE_EVICT_MS = 15 * 60_000;
 const SNAPSHOT_DERIVED_ENTITIES = new Set(["materials", "items", "npd", "invoice_line_items", "production_processing"]);
+// Joined lists and the tables their queries read. They are re-read only when
+// one of these changes (they used to be re-read after any change anywhere).
+// Lists not listed here (npd, items: stock from many tables) still refresh on
+// any change.
+const SNAPSHOT_JOIN_DEPENDENCIES: Record<string, string[]> = {
+  production_processing: ["production_processing", "productions", "npd"],
+  invoice_line_items: ["invoice_line_items", "invoices", "items", "npd", "php_item_master", "plate_item_master", "materials"],
+  materials: ["materials", "material_firm_openings"],
+};
 const collectionSnapshots = new Map<string, { rows: any[]; builtAt: number; usedAt: number; tableVersion: number; globalVersion: number }>();
 const snapshotTableVersions = new Map<string, number>();
 // Versions bumped only by writes to the table itself (no join-based bumps).
@@ -18352,7 +18361,12 @@ function markSnapshotTablesChanged(entities: string[]) {
     snapshotRawTableVersions.set(table, (snapshotRawTableVersions.get(table) || 0) + 1);
   }
   // Join-based lists depend on several tables.
-  for (const derived of SNAPSHOT_DERIVED_ENTITIES) snapshotTableVersions.set(derived, (snapshotTableVersions.get(derived) || 0) + 1);
+  const changedTables = new Set(entities.map((entity) => String(entity || "").replace(/-/g, "_")));
+  for (const derived of SNAPSHOT_DERIVED_ENTITIES) {
+    const dependsOn = SNAPSHOT_JOIN_DEPENDENCIES[derived];
+    if (dependsOn && !dependsOn.some((table) => changedTables.has(table))) continue;
+    snapshotTableVersions.set(derived, (snapshotTableVersions.get(derived) || 0) + 1);
+  }
 }
 
 setInterval(() => {
@@ -18600,18 +18614,39 @@ app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
       res.setHeader("Cache-Control", "no-store");
       return res.json({ ...cached.value, cached: true });
     }
-    const inflight = dashboardSummaryInflight.get(cacheKey);
-    if (inflight) {
-      const value = await inflight;
-      res.setHeader("Cache-Control", "no-store");
-      return res.json({ ...value, cached: true });
+    // Build in the background and wait at most ~25s, so the request never hits
+    // the hosting proxy's 60s limit (the page then fell back to downloading
+    // every list in the browser). The page asks again while it gets 202.
+    let job = dashboardSummaryInflight.get(cacheKey);
+    if (!job) {
+      job = buildOperationDashboardSummary(db, firmId, authUserId, { from, to, closedJobFilter, includeExportRows }, cacheKey)
+        .finally(() => { dashboardSummaryInflight.delete(cacheKey); });
+      job.catch(() => undefined);
+      dashboardSummaryInflight.set(cacheKey, job);
     }
-    let resolveInflight!: (value: any) => void;
-    let rejectInflight!: (error: unknown) => void;
-    const inflightPromise = new Promise<any>((resolve, reject) => { resolveInflight = resolve; rejectInflight = reject; });
-    inflightPromise.catch(() => undefined);
-    dashboardSummaryInflight.set(cacheKey, inflightPromise);
-    try {
+    const outcome = await Promise.race([
+      job.then((value) => ({ done: true as const, value })),
+      new Promise<{ done: false }>((resolve) => setTimeout(() => resolve({ done: false }), DASHBOARD_SUMMARY_WAIT_MS)),
+    ]);
+    res.setHeader("Cache-Control", "no-store");
+    if (!outcome.done) return res.status(202).json({ pending: true });
+    return res.json(outcome.value);
+  } catch (error) {
+    console.error("[DASHBOARD_SUMMARY] failed:", error);
+    return res.status(500).json({ error: "Failed to build dashboard summary" });
+  }
+});
+
+const DASHBOARD_SUMMARY_WAIT_MS = 25_000;
+async function buildOperationDashboardSummary(
+  db: mysql.Pool,
+  firmId: string,
+  authUserId: string,
+  options: { from: string; to: string; closedJobFilter: string; includeExportRows: boolean },
+  cacheKey: string,
+) {
+    const startedAt = Date.now();
+    const { from, to, closedJobFilter, includeExportRows } = options;
     const withFirm = (entity: string) => loadCollectionLikeClient(entity, firmId, authUserId);
     const allFirms = (entity: string) => loadCollectionLikeClient(entity, "", authUserId);
     // Load sequentially: one DB connection at a time (hosting connection quota).
@@ -18655,8 +18690,12 @@ app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
       ["npdFirmWiseRows", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }))],
       ["catalogFgRows", () => loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }))],
     ];
+    const steps: Array<[string, number, number]> = [];
     for (const [key, load] of plan) {
+      const stepStart = Date.now();
       lists[key] = await load();
+      steps.push([key, Date.now() - stepStart, Array.isArray(lists[key]) ? lists[key].length : -1]);
+      reportBuildTimings.set("operations-dashboard", { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [...steps] });
     }
     const loadedMs = Date.now() - startedAt;
     const { computeOperationDashboard } = await loadDashboardSummaryModule();
@@ -18670,20 +18709,8 @@ app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
     const value = { ...result, generatedAt: new Date().toISOString(), timings: { loadMs: loadedMs, totalMs } };
     dashboardSummaryCache.set(cacheKey, { expiresAt: Date.now() + DASHBOARD_SUMMARY_CACHE_TTL_MS, value });
     if (dashboardSummaryCache.size > 50) dashboardSummaryCache.delete(dashboardSummaryCache.keys().next().value as string);
-    resolveInflight(value);
-    res.setHeader("Cache-Control", "no-store");
-    return res.json(value);
-    } catch (error) {
-      rejectInflight(error);
-      throw error;
-    } finally {
-      dashboardSummaryInflight.delete(cacheKey);
-    }
-  } catch (error) {
-    console.error("[DASHBOARD_SUMMARY] failed:", error);
-    return res.status(500).json({ error: "Failed to build dashboard summary" });
-  }
-});
+    return value;
+}
 
 entities.forEach(entity => {
   const handlers = createHandlers(entity);
@@ -18876,22 +18903,38 @@ app.post("/api/table-column-widths", async (req, res) => {
 registerSalesOrderSync(app, getPool);
 
 async function startServer() {
-  databaseInitializationState = "running";
-  databaseInitializationError = "";
-  databaseInitializationPromise = (async () => {
-    await initDb();
-    const db = await getPool();
-    if (!db) throw Object.assign(new Error("Database connection is not configured."), { code: "DB_NOT_CONFIGURED" });
-    await queryWithTimeout(db, "SELECT 1 AS connected", [], HEALTH_DB_QUERY_TIMEOUT_MS);
-    await ensureProductionProcessingAuditColumns(db);
-    databaseInitializationState = "ready";
-  })().catch((error) => {
-    const safeError = safeDatabaseError(error);
-    databaseInitializationState = "failed";
-    databaseInitializationError = safeError.message;
-    console.error(`[SERVER] Database initialization failed (${safeError.code}): ${safeError.message}`);
-    throw error;
-  });
+  // Resolves once database setup has succeeded. A failed attempt (database
+  // busy during a restart) is retried with growing gaps instead of leaving the
+  // background jobs and Daily Consumption stopped until the next restart.
+  let resolveInitialized: () => void = () => undefined;
+  const initializedPromise = new Promise<void>((resolve) => { resolveInitialized = resolve; });
+  const runDatabaseInitialization = async (attempt: number): Promise<void> => {
+    databaseInitializationState = "running";
+    databaseInitializationError = "";
+    try {
+      await initDb();
+      const db = await getPool();
+      if (!db) throw Object.assign(new Error("Database connection is not configured."), { code: "DB_NOT_CONFIGURED" });
+      await queryWithTimeout(db, "SELECT 1 AS connected", [], HEALTH_DB_QUERY_TIMEOUT_MS);
+      await ensureProductionProcessingAuditColumns(db);
+      databaseInitializationState = "ready";
+      databaseInitializationPromise = initializedPromise;
+      resolveInitialized();
+    } catch (error) {
+      const safeError = safeDatabaseError(error);
+      databaseInitializationState = "failed";
+      databaseInitializationError = safeError.message;
+      const retryMs = Math.min(5 * 60_000, attempt * 60_000);
+      console.error(`[SERVER] Database initialization failed (${safeError.code}): ${safeError.message}; retry ${attempt} in ${retryMs / 1000}s`);
+      setTimeout(() => {
+        databaseInitializationPromise = runDatabaseInitialization(attempt + 1);
+        databaseInitializationPromise.catch(() => undefined);
+      }, retryMs);
+      throw error;
+    }
+  };
+  databaseInitializationPromise = runDatabaseInitialization(1);
+  databaseInitializationPromise.catch(() => undefined);
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -18926,7 +18969,7 @@ async function startServer() {
   // Database setup can take longer than the proxy's startup timeout.
   // Keep the web server available while migrations run; Daily Consumption
   // endpoints await databaseInitializationPromise before querying.
-  void databaseInitializationPromise.then(() => {
+  void initializedPromise.then(() => {
     setInterval(() => {
       void retryPendingWhatsappComplaints();
       void retryPrintingShiftReports();

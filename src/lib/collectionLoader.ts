@@ -47,12 +47,26 @@ function normalizeEntityName(name: string) {
 }
 
 /** True when a realtime change list touches any of the given entities. */
+// Joined lists and the tables their server queries read: they need a reload
+// only when one of these changes (same map as the server's snapshot cache).
+// Other derived lists (NPD stock and friends) still reload on any change.
+const JOIN_DEPENDENCIES: Record<string, string[]> = {
+  production_processing: ["production_processing", "productions", "npd"],
+  invoice_line_items: ["invoice_line_items", "invoices", "items", "npd", "php_item_master", "plate_item_master", "materials"],
+  materials: ["materials", "material_firm_openings"],
+};
+
 export function realtimeChangeAffects(changed: string[], entities: string[], derived = false) {
   if (!changed.length || changed.includes("*")) return true;
+  if (derived) return true;
   const names = entities.map(normalizeEntityName);
-  if (derived || names.some((name) => DERIVED_ENTITIES.has(name))) return true;
   const changedNames = new Set(changed.map(normalizeEntityName));
-  return names.some((name) => changedNames.has(name));
+  return names.some((name) => {
+    const dependsOn = JOIN_DEPENDENCIES[name];
+    if (dependsOn) return dependsOn.some((table) => changedNames.has(table));
+    if (DERIVED_ENTITIES.has(name)) return true;
+    return changedNames.has(name);
+  });
 }
 
 function hasNonFieldParams(endpoint: string) {
@@ -252,7 +266,7 @@ export function loadCollection<T extends { id: string }>(
             rows,
             total: currentTask.progress.total,
             tables: new Set([entity]),
-            derived: hasNonFieldParams(endpoint) || entity.includes("_summary") || DERIVED_ENTITIES.has(entity),
+            derived: hasNonFieldParams(endpoint) || entity.includes("_summary") || (DERIVED_ENTITIES.has(entity) && !JOIN_DEPENDENCIES[entity]),
           });
         }
         if (sharedLoads.get(key) === currentTask) sharedLoads.delete(key);

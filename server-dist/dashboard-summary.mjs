@@ -1951,12 +1951,22 @@ var DERIVED_ENTITIES = /* @__PURE__ */ new Set([
 function normalizeEntityName(name) {
   return String(name || "").trim().toLowerCase().replace(/^\/?api\//, "").replace(/[-/]/g, "_");
 }
+var JOIN_DEPENDENCIES = {
+  production_processing: ["production_processing", "productions", "npd"],
+  invoice_line_items: ["invoice_line_items", "invoices", "items", "npd", "php_item_master", "plate_item_master", "materials"],
+  materials: ["materials", "material_firm_openings"]
+};
 function realtimeChangeAffects(changed, entities, derived = false) {
   if (!changed.length || changed.includes("*")) return true;
+  if (derived) return true;
   const names = entities.map(normalizeEntityName);
-  if (derived || names.some((name) => DERIVED_ENTITIES.has(name))) return true;
   const changedNames = new Set(changed.map(normalizeEntityName));
-  return names.some((name) => changedNames.has(name));
+  return names.some((name) => {
+    const dependsOn = JOIN_DEPENDENCIES[name];
+    if (dependsOn) return dependsOn.some((table) => changedNames.has(table));
+    if (DERIVED_ENTITIES.has(name)) return true;
+    return changedNames.has(name);
+  });
 }
 function clearCollectionCache(changed = ["*"]) {
   sharedLoads.forEach((task) => {

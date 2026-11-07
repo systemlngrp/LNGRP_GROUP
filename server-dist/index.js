@@ -17377,6 +17377,15 @@ function callCollectionHandler(entity, query, firmId, authUserId) {
 const SNAPSHOT_MAX_AGE_MS = 5 * 60_000;
 const SNAPSHOT_IDLE_EVICT_MS = 15 * 60_000;
 const SNAPSHOT_DERIVED_ENTITIES = new Set(["materials", "items", "npd", "invoice_line_items", "production_processing"]);
+// Joined lists and the tables their queries read. They are re-read only when
+// one of these changes (they used to be re-read after any change anywhere).
+// Lists not listed here (npd, items: stock from many tables) still refresh on
+// any change.
+const SNAPSHOT_JOIN_DEPENDENCIES = {
+    production_processing: ["production_processing", "productions", "npd"],
+    invoice_line_items: ["invoice_line_items", "invoices", "items", "npd", "php_item_master", "plate_item_master", "materials"],
+    materials: ["materials", "material_firm_openings"],
+};
 const collectionSnapshots = new Map();
 const snapshotTableVersions = new Map();
 // Versions bumped only by writes to the table itself (no join-based bumps).
@@ -17393,8 +17402,13 @@ function markSnapshotTablesChanged(entities) {
         snapshotRawTableVersions.set(table, (snapshotRawTableVersions.get(table) || 0) + 1);
     }
     // Join-based lists depend on several tables.
-    for (const derived of SNAPSHOT_DERIVED_ENTITIES)
+    const changedTables = new Set(entities.map((entity) => String(entity || "").replace(/-/g, "_")));
+    for (const derived of SNAPSHOT_DERIVED_ENTITIES) {
+        const dependsOn = SNAPSHOT_JOIN_DEPENDENCIES[derived];
+        if (dependsOn && !dependsOn.some((table) => changedTables.has(table)))
+            continue;
         snapshotTableVersions.set(derived, (snapshotTableVersions.get(derived) || 0) + 1);
+    }
 }
 setInterval(() => {
     const cutoff = Date.now() - SNAPSHOT_IDLE_EVICT_MS;
@@ -17651,94 +17665,99 @@ app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
             res.setHeader("Cache-Control", "no-store");
             return res.json({ ...cached.value, cached: true });
         }
-        const inflight = dashboardSummaryInflight.get(cacheKey);
-        if (inflight) {
-            const value = await inflight;
-            res.setHeader("Cache-Control", "no-store");
-            return res.json({ ...value, cached: true });
+        // Build in the background and wait at most ~25s, so the request never hits
+        // the hosting proxy's 60s limit (the page then fell back to downloading
+        // every list in the browser). The page asks again while it gets 202.
+        let job = dashboardSummaryInflight.get(cacheKey);
+        if (!job) {
+            job = buildOperationDashboardSummary(db, firmId, authUserId, { from, to, closedJobFilter, includeExportRows }, cacheKey)
+                .finally(() => { dashboardSummaryInflight.delete(cacheKey); });
+            job.catch(() => undefined);
+            dashboardSummaryInflight.set(cacheKey, job);
         }
-        let resolveInflight;
-        let rejectInflight;
-        const inflightPromise = new Promise((resolve, reject) => { resolveInflight = resolve; rejectInflight = reject; });
-        inflightPromise.catch(() => undefined);
-        dashboardSummaryInflight.set(cacheKey, inflightPromise);
-        try {
-            const withFirm = (entity) => loadCollectionLikeClient(entity, firmId, authUserId);
-            const allFirms = (entity) => loadCollectionLikeClient(entity, "", authUserId);
-            // Load sequentially: one DB connection at a time (hosting connection quota).
-            const lists = {};
-            const plan = [
-                ["productions", () => withFirm("productions")],
-                ["firms", () => withFirm("firms")],
-                ["phpJobMaster", () => withFirm("php_job_master")],
-                ["plateJobMaster", () => withFirm("plate_job_master")],
-                ["materials", () => withFirm("materials")],
-                ["materialIn", () => withFirm("material_in")],
-                ["packingSlips", () => withFirm("material_in_packing_slips")],
-                ["schedules", () => withFirm("orders_schedule")],
-                ["orders", () => withFirm("orders")],
-                ["companies", () => withFirm("companies")],
-                ["gateEntries", () => withFirm("gate_entries")],
-                ["dispatchPlans", () => withFirm("dispatch_plans")],
-                ["processing", () => withFirm("production_processing")],
-                ["loadingSlips", () => withFirm("loading_slips")],
-                ["materialIssues", () => withFirm("material_issues")],
-                ["materialIssueLines", () => withFirm("material_issue_lines")],
-                ["issueReelLines", () => withFirm("material_issue_reel_lines")],
-                ["materialReturns", () => withFirm("material_returns")],
-                ["materialReturnLines", () => withFirm("material_return_lines")],
-                ["returnReelLines", () => withFirm("material_return_reel_lines")],
-                ["invoices", () => withFirm("invoices")],
-                ["invoiceLineItems", () => withFirm("invoice_line_items")],
-                ["consumptions", () => withFirm("consumptions")],
-                ["sampleRequests", () => withFirm("sample_requests")],
-                ["indents", () => withFirm("indents")],
-                ["indentLines", () => withFirm("indent_lines")],
-                ["purchaseOrders", () => withFirm("purchase_orders")],
-                ["phpLoadingSlips", () => withFirm("php_loading_slips")],
-                ["plateLoadingSlips", () => withFirm("plate_loading_slips")],
-                ["gatePasses", () => withFirm("gate_passes")],
-                ["machines", () => withFirm("machines")],
-                ["settings", () => withFirm("settings")],
-                ["catalogPhpRows", () => allFirms("php_item_master")],
-                ["catalogPlateRows", () => allFirms("plate_item_master")],
-                ["catalogMaterialRows", () => allFirms("materials")],
-                ["npdFirmWiseRows", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }))],
-                ["catalogFgRows", () => loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }))],
-            ];
-            for (const [key, load] of plan) {
-                lists[key] = await load();
-            }
-            const loadedMs = Date.now() - startedAt;
-            const { computeOperationDashboard } = await loadDashboardSummaryModule();
-            const result = computeOperationDashboard(lists, {
-                dateRange: { from, to },
-                closedJobFilter,
-                includeExportRows,
-            });
-            const totalMs = Date.now() - startedAt;
-            console.info(`[DASHBOARD_SUMMARY] loadMs=${loadedMs} totalMs=${totalMs} export=${includeExportRows}`);
-            const value = { ...result, generatedAt: new Date().toISOString(), timings: { loadMs: loadedMs, totalMs } };
-            dashboardSummaryCache.set(cacheKey, { expiresAt: Date.now() + DASHBOARD_SUMMARY_CACHE_TTL_MS, value });
-            if (dashboardSummaryCache.size > 50)
-                dashboardSummaryCache.delete(dashboardSummaryCache.keys().next().value);
-            resolveInflight(value);
-            res.setHeader("Cache-Control", "no-store");
-            return res.json(value);
-        }
-        catch (error) {
-            rejectInflight(error);
-            throw error;
-        }
-        finally {
-            dashboardSummaryInflight.delete(cacheKey);
-        }
+        const outcome = await Promise.race([
+            job.then((value) => ({ done: true, value })),
+            new Promise((resolve) => setTimeout(() => resolve({ done: false }), DASHBOARD_SUMMARY_WAIT_MS)),
+        ]);
+        res.setHeader("Cache-Control", "no-store");
+        if (!outcome.done)
+            return res.status(202).json({ pending: true });
+        return res.json(outcome.value);
     }
     catch (error) {
         console.error("[DASHBOARD_SUMMARY] failed:", error);
         return res.status(500).json({ error: "Failed to build dashboard summary" });
     }
 });
+const DASHBOARD_SUMMARY_WAIT_MS = 25_000;
+async function buildOperationDashboardSummary(db, firmId, authUserId, options, cacheKey) {
+    const startedAt = Date.now();
+    const { from, to, closedJobFilter, includeExportRows } = options;
+    const withFirm = (entity) => loadCollectionLikeClient(entity, firmId, authUserId);
+    const allFirms = (entity) => loadCollectionLikeClient(entity, "", authUserId);
+    // Load sequentially: one DB connection at a time (hosting connection quota).
+    const lists = {};
+    const plan = [
+        ["productions", () => withFirm("productions")],
+        ["firms", () => withFirm("firms")],
+        ["phpJobMaster", () => withFirm("php_job_master")],
+        ["plateJobMaster", () => withFirm("plate_job_master")],
+        ["materials", () => withFirm("materials")],
+        ["materialIn", () => withFirm("material_in")],
+        ["packingSlips", () => withFirm("material_in_packing_slips")],
+        ["schedules", () => withFirm("orders_schedule")],
+        ["orders", () => withFirm("orders")],
+        ["companies", () => withFirm("companies")],
+        ["gateEntries", () => withFirm("gate_entries")],
+        ["dispatchPlans", () => withFirm("dispatch_plans")],
+        ["processing", () => withFirm("production_processing")],
+        ["loadingSlips", () => withFirm("loading_slips")],
+        ["materialIssues", () => withFirm("material_issues")],
+        ["materialIssueLines", () => withFirm("material_issue_lines")],
+        ["issueReelLines", () => withFirm("material_issue_reel_lines")],
+        ["materialReturns", () => withFirm("material_returns")],
+        ["materialReturnLines", () => withFirm("material_return_lines")],
+        ["returnReelLines", () => withFirm("material_return_reel_lines")],
+        ["invoices", () => withFirm("invoices")],
+        ["invoiceLineItems", () => withFirm("invoice_line_items")],
+        ["consumptions", () => withFirm("consumptions")],
+        ["sampleRequests", () => withFirm("sample_requests")],
+        ["indents", () => withFirm("indents")],
+        ["indentLines", () => withFirm("indent_lines")],
+        ["purchaseOrders", () => withFirm("purchase_orders")],
+        ["phpLoadingSlips", () => withFirm("php_loading_slips")],
+        ["plateLoadingSlips", () => withFirm("plate_loading_slips")],
+        ["gatePasses", () => withFirm("gate_passes")],
+        ["machines", () => withFirm("machines")],
+        ["settings", () => withFirm("settings")],
+        ["catalogPhpRows", () => allFirms("php_item_master")],
+        ["catalogPlateRows", () => allFirms("plate_item_master")],
+        ["catalogMaterialRows", () => allFirms("materials")],
+        ["npdFirmWiseRows", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }))],
+        ["catalogFgRows", () => loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }))],
+    ];
+    const steps = [];
+    for (const [key, load] of plan) {
+        const stepStart = Date.now();
+        lists[key] = await load();
+        steps.push([key, Date.now() - stepStart, Array.isArray(lists[key]) ? lists[key].length : -1]);
+        reportBuildTimings.set("operations-dashboard", { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [...steps] });
+    }
+    const loadedMs = Date.now() - startedAt;
+    const { computeOperationDashboard } = await loadDashboardSummaryModule();
+    const result = computeOperationDashboard(lists, {
+        dateRange: { from, to },
+        closedJobFilter,
+        includeExportRows,
+    });
+    const totalMs = Date.now() - startedAt;
+    console.info(`[DASHBOARD_SUMMARY] loadMs=${loadedMs} totalMs=${totalMs} export=${includeExportRows}`);
+    const value = { ...result, generatedAt: new Date().toISOString(), timings: { loadMs: loadedMs, totalMs } };
+    dashboardSummaryCache.set(cacheKey, { expiresAt: Date.now() + DASHBOARD_SUMMARY_CACHE_TTL_MS, value });
+    if (dashboardSummaryCache.size > 50)
+        dashboardSummaryCache.delete(dashboardSummaryCache.keys().next().value);
+    return value;
+}
 entities.forEach(entity => {
     const handlers = createHandlers(entity);
     const route = `/api/${entity.replace(/_/g, "-")}`;
@@ -17938,23 +17957,40 @@ app.post("/api/table-column-widths", async (req, res) => {
 });
 registerSalesOrderSync(app, getPool);
 async function startServer() {
-    databaseInitializationState = "running";
-    databaseInitializationError = "";
-    databaseInitializationPromise = (async () => {
-        await initDb();
-        const db = await getPool();
-        if (!db)
-            throw Object.assign(new Error("Database connection is not configured."), { code: "DB_NOT_CONFIGURED" });
-        await queryWithTimeout(db, "SELECT 1 AS connected", [], HEALTH_DB_QUERY_TIMEOUT_MS);
-        await ensureProductionProcessingAuditColumns(db);
-        databaseInitializationState = "ready";
-    })().catch((error) => {
-        const safeError = safeDatabaseError(error);
-        databaseInitializationState = "failed";
-        databaseInitializationError = safeError.message;
-        console.error(`[SERVER] Database initialization failed (${safeError.code}): ${safeError.message}`);
-        throw error;
-    });
+    // Resolves once database setup has succeeded. A failed attempt (database
+    // busy during a restart) is retried with growing gaps instead of leaving the
+    // background jobs and Daily Consumption stopped until the next restart.
+    let resolveInitialized = () => undefined;
+    const initializedPromise = new Promise((resolve) => { resolveInitialized = resolve; });
+    const runDatabaseInitialization = async (attempt) => {
+        databaseInitializationState = "running";
+        databaseInitializationError = "";
+        try {
+            await initDb();
+            const db = await getPool();
+            if (!db)
+                throw Object.assign(new Error("Database connection is not configured."), { code: "DB_NOT_CONFIGURED" });
+            await queryWithTimeout(db, "SELECT 1 AS connected", [], HEALTH_DB_QUERY_TIMEOUT_MS);
+            await ensureProductionProcessingAuditColumns(db);
+            databaseInitializationState = "ready";
+            databaseInitializationPromise = initializedPromise;
+            resolveInitialized();
+        }
+        catch (error) {
+            const safeError = safeDatabaseError(error);
+            databaseInitializationState = "failed";
+            databaseInitializationError = safeError.message;
+            const retryMs = Math.min(5 * 60_000, attempt * 60_000);
+            console.error(`[SERVER] Database initialization failed (${safeError.code}): ${safeError.message}; retry ${attempt} in ${retryMs / 1000}s`);
+            setTimeout(() => {
+                databaseInitializationPromise = runDatabaseInitialization(attempt + 1);
+                databaseInitializationPromise.catch(() => undefined);
+            }, retryMs);
+            throw error;
+        }
+    };
+    databaseInitializationPromise = runDatabaseInitialization(1);
+    databaseInitializationPromise.catch(() => undefined);
     if (process.env.NODE_ENV !== "production") {
         const vite = await createViteServer({
             server: { middlewareMode: true },
@@ -17989,7 +18025,7 @@ async function startServer() {
     // Database setup can take longer than the proxy's startup timeout.
     // Keep the web server available while migrations run; Daily Consumption
     // endpoints await databaseInitializationPromise before querying.
-    void databaseInitializationPromise.then(() => {
+    void initializedPromise.then(() => {
         setInterval(() => {
             void retryPendingWhatsappComplaints();
             void retryPrintingShiftReports();

@@ -119,6 +119,13 @@ function getDefaultRange() {
   return { from: "", to: "" };
 }
 
+class DashboardSummaryError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+class DashboardRequestSuperseded extends Error {}
+
 function getSummaryCard(summary: OperationDashboardSummary, cardId: string) {
   return summary.groups.flatMap((group) => group.cards).find((card) => card.id === cardId) || null;
 }
@@ -158,15 +165,33 @@ export function OperationDashboard() {
   const [exporting, setExporting] = useState(false);
   const serverRequestRef = useRef(0);
 
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverStartedAt, setServerStartedAt] = useState(() => Date.now());
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
   const requestServerSummary = useCallback(
-    async (body: Record<string, unknown>) => {
-      const response = await fetch("/api/operations-dashboard/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
-        body: JSON.stringify(body),
-      });
-      if (!response.ok) throw new Error(`Dashboard summary failed (${response.status})`);
-      return (await response.json()) as OperationDashboardResult;
+    async (body: Record<string, unknown>, isCurrent: () => boolean = () => true) => {
+      // The server answers 202 while it is still calculating (the first time
+      // after a restart can take a few minutes); keep asking until it is ready.
+      const deadline = Date.now() + 10 * 60_000;
+      for (;;) {
+        const response = await fetch("/api/operations-dashboard/summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...getDataAuthHeaders(true) },
+          body: JSON.stringify(body),
+        });
+        if (response.status === 202 && Date.now() < deadline) {
+          if (!isCurrent()) throw new DashboardRequestSuperseded();
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          if (!isCurrent()) throw new DashboardRequestSuperseded();
+          continue;
+        }
+        const contentType = response.headers.get("content-type") || "";
+        if (!response.ok || !contentType.includes("application/json")) {
+          throw new DashboardSummaryError(response.status, `Dashboard summary failed (${response.status})`);
+        }
+        return (await response.json()) as OperationDashboardResult;
+      }
     },
     []
   );
@@ -175,17 +200,31 @@ export function OperationDashboard() {
     if (clientMode) return;
     const requestId = ++serverRequestRef.current;
     const background = serverRefreshKey > 0 && serverResult !== null;
-    if (!background) setServerLoading(true);
-    requestServerSummary({ from: dateRange.from, to: dateRange.to, closedJobFilter })
+    if (!background) {
+      setServerLoading(true);
+      setServerError(null);
+      setServerStartedAt(Date.now());
+    }
+    requestServerSummary({ from: dateRange.from, to: dateRange.to, closedJobFilter }, () => requestId === serverRequestRef.current)
       .then((result) => {
         if (requestId !== serverRequestRef.current) return;
         setServerResult(result);
+        setServerError(null);
         setServerLoading(false);
       })
       .catch((error) => {
-        if (requestId !== serverRequestRef.current) return;
-        console.warn("[OperationDashboard] Server summary unavailable; loading lists in the browser.", error);
-        setMode("client");
+        if (requestId !== serverRequestRef.current || error instanceof DashboardRequestSuperseded) return;
+        if (error instanceof DashboardSummaryError && error.status === 404) {
+          // Older server without the summary endpoint: calculate in the browser.
+          console.warn("[OperationDashboard] Server summary unavailable; loading lists in the browser.", error);
+          setMode("client");
+          setServerLoading(false);
+          return;
+        }
+        // Server busy or failed: keep the last figures (if any) and offer a retry
+        // instead of downloading every list into the browser.
+        console.warn("[OperationDashboard] Server summary failed", error);
+        if (!background) setServerError("Could not load the latest figures. The server may be busy.");
         setServerLoading(false);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -317,6 +356,14 @@ export function OperationDashboard() {
   );
   const result = (clientMode ? clientResult : serverResult) || emptyResult;
   const dataReady = clientMode ? clientListsReady : !serverLoading && serverResult !== null;
+  const serverFailed = !clientMode && !serverLoading && serverResult === null && Boolean(serverError);
+
+  useEffect(() => {
+    if (dataReady || serverFailed) return;
+    const timer = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [dataReady, serverFailed]);
+  const waitingSeconds = Math.max(0, Math.round((nowTick - serverStartedAt) / 1000));
 
   useEffect(() => {
     const refreshPendingJobClosureCount = async () => {
@@ -324,17 +371,13 @@ export function OperationDashboard() {
       setPendingJobClosureError(null);
       try {
         const token = window.localStorage.getItem("authToken") || "";
-        const response = await fetch("/api/get-pending-job-closure", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({}),
+        // Count-only endpoint (same rows as the full list, without downloading them).
+        const response = await fetch("/api/pending-job-closure/count", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!response.ok) throw new Error(await response.text());
-        const rows = await response.json();
-        setPendingJobClosureCount(Array.isArray(rows) ? rows.length : 0);
+        const payload = await response.json();
+        setPendingJobClosureCount(Number(payload?.count || 0));
       } catch {
         setPendingJobClosureCount(0);
         setPendingJobClosureError("Unable to load pending job closure count.");
@@ -378,7 +421,7 @@ export function OperationDashboard() {
 
   return (
     <div
-      className={`space-y-4 ${dataReady ? "" : "[&>*:not(:first-child)]:pointer-events-none [&>*:not(:first-child)]:opacity-40"}`}
+      className={`space-y-4 ${dataReady ? "" : "[&>*:not(:first-child)]:pointer-events-none [&>*:not(:first-child)]:select-none [&>*:not(:first-child)]:opacity-40 [&>*:not(:first-child)]:blur-[3px]"}`}
       aria-busy={!dataReady}
     >
       {/* Top Banner Control Section */}
@@ -389,14 +432,34 @@ export function OperationDashboard() {
               <h2 className="text-xl font-black uppercase tracking-tight text-slate-950 md:text-2xl">
                 Operation Dashboard
               </h2>
-              {!dataReady ? (
-                <div className="mt-1.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-indigo-700" role="status" aria-live="polite">
-                  <Spinner size={16} />
-                  <span>
-                    {clientMode
-                      ? `Loading latest data (${loadedListCount} of ${loadingFlags.length} lists)… figures will appear once all records are loaded.`
-                      : "Calculating latest figures…"}
-                  </span>
+              {serverFailed ? (
+                <div className="mt-1.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-rose-700" role="alert">
+                  <span>{serverError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setServerRefreshKey((value) => value + 1)}
+                    className="rounded border border-rose-700 bg-white px-2 py-0.5 text-[10px] font-black uppercase text-rose-700 hover:bg-rose-50"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : !dataReady ? (
+                <div className="mt-2 flex items-center gap-3 rounded-md border-2 border-indigo-700 bg-indigo-50 px-3 py-2 text-indigo-800" role="status" aria-live="polite">
+                  <Spinner size={22} />
+                  <div className="leading-tight">
+                    <div className="text-xs font-black uppercase tracking-wide">
+                      {clientMode
+                        ? `Loading latest data (${loadedListCount} of ${loadingFlags.length} lists)…`
+                        : `Calculating latest figures… ${waitingSeconds}s`}
+                    </div>
+                    <div className="text-[10px] font-bold">
+                      {clientMode
+                        ? "Figures will appear once all records are loaded."
+                        : waitingSeconds >= 20
+                          ? "The first load after a server restart can take a few minutes. Figures below are not loaded yet."
+                          : "Figures below are not loaded yet."}
+                    </div>
+                  </div>
                 </div>
               ) : null}
             </div>
