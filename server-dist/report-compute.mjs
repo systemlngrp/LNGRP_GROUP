@@ -10,8 +10,8 @@ function getOrderItemCompositeKey(source, itemId) {
   return `${normalizeOrderItemSource(source)}::${String(itemId || "").trim()}`;
 }
 var toFiniteNumber = (value) => {
-  const numberValue2 = Number(value);
-  return Number.isFinite(numberValue2) ? numberValue2 : void 0;
+  const numberValue3 = Number(value);
+  return Number.isFinite(numberValue3) ? numberValue3 : void 0;
 };
 function normalizeOrderCatalogItem(row, source) {
   const normalizedSource = normalizeOrderItemSource(source);
@@ -80,9 +80,9 @@ function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRows }) {
     const map = /* @__PURE__ */ new Map();
     Object.keys(itemsBySource).forEach((source) => {
       itemsBySource[source].forEach((item) => {
-        getLookupKeys(source, item).forEach((key4) => {
-          if (!map.has(key4)) {
-            map.set(key4, item);
+        getLookupKeys(source, item).forEach((key5) => {
+          if (!map.has(key5)) {
+            map.set(key5, item);
           }
         });
       });
@@ -372,29 +372,29 @@ function buildReelStockRows({
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
   const issueLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredIssueLines.forEach((line) => {
-    const key4 = String(line.packingSlipId || "");
-    if (!key4) return;
-    const rows = issueLinesByPackingSlipId.get(key4) || [];
-    rows.push(line);
-    issueLinesByPackingSlipId.set(key4, rows);
+    const key5 = String(line.packingSlipId || "");
+    if (!key5) return;
+    const rows2 = issueLinesByPackingSlipId.get(key5) || [];
+    rows2.push(line);
+    issueLinesByPackingSlipId.set(key5, rows2);
   });
   const returnLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredReturnLines.forEach((line) => {
-    const key4 = String(line.packingSlipId || "");
-    if (!key4) return;
-    const rows = returnLinesByPackingSlipId.get(key4) || [];
-    rows.push(line);
-    returnLinesByPackingSlipId.set(key4, rows);
+    const key5 = String(line.packingSlipId || "");
+    if (!key5) return;
+    const rows2 = returnLinesByPackingSlipId.get(key5) || [];
+    rows2.push(line);
+    returnLinesByPackingSlipId.set(key5, rows2);
   });
   const getRelatedLines = (map, keys) => {
-    const rows = [];
+    const rows2 = [];
     const seen = /* @__PURE__ */ new Set();
-    keys.forEach((key4) => {
-      if (seen.has(key4)) return;
-      seen.add(key4);
-      rows.push(...map.get(key4) || []);
+    keys.forEach((key5) => {
+      if (seen.has(key5)) return;
+      seen.add(key5);
+      rows2.push(...map.get(key5) || []);
     });
-    return rows;
+    return rows2;
   };
   const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
   const explicitOpeningMaterialIds = new Set(
@@ -575,8 +575,8 @@ function round24(value) {
 function makeKey(rapcRange, gsm) {
   return `${rapcRange}__${gsm}`;
 }
-function parseKey(key4) {
-  const [rapcRangeRaw, gsmRaw] = key4.split("__");
+function parseKey(key5) {
+  const [rapcRangeRaw, gsmRaw] = key5.split("__");
   return { rapcRange: rapcRangeRaw === "Unmapped" ? "Unmapped" : Number(rapcRangeRaw || 0), gsm: Number(gsmRaw || 0) };
 }
 function resolveRapcValue(input, ranges) {
@@ -592,8 +592,8 @@ function getMaterialRapcInput(material) {
 }
 function addToMap(map, row, qty) {
   if (!row.gsm || !Number.isFinite(row.gsm) || !Number.isFinite(qty) || qty === 0) return;
-  const key4 = makeKey(row.rapcRange, row.gsm);
-  map.set(key4, (map.get(key4) || 0) + qty);
+  const key5 = makeKey(row.rapcRange, row.gsm);
+  map.set(key5, (map.get(key5) || 0) + qty);
 }
 function firstPositiveNumber(...values) {
   for (const value of values) {
@@ -602,15 +602,15 @@ function firstPositiveNumber(...values) {
   }
   return 0;
 }
-function getRawValue(item, key4) {
-  return item?.raw?.[key4] ?? item?.[key4];
+function getRawValue(item, key5) {
+  return item?.raw?.[key5] ?? item?.[key5];
 }
 function getItemNumber(item, ...keys) {
-  return firstPositiveNumber(...keys.map((key4) => getRawValue(item, key4)));
+  return firstPositiveNumber(...keys.map((key5) => getRawValue(item, key5)));
 }
 function getItemText(item, ...keys) {
-  for (const key4 of keys) {
-    const value = String(getRawValue(item, key4) ?? "").trim();
+  for (const key5 of keys) {
+    const value = String(getRawValue(item, key5) ?? "").trim();
     if (value) return value;
   }
   return "";
@@ -773,12 +773,12 @@ function computePaperRequirement(lists, options) {
     ...Array.from(pendingPoByKey.keys()),
     ...Array.from(consumptionByKey.keys())
   ]);
-  return Array.from(allKeys).map((key4) => {
-    const { rapcRange, gsm } = parseKey(key4);
-    const totalPaperRequirement = round24(requirementByKey.get(key4) || 0);
-    const totalClosingStock = round24(stockByKey.get(key4) || 0);
-    const totalPendingPo = round24(pendingPoByKey.get(key4) || 0);
-    const consumption = round24(Math.max(0, consumptionByKey.get(key4) || 0));
+  return Array.from(allKeys).map((key5) => {
+    const { rapcRange, gsm } = parseKey(key5);
+    const totalPaperRequirement = round24(requirementByKey.get(key5) || 0);
+    const totalClosingStock = round24(stockByKey.get(key5) || 0);
+    const totalPendingPo = round24(pendingPoByKey.get(key5) || 0);
+    const consumption = round24(Math.max(0, consumptionByKey.get(key5) || 0));
     const mil = round24(consumption * 7 / 90);
     const calculatedNetPaperToOrder = totalClosingStock > mil ? round24(totalPaperRequirement - totalClosingStock - totalPendingPo) : round24(mil - totalClosingStock + (totalPaperRequirement - totalClosingStock - totalPendingPo));
     const netPaperToOrder = Math.max(0, calculatedNetPaperToOrder);
@@ -948,8 +948,8 @@ function clearCollectionCache(changed = ["*"]) {
     completedNpdLoads.clear();
     return;
   }
-  for (const [key4, entry] of completedLoads) {
-    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key4);
+  for (const [key5, entry] of completedLoads) {
+    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key5);
   }
   completedNpdLoads.clear();
 }
@@ -1189,7 +1189,7 @@ function computeConversionCostMonthWise(lists, fy) {
   };
   const issuedPaperByMonth = paperByMonth(issueReelLines);
   const returnedPaperByMonth = paperByMonth(returnReelLines);
-  const rows = FY_MONTHS.map((month) => {
+  const rows2 = FY_MONTHS.map((month) => {
     const consumables = consumablesByMonth.get(month.value) || 0;
     const fixed = normalizedFixedExpenses.filter((record) => record.fy === fy && Number(record.month) === month.value).reduce((sum, record) => sum + Number(record.totalAmount || 0), 0);
     const actualPaperUsedCost = (issuedPaperByMonth.get(month.value) || 0) - (returnedPaperByMonth.get(month.value) || 0);
@@ -1203,13 +1203,13 @@ function computeConversionCostMonthWise(lists, fy) {
       ratio: actualPaperUsedCost > 0 ? round25(consumables / actualPaperUsedCost) : 0
     };
   });
-  return { rows, fyOptions };
+  return { rows: rows2, fyOptions };
 }
 
 // src/lib/wastageCalculations.ts
 var nonNegative = (value) => {
-  const numberValue2 = Number(value || 0);
-  return Number.isFinite(numberValue2) && numberValue2 >= 0 ? numberValue2 : 0;
+  const numberValue3 = Number(value || 0);
+  return Number.isFinite(numberValue3) && numberValue3 >= 0 ? numberValue3 : 0;
 };
 var normalizeMachineName2 = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 function getKgPerBox(production) {
@@ -1317,9 +1317,9 @@ var n = (value) => {
 var s = (value) => String(value ?? "").trim();
 var isoDateText = (value) => s(value).slice(0, 10);
 var money = (value) => Number(value.toFixed(2));
-function firstById(rows) {
+function firstById(rows2) {
   const map = /* @__PURE__ */ new Map();
-  rows.forEach((row) => {
+  rows2.forEach((row) => {
     if (!map.has(row.id)) map.set(row.id, row);
   });
   return map;
@@ -1541,8 +1541,8 @@ function normalizeText(value) {
 function normalizeLoose(value) {
   return normalizeText(value).replace(/[^a-z0-9]+/g, "");
 }
-function getBucketForText(text3, source) {
-  const normalized2 = normalizeText(text3);
+function getBucketForText(text4, source) {
+  const normalized2 = normalizeText(text4);
   return factoryBuckets.find((bucket) => {
     if (bucket.source !== "both" && bucket.source !== source) return false;
     return bucket.keywords.some((keyword) => normalized2.includes(keyword));
@@ -1903,8 +1903,8 @@ function buildProductionMaterialUsageMap(materialIssues, materialIssueLines, mat
     if (!productionId) return;
     totals.set(productionId, (totals.get(productionId) || 0) - Number(line.weightKg || 0));
   });
-  totals.forEach((value, key4) => {
-    totals.set(key4, Math.max(0, Number(value.toFixed(5))));
+  totals.forEach((value, key5) => {
+    totals.set(key5, Math.max(0, Number(value.toFixed(5))));
   });
   return totals;
 }
@@ -1931,8 +1931,8 @@ function buildProductionCorrugatedSheetUsageMap(materials, materialIssues, mater
     if (!productionId) return;
     totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
   });
-  totals.forEach((value, key4) => {
-    totals.set(key4, Math.max(0, Number(value.toFixed(5))));
+  totals.forEach((value, key5) => {
+    totals.set(key5, Math.max(0, Number(value.toFixed(5))));
   });
   return totals;
 }
@@ -1984,10 +1984,16 @@ var normalized = (value) => text2(value).toLowerCase();
 function findLatestInspection(inspections, productionId, jobNo) {
   const byProduction = productionId ? inspections.filter((inspection) => normalized(inspection.productionId) === normalized(productionId)) : [];
   const matches = byProduction.length ? byProduction : jobNo ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo)) : [];
-  const latest = [...matches].sort(
+  const latest2 = [...matches].sort(
     (left, right) => text2(left.updateTimestamp || left.inspectionDate).localeCompare(text2(right.updateTimestamp || right.inspectionDate))
   ).at(-1);
-  return latest ? { ...latest, result: normalizeQcResult(latest.result) } : void 0;
+  return latest2 ? { ...latest2, result: normalizeQcResult(latest2.result) } : void 0;
+}
+function photoPath(value) {
+  const raw = text2(value);
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return "/uploads/" + encodeURIComponent(raw.replace(/^\/?uploads\//i, ""));
 }
 
 // src/lib/samplingPlanQty.ts
@@ -2075,16 +2081,16 @@ function computeQcViewRows(lists, items) {
   const materialUsageMap = buildProductionMaterialUsageMap(materialIssues, materialIssueLines, materialReturns, materialReturnLines, materialIssueReelLines, materialReturnReelLines, productions);
   const corrugatedSheetUsageMap = buildProductionCorrugatedSheetUsageMap(materials, materialIssues, materialIssueLines, materialReturns, materialReturnLines);
   const loadingByJob = buildJobLoadingRecords(productions, loadingSlips, plans);
-  const lastByJob = (rows) => {
+  const lastByJob = (rows2) => {
     const map = /* @__PURE__ */ new Map();
-    rows.forEach((row) => map.set(key3(row.jobNo), row));
+    rows2.forEach((row) => map.set(key3(row.jobNo), row));
     return map;
   };
   const lastBoardlineByJob = lastByJob(boardline);
   const lastPrintingByJob = lastByJob(printing);
-  const latestByErp = (rows) => {
+  const latestByErp = (rows2) => {
     const map = /* @__PURE__ */ new Map();
-    rows.forEach((row) => {
+    rows2.forEach((row) => {
       const erpKey = key3(row.erpCode || row.erpNo);
       const current = map.get(erpKey);
       if (!current || s2(row.updateTimestamp).localeCompare(s2(current.updateTimestamp)) > 0) map.set(erpKey, row);
@@ -2122,7 +2128,7 @@ function computeQcViewRows(lists, items) {
     (qtyIndexById.get(byId) || qtyIndexById.set(byId, []).get(byId)).push(index);
     (qtyIndexByJob.get(byJob) || qtyIndexByJob.set(byJob, []).get(byJob)).push(index);
   });
-  const processingQuantity = (production, job, machine) => {
+  const processingQuantity2 = (production, job, machine) => {
     const a = qtyIndexById.get(`${key3(machine)}|${key3(production.id)}`) || [];
     const b = qtyIndexByJob.get(`${key3(machine)}|${key3(job)}`) || [];
     let total = 0;
@@ -2159,14 +2165,375 @@ function computeQcViewRows(lists, items) {
     const requiredBgsm = Number(b?.boardGsm || 0);
     const bgsmMin = whole(requiredBgsm * (1 - bgsmTolerance / 100));
     const bgsmMax = whole(requiredBgsm * (1 + bgsmTolerance / 100));
-    return { __rowKey: s2(p.id) || `${job}|${s2(p.date)}|${erp}`, "Job No.": job, Date: formatDate(p.date), "Party Name": s2(p.companyName || b?.partyName || pr?.partyName), "Item Name": itemName, "ERP Code": erp, "Plan Quantity": planQty, "Item Status": getQcProductionStatus(p, getProductionActualPaperUsed(p, materialUsageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap), processingByProductionId.get(s2(p.id)) || []), Artwork: s2(item?.artwork), Spec: s2(item?.spec), "File No.": s2(qcUpdate?.fileNo), "Index No": s2(qcUpdate?.indexNo), "Sample No.": s2(qcUpdate?.sampleNo), "Block Location": s2(block?.blockLocation), "Block No.": s2(block?.blockNo), "Sample Location": s2(qcUpdate?.location), "Sample No. (Control)": s2(control?.sampleNo), "Boardline AUTO-CORRECTION Message": [b?.systemAutoCorrection1, b?.systemAutoCorrection2, b?.systemAutoCorrection3, b?.systemAutoCorrection4, b?.systemAutoCorrection5].filter(Boolean).join(" | "), "Previous Customer Complaint": s2(b?.previousCustomerComplaintWarning || pr?.previousCustomerComplaintWarning), "PDI RESULT": pdiResult, "Boardline Production": n2(processingQuantity(p, job, "Corrugation Liner")), "Printing Production": n2(processingQuantity(p, job, "Printing")), "Loaded Quantity": n2((loadingByJob.get(p.id) || []).reduce((total, record) => total + record.qty, 0)), Length: n2(p.length || b?.length || pr?.lengthId), Width: n2(p.breadth || b?.width || pr?.widthId), Height: n2(p.height || b?.heightOd || pr?.heightId), "L-OD": n2(b?.length), "W-OD": n2(b?.width), "H-OD": n2(b?.heightOd), FLAP: n2(b?.flap), Ply: n2(b?.ply), "No. Of parts": s2(b?.part), "SAMPLING PLAN QTY": calculateSamplingPlanQty(planQty, settings[0]), "Required Size": s2(b?.standard) || formatFlapHeightFlap(b?.flap, b?.heightOd, b?.flap) || s2(pr?.standardBoxSize), "Check 1": mappedChecks.checks[0], "Check 2": mappedChecks.checks[1], "Check 3": mappedChecks.checks[2], "Check 4": mappedChecks.checks[3], "Required Cutting Size": whole(b?.cuttingSizeRequired), "Cutting Check 1": mappedChecks.cutting[0], "Cutting Check 2": mappedChecks.cutting[1], "Cutting Check 3": mappedChecks.cutting[2], "Cutting Check 4": mappedChecks.cutting[3], "Required B.GSM": whole(b?.boardGsm), "BGSM MIN": bgsmMin, "BGSM MAX": bgsmMax, "GSM Check 1": bgsmMin, "GSM Check 2": bgsmMax, "GSM Check 3": bgsmMin, "GSM Check 4": bgsmMax, "PLY": whole(b?.ply), "Flute Check": s2(b?.typeOfFlute), "Moisture Check": whole(b?.moisture), "Board Thickness Achieved": whole(b?.boardThickness || pr?.boardThickness), "BS Achieved": whole(b?.bsAchieved || pr?.bsAchieved), "Board Weight Achieved (Grams)": whole(b?.sheetWeightGrams || pr?.boxWeightGrams), "QC Remarks": s2(b?.boardlineRemarks || pr?.column40) };
+    return { __rowKey: s2(p.id) || `${job}|${s2(p.date)}|${erp}`, "Job No.": job, Date: formatDate(p.date), "Party Name": s2(p.companyName || b?.partyName || pr?.partyName), "Item Name": itemName, "ERP Code": erp, "Plan Quantity": planQty, "Item Status": getQcProductionStatus(p, getProductionActualPaperUsed(p, materialUsageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap), processingByProductionId.get(s2(p.id)) || []), Artwork: s2(item?.artwork), Spec: s2(item?.spec), "File No.": s2(qcUpdate?.fileNo), "Index No": s2(qcUpdate?.indexNo), "Sample No.": s2(qcUpdate?.sampleNo), "Block Location": s2(block?.blockLocation), "Block No.": s2(block?.blockNo), "Sample Location": s2(qcUpdate?.location), "Sample No. (Control)": s2(control?.sampleNo), "Boardline AUTO-CORRECTION Message": [b?.systemAutoCorrection1, b?.systemAutoCorrection2, b?.systemAutoCorrection3, b?.systemAutoCorrection4, b?.systemAutoCorrection5].filter(Boolean).join(" | "), "Previous Customer Complaint": s2(b?.previousCustomerComplaintWarning || pr?.previousCustomerComplaintWarning), "PDI RESULT": pdiResult, "Boardline Production": n2(processingQuantity2(p, job, "Corrugation Liner")), "Printing Production": n2(processingQuantity2(p, job, "Printing")), "Loaded Quantity": n2((loadingByJob.get(p.id) || []).reduce((total, record) => total + record.qty, 0)), Length: n2(p.length || b?.length || pr?.lengthId), Width: n2(p.breadth || b?.width || pr?.widthId), Height: n2(p.height || b?.heightOd || pr?.heightId), "L-OD": n2(b?.length), "W-OD": n2(b?.width), "H-OD": n2(b?.heightOd), FLAP: n2(b?.flap), Ply: n2(b?.ply), "No. Of parts": s2(b?.part), "SAMPLING PLAN QTY": calculateSamplingPlanQty(planQty, settings[0]), "Required Size": s2(b?.standard) || formatFlapHeightFlap(b?.flap, b?.heightOd, b?.flap) || s2(pr?.standardBoxSize), "Check 1": mappedChecks.checks[0], "Check 2": mappedChecks.checks[1], "Check 3": mappedChecks.checks[2], "Check 4": mappedChecks.checks[3], "Required Cutting Size": whole(b?.cuttingSizeRequired), "Cutting Check 1": mappedChecks.cutting[0], "Cutting Check 2": mappedChecks.cutting[1], "Cutting Check 3": mappedChecks.cutting[2], "Cutting Check 4": mappedChecks.cutting[3], "Required B.GSM": whole(b?.boardGsm), "BGSM MIN": bgsmMin, "BGSM MAX": bgsmMax, "GSM Check 1": bgsmMin, "GSM Check 2": bgsmMax, "GSM Check 3": bgsmMin, "GSM Check 4": bgsmMax, "PLY": whole(b?.ply), "Flute Check": s2(b?.typeOfFlute), "Moisture Check": whole(b?.moisture), "Board Thickness Achieved": whole(b?.boardThickness || pr?.boardThickness), "BS Achieved": whole(b?.bsAchieved || pr?.bsAchieved), "Board Weight Achieved (Grams)": whole(b?.sheetWeightGrams || pr?.boxWeightGrams), "QC Remarks": s2(b?.boardlineRemarks || pr?.column40) };
   });
+}
+
+// src/lib/traceabilityData.ts
+var text3 = (value) => String(value ?? "").trim();
+var key4 = (value) => text3(value).toLowerCase().replace(/\s+/g, " ");
+var rows = (value) => Array.isArray(value) ? value : [];
+var numberValue2 = (value) => {
+  if (value === "" || value === null || value === void 0) return "";
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : text3(value);
+};
+var firstText = (...values) => values.map(text3).find(Boolean) || "";
+var firstValue = (...values) => {
+  for (const value of values) {
+    if (value !== null && value !== void 0 && text3(value)) return numberValue2(value);
+  }
+  return "";
+};
+var latest = (rows2, timestamp) => [...rows2].sort((left, right) => text3(timestamp(left)).localeCompare(text3(timestamp(right)))).at(-1);
+var dateText = (value) => text3(value).slice(0, 19);
+var formatDate2 = (value) => text3(value).slice(0, 10);
+var normalizedJob = (value) => key4(value).replace(/^0+(?=\d)/, "");
+var sameJob = (left, right) => normalizedJob(left) === normalizedJob(right);
+var reelIdentity = (line) => {
+  const packingSlipId = key4(line.packingSlipId);
+  const reelNo = key4(line.ourReelNo);
+  return packingSlipId || reelNo ? `${packingSlipId}|${reelNo}` : key4(line.id);
+};
+var joinSize = (...values) => {
+  const parts = values.map(text3);
+  return parts.some(Boolean) ? parts.join(" x ") : "";
+};
+var joinNonEmpty = (separator, ...values) => values.map(text3).filter(Boolean).join(separator);
+function latestByJob(rows2, jobNo) {
+  return latest(rows2.filter((row) => sameJob(row.jobNo, jobNo)), (row) => row.updateTimestamp || row.timestamp);
+}
+function processingFor(rows2, production, jobNo) {
+  return rows2.filter((row) => key4(row.productionId) === key4(production.id) || sameJob(row.jobNo, jobNo));
+}
+function processingQuantity(rows2, machineName) {
+  return rows2.filter((row) => key4(row.machineName) === key4(machineName)).reduce((total, row) => total + Math.max(0, Number(row.qty || 0)), 0);
+}
+function processingDate(rows2, machineName) {
+  return latest(rows2.filter((row) => key4(row.machineName) === key4(machineName)), (row) => row.updateTimestamp || row.date)?.date || "";
+}
+function productionLoadingSlips(production, jobNo, plans, slips) {
+  const planIds = new Set(plans.filter((plan) => key4(plan.productionId) === key4(production.id)).map((plan) => key4(plan.id)));
+  return slips.filter((slip) => key4(slip.status) !== "cancelled" && (slip.lines || []).some((line) => {
+    if (planIds.has(key4(line.dispatchPlanId))) return true;
+    if ((line.jobNos || []).some((value) => sameJob(value, jobNo))) return true;
+    return (line.allocations || []).some((allocation) => allocation.sourceType === "job" && (key4(allocation.jobId) === key4(production.id) || sameJob(allocation.jobNo, jobNo)));
+  }));
+}
+function statusOf(production) {
+  if (production.status === "Cancelled" || text3(production.cancelTimestamp)) return "JOB CANCELLED";
+  if (production.status === "Completed" || text3(production.closeDate) || key4(production.closeBy) === "yes") return "JOB CLOSED";
+  return "JOB OPEN";
+}
+function layerValue(value) {
+  const normalized2 = text3(value);
+  if (!normalized2) return "";
+  const numeric = Number(normalized2);
+  if (!Number.isFinite(numeric)) return normalized2;
+  if (numeric === 0) return "";
+  return String(numeric);
+}
+function paperSpec(item) {
+  if (!item) return "";
+  return [
+    item.l1,
+    item.f1,
+    item.l2,
+    item.f2,
+    item.l3,
+    item.f3
+  ].map(layerValue).filter(Boolean).join(" - ");
+}
+function plannedPaper(production) {
+  return [production.l1, production.f1, production.l2, production.f2, production.l3].map(layerValue).filter(Boolean).join(" - ");
+}
+function explicitLineIncharge(board) {
+  if (!board) return "";
+  const lineInchargeKeys = /* @__PURE__ */ new Set(["lineincharge", "lineinchargename", "lineinchargeperson"]);
+  const rawBoard = board;
+  return Object.entries(rawBoard).filter(([field]) => lineInchargeKeys.has(field.toLowerCase().replace(/[^a-z0-9]/g, ""))).map(([, value]) => text3(value)).find(Boolean) || "";
+}
+function processingLineIncharge(rows2) {
+  return firstText(latest(
+    rows2.filter((row) => key4(row.machineName) === "corrugation liner" && text3(row.operatorName)),
+    (row) => row.updateTimestamp || row.date
+  )?.operatorName);
+}
+function buildTraceabilityPaperIssueDetails(production, jobNo, materials = [], issueReelLines = [], returnReelLines = []) {
+  const belongsToProduction = (line) => text3(line.productionId) && key4(line.productionId) === key4(production.id) || text3(line.jobNo) && sameJob(line.jobNo, jobNo);
+  const eligibleIssues = rows(issueReelLines).filter((line) => belongsToProduction(line) && Number(line.weightKg || 0) > 0);
+  const returnedWeights = /* @__PURE__ */ new Map();
+  rows(returnReelLines).filter((line) => belongsToProduction(line) && Number(line.weightKg || 0) > 0).forEach((line) => {
+    const identity = reelIdentity(line);
+    returnedWeights.set(identity, (returnedWeights.get(identity) || 0) + Number(line.weightKg || 0));
+  });
+  const grouped = /* @__PURE__ */ new Map();
+  eligibleIssues.forEach((line) => {
+    const identity = reelIdentity(line);
+    const existing = grouped.get(identity);
+    if (existing) existing.issuedWeight += Number(line.weightKg || 0);
+    else grouped.set(identity, { line, issuedWeight: Number(line.weightKg || 0) });
+  });
+  const materialById = new Map(rows(materials).map((material) => [key4(material.id), material]));
+  return Array.from(grouped.entries()).map(([identity, entry]) => {
+    const material = materialById.get(key4(entry.line.materialId));
+    const netIssue = Math.max(0, Number((entry.issuedWeight - (returnedWeights.get(identity) || 0)).toFixed(2)));
+    return {
+      reelNo: text3(entry.line.ourReelNo),
+      reelSize: numberValue2(material?.size),
+      gsm: numberValue2(material?.gsm),
+      bf: numberValue2(material?.bf),
+      netIssue: numberValue2(netIssue),
+      issueTimestamp: text3(entry.line.updateTimestamp)
+    };
+  }).sort((left, right) => left.issueTimestamp.localeCompare(right.issueTimestamp) || left.reelNo.localeCompare(right.reelNo));
+}
+function buildTraceabilityRecord(production, input) {
+  const jobNo = firstText(production.transactionNo, production.jobCardNo);
+  const board = latestByJob(rows(input.boardline), jobNo);
+  const printing = latestByJob(rows(input.printing), jobNo);
+  const inspection = findLatestInspection(rows(input.inspections), production.id, jobNo);
+  const productionProcessing = processingFor(rows(input.processing), production, jobNo);
+  const item = rows(input.items).find(
+    (candidate) => [candidate.id, candidate.erp].some((value) => key4(value) && (key4(value) === key4(production.itemId) || key4(value) === key4(production.npdId) || key4(value) === key4(production.erpCode) || key4(value) === key4(board?.erp) || key4(value) === key4(printing?.erp)))
+  );
+  const schedule = rows(input.schedules).find((candidate) => key4(candidate.id) === key4(production.scheduleId));
+  const order = rows(input.orders).find((candidate) => key4(candidate.id) === key4(schedule?.orderId));
+  const company = rows(input.companies).find((candidate) => key4(candidate.id) === key4(order?.companyId));
+  const erpCode = firstText(production.erpCode, inspection?.erpCode, board?.erp, printing?.erp, item?.erp);
+  const partyName = firstText(production.companyName, inspection?.partyName, board?.partyName, printing?.partyName, company?.name);
+  const itemName = firstText(production.itemName, item?.name, inspection?.itemName, board?.itemName, printing?.itemName);
+  const plans = rows(input.dispatchPlans).filter((plan) => key4(plan.productionId) === key4(production.id));
+  const slips = productionLoadingSlips(production, jobNo, rows(input.dispatchPlans), rows(input.loadingSlips));
+  const latestSlip = latest(slips, (slip) => slip.updateTimestamp || slip.date);
+  const invoice = rows(input.invoices).find((candidate) => key4(candidate.id) === key4(latestSlip?.invoiceId));
+  const invoiceLine = rows(input.invoiceLineItems).find((line) => key4(line.invoiceId) === key4(invoice?.id) && (key4(line.npdId) === key4(production.npdId) || key4(line.itemId) === key4(production.itemId)));
+  const truck = rows(input.trucks).find((candidate) => key4(candidate.id) === key4(latestSlip?.truckId));
+  const complaintLots = rows(input.complaints).filter((complaint) => key4(complaint.erpCode) === key4(erpCode) && sameJob(complaint.lotNo, jobNo)).map((complaint) => text3(complaint.lotNo));
+  const lotNumbers = [...new Set([text3(inspection?.lotNo), text3(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
+  const planQuantity = resolvePlanQuantity(production.plannedQty, production.qty, board?.planQty, printing?.planQty, inspection?.plannedQty, plans.reduce((sum, plan) => sum + Number(plan.plannedQty || 0), 0));
+  const plannedPaperValue = plannedPaper(production);
+  const lineIncharge = firstText(explicitLineIncharge(board), processingLineIncharge(productionProcessing));
+  const paperRequired = firstValue(production.totalPaperWeight);
+  const paperUsed = numberValue2(getProductionActualPaperUsed(production));
+  const requiredNumber = Number(paperRequired || 0);
+  const usedNumber = Number(paperUsed || 0);
+  const paperWastagePercent = requiredNumber > 0 && usedNumber > 0 ? Number(Math.max(0, (usedNumber - requiredNumber) / requiredNumber * 100).toFixed(2)) : "";
+  const customerArtwork = firstText(item?.artwork);
+  const customerSpecification = firstText(item?.url, item?.spec);
+  const boardWastagePcs = firstValue(production.boardWastagePcs);
+  const boardWastagePercent = firstValue(production.boardWastagePercent);
+  const boardlineQuantity = processingQuantity(productionProcessing, "Corrugation Liner");
+  const printingQuantity = processingQuantity(productionProcessing, "Printing");
+  const dispatchQuantity = slips.reduce((total, slip) => total + (slip.lines || []).reduce((lineTotal, line) => {
+    const allocationQuantity = (line.allocations || []).filter((allocation) => allocation.sourceType === "job" && (key4(allocation.jobId) === key4(production.id) || sameJob(allocation.jobNo, jobNo))).reduce((sum, allocation) => sum + Number(allocation.qty || 0), 0);
+    if (allocationQuantity > 0) return lineTotal + allocationQuantity;
+    const belongsToJob = (line.jobNos || []).some((value) => sameJob(value, jobNo));
+    return lineTotal + (belongsToJob || plans.some((plan) => key4(plan.id) === key4(line.dispatchPlanId)) ? Number(line.loadedQty || 0) : 0);
+  }, 0), 0);
+  const latestQcUpdate = latest(rows(input.qcUpdates).filter((record) => key4(record.erpNo) === key4(erpCode)), (record) => record.updateTimestamp || record.updateDate);
+  const latestComplaint = latest(rows(input.complaints).filter((record) => key4(record.erpCode) === key4(erpCode)), (record) => record.timestamp || record.dateOfComplaint);
+  const latestPlan = latest(plans, (plan) => plan.updateTimestamp || plan.date);
+  const plannedDate = firstText(production.scheduledDate, schedule?.scheduledDate, production.date);
+  const actualPdiDate = inspection?.inspectionDate || inspection?.updateTimestamp || "";
+  const normalizedPrintingColors = joinNonEmpty(" / ", printing?.printingColor1Standard, printing?.printingColour2Standard);
+  const actualPrintingColors = joinNonEmpty(" / ", printing?.colour1Actual, printing?.colour2Actual);
+  const paperIssue = buildTraceabilityPaperIssueDetails(
+    production,
+    jobNo,
+    rows(input.materials),
+    rows(input.materialIssueReelLines),
+    rows(input.materialReturnReelLines)
+  );
+  return {
+    id: production.id,
+    productionId: production.id,
+    firmName: firstText(production.firmName),
+    jobNo,
+    lotNo: firstText(...lotNumbers),
+    lotNumbers,
+    itemName,
+    partyName,
+    erpCode,
+    status: statusOf(production),
+    paperIssue,
+    planning: {
+      planQuantity,
+      plannedDate: formatDate2(plannedDate),
+      jobWeightKg: firstValue(production.totalWeightOfSet, production.totalPaperWeight),
+      realizationPerKg: firstValue(production.realizationPerKg),
+      customerSpecification,
+      customerArtwork
+    },
+    boardline: {
+      quantityProducedPcs: numberValue2(boardlineQuantity || production.prodFromSheetPlant),
+      paperRequiredKg: paperRequired,
+      paperUsedKg: paperUsed,
+      paperWastagePercent,
+      boardWastagePcs,
+      boardWastagePercent,
+      qcExecutive: firstText(board?.qcPerson),
+      rapc: firstValue(item?.internalRapc, item?.rapc),
+      cuttingSizeMm: firstValue(board?.cuttingSizeMm, item?.cuttingSize),
+      ups: firstValue(production.ups, item?.ups),
+      ply: firstValue(production.ply, item?.ply, board?.ply),
+      flute: firstText(production.flute, item?.flute, board?.typeOfFlute),
+      paperSpec: paperSpec(item),
+      sizeLxWxHmm: joinSize(production.length || item?.length, production.breadth || item?.breadth, production.height || item?.height),
+      plannedPaper: plannedPaperValue,
+      lineIncharge,
+      sheetPlantRequiredSize: firstText(production.sheetPlantRequiredSize, board?.standard),
+      sheetPlantProducedSize: firstText(board?.flapHeightFlapOperatorSide),
+      sheetPlantProducedSizeDr: firstText(board?.flapHeightFlapDriveSide),
+      cuttingSizeProduced: firstValue(production.cuttingSizeProduced, board?.cuttingSizeMm),
+      typeOfFluteProduced: firstText(board?.typeOfFlute),
+      bgsmAchieved: firstValue(board?.boardGsm, printing?.csAchieved, printing?.bsAchieved),
+      boardThicknessAchieved: firstValue(board?.boardThickness, printing?.boardThickness),
+      sheetWeightGramsAchieved: firstValue(board?.sheetWeightGrams, printing?.boxWeightGrams),
+      moistureAchieved: firstValue(board?.moisture)
+    },
+    converting: {
+      quantityProduced: numberValue2(printingQuantity || production.prodFromFFG),
+      sizeAchieved: firstText(printing?.boxSizeAchieved, joinSize(printing?.lengthId, printing?.widthId, printing?.heightId)),
+      boardThicknessAchieved: firstValue(printing?.boardThickness, board?.boardThickness),
+      printingColourRequired: normalizedPrintingColors,
+      printingColourIdentified: actualPrintingColors,
+      boxWeightGrams: firstValue(printing?.boxWeightGrams, inspection?.boxWeightGrams),
+      standardCsKg: firstValue(printing?.csStandard),
+      achievedCsKg: firstValue(printing?.csAchieved),
+      standardBsKg: firstValue(printing?.bsStandard),
+      achievedBsKg: firstValue(printing?.bsAchieved),
+      operatorIncharge: firstText(printing?.operatorName),
+      qcInspector: firstText(printing?.qcPerson)
+    },
+    pdi: {
+      boxSizeRequired: firstText(printing?.standardBoxSize, board?.standard),
+      boxSizeAchieved: firstText(inspection?.lengthId && inspection?.widthId && inspection?.heightId ? joinSize(inspection.lengthId, inspection.widthId, inspection.heightId) : ""),
+      csAchievedRequired: joinNonEmpty(" / ", inspection?.csAchieved, printing?.csStandard),
+      bgsmAchieved: firstValue(inspection?.bGsm, board?.boardGsm),
+      boxWeightAchievedGrams: firstValue(inspection?.boxWeightGrams, printing?.boxWeightGrams),
+      artworkCheck: firstText(inspection?.printingArtworkCheck),
+      printingColorCheck: firstText(inspection?.printingColorCheck),
+      boxSquaringCheck: firstText(inspection?.boxSquaringCheck),
+      flapGapCheck: firstText(inspection?.flapGapCheck),
+      jointPastingDelaminationCheck: firstText(inspection?.jointPastingDelaminationCheck),
+      remarks: firstText(inspection?.remarks, board?.boardlineRemarks, printing?.column40, latestQcUpdate?.remarks, latestComplaint?.issueDetails),
+      frontPhoto: photoPath(inspection?.frontPhoto),
+      backPhoto: photoPath(inspection?.backPhoto),
+      qcInspector: firstText(inspection?.qcPerson),
+      result: firstText(inspection?.result)
+    },
+    dispatch: {
+      plannedQuantity: firstValue(latestPlan?.plannedQty, planQuantity),
+      dispatchQuantity: dispatchQuantity || firstValue(latestPlan?.loadedQty),
+      dispatchDate: formatDate2(firstText(latestSlip?.date, invoice?.date)),
+      invoiceNo: firstText(invoice?.invoiceNo, latestSlip?.invoiceNo),
+      rate: firstValue(invoiceLine?.rate, production.rate, order?.rate),
+      saleValue: firstValue(invoiceLine?.amount, order?.orderAmount),
+      vehicleNo: firstText(latestSlip?.truckNo, truck?.truckNo),
+      driverName: firstText(truck?.driverName),
+      driverNo: firstText(truck?.mobileNo)
+    },
+    timeChart: {
+      plannedForProduction: dateText(plannedDate),
+      productionFromBoardline: dateText(processingDate(productionProcessing, "Corrugation Liner")),
+      productionFromPrinting: dateText(processingDate(productionProcessing, "Printing")),
+      preDispatchInspection: dateText(actualPdiDate),
+      dispatch: dateText(firstText(latestSlip?.date, invoice?.date))
+    },
+    searchText: [jobNo, ...lotNumbers, erpCode, partyName, itemName, firstText(production.firmName)].map(key4).join(" ")
+  };
+}
+function buildTraceabilitySearchIndex(input) {
+  const pdiNormalized = (value) => text3(value).toLowerCase();
+  const groupBy = (list, keyOf) => {
+    const map = /* @__PURE__ */ new Map();
+    list.forEach((row) => {
+      const groupKey = keyOf(row);
+      const group = map.get(groupKey);
+      if (group) group.push(row);
+      else map.set(groupKey, [row]);
+    });
+    return map;
+  };
+  const firstByKey = (list, keyOf) => {
+    const map = /* @__PURE__ */ new Map();
+    list.forEach((row) => {
+      const rowKey = keyOf(row);
+      if (!map.has(rowKey)) map.set(rowKey, row);
+    });
+    return map;
+  };
+  const boardlineByJob = groupBy(rows(input.boardline), (row) => normalizedJob(row.jobNo));
+  const printingByJob = groupBy(rows(input.printing), (row) => normalizedJob(row.jobNo));
+  const latestOfJob = (groups, jobNo) => latest(groups.get(normalizedJob(jobNo)) || [], (row) => row.updateTimestamp || row.timestamp);
+  const inspectionsList = rows(input.inspections);
+  const inspectionIndexById = groupBy(inspectionsList.map((row, index) => ({ row, index })), (entry) => pdiNormalized(entry.row.productionId));
+  const inspectionIndexByJob = groupBy(inspectionsList.map((row, index) => ({ row, index })), (entry) => pdiNormalized(entry.row.jobNo));
+  const inspectionsFor = (productionId, jobNo) => {
+    const seen = /* @__PURE__ */ new Set();
+    return [...inspectionIndexById.get(pdiNormalized(productionId)) || [], ...inspectionIndexByJob.get(pdiNormalized(jobNo)) || []].filter((entry) => seen.has(entry.index) ? false : (seen.add(entry.index), true)).sort((a, b) => a.index - b.index).map((entry) => entry.row);
+  };
+  const items = rows(input.items);
+  const itemIndexByKey = /* @__PURE__ */ new Map();
+  items.forEach((candidate, index) => {
+    [candidate.id, candidate.erp].forEach((value) => {
+      const itemKey = key4(value);
+      if (itemKey && !itemIndexByKey.has(itemKey)) itemIndexByKey.set(itemKey, index);
+    });
+  });
+  const findItem = (...candidates) => {
+    let best = -1;
+    candidates.forEach((value) => {
+      const candidateKey = key4(value);
+      if (!candidateKey) return;
+      const index = itemIndexByKey.get(candidateKey);
+      if (index !== void 0 && (best < 0 || index < best)) best = index;
+    });
+    return best < 0 ? void 0 : items[best];
+  };
+  const scheduleById = firstByKey(rows(input.schedules), (row) => key4(row.id));
+  const orderById = firstByKey(rows(input.orders), (row) => key4(row.id));
+  const companyById = firstByKey(rows(input.companies), (row) => key4(row.id));
+  const complaintsByErp = groupBy(rows(input.complaints), (row) => key4(row.erpCode));
+  return rows(input.productions).filter((production) => Boolean(production && text3(production.id))).map((production) => {
+    const jobNo = firstText(production.transactionNo, production.jobCardNo);
+    const board = latestOfJob(boardlineByJob, jobNo);
+    const printing = latestOfJob(printingByJob, jobNo);
+    const inspection = findLatestInspection(inspectionsFor(production.id, jobNo), production.id, jobNo);
+    const item = findItem(production.itemId, production.npdId, production.erpCode, board?.erp, printing?.erp);
+    const schedule = scheduleById.get(key4(production.scheduleId));
+    const order = orderById.get(key4(schedule?.orderId));
+    const company = companyById.get(key4(order?.companyId));
+    const erpCode = firstText(production.erpCode, inspection?.erpCode, board?.erp, printing?.erp, item?.erp);
+    const partyName = firstText(production.companyName, inspection?.partyName, board?.partyName, printing?.partyName, company?.name);
+    const itemName = firstText(production.itemName, item?.name, inspection?.itemName, board?.itemName, printing?.itemName);
+    const complaintLots = (complaintsByErp.get(key4(erpCode)) || []).filter((complaint) => sameJob(complaint.lotNo, jobNo)).map((complaint) => text3(complaint.lotNo));
+    const lotNumbers = [...new Set([text3(inspection?.lotNo), text3(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
+    return {
+      id: production.id,
+      productionId: production.id,
+      firmName: firstText(production.firmName),
+      jobNo,
+      lotNo: firstText(...lotNumbers),
+      lotNumbers,
+      itemName,
+      partyName,
+      erpCode,
+      status: statusOf(production),
+      searchText: [jobNo, ...lotNumbers, erpCode, partyName, itemName, firstText(production.firmName)].map(key4).join(" ")
+    };
+  });
+}
+function buildTraceabilityRecordById(input, productionId) {
+  const production = rows(input.productions).find((row) => Boolean(row && text3(row.id)) && row.id === productionId);
+  return production ? buildTraceabilityRecord(production, input) : null;
 }
 
 // src/lib/reports/serverReports.ts
 function catalogFrom(helpers) {
-  const rows = helpers.catalogRows || { fgRows: [], phpRows: [], plateRows: [], materialRows: [] };
-  return createOrderItemCatalog(rows);
+  const rows2 = helpers.catalogRows || { fgRows: [], phpRows: [], plateRows: [], materialRows: [] };
+  return createOrderItemCatalog(rows2);
 }
 var REPORT_DEFINITIONS = {
   "paper-requirement": {
@@ -2315,6 +2682,56 @@ REPORT_DEFINITIONS["qc-view"] = {
     { key: "controlRecords", entity: "control_records", scope: "all" }
   ],
   compute: (lists, _params, helpers) => computeQcViewRows(lists, toQcItems((helpers.npdItems || []).map(normalizeNpdItem)))
+};
+REPORT_DEFINITIONS["traceability-index"] = {
+  permission: "/quality/traceability",
+  npdItems: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+    { key: "boardline", entity: "boardline_qc_checks", scope: "all" },
+    { key: "printing", entity: "printing_qc_checks", scope: "all" },
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" },
+    { key: "dispatchPlans", entity: "dispatch_plans", scope: "all" },
+    { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+    { key: "invoices", entity: "invoices", scope: "all" },
+    { key: "invoiceLineItems", entity: "invoice_line_items", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "qcUpdates", entity: "qc_update_records", scope: "all" },
+    { key: "complaints", entity: "quality_complaints", scope: "all" },
+    { key: "materials", entity: "materials", scope: "all" },
+    { key: "materialIssueReelLines", entity: "material_issue_reel_lines", scope: "all" },
+    { key: "materialReturnReelLines", entity: "material_return_reel_lines", scope: "all" }
+  ],
+  compute: (lists, _params, helpers) => buildTraceabilitySearchIndex({ ...lists, items: (helpers.npdItems || []).map(normalizeNpdItem) })
+};
+REPORT_DEFINITIONS["traceability-record"] = {
+  permission: "/quality/traceability",
+  npdItems: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+    { key: "boardline", entity: "boardline_qc_checks", scope: "all" },
+    { key: "printing", entity: "printing_qc_checks", scope: "all" },
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" },
+    { key: "dispatchPlans", entity: "dispatch_plans", scope: "all" },
+    { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+    { key: "invoices", entity: "invoices", scope: "all" },
+    { key: "invoiceLineItems", entity: "invoice_line_items", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "qcUpdates", entity: "qc_update_records", scope: "all" },
+    { key: "complaints", entity: "quality_complaints", scope: "all" },
+    { key: "materials", entity: "materials", scope: "all" },
+    { key: "materialIssueReelLines", entity: "material_issue_reel_lines", scope: "all" },
+    { key: "materialReturnReelLines", entity: "material_return_reel_lines", scope: "all" }
+  ],
+  compute: (lists, params, helpers) => buildTraceabilityRecordById({ ...lists, items: (helpers.npdItems || []).map(normalizeNpdItem) }, String(params.productionId || ""))
 };
 function runReport(name, lists, params, helpers) {
   const definition = REPORT_DEFINITIONS[name];

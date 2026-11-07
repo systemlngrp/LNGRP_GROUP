@@ -3,6 +3,7 @@ import { Download, ExternalLink, FileText, Search, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
+import { useServerReport } from "../hooks/useServerReport";
 import type {
   BoardLineQcCheck,
   Company,
@@ -28,6 +29,7 @@ import {
   buildTraceabilityRecords,
   filterTraceabilityRecords,
   type TraceabilityRecord,
+  type TraceabilitySearchEntry,
   type TraceabilityValue,
 } from "../lib/traceabilityData";
 import { downloadTraceabilityPdf } from "../lib/traceabilityPdf";
@@ -582,32 +584,39 @@ function SearchToolbar({
   </div>;
 }
 
+const TRACEABILITY_TABLES = ["productions", "companies", "orders", "orders_schedule", "production_processing", "boardline_qc_checks", "printing_qc_checks", "pre_dispatch_inspections", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "qc_update_records", "quality_complaints", "materials", "material_issue_reel_lines", "material_return_reel_lines", "npd"];
+
 export function TraceabilitySystem() {
   const navigate = useNavigate();
   const { productionId } = useParams<{ productionId?: string }>();
   const [search, setSearch] = useState("");
 
-  const [productions, , productionsLoading] = useData<Production>("productions", [], { firmScope: "all", storageKey: "traceability-productions" });
-  const items = useNpdItems();
-  const [companies, , companiesLoading] = useData<Company>("companies", [], { firmScope: "all", storageKey: "traceability-companies" });
-  const [orders, , ordersLoading] = useData<Order>("orders", [], { firmScope: "all", storageKey: "traceability-orders" });
-  const [schedules, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "traceability-schedules" });
-  const [processing, , processingLoading] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "traceability-processing" });
-  const [boardline, , boardlineLoading] = useData<BoardLineQcCheck>("boardline_qc_checks", [], { firmScope: "all", storageKey: "traceability-boardline" });
-  const [printing, , printingLoading] = useData<PrintingQcCheck>("printing_qc_checks", [], { firmScope: "all", storageKey: "traceability-printing" });
-  const [inspections, , inspectionsLoading] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all", storageKey: "traceability-pdi" });
-  const [dispatchPlans, , dispatchPlansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "traceability-dispatch-plans" });
-  const [loadingSlips, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "traceability-loading-slips" });
-  const [invoices, , invoicesLoading] = useData<Invoice>("invoices", [], { firmScope: "all", storageKey: "traceability-invoices" });
-  const [invoiceLineItems, , invoiceLineItemsLoading] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "traceability-invoice-lines" });
-  const [trucks, , trucksLoading] = useData<Truck>("trucks", [], { firmScope: "all", storageKey: "traceability-trucks" });
-  const [qcUpdates, , qcUpdatesLoading] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all", storageKey: "traceability-updates" });
-  const [complaints, , complaintsLoading] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all", storageKey: "traceability-complaints" });
-  const [materials, , materialsLoading] = useData<Material>("materials", [], { firmScope: "all", storageKey: "traceability-materials" });
-  const [materialIssueReelLines, , materialIssueReelLinesLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", storageKey: "traceability-material-issue-reels" });
-  const [materialReturnReelLines, , materialReturnReelLinesLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", storageKey: "traceability-material-return-reels" });
+  // The search list and the opened job come from the server; if it cannot,
+  // every list is loaded and the records are built here as before.
+  const serverIndex = useServerReport<TraceabilitySearchEntry[]>("traceability-index", {}, TRACEABILITY_TABLES);
+  const serverRecord = useServerReport<TraceabilityRecord | null>("traceability-record", { productionId: productionId || "" }, TRACEABILITY_TABLES, Boolean(productionId) && !serverIndex.failed);
+  const browserFallback = serverIndex.failed || serverRecord.failed;
+  const [productions, , productionsLoading] = useData<Production>("productions", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-productions" });
+  const items = useNpdItems({ enabled: browserFallback });
+  const [companies, , companiesLoading] = useData<Company>("companies", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-companies" });
+  const [orders, , ordersLoading] = useData<Order>("orders", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-orders" });
+  const [schedules, , schedulesLoading] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-schedules" });
+  const [processing, , processingLoading] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-processing" });
+  const [boardline, , boardlineLoading] = useData<BoardLineQcCheck>("boardline_qc_checks", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-boardline" });
+  const [printing, , printingLoading] = useData<PrintingQcCheck>("printing_qc_checks", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-printing" });
+  const [inspections, , inspectionsLoading] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-pdi" });
+  const [dispatchPlans, , dispatchPlansLoading] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-dispatch-plans" });
+  const [loadingSlips, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-loading-slips" });
+  const [invoices, , invoicesLoading] = useData<Invoice>("invoices", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-invoices" });
+  const [invoiceLineItems, , invoiceLineItemsLoading] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-invoice-lines" });
+  const [trucks, , trucksLoading] = useData<Truck>("trucks", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-trucks" });
+  const [qcUpdates, , qcUpdatesLoading] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-updates" });
+  const [complaints, , complaintsLoading] = useData<QualityComplaint>("quality_complaints", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-complaints" });
+  const [materials, , materialsLoading] = useData<Material>("materials", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-materials" });
+  const [materialIssueReelLines, , materialIssueReelLinesLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-material-issue-reels" });
+  const [materialReturnReelLines, , materialReturnReelLinesLoading] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all", enabled: browserFallback, storageKey: "traceability-material-return-reels" });
 
-  const records = useMemo(() => buildTraceabilityRecords(traceabilityInputs(
+  const records = useMemo(() => !browserFallback ? [] : buildTraceabilityRecords(traceabilityInputs(
     productions,
     items,
     companies,
@@ -627,10 +636,14 @@ export function TraceabilitySystem() {
     materials,
     materialIssueReelLines,
     materialReturnReelLines,
-  )), [boardline, complaints, companies, dispatchPlans, inspections, invoiceLineItems, invoices, items, loadingSlips, materialIssueReelLines, materialReturnReelLines, materials, orders, printing, processing, productions, qcUpdates, schedules, trucks]);
-  const selected = productionId ? records.find((record) => record.id === productionId) : undefined;
-  const suggestions = useMemo(() => filterTraceabilityRecords(records, search), [records, search]);
-  const loading = [productionsLoading, companiesLoading, ordersLoading, schedulesLoading, processingLoading, boardlineLoading, printingLoading, inspectionsLoading, dispatchPlansLoading, loadingSlipsLoading, invoicesLoading, invoiceLineItemsLoading, trucksLoading, qcUpdatesLoading, complaintsLoading, materialsLoading, materialIssueReelLinesLoading, materialReturnReelLinesLoading].some(Boolean);
+  )), [browserFallback, boardline, complaints, companies, dispatchPlans, inspections, invoiceLineItems, invoices, items, loadingSlips, materialIssueReelLines, materialReturnReelLines, materials, orders, printing, processing, productions, qcUpdates, schedules, trucks]);
+  const serverSelected = serverRecord.result && serverRecord.result.id === productionId ? serverRecord.result : undefined;
+  const selected = productionId ? (browserFallback ? records.find((record) => record.id === productionId) : serverSelected) : undefined;
+  // The search uses only the light fields (job, lot, party, item, status, search text).
+  const searchList = (browserFallback ? records : (serverIndex.result || [])) as TraceabilityRecord[];
+  const suggestions = useMemo(() => filterTraceabilityRecords(searchList, search), [searchList, search]);
+  const listsLoading = [productionsLoading, companiesLoading, ordersLoading, schedulesLoading, processingLoading, boardlineLoading, printingLoading, inspectionsLoading, dispatchPlansLoading, loadingSlipsLoading, invoicesLoading, invoiceLineItemsLoading, trucksLoading, qcUpdatesLoading, complaintsLoading, materialsLoading, materialIssueReelLinesLoading, materialReturnReelLinesLoading].some(Boolean);
+  const loading = browserFallback ? listsLoading : serverIndex.loading || (Boolean(productionId) && serverRecord.loading);
   const notFound = Boolean(productionId && !selected && !loading);
 
   useEffect(() => {

@@ -488,3 +488,108 @@ export function filterTraceabilityRecords(records: TraceabilityRecord[], search:
     return true;
   });
 }
+
+export type TraceabilitySearchEntry = Pick<TraceabilityRecord, "id" | "productionId" | "firmName" | "jobNo" | "lotNo" | "lotNumbers" | "itemName" | "partyName" | "erpCode" | "status" | "searchText">;
+
+/**
+ * The search fields of every job (same values as buildTraceabilityRecords),
+ * without building the full record. The lists are indexed once instead of
+ * being searched again for every job; the full record of one job comes from
+ * buildTraceabilityRecord.
+ */
+export function buildTraceabilitySearchIndex(input: TraceabilityInputs): TraceabilitySearchEntry[] {
+  const pdiNormalized = (value: unknown) => text(value).toLowerCase();
+  const groupBy = <T>(list: T[], keyOf: (row: T) => string) => {
+    const map = new Map<string, T[]>();
+    list.forEach((row) => {
+      const groupKey = keyOf(row);
+      const group = map.get(groupKey);
+      if (group) group.push(row);
+      else map.set(groupKey, [row]);
+    });
+    return map;
+  };
+  const firstByKey = <T>(list: T[], keyOf: (row: T) => string) => {
+    const map = new Map<string, T>();
+    list.forEach((row) => { const rowKey = keyOf(row); if (!map.has(rowKey)) map.set(rowKey, row); });
+    return map;
+  };
+  const boardlineByJob = groupBy(rows(input.boardline), (row) => normalizedJob(row.jobNo));
+  const printingByJob = groupBy(rows(input.printing), (row) => normalizedJob(row.jobNo));
+  const latestOfJob = <T>(groups: Map<string, T[]>, jobNo: string) =>
+    latest(groups.get(normalizedJob(jobNo)) || [], (row) => (row as T & { updateTimestamp?: string; timestamp?: string }).updateTimestamp || (row as T & { timestamp?: string }).timestamp);
+  // Inspections matching the job id or job no, in list order (findLatestInspection
+  // then applies its own id-first rule to them).
+  const inspectionsList = rows(input.inspections);
+  const inspectionIndexById = groupBy(inspectionsList.map((row, index) => ({ row, index })), (entry) => pdiNormalized(entry.row.productionId));
+  const inspectionIndexByJob = groupBy(inspectionsList.map((row, index) => ({ row, index })), (entry) => pdiNormalized(entry.row.jobNo));
+  const inspectionsFor = (productionId: string, jobNo: string) => {
+    const seen = new Set<number>();
+    return [...(inspectionIndexById.get(pdiNormalized(productionId)) || []), ...(inspectionIndexByJob.get(pdiNormalized(jobNo)) || [])]
+      .filter((entry) => (seen.has(entry.index) ? false : (seen.add(entry.index), true)))
+      .sort((a, b) => a.index - b.index)
+      .map((entry) => entry.row);
+  };
+  // First item whose id or ERP equals any non-empty candidate key.
+  const items = rows(input.items);
+  const itemIndexByKey = new Map<string, number>();
+  items.forEach((candidate, index) => {
+    [candidate.id, candidate.erp].forEach((value) => {
+      const itemKey = key(value);
+      if (itemKey && !itemIndexByKey.has(itemKey)) itemIndexByKey.set(itemKey, index);
+    });
+  });
+  const findItem = (...candidates: unknown[]) => {
+    let best = -1;
+    candidates.forEach((value) => {
+      const candidateKey = key(value);
+      if (!candidateKey) return;
+      const index = itemIndexByKey.get(candidateKey);
+      if (index !== undefined && (best < 0 || index < best)) best = index;
+    });
+    return best < 0 ? undefined : items[best];
+  };
+  const scheduleById = firstByKey(rows(input.schedules), (row) => key(row.id));
+  const orderById = firstByKey(rows(input.orders), (row) => key(row.id));
+  const companyById = firstByKey(rows(input.companies), (row) => key(row.id));
+  const complaintsByErp = groupBy(rows(input.complaints), (row) => key(row.erpCode));
+
+  return rows(input.productions)
+    .filter((production): production is Production => Boolean(production && text(production.id)))
+    .map((production) => {
+      const jobNo = firstText(production.transactionNo, production.jobCardNo);
+      const board = latestOfJob(boardlineByJob, jobNo);
+      const printing = latestOfJob(printingByJob, jobNo);
+      const inspection = findLatestInspection(inspectionsFor(production.id, jobNo), production.id, jobNo);
+      const item = findItem(production.itemId, production.npdId, production.erpCode, board?.erp, printing?.erp);
+      const schedule = scheduleById.get(key(production.scheduleId));
+      const order = orderById.get(key(schedule?.orderId));
+      const company = companyById.get(key(order?.companyId));
+      const erpCode = firstText(production.erpCode, inspection?.erpCode, board?.erp, printing?.erp, item?.erp);
+      const partyName = firstText(production.companyName, inspection?.partyName, board?.partyName, printing?.partyName, company?.name);
+      const itemName = firstText((production as Production & { itemName?: string }).itemName, item?.name, inspection?.itemName, board?.itemName, printing?.itemName);
+      const complaintLots = (complaintsByErp.get(key(erpCode)) || [])
+        .filter((complaint) => sameJob(complaint.lotNo, jobNo))
+        .map((complaint) => text(complaint.lotNo));
+      const lotNumbers = [...new Set([text(inspection?.lotNo), text(printing?.lotNoPrinted), ...complaintLots].filter(Boolean))];
+      return {
+        id: production.id,
+        productionId: production.id,
+        firmName: firstText(production.firmName),
+        jobNo,
+        lotNo: firstText(...lotNumbers),
+        lotNumbers,
+        itemName,
+        partyName,
+        erpCode,
+        status: statusOf(production),
+        searchText: [jobNo, ...lotNumbers, erpCode, partyName, itemName, firstText(production.firmName)].map(key).join(" "),
+      };
+    });
+}
+
+/** Full record of one job (null when the job is not in the list). */
+export function buildTraceabilityRecordById(input: TraceabilityInputs, productionId: string) {
+  const production = rows(input.productions).find((row) => Boolean(row && text(row.id)) && row.id === productionId);
+  return production ? buildTraceabilityRecord(production, input) : null;
+}

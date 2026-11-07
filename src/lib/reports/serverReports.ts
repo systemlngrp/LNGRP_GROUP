@@ -11,6 +11,7 @@ import { computeSummarySheetRows } from "./summarySheet";
 import { computeConversionCostBase } from "./conversionCostDetails";
 import { computeAuditDashboard } from "./auditDashboard";
 import { computeQcViewRows, toQcItems } from "./qcView";
+import { buildTraceabilityRecordById, buildTraceabilitySearchIndex } from "../traceabilityData";
 
 export type ReportListSpec = {
   key: string;
@@ -195,6 +196,60 @@ REPORT_DEFINITIONS["qc-view"] = {
     { key: "controlRecords", entity: "control_records", scope: "all" },
   ],
   compute: (lists, _params, helpers) => computeQcViewRows(lists as any, toQcItems((helpers.npdItems || []).map(normalizeNpdItem))),
+};
+
+// Traceability: the search list (light fields of every job) and the full
+// record of one job. Both read the same lists as the page.
+REPORT_DEFINITIONS["traceability-index"] = {
+  permission: "/quality/traceability",
+  npdItems: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+    { key: "boardline", entity: "boardline_qc_checks", scope: "all" },
+    { key: "printing", entity: "printing_qc_checks", scope: "all" },
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" },
+    { key: "dispatchPlans", entity: "dispatch_plans", scope: "all" },
+    { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+    { key: "invoices", entity: "invoices", scope: "all" },
+    { key: "invoiceLineItems", entity: "invoice_line_items", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "qcUpdates", entity: "qc_update_records", scope: "all" },
+    { key: "complaints", entity: "quality_complaints", scope: "all" },
+    { key: "materials", entity: "materials", scope: "all" },
+    { key: "materialIssueReelLines", entity: "material_issue_reel_lines", scope: "all" },
+    { key: "materialReturnReelLines", entity: "material_return_reel_lines", scope: "all" },
+  ],
+  compute: (lists, _params, helpers) => buildTraceabilitySearchIndex({ ...(lists as any), items: (helpers.npdItems || []).map(normalizeNpdItem) }),
+};
+
+REPORT_DEFINITIONS["traceability-record"] = {
+  permission: "/quality/traceability",
+  npdItems: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+    { key: "boardline", entity: "boardline_qc_checks", scope: "all" },
+    { key: "printing", entity: "printing_qc_checks", scope: "all" },
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" },
+    { key: "dispatchPlans", entity: "dispatch_plans", scope: "all" },
+    { key: "loadingSlips", entity: "loading_slips", scope: "all" },
+    { key: "invoices", entity: "invoices", scope: "all" },
+    { key: "invoiceLineItems", entity: "invoice_line_items", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "qcUpdates", entity: "qc_update_records", scope: "all" },
+    { key: "complaints", entity: "quality_complaints", scope: "all" },
+    { key: "materials", entity: "materials", scope: "all" },
+    { key: "materialIssueReelLines", entity: "material_issue_reel_lines", scope: "all" },
+    { key: "materialReturnReelLines", entity: "material_return_reel_lines", scope: "all" },
+  ],
+  compute: (lists, params, helpers) => buildTraceabilityRecordById({ ...(lists as any), items: (helpers.npdItems || []).map(normalizeNpdItem) }, String(params.productionId || "")),
 };
 
 export function runReport(name: string, lists: Record<string, any[]>, params: Record<string, any>, helpers: ReportHelpers) {
