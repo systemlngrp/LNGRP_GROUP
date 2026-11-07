@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Material, MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
-import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
+import { buildReelTransferContexts, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
@@ -32,11 +32,20 @@ export function ReelTransferForm() {
   const [saving, setSaving] = useState(false);
 
   const windowHours = Number(settings[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
-  const contexts = useMemo(() => new Map(productions.map((production) => [production.id, buildReelTransferContext(production, processing, issueReels, returnReels, issueLines, productions, windowHours)])), [productions, processing, issueReels, returnReels, issueLines, windowHours]);
-  const sourceOptions = productions.filter((p) => p.status !== "Cancelled" && !p.cancelTimestamp && contexts.get(p.id)?.eligible).map((p) => ({ value: p.id, label: String(p.transactionNo) }));
+  // Indexed once per data change (this used to scan every reel and processing
+  // list once per job, freezing the screen for ~10 s).
+  const contexts = useMemo(() => buildReelTransferContexts(productions, processing, issueReels, returnReels, issueLines, windowHours), [productions, processing, issueReels, returnReels, issueLines, windowHours]);
+  const sourceOptions = useMemo(() => productions.filter((p) => p.status !== "Cancelled" && !p.cancelTimestamp && contexts.get(p.id)?.eligible).map((p) => ({ value: p.id, label: String(p.transactionNo) })), [contexts, productions]);
   const sourceContext = contexts.get(sourceId);
-  const normalizeJobNo = (value: unknown) => String(value || "").trim().toLowerCase();
-  const targetOptions = productions.filter((p) => p.id !== sourceId && OPEN_TARGET_STATUSES.has(p.status) && !p.cancelTimestamp && !issueReels.some((row) => row.productionId === p.id || normalizeJobNo(row.jobNo) === normalizeJobNo(p.transactionNo)) && !processing.some((row) => row.productionId === p.id && normalizeMachineName(row.machineName) === "Corrugation Liner")).map((p) => ({ value: p.id, label: String(p.transactionNo) }));
+  const targetOptions = useMemo(() => {
+    const normalizeJobNo = (value: unknown) => String(value || "").trim().toLowerCase();
+    const issuedProductionIds = new Set(issueReels.map((row) => row.productionId));
+    const issuedJobNos = new Set(issueReels.map((row) => normalizeJobNo(row.jobNo)));
+    const corrugatedProductionIds = new Set(processing.filter((row) => normalizeMachineName(row.machineName) === "Corrugation Liner").map((row) => row.productionId));
+    return productions
+      .filter((p) => p.id !== sourceId && OPEN_TARGET_STATUSES.has(p.status) && !p.cancelTimestamp && !issuedProductionIds.has(p.id) && !issuedJobNos.has(normalizeJobNo(p.transactionNo)) && !corrugatedProductionIds.has(p.id))
+      .map((p) => ({ value: p.id, label: String(p.transactionNo) }));
+  }, [issueReels, processing, productions, sourceId]);
   const materialMap = new Map(materials.map((row) => [row.id, row]));
   const selectedRows = (sourceContext?.reels || []).filter((row) => selectedSlips.includes(row.packingSlipId));
   const allocationBySlip = useMemo(() => new Map(selectedRows.map((row) => [row.packingSlipId, row.transferWeightKg])), [selectedRows]);

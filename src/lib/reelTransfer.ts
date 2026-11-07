@@ -52,7 +52,8 @@ export function buildReelTransferContext(
   issueLines: MaterialIssueLine[],
   productions: Production[],
   windowHours: number,
-  now = Date.now()
+  now = Date.now(),
+  prebuiltLineById?: Map<string, MaterialIssueLine>
 ) {
   const fullTime = getCorrugationFullTime(processing, production.id);
   const expiresAt = fullTime + windowHours * 60 * 60 * 1000;
@@ -80,7 +81,7 @@ export function buildReelTransferContext(
     issuedBySlip.set(slipId, (issuedBySlip.get(slipId) || 0) + Number(row.weightKg || 0));
     latestIssueBySlip.set(slipId, row);
   });
-  const lineById = new Map(issueLines.map((line) => [line.id, line]));
+  const lineById = prebuiltLineById || new Map(issueLines.map((line) => [line.id, line]));
   const reels = Array.from(issuedBySlip.entries()).flatMap(([packingSlipId, issuedWeightKg]) => {
     const issue = latestIssueBySlip.get(packingSlipId);
     if (!issue || issuedWeightKg <= 0) return [];
@@ -140,4 +141,67 @@ export function buildReelTransferContext(
     outstandingReelCount: reels.length,
     reels: reelsWithNotionalTransfer,
   };
+}
+
+/**
+ * Same result as calling buildReelTransferContext for every production, but
+ * each list is indexed once and each job gets only its own rows (in their
+ * original order), instead of scanning every list once per job.
+ */
+export function buildReelTransferContexts(
+  productions: Production[],
+  processing: ProductionProcessing[],
+  issueReels: MaterialIssueReelLine[],
+  returnReels: MaterialReturnReelLine[],
+  issueLines: MaterialIssueLine[],
+  windowHours: number,
+  now = Date.now()
+) {
+  const processingByProduction = new Map<string, ProductionProcessing[]>();
+  processing.forEach((row) => {
+    const list = processingByProduction.get(row.productionId);
+    if (list) list.push(row);
+    else processingByProduction.set(row.productionId, [row]);
+  });
+  const indexRows = <T extends { productionId?: string; jobNo?: string }>(rows: T[]) => {
+    const byProduction = new Map<string, number[]>();
+    const byJobNo = new Map<string, number[]>();
+    rows.forEach((row, index) => {
+      const productionKey = String(row.productionId ?? "");
+      const jobKey = normalize(row.jobNo);
+      (byProduction.get(productionKey) || byProduction.set(productionKey, []).get(productionKey)!).push(index);
+      (byJobNo.get(jobKey) || byJobNo.set(jobKey, []).get(jobKey)!).push(index);
+    });
+    return (production: Production) => {
+      // Rows matching the job id or job number, merged back into list order.
+      const byId = byProduction.get(String(production.id ?? "")) || [];
+      const byJob = byJobNo.get(normalize(production.transactionNo)) || [];
+      const merged: T[] = [];
+      let i = 0;
+      let j = 0;
+      while (i < byId.length || j < byJob.length) {
+        const next = j >= byJob.length || (i < byId.length && byId[i] <= byJob[j]) ? byId[i++] : byJob[j++];
+        if (merged.length && merged[merged.length - 1] === rows[next]) continue;
+        merged.push(rows[next]);
+      }
+      return merged;
+    };
+  };
+  const issuesFor = indexRows(issueReels);
+  const returnsFor = indexRows(returnReels);
+  const lineById = new Map(issueLines.map((line) => [line.id, line]));
+  return new Map(productions.map((production) => [
+    production.id,
+    buildReelTransferContext(
+      production,
+      processingByProduction.get(production.id) || [],
+      issuesFor(production),
+      returnsFor(production),
+      issueLines,
+      productions,
+      windowHours,
+      now,
+      lineById,
+    ),
+  ]));
 }

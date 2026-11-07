@@ -1102,7 +1102,7 @@ function getCorrugationFullTime(processing, productionId) {
   const times = processing.filter((row) => row.productionId === productionId && normalize(row.machineName) === "corrugation liner" && normalize(row.completionStatus) === "full").map((row) => getValidTime(row.updateTimestamp, row.date)).filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
   return times[0] || 0;
 }
-function buildReelTransferContext(production, processing, issueReels, returnReels, issueLines, productions, windowHours, now = Date.now()) {
+function buildReelTransferContext(production, processing, issueReels, returnReels, issueLines, productions, windowHours, now = Date.now(), prebuiltLineById) {
   const fullTime = getCorrugationFullTime(processing, production.id);
   const expiresAt = fullTime + windowHours * 60 * 60 * 1e3;
   const belongsToJob = (row) => row.productionId === production.id || normalize(row.jobNo) === normalize(production.transactionNo);
@@ -1122,7 +1122,7 @@ function buildReelTransferContext(production, processing, issueReels, returnReel
     issuedBySlip.set(slipId, (issuedBySlip.get(slipId) || 0) + Number(row.weightKg || 0));
     latestIssueBySlip.set(slipId, row);
   });
-  const lineById = new Map(issueLines.map((line) => [line.id, line]));
+  const lineById = prebuiltLineById || new Map(issueLines.map((line) => [line.id, line]));
   const reels = Array.from(issuedBySlip.entries()).flatMap(([packingSlipId, issuedWeightKg]) => {
     const issue = latestIssueBySlip.get(packingSlipId);
     if (!issue || issuedWeightKg <= 0) return [];
