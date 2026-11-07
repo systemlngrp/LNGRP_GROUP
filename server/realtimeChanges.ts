@@ -65,7 +65,17 @@ export function extractWrittenTables(sql: unknown): { tables: string[]; unknown:
   return { tables: Array.from(tables), unknown: UNKNOWN_WRITE.test(text) || (looksLikeWrite && tables.size === 0) };
 }
 
+let schemaChangeListener: (() => void) | null = null;
+/** Called whenever the app runs ALTER/CREATE/DROP TABLE, so schema caches can reset. */
+export function onSchemaChange(listener: () => void) {
+  schemaChangeListener = listener;
+}
+const SCHEMA_CHANGE = /^\s*(?:alter|create|drop|rename)\s+table\b/i;
+
 function record(sql: unknown) {
+  if (schemaChangeListener && SCHEMA_CHANGE.test(sqlText(sql))) {
+    try { schemaChangeListener(); } catch { /* ignore */ }
+  }
   const store = changeContext.getStore();
   if (!store) return;
   try {

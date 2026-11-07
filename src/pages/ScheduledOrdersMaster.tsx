@@ -115,45 +115,53 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   );
 
   const scheduleDispatchDetails = useMemo(() => {
+    // Index the related tables once instead of scanning every production,
+    // plan and loading slip for each schedule (that made this screen freeze
+    // and run out of memory as data grew). The totals are the same.
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const companyById = new Map(companies.map((c) => [c.id, c]));
+    const productionTotals = new Map<string, { plannedQty: number; producedFgQty: number; effectiveProduced: number }>();
+    for (const p of productions) {
+      if (!p.scheduleId || p.status === "Cancelled") continue;
+      const totals = productionTotals.get(p.scheduleId) || { plannedQty: 0, producedFgQty: 0, effectiveProduced: 0 };
+      totals.plannedQty += Number(p.plannedQty ?? p.qty) || 0;
+      totals.producedFgQty += Number(p.prodFromFFG || 0) || 0;
+      totals.effectiveProduced += Math.min(Number((p.plannedQty ?? p.qty) || 0), Number(p.prodFromFFG || 0));
+      productionTotals.set(p.scheduleId, totals);
+    }
+    const scheduleIdByPlanId = new Map<string, string>();
+    for (const plan of plans) {
+      if (plan.scheduleId) scheduleIdByPlanId.set(plan.id, plan.scheduleId);
+    }
+    const loadTotals = new Map<string, { loaded: number; invoiced: number }>();
+    for (const ls of loadingSlips) {
+      for (const line of ls.lines || []) {
+        const scheduleId = scheduleIdByPlanId.get(line.dispatchPlanId);
+        if (!scheduleId) continue;
+        const qty = Number(line.loadedQty) || 0;
+        const totals = loadTotals.get(scheduleId) || { loaded: 0, invoiced: 0 };
+        totals.loaded += qty;
+        // Invoiced: If the loading slip has an invoiceId, it counts as invoiced
+        if (ls.invoiceId) totals.invoiced += qty;
+        loadTotals.set(scheduleId, totals);
+      }
+    }
+
     return schedules.map(s => {
-      const order = orders.find(o => o.id === s.orderId);
-      const company = companies.find(c => c.id === order?.companyId);
+      const order = orderById.get(s.orderId);
+      const company = order?.companyId ? companyById.get(order.companyId) : undefined;
       const item = resolveOrderItem(order);
 
-      // 1. Planned Qty (from production jobs linked to this schedule)
-      const plannedQty = productions
-        .filter(p => p.scheduleId === s.id && p.status !== "Cancelled")
-        .reduce((sum, p) => sum + (Number(p.plannedQty ?? p.qty) || 0), 0);
+      // 1. Planned Qty / Production FFG Qty (from production jobs linked to this schedule)
+      const productionTotal = productionTotals.get(s.id);
+      const plannedQty = productionTotal?.plannedQty || 0;
+      const producedFgQty = productionTotal?.producedFgQty || 0;
+      const effectiveProducedForPlanning = productionTotal?.effectiveProduced || 0;
 
-      // 2. Production FFG Qty (workflow-managed value filled from Pending FFG)
-      const producedFgQty = productions
-        .filter(p => p.scheduleId === s.id && p.status !== "Cancelled")
-        .reduce((sum, p) => sum + (Number(p.prodFromFFG || 0) || 0), 0);
-
-      const effectiveProducedForPlanning = productions
-        .filter(p => p.scheduleId === s.id && p.status !== "Cancelled")
-        .reduce((sum, p) => sum + Math.min(Number((p.plannedQty ?? p.qty) || 0), Number(p.prodFromFFG || 0)), 0);
-
-      // 2. Loaded (from loading slips via dispatch plans)
-      const schedulePlans = plans.filter(p => p.scheduleId === s.id);
-      const planIds = new Set(schedulePlans.map(p => p.id));
-      
-      let loaded = 0;
-      let invoiced = 0;
-
-      loadingSlips.forEach(ls => {
-        ls.lines.forEach(line => {
-          if (planIds.has(line.dispatchPlanId)) {
-            const qty = Number(line.loadedQty) || 0;
-            loaded += qty;
-            
-            // 3. Invoiced: If the loading slip has an invoiceId, it counts as invoiced
-            if (ls.invoiceId) {
-              invoiced += qty;
-            }
-          }
-        });
-      });
+      // 2. Loaded / Invoiced (from loading slips via dispatch plans)
+      const loadTotal = loadTotals.get(s.id);
+      const loaded = loadTotal?.loaded || 0;
+      const invoiced = loadTotal?.invoiced || 0;
 
       return {
         ...s,

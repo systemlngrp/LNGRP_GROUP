@@ -492,17 +492,13 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const refreshPendingJobClosureCount = useCallback(async () => {
     try {
       const token = window.localStorage.getItem("authToken") || "";
-      const response = await fetch("/api/get-pending-job-closure", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({}),
+      // Count-only endpoint: the badge needs a number, not the full list.
+      const response = await fetch("/api/pending-job-closure/count", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) throw new Error(await response.text());
-      const rows = await response.json();
-      setPendingJobClosureCount(Array.isArray(rows) ? rows.length : 0);
+      const payload = await response.json();
+      setPendingJobClosureCount(Number(payload?.count || 0));
     } catch {
       setPendingJobClosureCount(0);
     }

@@ -14,7 +14,8 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { getChangesSince, getTrackedChanges, instrumentPool, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
+import { ensurePerformanceIndexes } from "./performanceIndexes.js";
+import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappTextMessage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
@@ -982,7 +983,10 @@ const NPD_PAGE_SIZE_MAX = 250;
 const NPD_CACHE_TTL_MS = 30_000;
 const firmWiseNpdCache = new Map();
 const firmWiseNpdInflight = new Map();
-const SIDEBAR_COUNT_CACHE_TTL_MS = 20_000;
+let firmWiseStockIndexCache = null;
+let firmWiseStockIndexInflight = null;
+let firmWiseStockIndexGeneration = 0;
+const SIDEBAR_COUNT_CACHE_TTL_MS = 30_000;
 let sidebarCountCache = null;
 let sidebarCountInflight = null;
 function pendingDailyTallyWhere(alias = "material_issues") {
@@ -997,6 +1001,8 @@ function pendingDailyTallyWhere(alias = "material_issues") {
 }
 function invalidateNpdCache() {
     firmWiseNpdCache.clear();
+    firmWiseStockIndexCache = null;
+    firmWiseStockIndexGeneration += 1;
 }
 function publishRealtimeDataChange(entities = ["*"]) {
     if (entities.includes("*") || entities.some((entity) => ["npd", "npd-firm-wise", "material_in", "productions", "production_processing", "loading_slips", "invoices", "invoice_line_items", "orders"].includes(entity))) {
@@ -1004,7 +1010,12 @@ function publishRealtimeDataChange(entities = ["*"]) {
     }
     realtimeDataVersion += 1;
     recordChangeVersion(realtimeDataVersion, entities.length ? entities : ["*"]);
-    sidebarCountCache = null;
+    // Keep the last sidebar numbers and mark them for a background refresh,
+    // instead of making the next page wait for 25 count queries.
+    if (sidebarCountCache)
+        sidebarCountCache.expiresAt = 0;
+    if (pendingJobClosureCountCache)
+        pendingJobClosureCountCache.stale = true;
 }
 const SIDEBAR_COUNT_KEYS = [
     "/indent/pending", "/purchase-orders/pending-indent-lines", "/purchase-orders/pending-approval", "/material-receipt/pending-mrr",
@@ -1110,6 +1121,16 @@ const PENDING_MATERIAL_RETURN_COUNT_SQL = `
     AND rs.pid IS NULL
     AND rn.pid IS NULL
 `;
+async function runWithConcurrency(tasks, limit) {
+    let next = 0;
+    const worker = async () => {
+        while (next < tasks.length) {
+            const task = tasks[next++];
+            await task();
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
 async function buildSidebarPendingCounts(db) {
     const counts = Object.fromEntries(SIDEBAR_COUNT_KEYS.map((key) => [key, 0]));
     const count = async (key, sql, params = [], fallbackSql) => {
@@ -1130,33 +1151,40 @@ async function buildSidebarPendingCounts(db) {
             }
         }
     };
-    await Promise.all([
-        count("/indent/pending", "SELECT COUNT(*) AS count FROM indents WHERE LOWER(COALESCE(status, '')) = 'pending'"),
-        count("/purchase-orders/pending-approval", "SELECT COUNT(*) AS count FROM purchase_orders WHERE LOWER(COALESCE(status, '')) = 'pending approval'"),
-        count("/purchase-orders/pending-indent-lines", "SELECT COUNT(*) AS count FROM indent_lines WHERE COALESCE(qty, 0) - COALESCE(cancelledQty, 0) - COALESCE(orderedQty, 0) > 0"),
-        count("/material-receipt/approvals", "SELECT COUNT(*) AS count FROM material_in WHERE status IN ('Pending PH', 'Pending Accounts', 'Pending MD')"),
-        count("/material-receipt/pending-ph-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending PH'"),
-        count("/material-receipt/pending-accounts-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Accounts'"),
-        count("/material-receipt/pending-md-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending MD'"),
-        count("/material-receipt/pending-tally", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Tally' AND LOWER(COALESCE(mrrType, '')) <> 'rejection in'"),
-        count("/material-receipt/pending-debit-note", "SELECT COUNT(*) AS count FROM material_in WHERE COALESCE(debitNote, '') <> '' AND COALESCE(tallyTimestamp, '') = ''"),
-        count("/material-receipt/pending-credit-note", "SELECT COUNT(*) AS count FROM material_in WHERE mrrType = 'Rejection In' AND COALESCE(creditTallyTimestamp, '') = ''"),
-        count("/orders/pending-ph", "SELECT COUNT(*) AS count FROM orders WHERE status IN ('Pending PH', 'Pending Salesman Approval')"),
-        count("/orders/pending-scheduling", "SELECT COUNT(*) AS count FROM orders WHERE status = 'Pending Scheduling'"),
-        count("/samples/pending", "SELECT COUNT(*) AS count FROM sample_requests WHERE COALESCE(jobCardNo, '') = '' AND COALESCE(cancelTimestamp, '') = ''"),
-        count("/production/pending", "SELECT COUNT(*) AS count FROM productions WHERE status IN ('Pending PH', 'Pending Production', 'Pending Planning')"),
-        count("/production/pending-consumption", PENDING_MATERIAL_ISSUE_COUNT_SQL, [], "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(status, '') NOT IN ('Cancelled', 'Completed')"),
-        count("/production/pending-tally", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(tallyPostingStatus, '') <> 'Completed' AND COALESCE(tallyTimestamp, '') = '' AND COALESCE(status, '') NOT IN ('Cancelled', 'Pending PH')"),
-        count("/production/pending-material-return", PENDING_MATERIAL_RETURN_COUNT_SQL, [], "SELECT COUNT(DISTINCT productionId) AS count FROM material_issue_reel_lines WHERE COALESCE(productionId, '') <> ''"),
-        count("/production/pending-machine-processing", "SELECT COUNT(*) AS count FROM production_processing WHERE COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
-        count("/production/pending-printing", "SELECT COUNT(*) AS count FROM production_processing WHERE LOWER(COALESCE(machineName, '')) LIKE '%printing%' AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
-        count("/loading/php/pending-tally", "SELECT COUNT(*) AS count FROM php_loading_slips WHERE COALESCE(phpConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
-        count("/loading/plate/pending-tally", "SELECT COUNT(*) AS count FROM plate_loading_slips WHERE COALESCE(plateConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
-        count("/material-movement/pending-consumption-tally", `SELECT COUNT(*) AS count FROM daily_consumptions WHERE ${pendingDailyTallyWhere("daily_consumptions")}`),
-        count("/billing/pending", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = ''"),
-        count("/billing/pending-tally", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = '' AND COALESCE(tallyPostingStatus, '') <> 'Not Applicable'"),
-        count("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
-    ]);
+    // The database pool has only a few connections; run the counts two at a
+    // time so other screens and saves are not queued behind them.
+    const countTasks = [];
+    const queueCount = (key, sql, params = [], fallbackSql) => {
+        countTasks.push(() => count(key, sql, params, fallbackSql));
+    };
+    [
+        queueCount("/indent/pending", "SELECT COUNT(*) AS count FROM indents WHERE LOWER(COALESCE(status, '')) = 'pending'"),
+        queueCount("/purchase-orders/pending-approval", "SELECT COUNT(*) AS count FROM purchase_orders WHERE LOWER(COALESCE(status, '')) = 'pending approval'"),
+        queueCount("/purchase-orders/pending-indent-lines", "SELECT COUNT(*) AS count FROM indent_lines WHERE COALESCE(qty, 0) - COALESCE(cancelledQty, 0) - COALESCE(orderedQty, 0) > 0"),
+        queueCount("/material-receipt/approvals", "SELECT COUNT(*) AS count FROM material_in WHERE status IN ('Pending PH', 'Pending Accounts', 'Pending MD')"),
+        queueCount("/material-receipt/pending-ph-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending PH'"),
+        queueCount("/material-receipt/pending-accounts-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Accounts'"),
+        queueCount("/material-receipt/pending-md-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending MD'"),
+        queueCount("/material-receipt/pending-tally", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Tally' AND LOWER(COALESCE(mrrType, '')) <> 'rejection in'"),
+        queueCount("/material-receipt/pending-debit-note", "SELECT COUNT(*) AS count FROM material_in WHERE COALESCE(debitNote, '') <> '' AND COALESCE(tallyTimestamp, '') = ''"),
+        queueCount("/material-receipt/pending-credit-note", "SELECT COUNT(*) AS count FROM material_in WHERE mrrType = 'Rejection In' AND COALESCE(creditTallyTimestamp, '') = ''"),
+        queueCount("/orders/pending-ph", "SELECT COUNT(*) AS count FROM orders WHERE status IN ('Pending PH', 'Pending Salesman Approval')"),
+        queueCount("/orders/pending-scheduling", "SELECT COUNT(*) AS count FROM orders WHERE status = 'Pending Scheduling'"),
+        queueCount("/samples/pending", "SELECT COUNT(*) AS count FROM sample_requests WHERE COALESCE(jobCardNo, '') = '' AND COALESCE(cancelTimestamp, '') = ''"),
+        queueCount("/production/pending", "SELECT COUNT(*) AS count FROM productions WHERE status IN ('Pending PH', 'Pending Production', 'Pending Planning')"),
+        queueCount("/production/pending-consumption", PENDING_MATERIAL_ISSUE_COUNT_SQL, [], "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(status, '') NOT IN ('Cancelled', 'Completed')"),
+        queueCount("/production/pending-tally", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(tallyPostingStatus, '') <> 'Completed' AND COALESCE(tallyTimestamp, '') = '' AND COALESCE(status, '') NOT IN ('Cancelled', 'Pending PH')"),
+        queueCount("/production/pending-material-return", PENDING_MATERIAL_RETURN_COUNT_SQL, [], "SELECT COUNT(DISTINCT productionId) AS count FROM material_issue_reel_lines WHERE COALESCE(productionId, '') <> ''"),
+        queueCount("/production/pending-machine-processing", "SELECT COUNT(*) AS count FROM production_processing WHERE COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
+        queueCount("/production/pending-printing", "SELECT COUNT(*) AS count FROM production_processing WHERE LOWER(COALESCE(machineName, '')) LIKE '%printing%' AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
+        queueCount("/loading/php/pending-tally", "SELECT COUNT(*) AS count FROM php_loading_slips WHERE COALESCE(phpConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
+        queueCount("/loading/plate/pending-tally", "SELECT COUNT(*) AS count FROM plate_loading_slips WHERE COALESCE(plateConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
+        queueCount("/material-movement/pending-consumption-tally", `SELECT COUNT(*) AS count FROM daily_consumptions WHERE ${pendingDailyTallyWhere("daily_consumptions")}`),
+        queueCount("/billing/pending", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = ''"),
+        queueCount("/billing/pending-tally", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = '' AND COALESCE(tallyPostingStatus, '') <> 'Not Applicable'"),
+        queueCount("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
+    ];
+    await runWithConcurrency(countTasks, 2);
     const pendingDaily = await fetchPendingDailyCount(db);
     counts["/material-movement/pending-non-job-issue"] = pendingDaily;
     const generatedAt = new Date().toISOString();
@@ -1343,9 +1371,9 @@ app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
     }
     const now = Date.now();
     if (sidebarCountCache && sidebarCountCache.expiresAt > now) {
-        console.info("[SIDEBAR_COUNTS] cache hit");
         return res.json(sidebarCountCache.value);
     }
+    const staleValue = sidebarCountCache?.value;
     if (!sidebarCountInflight) {
         const startedAt = now;
         sidebarCountInflight = buildSidebarPendingCounts(db)
@@ -1356,8 +1384,11 @@ app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
         })
             .finally(() => { sidebarCountInflight = null; });
     }
-    else {
-        console.info("[SIDEBAR_COUNTS] joined in-flight request");
+    if (staleValue) {
+        // Badges are informational: answer with the previous numbers while the
+        // refresh runs in the background.
+        sidebarCountInflight.catch((error) => console.error("[SIDEBAR_COUNTS] background refresh failed:", error));
+        return res.json(staleValue);
     }
     try {
         return res.json(await sidebarCountInflight);
@@ -1367,7 +1398,23 @@ app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
         return res.status(500).json({ error: "Failed to load sidebar counts" });
     }
 });
+// The firm-wise stock report used to be readable without signing in. When
+// NPD_FIRM_WISE_PUBLIC_KEY is set, callers must be signed in or pass ?key=<that
+// value>; without the setting it stays open as before, so external sheets keep
+// working until the key is configured.
+function isNpdFirmWiseRequestAllowed(req) {
+    const requiredKey = String(process.env.NPD_FIRM_WISE_PUBLIC_KEY || "").trim();
+    if (!requiredKey)
+        return true;
+    if (String(req.query.key || "") === requiredKey)
+        return true;
+    const auth = String(req.headers.authorization || "");
+    const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : decodeURIComponent(getCookieValue(req, AUTH_COOKIE_NAME));
+    return Boolean(token && verifyToken(token));
+}
 app.get("/api/npd-firm-wise", async (req, res) => {
+    if (!isNpdFirmWiseRequestAllowed(req))
+        return res.status(401).json({ error: "Unauthorized" });
     const db = await getPool();
     if (!db)
         return res.status(500).json({ error: "DB connection not available" });
@@ -2899,36 +2946,44 @@ function normalizeItemLookupId(value) {
 function normalizeComparableName(value) {
     return stringOrEmpty(value).replace(/\s+/g, " ").toLowerCase();
 }
+// Columns confirmed to exist in this server process. Schema checks used to run
+// on every save (about 40 information_schema queries per loading slip save);
+// once a column is known to exist it cannot disappear while the app runs.
+const knownExistingColumns = new Set();
+onSchemaChange(() => {
+    knownExistingColumns.clear();
+    existingColumnNamesCache.clear();
+});
 async function ensureColumnExists(db, database, table, column, type) {
-    const [rows] = await db.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?", [database, table, column]);
-    if (rows.length > 0)
+    const key = `${database}.${table}.${column}`.toLowerCase();
+    if (knownExistingColumns.has(key))
         return;
-    await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`);
+    const [rows] = await db.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?", [database, table, column]);
+    if (rows.length === 0) {
+        await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`);
+        existingColumnNamesCache.delete(`${database}.${table}`.toLowerCase());
+    }
+    knownExistingColumns.add(key);
 }
-async function fetchFirmWiseNpdItems(db, options) {
-    let base;
-    try {
-        base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") });
+function getFirmWiseStockIndex(db) {
+    if (firmWiseStockIndexCache)
+        return Promise.resolve(firmWiseStockIndexCache);
+    if (!firmWiseStockIndexInflight) {
+        const generation = firmWiseStockIndexGeneration;
+        const startedAt = Date.now();
+        firmWiseStockIndexInflight = buildFirmWiseStockIndex(db)
+            .then((index) => {
+            // Only keep the result if no stock change happened while it was built.
+            if (generation === firmWiseStockIndexGeneration)
+                firmWiseStockIndexCache = index;
+            console.info(`[NPD] stock index built items=${index.stocks.size} elapsedMs=${Date.now() - startedAt}`);
+            return index;
+        })
+            .finally(() => { firmWiseStockIndexInflight = null; });
     }
-    catch (error) {
-        console.error("[DB] Firm-wise NPD aggregation failed; using basic NPD fallback:", error);
-        const status = String(options.status || "active").trim().toLowerCase();
-        const where = [];
-        const params = [];
-        if (status !== "all") {
-            where.push("COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') " + (status === "removed" ? "=" : "<>") + " 'removed'");
-        }
-        const search = String(options.search || "").trim();
-        if (search) {
-            const like = `%${search}%`;
-            where.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
-            params.push(like, like, like, like, like, like);
-        }
-        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-        const [rows] = await db.query(`SELECT n.* FROM \`npd\` n ${whereSql} ORDER BY n.npdId ASC LIMIT ? OFFSET ?`, [...params, options.limit, options.offset]);
-        const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
-        base = { rows: rows, total: Number(countRows[0]?.total || 0) };
-    }
+    return firmWiseStockIndexInflight;
+}
+async function buildFirmWiseStockIndex(db) {
     // The firms table has no active/status column; every Firm Master row is a valid firm.
     const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
     const firms = firmRows.filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
@@ -2957,15 +3012,6 @@ async function fetchFirmWiseNpdItems(db, options) {
                 keyToItemId.set(normalized, itemId);
         }
     };
-    for (const row of base.rows) {
-        const itemId = stringOrEmpty(row.id || row.npdId);
-        if (!itemId)
-            continue;
-        addItemKey(row.id, itemId);
-        addItemKey(row.npdId, itemId);
-        addItemKey(row.erp, itemId);
-        addItemKey(row.itemName, itemId);
-    }
     // The API is paginated, but historical production must resolve against the
     // complete NPD master, not only the rows displayed on the current page.
     const [allNpdRows] = await db.query("SELECT id, npdId, erp, itemName FROM `npd`");
@@ -2994,7 +3040,6 @@ async function fetchFirmWiseNpdItems(db, options) {
         }
         return "";
     };
-    const itemIds = Array.from(new Set(base.rows.map((row) => stringOrEmpty(row.id || row.npdId)).filter(Boolean)));
     const stocks = new Map();
     const ensure = (itemId, firmId) => {
         const resolvedItemId = resolveStockItemId(itemId) || stringOrEmpty(itemId);
@@ -3007,7 +3052,7 @@ async function fetchFirmWiseNpdItems(db, options) {
             byFirm.set(firmId, { opening: 0, receipt: 0, production: 0, invoiced: 0, tallyStock: null, tallyTimestamp: null, corrugation: 0 });
         return byFirm.get(firmId);
     };
-    if (itemIds.length) {
+    {
         let aggregationStage = "initialization";
         try {
             aggregationStage = "firm openings";
@@ -3121,6 +3166,33 @@ async function fetchFirmWiseNpdItems(db, options) {
             console.error(`[DB] Firm-wise NPD stock aggregation failed during ${aggregationStage}; returning available derived stock:`, error);
         }
     }
+    return { firms, stocks, unit1FirmId, unit2FirmId };
+}
+async function fetchFirmWiseNpdItems(db, options) {
+    let base;
+    try {
+        base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") });
+    }
+    catch (error) {
+        console.error("[DB] Firm-wise NPD aggregation failed; using basic NPD fallback:", error);
+        const status = String(options.status || "active").trim().toLowerCase();
+        const where = [];
+        const params = [];
+        if (status !== "all") {
+            where.push("COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') " + (status === "removed" ? "=" : "<>") + " 'removed'");
+        }
+        const search = String(options.search || "").trim();
+        if (search) {
+            const like = `%${search}%`;
+            where.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
+            params.push(like, like, like, like, like, like);
+        }
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+        const [rows] = await db.query(`SELECT n.* FROM \`npd\` n ${whereSql} ORDER BY n.npdId ASC LIMIT ? OFFSET ?`, [...params, options.limit, options.offset]);
+        const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
+        base = { rows: rows, total: Number(countRows[0]?.total || 0) };
+    }
+    const { firms, stocks, unit1FirmId, unit2FirmId } = await getFirmWiseStockIndex(db);
     const rows = base.rows.map((row) => {
         const firmStocks = {};
         const rowKeys = [row.id, row.npdId].map((value) => String(value || "").trim()).filter(Boolean);
@@ -4906,9 +4978,19 @@ async function ensureGatePassNullableColumns(db, database) {
         await db.query(`ALTER TABLE \`gate_passes\` MODIFY COLUMN \`${column}\` ${type}`);
     }
 }
+// Column lists change only when the app itself adds a column, so they are
+// cached briefly instead of being read from information_schema on every call.
+const EXISTING_COLUMN_NAMES_TTL_MS = 60_000;
+const existingColumnNamesCache = new Map();
 async function getExistingColumnNames(db, database, table) {
+    const key = `${database}.${table}`.toLowerCase();
+    const cached = existingColumnNamesCache.get(key);
+    if (cached && Date.now() - cached.at < EXISTING_COLUMN_NAMES_TTL_MS)
+        return new Set(cached.columns);
     const [rows] = await db.query("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?", [database, table]);
-    return new Set(rows.map((row) => String(row.COLUMN_NAME || "")));
+    const columns = new Set(rows.map((row) => String(row.COLUMN_NAME || "")));
+    existingColumnNamesCache.set(key, { at: Date.now(), columns });
+    return new Set(columns);
 }
 async function ensureUsersCanonicalData(db, database) {
     const columns = await getExistingColumnNames(db, database, "users");
@@ -5384,6 +5466,8 @@ async function getRequestUser(req) {
 }
 function entityPermissionKey(entity) {
     switch (entity) {
+        case "rapc_ranges":
+            return "/masters/rapc-ranges";
         case "users":
             return "/masters/users";
         case "item_groups":
@@ -7311,6 +7395,17 @@ async function initDb(retries = 5) {
           \`uom\` VARCHAR(50),
           \`assignedOperatorIds\` JSON,
           \`assignedOperatorNames\` JSON,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+            // RAPC Range Master (screen existed without a table, so it never loaded).
+            await db.query(`
+        CREATE TABLE IF NOT EXISTS \`rapc_ranges\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`from\` DECIMAL(10,2) NOT NULL DEFAULT 0,
+          \`to\` DECIMAL(10,2) NOT NULL DEFAULT 0,
+          \`rapcRange\` DECIMAL(10,2) NOT NULL DEFAULT 0,
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -12527,7 +12622,10 @@ const createHandlers = (tableName) => {
                     debit_notes: { field: "debitNoteNo", code: "DN", dateField: "date" },
                     consumptions: { field: "transactionNo", code: "CON", dateField: "date" },
                 };
-                const firmDocument = firmDocumentFields[tableName];
+                // Invoices follow the Settings → Invoice Number Series numbering
+                // (e.g. LNCB-2/26-27/02668), assigned above; the generic firm document
+                // counter (…/INV/…) must not overwrite it.
+                const firmDocument = tableName === "invoices" ? undefined : firmDocumentFields[tableName];
                 if (firmDocument && String(data.id || "").trim()) {
                     const [existingDocumentRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [data.id]);
                     if (!existingDocumentRows[0]) {
@@ -14325,7 +14423,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
         conn.release();
     }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 app.get("/api/tally-sync-debug", (req, res) => {
     const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
     return res.json({
@@ -15001,6 +15099,259 @@ app.post("/api/purchase-orders/create-consolidated", async (req, res) => {
         conn.release();
     }
 });
+async function computePendingJobClosureRows(db, filters) {
+    const [settingsRows] = await db.query("SELECT * FROM `settings` LIMIT 1");
+    const setting = settingsRows[0];
+    const mandatoryByType = parseMandatoryMachinesByType(setting);
+    const [machinesRows] = await db.query("SELECT id, name FROM `machines`");
+    const machines = machinesRows.map((m) => ({
+        id: String(m.id),
+        name: normalizeMachineName(String(m.name || "")),
+    }));
+    const machineIdByName = new Map(machines.map((m) => [m.name.toLowerCase(), m.id]));
+    const where = ["(status IS NULL OR status NOT IN ('Completed','Cancelled'))"];
+    const params = [];
+    if (filters.date_from) {
+        where.push("STR_TO_DATE(`date`, '%Y-%m-%d') >= STR_TO_DATE(?, '%Y-%m-%d')");
+        params.push(filters.date_from);
+    }
+    if (filters.date_to) {
+        where.push("STR_TO_DATE(`date`, '%Y-%m-%d') <= STR_TO_DATE(?, '%Y-%m-%d')");
+        params.push(filters.date_to);
+    }
+    if (filters.job_no) {
+        where.push("LOWER(`transactionNo`) LIKE LOWER(?)");
+        params.push(`%${filters.job_no}%`);
+    }
+    const [productionRows] = await db.query(`SELECT * FROM \`productions\` ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY transactionNo DESC`, params);
+    const productions = productionRows;
+    const phpJobIds = Array.from(new Set(productions.map((p) => String(p.phpScheduledJobId || "").trim()).filter(Boolean)));
+    const plateJobIds = Array.from(new Set(productions.map((p) => String(p.plateScheduledJobId || "").trim()).filter(Boolean)));
+    const [phpMethodologyRows] = phpJobIds.length
+        ? await db.query(`SELECT id, methodology FROM \`php_job_master\` WHERE id IN (${phpJobIds.map(() => "?").join(",")})`, phpJobIds)
+        : [[]];
+    const [plateMethodologyRows] = plateJobIds.length
+        ? await db.query(`SELECT id, methodology FROM \`plate_job_master\` WHERE id IN (${plateJobIds.map(() => "?").join(",")})`, plateJobIds)
+        : [[]];
+    const phpMethodologyById = new Map(phpMethodologyRows.map((row) => [String(row.id), String(row.methodology || "")]));
+    const plateMethodologyById = new Map(plateMethodologyRows.map((row) => [String(row.id), String(row.methodology || "")]));
+    const productionIds = productions.map((p) => String(p.id));
+    const scheduleIds = productions.map((p) => String(p.scheduleId || "")).filter(Boolean);
+    const itemIds = productions.map((p) => normalizeItemLookupId(p)).filter(Boolean);
+    const [itemsRows] = itemIds.length
+        ? await db.query(`SELECT id, itemName, boxType FROM \`npd\` WHERE id IN (${itemIds.map(() => "?").join(",")})`, itemIds)
+        : [[]];
+    const itemsById = new Map(itemsRows.map((row) => [String(row.id), row]));
+    const [schedulesRows] = scheduleIds.length
+        ? await db.query(`SELECT id, orderId FROM \`orders_schedule\` WHERE id IN (${scheduleIds.map(() => "?").join(",")})`, scheduleIds)
+        : [[]];
+    const schedulesById = new Map(schedulesRows.map((row) => [String(row.id), row]));
+    const orderIds = schedulesRows.map((s) => String(s.orderId || "")).filter(Boolean);
+    const [ordersRows] = orderIds.length
+        ? await db.query(`SELECT id, orderNo, companyId FROM \`orders\` WHERE id IN (${orderIds.map(() => "?").join(",")})`, orderIds)
+        : [[]];
+    const ordersById = new Map(ordersRows.map((row) => [String(row.id), row]));
+    const companyIds = ordersRows.map((o) => String(o.companyId || "")).filter(Boolean);
+    const [companiesRows] = companyIds.length
+        ? await db.query(`SELECT id, name FROM \`companies\` WHERE id IN (${companyIds.map(() => "?").join(",")})`, companyIds)
+        : [[]];
+    const companiesById = new Map(companiesRows.map((row) => [String(row.id), row]));
+    const [processingRows] = productionIds.length
+        ? await db.query(`SELECT productionId, machineId, machineName, shift, qty, operatorId, date, completionStatus FROM \`production_processing\` WHERE productionId IN (${productionIds
+            .map(() => "?")
+            .join(",")})`, productionIds)
+        : [[]];
+    const processingByProductionId = new Map();
+    processingRows.forEach((row) => {
+        const key = String(row.productionId);
+        const list = processingByProductionId.get(key) || [];
+        list.push({
+            ...row,
+            machineName: normalizeMachineName(String(row.machineName || "")),
+        });
+        processingByProductionId.set(key, list);
+    });
+    const isCorrugationLiner = (machineName) => String(machineName || "").trim().toLowerCase() === "corrugation liner";
+    const requiredFieldsByStep = {
+        machineId: "Machine",
+        operatorId: "Operator",
+        shift: "Shift",
+        date: "Date",
+        qty: "Quantity",
+    };
+    const rows = productions
+        .map((p) => {
+        const productionId = String(p.id);
+        const planQty = Number(p.qty || 0);
+        const planDate = String(p.date || "");
+        const item = itemsById.get(normalizeItemLookupId(p));
+        const route = getProcessingMachineRoute({
+            ...p,
+            boxType: item?.boxType,
+            phpMasterMethodology: phpMethodologyById.get(String(p.phpScheduledJobId || "")) || "",
+            plateMasterMethodology: plateMethodologyById.get(String(p.plateScheduledJobId || "")) || "",
+        }, mandatoryByType, normalizeMachineName);
+        const typeName = route.source === "PHP" || route.source === "PLATE"
+            ? route.source : String(item?.boxType || "").trim();
+        const itemName = String(item?.itemName || "").trim();
+        const schedule = schedulesById.get(String(p.scheduleId || ""));
+        const order = schedule ? ordersById.get(String(schedule.orderId || "")) : undefined;
+        const orderNo = String(order?.orderNo || "").trim();
+        const company = order ? companiesById.get(String(order.companyId || "")) : undefined;
+        const companyName = String(company?.name || "").trim();
+        if (filters.company && companyName && !companyName.toLowerCase().includes(String(filters.company).toLowerCase())) {
+            return null;
+        }
+        if (filters.type && typeName && typeName.toLowerCase() !== String(filters.type).toLowerCase()) {
+            return null;
+        }
+        const requiredSteps = route.requiredMachines;
+        const records = processingByProductionId.get(productionId) || [];
+        const normalizedRecords = records.map((r) => ({
+            ...r,
+            machineName: normalizeMachineName(String(r.machineName || "")),
+        }));
+        const missingSteps = [];
+        const missingFields = [];
+        const blockingReasons = [];
+        if (requiredSteps.length === 0) {
+            blockingReasons.push(`No required process steps configured for Type: ${typeName || "-"}`);
+        }
+        requiredSteps.forEach((stepMachineName) => {
+            const stepKey = stepMachineName;
+            const normalizedStep = normalizeMachineName(stepMachineName);
+            const machineId = machineIdByName.get(normalizedStep.toLowerCase());
+            const stepRecords = normalizedRecords.filter((r) => normalizeMachineName(String(r.machineName || "")) === normalizedStep);
+            if (stepRecords.length === 0) {
+                missingSteps.push({ stepKey, machineName: normalizedStep, machineId });
+                return;
+            }
+            const completedRecord = stepRecords.find((r) => {
+                const qtyValue = Number(r.qty || 0);
+                if (!Number.isFinite(qtyValue) || qtyValue <= 0)
+                    return false;
+                if (!String(r.machineId || "").trim())
+                    return false;
+                if (!String(r.operatorId || "").trim())
+                    return false;
+                if (!String(r.shift || "").trim())
+                    return false;
+                if (!String(r.date || "").trim())
+                    return false;
+                if (String(r.completionStatus || "").trim() && String(r.completionStatus || "").trim() !== "Full")
+                    return false;
+                return true;
+            });
+            if (!completedRecord) {
+                const fields = new Set();
+                stepRecords.forEach((r) => {
+                    Object.entries(requiredFieldsByStep).forEach(([key, label]) => {
+                        const value = r[key];
+                        if (key === "qty") {
+                            const qtyValue = Number(value || 0);
+                            if (!Number.isFinite(qtyValue) || qtyValue <= 0)
+                                fields.add(label);
+                            return;
+                        }
+                        if (!String(value || "").trim())
+                            fields.add(label);
+                    });
+                });
+                if (!stepRecords.some((r) => !String(r.completionStatus || "").trim() || String(r.completionStatus || "").trim() === "Full")) {
+                    fields.add("Full completion");
+                }
+                missingFields.push({ stepKey, machineName: normalizedStep, machineId, fields: Array.from(fields) });
+            }
+            if (!isCorrugationLiner(normalizedStep) && planQty > 0) {
+                const stepQty = stepRecords.reduce((sum, r) => sum + Number(r.qty || 0), 0);
+                if (stepQty > planQty) {
+                    blockingReasons.push(`Qty exceeds Plan Qty for ${normalizedStep} (Plan ${planQty}, Reported ${stepQty})`);
+                }
+            }
+        });
+        if (missingSteps.length)
+            blockingReasons.push(`Missing processing steps: ${missingSteps.map((s) => s.machineName).join(", ")}`);
+        if (missingFields.length)
+            blockingReasons.push(`Incomplete processing entries: ${missingFields.map((s) => s.machineName).join(", ")}`);
+        if (!blockingReasons.length)
+            return null;
+        const machineSet = new Set();
+        [...missingSteps, ...missingFields].forEach((s) => {
+            if (s.machineName)
+                machineSet.add(s.machineName);
+        });
+        const groupMachineName = machineSet.size === 0 ? "Unassigned" : machineSet.size === 1 ? [...machineSet][0] : "Multiple/Various";
+        const groupMachineId = groupMachineName && groupMachineName !== "Multiple/Various" && groupMachineName !== "Unassigned"
+            ? machineIdByName.get(groupMachineName.toLowerCase())
+            : undefined;
+        if (filters.machine_id && groupMachineId !== filters.machine_id) {
+            return null;
+        }
+        const processedQty = normalizedRecords.reduce((sum, r) => sum + Number(r.qty || 0), 0);
+        const exceededBy = planQty > 0 ? Math.max(0, processedQty - planQty) : 0;
+        return {
+            productionId,
+            jobNo: String(p.transactionNo || ""),
+            orderNo,
+            itemName,
+            companyName,
+            typeName,
+            planQty,
+            planDate,
+            blockingReasons,
+            missingSteps,
+            missingFields,
+            qtyStatus: { planQty, processedQty, exceededBy },
+            groupMachineName,
+            groupMachineId,
+        };
+    })
+        .filter(Boolean);
+    return rows;
+}
+// The sidebar only needs the number of jobs pending closure. Serve the last
+// count straight away and refresh it in the background, so the menu badge never
+// makes a page wait on the full closure list.
+const PENDING_JOB_CLOSURE_COUNT_FRESH_MS = 30_000;
+let pendingJobClosureCountCache = null;
+let pendingJobClosureCountInflight = null;
+function refreshPendingJobClosureCount(db) {
+    if (!pendingJobClosureCountInflight) {
+        pendingJobClosureCountInflight = computePendingJobClosureRows(db, {})
+            .then((rows) => {
+            const value = Array.isArray(rows) ? rows.length : 0;
+            pendingJobClosureCountCache = { value, at: Date.now(), stale: false };
+            return value;
+        })
+            .finally(() => { pendingJobClosureCountInflight = null; });
+    }
+    return pendingJobClosureCountInflight;
+}
+app.get("/api/pending-job-closure/count", async (req, res) => {
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (!hasPermission(user, "/production"))
+        return res.json({ count: 0 });
+    try {
+        const cached = pendingJobClosureCountCache;
+        if (cached) {
+            const fresh = !cached.stale && Date.now() - cached.at < PENDING_JOB_CLOSURE_COUNT_FRESH_MS;
+            if (!fresh)
+                void refreshPendingJobClosureCount(db).catch((error) => console.error("[API] pending-job-closure count refresh failed:", error));
+            return res.json({ count: cached.value, generatedAt: new Date(cached.at).toISOString() });
+        }
+        const count = await refreshPendingJobClosureCount(db);
+        return res.json({ count, generatedAt: new Date().toISOString() });
+    }
+    catch (error) {
+        console.error("[API] pending-job-closure count failed:", error);
+        return res.status(500).json({ error: error.message });
+    }
+});
 app.post("/api/get-pending-job-closure", async (req, res) => {
     const db = await getPool();
     if (!db)
@@ -15012,213 +15363,7 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
         return res.status(403).json({ error: "Forbidden" });
     const filters = (req.body || {});
     try {
-        const [settingsRows] = await db.query("SELECT * FROM `settings` LIMIT 1");
-        const setting = settingsRows[0];
-        const mandatoryByType = parseMandatoryMachinesByType(setting);
-        const [machinesRows] = await db.query("SELECT id, name FROM `machines`");
-        const machines = machinesRows.map((m) => ({
-            id: String(m.id),
-            name: normalizeMachineName(String(m.name || "")),
-        }));
-        const machineIdByName = new Map(machines.map((m) => [m.name.toLowerCase(), m.id]));
-        const where = ["(status IS NULL OR status NOT IN ('Completed','Cancelled'))"];
-        const params = [];
-        if (filters.date_from) {
-            where.push("STR_TO_DATE(`date`, '%Y-%m-%d') >= STR_TO_DATE(?, '%Y-%m-%d')");
-            params.push(filters.date_from);
-        }
-        if (filters.date_to) {
-            where.push("STR_TO_DATE(`date`, '%Y-%m-%d') <= STR_TO_DATE(?, '%Y-%m-%d')");
-            params.push(filters.date_to);
-        }
-        if (filters.job_no) {
-            where.push("LOWER(`transactionNo`) LIKE LOWER(?)");
-            params.push(`%${filters.job_no}%`);
-        }
-        const [productionRows] = await db.query(`SELECT * FROM \`productions\` ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY transactionNo DESC`, params);
-        const productions = productionRows;
-        const phpJobIds = Array.from(new Set(productions.map((p) => String(p.phpScheduledJobId || "").trim()).filter(Boolean)));
-        const plateJobIds = Array.from(new Set(productions.map((p) => String(p.plateScheduledJobId || "").trim()).filter(Boolean)));
-        const [phpMethodologyRows] = phpJobIds.length
-            ? await db.query(`SELECT id, methodology FROM \`php_job_master\` WHERE id IN (${phpJobIds.map(() => "?").join(",")})`, phpJobIds)
-            : [[]];
-        const [plateMethodologyRows] = plateJobIds.length
-            ? await db.query(`SELECT id, methodology FROM \`plate_job_master\` WHERE id IN (${plateJobIds.map(() => "?").join(",")})`, plateJobIds)
-            : [[]];
-        const phpMethodologyById = new Map(phpMethodologyRows.map((row) => [String(row.id), String(row.methodology || "")]));
-        const plateMethodologyById = new Map(plateMethodologyRows.map((row) => [String(row.id), String(row.methodology || "")]));
-        const productionIds = productions.map((p) => String(p.id));
-        const scheduleIds = productions.map((p) => String(p.scheduleId || "")).filter(Boolean);
-        const itemIds = productions.map((p) => normalizeItemLookupId(p)).filter(Boolean);
-        const [itemsRows] = itemIds.length
-            ? await db.query(`SELECT id, itemName, boxType FROM \`npd\` WHERE id IN (${itemIds.map(() => "?").join(",")})`, itemIds)
-            : [[]];
-        const itemsById = new Map(itemsRows.map((row) => [String(row.id), row]));
-        const [schedulesRows] = scheduleIds.length
-            ? await db.query(`SELECT id, orderId FROM \`orders_schedule\` WHERE id IN (${scheduleIds.map(() => "?").join(",")})`, scheduleIds)
-            : [[]];
-        const schedulesById = new Map(schedulesRows.map((row) => [String(row.id), row]));
-        const orderIds = schedulesRows.map((s) => String(s.orderId || "")).filter(Boolean);
-        const [ordersRows] = orderIds.length
-            ? await db.query(`SELECT id, orderNo, companyId FROM \`orders\` WHERE id IN (${orderIds.map(() => "?").join(",")})`, orderIds)
-            : [[]];
-        const ordersById = new Map(ordersRows.map((row) => [String(row.id), row]));
-        const companyIds = ordersRows.map((o) => String(o.companyId || "")).filter(Boolean);
-        const [companiesRows] = companyIds.length
-            ? await db.query(`SELECT id, name FROM \`companies\` WHERE id IN (${companyIds.map(() => "?").join(",")})`, companyIds)
-            : [[]];
-        const companiesById = new Map(companiesRows.map((row) => [String(row.id), row]));
-        const [processingRows] = productionIds.length
-            ? await db.query(`SELECT productionId, machineId, machineName, shift, qty, operatorId, date, completionStatus FROM \`production_processing\` WHERE productionId IN (${productionIds
-                .map(() => "?")
-                .join(",")})`, productionIds)
-            : [[]];
-        const processingByProductionId = new Map();
-        processingRows.forEach((row) => {
-            const key = String(row.productionId);
-            const list = processingByProductionId.get(key) || [];
-            list.push({
-                ...row,
-                machineName: normalizeMachineName(String(row.machineName || "")),
-            });
-            processingByProductionId.set(key, list);
-        });
-        const isCorrugationLiner = (machineName) => String(machineName || "").trim().toLowerCase() === "corrugation liner";
-        const requiredFieldsByStep = {
-            machineId: "Machine",
-            operatorId: "Operator",
-            shift: "Shift",
-            date: "Date",
-            qty: "Quantity",
-        };
-        const rows = productions
-            .map((p) => {
-            const productionId = String(p.id);
-            const planQty = Number(p.qty || 0);
-            const planDate = String(p.date || "");
-            const item = itemsById.get(normalizeItemLookupId(p));
-            const route = getProcessingMachineRoute({
-                ...p,
-                boxType: item?.boxType,
-                phpMasterMethodology: phpMethodologyById.get(String(p.phpScheduledJobId || "")) || "",
-                plateMasterMethodology: plateMethodologyById.get(String(p.plateScheduledJobId || "")) || "",
-            }, mandatoryByType, normalizeMachineName);
-            const typeName = route.source === "PHP" || route.source === "PLATE"
-                ? route.source : String(item?.boxType || "").trim();
-            const itemName = String(item?.itemName || "").trim();
-            const schedule = schedulesById.get(String(p.scheduleId || ""));
-            const order = schedule ? ordersById.get(String(schedule.orderId || "")) : undefined;
-            const orderNo = String(order?.orderNo || "").trim();
-            const company = order ? companiesById.get(String(order.companyId || "")) : undefined;
-            const companyName = String(company?.name || "").trim();
-            if (filters.company && companyName && !companyName.toLowerCase().includes(String(filters.company).toLowerCase())) {
-                return null;
-            }
-            if (filters.type && typeName && typeName.toLowerCase() !== String(filters.type).toLowerCase()) {
-                return null;
-            }
-            const requiredSteps = route.requiredMachines;
-            const records = processingByProductionId.get(productionId) || [];
-            const normalizedRecords = records.map((r) => ({
-                ...r,
-                machineName: normalizeMachineName(String(r.machineName || "")),
-            }));
-            const missingSteps = [];
-            const missingFields = [];
-            const blockingReasons = [];
-            if (requiredSteps.length === 0) {
-                blockingReasons.push(`No required process steps configured for Type: ${typeName || "-"}`);
-            }
-            requiredSteps.forEach((stepMachineName) => {
-                const stepKey = stepMachineName;
-                const normalizedStep = normalizeMachineName(stepMachineName);
-                const machineId = machineIdByName.get(normalizedStep.toLowerCase());
-                const stepRecords = normalizedRecords.filter((r) => normalizeMachineName(String(r.machineName || "")) === normalizedStep);
-                if (stepRecords.length === 0) {
-                    missingSteps.push({ stepKey, machineName: normalizedStep, machineId });
-                    return;
-                }
-                const completedRecord = stepRecords.find((r) => {
-                    const qtyValue = Number(r.qty || 0);
-                    if (!Number.isFinite(qtyValue) || qtyValue <= 0)
-                        return false;
-                    if (!String(r.machineId || "").trim())
-                        return false;
-                    if (!String(r.operatorId || "").trim())
-                        return false;
-                    if (!String(r.shift || "").trim())
-                        return false;
-                    if (!String(r.date || "").trim())
-                        return false;
-                    if (String(r.completionStatus || "").trim() && String(r.completionStatus || "").trim() !== "Full")
-                        return false;
-                    return true;
-                });
-                if (!completedRecord) {
-                    const fields = new Set();
-                    stepRecords.forEach((r) => {
-                        Object.entries(requiredFieldsByStep).forEach(([key, label]) => {
-                            const value = r[key];
-                            if (key === "qty") {
-                                const qtyValue = Number(value || 0);
-                                if (!Number.isFinite(qtyValue) || qtyValue <= 0)
-                                    fields.add(label);
-                                return;
-                            }
-                            if (!String(value || "").trim())
-                                fields.add(label);
-                        });
-                    });
-                    if (!stepRecords.some((r) => !String(r.completionStatus || "").trim() || String(r.completionStatus || "").trim() === "Full")) {
-                        fields.add("Full completion");
-                    }
-                    missingFields.push({ stepKey, machineName: normalizedStep, machineId, fields: Array.from(fields) });
-                }
-                if (!isCorrugationLiner(normalizedStep) && planQty > 0) {
-                    const stepQty = stepRecords.reduce((sum, r) => sum + Number(r.qty || 0), 0);
-                    if (stepQty > planQty) {
-                        blockingReasons.push(`Qty exceeds Plan Qty for ${normalizedStep} (Plan ${planQty}, Reported ${stepQty})`);
-                    }
-                }
-            });
-            if (missingSteps.length)
-                blockingReasons.push(`Missing processing steps: ${missingSteps.map((s) => s.machineName).join(", ")}`);
-            if (missingFields.length)
-                blockingReasons.push(`Incomplete processing entries: ${missingFields.map((s) => s.machineName).join(", ")}`);
-            if (!blockingReasons.length)
-                return null;
-            const machineSet = new Set();
-            [...missingSteps, ...missingFields].forEach((s) => {
-                if (s.machineName)
-                    machineSet.add(s.machineName);
-            });
-            const groupMachineName = machineSet.size === 0 ? "Unassigned" : machineSet.size === 1 ? [...machineSet][0] : "Multiple/Various";
-            const groupMachineId = groupMachineName && groupMachineName !== "Multiple/Various" && groupMachineName !== "Unassigned"
-                ? machineIdByName.get(groupMachineName.toLowerCase())
-                : undefined;
-            if (filters.machine_id && groupMachineId !== filters.machine_id) {
-                return null;
-            }
-            const processedQty = normalizedRecords.reduce((sum, r) => sum + Number(r.qty || 0), 0);
-            const exceededBy = planQty > 0 ? Math.max(0, processedQty - planQty) : 0;
-            return {
-                productionId,
-                jobNo: String(p.transactionNo || ""),
-                orderNo,
-                itemName,
-                companyName,
-                typeName,
-                planQty,
-                planDate,
-                blockingReasons,
-                missingSteps,
-                missingFields,
-                qtyStatus: { planQty, processedQty, exceededBy },
-                groupMachineName,
-                groupMachineId,
-            };
-        })
-            .filter(Boolean);
+        const rows = await computePendingJobClosureRows(db, filters);
         res.json(rows);
     }
     catch (error) {
@@ -17615,6 +17760,16 @@ async function startServer() {
             void retryPrintingShiftReports();
         }, 60_000);
         void retryPrintingShiftReports();
+        // Add missing filter/join indexes in the background, a few minutes after
+        // startup so it does not compete with the first users of the day.
+        setTimeout(() => {
+            void (async () => {
+                const db = await getPool();
+                const database = process.env.DB_NAME || "u380633007_Inpidata";
+                if (db)
+                    await ensurePerformanceIndexes(db, database);
+            })().catch((error) => console.warn("[DB] Performance index check failed:", error.message));
+        }, 3 * 60_000);
     }).catch(() => undefined);
 }
 export { app };

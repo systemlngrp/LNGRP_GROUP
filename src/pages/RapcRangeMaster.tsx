@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Edit, Plus, Search, Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
@@ -25,8 +25,12 @@ export function RapcRangeMaster() {
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Seed the default ranges once per visit when the table is empty. A failed
+  // save must not trigger another seed attempt in a loop.
+  const seededRef = useRef(false);
   useEffect(() => {
-    if (loading || ranges.length > 0) return;
+    if (loading || ranges.length > 0 || seededRef.current) return;
+    seededRef.current = true;
     setRanges(buildSeedRapcRanges());
   }, [loading, ranges.length, setRanges]);
 

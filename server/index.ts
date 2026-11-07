@@ -14,7 +14,8 @@ import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
-import { getChangesSince, getTrackedChanges, instrumentPool, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
+import { ensurePerformanceIndexes } from "./performanceIndexes.js";
+import { getChangesSince, getTrackedChanges, instrumentPool, onSchemaChange, recordChangeVersion, runWithChangeTracking } from "./realtimeChanges.js";
 import { DEFAULT_BOARDLINE_QC_MESSAGE, DEFAULT_LOADING_SLIP_MESSAGE, DEFAULT_MRR_MESSAGE, DEFAULT_PRINTING_QC_MESSAGE, DEFAULT_QC_COMPLAINT_MESSAGE, DEFAULT_REEL_RETURN_MESSAGE, WHATSAPP_BOARDLINE_MENU, WHATSAPP_COMPLAINT_MENU, WHATSAPP_LOADING_MENU, WHATSAPP_MRR_MENU, WHATSAPP_PRINTING_MENU, WHATSAPP_REEL_RETURN_MENU, resolveWhatsappTemplate, resolveWhatsappBoardlineTemplate, resolveWhatsappLoadingSlipTemplate, resolveWhatsappMrrTemplate, resolveWhatsappPrintingTemplate, resolveWhatsappReelReturnTemplate, sendWhatsappComplaintStage, sendWhatsappBoardlineMessage, sendWhatsappLoadingSlipMessage, sendWhatsappMrrMessage, sendWhatsappPrintingMessage, sendWhatsappReelReturnMessage, sendWhatsappTextMessage, type WhatsappSendStage } from "./whatsappSender.js";
 import { DEFAULT_PRINTING_SHIFT_MESSAGE, PRINTING_SHIFT_MENU, duePrintingShifts, indiaNowParts, renderPrintingShiftMessage, shiftDueAt, shiftEndAt, type PrintingShift } from "./printingShiftReport.js";
 import { QC_SCORE_MENU, buildQcScoreForDate, renderQcScoreWhatsappTemplate, validQcScoreDate } from "./qcScoreWhatsapp.js";
@@ -1020,7 +1021,10 @@ const NPD_PAGE_SIZE_MAX = 250;
 const NPD_CACHE_TTL_MS = 30_000;
 const firmWiseNpdCache = new Map<string, { expiresAt: number; value: { rows: any[]; total: number; firms: any[] } }>();
 const firmWiseNpdInflight = new Map<string, Promise<{ rows: any[]; total: number; firms: any[] }>>();
-const SIDEBAR_COUNT_CACHE_TTL_MS = 20_000;
+let firmWiseStockIndexCache: FirmWiseStockIndex | null = null;
+let firmWiseStockIndexInflight: Promise<FirmWiseStockIndex> | null = null;
+let firmWiseStockIndexGeneration = 0;
+const SIDEBAR_COUNT_CACHE_TTL_MS = 30_000;
 let sidebarCountCache: { expiresAt: number; value: { counts: Record<string, number>; generatedAt: string } } | null = null;
 let sidebarCountInflight: Promise<{ counts: Record<string, number>; generatedAt: string }> | null = null;
 
@@ -1037,6 +1041,8 @@ function pendingDailyTallyWhere(alias = "material_issues") {
 
 function invalidateNpdCache() {
   firmWiseNpdCache.clear();
+  firmWiseStockIndexCache = null;
+  firmWiseStockIndexGeneration += 1;
 }
 
 function publishRealtimeDataChange(entities: string[] = ["*"]) {
@@ -1045,7 +1051,10 @@ function publishRealtimeDataChange(entities: string[] = ["*"]) {
   }
   realtimeDataVersion += 1;
   recordChangeVersion(realtimeDataVersion, entities.length ? entities : ["*"]);
-  sidebarCountCache = null;
+  // Keep the last sidebar numbers and mark them for a background refresh,
+  // instead of making the next page wait for 25 count queries.
+  if (sidebarCountCache) sidebarCountCache.expiresAt = 0;
+  if (pendingJobClosureCountCache) pendingJobClosureCountCache.stale = true;
 }
 
 const SIDEBAR_COUNT_KEYS = [
@@ -1157,6 +1166,17 @@ const PENDING_MATERIAL_RETURN_COUNT_SQL = `
     AND rn.pid IS NULL
 `;
 
+async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number) {
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const task = tasks[next++];
+      await task();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+}
+
 async function buildSidebarPendingCounts(db: mysql.Pool) {
   const counts = Object.fromEntries(SIDEBAR_COUNT_KEYS.map((key) => [key, 0])) as Record<string, number>;
   const count = async (key: string, sql: string, params: any[] = [], fallbackSql?: string) => {
@@ -1174,35 +1194,42 @@ async function buildSidebarPendingCounts(db: mysql.Pool) {
       }
     }
   };
-  await Promise.all([
-    count("/indent/pending", "SELECT COUNT(*) AS count FROM indents WHERE LOWER(COALESCE(status, '')) = 'pending'"),
-    count("/purchase-orders/pending-approval", "SELECT COUNT(*) AS count FROM purchase_orders WHERE LOWER(COALESCE(status, '')) = 'pending approval'"),
-    count("/purchase-orders/pending-indent-lines", "SELECT COUNT(*) AS count FROM indent_lines WHERE COALESCE(qty, 0) - COALESCE(cancelledQty, 0) - COALESCE(orderedQty, 0) > 0"),
-    count("/material-receipt/approvals", "SELECT COUNT(*) AS count FROM material_in WHERE status IN ('Pending PH', 'Pending Accounts', 'Pending MD')"),
-    count("/material-receipt/pending-ph-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending PH'"),
-    count("/material-receipt/pending-accounts-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Accounts'"),
-    count("/material-receipt/pending-md-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending MD'"),
-    count("/material-receipt/pending-tally", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Tally' AND LOWER(COALESCE(mrrType, '')) <> 'rejection in'"),
-    count("/material-receipt/pending-debit-note", "SELECT COUNT(*) AS count FROM material_in WHERE COALESCE(debitNote, '') <> '' AND COALESCE(tallyTimestamp, '') = ''"),
-    count("/material-receipt/pending-credit-note", "SELECT COUNT(*) AS count FROM material_in WHERE mrrType = 'Rejection In' AND COALESCE(creditTallyTimestamp, '') = ''"),
-    count("/orders/pending-ph", "SELECT COUNT(*) AS count FROM orders WHERE status IN ('Pending PH', 'Pending Salesman Approval')"),
-    count("/orders/pending-scheduling", "SELECT COUNT(*) AS count FROM orders WHERE status = 'Pending Scheduling'"),
-    count("/samples/pending", "SELECT COUNT(*) AS count FROM sample_requests WHERE COALESCE(jobCardNo, '') = '' AND COALESCE(cancelTimestamp, '') = ''"),
-    count("/production/pending", "SELECT COUNT(*) AS count FROM productions WHERE status IN ('Pending PH', 'Pending Production', 'Pending Planning')"),
-    count("/production/pending-consumption", PENDING_MATERIAL_ISSUE_COUNT_SQL, [],
+  // The database pool has only a few connections; run the counts two at a
+  // time so other screens and saves are not queued behind them.
+  const countTasks: Array<() => Promise<void>> = [];
+  const queueCount = (key: string, sql: string, params: any[] = [], fallbackSql?: string) => {
+    countTasks.push(() => count(key, sql, params, fallbackSql));
+  };
+  [
+    queueCount("/indent/pending", "SELECT COUNT(*) AS count FROM indents WHERE LOWER(COALESCE(status, '')) = 'pending'"),
+    queueCount("/purchase-orders/pending-approval", "SELECT COUNT(*) AS count FROM purchase_orders WHERE LOWER(COALESCE(status, '')) = 'pending approval'"),
+    queueCount("/purchase-orders/pending-indent-lines", "SELECT COUNT(*) AS count FROM indent_lines WHERE COALESCE(qty, 0) - COALESCE(cancelledQty, 0) - COALESCE(orderedQty, 0) > 0"),
+    queueCount("/material-receipt/approvals", "SELECT COUNT(*) AS count FROM material_in WHERE status IN ('Pending PH', 'Pending Accounts', 'Pending MD')"),
+    queueCount("/material-receipt/pending-ph-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending PH'"),
+    queueCount("/material-receipt/pending-accounts-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Accounts'"),
+    queueCount("/material-receipt/pending-md-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending MD'"),
+    queueCount("/material-receipt/pending-tally", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Tally' AND LOWER(COALESCE(mrrType, '')) <> 'rejection in'"),
+    queueCount("/material-receipt/pending-debit-note", "SELECT COUNT(*) AS count FROM material_in WHERE COALESCE(debitNote, '') <> '' AND COALESCE(tallyTimestamp, '') = ''"),
+    queueCount("/material-receipt/pending-credit-note", "SELECT COUNT(*) AS count FROM material_in WHERE mrrType = 'Rejection In' AND COALESCE(creditTallyTimestamp, '') = ''"),
+    queueCount("/orders/pending-ph", "SELECT COUNT(*) AS count FROM orders WHERE status IN ('Pending PH', 'Pending Salesman Approval')"),
+    queueCount("/orders/pending-scheduling", "SELECT COUNT(*) AS count FROM orders WHERE status = 'Pending Scheduling'"),
+    queueCount("/samples/pending", "SELECT COUNT(*) AS count FROM sample_requests WHERE COALESCE(jobCardNo, '') = '' AND COALESCE(cancelTimestamp, '') = ''"),
+    queueCount("/production/pending", "SELECT COUNT(*) AS count FROM productions WHERE status IN ('Pending PH', 'Pending Production', 'Pending Planning')"),
+    queueCount("/production/pending-consumption", PENDING_MATERIAL_ISSUE_COUNT_SQL, [],
       "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(status, '') NOT IN ('Cancelled', 'Completed')"),
-    count("/production/pending-tally", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(tallyPostingStatus, '') <> 'Completed' AND COALESCE(tallyTimestamp, '') = '' AND COALESCE(status, '') NOT IN ('Cancelled', 'Pending PH')"),
-    count("/production/pending-material-return", PENDING_MATERIAL_RETURN_COUNT_SQL, [],
+    queueCount("/production/pending-tally", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(tallyPostingStatus, '') <> 'Completed' AND COALESCE(tallyTimestamp, '') = '' AND COALESCE(status, '') NOT IN ('Cancelled', 'Pending PH')"),
+    queueCount("/production/pending-material-return", PENDING_MATERIAL_RETURN_COUNT_SQL, [],
       "SELECT COUNT(DISTINCT productionId) AS count FROM material_issue_reel_lines WHERE COALESCE(productionId, '') <> ''"),
-    count("/production/pending-machine-processing", "SELECT COUNT(*) AS count FROM production_processing WHERE COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
-    count("/production/pending-printing", "SELECT COUNT(*) AS count FROM production_processing WHERE LOWER(COALESCE(machineName, '')) LIKE '%printing%' AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
-    count("/loading/php/pending-tally", "SELECT COUNT(*) AS count FROM php_loading_slips WHERE COALESCE(phpConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
-    count("/loading/plate/pending-tally", "SELECT COUNT(*) AS count FROM plate_loading_slips WHERE COALESCE(plateConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
-    count("/material-movement/pending-consumption-tally", `SELECT COUNT(*) AS count FROM daily_consumptions WHERE ${pendingDailyTallyWhere("daily_consumptions")}`),
-    count("/billing/pending", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = ''"),
-    count("/billing/pending-tally", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = '' AND COALESCE(tallyPostingStatus, '') <> 'Not Applicable'"),
-    count("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
-  ]);
+    queueCount("/production/pending-machine-processing", "SELECT COUNT(*) AS count FROM production_processing WHERE COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
+    queueCount("/production/pending-printing", "SELECT COUNT(*) AS count FROM production_processing WHERE LOWER(COALESCE(machineName, '')) LIKE '%printing%' AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
+    queueCount("/loading/php/pending-tally", "SELECT COUNT(*) AS count FROM php_loading_slips WHERE COALESCE(phpConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
+    queueCount("/loading/plate/pending-tally", "SELECT COUNT(*) AS count FROM plate_loading_slips WHERE COALESCE(plateConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
+    queueCount("/material-movement/pending-consumption-tally", `SELECT COUNT(*) AS count FROM daily_consumptions WHERE ${pendingDailyTallyWhere("daily_consumptions")}`),
+    queueCount("/billing/pending", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = ''"),
+    queueCount("/billing/pending-tally", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = '' AND COALESCE(tallyPostingStatus, '') <> 'Not Applicable'"),
+    queueCount("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
+  ];
+  await runWithConcurrency(countTasks, 2);
   const pendingDaily = await fetchPendingDailyCount(db);
   counts["/material-movement/pending-non-job-issue"] = pendingDaily;
   const generatedAt = new Date().toISOString();
@@ -1397,9 +1424,9 @@ app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
   catch { return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." }); }
   const now = Date.now();
   if (sidebarCountCache && sidebarCountCache.expiresAt > now) {
-    console.info("[SIDEBAR_COUNTS] cache hit");
     return res.json(sidebarCountCache.value);
   }
+  const staleValue = sidebarCountCache?.value;
   if (!sidebarCountInflight) {
     const startedAt = now;
     sidebarCountInflight = buildSidebarPendingCounts(db)
@@ -1409,8 +1436,12 @@ app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
         return value;
       })
       .finally(() => { sidebarCountInflight = null; });
-  } else {
-    console.info("[SIDEBAR_COUNTS] joined in-flight request");
+  }
+  if (staleValue) {
+    // Badges are informational: answer with the previous numbers while the
+    // refresh runs in the background.
+    sidebarCountInflight.catch((error) => console.error("[SIDEBAR_COUNTS] background refresh failed:", error));
+    return res.json(staleValue);
   }
   try {
     return res.json(await sidebarCountInflight);
@@ -1420,7 +1451,21 @@ app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
   }
 });
 
+// The firm-wise stock report used to be readable without signing in. When
+// NPD_FIRM_WISE_PUBLIC_KEY is set, callers must be signed in or pass ?key=<that
+// value>; without the setting it stays open as before, so external sheets keep
+// working until the key is configured.
+function isNpdFirmWiseRequestAllowed(req: express.Request) {
+  const requiredKey = String(process.env.NPD_FIRM_WISE_PUBLIC_KEY || "").trim();
+  if (!requiredKey) return true;
+  if (String(req.query.key || "") === requiredKey) return true;
+  const auth = String(req.headers.authorization || "");
+  const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : decodeURIComponent(getCookieValue(req, AUTH_COOKIE_NAME));
+  return Boolean(token && verifyToken(token));
+}
+
 app.get("/api/npd-firm-wise", async (req, res) => {
+  if (!isNpdFirmWiseRequestAllowed(req)) return res.status(401).json({ error: "Unauthorized" });
   const db = await getPool();
   if (!db) return res.status(500).json({ error: "DB connection not available" });
   try {
@@ -3112,38 +3157,52 @@ function normalizeComparableName(value: any) {
   return stringOrEmpty(value).replace(/\s+/g, " ").toLowerCase();
 }
 
+// Columns confirmed to exist in this server process. Schema checks used to run
+// on every save (about 40 information_schema queries per loading slip save);
+// once a column is known to exist it cannot disappear while the app runs.
+const knownExistingColumns = new Set<string>();
+onSchemaChange(() => {
+  knownExistingColumns.clear();
+  existingColumnNamesCache.clear();
+});
+
 async function ensureColumnExists(db: mysql.Pool | mysql.PoolConnection, database: string, table: string, column: string, type: string) {
+  const key = `${database}.${table}.${column}`.toLowerCase();
+  if (knownExistingColumns.has(key)) return;
   const [rows] = await db.query(
     "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?",
     [database, table, column]
   );
-  if ((rows as any[]).length > 0) return;
-  await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`);
+  if ((rows as any[]).length === 0) {
+    await db.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${type}`);
+    existingColumnNamesCache.delete(`${database}.${table}`.toLowerCase());
+  }
+  knownExistingColumns.add(key);
 }
 
-async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
-  let base: { rows: any[]; total: number };
-  try {
-    base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any }) as { rows: any[]; total: number };
-  } catch (error) {
-    console.error("[DB] Firm-wise NPD aggregation failed; using basic NPD fallback:", error);
-    const status = String(options.status || "active").trim().toLowerCase();
-    const where: string[] = [];
-    const params: any[] = [];
-    if (status !== "all") {
-      where.push("COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') " + (status === "removed" ? "=" : "<>") + " 'removed'");
-    }
-    const search = String(options.search || "").trim();
-    if (search) {
-      const like = `%${search}%`;
-      where.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
-      params.push(like, like, like, like, like, like);
-    }
-    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const [rows] = await db.query(`SELECT n.* FROM \`npd\` n ${whereSql} ORDER BY n.npdId ASC LIMIT ? OFFSET ?`, [...params, options.limit, options.offset]);
-    const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
-    base = { rows: rows as any[], total: Number((countRows as any[])[0]?.total || 0) };
+// Firm-wise stock for every NPD item. It is the same calculation for every
+// page of the NPD list, so it is built once and shared by all page requests
+// until a stock-relevant table changes (see invalidateNpdCache).
+type FirmWiseStockIndex = { firms: Array<{ id: string; firmName: string }>; stocks: Map<string, Map<string, any>>; unit1FirmId: string; unit2FirmId: string };
+
+function getFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockIndex> {
+  if (firmWiseStockIndexCache) return Promise.resolve(firmWiseStockIndexCache);
+  if (!firmWiseStockIndexInflight) {
+    const generation = firmWiseStockIndexGeneration;
+    const startedAt = Date.now();
+    firmWiseStockIndexInflight = buildFirmWiseStockIndex(db)
+      .then((index) => {
+        // Only keep the result if no stock change happened while it was built.
+        if (generation === firmWiseStockIndexGeneration) firmWiseStockIndexCache = index;
+        console.info(`[NPD] stock index built items=${index.stocks.size} elapsedMs=${Date.now() - startedAt}`);
+        return index;
+      })
+      .finally(() => { firmWiseStockIndexInflight = null; });
   }
+  return firmWiseStockIndexInflight;
+}
+
+async function buildFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockIndex> {
   // The firms table has no active/status column; every Firm Master row is a valid firm.
   const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
   const firms = (firmRows as any[]).filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
@@ -3169,14 +3228,6 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       if (normalized) keyToItemId.set(normalized, itemId);
     }
   };
-  for (const row of base.rows) {
-    const itemId = stringOrEmpty(row.id || row.npdId);
-    if (!itemId) continue;
-    addItemKey(row.id, itemId);
-    addItemKey(row.npdId, itemId);
-    addItemKey(row.erp, itemId);
-    addItemKey(row.itemName, itemId);
-  }
   // The API is paginated, but historical production must resolve against the
   // complete NPD master, not only the rows displayed on the current page.
   const [allNpdRows] = await db.query("SELECT id, npdId, erp, itemName FROM `npd`");
@@ -3200,7 +3251,6 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
     }
     return "";
   };
-  const itemIds = Array.from(new Set(base.rows.map((row) => stringOrEmpty(row.id || row.npdId)).filter(Boolean)));
   const stocks = new Map<string, Map<string, any>>();
   const ensure = (itemId: string, firmId: string) => {
     const resolvedItemId = resolveStockItemId(itemId) || stringOrEmpty(itemId);
@@ -3210,7 +3260,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
     if (!byFirm.has(firmId)) byFirm.set(firmId, { opening: 0, receipt: 0, production: 0, invoiced: 0, tallyStock: null, tallyTimestamp: null, corrugation: 0 });
     return byFirm.get(firmId);
   };
-  if (itemIds.length) {
+  {
     let aggregationStage = "initialization";
     try {
       aggregationStage = "firm openings";
@@ -3313,6 +3363,33 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
       console.error(`[DB] Firm-wise NPD stock aggregation failed during ${aggregationStage}; returning available derived stock:`, error);
     }
   }
+  return { firms, stocks, unit1FirmId, unit2FirmId };
+}
+
+async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
+  let base: { rows: any[]; total: number };
+  try {
+    base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any }) as { rows: any[]; total: number };
+  } catch (error) {
+    console.error("[DB] Firm-wise NPD aggregation failed; using basic NPD fallback:", error);
+    const status = String(options.status || "active").trim().toLowerCase();
+    const where: string[] = [];
+    const params: any[] = [];
+    if (status !== "all") {
+      where.push("COALESCE(NULLIF(TRIM(n.syncStatus), ''), 'active') " + (status === "removed" ? "=" : "<>") + " 'removed'");
+    }
+    const search = String(options.search || "").trim();
+    if (search) {
+      const like = `%${search}%`;
+      where.push("(n.npdId LIKE ? OR n.itemName LIKE ? OR n.customerName LIKE ? OR n.companyId LIKE ? OR n.poNumber LIKE ? OR n.erp LIKE ?)");
+      params.push(like, like, like, like, like, like);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+    const [rows] = await db.query(`SELECT n.* FROM \`npd\` n ${whereSql} ORDER BY n.npdId ASC LIMIT ? OFFSET ?`, [...params, options.limit, options.offset]);
+    const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
+    base = { rows: rows as any[], total: Number((countRows as any[])[0]?.total || 0) };
+  }
+  const { firms, stocks, unit1FirmId, unit2FirmId } = await getFirmWiseStockIndex(db);
   const rows = base.rows.map((row) => {
     const firmStocks: Record<string, any> = {};
     const rowKeys = [row.id, row.npdId].map((value) => String(value || "").trim()).filter(Boolean);
@@ -5245,12 +5322,22 @@ async function ensureGatePassNullableColumns(db: mysql.Pool, database: string) {
   }
 }
 
+// Column lists change only when the app itself adds a column, so they are
+// cached briefly instead of being read from information_schema on every call.
+const EXISTING_COLUMN_NAMES_TTL_MS = 60_000;
+const existingColumnNamesCache = new Map<string, { at: number; columns: Set<string> }>();
+
 async function getExistingColumnNames(db: mysql.Pool | mysql.PoolConnection, database: string, table: string) {
+  const key = `${database}.${table}`.toLowerCase();
+  const cached = existingColumnNamesCache.get(key);
+  if (cached && Date.now() - cached.at < EXISTING_COLUMN_NAMES_TTL_MS) return new Set(cached.columns);
   const [rows] = await db.query(
     "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
     [database, table]
   );
-  return new Set((rows as any[]).map((row) => String(row.COLUMN_NAME || "")));
+  const columns = new Set((rows as any[]).map((row) => String(row.COLUMN_NAME || "")));
+  existingColumnNamesCache.set(key, { at: Date.now(), columns });
+  return new Set(columns);
 }
 
 async function ensureUsersCanonicalData(db: mysql.Pool, database: string) {
@@ -5762,6 +5849,8 @@ async function getRequestUser(req: express.Request): Promise<AuthUser | null> {
 
 function entityPermissionKey(entity: string): string {
   switch (entity) {
+    case "rapc_ranges":
+      return "/masters/rapc-ranges";
     case "users":
       return "/masters/users";
     case "item_groups":
@@ -7818,6 +7907,18 @@ async function initDb(retries = 5) {
           \`uom\` VARCHAR(50),
           \`assignedOperatorIds\` JSON,
           \`assignedOperatorNames\` JSON,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+
+      // RAPC Range Master (screen existed without a table, so it never loaded).
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS \`rapc_ranges\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`from\` DECIMAL(10,2) NOT NULL DEFAULT 0,
+          \`to\` DECIMAL(10,2) NOT NULL DEFAULT 0,
+          \`rapcRange\` DECIMAL(10,2) NOT NULL DEFAULT 0,
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
         )
@@ -13198,7 +13299,10 @@ const createHandlers = (tableName: string) => {
           debit_notes: { field: "debitNoteNo", code: "DN", dateField: "date" },
           consumptions: { field: "transactionNo", code: "CON", dateField: "date" },
         };
-        const firmDocument = firmDocumentFields[tableName];
+        // Invoices follow the Settings → Invoice Number Series numbering
+        // (e.g. LNCB-2/26-27/02668), assigned above; the generic firm document
+        // counter (…/INV/…) must not overwrite it.
+        const firmDocument = tableName === "invoices" ? undefined : firmDocumentFields[tableName];
         if (firmDocument && String(data.id || "").trim()) {
           const [existingDocumentRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [data.id]);
           if (!(existingDocumentRows as any[])[0]) {
@@ -15103,7 +15207,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
   }
 });
 
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
 
 app.get("/api/tally-sync-debug", (req, res) => {
   const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
@@ -15848,15 +15952,7 @@ app.post("/api/purchase-orders/create-consolidated", async (req, res) => {
   }
 });
 
-app.post("/api/get-pending-job-closure", async (req, res) => {
-  const db = await getPool();
-  if (!db) return res.status(500).json({ error: "DB connection not available" });
-
-  const user = await getRequestUser(req);
-  if (!user) return res.status(401).json({ error: "Unauthorized" });
-  if (!hasPermission(user, "/production")) return res.status(403).json({ error: "Forbidden" });
-
-  const filters = (req.body || {}) as {
+type PendingJobClosureFilters = {
     date_from?: string;
     date_to?: string;
     machine_id?: string;
@@ -15865,7 +15961,7 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
     company?: string;
   };
 
-  try {
+async function computePendingJobClosureRows(db: mysql.Pool, filters: PendingJobClosureFilters) {
     const [settingsRows] = await db.query("SELECT * FROM `settings` LIMIT 1");
     const setting = (settingsRows as any[])[0];
     const mandatoryByType = parseMandatoryMachinesByType(setting);
@@ -16106,6 +16202,62 @@ app.post("/api/get-pending-job-closure", async (req, res) => {
       })
       .filter(Boolean);
 
+    return rows;
+}
+
+// The sidebar only needs the number of jobs pending closure. Serve the last
+// count straight away and refresh it in the background, so the menu badge never
+// makes a page wait on the full closure list.
+const PENDING_JOB_CLOSURE_COUNT_FRESH_MS = 30_000;
+let pendingJobClosureCountCache: { value: number; at: number; stale: boolean } | null = null;
+let pendingJobClosureCountInflight: Promise<number> | null = null;
+
+function refreshPendingJobClosureCount(db: mysql.Pool) {
+  if (!pendingJobClosureCountInflight) {
+    pendingJobClosureCountInflight = computePendingJobClosureRows(db, {})
+      .then((rows) => {
+        const value = Array.isArray(rows) ? rows.length : 0;
+        pendingJobClosureCountCache = { value, at: Date.now(), stale: false };
+        return value;
+      })
+      .finally(() => { pendingJobClosureCountInflight = null; });
+  }
+  return pendingJobClosureCountInflight;
+}
+
+app.get("/api/pending-job-closure/count", async (req, res) => {
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!hasPermission(user, "/production")) return res.json({ count: 0 });
+  try {
+    const cached = pendingJobClosureCountCache;
+    if (cached) {
+      const fresh = !cached.stale && Date.now() - cached.at < PENDING_JOB_CLOSURE_COUNT_FRESH_MS;
+      if (!fresh) void refreshPendingJobClosureCount(db).catch((error) => console.error("[API] pending-job-closure count refresh failed:", error));
+      return res.json({ count: cached.value, generatedAt: new Date(cached.at).toISOString() });
+    }
+    const count = await refreshPendingJobClosureCount(db);
+    return res.json({ count, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("[API] pending-job-closure count failed:", error);
+    return res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+app.post("/api/get-pending-job-closure", async (req, res) => {
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+
+  const user = await getRequestUser(req);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (!hasPermission(user, "/production")) return res.status(403).json({ error: "Forbidden" });
+
+  const filters = (req.body || {}) as PendingJobClosureFilters;
+
+  try {
+    const rows = await computePendingJobClosureRows(db, filters);
     res.json(rows);
   } catch (error) {
     console.error("[API] get-pending-job-closure failed:", error);
@@ -18551,6 +18703,15 @@ async function startServer() {
       void retryPrintingShiftReports();
     }, 60_000);
     void retryPrintingShiftReports();
+    // Add missing filter/join indexes in the background, a few minutes after
+    // startup so it does not compete with the first users of the day.
+    setTimeout(() => {
+      void (async () => {
+        const db = await getPool();
+        const database = process.env.DB_NAME || "u380633007_Inpidata";
+        if (db) await ensurePerformanceIndexes(db, database);
+      })().catch((error) => console.warn("[DB] Performance index check failed:", (error as Error).message));
+    }, 3 * 60_000);
   }).catch(() => undefined);
 }
 
