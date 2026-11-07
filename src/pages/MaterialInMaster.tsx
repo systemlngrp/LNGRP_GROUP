@@ -1,10 +1,12 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Service, Setting, Supplier } from "../types";
 import { formatDate } from "../lib/serial";
 import { ChevronDown, ChevronRight, Search, Trash2, Download, QrCode } from "lucide-react";
 import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { normalizeMaterialInRecord, recalculateMaterialLine } from "../lib/materialInTaxes";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
@@ -105,9 +107,22 @@ export function MaterialInMaster() {
     }
   };
 
+  // Name lookups built once (the row loops used to search the full material,
+  // NPD, supplier and company lists for every line on every render). First
+  // match wins, the same as .find().
+  const nameLookup = (rows: Array<{ id: string; name?: string }>) => {
+    const map = new Map<string, string | undefined>();
+    rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row.name); });
+    return map;
+  };
+  const materialNameById = useMemo(() => nameLookup(materials as any), [materials]);
+  const npdNameById = useMemo(() => nameLookup(npdItems as any), [npdItems]);
+  const supplierNameById = useMemo(() => nameLookup(suppliers as any), [suppliers]);
+  const companyNameById = useMemo(() => nameLookup(companies as any), [companies]);
+  const getItemName = (itemId: string) => materialNameById.get(itemId) || npdNameById.get(itemId);
   const getSupplierName = (id: string) =>
-    suppliers.find((supplier) => supplier.id === id)?.name ||
-    companies.find((company) => company.id === id)?.name ||
+    supplierNameById.get(id) ||
+    companyNameById.get(id) ||
     id;
   const formatMoney = (value?: number) => Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const formatText = (value?: string | number) => String(value || "").trim() || "-";
@@ -131,7 +146,7 @@ export function MaterialInMaster() {
       .map((rawLine) => {
         const line = rawLine ? recalculateMaterialLine({ ...rawLine }) : null;
         if (!line) return "";
-        return materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown";
+        return getItemName(line.itemId) || "Unknown";
       })
       .filter(Boolean);
     const suffix = safeLines.length > 2 ? ` + ${safeLines.length - 2} more` : "";
@@ -163,7 +178,7 @@ export function MaterialInMaster() {
         {safeLines.map((rawLine, idx) => {
           if (!rawLine) return null;
           const line = recalculateMaterialLine({ ...rawLine });
-          const itemName = materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name;
+          const itemName = getItemName(line.itemId);
   return (
             <li key={idx} className="border-b border-black pb-1 mb-1 last:border-0 last:pb-0 last:mb-0">
               <div className="font-medium text-black">{itemName || "Unknown"}</div>
@@ -177,19 +192,20 @@ export function MaterialInMaster() {
     );
   };
 
-  const filteredMaterialIn = useMemo(() => materialIn
-    .map((entry) => normalizeMaterialInRecord(entry))
-    .filter((entry) => {
+  // Totals recalculated once per data change, not on every keystroke.
+  const normalizedMaterialIn = useMemo(() => materialIn.map((entry) => normalizeMaterialInRecord(entry)), [materialIn]);
+  const searchTextById = useMemo(() => {
+    const map = new Map<string, string>();
+    normalizedMaterialIn.forEach((entry) => {
       const supplierName = getSupplierName(entry.supplierId);
       const safeLines = Array.isArray(entry.lines) ? entry.lines : [];
       const itemNames = safeLines
         .map((line) => {
           if (!line) return "";
-          return materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "";
+          return getItemName(line.itemId) || "";
         })
         .join(" ");
-
-      const searchableParentText = [
+      map.set(entry.id, [
         entry.transactionNo,
         entry.mrrType,
         entry.gateEntryNo,
@@ -206,9 +222,15 @@ export function MaterialInMaster() {
         entry.updatedBy,
         supplierName,
         itemNames,
-      ].join(" ").toLowerCase();
+      ].join(" ").toLowerCase());
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [normalizedMaterialIn, materialNameById, npdNameById, supplierNameById, companyNameById]);
 
-      const matchesSearch = searchableParentText.includes(searchTerm.toLowerCase());
+  const filteredMaterialIn = useMemo(() => normalizedMaterialIn
+    .filter((entry) => {
+      const matchesSearch = (searchTextById.get(entry.id) || "").includes(searchTerm.toLowerCase());
 
       const matchesMrr = !mrrFilter || entry.transactionNo === mrrFilter;
       const matchesFirm = !firmFilter || String(entry.firmId || entry.destinationFirmId || "") === firmFilter;
@@ -224,18 +246,19 @@ export function MaterialInMaster() {
       const timeB = new Date(b.updateTimestamp || b.timestamp || 0).getTime();
       return timeB - timeA;
     }), [
-      companies,
       firmFilter,
       fromDate,
-      materials,
-      materialIn,
       mrrFilter,
-      npdItems,
+      normalizedMaterialIn,
       searchTerm,
+      searchTextById,
       statusFilter,
-      suppliers,
       toDate,
     ]);
+
+  // 25 rows per page (the table showed 25 per page already, but built every row).
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedMaterialIn } = useClientPagination(filteredMaterialIn, 25);
+  useEffect(() => { setPage(1); }, [firmFilter, fromDate, mrrFilter, searchTerm, statusFilter, toDate, setPage]);
 
   const metrics = useMemo(
     () => ({
@@ -277,7 +300,7 @@ export function MaterialInMaster() {
     "Debit Amount": Number(entry.debitNoteAmount || 0),
     "Updated By": formatText(entry.updatedBy),
     "Updated At": entry.updateTimestamp ? formatDate(entry.updateTimestamp) : "-",
-  })), [filteredMaterialIn, suppliers, companies]);
+  })), [filteredMaterialIn, supplierNameById, companyNameById]);
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
@@ -363,7 +386,7 @@ export function MaterialInMaster() {
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         <div className="block md:hidden space-y-4 p-2">
-          {filteredMaterialIn.map((entry) => (
+          {pagedMaterialIn.map((entry) => (
             <div key={entry.id} className="bg-white border-2 border-black p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
               <div className="flex justify-between items-start gap-3">
                 {getMrrNoElement(entry, true)}
@@ -479,7 +502,7 @@ export function MaterialInMaster() {
                   <td colSpan={29} className="px-6 py-8 text-center text-black font-medium italic">No material receipt records found.</td>
                 </tr>
               ) : (
-                filteredMaterialIn.map((entry) => (
+                pagedMaterialIn.map((entry) => (
                   <React.Fragment key={entry.id}>
                   <tr className="hover:bg-slate-50 divide-x divide-black transition-colors">
                     <td className="px-4 py-3 text-sm font-bold text-black border border-black whitespace-nowrap">{getMrrNoElement(entry)}</td>
@@ -585,6 +608,13 @@ export function MaterialInMaster() {
           </table>
         </div>
       </div>
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </div>
   );
 }
