@@ -5,6 +5,9 @@ import { createOrderItemCatalog } from "../orderItemCatalog";
 import { computePaperRequirement } from "./paperRequirement";
 import { computeJobsInProgressRows } from "./jobsInProgress";
 import { normalizeNpdItem } from "../npdItems";
+import { computeJobwiseReelConsumptionRows } from "./jobwiseReelConsumption";
+import { computeConversionCostMonthWise } from "./conversionCostMonthWise";
+import { computeSummarySheetRows } from "./summarySheet";
 
 export type ReportListSpec = {
   key: string;
@@ -74,6 +77,55 @@ REPORT_DEFINITIONS["jobs-in-progress"] = {
     { key: "invoiceLineItems", entity: "invoice_line_items", scope: "all" },
   ],
   compute: (lists, _params, helpers) => computeJobsInProgressRows(lists as any, (helpers.npdItems || []).map(normalizeNpdItem)),
+};
+
+REPORT_DEFINITIONS["jobwise-reel-consumption"] = {
+  permission: "/reports/jobwise-reel-consumption",
+  lists: [
+    { key: "productions", entity: "productions", scope: "firm" },
+    { key: "processing", entity: "production_processing", scope: "firm" },
+    { key: "materials", entity: "materials", scope: "firm" },
+    { key: "materialIn", entity: "material_in", scope: "firm" },
+    { key: "packingSlips", entity: "material_in_packing_slips", scope: "firm" },
+    { key: "issueReelLines", entity: "material_issue_reel_lines", scope: "firm" },
+    { key: "returnReelLines", entity: "material_return_reel_lines", scope: "firm" },
+  ],
+  compute: (lists) => computeJobwiseReelConsumptionRows(lists as any),
+};
+
+REPORT_DEFINITIONS["conversion-cost-month-wise"] = {
+  permission: "/reports/conversion-cost-month-wise",
+  lists: [
+    { key: "materialIssues", entity: "material_issues", scope: "firm" },
+    { key: "issueLines", entity: "material_issue_lines", scope: "firm" },
+    { key: "materials", entity: "materials", scope: "firm" },
+    { key: "materialIn", entity: "material_in", scope: "firm" },
+    { key: "fixedExpenses", entity: "fixed_monthly_expenses", scope: "firm" },
+    { key: "productions", entity: "productions", scope: "firm" },
+    { key: "packingSlips", entity: "material_in_packing_slips", scope: "firm" },
+    { key: "issueReelLines", entity: "material_issue_reel_lines", scope: "firm" },
+    { key: "returnReelLines", entity: "material_return_reel_lines", scope: "firm" },
+  ],
+  compute: (lists, params) => computeConversionCostMonthWise(lists as any, String(params.fy || "")),
+};
+
+REPORT_DEFINITIONS["summary-sheet"] = {
+  permission: "/reports/summary-sheet",
+  npdItems: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "slips", entity: "loading_slips", scope: "all" },
+    { key: "invoices", entity: "invoices", scope: "all" },
+    { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "companies", entity: "companies", scope: "firm" },
+    { key: "firms", entity: "firms", scope: "firm" },
+  ],
+  compute: (lists, _params, helpers) => computeSummarySheetRows(lists as any, (helpers.npdItems || []).map(normalizeNpdItem)),
 };
 
 export function runReport(name: string, lists: Record<string, any[]>, params: Record<string, any>, helpers: ReportHelpers) {

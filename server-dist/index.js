@@ -17563,29 +17563,48 @@ app.post("/api/reports/:name", requireAuth, async (req, res) => {
     }
 });
 const REPORT_WAIT_MS = 25_000;
+// Last build time per report and per step (ms, rows), for tuning.
+const reportBuildTimings = new Map();
+app.get("/api/reports-timings", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user || user.role !== "Admin")
+        return res.status(403).json({ error: "Forbidden" });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json(Object.fromEntries(reportBuildTimings));
+});
 const reportJobs = new Map();
 async function buildServerReport(module, name, definition, firmId, authUserId, params, cacheKey, db) {
     const startedAt = Date.now();
     const version = realtimeDataVersion;
     const lists = {};
     // One list at a time: the database allows only a few connections.
+    const steps = [];
+    const timed = async (label, load) => {
+        const stepStart = Date.now();
+        const value = await load();
+        steps.push([label, Date.now() - stepStart, Array.isArray(value) ? value.length : -1]);
+        return value;
+    };
     for (const spec of definition.lists) {
-        lists[spec.key] = await loadCollectionLikeClient(spec.entity, spec.scope === "all" ? "" : firmId, authUserId);
+        lists[spec.key] = await timed(spec.entity, () => loadCollectionLikeClient(spec.entity, spec.scope === "all" ? "" : firmId, authUserId));
     }
     const helpers = {};
     if (definition.catalog) {
         helpers.catalogRows = {
-            fgRows: await loadCatalogFgRowsCached(db),
-            phpRows: await loadCollectionLikeClient("php_item_master", "", authUserId),
-            plateRows: await loadCollectionLikeClient("plate_item_master", "", authUserId),
-            materialRows: await loadCollectionLikeClient("materials", "", authUserId),
+            fgRows: await timed("catalog:npd", () => loadCatalogFgRowsCached(db)),
+            phpRows: await timed("php_item_master", () => loadCollectionLikeClient("php_item_master", "", authUserId)),
+            plateRows: await timed("plate_item_master", () => loadCollectionLikeClient("plate_item_master", "", authUserId)),
+            materialRows: await timed("materials(all)", () => loadCollectionLikeClient("materials", "", authUserId)),
         };
     }
     if (definition.npdItems) {
-        helpers.npdItems = await loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }));
+        helpers.npdItems = await timed("npd-firm-wise", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset })));
     }
     const loadMs = Date.now() - startedAt;
+    const computeStart = Date.now();
     const result = module.runReport(name, lists, params, helpers);
+    steps.push(["compute", Date.now() - computeStart, -1]);
+    reportBuildTimings.set(name, { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps });
     reportResultCache.set(cacheKey, { expiresAt: Date.now() + REPORT_RESULT_CACHE_TTL_MS, version, value: result });
     if (reportResultCache.size > 100)
         reportResultCache.delete(reportResultCache.keys().next().value);

@@ -11,118 +11,39 @@ import {
   MaterialIssueReelLine,
   MaterialReturnReelLine,
 } from "../types";
-import { normalizeMachineName } from "../lib/productionMachineNames";
+import { computeJobwiseReelConsumptionRows } from "../lib/reports/jobwiseReelConsumption";
+import type { JobwiseReelConsumptionRow } from "../lib/reports/jobwiseReelConsumption";
+import { useServerReport } from "../hooks/useServerReport";
 import { formatDate } from "../lib/serial";
 
-type JobwiseReelConsumptionRow = {
-  productionId: string;
-  jobNo: string;
-  corrugationDate: string;
-  jobFfg: number;
-  jobRate: number;
-  jobValue: number;
-  reelIssued: number;
-  reelReturned: number;
-  reelConsumed: number;
-  consumedValue: number;
-  gp: number;
-  gpPercent: number;
-};
-
-function getReelRateForSlip({
-  slip,
-  materialInMap,
-  materialMap,
-}: {
-  slip?: MaterialInPackingSlip;
-  materialInMap: Map<string, MaterialIn>;
-  materialMap: Map<string, Material>;
-}) {
-  if (!slip) return 0;
-  const receipt = materialInMap.get(slip.materialInId);
-  const line = receipt?.lines.find((entry) => entry.id === slip.materialLineId);
-  const material = materialMap.get(slip.materialId);
-  return Number(line?.invoiceRate ?? line?.poRate ?? line?.rate ?? material?.openingRate ?? 0);
-}
+const JOBWISE_REEL_TABLES = ["productions", "production_processing", "materials", "material_in", "material_in_packing_slips", "material_issue_reel_lines", "material_return_reel_lines"];
 
 export function JobwiseReelConsumptionReport() {
-  const [productions] = useData<Production>("productions", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", []);
-  const [materials] = useData<Material>("materials", []);
-  const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  // Rows are calculated on the server; if it cannot, the lists are loaded and
+  // calculated here as before.
+  const serverReport = useServerReport<JobwiseReelConsumptionRow[]>("jobwise-reel-consumption", {}, JOBWISE_REEL_TABLES);
+  const browserFallback = serverReport.failed;
+  const [productions] = useData<Production>("productions", [], { enabled: browserFallback });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { enabled: browserFallback });
+  const [materials] = useData<Material>("materials", [], { enabled: browserFallback });
+  const [materialIn] = useData<MaterialIn>("material-in", [], { enabled: browserFallback });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { enabled: browserFallback });
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { enabled: browserFallback });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { enabled: browserFallback });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [minGpPercent, setMinGpPercent] = useState("");
 
+  const clientBaseRows = useMemo<JobwiseReelConsumptionRow[]>(
+    () => (browserFallback ? computeJobwiseReelConsumptionRows({ productions, processing, materials, materialIn, packingSlips, issueReelLines, returnReelLines }) : []),
+    [browserFallback, issueReelLines, materialIn, materials, packingSlips, processing, productions, returnReelLines]
+  );
+  const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
+
   const rows = useMemo<JobwiseReelConsumptionRow[]>(() => {
-    const materialMap = new Map(materials.map((material) => [material.id, material]));
-    const materialInMap = new Map(materialIn.map((entry) => [entry.id, entry]));
-    const packingSlipMap = new Map(packingSlips.map((slip) => [slip.id, slip]));
-
-    const corrugationDateMap = new Map<string, string>();
-    processing.forEach((entry) => {
-      if (!normalizeMachineName(entry.machineName).startsWith("Corrugation")) return;
-      const existing = corrugationDateMap.get(entry.productionId);
-      if (!existing || new Date(entry.date).getTime() > new Date(existing).getTime()) {
-        corrugationDateMap.set(entry.productionId, entry.date);
-      }
-    });
-
-    const issuedByProduction = new Map<string, { weight: number; value: number }>();
-    issueReelLines.forEach((line) => {
-      const current = issuedByProduction.get(line.productionId) || { weight: 0, value: 0 };
-      const slip = packingSlipMap.get(line.packingSlipId);
-      const rate = getReelRateForSlip({ slip, materialInMap, materialMap });
-      current.weight += Number(line.weightKg || 0);
-      current.value += Number(line.weightKg || 0) * rate;
-      issuedByProduction.set(line.productionId, current);
-    });
-
-    const returnedByProduction = new Map<string, { weight: number; value: number }>();
-    returnReelLines.forEach((line) => {
-      const current = returnedByProduction.get(line.productionId) || { weight: 0, value: 0 };
-      const slip = packingSlipMap.get(line.packingSlipId);
-      const rate = getReelRateForSlip({ slip, materialInMap, materialMap });
-      current.weight += Number(line.weightKg || 0);
-      current.value += Number(line.weightKg || 0) * rate;
-      returnedByProduction.set(line.productionId, current);
-    });
-
-    return productions
-      .filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp && Number(production.prodFromFFG || 0) > 0)
-      .map((production) => {
-        const issued = issuedByProduction.get(production.id) || { weight: 0, value: 0 };
-        const returned = returnedByProduction.get(production.id) || { weight: 0, value: 0 };
-        const jobFfg = Number(production.prodFromFFG || 0);
-        const jobRate = Number(production.rate || 0);
-        const jobValue = jobFfg * jobRate;
-        const reelIssued = Number(Number(issued.weight || 0).toFixed(2));
-        const reelReturned = Number(Number(returned.weight || 0).toFixed(2));
-        const reelConsumed = Number((reelIssued - reelReturned).toFixed(2));
-        const consumedValue = Number(Number(issued.value - returned.value || 0).toFixed(2));
-        const gp = Number(Number(jobValue - consumedValue || 0).toFixed(2));
-        const gpPercent = jobValue > 0 ? Number(((gp / jobValue) * 100).toFixed(2)) : 0;
-
-        return {
-          productionId: production.id,
-          jobNo: String(production.transactionNo || production.jobCardNo || ""),
-          corrugationDate: corrugationDateMap.get(production.id) || "",
-          jobFfg,
-          jobRate,
-          jobValue: Number(jobValue.toFixed(2)),
-          reelIssued,
-          reelReturned,
-          reelConsumed,
-          consumedValue,
-          gp,
-          gpPercent,
-        };
-      })
+    return baseRows
       .filter((row) => {
         const search = searchTerm.trim().toLowerCase();
         if (search && !row.jobNo.toLowerCase().includes(search)) return false;
@@ -136,19 +57,7 @@ export function JobwiseReelConsumptionReport() {
         if (dateDiff !== 0) return dateDiff;
         return a.jobNo.localeCompare(b.jobNo);
       });
-  }, [
-    dateFrom,
-    dateTo,
-    issueReelLines,
-    materialIn,
-    materials,
-    minGpPercent,
-    packingSlips,
-    processing,
-    productions,
-    returnReelLines,
-    searchTerm,
-  ]);
+  }, [baseRows, dateFrom, dateTo, minGpPercent, searchTerm]);
 
   const summary = useMemo(() => {
     return rows.reduce(
@@ -208,6 +117,7 @@ export function JobwiseReelConsumptionReport() {
     <div className="space-y-4">
       <div className="flex flex-col gap-2 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Jobwise Reel Consumption Report</h2>
+        {serverReport.loading && !serverReport.failed && <p className="text-xs font-bold text-indigo-700">Calculating report…</p>}
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">

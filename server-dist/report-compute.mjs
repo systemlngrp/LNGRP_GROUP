@@ -80,9 +80,9 @@ function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRows }) {
     const map = /* @__PURE__ */ new Map();
     Object.keys(itemsBySource).forEach((source) => {
       itemsBySource[source].forEach((item) => {
-        getLookupKeys(source, item).forEach((key2) => {
-          if (!map.has(key2)) {
-            map.set(key2, item);
+        getLookupKeys(source, item).forEach((key3) => {
+          if (!map.has(key3)) {
+            map.set(key3, item);
           }
         });
       });
@@ -276,6 +276,9 @@ function formatOurReelNo(value) {
 }
 
 // src/lib/materialMovement.ts
+function round2(value) {
+  return Number((Number(value) || 0).toFixed(2));
+}
 var OPENING_REEL_MATERIAL_IN_ID = "OPENING";
 function normalizeReference(value) {
   return String(value || "").trim().toLowerCase();
@@ -288,9 +291,47 @@ function isActiveReelMaterial(material) {
     material && normalizeReference(material.type) === "reel" && normalizeReference(material.active || "Yes") !== "no"
   );
 }
+function calculateMaterialIssueAmount(qty, rate) {
+  return round2(round2(qty) * round2(rate));
+}
+function getMaterialInLineRate(line) {
+  const invoiceRate = Number(line.invoiceRate || 0);
+  if (invoiceRate > 0) return invoiceRate;
+  const poRate = Number(line.poRate || 0);
+  if (poRate > 0) return poRate;
+  const rate = Number(line.rate || 0);
+  if (rate > 0) return rate;
+  const actualQty = Number(line.actualQty || 0);
+  const actualValue = Number(line.actualValue || 0);
+  return actualQty > 0 && actualValue > 0 ? actualValue / actualQty : 0;
+}
+function resolveMaterialIssueRate(materialId, materials, materialIn, qty, options) {
+  const material = materials.find((entry) => entry.id === materialId);
+  const firmId = String(options?.firmId || "").trim();
+  const firmOpening = firmId ? options?.firmOpenings?.find(
+    (opening) => opening.materialId === materialId && String(opening.firmId || "").trim() === firmId
+  ) : void 0;
+  const openingRate = round2(Number(firmOpening?.openingRate ?? material?.openingRate ?? 0));
+  const latestPurchaseLine = materialIn.filter((entry) => !firmId || String(entry.firmId || "").trim() === firmId).flatMap(
+    (entry) => entry.lines.filter((line) => line.lineType !== "Service" && line.itemId === materialId).map((line) => ({
+      line,
+      time: new Date(entry.timestamp || entry.date || 0).getTime() || 0
+    }))
+  ).sort((a, b) => b.time - a.time)[0]?.line;
+  const lastPurchaseRate = latestPurchaseLine ? round2(getMaterialInLineRate(latestPurchaseLine)) : 0;
+  const effectiveOpeningRate = options?.useLatestRateAsOpeningRate && lastPurchaseRate > 0 ? lastPurchaseRate : openingRate;
+  const rate = lastPurchaseRate > 0 ? lastPurchaseRate : openingRate;
+  const effectiveRate = options?.useLatestRateAsOpeningRate ? effectiveOpeningRate : rate;
+  return {
+    lastPurchaseRate,
+    openingRate: effectiveOpeningRate,
+    rate: effectiveRate,
+    amount: calculateMaterialIssueAmount(qty, effectiveRate)
+  };
+}
 
 // src/lib/reelStock.ts
-function round2(value) {
+function round22(value) {
   return Number(Number(value || 0).toFixed(2));
 }
 function getAgeDays(dateStr) {
@@ -331,27 +372,27 @@ function buildReelStockRows({
   const filteredReturnLines = returnReelLines.filter(includeReturnLine);
   const issueLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredIssueLines.forEach((line) => {
-    const key2 = String(line.packingSlipId || "");
-    if (!key2) return;
-    const rows = issueLinesByPackingSlipId.get(key2) || [];
+    const key3 = String(line.packingSlipId || "");
+    if (!key3) return;
+    const rows = issueLinesByPackingSlipId.get(key3) || [];
     rows.push(line);
-    issueLinesByPackingSlipId.set(key2, rows);
+    issueLinesByPackingSlipId.set(key3, rows);
   });
   const returnLinesByPackingSlipId = /* @__PURE__ */ new Map();
   filteredReturnLines.forEach((line) => {
-    const key2 = String(line.packingSlipId || "");
-    if (!key2) return;
-    const rows = returnLinesByPackingSlipId.get(key2) || [];
+    const key3 = String(line.packingSlipId || "");
+    if (!key3) return;
+    const rows = returnLinesByPackingSlipId.get(key3) || [];
     rows.push(line);
-    returnLinesByPackingSlipId.set(key2, rows);
+    returnLinesByPackingSlipId.set(key3, rows);
   });
   const getRelatedLines = (map, keys) => {
     const rows = [];
     const seen = /* @__PURE__ */ new Set();
-    keys.forEach((key2) => {
-      if (seen.has(key2)) return;
-      seen.add(key2);
-      rows.push(...map.get(key2) || []);
+    keys.forEach((key3) => {
+      if (seen.has(key3)) return;
+      seen.add(key3);
+      rows.push(...map.get(key3) || []);
     });
     return rows;
   };
@@ -360,14 +401,14 @@ function buildReelStockRows({
     packingSlips.filter(isOpeningReelPackingSlip).map((slip) => slip.materialId)
   );
   const openingRows = materials.filter((material) => isActiveReelMaterial(material) && Number(material.openingQty || 0) > 0 && !explicitOpeningMaterialIds.has(material.id)).map((material, index) => {
-    const openingQty = round2(Number(material.openingQty || 0));
-    const openingRate = round2(Number(material.openingRate || 0));
+    const openingQty = round22(Number(material.openingQty || 0));
+    const openingRate = round22(Number(material.openingRate || 0));
     const relatedIssueLines = getRelatedLines(issueLinesByPackingSlipId, [material.id, `opening-${material.id}`]);
     const relatedReturnLines = getRelatedLines(returnLinesByPackingSlipId, [material.id, `opening-${material.id}`]);
-    const issuedWeight = round2(relatedIssueLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
-    const returnedWeight = round2(relatedReturnLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
-    const netIssuedWeight = round2(issuedWeight - returnedWeight);
-    const availableWeight = round2(Math.max(0, openingQty + returnedWeight - issuedWeight));
+    const issuedWeight = round22(relatedIssueLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
+    const returnedWeight = round22(relatedReturnLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0));
+    const netIssuedWeight = round22(issuedWeight - returnedWeight);
+    const availableWeight = round22(Math.max(0, openingQty + returnedWeight - issuedWeight));
     return {
       slipId: material.id,
       materialId: material.id,
@@ -389,7 +430,7 @@ function buildReelStockRows({
       mrrQty: 0,
       openingQty,
       rate: availableWeight > 0 ? openingRate : 0,
-      valuation: availableWeight > 0 ? round2(availableWeight * openingRate) : 0,
+      valuation: availableWeight > 0 ? round22(availableWeight * openingRate) : 0,
       ageDays: 0,
       isOpening: true
     };
@@ -407,12 +448,12 @@ function buildReelStockRows({
     const relatedReturnLines = getRelatedLines(returnLinesByPackingSlipId, [slip.id]);
     const issuedWeight = relatedIssueLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0);
     const returnedWeight = relatedReturnLines.reduce((sum, line) => sum + Number(line.weightKg || 0), 0);
-    const reelQty = round2(Number(slip.weightKg || 0));
-    const netIssuedWeight = round2(issuedWeight - returnedWeight);
-    const availableWeight = round2(Math.max(0, reelQty + returnedWeight - issuedWeight));
+    const reelQty = round22(Number(slip.weightKg || 0));
+    const netIssuedWeight = round22(issuedWeight - returnedWeight);
+    const availableWeight = round22(Math.max(0, reelQty + returnedWeight - issuedWeight));
     const mrrNo = isOpeningReelPackingSlip(slip) ? "Opening" : receipt?.transactionNo || "";
     const isOpening = isOpeningReelPackingSlip(slip) || isOpeningMrrNo(mrrNo);
-    const rate = availableWeight > 0 ? round2(isOpeningReelPackingSlip(slip) ? Number(slip.openingRate || material?.openingRate || 0) : getLineRate(receiptLine, material)) : 0;
+    const rate = availableWeight > 0 ? round22(isOpeningReelPackingSlip(slip) ? Number(slip.openingRate || material?.openingRate || 0) : getLineRate(receiptLine, material)) : 0;
     return {
       slipId: slip.id,
       materialId: slip.materialId,
@@ -427,14 +468,14 @@ function buildReelStockRows({
       gsm: Number(material?.gsm || 0),
       size: Number(material?.size || 0),
       bf: Number(material?.bf || 0),
-      issuedWeight: round2(issuedWeight),
-      returnedWeight: round2(returnedWeight),
+      issuedWeight: round22(issuedWeight),
+      returnedWeight: round22(returnedWeight),
       netIssuedWeight,
       availableWeight,
       mrrQty: isOpening ? 0 : reelQty,
       openingQty: isOpening ? reelQty : 0,
       rate,
-      valuation: availableWeight > 0 ? round2(availableWeight * rate) : 0,
+      valuation: availableWeight > 0 ? round22(availableWeight * rate) : 0,
       ageDays: getAgeDays(receipt?.date),
       isOpening
     };
@@ -484,7 +525,7 @@ function calculateInternalUps(rapcForSingleBox) {
   if (!Number.isFinite(rapcValue) || rapcValue <= 0) return void 0;
   return Math.floor(1320 / rapcValue);
 }
-function round22(value) {
+function round23(value) {
   return Math.round(value * 100) / 100;
 }
 function positiveNumber(...values) {
@@ -502,7 +543,7 @@ function calculateProductionRapc(input) {
   const ply = Number(input.ply || 0);
   const idToOd = ply === 3 ? 6 : ply === 5 ? 10 : 0;
   const rapc = calculateProductionReel({ breadth, height, ups, idToOd });
-  return Number.isFinite(rapc) && rapc > 0 ? round22(rapc) : void 0;
+  return Number.isFinite(rapc) && rapc > 0 ? round23(rapc) : void 0;
 }
 function calculateInternalRapc(item) {
   const savedInternalUps = Number(item.internalUps);
@@ -528,14 +569,14 @@ function parseAppDate(value) {
 function normalizeDate(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
-function round23(value) {
+function round24(value) {
   return Number(Number(value || 0).toFixed(2));
 }
 function makeKey(rapcRange, gsm) {
   return `${rapcRange}__${gsm}`;
 }
-function parseKey(key2) {
-  const [rapcRangeRaw, gsmRaw] = key2.split("__");
+function parseKey(key3) {
+  const [rapcRangeRaw, gsmRaw] = key3.split("__");
   return { rapcRange: rapcRangeRaw === "Unmapped" ? "Unmapped" : Number(rapcRangeRaw || 0), gsm: Number(gsmRaw || 0) };
 }
 function resolveRapcValue(input, ranges) {
@@ -551,8 +592,8 @@ function getMaterialRapcInput(material) {
 }
 function addToMap(map, row, qty) {
   if (!row.gsm || !Number.isFinite(row.gsm) || !Number.isFinite(qty) || qty === 0) return;
-  const key2 = makeKey(row.rapcRange, row.gsm);
-  map.set(key2, (map.get(key2) || 0) + qty);
+  const key3 = makeKey(row.rapcRange, row.gsm);
+  map.set(key3, (map.get(key3) || 0) + qty);
 }
 function firstPositiveNumber(...values) {
   for (const value of values) {
@@ -561,15 +602,15 @@ function firstPositiveNumber(...values) {
   }
   return 0;
 }
-function getRawValue(item, key2) {
-  return item?.raw?.[key2] ?? item?.[key2];
+function getRawValue(item, key3) {
+  return item?.raw?.[key3] ?? item?.[key3];
 }
 function getItemNumber(item, ...keys) {
-  return firstPositiveNumber(...keys.map((key2) => getRawValue(item, key2)));
+  return firstPositiveNumber(...keys.map((key3) => getRawValue(item, key3)));
 }
 function getItemText(item, ...keys) {
-  for (const key2 of keys) {
-    const value = String(getRawValue(item, key2) ?? "").trim();
+  for (const key3 of keys) {
+    const value = String(getRawValue(item, key3) ?? "").trim();
     if (value) return value;
   }
   return "";
@@ -732,14 +773,14 @@ function computePaperRequirement(lists, options) {
     ...Array.from(pendingPoByKey.keys()),
     ...Array.from(consumptionByKey.keys())
   ]);
-  return Array.from(allKeys).map((key2) => {
-    const { rapcRange, gsm } = parseKey(key2);
-    const totalPaperRequirement = round23(requirementByKey.get(key2) || 0);
-    const totalClosingStock = round23(stockByKey.get(key2) || 0);
-    const totalPendingPo = round23(pendingPoByKey.get(key2) || 0);
-    const consumption = round23(Math.max(0, consumptionByKey.get(key2) || 0));
-    const mil = round23(consumption * 7 / 90);
-    const calculatedNetPaperToOrder = totalClosingStock > mil ? round23(totalPaperRequirement - totalClosingStock - totalPendingPo) : round23(mil - totalClosingStock + (totalPaperRequirement - totalClosingStock - totalPendingPo));
+  return Array.from(allKeys).map((key3) => {
+    const { rapcRange, gsm } = parseKey(key3);
+    const totalPaperRequirement = round24(requirementByKey.get(key3) || 0);
+    const totalClosingStock = round24(stockByKey.get(key3) || 0);
+    const totalPendingPo = round24(pendingPoByKey.get(key3) || 0);
+    const consumption = round24(Math.max(0, consumptionByKey.get(key3) || 0));
+    const mil = round24(consumption * 7 / 90);
+    const calculatedNetPaperToOrder = totalClosingStock > mil ? round24(totalPaperRequirement - totalClosingStock - totalPendingPo) : round24(mil - totalClosingStock + (totalPaperRequirement - totalClosingStock - totalPendingPo));
     const netPaperToOrder = Math.max(0, calculatedNetPaperToOrder);
     return { rapcRange, gsm, totalPaperRequirement, totalClosingStock, totalPendingPo, mil, netPaperToOrder, consumption };
   }).filter((row) => row.gsm > 0).sort((a, b) => {
@@ -897,8 +938,8 @@ function clearCollectionCache(changed = ["*"]) {
     completedNpdLoads.clear();
     return;
   }
-  for (const [key2, entry] of completedLoads) {
-    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key2);
+  for (const [key3, entry] of completedLoads) {
+    if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key3);
   }
   completedNpdLoads.clear();
 }
@@ -969,6 +1010,455 @@ function normalizeNpdItem(row) {
   };
 }
 
+// src/lib/reports/jobwiseReelConsumption.ts
+function getReelRateForSlip({
+  slip,
+  materialInMap,
+  materialMap
+}) {
+  if (!slip) return 0;
+  const receipt = materialInMap.get(slip.materialInId);
+  const line = receipt?.lines.find((entry) => entry.id === slip.materialLineId);
+  const material = materialMap.get(slip.materialId);
+  return Number(line?.invoiceRate ?? line?.poRate ?? line?.rate ?? material?.openingRate ?? 0);
+}
+function computeJobwiseReelConsumptionRows(lists) {
+  const { productions, processing, materials, materialIn, packingSlips, issueReelLines, returnReelLines } = lists;
+  const materialMap = new Map(materials.map((material) => [material.id, material]));
+  const materialInMap = new Map(materialIn.map((entry) => [entry.id, entry]));
+  const packingSlipMap = new Map(packingSlips.map((slip) => [slip.id, slip]));
+  const corrugationDateMap = /* @__PURE__ */ new Map();
+  processing.forEach((entry) => {
+    if (!normalizeMachineName(entry.machineName).startsWith("Corrugation")) return;
+    const existing = corrugationDateMap.get(entry.productionId);
+    if (!existing || new Date(entry.date).getTime() > new Date(existing).getTime()) {
+      corrugationDateMap.set(entry.productionId, entry.date);
+    }
+  });
+  const sumByProduction = (lines) => {
+    const totals = /* @__PURE__ */ new Map();
+    lines.forEach((line) => {
+      const current = totals.get(line.productionId) || { weight: 0, value: 0 };
+      const slip = packingSlipMap.get(line.packingSlipId);
+      const rate = getReelRateForSlip({ slip, materialInMap, materialMap });
+      current.weight += Number(line.weightKg || 0);
+      current.value += Number(line.weightKg || 0) * rate;
+      totals.set(line.productionId, current);
+    });
+    return totals;
+  };
+  const issuedByProduction = sumByProduction(issueReelLines);
+  const returnedByProduction = sumByProduction(returnReelLines);
+  return productions.filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp && Number(production.prodFromFFG || 0) > 0).map((production) => {
+    const issued = issuedByProduction.get(production.id) || { weight: 0, value: 0 };
+    const returned = returnedByProduction.get(production.id) || { weight: 0, value: 0 };
+    const jobFfg = Number(production.prodFromFFG || 0);
+    const jobRate = Number(production.rate || 0);
+    const jobValue = jobFfg * jobRate;
+    const reelIssued = Number(Number(issued.weight || 0).toFixed(2));
+    const reelReturned = Number(Number(returned.weight || 0).toFixed(2));
+    const reelConsumed = Number((reelIssued - reelReturned).toFixed(2));
+    const consumedValue = Number(Number(issued.value - returned.value || 0).toFixed(2));
+    const gp = Number(Number(jobValue - consumedValue || 0).toFixed(2));
+    const gpPercent = jobValue > 0 ? Number((gp / jobValue * 100).toFixed(2)) : 0;
+    return {
+      productionId: production.id,
+      jobNo: String(production.transactionNo || production.jobCardNo || ""),
+      corrugationDate: corrugationDateMap.get(production.id) || "",
+      jobFfg,
+      jobRate,
+      jobValue: Number(jobValue.toFixed(2)),
+      reelIssued,
+      reelReturned,
+      reelConsumed,
+      consumedValue,
+      gp,
+      gpPercent
+    };
+  });
+}
+
+// src/lib/financialYear.ts
+var FY_MONTHS = [
+  { value: 4, label: "April" },
+  { value: 5, label: "May" },
+  { value: 6, label: "June" },
+  { value: 7, label: "July" },
+  { value: 8, label: "August" },
+  { value: 9, label: "September" },
+  { value: 10, label: "October" },
+  { value: 11, label: "November" },
+  { value: 12, label: "December" },
+  { value: 1, label: "January" },
+  { value: 2, label: "February" },
+  { value: 3, label: "March" }
+];
+function getCurrentFinancialYear() {
+  const now = /* @__PURE__ */ new Date();
+  const startYear = now.getMonth() + 1 >= 4 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${String(startYear).slice(-2)}-${String(startYear + 1).slice(-2)}`;
+}
+function getFinancialYearFromDate(dateValue) {
+  const parsed = dateValue ? new Date(dateValue) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "";
+  const month = parsed.getMonth() + 1;
+  const year = parsed.getFullYear();
+  const startYear = month >= 4 ? year : year - 1;
+  return `${String(startYear).slice(-2)}-${String(startYear + 1).slice(-2)}`;
+}
+function getFinancialYearOptions(extraYears = []) {
+  const current = getCurrentFinancialYear();
+  const currentStart = Number(`20${current.slice(0, 2)}`);
+  const options = new Set(extraYears.filter(Boolean));
+  for (let offset = -2; offset <= 2; offset += 1) {
+    const start = currentStart + offset;
+    options.add(`${String(start).slice(-2)}-${String(start + 1).slice(-2)}`);
+  }
+  return [...options].sort((a, b) => b.localeCompare(a));
+}
+
+// src/lib/reports/conversionCostMonthWise.ts
+function normalizeExpenseLines(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+function round25(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+function isConsumableIssue(issue) {
+  const type = String(issue?.issueType || "").toLowerCase();
+  return type === "without job" || type === "general";
+}
+function getLineAmount(line, materials, materialIn) {
+  const savedAmount = Number(line.amount || 0);
+  if (savedAmount > 0) return savedAmount;
+  const qty = Number(line.qty || 0);
+  const savedRate = Number(line.rate || 0);
+  if (savedRate > 0) return qty * savedRate;
+  return resolveMaterialIssueRate(line.materialId, materials, materialIn, qty).amount;
+}
+function computeConversionCostMonthWise(lists, fy) {
+  const { materialIssues, issueLines, materials, materialIn, fixedExpenses, productions, packingSlips, issueReelLines, returnReelLines } = lists;
+  const normalizedFixedExpenses = fixedExpenses.map((record) => ({ ...record, lines: normalizeExpenseLines(record.lines) }));
+  const issueYears = materialIssues.map((issue) => getFinancialYearFromDate(issue.date)).filter(Boolean);
+  const fixedYears = normalizedFixedExpenses.map((record) => record.fy);
+  const fyOptions = getFinancialYearOptions([...issueYears, ...fixedYears]);
+  const issueMap = new Map(materialIssues.map((issue) => [issue.id, issue]));
+  const materialMap = new Map(materials.map((material) => [material.id, material]));
+  const materialInMap = new Map(materialIn.map((entry) => [entry.id, entry]));
+  const packingSlipMap = new Map(packingSlips.map((slip) => [slip.id, slip]));
+  const productionMap = new Map(productions.map((production) => [production.id, production]));
+  const consumablesByMonth = /* @__PURE__ */ new Map();
+  issueLines.forEach((line) => {
+    const issue = issueMap.get(line.materialIssueId);
+    if (!isConsumableIssue(issue)) return;
+    if (getFinancialYearFromDate(issue?.date) !== fy) return;
+    const issueMonth = issue?.date ? new Date(issue.date).getMonth() + 1 : 0;
+    consumablesByMonth.set(issueMonth, (consumablesByMonth.get(issueMonth) || 0) + getLineAmount(line, materials, materialIn));
+  });
+  const paperByMonth = (lines) => {
+    const totals = /* @__PURE__ */ new Map();
+    lines.forEach((line) => {
+      const production = productionMap.get(line.productionId);
+      if (!production || production.status === "Cancelled" || production.cancelTimestamp) return;
+      if (getFinancialYearFromDate(production.date) !== fy) return;
+      const productionMonth = production.date ? new Date(production.date).getMonth() + 1 : 0;
+      const slip = packingSlipMap.get(line.packingSlipId);
+      const rate = getReelRateForSlip({ slip, materialInMap, materialMap });
+      totals.set(productionMonth, (totals.get(productionMonth) || 0) + Number(line.weightKg || 0) * rate);
+    });
+    return totals;
+  };
+  const issuedPaperByMonth = paperByMonth(issueReelLines);
+  const returnedPaperByMonth = paperByMonth(returnReelLines);
+  const rows = FY_MONTHS.map((month) => {
+    const consumables = consumablesByMonth.get(month.value) || 0;
+    const fixed = normalizedFixedExpenses.filter((record) => record.fy === fy && Number(record.month) === month.value).reduce((sum, record) => sum + Number(record.totalAmount || 0), 0);
+    const actualPaperUsedCost = (issuedPaperByMonth.get(month.value) || 0) - (returnedPaperByMonth.get(month.value) || 0);
+    return {
+      month: month.label,
+      monthValue: month.value,
+      consumables: round25(consumables),
+      fixed: round25(fixed),
+      totalConsumption: round25(consumables),
+      actualPaperUsedCost: round25(actualPaperUsedCost),
+      ratio: actualPaperUsedCost > 0 ? round25(consumables / actualPaperUsedCost) : 0
+    };
+  });
+  return { rows, fyOptions };
+}
+
+// src/lib/wastageCalculations.ts
+var nonNegative = (value) => {
+  const numberValue2 = Number(value || 0);
+  return Number.isFinite(numberValue2) && numberValue2 >= 0 ? numberValue2 : 0;
+};
+var normalizeMachineName2 = (value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function getKgPerBox(production) {
+  const paperWeight = nonNegative(production?.totalPaperWeight);
+  const plannedQty = nonNegative(production?.qty) || nonNegative(production?.plannedQty);
+  return paperWeight > 0 && plannedQty > 0 ? paperWeight / plannedQty : 0;
+}
+function getProductionWastageTotals(production, processingRows = []) {
+  const kgPerBox = getKgPerBox(production);
+  let corrugationKg = 0;
+  let printingKg = 0;
+  let printingBoxes = 0;
+  let fullCorrugationQty = 0;
+  processingRows.filter((row) => row.productionId === production.id && (row.completionStatus || "Full") === "Full").forEach((row) => {
+    const machine = normalizeMachineName2(row.machineName);
+    if (machine === "corrugation liner") {
+      fullCorrugationQty += nonNegative(row.qty);
+      corrugationKg += nonNegative(row.warpageKg) + nonNegative(row.delaminationKg) + nonNegative(row.misalignmentKg) + nonNegative(row.twoPlyPaperKg) + nonNegative(row.sheerCutterKg);
+    }
+    if (machine === "printing") {
+      printingBoxes += nonNegative(row.slotting) + nonNegative(row.misprinting) + nonNegative(row.jobSetting);
+    }
+  });
+  const noHisabKg = Math.max(
+    nonNegative(production.actualPaperUsed) - (kgPerBox * fullCorrugationQty + corrugationKg),
+    0
+  );
+  printingKg = printingBoxes * kgPerBox;
+  return {
+    corrugationKg,
+    sheetPlantWastageKg: corrugationKg,
+    printingKg,
+    pWastageBoxes: printingBoxes,
+    pWastageKg: printingKg,
+    noHisabKg,
+    cWastagePercent: getWastagePercent(corrugationKg + noHisabKg, nonNegative(production.actualPaperUsed)),
+    totalWastagePercent: getWastagePercent(corrugationKg + noHisabKg + printingKg, nonNegative(production.actualPaperUsed)),
+    totalCWastageKg: corrugationKg + noHisabKg + printingKg,
+    totalWastageKg: corrugationKg + printingKg + noHisabKg
+  };
+}
+function getWastagePercent(totalWastageKg, actualPaperUsedKg) {
+  const actual = nonNegative(actualPaperUsedKg);
+  return actual > 0 ? nonNegative(totalWastageKg) / actual * 100 : 0;
+}
+
+// src/lib/jobLoadingRecords.ts
+var key2 = (value) => String(value ?? "").trim().toLowerCase();
+var positiveQty = (value) => {
+  const qty = Number(value);
+  return Number.isFinite(qty) && qty > 0 ? qty : 0;
+};
+function buildJobLoadingRecords(productions, slips, plans) {
+  const byId = new Map(productions.map((production) => [key2(production.id), production.id]));
+  const byJobNo = new Map(productions.map((production) => [key2(production.transactionNo || production.jobCardNo), production.id]));
+  const planById = new Map(plans.map((plan) => [key2(plan.id), plan]));
+  const records = /* @__PURE__ */ new Map();
+  for (const slip of slips) {
+    if (key2(slip.status) === "cancelled") continue;
+    for (const line of slip.lines || []) {
+      const jobs = (line.allocations || []).filter((allocation) => allocation.sourceType === "job");
+      const quantities = /* @__PURE__ */ new Map();
+      if (jobs.length) {
+        for (const allocation of jobs) {
+          if (allocation.sourceType !== "job") continue;
+          const productionId = byId.get(key2(allocation.jobId)) || byJobNo.get(key2(allocation.jobNo));
+          const qty = positiveQty(allocation.qty);
+          if (productionId && qty) quantities.set(productionId, (quantities.get(productionId) || 0) + qty);
+        }
+      } else {
+        const plan = planById.get(key2(line.dispatchPlanId));
+        const planProductionId = byId.get(key2(plan?.productionId));
+        const jobNos = [...new Set((line.jobNos || []).map(key2).filter(Boolean))];
+        const productionId = planProductionId || (jobNos.length === 1 ? byJobNo.get(jobNos[0]) : void 0);
+        const qty = positiveQty(line.loadedQty);
+        if (productionId && qty) quantities.set(productionId, qty);
+      }
+      for (const [productionId, qty] of quantities) {
+        let bySlip = records.get(productionId);
+        if (!bySlip) {
+          bySlip = /* @__PURE__ */ new Map();
+          records.set(productionId, bySlip);
+        }
+        let record = bySlip.get(slip.id);
+        if (!record) {
+          record = { slip, qty: 0, itemIds: /* @__PURE__ */ new Set() };
+          bySlip.set(slip.id, record);
+        }
+        record.qty += qty;
+        if (line.itemId) record.itemIds.add(key2(line.itemId));
+      }
+    }
+  }
+  return new Map(Array.from(records, ([productionId, bySlip]) => [
+    productionId,
+    Array.from(bySlip.values()).map(({ slip, qty, itemIds }) => ({ slip, qty: Number(qty.toFixed(2)), itemIds: [...itemIds] })).sort((a, b) => String(a.slip.date || "").localeCompare(String(b.slip.date || "")) || String(a.slip.slipNo || "").localeCompare(String(b.slip.slipNo || ""), void 0, { numeric: true }))
+  ]));
+}
+
+// src/lib/reports/summarySheet.ts
+var n = (value) => {
+  const result = Number(value);
+  return Number.isFinite(result) ? result : 0;
+};
+var s = (value) => String(value ?? "").trim();
+var isoDateText = (value) => s(value).slice(0, 10);
+var money = (value) => Number(value.toFixed(2));
+function firstById(rows) {
+  const map = /* @__PURE__ */ new Map();
+  rows.forEach((row) => {
+    if (!map.has(row.id)) map.set(row.id, row);
+  });
+  return map;
+}
+function computeSummarySheetRows(lists, stockItems) {
+  const { productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms } = lists;
+  const orderMap = new Map(orders.map((row) => [row.id, row]));
+  const firstScheduleById = firstById(schedules);
+  const companyById = firstById(companies);
+  const firmById = firstById(firms);
+  const scheduleMap = new Map(schedules.map((row) => [row.id, row]));
+  const invoiceMap = new Map(invoices.map((row) => [row.id, row]));
+  const truckMap = new Map(trucks.map((row) => [row.id, row]));
+  const stockByErp = new Map(stockItems.map((item) => [s(item.erp || item.erpCode || item.masterItemNameErpCode), { name: s(item.name || item.itemName), balance: n(item.balance) }]));
+  const invoiceLinesBySlip = /* @__PURE__ */ new Map();
+  invoiceLines.forEach((line) => {
+    const list = invoiceLinesBySlip.get(line.loadingSlipId) || [];
+    list.push(line);
+    invoiceLinesBySlip.set(line.loadingSlipId, list);
+  });
+  const processingByJob = /* @__PURE__ */ new Map();
+  processing.forEach((entry) => {
+    const list = processingByJob.get(entry.productionId) || [];
+    list.push(entry);
+    processingByJob.set(entry.productionId, list);
+  });
+  const dispatchByProduction = /* @__PURE__ */ new Map();
+  const addDispatch = (productionId, qty, date = "", slip) => {
+    if (!productionId || !Number.isFinite(qty) || qty <= 0) return;
+    const current = dispatchByProduction.get(productionId) || { qty: 0, date: "", slips: [], invoiceIds: /* @__PURE__ */ new Set() };
+    current.qty += qty;
+    current.date = current.date || date;
+    if (slip && !current.slips.some((item) => item.id === slip.id)) current.slips.push(slip);
+    if (slip?.invoiceId) current.invoiceIds.add(slip.invoiceId);
+    dispatchByProduction.set(productionId, current);
+  };
+  const loadingByJob = buildJobLoadingRecords(productions, slips, plans);
+  loadingByJob.forEach((records, productionId) => records.forEach(({ slip, qty, itemIds }) => {
+    addDispatch(productionId, qty, isoDateText(slip.date), slip);
+    const dispatch = dispatchByProduction.get(productionId);
+    invoiceLinesBySlip.get(slip.id)?.forEach((line) => {
+      if (line.invoiceId && (!line.itemId || !itemIds.length || itemIds.includes(s(line.itemId).toLowerCase()))) {
+        dispatch?.invoiceIds.add(line.invoiceId);
+      }
+    });
+  }));
+  return productions.filter((production) => production.status !== "Cancelled").map((production) => {
+    const order = orderMap.get(firstScheduleById.get(production.scheduleId)?.orderId || "");
+    const schedule = scheduleMap.get(production.scheduleId || "");
+    const company = companyById.get(order?.companyId || production.companyId);
+    const firmName = s(production.firmName || order?.firmName || firmById.get(production.firmId)?.firmName);
+    const jobNo = s(production.transactionNo || production.jobCardNo);
+    const erp = s(production.erpCode || production.masterErp || production.erp);
+    const stockItem = stockByErp.get(erp);
+    const itemName = s(stockItem?.name || production.itemName || production.name);
+    const productionRows = processingByJob.get(production.id) || [];
+    const boardline = productionRows.filter((entry) => /corrugation|pasting|stitching|slotting|punching|gluing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0);
+    const printing = productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0);
+    const dispatch = dispatchByProduction.get(production.id) || { qty: 0, date: "", slips: [], invoiceIds: /* @__PURE__ */ new Set() };
+    const relatedInvoices = Array.from(dispatch.invoiceIds).map((id) => invoiceMap.get(id)).filter(Boolean);
+    relatedInvoices.sort((a, b) => isoDateText(a.tallyInvDate || a.date).localeCompare(isoDateText(b.tallyInvDate || b.date)));
+    const invoiceValues = relatedInvoices.map((invoice) => money(n(invoice.totalAfterGst || invoice.totalBeforeGst)));
+    const invoiceDates = relatedInvoices.map((invoice) => isoDateText(invoice.tallyInvDate || invoice.date));
+    const loadingRecords = (loadingByJob.get(production.id) || []).map(({ slip, qty }) => ({
+      slipNo: s(slip.slipNo),
+      date: isoDateText(slip.date),
+      qty: money(qty),
+      vehicle: s(slip.truckNo || truckMap.get(slip.truckId)?.truckNo)
+    }));
+    const dispatchedQty = loadingRecords.slice(0, 3).reduce((sum, record) => sum + n(record.qty), 0);
+    const vehicle = Array.from(new Set(loadingRecords.map((record) => record.vehicle).filter(Boolean))).join(", ");
+    const planned = n(production.plannedQty || production.qty || schedule?.qty);
+    const pprUsed = n(production.actualPaperUsed);
+    const jobWeight = n(production.totalWeightOfSet) * planned;
+    const rate = n(production.rate || order?.rate);
+    const fgStock = stockItem?.balance || 0;
+    const wastage = getProductionWastageTotals(production, productionRows);
+    const realizationRaw = String(production.realizationPerKg ?? "").trim();
+    const realizationValue = realizationRaw === "" || !Number.isFinite(Number(realizationRaw)) ? "" : Number(realizationRaw);
+    const row = {
+      "Job No.": jobNo,
+      Date: isoDateText(production.date),
+      "Party Name": s(production.companyName || company?.name),
+      "Item Name": itemName,
+      ERP: erp,
+      "Planned Qty": planned,
+      "FG Stock": fgStock,
+      "Job Weight": money(jobWeight),
+      "Customer Complaint": "",
+      "PDI REPORT": "",
+      "Realization / kg": realizationValue,
+      Meter: n(production.productionInMeter || production.plannedProductionInMeter),
+      "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).join(" x "),
+      UPS: n(production.ups),
+      "Sheets prdcd": n(production.productionOutputQty),
+      "Plate per box": n(production.setsPerBox),
+      "Boardline Prod.": boardline,
+      "Printing prod.": printing,
+      "PPR Rqd.": n(production.totalPaperWeight),
+      "PPR Used": pprUsed,
+      "Paper Wastage": pprUsed && production.totalPaperWeight ? money(pprUsed - n(production.totalPaperWeight)) : "",
+      "Boardline Wastage": money(wastage.corrugationKg),
+      "Actual Realization / kg": n(production.realizationPerKg),
+      "Dispatched Qty": money(dispatchedQty),
+      "Dispatch Date": invoiceDates[0] || "",
+      "Vehicle No": vehicle,
+      "App Stock": fgStock,
+      "Invoice Value 1": invoiceValues[0] ?? "",
+      "Invoice Value 2": invoiceValues[1] ?? "",
+      "Invoice Value 3": invoiceValues[2] ?? "",
+      "Invoice No. 1": s(relatedInvoices[0]?.invoiceNo || relatedInvoices[0]?.tallyInvNo),
+      "Invoice Date 1": invoiceDates[0] || "",
+      "Invoice No. 2": s(relatedInvoices[1]?.invoiceNo || relatedInvoices[1]?.tallyInvNo),
+      "Invoice Date 2": invoiceDates[1] || "",
+      "Invoice No. 3": s(relatedInvoices[2]?.invoiceNo || relatedInvoices[2]?.tallyInvNo),
+      "Invoice Date 3": invoiceDates[2] || "",
+      "Loading No 1": loadingRecords[0]?.slipNo || "",
+      "Loading Date 1": loadingRecords[0]?.date || "",
+      "Loading Qty 1": loadingRecords[0]?.qty ?? "",
+      "Vehicle 1": loadingRecords[0]?.vehicle || "",
+      "Loading No 2": loadingRecords[1]?.slipNo || "",
+      "Loading Date 2": loadingRecords[1]?.date || "",
+      "Loading Qty 2": loadingRecords[1]?.qty ?? "",
+      "Vehicle 2": loadingRecords[1]?.vehicle || "",
+      "Loading No 3": loadingRecords[2]?.slipNo || "",
+      "Loading Date 3": loadingRecords[2]?.date || "",
+      "Loading Qty 3": loadingRecords[2]?.qty ?? "",
+      "Vehicle 3": loadingRecords[2]?.vehicle || "",
+      "FG LEFT": money(Math.max(0, planned - dispatchedQty)),
+      Rate: rate,
+      Status: s(production.status),
+      "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0),
+      "Sale Value": money(dispatchedQty * rate),
+      "FINAL FG LEFT": money(Math.max(0, planned - dispatchedQty)),
+      "wip value": money(Math.max(0, planned - dispatchedQty) * rate),
+      Remarks: s(production.remarks),
+      "Dispatched From FG": dispatchedQty ? "Yes" : "",
+      Value: money(dispatchedQty * rate),
+      Timestamp: isoDateText(production.updateTimestamp),
+      "App sale value": money(dispatchedQty * rate)
+    };
+    row["Job Closed"] = s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "";
+    row["Close Date"] = isoDateText(production.closeDate);
+    row.__productionId = production.id;
+    row.__firmName = s(production.firmName || firmById.get(production.firmId)?.firmName);
+    return row;
+  });
+}
+
 // src/lib/reports/serverReports.ts
 function catalogFrom(helpers) {
   const rows = helpers.catalogRows || { fgRows: [], phpRows: [], plateRows: [], materialRows: [] };
@@ -1012,6 +1502,52 @@ REPORT_DEFINITIONS["jobs-in-progress"] = {
     { key: "invoiceLineItems", entity: "invoice_line_items", scope: "all" }
   ],
   compute: (lists, _params, helpers) => computeJobsInProgressRows(lists, (helpers.npdItems || []).map(normalizeNpdItem))
+};
+REPORT_DEFINITIONS["jobwise-reel-consumption"] = {
+  permission: "/reports/jobwise-reel-consumption",
+  lists: [
+    { key: "productions", entity: "productions", scope: "firm" },
+    { key: "processing", entity: "production_processing", scope: "firm" },
+    { key: "materials", entity: "materials", scope: "firm" },
+    { key: "materialIn", entity: "material_in", scope: "firm" },
+    { key: "packingSlips", entity: "material_in_packing_slips", scope: "firm" },
+    { key: "issueReelLines", entity: "material_issue_reel_lines", scope: "firm" },
+    { key: "returnReelLines", entity: "material_return_reel_lines", scope: "firm" }
+  ],
+  compute: (lists) => computeJobwiseReelConsumptionRows(lists)
+};
+REPORT_DEFINITIONS["conversion-cost-month-wise"] = {
+  permission: "/reports/conversion-cost-month-wise",
+  lists: [
+    { key: "materialIssues", entity: "material_issues", scope: "firm" },
+    { key: "issueLines", entity: "material_issue_lines", scope: "firm" },
+    { key: "materials", entity: "materials", scope: "firm" },
+    { key: "materialIn", entity: "material_in", scope: "firm" },
+    { key: "fixedExpenses", entity: "fixed_monthly_expenses", scope: "firm" },
+    { key: "productions", entity: "productions", scope: "firm" },
+    { key: "packingSlips", entity: "material_in_packing_slips", scope: "firm" },
+    { key: "issueReelLines", entity: "material_issue_reel_lines", scope: "firm" },
+    { key: "returnReelLines", entity: "material_return_reel_lines", scope: "firm" }
+  ],
+  compute: (lists, params) => computeConversionCostMonthWise(lists, String(params.fy || ""))
+};
+REPORT_DEFINITIONS["summary-sheet"] = {
+  permission: "/reports/summary-sheet",
+  npdItems: true,
+  lists: [
+    { key: "productions", entity: "productions", scope: "all" },
+    { key: "processing", entity: "production_processing", scope: "all" },
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "slips", entity: "loading_slips", scope: "all" },
+    { key: "invoices", entity: "invoices", scope: "all" },
+    { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
+    { key: "trucks", entity: "trucks", scope: "all" },
+    { key: "companies", entity: "companies", scope: "firm" },
+    { key: "firms", entity: "firms", scope: "firm" }
+  ],
+  compute: (lists, _params, helpers) => computeSummarySheetRows(lists, (helpers.npdItems || []).map(normalizeNpdItem))
 };
 function runReport(name, lists, params, helpers) {
   const definition = REPORT_DEFINITIONS[name];

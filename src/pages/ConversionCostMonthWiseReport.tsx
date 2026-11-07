@@ -12,25 +12,10 @@ import type {
   MaterialReturnReelLine,
   Production,
 } from "../types";
-import { FY_MONTHS, getCurrentFinancialYear, getFinancialYearFromDate, getFinancialYearOptions } from "../lib/financialYear";
-import { resolveMaterialIssueRate } from "../lib/materialMovement";
-
-function normalizeExpenseLines(value: FixedMonthlyExpense["lines"] | string | undefined) {
-  if (Array.isArray(value)) return value;
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
-
-function round2(value: number) {
-  return Number(Number(value || 0).toFixed(2));
-}
+import { FY_MONTHS, getCurrentFinancialYear } from "../lib/financialYear";
+import { computeConversionCostMonthWise, round2 } from "../lib/reports/conversionCostMonthWise";
+import type { ConversionCostMonthRow } from "../lib/reports/conversionCostMonthWise";
+import { useServerReport } from "../hooks/useServerReport";
 
 function formatMoney(value: number) {
   return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -40,128 +25,41 @@ function formatNumber(value: number) {
   return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function isConsumableIssue(issue?: MaterialIssue) {
-  const type = String(issue?.issueType || "").toLowerCase();
-  return type === "without job" || type === "general";
-}
+const CONVERSION_COST_TABLES = ["material_issues", "material_issue_lines", "materials", "material_in", "fixed_monthly_expenses", "productions", "material_in_packing_slips", "material_issue_reel_lines", "material_return_reel_lines"];
+type ConversionCostResult = { rows: ConversionCostMonthRow[]; fyOptions: string[] };
 
-function getLineAmount(line: MaterialIssueLine, materials: Material[], materialIn: MaterialIn[]) {
-  const savedAmount = Number(line.amount || 0);
-  if (savedAmount > 0) return savedAmount;
-  const qty = Number(line.qty || 0);
-  const savedRate = Number(line.rate || 0);
-  if (savedRate > 0) return qty * savedRate;
-  return resolveMaterialIssueRate(line.materialId, materials, materialIn, qty).amount;
-}
-
-function getReelRateForSlip({
-  slip,
-  materialInMap,
-  materialMap,
-}: {
-  slip?: MaterialInPackingSlip;
-  materialInMap: Map<string, MaterialIn>;
-  materialMap: Map<string, Material>;
-}) {
-  if (!slip) return 0;
-  const receipt = materialInMap.get(slip.materialInId);
-  const line = receipt?.lines.find((entry) => entry.id === slip.materialLineId);
-  const material = materialMap.get(slip.materialId);
-  return Number(line?.invoiceRate ?? line?.poRate ?? line?.rate ?? material?.openingRate ?? 0);
-}
 export function ConversionCostMonthWiseReport() {
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [materials] = useData<Material>("materials", []);
-  const [materialIn] = useData<MaterialIn>("material-in", []);
-  const [fixedExpenses] = useData<FixedMonthlyExpense>("fixed_monthly_expenses", []);
-  const [productions] = useData<Production>("productions", []);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-
   const [fy, setFy] = useState(getCurrentFinancialYear());
   const [monthFilter, setMonthFilter] = useState("");
 
-  const normalizedFixedExpenses = useMemo(
-    () => fixedExpenses.map((record) => ({ ...record, lines: normalizeExpenseLines(record.lines) })),
-    [fixedExpenses]
+  // Calculated on the server; if it cannot, the lists are loaded and
+  // calculated here as before.
+  const serverReport = useServerReport<ConversionCostResult>("conversion-cost-month-wise", { fy }, CONVERSION_COST_TABLES);
+  const browserFallback = serverReport.failed;
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { enabled: browserFallback });
+  const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { enabled: browserFallback });
+  const [materials] = useData<Material>("materials", [], { enabled: browserFallback });
+  const [materialIn] = useData<MaterialIn>("material-in", [], { enabled: browserFallback });
+  const [fixedExpenses] = useData<FixedMonthlyExpense>("fixed_monthly_expenses", [], { enabled: browserFallback });
+  const [productions] = useData<Production>("productions", [], { enabled: browserFallback });
+  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { enabled: browserFallback });
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { enabled: browserFallback });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { enabled: browserFallback });
+
+  const clientResult = useMemo<ConversionCostResult | null>(
+    () => (browserFallback ? computeConversionCostMonthWise({ materialIssues, issueLines, materials, materialIn, fixedExpenses, productions, packingSlips, issueReelLines, returnReelLines }, fy) : null),
+    [browserFallback, fixedExpenses, fy, issueLines, issueReelLines, materialIn, materialIssues, materials, packingSlips, productions, returnReelLines]
   );
-
+  const result = browserFallback ? clientResult : serverReport.result;
   const fyOptions = useMemo(() => {
-    const issueYears = materialIssues.map((issue) => getFinancialYearFromDate(issue.date)).filter(Boolean);
-    const fixedYears = normalizedFixedExpenses.map((record) => record.fy);
-    return getFinancialYearOptions([...issueYears, ...fixedYears]);
-  }, [materialIssues, normalizedFixedExpenses]);
-
-  const rows = useMemo(() => {
-    const issueMap = new Map(materialIssues.map((issue) => [issue.id, issue]));
-    const materialMap = new Map(materials.map((material) => [material.id, material]));
-    const materialInMap = new Map(materialIn.map((entry) => [entry.id, entry]));
-    const packingSlipMap = new Map(packingSlips.map((slip) => [slip.id, slip]));
-    const productionMap = new Map(productions.map((production) => [production.id, production]));
-
-    return FY_MONTHS.filter((month) => !monthFilter || Number(monthFilter) === month.value).map((month) => {
-      const consumables = issueLines.reduce((sum, line) => {
-        const issue = issueMap.get(line.materialIssueId);
-        if (!isConsumableIssue(issue)) return sum;
-        if (getFinancialYearFromDate(issue?.date) !== fy) return sum;
-        const issueMonth = issue?.date ? new Date(issue.date).getMonth() + 1 : 0;
-        if (issueMonth !== month.value) return sum;
-        return sum + getLineAmount(line, materials, materialIn);
-      }, 0);
-
-      const fixed = normalizedFixedExpenses
-        .filter((record) => record.fy === fy && Number(record.month) === month.value)
-        .reduce((sum, record) => sum + Number(record.totalAmount || 0), 0);
-
-      const issuedPaperCost = issueReelLines.reduce((sum, line) => {
-        const production = productionMap.get(line.productionId);
-        if (!production || production.status === "Cancelled" || production.cancelTimestamp) return sum;
-        if (getFinancialYearFromDate(production.date) !== fy) return sum;
-        const productionMonth = production.date ? new Date(production.date).getMonth() + 1 : 0;
-        if (productionMonth !== month.value) return sum;
-        const slip = packingSlipMap.get(line.packingSlipId);
-        const rate = getReelRateForSlip({ slip, materialInMap, materialMap });
-        return sum + Number(line.weightKg || 0) * rate;
-      }, 0);
-
-      const returnedPaperCost = returnReelLines.reduce((sum, line) => {
-        const production = productionMap.get(line.productionId);
-        if (!production || production.status === "Cancelled" || production.cancelTimestamp) return sum;
-        if (getFinancialYearFromDate(production.date) !== fy) return sum;
-        const productionMonth = production.date ? new Date(production.date).getMonth() + 1 : 0;
-        if (productionMonth !== month.value) return sum;
-        const slip = packingSlipMap.get(line.packingSlipId);
-        const rate = getReelRateForSlip({ slip, materialInMap, materialMap });
-        return sum + Number(line.weightKg || 0) * rate;
-      }, 0);
-
-      const actualPaperUsedCost = issuedPaperCost - returnedPaperCost;
-
-      return {
-        month: month.label,
-        monthValue: month.value,
-        consumables: round2(consumables),
-        fixed: round2(fixed),
-        totalConsumption: round2(consumables),
-        actualPaperUsedCost: round2(actualPaperUsedCost),
-        ratio: actualPaperUsedCost > 0 ? round2(consumables / actualPaperUsedCost) : 0,
-      };
-    });
-  }, [
-    fy,
-    issueLines,
-    issueReelLines,
-    materialIn,
-    materialIssues,
-    materials,
-    monthFilter,
-    normalizedFixedExpenses,
-    packingSlips,
-    productions,
-    returnReelLines,
-  ]);
+    const options = result?.fyOptions || [];
+    // Keep the selected FY in the list while the report is calculating.
+    return options.includes(fy) ? options : [fy, ...options];
+  }, [fy, result]);
+  const rows = useMemo(
+    () => (result?.rows || []).filter((row) => !monthFilter || Number(monthFilter) === row.monthValue),
+    [monthFilter, result]
+  );
 
   const totals = useMemo(
     () =>
@@ -187,7 +85,7 @@ export function ConversionCostMonthWiseReport() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-900 pb-3">
-        <h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Month Wise</h1>
+        <div><h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Month Wise</h1>{serverReport.loading && !serverReport.failed && <p className="text-xs font-bold text-indigo-700">Calculating report…</p>}</div>
         <div className="flex flex-wrap items-center gap-2">
           <select className="rounded border border-gray-900 p-2 text-sm font-bold" value={fy} onChange={(event) => setFy(event.target.value)}>
             {fyOptions.map((option) => (

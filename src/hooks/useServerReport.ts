@@ -23,8 +23,8 @@ export function useServerReport<T>(name: string, params: Record<string, unknown>
 
   const run = useCallback(async () => {
     // The server answers 202 while it is still building the report (first
-    // build after a restart can take a while); keep asking until it is ready.
-    const deadline = Date.now() + 5 * 60_000;
+    // build after a restart can take a few minutes); keep asking until it is ready.
+    const deadline = Date.now() + 10 * 60_000;
     for (;;) {
       const response = await fetch(`/api/reports/${name}`, {
         method: "POST",
