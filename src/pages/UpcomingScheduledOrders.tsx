@@ -7,7 +7,6 @@ import { TableControls } from "../components/TableControls";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { formatDate } from "../lib/serial";
 import { useNavigate } from "react-router-dom";
-import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
@@ -43,7 +42,6 @@ export function UpcomingScheduledOrders() {
   const [phpJobs] = useData<Production>("php_job_master", []);
   const [plateJobs] = useData<Production>("plate_job_master", []);
   const [orders] = useData<Order>("orders", []);
-  const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });

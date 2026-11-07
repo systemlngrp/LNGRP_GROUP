@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -8,6 +8,8 @@ import { formatDate } from "../lib/serial";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 
 export function PendingNpd() {
   // Load every firm's orders/schedules; the page's own Firm filter narrows them.
@@ -20,13 +22,22 @@ export function PendingNpd() {
   const [firmFilter, setFirmFilter] = useState("");
 
   const pendingRows = useMemo(() => {
+    // First match per id, the same record the earlier list searches picked.
+    const firstById = <T extends { id: string }>(list: T[]) => {
+      const map = new Map<string, T>();
+      list.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); });
+      return map;
+    };
+    const orderById = firstById(orders);
+    const itemById = firstById(npdItems as Array<{ id: string }>);
+    const companyById = firstById(companies);
     const rows = schedules
       .map((schedule) => {
-        const order = orders.find((row) => row.id === schedule.orderId);
+        const order = orderById.get(schedule.orderId);
         if (!order || order.status === "Cancelled") return null;
         if (normalizeOrderItemSource(order.itemSource) !== "FG") return null;
-        const item = npdItems.find((row) => row.id === String(order.itemId || "").trim());
-        const company = companies.find((row) => row.id === order.companyId);
+        const item = itemById.get(String(order.itemId || "").trim()) as (typeof npdItems)[number] | undefined;
+        const company = companyById.get(order.companyId);
         const firmId = String(schedule.firmId || order.firmId || "");
         // Catalog items keep the original NPD row in `raw` (RAPC is stored there).
         const boxType = String((item as any)?.boxType || (item as any)?.raw?.boxType || "").trim();
@@ -71,6 +82,9 @@ export function PendingNpd() {
       return blob.includes(needle);
     });
   }, [companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
+  // The table draws 100 rows per page; the count tile covers every row.
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(pendingRows, 100);
+  useEffect(() => { setPage(1); }, [firmFilter, searchTerm, setPage]);
 
   return (
     <div className="w-full rounded border border-black bg-white p-4 shadow-sm sm:p-6">
@@ -104,8 +118,8 @@ export function PendingNpd() {
       <DataSummaryTiles
         totalRecords={pendingRows.length}
         filteredRecords={pendingRows.length}
-        showingRecords={pendingRows.length}
-        pageLabel="1 / 1"
+        showingRecords={pagedRows.length}
+        pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`}
         hideTotalRecords
         filteredRecordsLabel="Total Records"
       />
@@ -127,9 +141,9 @@ export function PendingNpd() {
                 </td>
               </tr>
             ) : (
-              pendingRows.map(({ schedule, order, item, company, firmName, boxType, rapcValue }, index) => (
+              pagedRows.map(({ schedule, order, item, company, firmName, boxType, rapcValue }, index) => (
                 <tr key={schedule.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 border border-black font-bold whitespace-nowrap">{index + 1}</td>
+                  <td className="px-3 py-2 border border-black font-bold whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{order.orderNo || "-"}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap">{formatDate(order.orderDate)}</td>
                   <td className="px-3 py-2 border border-black whitespace-nowrap font-bold text-indigo-700">{schedule.scheduleNo || "-"}</td>
@@ -150,6 +164,14 @@ export function PendingNpd() {
           </tbody>
         </table>
       </div>
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        pageSizeOptions={[100, 250, 500]}
+      />
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getAllReturnableReelLines } from "../lib/materialMovement";
 import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import type { MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
 
 export function PendingMaterialReturn() {
@@ -16,8 +18,18 @@ export function PendingMaterialReturn() {
   const { findItemAcrossSources } = useOrderItemCatalog();
 
   const rows = useMemo(() => {
+    // Same check as before, done once per job instead of once per reel line.
+    const linerCompleteByJob = new Map<string, boolean>();
+    const isLinerComplete = (productionId: string) => {
+      let value = linerCompleteByJob.get(productionId);
+      if (value === undefined) {
+        value = isCorrugationLinerComplete(processing, productionId);
+        linerCompleteByJob.set(productionId, value);
+      }
+      return value;
+    };
     const returnable = getAllReturnableReelLines(issueReels, returnReels, productions)
-      .filter((line) => isCorrugationLinerComplete(processing, line.productionId));
+      .filter((line) => isLinerComplete(line.productionId));
     const byProduction = new Map<string, { reelIds: Set<string>; weight: number }>();
     returnable.forEach((line) => {
       const current = byProduction.get(line.productionId) || { reelIds: new Set<string>(), weight: 0 };
@@ -45,6 +57,9 @@ export function PendingMaterialReturn() {
       })
       .sort((a, b) => String(b.production.date || "").localeCompare(String(a.production.date || "")));
   }, [findItemAcrossSources, issueReels, processing, productions, returnReels]);
+
+  // Tiles count every pending job; the table draws 100 rows per page.
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(rows, 100);
 
   const openReturn = (production: Production, mode: "manual" | "qr") => {
     const params = new URLSearchParams({
@@ -89,7 +104,7 @@ export function PendingMaterialReturn() {
           <tbody>
             {rows.length === 0 ? (
               <tr><td colSpan={7} className="px-6 py-10 text-center font-medium text-slate-500">No reel returns are pending.</td></tr>
-            ) : rows.map(({ production, company, item, reelCount, weight }, index) => (
+            ) : pagedRows.map(({ production, company, item, reelCount, weight }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
                 <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>
                 <td className="border border-black px-3 py-3 text-sm">{String(production.date || "").slice(0, 10) || "-"}</td>
@@ -112,6 +127,14 @@ export function PendingMaterialReturn() {
           </tbody>
         </table>
       </div>
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        pageSizeOptions={[100, 250, 500]}
+      />
     </div>
   );
 }

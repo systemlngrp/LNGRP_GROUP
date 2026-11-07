@@ -19,6 +19,12 @@ import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/j
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
+function firstById<T extends { id: string }>(rows: T[]) {
+  const map = new Map<string, T>();
+  rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); });
+  return map;
+}
+
 export function PendingJobClosure() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -331,7 +337,13 @@ export function PendingJobClosure() {
   };
 
   // Filter for ONLY jobs where closeBy and closeDate are NOT filled
-  const filteredList = productions
+  // First record per id: the same one the earlier list searches picked.
+  const scheduleById = useMemo(() => firstById(schedules), [schedules]);
+  const orderById = useMemo(() => firstById(orders), [orders]);
+  const companyById = useMemo(() => firstById(companies), [companies]);
+
+  // Worked out once per data or filter change instead of on every render.
+  const filteredList = useMemo(() => productions
     .filter(p => {
       // Rule: Only show jobs where closeBy and closeDate are empty/not filled
       const isNotClosed = !p.closeBy && !p.closeDate;
@@ -339,9 +351,9 @@ export function PendingJobClosure() {
       if (!isNotClosed || !isNotCancelled) return false;
 
       const item = resolveProductionItem(p);
-      const schedule = schedules.find(s => s.id === p.scheduleId);
-      const order = orders.find(o => o.id === schedule?.orderId);
-      const company = companies.find(c => c.id === order?.companyId);
+      const schedule = scheduleById.get(p.scheduleId);
+      const order = orderById.get(schedule?.orderId as string);
+      const company = companyById.get(order?.companyId as string);
       const firmId = String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "");
       
       if (companyFilter && order?.companyId !== companyFilter) return false;
@@ -354,9 +366,11 @@ export function PendingJobClosure() {
       (company?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       getFirmDisplayNameById(firmId, firms).toLowerCase().includes(searchTerm.toLowerCase());
     })
-    .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: 'base' }));
+    .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: 'base' })),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [companyById, companyFilter, firmFilter, firms, findItemAcrossSources, itemFilter, orderById, productions, scheduleById, searchTerm]);
 
-  const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const schedule = schedules.find((s) => s.id === row.scheduleId); const order = orders.find((o) => o.id === schedule?.orderId); const company = companies.find((c) => c.id === order?.companyId); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companies, filteredList, orders, schedules]);
+  const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const schedule = scheduleById.get(row.scheduleId); const order = orderById.get(schedule?.orderId as string); const company = companyById.get(order?.companyId as string); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companyById, filteredList, orderById, scheduleById]);
   const itemOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const item = resolveProductionItem(row); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [filteredList, findItemAcrossSources]);
 
   const {
@@ -406,9 +420,9 @@ export function PendingJobClosure() {
         {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4 p-2">
             {paginatedList.map((p) => {
-                const schedule = schedules.find(s => s.id === p.scheduleId);
-                const order = orders.find(o => o.id === schedule?.orderId);
-                const company = companies.find(c => c.id === order?.companyId);
+                const schedule = scheduleById.get(p.scheduleId);
+                const order = orderById.get(schedule?.orderId as string);
+                const company = companyById.get(order?.companyId as string);
                 const item = resolveProductionItem(p);
                 const erp = String(p.erpCode || "").trim();
                 const leastGsm = erpLeastGsmMap.get(erp);
@@ -601,9 +615,9 @@ export function PendingJobClosure() {
               ) : (
                 paginatedList.map((p, idx) => {
                   const srNo = (page - 1) * pageSize + idx + 1;
-                  const schedule = schedules.find(s => s.id === p.scheduleId);
-                  const order = orders.find(o => o.id === schedule?.orderId);
-                  const company = companies.find(c => c.id === order?.companyId);
+                  const schedule = scheduleById.get(p.scheduleId);
+                  const order = orderById.get(schedule?.orderId as string);
+                  const company = companyById.get(order?.companyId as string);
                   const item = resolveProductionItem(p);
                   const mandatory = getMandatoryStatus(p, item);
                   const erp = String(p.erpCode || "").trim();

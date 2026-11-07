@@ -4,7 +4,7 @@ import { ArrowRightLeft } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { TableControls } from "../components/TableControls";
-import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, hasReelIssueHistory } from "../lib/reelTransfer";
+import { buildReelIssueHistoryChecker, buildReelTransferContexts, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
 import { formatDate } from "../lib/utils";
 import type { MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
 
@@ -21,10 +21,14 @@ export function PendingJobTransfer() {
   const windowHours = Number(settings[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
 
   const rows = useMemo(() => {
-    return productions
-    .filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp)
+    // Indexed once per data change (same results as checking every reel and
+    // processing list once per job, which froze this screen).
+    const activeProductions = productions.filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp);
+    const contexts = buildReelTransferContexts(productions, processing, issueReels, returnReels, issueLines, windowHours);
+    const hasIssueHistory = buildReelIssueHistoryChecker(issueReels);
+    return activeProductions
     .map((production) => {
-      const context = buildReelTransferContext(production, processing, issueReels, returnReels, issueLines, productions, windowHours);
+      const context = contexts.get(production.id)!;
       const item = findItemAcrossSources(
         String(production.itemId || "").trim(),
         production.itemSource,
@@ -38,7 +42,7 @@ export function PendingJobTransfer() {
         transferableReels: context.reels.filter((reel) => Number(reel.transferWeightKg || 0) > 0),
       };
     })
-    .filter((row) => row.context.fullTime > 0 && row.context.status !== "window_expired" && hasReelIssueHistory(row.production, issueReels) && row.transferableReels.length > 0)
+    .filter((row) => row.context.fullTime > 0 && row.context.status !== "window_expired" && hasIssueHistory(row.production) && row.transferableReels.length > 0)
       .sort((a, b) => Number(b.context.eligible) - Number(a.context.eligible) || b.context.fullTime - a.context.fullTime);
   }, [findItemAcrossSources, issueLines, issueReels, processing, productions, returnReels, windowHours]);
 

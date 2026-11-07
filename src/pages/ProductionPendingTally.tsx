@@ -25,7 +25,7 @@ import {
   hasProductionCorrugatedSheetUsage,
 } from "../lib/productionMaterialUsage";
 import { isProductionReadyForTally } from "../lib/productionStageFilters";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 function normalizeTallyItemKey(value: unknown) {
   return String(value || "").trim().toLowerCase();
@@ -55,7 +55,7 @@ export function ProductionPendingTally() {
   const { user } = useAuth();
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [materials] = useData<Material>("materials", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames();
   const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
   const [materialIssueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });

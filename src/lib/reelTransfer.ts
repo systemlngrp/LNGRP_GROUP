@@ -35,6 +35,14 @@ export function hasReelIssueHistory(
   );
 }
 
+/** Same answer as hasReelIssueHistory, for many jobs: index the reel lines once. */
+export function buildReelIssueHistoryChecker(issueReels: MaterialIssueReelLine[]) {
+  const productionIds = new Set(issueReels.map((row) => row.productionId));
+  const jobNos = new Set(issueReels.map((row) => normalize(row.jobNo)));
+  return (production: Pick<Production, "id" | "transactionNo">) =>
+    productionIds.has(production.id) || jobNos.has(normalize(production.transactionNo));
+}
+
 export function getCorrugationFullTime(processing: ProductionProcessing[], productionId: string) {
   const times = processing
     .filter((row) => row.productionId === productionId && normalize(row.machineName) === "corrugation liner" && normalize(row.completionStatus) === "full")
