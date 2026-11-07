@@ -1,6 +1,8 @@
 import { useData } from "../hooks/useData";
 import { Firm, Material, MaterialIn, Item, Supplier } from "../types";
-import { Fragment, useState, useMemo } from "react";
+import { Fragment, useEffect, useState, useMemo } from "react";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { Spinner } from "../components/Spinner";
 
 import { MaterialReceiptFilters } from "../components/MaterialReceiptFilters";
@@ -71,6 +73,12 @@ export function PendingTallyEntry() {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter, materialNameById, npdNameById, supplierNameById, firmIndexById]);
+
+  // 25 rows per page: most receipts wait here, and drawing all of them froze
+  // the screen. Select-all and bulk posting still cover every pending record.
+  const pendingPagination = useClientPagination(pendingList, 25);
+  const { setPage: setPendingPage } = pendingPagination;
+  useEffect(() => { setPendingPage(1); }, [firmFilter, itemFilter, supplierFilter, mrrFilter, setPendingPage]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
@@ -246,7 +254,7 @@ export function PendingTallyEntry() {
                     </td>
                   </tr>
                 ) : (
-                  pendingList.map((m) => {
+                  pendingPagination.paginatedItems.map((m) => {
                     const isExpanded = expandedIds.includes(m.id);
                     return (
                       <Fragment key={m.id}>
@@ -339,6 +347,13 @@ export function PendingTallyEntry() {
               </tbody>
             </table>
           </div>
+          <ClientPagination
+            page={pendingPagination.page}
+            pageSize={pendingPagination.pageSize}
+            totalItems={pendingPagination.totalItems}
+            onPageChange={pendingPagination.setPage}
+            onPageSizeChange={pendingPagination.setPageSize}
+          />
         </div>
       </div>
 

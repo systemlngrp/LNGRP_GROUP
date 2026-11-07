@@ -22,7 +22,12 @@ function getCreditNoteTaxableAmount(mrr: MaterialIn) {
 export function PendingCreditNote() {
   const confirm = useConfirm();
   const { user } = useAuth();
-  const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", []);
+  // Only receipts this screen can list (all columns, so posting is unchanged);
+  // the screen still applies its own filter below.
+  const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", [], {
+    endpointOverride: "/api/material-in?eq_mrrType=Rejection%20In&blank=creditTallyTimestamp",
+    storageKey: "material-in-pending-credit-note",
+  });
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });

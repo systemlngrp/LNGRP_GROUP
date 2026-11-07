@@ -5,7 +5,7 @@ import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { Search, ChevronRight, ChevronDown, Download, QrCode, ArrowUp, ArrowDown, ThumbsUp, ThumbsDown, MessageSquareText, X } from "lucide-react";
 import { Spinner } from "../components/Spinner";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
 import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { buildMrrReelLabelData } from "../lib/mrrReelLabelData";
@@ -24,7 +24,7 @@ export function MrrApprovals() {
     storageKey: "material-in-all-firms",
   });
   const [materials] = useData<Material>("materials", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames(); // names only (screen and PDF use just the item name)
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });

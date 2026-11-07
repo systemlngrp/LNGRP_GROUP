@@ -12029,9 +12029,31 @@ const createHandlers = (tableName: string) => {
             const columns = await getExistingColumnNames(db, database, tableName);
             if (columns.has("status")) statusWhere = "`status` IN (" + statusValues.map(() => "?").join(", ") + ")";
           }
-          const conditions = [firmWhere, statusWhere, cursor ? "id > ?" : ""].filter(Boolean);
+          // Optional ?blank=a,b / ?notBlank=a,b / ?eq_<column>=value: screens
+          // that list only a few records (e.g. unposted debit notes) skip the
+          // rest of the table. They still apply their own filter, so these only
+          // need to keep every record the screen could show.
+          const extraConditions: string[] = [];
+          const extraParams: any[] = [];
+          const blankColumns = String(req.query.blank || "").split(",").map((value) => value.trim()).filter(Boolean);
+          const notBlankColumns = String(req.query.notBlank || "").split(",").map((value) => value.trim()).filter(Boolean);
+          const eqKeys = Object.keys(req.query).filter((queryKey) => queryKey.startsWith("eq_"));
+          if (blankColumns.length || notBlankColumns.length || eqKeys.length) {
+            const database = process.env.DB_NAME || "u380633007_Inpidata";
+            const columns = await getExistingColumnNames(db, database, tableName);
+            for (const column of blankColumns) if (columns.has(column)) extraConditions.push("COALESCE(`" + column + "`, '') = ''");
+            for (const column of notBlankColumns) if (columns.has(column)) extraConditions.push("COALESCE(`" + column + "`, '') <> ''");
+            for (const queryKey of eqKeys) {
+              const column = queryKey.slice(3);
+              if (!columns.has(column)) continue;
+              extraConditions.push("`" + column + "` = ?");
+              extraParams.push(String(req.query[queryKey] ?? ""));
+            }
+          }
+          const extraWhere = extraConditions.join(" AND ");
+          const conditions = [firmWhere, statusWhere, extraWhere, cursor ? "id > ?" : ""].filter(Boolean);
           const whereSql = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
-          const params = [...firmParams, ...(statusWhere ? statusValues : []), ...(cursor ? [cursor] : [])];
+          const params = [...firmParams, ...(statusWhere ? statusValues : []), ...extraParams, ...(cursor ? [cursor] : [])];
           const quotedTableName = `\`${tableName.replace(/`/g, "") }\``;
           // Optional column list (?fields=a,b,c): screens that only look up a
           // few values from a large table ask for just those columns.
@@ -12052,10 +12074,10 @@ const createHandlers = (tableName: string) => {
           const selected = batch.slice(0, limit);
           let total: number | undefined;
           if (!cursor) {
-            const countConditions = [firmWhere, statusWhere].filter(Boolean);
+            const countConditions = [firmWhere, statusWhere, extraWhere].filter(Boolean);
             const [countRows] = await db.query(
               "SELECT COUNT(*) AS total FROM " + quotedTableName + " " + (countConditions.length ? "WHERE " + countConditions.join(" AND ") : ""),
-              [...firmParams, ...(statusWhere ? statusValues : [])],
+              [...firmParams, ...(statusWhere ? statusValues : []), ...extraParams],
             );
             total = Number((countRows as any[])[0]?.total || 0);
           }

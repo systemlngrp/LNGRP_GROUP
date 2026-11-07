@@ -13,7 +13,12 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 export function PendingDebitNote() {
   const confirm = useConfirm();
   const { user } = useAuth();
-  const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", []);
+  // Only receipts this screen can list (all columns, so posting is unchanged);
+  // the screen still applies its own filter below.
+  const [materialIn, setMaterialIn, isLoading] = useData<MaterialIn>("material-in", [], {
+    endpointOverride: "/api/material-in?notBlank=debitNote&blank=debitTallySync",
+    storageKey: "material-in-pending-debit-note",
+  });
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [firms] = useData<Firm>("firms", [], { cacheToLocalStorage: false });
   const [materials] = useData<Material>("materials", []);
