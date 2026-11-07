@@ -11988,8 +11988,18 @@ const createHandlers = (tableName: string) => {
           const whereSql = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
           const params = [...firmParams, ...(cursor ? [cursor] : [])];
           const quotedTableName = `\`${tableName.replace(/`/g, "") }\``;
+          // Optional column list (?fields=a,b,c): screens that only look up a
+          // few values from a large table ask for just those columns.
+          let selectSql = "*";
+          const requestedFields = String(req.query.fields || "").split(",").map((field) => field.trim()).filter(Boolean);
+          if (requestedFields.length) {
+            const database = process.env.DB_NAME || "u380633007_Inpidata";
+            const columns = await getExistingColumnNames(db, database, tableName);
+            const selected = Array.from(new Set(["id", ...requestedFields])).filter((field) => columns.has(field));
+            if (selected.length) selectSql = selected.map((field) => `\`${field}\``).join(", ");
+          }
           const [batchRows] = await db.query(
-            "SELECT * FROM " + quotedTableName + " " + whereSql + " ORDER BY id ASC LIMIT ?",
+            "SELECT " + selectSql + " FROM " + quotedTableName + " " + whereSql + " ORDER BY id ASC LIMIT ?",
             [...params, limit + 1],
           );
           const batch = batchRows as any[];
@@ -12130,6 +12140,17 @@ const createHandlers = (tableName: string) => {
           const result = await getCachedFirmWiseNpdItems(db, { search: String(req.query.search || "").trim(), status: statusParam, limit: pageSize, offset: (page - 1) * pageSize });
           res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
           return res.json({ ...result, page, pageSize, search: String(req.query.search || ""), status: statusParam });
+        } else if (tableName === "production_processing" && String(req.query.fields || "").trim()) {
+          // Column list for lookups (e.g. job no. by processing id): plain
+          // processing columns only, without the item-name joins.
+          const processingFirmWhere = requestFirmId ? `WHERE ${buildFirmScopeCondition("pp", requestFirmId)}` : "";
+          const database = process.env.DB_NAME || "u380633007_Inpidata";
+          const columns = await getExistingColumnNames(db, database, "production_processing");
+          const selected = Array.from(new Set(["id", ...String(req.query.fields).split(",").map((field) => field.trim())])).filter((field) => columns.has(field));
+          [rows] = await db.query(
+            `SELECT ${selected.map((field) => `pp.\`${field}\``).join(", ")} FROM \`production_processing\` pp ${processingFirmWhere}`,
+            firmParams
+          );
         } else if (tableName === "production_processing") {
           const processingFirmWhere = requestFirmId ? `WHERE ${buildFirmScopeCondition("pp", requestFirmId)}` : "";
           [rows] = await db.query(`

@@ -150,12 +150,14 @@ export function Materials() {
   const [materialIn, setMaterialIn] = useData<MaterialIn>("material-in", []);
   const [packingSlips, setPackingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
   const [materialFirmOpenings, setMaterialFirmOpenings] = useData<MaterialFirmOpening>("material-firm-openings", [], { endpointOverride: "/api/material-firm-openings?firmId=all", firmScope: "all", cacheToLocalStorage: false });
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", []);
-  const [reelIssueLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [materialReturnsHeader] = useData<MaterialReturn>("material-returns", []);
-  const [returnLines] = useData<MaterialReturnLine>("material-return-lines", []);
-  const [reelReturnLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  // Movement tables are read-only here (stock columns and the "reel already
+  // used" check), so only the columns those calculations read are fetched.
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { fields: ["firmId", "date"] });
+  const [issueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { fields: ["materialIssueId", "materialId", "qty", "amount", "rate", "lastPurchaseRate", "openingRate"] });
+  const [reelIssueLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { fields: ["materialIssueId", "materialIssueLineId", "materialId", "weightKg", "packingSlipId"] });
+  const [materialReturnsHeader] = useData<MaterialReturn>("material-returns", [], { fields: ["firmId", "date"] });
+  const [returnLines] = useData<MaterialReturnLine>("material-return-lines", [], { fields: ["materialReturnId", "materialId", "qty", "amount", "rate", "lastPurchaseRate", "openingRate"] });
+  const [reelReturnLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { fields: ["materialReturnId", "materialReturnLineId", "materialId", "weightKg", "packingSlipId"] });
   const [suppliers] = useData<Supplier>("suppliers", []);
   const npdItems = useNpdItems();
   const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
@@ -284,11 +286,21 @@ export function Materials() {
       }
     });
 
+    // Lookup maps (first record wins, same as Array.find) instead of scanning
+    // the whole header list for every line, which froze this screen.
+    const firstById = <T extends { id: string }>(rows: T[]) => {
+      const byId = new Map<string, T>();
+      rows.forEach((row) => { if (!byId.has(row.id)) byId.set(row.id, row); });
+      return byId;
+    };
+    const issueById = firstById(materialIssues);
+    const returnHeaderById = firstById(materialReturnsHeader);
+
     // Aggregate Issues
     const issueLineById = new Map(issueLines.map((line) => [line.id, line]));
     reelIssueLines.forEach(l => {
       if (!filteredIssueIds.has(l.materialIssueId)) return;
-      const issue = materialIssues.find((entry) => entry.id === l.materialIssueId);
+      const issue = issueById.get(l.materialIssueId);
       const current = getMovement(l.materialId, issue?.firmId);
       const qty = Number(l.weightKg || 0);
       const parentLine = issueLineById.get(l.materialIssueLineId);
@@ -301,7 +313,7 @@ export function Materials() {
       if (!filteredIssueIds.has(l.materialIssueId)) return;
       // SKIP REELS to avoid double counting from reelIssueLines
       if (materialTypeMap.get(l.materialId) === "Reel") return;
-      const issue = materialIssues.find((entry) => entry.id === l.materialIssueId);
+      const issue = issueById.get(l.materialIssueId);
       const current = getMovement(l.materialId, issue?.firmId);
       const qty = Number(l.qty || 0);
       current.issues += qty;
@@ -312,7 +324,7 @@ export function Materials() {
     const returnLineById = new Map(returnLines.map((line) => [line.id, line]));
     reelReturnLines.forEach(l => {
       if (!filteredReturnIds.has(l.materialReturnId)) return;
-      const header = materialReturnsHeader.find((entry) => entry.id === l.materialReturnId);
+      const header = returnHeaderById.get(l.materialReturnId);
       const current = getMovement(l.materialId, header?.firmId);
       const qty = Number(l.weightKg || 0);
       const parentLine = returnLineById.get(l.materialReturnLineId);
@@ -325,7 +337,7 @@ export function Materials() {
       if (!filteredReturnIds.has(l.materialReturnId)) return;
       // SKIP REELS to avoid double counting from reelReturnLines
       if (materialTypeMap.get(l.materialId) === "Reel") return;
-      const header = materialReturnsHeader.find((entry) => entry.id === l.materialReturnId);
+      const header = returnHeaderById.get(l.materialReturnId);
       const current = getMovement(l.materialId, header?.firmId);
       const qty = Number(l.qty || 0);
       current.returns += qty;

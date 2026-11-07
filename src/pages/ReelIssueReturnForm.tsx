@@ -69,7 +69,8 @@ export function ReelIssueReturnForm() {
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [materialGroups] = useData<MaterialGroup>("material-groups", [], { firmScope: "all" });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
-  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  // Only receipt lines are read (reel invoice rate).
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", fields: ["lines"] });
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
 
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });

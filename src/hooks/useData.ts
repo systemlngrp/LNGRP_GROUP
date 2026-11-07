@@ -11,6 +11,11 @@ type UseDataOptions = {
   storageKey?: string;
   syncEventKey?: string;
   firmScope?: 'active' | 'all';
+  /**
+   * Read-only lookups: fetch only these columns (id is always included).
+   * Do not use on a collection the screen saves through its setter.
+   */
+  fields?: string[];
 };
 
 function safeSetLocalStorage(key: string, value: string) {
@@ -83,8 +88,11 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
 
   const isItemAlias = entity === "items" && !options?.endpointOverride;
   const resolvedEntity = isItemAlias ? "npd" : entity;
-  const endpoint = options?.endpointOverride || `/api/${resolvedEntity.replace(/_/g, "-")}`;
-  const storageKey = `udc_${options?.storageKey || resolvedEntity}`;
+  const fieldsParam = !options?.endpointOverride && options?.fields?.length ? options.fields.join(",") : "";
+  const endpoint = options?.endpointOverride || `/api/${resolvedEntity.replace(/_/g, "-")}${fieldsParam ? `?fields=${encodeURIComponent(fieldsParam)}` : ""}`;
+  const storageKey = `udc_${options?.storageKey || resolvedEntity}${fieldsParam ? `:${fieldsParam}` : ""}`;
+  // Saves always go to the plain entity URL, never with a column list.
+  const writeEndpoint = fieldsParam ? endpoint.split("?")[0] : endpoint;
   const syncEvent = options?.syncEventKey || `sync-data-${resolvedEntity}`;
   const shouldCacheToLocalStorage = options?.cacheToLocalStorage !== false;
   const includeActiveFirm = options?.firmScope !== "all";
@@ -272,7 +280,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
 
     try {
       for (const item of [...added, ...modified]) {
-        const response = await fetch(endpoint, {
+        const response = await fetch(writeEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...authHeaders },
           body: JSON.stringify(item),
@@ -289,7 +297,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
             /unknown column ['\"`]?updateTimestamp/i.test(String(msg))
           ) {
             const { updatedBy, updateTimestamp, ...legacyItem } = item as any;
-            const retryResponse = await fetch(endpoint, {
+            const retryResponse = await fetch(writeEndpoint, {
               method: "POST",
               headers: { "Content-Type": "application/json", ...authHeaders },
               body: JSON.stringify(legacyItem),
@@ -304,7 +312,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         }
       }
       for (const item of deleted) {
-        const response = await fetch(`${endpoint}/${item.id}`, { method: "DELETE", headers: { ...authHeaders } });
+        const response = await fetch(`${writeEndpoint}/${item.id}`, { method: "DELETE", headers: { ...authHeaders } });
         if (!response.ok) {
           hasError = true;
           lastErrorMessage = await getResponseError(response, response.statusText);
@@ -326,7 +334,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       window.dispatchEvent(new CustomEvent(syncEvent));
       throw err;
     }
-  }, [endpoint, entity, fetchData, includeActiveFirm, shouldCacheToLocalStorage, storageKey, syncEvent]);
+  }, [endpoint, writeEndpoint, entity, fetchData, includeActiveFirm, shouldCacheToLocalStorage, storageKey, syncEvent]);
 
   // Providing a more robust interface
   const addItem = async (item: T) => {

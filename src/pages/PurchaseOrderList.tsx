@@ -114,7 +114,8 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   // firm made valid pending POs disappear before the firm filter could apply.
   const [purchaseOrders, setPurchaseOrders] = useData<PurchaseOrder>("purchase-orders", [], { firmScope: "all" });
   const [orderLines, setPurchaseOrderLines] = useData<PurchaseOrderLine>("purchase-order-lines", []);
-  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  // Only used for received qty per PO line.
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", fields: ["lines"] });
   const [materials] = useData<Material>("materials", [], { firmScope: "all" });
   const [suppliers] = useData<Supplier>("suppliers", [], { firmScope: "all" });
   const [indents, setIndents] = useData<Indent>("indents", [], { firmScope: "all" });

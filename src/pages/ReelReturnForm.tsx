@@ -39,11 +39,13 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [materials, , materialsLoading] = useData<Material>("materials", [], { firmScope: "all" });
-  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  // Only receipt lines are read (reel invoice rate).
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", fields: ["lines"] });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [productions, setProductions, productionsLoading] = useData<Production>("productions", [], { firmScope: "all" });
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
+  // Only used to check whether the Corrugation Liner step is complete.
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", fields: ["productionId", "machineName", "completionStatus"] });
   const [materialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });
   const [issueReelLines, , issueReelsLoading] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });

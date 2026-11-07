@@ -10,7 +10,8 @@ export function PhpItemMaster() {
   const [rows] = useData<any>("php_item_master", []);
   const [jobs] = useData<Production>("php_job_master", []);
   const [standaloneLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
-  const [commonLoadingSlips] = useData<LoadingSlip>("loading_slips", []);
+  // Only the fields used for the stock total (see buildFirmWisePhpPlateInventoryRows).
+  const [commonLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { fields: ["interFirmFlow", "sourceFirmId", "firmId", "destinationFirmId", "status", "lines"] });
   const [firms] = useData<Firm>("firms", []);
   const firmColumns = firms.flatMap((firm) => [{ key: `firm_${firm.id}_production`, label: `${firm.firmName} Production` }, { key: `firm_${firm.id}_invoiced`, label: `${firm.firmName} Invoiced` }, { key: `firm_${firm.id}_balance`, label: `${firm.firmName} Balance` }]);
   const firmRows = buildFirmWisePhpPlateInventoryRows(rows, jobs, [...standaloneLoadingSlips, ...commonLoadingSlips], firms, "PHP").map((row) => Object.fromEntries([...Object.entries(row), ...firms.flatMap((firm) => { const stock = row.firmStocks?.[firm.id] || {}; return [[`firm_${firm.id}_production`, stock.production], [`firm_${firm.id}_invoiced`, stock.invoiced], [`firm_${firm.id}_balance`, stock.balance]]; })]));

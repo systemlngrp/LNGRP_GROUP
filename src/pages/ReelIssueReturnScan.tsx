@@ -114,7 +114,8 @@ export function ReelIssueReturnScan() {
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], { firmScope: "all", cacheToLocalStorage: false });
-  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  // Only receipt lines are read (reel invoice rate).
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", fields: ["lines"] });
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [materialIssues, setMaterialIssues] = useData<MaterialIssue>("material-issues", [], { firmScope: "all" });
   const [materialIssueLines, setMaterialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", [], { firmScope: "all" });

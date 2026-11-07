@@ -55,9 +55,10 @@ export function OrdersMaster() {
   const [firms] = useData<Firm>("firms", []);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [users] = useData<User>("users", []);
-  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
-  const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", []);
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
+  // Totals only: fetch just the columns used for cancelled / invoiced qty.
+  const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", fields: ["orderId", "canceledQty"] });
+  const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { fields: ["orderId"] });
+  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { fields: ["invoiceId", "lines"] });
   const { resolveOrderItem } = useOrderItemCatalog();
 
   const [searchTerm, setSearchTerm] = useState("");

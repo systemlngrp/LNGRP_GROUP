@@ -15,7 +15,8 @@ export function Trucks() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const [trucks, setTrucks, isLoading] = useData<Truck>("trucks", []);
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
+  // Only used to count slips per truck.
+  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { fields: ["truckId"] });
   
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);

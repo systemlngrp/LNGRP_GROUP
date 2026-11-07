@@ -54,7 +54,8 @@ export function MaterialReturnForm() {
 
   const [materials] = useData<Material>("materials", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [materialIn] = useData<MaterialIn>("material-in", []);
+  // Read-only: receipt lines, firm and date (reel rate, latest purchase rate).
+  const [materialIn] = useData<MaterialIn>("material-in", [], { fields: ["lines", "firmId", "timestamp", "date"] });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
   const npdItems = useNpdItems();
   const [productions, setProductions] = useData<Production>("productions", []);

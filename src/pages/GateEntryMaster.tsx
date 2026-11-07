@@ -39,8 +39,9 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
+  // Only the job number is shown, so fetch just the columns needed for it.
+  const [productions] = useData<Production>("productions", [], { firmScope: "all", fields: ["transactionNo", "jobCardNo"] });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", fields: ["productionId", "jobNo"] });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");

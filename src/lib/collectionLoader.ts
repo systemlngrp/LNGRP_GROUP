@@ -55,6 +55,11 @@ export function realtimeChangeAffects(changed: string[], entities: string[], der
   return names.some((name) => changedNames.has(name));
 }
 
+function hasNonFieldParams(endpoint: string) {
+  const query = endpoint.split("?")[1] || "";
+  return query.split("&").some((part) => part && !part.startsWith("fields="));
+}
+
 export function clearCollectionCache(changed: string[] = ["*"]) {
   // A load already in flight may have read rows from before this change; let
   // it finish for its screen, but do not keep its result as a cached copy.
@@ -247,7 +252,7 @@ export function loadCollection<T extends { id: string }>(
             rows,
             total: currentTask.progress.total,
             tables: new Set([entity]),
-            derived: /[?]/.test(endpoint) || entity.includes("_summary") || DERIVED_ENTITIES.has(entity),
+            derived: hasNonFieldParams(endpoint) || entity.includes("_summary") || DERIVED_ENTITIES.has(entity),
           });
         }
         if (sharedLoads.get(key) === currentTask) sharedLoads.delete(key);

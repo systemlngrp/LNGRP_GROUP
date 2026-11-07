@@ -166,7 +166,8 @@ export function MaterialIssueForm() {
   const [materials] = useData<Material>("materials", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const ourReelNoStartNumber = settings[0]?.ourReelNoStartNumber || 1;
-  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all" });
+  // Read-only: receipt lines, firm, type and date (stock, rates, FG options).
+  const [materialIn] = useData<MaterialIn>("material-in", [], { firmScope: "all", fields: ["lines", "firmId", "mrrType", "timestamp", "date"] });
   const [materialFirmOpenings] = useData<MaterialFirmOpening>("material-firm-openings", [], {
     endpointOverride: "/api/material-firm-openings?firmId=all",
     firmScope: "all",
