@@ -18,6 +18,9 @@ type UseDataOptions = {
   fields?: string[];
 };
 
+// Above this many rows a list is always larger than the 250 KB storage limit.
+const LOCAL_STORAGE_MAX_ROWS = 1000;
+
 function safeSetLocalStorage(key: string, value: string) {
   // A large collection belongs in memory, not the small synchronous storage
   // quota shared with the session and settings.
@@ -127,10 +130,19 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
         setError(null);
         setProgress({ loaded: 0, total: null });
       }
+      // Partial rows arrive every 500-row page. Showing each page re-ran every
+      // calculation on the screen dozens of times per table, so partial rows
+      // are shown at most every 1.5 s; the progress count still updates and the
+      // complete list is always applied at the end.
+      let lastPartialAt = 0;
       const task = loadCollection<T>(endpoint, getDataAuthHeaders(includeActiveFirm), loadingRegistry ? "page" : "sidebar", (snapshot) => {
         if (background || generation !== requestGenerationRef.current) return;
-        setDataState(snapshot.rows);
-        dataRef.current = snapshot.rows;
+        const nowMs = Date.now();
+        if (snapshot.done || nowMs - lastPartialAt >= 1500) {
+          lastPartialAt = nowMs;
+          setDataState(snapshot.rows);
+          dataRef.current = snapshot.rows;
+        }
         setProgress({ loaded: snapshot.loaded, total: snapshot.total });
       }, force);
       activeLoadRef.current = task;
@@ -151,7 +163,9 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       if (elapsedMs >= 1000) {
         console.warn(`[useData:${entity}] slow load`, { endpoint, elapsedMs, rows: finalData.length });
       }
-      if (shouldCacheToLocalStorage) {
+      // Large lists are never stored (see safeSetLocalStorage), so do not
+      // spend time converting them to text first.
+      if (shouldCacheToLocalStorage && finalData.length <= LOCAL_STORAGE_MAX_ROWS) {
         safeSetLocalStorage(storageKey, JSON.stringify(finalData));
       }
     } catch (err) {
@@ -266,7 +280,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     setDataState(resolvedData);
     dataRef.current = resolvedData;
     if (shouldCacheToLocalStorage) {
-      safeSetLocalStorage(storageKey, JSON.stringify(resolvedData));
+      if (resolvedData.length <= LOCAL_STORAGE_MAX_ROWS) safeSetLocalStorage(storageKey, JSON.stringify(resolvedData));
     }
 
     // Emit sync event immediately for other local components
@@ -342,7 +356,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     try {
       setDataState(nextData);
       dataRef.current = nextData;
-      if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
+      if (shouldCacheToLocalStorage && nextData.length <= LOCAL_STORAGE_MAX_ROWS) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getDataAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",
@@ -368,7 +382,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     try {
       setDataState(nextData);
       dataRef.current = nextData;
-      if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
+      if (shouldCacheToLocalStorage && nextData.length <= LOCAL_STORAGE_MAX_ROWS) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getDataAuthHeaders(includeActiveFirm);
       const response = await fetch(`${endpoint}/${id}`, { method: "DELETE", headers: { ...authHeaders } });
       if (!response.ok) {
@@ -387,7 +401,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     try {
       setDataState(nextData);
       dataRef.current = nextData;
-      if (shouldCacheToLocalStorage) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
+      if (shouldCacheToLocalStorage && nextData.length <= LOCAL_STORAGE_MAX_ROWS) safeSetLocalStorage(storageKey, JSON.stringify(nextData));
       const authHeaders = getDataAuthHeaders(includeActiveFirm);
       const response = await fetch(endpoint, {
         method: "POST",

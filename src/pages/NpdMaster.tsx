@@ -69,7 +69,8 @@ export function NpdMaster() {
   const [total, setTotal] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [pageSize, setPageSize] = useState(100);
+  // 50 rows by default: each row draws ~140 cells and inputs; 100–500 stay selectable.
+  const [pageSize, setPageSize] = useState(50);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [consumableDrafts, setConsumableDrafts] = useState<Record<string, boolean>>({});
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});

@@ -53,9 +53,10 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   const [companies] = useData<Company>("companies", []);
   const [firms] = useData<Firm>("firms", []);
   const { resolveOrderItem, itemsBySource } = useOrderItemCatalog();
-  const [productions] = useData<Production>("productions", []);
-  const [plans, , plansLoading] = useData<DispatchPlan>("dispatch_plans", []);
-  const [loadingSlips, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", []);
+  // Only the columns the totals below read (same rows, much smaller download).
+  const [productions] = useData<Production>("productions", [], { fields: ["scheduleId", "status", "plannedQty", "qty", "prodFromFFG"] });
+  const [plans, , plansLoading] = useData<DispatchPlan>("dispatch_plans", [], { fields: ["scheduleId"] });
+  const [loadingSlips, , loadingSlipsLoading] = useData<LoadingSlip>("loading_slips", [], { fields: ["invoiceId", "lines"] });
 
   // Filter States
   const [searchTerm, setSearchTerm] = useState("");
