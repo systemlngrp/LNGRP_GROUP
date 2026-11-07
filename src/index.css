@@ -279,7 +279,11 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
 }
 
 .app-table-scroll-container {
-  overscroll-behavior: contain;
+  /* Contain only sideways scrolling (stops a sideways swipe from turning into
+     browser Back); up/down passes on to the page when the table has no more
+     to scroll, so the mouse wheel works over tables. */
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
   max-width: 100%;
   min-width: 0;
 }
