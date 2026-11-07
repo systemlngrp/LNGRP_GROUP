@@ -11171,18 +11171,24 @@ app.get("/api/reports/reel-details", requireAuth, async (req, res) => {
         return res.status(500).json({ error: 'Could not load Reel details.' });
     }
 });
-app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
-    try {
-        const db = await getPool();
-        if (!db)
-            return res.status(503).json({ error: "Database unavailable." });
-        const [firms] = await db.query("SELECT id, firmName FROM firms ORDER BY firmName");
-        const unitOne = firms.find((r) => String(r.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "").match(/(unit1|uniti)$/));
-        if (!unitOne?.id)
-            return res.status(500).json({ error: "Unit-I firm is not configured." });
+// Reel Summary source rows (all reel receipt lines of Unit-I), cached until a
+// table they are read from changes or 5 minutes pass. Same rows as before.
+let reelSummaryLinesCache = null;
+let reelSummaryLinesInflight = null;
+function reelSummarySourceVersions() {
+    return ["material_in", "gate_entries", "materials"].map((table) => snapshotRawTableVersions.get(table) || 0).join(",") + `|${snapshotGlobalVersion}`;
+}
+async function getReelSummaryLines(db, firmId) {
+    const versions = reelSummarySourceVersions();
+    if (reelSummaryLinesCache && reelSummaryLinesCache.firmId === firmId && reelSummaryLinesCache.versions === versions && Date.now() - reelSummaryLinesCache.builtAt < 5 * 60_000) {
+        return reelSummaryLinesCache.rows;
+    }
+    if (reelSummaryLinesInflight)
+        return reelSummaryLinesInflight;
+    reelSummaryLinesInflight = (async () => {
         const [materials] = await db.query("SELECT id,name FROM materials");
         const names = new Map(materials.map((r) => [String(r.id), String(r.name || "Unknown")]));
-        const [parents] = await db.query("SELECT mi.id,mi.transactionNo,mi.date,mi.invoiceNo,mi.supplierId,mi.gateEntryId,COALESCE(NULLIF(mi.gateEntryNo,''),ge.gateEntryNo,'-') AS resolvedGateEntryNo,UPPER(COALESCE(NULLIF(ge.truckNo,''),'-')) AS resolvedVehicleNo,mi.`lines` FROM material_in mi LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE mi.firmId=? AND LOWER(TRIM(COALESCE(mi.mrrType,'')))='reel' ORDER BY mi.date,mi.transactionNo", [unitOne.id]);
+        const [parents] = await db.query("SELECT mi.id,mi.transactionNo,mi.date,mi.invoiceNo,mi.supplierId,mi.gateEntryId,COALESCE(NULLIF(mi.gateEntryNo,''),ge.gateEntryNo,'-') AS resolvedGateEntryNo,UPPER(COALESCE(NULLIF(ge.truckNo,''),'-')) AS resolvedVehicleNo,mi.`lines` FROM material_in mi LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE mi.firmId=? AND LOWER(TRIM(COALESCE(mi.mrrType,'')))='reel' ORDER BY mi.date,mi.transactionNo", [firmId]);
         const parse = (v) => { try {
             const x = Array.isArray(v) ? v : JSON.parse(String(v || "[]"));
             return Array.isArray(x) ? x : [];
@@ -11194,6 +11200,23 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
         for (const parent of parents)
             for (const line of parse(parent.lines))
                 all.push({ ...line, id: `${parent.id}:${line.id || line.itemId}`, parentId: parent.id, parentStatus: "Completed", parentTransactionNo: String(parent.transactionNo || ""), parentDate: String(parent.date || ""), parentInvoiceNo: String(parent.invoiceNo || ""), parentSupplierId: String(parent.supplierId || ""), parentGateEntryNo: String(parent.resolvedGateEntryNo || "-"), parentVehicleNo: String(parent.resolvedVehicleNo || "-"), mrrType: "Reel", itemName: names.get(String(line.itemId)) || "Unknown", qty: Number(line.qty || 0), rate: Number(line.rate ?? line.invoiceRate ?? line.poRate ?? 0), value: Number((line.value ?? line.actualValue ?? line.invoiceValue ?? (Number(line.qty || 0) * Number(line.rate ?? line.invoiceRate ?? line.poRate ?? 0))) || 0) });
+        reelSummaryLinesCache = { firmId, rows: all, builtAt: Date.now(), versions };
+        return all;
+    })().finally(() => { reelSummaryLinesInflight = null; });
+    return reelSummaryLinesInflight;
+}
+app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ error: "Database unavailable." });
+        const [firms] = await db.query("SELECT id, firmName FROM firms ORDER BY firmName");
+        const unitOne = firms.find((r) => String(r.firmName || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "").match(/(unit1|uniti)$/));
+        if (!unitOne?.id)
+            return res.status(500).json({ error: "Unit-I firm is not configured." });
+        // All reel receipt lines are read and parsed once, then reused until a
+        // table they come from changes (this ran on every open and keystroke).
+        const all = await getReelSummaryLines(db, String(unitOne.id));
         const q = req.query;
         const search = String(q.search || "").trim().toLowerCase();
         let rows = all.filter((r) => (!search || [r.parentTransactionNo, r.parentInvoiceNo, r.itemName].join(" ").toLowerCase().includes(search)) && (!q.mrr || r.parentTransactionNo === String(q.mrr)) && (!q.dateFrom || r.parentDate >= String(q.dateFrom)) && (!q.dateTo || r.parentDate <= String(q.dateTo)));

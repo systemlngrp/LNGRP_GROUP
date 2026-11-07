@@ -49,7 +49,8 @@ export function MaterialInItemMaster() {
   // issue/return line into the browser when switching tabs.
   const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { cacheToLocalStorage: false, enabled: false });
   const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { cacheToLocalStorage: false, enabled: false });
-  const [gateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all" });
+  // Only the gate entry no. and vehicle no. are shown here.
+  const [gateEntries] = useData<GateEntry>("gate-entries", [], { firmScope: "all", fields: ["gateEntryNo", "truckNo"] });
   const npdItems = useNpdItemNames(); // names only: no stock calculation needed
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
@@ -63,6 +64,9 @@ export function MaterialInItemMaster() {
   const [toDate, setToDate] = useState("");
 
   useEffect(() => {
+    // Reel Details is shown only on its own tab: do not run this heavy report
+    // (on open and on every keystroke) while another tab is open.
+    if (activeTab !== "reel-details") return;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setRemoteDetailsLoading(true); setRemoteDetailsError(null);
@@ -83,7 +87,7 @@ export function MaterialInItemMaster() {
       } finally { if (!controller.signal.aborted) setRemoteDetailsLoading(false); }
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
+  }, [activeTab, fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -146,10 +150,31 @@ export function MaterialInItemMaster() {
     }, 500);
   };
 
+  // Lookups built once; first match wins, the same as .find().
+  const firstById = <T extends { id: string }>(rows: T[]) => {
+    const map = new Map<string, T>();
+    rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); });
+    return map;
+  };
+  const supplierById = useMemo(() => firstById(suppliers), [suppliers]);
+  const companyById = useMemo(() => firstById(companies), [companies]);
+  const materialById = useMemo(() => firstById(materials), [materials]);
+  const npdById = useMemo(() => firstById(npdItems as any[]), [npdItems]);
+  // Same as materials.find(i => i.id === a || i.id === b): earliest of the two.
+  const firstOf = <T,>(rows: T[], map: Map<string, T>, a?: string, b?: string) => {
+    const x = a !== undefined ? map.get(a) : undefined;
+    const y = b !== undefined ? map.get(b) : undefined;
+    if (!x) return y;
+    if (!y) return x;
+    return rows.indexOf(x) <= rows.indexOf(y) ? x : y;
+  };
+  const itemNameOf = (itemId?: string, materialId?: string) =>
+    (firstOf(materials, materialById, itemId, materialId) as any)?.name ||
+    (firstOf(npdItems as any[], npdById, itemId, materialId) as any)?.name;
   const getSupplierName = (id: string) => {
-    const s = suppliers.find(s => s.id === id);
+    const s = supplierById.get(id);
     if (s) return s.name;
-    const c = companies.find(c => c.id === id);
+    const c = companyById.get(id);
     if (c) return c.name;
     return id;
   };
@@ -217,7 +242,7 @@ export function MaterialInItemMaster() {
 
     const filterFn = (item: any) => {
       if (!q) return true;
-      const itemName = materials.find(i => i.id === item.itemId || i.id === item.materialId)?.name || npdItems.find(i => i.id === item.itemId || i.id === item.materialId)?.name || "";
+      const itemName = itemNameOf(item.itemId, item.materialId) || "";
       const supplierName = getSupplierName(item.parentSupplierId);
       return (
         itemName.toLowerCase().includes(q) ||
@@ -284,7 +309,8 @@ export function MaterialInItemMaster() {
       reelDetails: filteredReelDetails.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
       metrics
     };
-  }, [materialIn, packingSlips, materials, issueReelLines, returnReelLines, npdItems, suppliers, searchTerm, fromDate, toDate, mrrFilter, materialMap, gateEntryMap, remoteSummaryMetrics]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialIn, packingSlips, materials, issueReelLines, returnReelLines, npdItems, suppliers, companies, searchTerm, fromDate, toDate, mrrFilter, materialMap, gateEntryMap, remoteSummaryMetrics, materialById, npdById, supplierById, companyById]);
 
 
 
@@ -305,7 +331,7 @@ export function MaterialInItemMaster() {
 
     const data = activeTab === "others" ? processedData.others : processedData.reelSummary;
     return data.map((line: any) => {
-      const itemName = materials.find(i => i.id === line.itemId)?.name || npdItems.find(i => i.id === line.itemId)?.name || "Unknown";
+      const itemName = itemNameOf(line.itemId) || "Unknown";
       return {
         "GE No": line.parentGateEntryNo,
         "MRR No": line.parentTransactionNo,
@@ -416,7 +442,7 @@ export function MaterialInItemMaster() {
         </thead>
         <tbody className="divide-y divide-black bg-white">
           {data.map((line: any) => {
-            const itemName = materials.find(i => i.id === line.itemId)?.name || npdItems.find(i => i.id === line.itemId)?.name || "Unknown";
+            const itemName = itemNameOf(line.itemId) || "Unknown";
             const canEditInline = canManage && line.parentStatus === "Pending PH";
             const isEditing = editingLineId === line.id;
 
