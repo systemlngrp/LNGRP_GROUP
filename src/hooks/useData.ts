@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useContext, useId, useRef } from "rea
 import { useAutoRefreshEffect } from "./useAutoRefresh";
 import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
 import { DataLoadingContext } from "../components/DataLoadingBoundary";
-import { CollectionHttpError, loadCollection, realtimeChangeAffects } from "../lib/collectionLoader";
+import { CollectionHttpError, endpointChangeAffects, loadCollection, realtimeChangeAffects } from "../lib/collectionLoader";
 
 type UseDataOptions = {
   enabled?: boolean;
@@ -238,7 +238,10 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
     };
     const handleRealtimeDataChange = (event: Event) => {
       const entities = (event as CustomEvent<{ entities?: string[] }>).detail?.entities || ["*"];
-      if (realtimeChangeAffects(entities, [entity, resolvedEntity], Boolean(options?.endpointOverride))) {
+      const affected = options?.endpointOverride
+        ? endpointChangeAffects(entities, options.endpointOverride, [entity, resolvedEntity], true)
+        : realtimeChangeAffects(entities, [entity, resolvedEntity], false);
+      if (affected) {
         fetchData({ background: true, force: true });
       }
     };

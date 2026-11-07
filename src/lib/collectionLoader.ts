@@ -28,7 +28,7 @@ let activeRequests = 0;
 let sidebarReleased = false;
 const NPD_CACHE_TTL_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 25_000;
-const completedNpdLoads = new Map<string, { expiresAt: number; rows: any[]; total: number | null }>();
+const completedNpdLoads = new Map<string, { expiresAt: number; rows: any[]; total: number | null; catalog?: boolean }>();
 
 // Completed collections are kept for a short while so moving between screens
 // does not download the same tables again. Entries are dropped as soon as the
@@ -51,10 +51,26 @@ function normalizeEntityName(name: string) {
 // only when one of these changes (same map as the server's snapshot cache).
 // Other derived lists (NPD stock and friends) still reload on any change.
 const JOIN_DEPENDENCIES: Record<string, string[]> = {
+  // Plain NPD columns (item names etc.), no stock.
+  npd_catalog: ["npd"],
   production_processing: ["production_processing", "productions", "npd"],
   invoice_line_items: ["invoice_line_items", "invoices", "items", "npd", "php_item_master", "plate_item_master", "materials"],
   materials: ["materials", "material_firm_openings"],
 };
+
+/** Small master lists, the same for every firm: loaded ahead of big lists and
+ * shared between screens whichever firm is selected. */
+const SMALL_GLOBAL_LISTS = new Set([
+  "settings", "firms", "suppliers", "companies", "units", "colors", "services", "material_groups",
+  "item_groups", "states", "trucks", "machines", "gst_rate_masters",
+]);
+
+/** For a list loaded from a custom address: does this change need a reload? */
+export function endpointChangeAffects(changed: string[], endpoint: string, entities: string[], derived: boolean) {
+  const name = normalizeEntityName(new URL(endpoint, "http://x").pathname);
+  if (JOIN_DEPENDENCIES[name]) return realtimeChangeAffects(changed, [name]);
+  return realtimeChangeAffects(changed, entities, derived);
+}
 
 export function realtimeChangeAffects(changed: string[], entities: string[], derived = false) {
   if (!changed.length || changed.includes("*")) return true;
@@ -86,7 +102,10 @@ export function clearCollectionCache(changed: string[] = ["*"]) {
   for (const [key, entry] of completedLoads) {
     if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key);
   }
-  completedNpdLoads.clear();
+  // NPD stock depends on many tables; the plain catalog only on npd.
+  for (const [key, entry] of completedNpdLoads) {
+    if (!entry.catalog || realtimeChangeAffects(changed, ["npd_catalog"])) completedNpdLoads.delete(key);
+  }
 }
 
 if (typeof window !== "undefined" && !(window as any).__lngrpCollectionCacheHooks) {
@@ -103,7 +122,8 @@ if (typeof window !== "undefined" && !(window as any).__lngrpCollectionCacheHook
       const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
       if (method !== "GET" && method !== "HEAD") {
         const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        if (/\/api\//.test(url) && !/\/api\/(?:get-pending-job-closure|realtime\/)/.test(url)) clearCollectionCache();
+        // Read-only POSTs (server reports, dashboard summary) change nothing.
+        if (/\/api\//.test(url) && !/\/api\/(?:get-pending-job-closure|realtime\/|reports\/|operations-dashboard\/summary)/.test(url)) clearCollectionCache();
       }
     } catch {
       clearCollectionCache();
@@ -140,9 +160,11 @@ function pumpQueue() {
   }
 }
 
-function queuedFetch(url: string, headers: Record<string, string>, priority: Priority, signal: AbortSignal) {
+function queuedFetch(url: string, headers: Record<string, string>, priority: Priority, signal: AbortSignal, urgent = false) {
   return new Promise<Response>((resolve, reject) => {
-    queue.push({
+    // Small lists go to the front of the queue so they are not stuck behind
+    // multi-megabyte downloads.
+    queue[urgent ? "unshift" : "push"]({
       priority,
       signal,
       reject,
@@ -191,7 +213,10 @@ export function loadCollection<T extends { id: string }>(
   onProgress: (progress: CollectionProgress<T>) => void,
   force = false,
 ) {
-  const key = JSON.stringify([endpoint, headers.Authorization || "", headers["X-Firm-Id"] || ""]);
+  const listName = normalizeEntityName(new URL(endpoint, window.location.origin).pathname);
+  const isSmallGlobal = SMALL_GLOBAL_LISTS.has(listName) && !hasNonFieldParams(endpoint);
+  // Small global lists are the same for every firm: one download for all screens.
+  const key = JSON.stringify([endpoint, headers.Authorization || "", isSmallGlobal ? "" : headers["X-Firm-Id"] || ""]);
   const isNpd = /^\/api\/(npd|npd-firm-wise|npd\/catalog)$/.test(new URL(endpoint, window.location.origin).pathname);
   if (isNpd && !force) {
     const cached = completedNpdLoads.get(key);
@@ -234,7 +259,7 @@ export function loadCollection<T extends { id: string }>(
       let page = 1;
       let total: number | null = null;
       while (true) {
-        const response = await queuedFetch(pageUrl(endpoint, cursor, page), headers, priority, controller.signal);
+        const response = await queuedFetch(pageUrl(endpoint, cursor, page), headers, priority, controller.signal, isSmallGlobal);
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           throw new CollectionHttpError(response.status, String(body?.error || `Failed to load data (${response.status})`));
@@ -258,7 +283,7 @@ export function loadCollection<T extends { id: string }>(
     sharedLoads.set(key, task);
     task.promise.then(
       (rows) => {
-        if (isNpd) completedNpdLoads.set(key, { expiresAt: Date.now() + NPD_CACHE_TTL_MS, rows, total: currentTask.progress.total });
+        if (isNpd) completedNpdLoads.set(key, { expiresAt: Date.now() + NPD_CACHE_TTL_MS, rows, total: currentTask.progress.total, catalog: endpointPath === "/api/npd/catalog" });
         else if (!currentTask.invalidated) {
           const entity = normalizeEntityName(endpointPath);
           completedLoads.set(key, {

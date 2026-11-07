@@ -1952,6 +1952,8 @@ function normalizeEntityName(name) {
   return String(name || "").trim().toLowerCase().replace(/^\/?api\//, "").replace(/[-/]/g, "_");
 }
 var JOIN_DEPENDENCIES = {
+  // Plain NPD columns (item names etc.), no stock.
+  npd_catalog: ["npd"],
   production_processing: ["production_processing", "productions", "npd"],
   invoice_line_items: ["invoice_line_items", "invoices", "items", "npd", "php_item_master", "plate_item_master", "materials"],
   materials: ["materials", "material_firm_openings"]
@@ -1980,7 +1982,9 @@ function clearCollectionCache(changed = ["*"]) {
   for (const [key, entry] of completedLoads) {
     if (realtimeChangeAffects(changed, Array.from(entry.tables), entry.derived)) completedLoads.delete(key);
   }
-  completedNpdLoads.clear();
+  for (const [key, entry] of completedNpdLoads) {
+    if (!entry.catalog || realtimeChangeAffects(changed, ["npd_catalog"])) completedNpdLoads.delete(key);
+  }
 }
 if (typeof window !== "undefined" && !window.__lngrpCollectionCacheHooks) {
   window.__lngrpCollectionCacheHooks = true;
@@ -1994,7 +1998,7 @@ if (typeof window !== "undefined" && !window.__lngrpCollectionCacheHooks) {
       const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
       if (method !== "GET" && method !== "HEAD") {
         const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-        if (/\/api\//.test(url) && !/\/api\/(?:get-pending-job-closure|realtime\/)/.test(url)) clearCollectionCache();
+        if (/\/api\//.test(url) && !/\/api\/(?:get-pending-job-closure|realtime\/|reports\/|operations-dashboard\/summary)/.test(url)) clearCollectionCache();
       }
     } catch {
       clearCollectionCache();
