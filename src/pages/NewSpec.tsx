@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Search } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
+import { fetchNpdItems } from "../lib/npdItems";
 import { Select } from "../components/Select";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { buildNpdCardPdf, getNpdCardPdfFileName } from "../lib/npdCardPdf";
@@ -32,9 +33,20 @@ function Table({ headers, rows, headerClass = "bg-slate-200" }: { headers: strin
   return <div className="overflow-x-auto"><table className="w-full min-w-[700px] border-collapse text-xs"><thead className={headerClass}><tr>{headers.map((header) => <th key={header} className="border border-black px-2 py-2 text-center font-black uppercase">{header}</th>)}</tr></thead><tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((item, cellIndex) => <td key={cellIndex} className="border border-black px-2 py-2 text-center font-bold">{item || "-"}</td>)}</tr>)}</tbody></table></div>;
 }
 
+// The ERP list comes from the light NPD name list so the page opens at once.
+// The full item rows for the card (the same rows the screen used before) load
+// in the background and are only waited for when Search is pressed.
 export function NewSpec() {
   const { user, loading: authLoading } = useAuth();
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemNames();
+  const fullNpdRowsRef = useRef<Promise<Row[]> | null>(null);
+  const loadFullNpdRows = () => {
+    if (!fullNpdRowsRef.current) {
+      fullNpdRowsRef.current = fetchNpdItems().then((rows) => rows as unknown as Row[]).catch((error) => { fullNpdRowsRef.current = null; throw error; });
+    }
+    return fullNpdRowsRef.current;
+  };
+  useEffect(() => { void loadFullNpdRows().catch(() => undefined); }, []);
   const [phpRows] = useData<any>("php_item_master", []);
   const [plateRows] = useData<any>("plate_item_master", []);
   const [qcUpdates] = useData<QcUpdateRecord>("qc_update_records", [], { firmScope: "all" });
@@ -84,7 +96,8 @@ export function NewSpec() {
     if (!item) return setMessage(`ERP ${normalizedErp} was not found in the item master.`);
     setMessage(""); setStatus("generating");
     try {
-      const npdRow = item as unknown as Row;
+      const npdRow = (await loadFullNpdRows()).find((row) => text(row.id) === text(item.id)) || null;
+      if (!npdRow) { setMessage(`ERP ${normalizedErp} was not found in the item master.`); return; }
       const nextPhp = (findLinkedItemByErp(phpItems as any, normalizedErp)?.raw || null) as Row | null;
       const nextPlate = (findLinkedItemByErp(plateItems as any, normalizedErp)?.raw || null) as Row | null;
       const nextFileNo = resolveNpdFileNo(npdRow, qcUpdates);

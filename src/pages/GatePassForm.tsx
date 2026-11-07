@@ -47,7 +47,6 @@ export function GatePassForm() {
   const [trucks] = useData<Truck>("trucks", []);
   const [users] = useData<User>("users", []);
   const [units] = useData<UnitMaster>("units", []);
-  const [npdItems] = useData<any>("npd", []);
 
   const editingGatePass = gatePasses.find((row) => row.id === editId) || null;
   const gatePassType = (editingGatePass?.gatePassType || (invoiceIdFromQuery ? "Non-Returnable" : "Returnable")) as "Non-Returnable" | "Returnable";
@@ -144,7 +143,6 @@ export function GatePassForm() {
       gatePassNo: editingGatePass?.gatePassNo,
       invoice: selectedInvoice,
       lineItems: invoiceLineItems,
-      npdItems,
       overrideTruckId: selectedTruckId || undefined,
       remarks,
       selectedLoadingSlipIds: Array.from(selectedSlipIds),
@@ -153,7 +151,7 @@ export function GatePassForm() {
       updatedBy: "System User",
       updateTimestamp: new Date().toISOString(),
     });
-  }, [date, editingGatePass?.gatePassNo, editingGatePass?.id, invoiceLineItems, isReturnable, loadingSlips, npdItems, remarks, selectedCompany, selectedInvoice, selectedSlipIds, selectedTruckId, trucks]);
+  }, [date, editingGatePass?.gatePassNo, editingGatePass?.id, invoiceLineItems, isReturnable, loadingSlips, remarks, selectedCompany, selectedInvoice, selectedSlipIds, selectedTruckId, trucks]);
 
   const recipientOptions = useMemo(() => {
     const rows = [

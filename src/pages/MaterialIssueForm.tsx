@@ -30,7 +30,7 @@ import {
   isCorrugatedSheetMaterial,
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { findUnitTwoFirm } from "../lib/unitTwoFirm";
 import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
@@ -182,7 +182,9 @@ export function MaterialIssueForm() {
   const [materialReturns] = useData<MaterialReturn>("material-returns", [], { firmScope: "all" });
   const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], { firmScope: "all" });
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const npdItems = useNpdItems();
+  // Only id, ERP, name, UOM, rate and consumable are used here: the NPD name
+  // list has them without waiting for the firm-wise stock calculation.
+  const npdItems = useNpdItemNames();
 
   const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
   const unitTwoFirm = useMemo(() => findUnitTwoFirm(firms), [firms]);
