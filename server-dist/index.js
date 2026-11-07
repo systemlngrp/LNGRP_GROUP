@@ -980,7 +980,9 @@ const AUTH_COOKIE_NAME = "lngrp_auth";
 // ERR_HTTP2_PROTOCOL_ERROR, which caused a persistent browser console error.
 let realtimeDataVersion = 0;
 const NPD_PAGE_SIZE_MAX = 250;
-const NPD_CACHE_TTL_MS = 30_000;
+// Cleared at once by invalidateNpdCache when a table the stock reads changes;
+// the TTL is only a safety net.
+const NPD_CACHE_TTL_MS = 120_000;
 const firmWiseNpdCache = new Map();
 const firmWiseNpdInflight = new Map();
 let firmWiseStockIndexCache = null;
@@ -1005,7 +1007,7 @@ function invalidateNpdCache() {
     firmWiseStockIndexGeneration += 1;
 }
 function publishRealtimeDataChange(entities = ["*"]) {
-    if (entities.includes("*") || entities.some((entity) => ["npd", "npd-firm-wise", "material_in", "productions", "production_processing", "loading_slips", "invoices", "invoice_line_items", "orders"].includes(entity))) {
+    if (entities.includes("*") || entities.some((entity) => ["npd", "npd-firm-wise", "npd_firm_openings", "material_in", "productions", "production_processing", "loading_slips", "invoices", "invoice_line_items", "orders", "dispatch_plans", "inter_firm_pending_invoices", "firms", "settings"].includes(String(entity).replace(/-/g, "_")) || entity === "npd-firm-wise")) {
         invalidateNpdCache();
     }
     realtimeDataVersion += 1;
@@ -3216,7 +3218,17 @@ async function fetchFirmWiseNpdItems(db, options) {
     });
     return { rows, total: base.total, firms };
 }
+// The stock aggregation behind each NPD page computes every item and then
+// takes one page, so loading the list page by page repeated the whole
+// calculation for every page. Without a search, compute the full list once
+// (same order as the SQL) and serve pages as slices of it.
+const NPD_FULL_LIST_LIMIT = 1_000_000;
 async function getCachedFirmWiseNpdItems(db, options) {
+    if (!String(options.search || "").trim() && options.limit < NPD_FULL_LIST_LIMIT) {
+        const full = await getCachedFirmWiseNpdItems(db, { search: "", status: options.status, limit: NPD_FULL_LIST_LIMIT, offset: 0 });
+        const offset = Math.max(0, Number(options.offset) || 0);
+        return { rows: full.rows.slice(offset, offset + Math.max(1, Number(options.limit) || 1)), total: full.total, firms: full.firms };
+    }
     const key = JSON.stringify({ search: String(options.search || ""), status: String(options.status || "active"), limit: options.limit, offset: options.offset });
     const cached = firmWiseNpdCache.get(key);
     if (cached && cached.expiresAt > Date.now()) {
