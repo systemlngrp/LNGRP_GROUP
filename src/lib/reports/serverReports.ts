@@ -163,11 +163,6 @@ REPORT_DEFINITIONS["audit-dashboard"] = {
     { key: "materialReturnLines", entity: "material_return_lines", scope: "firm" },
     { key: "invoices", entity: "invoices", scope: "firm" },
     { key: "productions", entity: "productions", scope: "firm" },
-    { key: "materials", entity: "materials", scope: "firm" },
-    { key: "packingSlips", entity: "material_in_packing_slips", scope: "firm" },
-    { key: "issueReelLines", entity: "material_issue_reel_lines", scope: "firm" },
-    { key: "returnReelLines", entity: "material_return_reel_lines", scope: "firm" },
-    { key: "suppliers", entity: "suppliers", scope: "firm" },
   ],
   compute: (lists, _params, helpers) => computeAuditDashboard(lists as any, (helpers.npdItems || []).map(normalizeNpdItem)),
 };

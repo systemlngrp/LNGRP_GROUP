@@ -16,7 +16,6 @@ import type {
   Supplier,
 } from "../../types";
 import { getInvoiceGrandTotal } from "../gatePasses";
-import { buildReelStockRows } from "../reelStock";
 
 export function roundMoney(value: number) {
   return Number(Number(value || 0).toFixed(2));
@@ -83,15 +82,10 @@ export type AuditDashboardLists = {
   materialReturnLines: MaterialReturnLine[];
   invoices: Invoice[];
   productions: Production[];
-  materials: Material[];
-  packingSlips: MaterialInPackingSlip[];
-  issueReelLines: MaterialIssueReelLine[];
-  returnReelLines: MaterialReturnReelLine[];
-  suppliers: Supplier[];
 };
 
 export function computeAuditAppValues(lists: AuditDashboardLists, npdItems: Item[]) {
-  const { materialIn, materialIssues, materialIssueLines, materialReturns, materialReturnLines, invoices, productions, materials, packingSlips, issueReelLines, returnReelLines, suppliers } = lists;
+  const { materialIn, materialIssues, materialIssueLines, materialReturns, materialReturnLines, invoices, productions } = lists;
     const consumptionIssueIdSet = new Set(
       materialIssues
         .filter((entry) => !hasJobNo(entry) && !isCancelledIssue(entry) && !isNotApplicableIssue(entry))
@@ -164,28 +158,6 @@ export function computeAuditAppValues(lists: AuditDashboardLists, npdItems: Item
     );
     const npdStockQtyCountApp = npdItems.filter((item) => Number(item.balance || 0) > 0).length;
 
-    const reelStockRows = buildReelStockRows({
-      materials,
-      materialIn,
-      packingSlips,
-      issueReelLines,
-      returnReelLines,
-      suppliers,
-    });
-    const availableReelRows = reelStockRows.filter((row) => row.availableWeight > 0);
-    const reelStockValue = roundMoney(
-      availableReelRows.reduce((sum, row) => sum + Number(row.valuation || 0), 0)
-    );
-    const reelStockQtyApp = roundMoney(
-      availableReelRows.reduce((sum, row) => sum + Number(row.availableWeight || 0), 0)
-    );
-    const materialsWithTallyStock = materials.filter((material) => material.type === "Reel" && material.tallyStock != null);
-    const reelStockQtyTally = roundMoney(
-      materialsWithTallyStock.reduce((sum, material) => sum + Number(material.tallyStock || 0), 0)
-    );
-    const reelStockQtyCountTally = materialsWithTallyStock.length;
-    const reelStockCount = availableReelRows.length;
-
     return {
       invoiceValue: roundMoney(
         tallyPostedMaterialIn.reduce((sum, entry) => {
@@ -209,11 +181,6 @@ export function computeAuditAppValues(lists: AuditDashboardLists, npdItems: Item
       npdStockQtyCountTally,
       npdStockQtyApp,
       npdStockQtyCountApp,
-      reelStockValue,
-      reelStockQtyApp,
-      reelStockQtyTally,
-      reelStockQtyCountTally,
-      reelStockCount,
     };
 }
 

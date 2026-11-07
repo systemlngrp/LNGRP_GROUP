@@ -133,13 +133,13 @@ function getSnapshotSortTime(snapshot: AuditDashboardSnapshot) {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-const AUDIT_DASHBOARD_TABLES = ["material_in", "material_issues", "material_issue_lines", "material_returns", "material_return_lines", "invoices", "productions", "materials", "material_in_packing_slips", "material_issue_reel_lines", "material_return_reel_lines", "suppliers", "npd"];
+const AUDIT_DASHBOARD_TABLES = ["material_in", "material_issues", "material_issue_lines", "material_returns", "material_return_lines", "invoices", "productions", "npd"];
 const EMPTY_AUDIT_RESULT: AuditDashboardResult = {
   appValues: {
     invoiceValue: 0, invoiceCount: 0, consumptionValue: 0, consumptionCount: 0, manufacturingValue: 0, manufacturingCount: 0,
     saleValue: 0, saleCount: 0, debitNote: 0, debitNoteCount: 0, npdStockValue: 0, npdStockCount: 0, npdStockQtyTally: 0,
-    npdStockQtyCountTally: 0, npdStockQtyApp: 0, npdStockQtyCountApp: 0, reelStockValue: 0, reelStockQtyApp: 0,
-    reelStockQtyTally: 0, reelStockQtyCountTally: 0, reelStockCount: 0,
+    npdStockQtyCountTally: 0, npdStockQtyApp: 0, npdStockQtyCountApp: 0,
+
   },
   negativeOpeningNpdRows: [],
 };
@@ -157,11 +157,6 @@ export function AuditDashboard() {
   const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", [], listOptions);
   const [invoices] = useData<Invoice>("invoices", [], listOptions);
   const [productions] = useData<Production>("productions", [], listOptions);
-  const [materials] = useData<Material>("materials", [], listOptions);
-  const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", [], listOptions);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], listOptions);
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], listOptions);
-  const [suppliers] = useData<Supplier>("suppliers", [], listOptions);
   const npdItems = useNpdItems({ enabled: browserFallback });
   const [snapshots] = useData<AuditDashboardSnapshot>("audit_dashboard_snapshots", []);
   const [tallyValues, setTallyValues] = useState<TallyValues>(getSnapshotValues());
@@ -184,9 +179,9 @@ export function AuditDashboard() {
 
   const clientResult = useMemo<AuditDashboardResult | null>(
     () => (browserFallback
-      ? computeAuditDashboard({ materialIn, materialIssues, materialIssueLines, materialReturns, materialReturnLines, invoices, productions, materials, packingSlips, issueReelLines, returnReelLines, suppliers }, npdItems)
+      ? computeAuditDashboard({ materialIn, materialIssues, materialIssueLines, materialReturns, materialReturnLines, invoices, productions }, npdItems)
       : null),
-    [browserFallback, invoices, issueReelLines, materialIn, materialIssueLines, materialIssues, materialReturnLines, materialReturns, materials, npdItems, packingSlips, productions, returnReelLines, suppliers]
+    [browserFallback, invoices, materialIn, materialIssueLines, materialIssues, materialReturnLines, materialReturns, npdItems, productions]
   );
   const auditResult = (browserFallback ? clientResult : serverReport.result) || EMPTY_AUDIT_RESULT;
   const appValues = auditResult.appValues;
@@ -198,10 +193,6 @@ export function AuditDashboard() {
       { key: "manufacturingValue", label: "Manufacturing Journal Audit", appValue: appValues.manufacturingValue, tallyValue: tallyValues.manufacturingValueTally, appCount: appValues.manufacturingCount, tallyCount: tallyValues.manufacturingCountTally },
       { key: "saleValue", label: "Sale Value", appValue: appValues.saleValue, tallyValue: tallyValues.saleValueTally, appCount: appValues.saleCount, tallyCount: tallyValues.saleCountTally },
       { key: "debitNote", label: "Debit Note", appValue: appValues.debitNote, tallyValue: tallyValues.debitNoteTally, appCount: appValues.debitNoteCount, tallyCount: tallyValues.debitNoteCountTally },
-      { key: "npdStockValue", label: "NPD Stock Valuation", appValue: appValues.npdStockValue, tallyValue: tallyValues.npdStockValueTally, appCount: appValues.npdStockCount, tallyCount: tallyValues.npdStockCountTally },
-      { key: "npdStockQty", label: "NPD Stock (Qty)", appValue: appValues.npdStockQtyApp, tallyValue: appValues.npdStockQtyTally, appCount: appValues.npdStockQtyCountApp, tallyCount: appValues.npdStockQtyCountTally },
-      { key: "reelStockQty", label: "Reel Stock (Qty)", appValue: appValues.reelStockQtyApp, tallyValue: appValues.reelStockQtyTally, appCount: appValues.reelStockCount, tallyCount: appValues.reelStockQtyCountTally },
-      { key: "reelStockValue", label: "Reel Stock Valuation", appValue: appValues.reelStockValue, tallyValue: tallyValues.reelStockValueTally, appCount: appValues.reelStockCount, tallyCount: tallyValues.reelStockCountTally },
     ];
 
     return baseMetrics.map((metric) => ({ ...metric, difference: roundMoney(metric.tallyValue - metric.appValue) }));

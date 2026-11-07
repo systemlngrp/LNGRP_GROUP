@@ -1728,7 +1728,7 @@ function isProductionPostedToTally(production) {
   return String(production.tallyTimestamp || "").trim() !== "";
 }
 function computeAuditAppValues(lists, npdItems) {
-  const { materialIn, materialIssues, materialIssueLines, materialReturns, materialReturnLines, invoices, productions, materials, packingSlips, issueReelLines, returnReelLines, suppliers } = lists;
+  const { materialIn, materialIssues, materialIssueLines, materialReturns, materialReturnLines, invoices, productions } = lists;
   const consumptionIssueIdSet = new Set(
     materialIssues.filter((entry) => !hasJobNo(entry) && !isCancelledIssue(entry) && !isNotApplicableIssue(entry)).map((entry) => entry.id)
   );
@@ -1782,27 +1782,6 @@ function computeAuditAppValues(lists, npdItems) {
     npdItems.reduce((sum, item) => sum + Number(item.balance || 0), 0)
   );
   const npdStockQtyCountApp = npdItems.filter((item) => Number(item.balance || 0) > 0).length;
-  const reelStockRows = buildReelStockRows({
-    materials,
-    materialIn,
-    packingSlips,
-    issueReelLines,
-    returnReelLines,
-    suppliers
-  });
-  const availableReelRows = reelStockRows.filter((row) => row.availableWeight > 0);
-  const reelStockValue = roundMoney(
-    availableReelRows.reduce((sum, row) => sum + Number(row.valuation || 0), 0)
-  );
-  const reelStockQtyApp = roundMoney(
-    availableReelRows.reduce((sum, row) => sum + Number(row.availableWeight || 0), 0)
-  );
-  const materialsWithTallyStock = materials.filter((material) => material.type === "Reel" && material.tallyStock != null);
-  const reelStockQtyTally = roundMoney(
-    materialsWithTallyStock.reduce((sum, material) => sum + Number(material.tallyStock || 0), 0)
-  );
-  const reelStockQtyCountTally = materialsWithTallyStock.length;
-  const reelStockCount = availableReelRows.length;
   return {
     invoiceValue: roundMoney(
       tallyPostedMaterialIn.reduce((sum, entry) => {
@@ -1825,12 +1804,7 @@ function computeAuditAppValues(lists, npdItems) {
     npdStockQtyTally,
     npdStockQtyCountTally,
     npdStockQtyApp,
-    npdStockQtyCountApp,
-    reelStockValue,
-    reelStockQtyApp,
-    reelStockQtyTally,
-    reelStockQtyCountTally,
-    reelStockCount
+    npdStockQtyCountApp
   };
 }
 function computeNegativeOpeningNpdRows(npdItems) {
@@ -2649,12 +2623,7 @@ REPORT_DEFINITIONS["audit-dashboard"] = {
     { key: "materialReturns", entity: "material_returns", scope: "firm" },
     { key: "materialReturnLines", entity: "material_return_lines", scope: "firm" },
     { key: "invoices", entity: "invoices", scope: "firm" },
-    { key: "productions", entity: "productions", scope: "firm" },
-    { key: "materials", entity: "materials", scope: "firm" },
-    { key: "packingSlips", entity: "material_in_packing_slips", scope: "firm" },
-    { key: "issueReelLines", entity: "material_issue_reel_lines", scope: "firm" },
-    { key: "returnReelLines", entity: "material_return_reel_lines", scope: "firm" },
-    { key: "suppliers", entity: "suppliers", scope: "firm" }
+    { key: "productions", entity: "productions", scope: "firm" }
   ],
   compute: (lists, _params, helpers) => computeAuditDashboard(lists, (helpers.npdItems || []).map(normalizeNpdItem))
 };
