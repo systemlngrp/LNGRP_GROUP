@@ -82,30 +82,38 @@ export function LoadingMaster() {
 
   const getTruckNo = (slip: LoadingSlip) => String(slip.truckNo || trucks.find((truck) => truck.id === slip.truckId)?.truckNo || "-").trim() || "-";
 
+  // Each slip's summary worked out once and shared by the filters and the list.
+  const summaryBySlip = useMemo(() => {
+    const map = new Map<LoadingSlip, ReturnType<typeof summarizeLoadingSlip>>();
+    loadingSlips.forEach((slip) => map.set(slip, summarizeLoadingSlip({ slip, plans, orders, companies, resolveOrderItem })));
+    return map;
+  }, [loadingSlips, plans, orders, companies, resolveOrderItem]);
+  const getSummary = (slip: LoadingSlip) => summaryBySlip.get(slip) || summarizeLoadingSlip({ slip, plans, orders, companies, resolveOrderItem });
+
   const companyOptions = useMemo(() => {
     const names = new Set<string>();
     loadingSlips.forEach((slip) => {
-      summarizeLoadingSlip({ slip, plans, orders, companies, resolveOrderItem }).companyNames.forEach((name) => {
+      getSummary(slip).companyNames.forEach((name) => {
         if (name) names.add(name);
       });
     });
     return Array.from(names).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).map((name) => ({ value: name, label: name }));
-  }, [loadingSlips, plans, orders, companies, resolveOrderItem]);
+  }, [loadingSlips, summaryBySlip]);
 
   const erpOptions = useMemo(() => {
     const codes = new Set<string>();
     loadingSlips.forEach((slip) => {
-      summarizeLoadingSlip({ slip, plans, orders, companies, resolveOrderItem }).erpCodes.forEach((code) => {
+      getSummary(slip).erpCodes.forEach((code) => {
         if (code) codes.add(code);
       });
     });
     return Array.from(codes).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).map((code) => ({ value: code, label: code }));
-  }, [loadingSlips, plans, orders, companies, resolveOrderItem]);
+  }, [loadingSlips, summaryBySlip]);
 
   const itemOptions = useMemo(() => {
     const map = new Map<string, { value: string; label: string; searchText: string }>();
     loadingSlips.forEach((slip) => {
-      summarizeLoadingSlip({ slip, plans, orders, companies, resolveOrderItem }).lineContexts.forEach((ctx) => {
+      getSummary(slip).lineContexts.forEach((ctx) => {
         const itemName = String(ctx.itemName || "").trim();
         const erp = String(ctx.erpCode || "").trim();
         const key = itemName || erp ? `${itemName}::${erp}` : "";
@@ -115,13 +123,13 @@ export function LoadingMaster() {
       });
     });
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
-  }, [loadingSlips, plans, orders, companies, resolveOrderItem]);
+  }, [loadingSlips, summaryBySlip]);
   const processedSlips = useMemo(() => {
     const orderById = new Map(orders.map((order) => [order.id, order]));
     const planById = new Map(plans.map((plan) => [plan.id, plan]));
     return loadingSlips.map((slip) => {
       const totalQty = slip.lines.reduce((sum, line) => sum + Number(line.loadedQty || 0), 0);
-      const summary = summarizeLoadingSlip({ slip, plans, orders, companies, resolveOrderItem });
+      const summary = getSummary(slip);
       const linkedPlan = slip.lines.map((line) => planById.get(String(line.dispatchPlanId || ""))).find(Boolean);
       const orderFirmId = linkedPlan ? String(orderById.get(linkedPlan.orderId)?.firmId || "").trim() : "";
       return {
@@ -157,7 +165,7 @@ export function LoadingMaster() {
 
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-  }, [loadingSlips, plans, orders, companies, firms, resolveOrderItem, searchTerm, companyFilter, erpFilter, itemFilter, firmFilter, trucks]);
+  }, [loadingSlips, plans, orders, firms, summaryBySlip, searchTerm, companyFilter, erpFilter, itemFilter, firmFilter, trucks]);
 
   const {
     page,

@@ -40,6 +40,7 @@ const LARGE_BATCH_LISTS = new Set([
   "material_issue_reel_lines", "material_return_reel_lines", "material_issue_lines", "material_return_lines",
   "material_in_packing_slips", "material_issues", "material_returns",
   "invoices", "orders", "orders_schedule", "dispatch_plans",
+  "loading_slips", "productions",
 ]);
 const queue: QueueEntry[] = [];
 let activeRequests = 0;

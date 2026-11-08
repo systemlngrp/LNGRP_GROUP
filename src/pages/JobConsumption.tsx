@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { ExcelExport } from "../components/ExcelExport";
@@ -39,10 +41,11 @@ function makeOptions(values: string[]) {
 
 export function JobConsumption() {
   const [materials] = useData<Material>("materials", []);
-  const [materialIssues] = useData<MaterialIssue>("material-issues", []);
-  const [materialReturns] = useData<MaterialReturn>("material-returns", []);
-  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", []);
-  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
+  // Read-only report: only the columns it uses are downloaded.
+  const [materialIssues] = useData<MaterialIssue>("material-issues", [], { fields: ["date"], storageKey: "job-consumption-issues" });
+  const [materialReturns] = useData<MaterialReturn>("material-returns", [], { fields: ["date"], storageKey: "job-consumption-returns" });
+  const [issueReelLines] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { fields: ["materialIssueId", "materialId", "jobNo", "weightKg"], storageKey: "job-consumption-issue-reels" });
+  const [returnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { fields: ["materialReturnId", "materialId", "jobNo", "weightKg"], storageKey: "job-consumption-return-reels" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -141,6 +144,10 @@ export function JobConsumption() {
       return true;
     });
   }, [allRows, dackelFilter, dateFrom, dateTo, gsmFilter, searchTerm]);
+
+  // Summary and Excel cover every row; the table draws 100 rows per page.
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(rows, 100);
+  useEffect(() => { setPage(1); }, [searchTerm, dateFrom, dateTo, dackelFilter, gsmFilter, setPage]);
 
   const summary = useMemo(
     () => ({
@@ -282,7 +289,7 @@ export function JobConsumption() {
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                pagedRows.map((row) => (
                   <tr key={row.key} className="text-black hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3 whitespace-nowrap font-bold">{formatDate(row.date)}</td>
                     <td className="border-2 border-black px-3 py-3 text-right">{row.dackel}</td>
@@ -295,6 +302,14 @@ export function JobConsumption() {
             </tbody>
           </table>
         </div>
+        <ClientPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+          pageSizeOptions={[100, 250, 500]}
+        />
       </div>
     </div>
   );

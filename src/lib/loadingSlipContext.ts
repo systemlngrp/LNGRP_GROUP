@@ -37,6 +37,20 @@ export function isDirectLoadingSlip(slip?: Partial<LoadingSlip> | null) {
   return normalizeString(slip?.loadingSource).toUpperCase() === "DIRECT";
 }
 
+// First record per id for a list, built once per list (lists from useData are
+// replaced, never changed in place). Same record as list.find(row.id === id).
+const firstByIdCache = new WeakMap<object, Map<unknown, unknown>>();
+function findFirstById<T extends { id?: unknown }>(rows: T[] | undefined, id: unknown): T | undefined {
+  if (!rows) return undefined;
+  let index = firstByIdCache.get(rows) as Map<unknown, T> | undefined;
+  if (!index) {
+    index = new Map<unknown, T>();
+    for (const row of rows) if (!index.has(row.id)) index.set(row.id, row);
+    firstByIdCache.set(rows, index);
+  }
+  return index.get(id);
+}
+
 export function resolveLoadingSlipLineContext({
   slip,
   line,
@@ -52,13 +66,13 @@ export function resolveLoadingSlipLineContext({
   companies?: Company[];
   resolveOrderItem: (order?: Partial<Order> | null) => OrderCatalogItem | undefined;
 }): LoadingSlipLineContext {
-  const plan = plans.find((row) => row.id === line.dispatchPlanId);
-  const order = orders.find((row) => row.id === plan?.orderId);
+  const plan = findFirstById(plans, line.dispatchPlanId);
+  const order = findFirstById(orders, plan?.orderId);
   const fallbackOrder = line.itemId
     ? ({ itemId: line.itemId, itemSource: line.itemSource || "FG" } as Partial<Order>)
     : undefined;
   const item = resolveOrderItem(order || fallbackOrder || null);
-  const company = companies?.find((row) => row.id === (order?.companyId || line.companyId || slip?.companyId));
+  const company = findFirstById(companies, order?.companyId || line.companyId || slip?.companyId);
   const itemSource = normalizeSource(line.itemSource || order?.itemSource || item?.source || "FG");
 
   return {
