@@ -158,11 +158,6 @@ const GatePassForm = lazy(() => import("./pages/GatePassForm").then((module) => 
 const GatePassMaster = lazy(() => import("./pages/GatePassMaster").then((module) => ({ default: module.GatePassMaster })));
 const PendingReturnableItems = lazy(() => import("./pages/PendingReturnableItems").then((module) => ({ default: module.PendingReturnableItems })));
 const CanceledOrders = lazy(() => import("./pages/CanceledOrders").then((module) => ({ default: module.CanceledOrders })));
-const PlansProductionPlanning = lazy(() => import("./pages/PlansProductionPlanning").then((module) => ({ default: module.PlansProductionPlanning })));
-const PlansItems = lazy(() => import("./pages/PlansItems").then((module) => ({ default: module.PlansItems })));
-const PlansProduction = lazy(() => import("./pages/PlansProduction").then((module) => ({ default: module.PlansProduction })));
-const PlansLoading = lazy(() => import("./pages/PlansLoading").then((module) => ({ default: module.PlansLoading })));
-const PlansJobCard = lazy(() => import("./pages/PlansJobCard").then((module) => ({ default: module.PlansJobCard })));
 const SettingsPage = lazy(() => import("./pages/Settings").then((module) => ({ default: module.SettingsPage })));
 const FirmMaster = lazy(() => import("./pages/FirmMaster").then((module) => ({ default: module.FirmMaster })));
 const OtherConsumablesInventoryReport = lazy(() => import("./pages/OtherConsumablesInventoryReport").then((module) => ({ default: module.OtherConsumablesInventoryReport })));
@@ -498,11 +493,6 @@ export default function App() {
           <Route path="reports/summary-sheet" element={<SummarySheetReport />} />
 
           {/* Documentation */}
-          <Route path="plans/production-planning" element={<PlansProductionPlanning />} />
-          <Route path="plans/production" element={<PlansProduction />} />
-          <Route path="plans/items" element={<PlansItems />} />
-          <Route path="plans/loading" element={<PlansLoading />} />
-          <Route path="plans/job-card" element={<PlansJobCard />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

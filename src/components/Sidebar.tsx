@@ -463,17 +463,6 @@ export const NAVIGATION: NavGroup[] = [
       { name: "Settings", href: "/masters/settings", icon: Database },
     ],
   },
-  {
-    section: "Documentation",
-    color: "bg-slate-700",
-    items: [
-      { name: "Production Planning Logic", href: "/plans/production-planning", icon: BookOpenText },
-      { name: "Production", href: "/plans/production", icon: BookOpenText },
-      { name: "Items", href: "/plans/items", icon: BookOpenText },
-      { name: "Loading Plan", href: "/plans/loading", icon: BookOpenText },
-      { name: "Job Card", href: "/plans/job-card", icon: BookOpenText },
-    ],
-  },
 ];
 const NAVIGATION_FOR_STANDARD_USERS: NavGroup[] = NAVIGATION;
 
