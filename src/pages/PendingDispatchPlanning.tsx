@@ -154,30 +154,39 @@ export function PendingDispatchPlanning() {
     return map;
   }, [npdItems, loadedQtyByItemId, pendingProductionPlanQtyByItemId, reservedDispatchPlanQtyByItemId]);
 
+  // Lookups built once per data change (first record per id; plans grouped by
+  // schedule in their original order), instead of list scans per schedule.
+  const lookup = useMemo(() => {
+    const firstById = <T extends { id: string }>(rows: T[]) => { const map = new Map<string, T>(); rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); }); return map; };
+    const plansBySchedule = new Map<string, typeof dispatchPlans>();
+    dispatchPlans.forEach((plan) => { const key = String(plan.scheduleId || ""); const list = plansBySchedule.get(key); if (list) list.push(plan); else plansBySchedule.set(key, [plan]); });
+    return { orderById: firstById(orders), companyById: firstById(companies), plansBySchedule };
+  }, [orders, companies, dispatchPlans]);
+
   const basePendingSchedules = useMemo(() => {
     return schedules.filter(s => {
       const scheduledDate = new Date(s.scheduledDate);
       if (isNaN(scheduledDate.getTime())) return false;
       
       const effectivePlanned = getEffectivePlannedForSchedule(s.id);
-      const balance = getScheduleAvailableQty(s, dispatchPlans);
+      const balance = getScheduleAvailableQty(s, lookup.plansBySchedule.get(String(s.id || "")) || []);
       return scheduledDate <= tomorrow && balance > 0;
     }).sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
-  }, [schedules, tomorrow, getEffectivePlannedForSchedule]);
+  }, [schedules, tomorrow, effectivePlannedByScheduleId, lookup]);
 
   const availableCompanies = useMemo(() => {
     const compIds = new Set(basePendingSchedules.map(s => {
-      const order = orders.find(o => o.id === s.orderId);
+      const order = lookup.orderById.get(s.orderId);
       return order?.companyId;
     }).filter(Boolean));
     
     return companies.filter(c => compIds.has(c.id)).sort((a, b) => a.name.localeCompare(b.name));
-  }, [basePendingSchedules, orders, companies]);
+  }, [basePendingSchedules, orders, companies, lookup]);
 
   const filteredSchedules = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     const rows = basePendingSchedules.filter(s => {
-      const order = orders.find(o => o.id === s.orderId);
+      const order = lookup.orderById.get(s.orderId);
       return (!selectedCompanyId || order?.companyId === selectedCompanyId) &&
         (!selectedFirmId || String(s.firmId || order?.firmId || "") === selectedFirmId);
     });
@@ -185,8 +194,8 @@ export function PendingDispatchPlanning() {
     return [...rows]
       .filter((schedule) => {
         if (!normalizedSearch) return true;
-        const order = orders.find((o) => o.id === schedule.orderId);
-        const company = companies.find((c) => c.id === order?.companyId);
+        const order = lookup.orderById.get(schedule.orderId);
+        const company = lookup.companyById.get(order?.companyId as string);
         const item = resolveOrderItem(order);
         const haystack = [
           formatDate(schedule.scheduledDate),
@@ -200,10 +209,10 @@ export function PendingDispatchPlanning() {
         return haystack.includes(normalizedSearch);
       })
       .sort((a, b) => {
-      const orderA = orders.find(o => o.id === a.orderId);
-      const orderB = orders.find(o => o.id === b.orderId);
-      const companyA = companies.find(c => c.id === orderA?.companyId)?.name || "";
-      const companyB = companies.find(c => c.id === orderB?.companyId)?.name || "";
+      const orderA = lookup.orderById.get(a.orderId);
+      const orderB = lookup.orderById.get(b.orderId);
+      const companyA = lookup.companyById.get(orderA?.companyId as string)?.name || "";
+      const companyB = lookup.companyById.get(orderB?.companyId as string)?.name || "";
       const itemA = resolveOrderItem(orderA)?.name || "";
       const itemB = resolveOrderItem(orderB)?.name || "";
       const plannedA = getEffectivePlannedForSchedule(a.id);
@@ -235,7 +244,7 @@ export function PendingDispatchPlanning() {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, orders, companies, firms, searchTerm, sortDirection, sortKey, getEffectivePlannedForSchedule, resolveOrderItem]);
+  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, resolveOrderItem, lookup]);
 
   const {
     page,
@@ -314,7 +323,7 @@ export function PendingDispatchPlanning() {
       const currentPlanned = rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : balance;
       return sum + Number(currentPlanned || 0);
     }, 0);
-  }, [selectedIds, rowPlannedQty, schedules, getEffectivePlannedForSchedule]);
+  }, [selectedIds, rowPlannedQty, schedules, effectivePlannedByScheduleId]);
 
   const plannedNowByItemId = useMemo(() => {
     const map = new Map<string, number>();
@@ -332,7 +341,7 @@ export function PendingDispatchPlanning() {
       map.set(itemId, (map.get(itemId) || 0) + Number(plannedQty || 0));
     });
     return map;
-  }, [itemIdByScheduleId, orders, rowPlannedQty, schedules, selectedIds, getEffectivePlannedForSchedule]);
+  }, [itemIdByScheduleId, orders, rowPlannedQty, schedules, selectedIds, effectivePlannedByScheduleId]);
 
   const calculationRows = useMemo(() => {
     const itemIds = Array.from(plannedNowByItemId.keys());
@@ -395,7 +404,7 @@ export function PendingDispatchPlanning() {
       activeSelection: selectedIds.size,
       activePlanned: totalSessionPlannedQty
     };
-  }, [basePendingSchedules, getEffectivePlannedForSchedule, today, selectedIds, totalSessionPlannedQty]);
+  }, [basePendingSchedules, effectivePlannedByScheduleId, today, selectedIds, totalSessionPlannedQty]);
 
   const handleSubmit = async () => {
     if (selectedIds.size === 0) {
