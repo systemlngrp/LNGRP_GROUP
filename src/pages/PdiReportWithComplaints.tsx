@@ -5,6 +5,7 @@ import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import type { PreDispatchInspection, PrintingQcCheck, Production, QualityComplaint, Setting } from "../types";
 import { buildPdiReportRow, findLatestInspection, findLatestPreviousComplaint, formatPreviousComplaint, type NpdPdiItem, type PdiReportRow } from "../lib/pdiReportData";
 import { useAuth } from "../auth/AuthContext";
+import { jobDateCellClass, qcResultCellClass } from "../lib/jobCellColors";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { QC_REPORT_COLUMN_COUNTS } from "../lib/qcColumnLayout";
 import { useQcColumnLayout } from "../hooks/useQcColumnLayout";
