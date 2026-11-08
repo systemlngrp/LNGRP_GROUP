@@ -12,6 +12,7 @@ import crypto from "crypto";
 import { exec } from "child_process";
 import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
+import { buildNpdIndexes, computeInvoicedByItem, computeInvoiceOutputs, computeProcessedOutputs, ck as npdCk, round2 as npdRound2 } from "./npdStockFast.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
 import { ensurePerformanceIndexes } from "./performanceIndexes.js";
@@ -3002,8 +3003,11 @@ async function fetchLegacyItems(db: mysql.Pool) {
 
 async function fetchActiveNpdItems(
   db: mysql.Pool,
-  options?: { search?: string; limit?: number; offset?: number; includeTotal?: boolean; status?: "active" | "removed" | "all" }
+  options?: { search?: string; limit?: number; offset?: number; includeTotal?: boolean; status?: "active" | "removed" | "all"; fast?: boolean }
 ) {
+  // fast: the invoiced quantity is matched on the server (npdStockFast) instead
+  // of the slow multi-condition join; every other column is the same query.
+  const invoicedByItem = options?.fast ? await getNpdInvoicedByItemFast(db) : null;
   const [npdColumnsRows] = await db.query("SHOW COLUMNS FROM `npd`");
   const npdColumns = new Set((npdColumnsRows as any[]).map((row) => String(row.Field || "").trim()));
   const firmOpeningExpr = "COALESCE((SELECT SUM(nfo.openingQty) FROM `npd_firm_openings` nfo WHERE nfo.npdId = n.id), 0)";
@@ -3040,46 +3044,7 @@ async function fetchActiveNpdItems(
   const orderSql = "ORDER BY COALESCE(NULLIF(TRIM(n.updateTimestamp), ''), NULLIF(TRIM(n.timestamp), ''), NULLIF(TRIM(n.date), '')) DESC, n.npdId ASC";
   const limitSql = limit ? " LIMIT ? OFFSET ?" : "";
 
-  const [rows] = await db.query(
-    `
-    SELECT
-      n.*,
-      CAST(${openingExpr} AS DECIMAL(15,2)) AS opening,
-      CAST(COALESCE(r.receipt, 0) AS DECIMAL(15,2)) AS receipt,
-      CAST(COALESCE(p.production, 0) AS DECIMAL(15,2)) AS production,
-      CAST(COALESCE(inv.invoiced, 0) AS DECIMAL(15,2)) AS invoiced,
-      CAST(
-        ${openingExpr}
-        + COALESCE(r.receipt, 0)
-        + COALESCE(p.production, 0)
-        - COALESCE(inv.invoiced, 0)
-      AS DECIMAL(15,2)) AS balance
-    FROM \`npd\` n
-    LEFT JOIN (
-      SELECT
-        COALESCE(NULLIF(jt.npdId, ''), jt.itemId) AS masterId,
-        SUM(COALESCE(jt.invoiceQty, jt.qty, 0)) AS receipt
-      FROM \`material_in\` mi
-      JOIN JSON_TABLE(
-        mi.lines,
-        '$[*]' COLUMNS (
-          npdId VARCHAR(36) PATH '$.npdId',
-          itemId VARCHAR(36) PATH '$.itemId',
-          qty DECIMAL(15,2) PATH '$.qty',
-          invoiceQty DECIMAL(15,2) PATH '$.invoiceQty'
-        )
-      ) jt
-      WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')
-      GROUP BY COALESCE(NULLIF(jt.npdId, ''), jt.itemId)
-    ) r ON r.masterId COLLATE utf8mb4_unicode_ci = n.id COLLATE utf8mb4_unicode_ci
-    LEFT JOIN (
-      SELECT
-        COALESCE(NULLIF(npdId, ''), itemId) AS masterId,
-        SUM(COALESCE(prodFromFFG, 0)) AS production
-      FROM \`productions\`
-      WHERE status <> 'Cancelled' OR status IS NULL
-      GROUP BY COALESCE(NULLIF(npdId, ''), itemId)
-    ) p ON p.masterId COLLATE utf8mb4_unicode_ci = n.id COLLATE utf8mb4_unicode_ci
+  const invJoinSql = invoicedByItem ? "" : `
     LEFT JOIN (
       SELECT masterId, SUM(invoiced) AS invoiced
       FROM (
@@ -3123,6 +3088,49 @@ async function fetchActiveNpdItems(
       ) billed
       GROUP BY masterId
     ) inv ON inv.masterId COLLATE utf8mb4_unicode_ci = n.id COLLATE utf8mb4_unicode_ci
+  `;
+  const invoicedExpr = invoicedByItem ? "0" : "COALESCE(inv.invoiced, 0)";
+  const [rows] = await db.query(
+    `
+    SELECT
+      n.*,
+      CAST(${openingExpr} AS DECIMAL(15,2)) AS opening,
+      CAST(COALESCE(r.receipt, 0) AS DECIMAL(15,2)) AS receipt,
+      CAST(COALESCE(p.production, 0) AS DECIMAL(15,2)) AS production,
+      CAST(${invoicedExpr} AS DECIMAL(15,2)) AS invoiced,
+      CAST(
+        ${openingExpr}
+        + COALESCE(r.receipt, 0)
+        + COALESCE(p.production, 0)
+        - ${invoicedExpr}
+      AS DECIMAL(15,2)) AS balance
+    FROM \`npd\` n
+    LEFT JOIN (
+      SELECT
+        COALESCE(NULLIF(jt.npdId, ''), jt.itemId) AS masterId,
+        SUM(COALESCE(jt.invoiceQty, jt.qty, 0)) AS receipt
+      FROM \`material_in\` mi
+      JOIN JSON_TABLE(
+        mi.lines,
+        '$[*]' COLUMNS (
+          npdId VARCHAR(36) PATH '$.npdId',
+          itemId VARCHAR(36) PATH '$.itemId',
+          qty DECIMAL(15,2) PATH '$.qty',
+          invoiceQty DECIMAL(15,2) PATH '$.invoiceQty'
+        )
+      ) jt
+      WHERE mi.status = 'Completed' AND mi.mrrType IN ('Rejection In', 'FG Purchase')
+      GROUP BY COALESCE(NULLIF(jt.npdId, ''), jt.itemId)
+    ) r ON r.masterId COLLATE utf8mb4_unicode_ci = n.id COLLATE utf8mb4_unicode_ci
+    LEFT JOIN (
+      SELECT
+        COALESCE(NULLIF(npdId, ''), itemId) AS masterId,
+        SUM(COALESCE(prodFromFFG, 0)) AS production
+      FROM \`productions\`
+      WHERE status <> 'Cancelled' OR status IS NULL
+      GROUP BY COALESCE(NULLIF(npdId, ''), itemId)
+    ) p ON p.masterId COLLATE utf8mb4_unicode_ci = n.id COLLATE utf8mb4_unicode_ci
+    ${invJoinSql}
     ${whereSql}
     ${orderSql}
     ${limitSql}
@@ -3130,6 +3138,13 @@ async function fetchActiveNpdItems(
     limit ? [...params, limit, offset] : params
   );
 
+  if (invoicedByItem) {
+    for (const row of rows as any[]) {
+      const invoiced = npdRound2(invoicedByItem.get(npdCk(row.id) ?? "") || 0);
+      row.invoiced = invoiced;
+      row.balance = npdRound2(Number(row.opening || 0) + Number(row.receipt || 0) + Number(row.production || 0) - invoiced);
+    }
+  }
   const normalizedRows = (rows as any[]).map((row) => normalizeNpdRowForItemConsumers(row));
   if (!options?.includeTotal) {
     return normalizedRows;
@@ -3251,7 +3266,7 @@ function getFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockIndex> {
   return firmWiseStockIndexInflight;
 }
 
-async function buildFirmWiseStockIndex(rawDb: mysql.Pool): Promise<FirmWiseStockIndex> {
+async function buildFirmWiseStockIndex(rawDb: mysql.Pool, mode: "old" | "fast" = npdStockMode): Promise<FirmWiseStockIndex> {
   // Timing only (Admin diagnostics): every query is timed under its stage name.
   let timingLabel = "stock index: firms";
   const db = { query: async (sql: any, params?: any) => {
@@ -3339,7 +3354,10 @@ async function buildFirmWiseStockIndex(rawDb: mysql.Pool): Promise<FirmWiseStock
         if (stock) stock.receipt += Number(row.qty || 0);
       }
       aggregationStage = "machine processing outputs"; timingLabel = "stock index: machine processing outputs";
-      const [processedOutputs] = await db.query(`
+      const fastRaw = mode === "fast" ? await loadNpdStockRaw(rawDb) : null;
+      const [processedOutputs] = fastRaw
+        ? [computeProcessedOutputs({ npd: buildNpdIndexes(fastRaw.npd), processing: fastRaw.processing, productions: fastRaw.productions })]
+        : await db.query(`
         SELECT p.sourceFirmId, p.destinationFirmId, p.erpCode,
           p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName,
           pp.machineName,
@@ -3381,7 +3399,9 @@ async function buildFirmWiseStockIndex(rawDb: mysql.Pool): Promise<FirmWiseStock
           return name.includes(`unit-${unit}`) || name.includes(`unit ${unit}`) || name.endsWith(`unit${unit}`);
         })?.id || "");
       };
-      const [invoices] = await db.query(`
+      const [invoices] = fastRaw
+        ? [computeInvoiceOutputs({ slipLines: fastRaw.slipLines, invoices: fastRaw.invoices, dispatchPlans: fastRaw.dispatchPlans, orders: fastRaw.orders, productions: fastRaw.productions, interFirm: fastRaw.interFirm, invoiceLineItems: fastRaw.invoiceLineItems })]
+        : await db.query(`
         SELECT inv.invoiceNo,
           COALESCE(NULLIF(ili.sourceFirmId, ''), NULLIF(ip.sourceFirmId, ''), NULLIF(p.sourceFirmId, ''), NULLIF(inv.sourceFirmId, ''), NULLIF(ili.orderFirmId, ''), NULLIF(inv.orderFirmId, '')) firmId,
           CASE WHEN UPPER(COALESCE(ili.itemSource, '')) = 'MATERIAL' AND COALESCE(NULLIF(ip.npdId, ''), '') <> ''
@@ -3428,7 +3448,7 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
   let base: { rows: any[]; total: number };
   try {
     const totalsStart = Date.now();
-    base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any }) as { rows: any[]; total: number };
+    base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any, fast: npdStockMode === "fast" }) as { rows: any[]; total: number };
     recordNpdStockStep("item totals query (opening/receipt/production/invoiced)", Date.now() - totalsStart, base.rows.length);
   } catch (error) {
     console.error("[DB] Firm-wise NPD aggregation failed; using basic NPD fallback:", error);
@@ -3480,6 +3500,63 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
 // calculation for every page. Without a search, compute the full list once
 // (same order as the SQL) and serve pages as slices of it.
 const NPD_FULL_LIST_LIMIT = 1_000_000;
+// ---- Fast NPD stock (see server/npdStockFast.ts) ----
+// "old": the original queries. "fast": plain reads + matching on the server.
+// Switched only after /api/npd-stock-compare shows no differences.
+let npdStockMode: "old" | "fast" = String(process.env.NPD_STOCK_MODE || "").trim().toLowerCase() === "fast" ? "fast" : "old";
+
+type NpdStockRaw = Record<string, any[]>;
+let npdStockRawInflight: Promise<NpdStockRaw> | null = null;
+let npdStockRawCache: { at: number; generation: number; value: NpdStockRaw } | null = null;
+
+/** Plain rows needed by the fast matching; shared by one build's two halves. */
+function loadNpdStockRaw(db: mysql.Pool): Promise<NpdStockRaw> {
+  const generation = firmWiseStockIndexGeneration;
+  if (npdStockRawCache && npdStockRawCache.generation === generation && Date.now() - npdStockRawCache.at < 15_000) {
+    return Promise.resolve(npdStockRawCache.value);
+  }
+  if (!npdStockRawInflight) {
+    npdStockRawInflight = (async () => {
+      const read = async (label: string, sql: string) => {
+        const started = Date.now();
+        const [rows] = await db.query(sql);
+        recordNpdStockStep(`fast read: ${label}`, Date.now() - started, (rows as any[]).length);
+        return rows as any[];
+      };
+      const value: NpdStockRaw = {
+        npd: await read("npd", "SELECT id, npdId, erp, itemName FROM `npd`"),
+        slipLines: await read("loading slip lines", `SELECT ls.id AS slipId, ls.invoiceId, ls.status, jt.itemId, jt.npdId, jt.dispatchPlanId, jt.loadedQty
+          FROM \`loading_slips\` ls
+          JOIN JSON_TABLE(ls.lines, '$[*]' COLUMNS (
+            itemId VARCHAR(36) PATH '$.itemId',
+            npdId VARCHAR(36) PATH '$.npdId',
+            dispatchPlanId VARCHAR(36) PATH '$.dispatchPlanId',
+            loadedQty DECIMAL(15,2) PATH '$.loadedQty'
+          )) jt`),
+        loadingSlips: await read("loading slips", "SELECT id, invoiceId, status FROM `loading_slips`"),
+        invoices: await read("invoices", "SELECT id, invoiceNo, sourceFirmId, orderFirmId, sourceTransactionId FROM `invoices`"),
+        dispatchPlans: await read("dispatch plans", "SELECT id, orderId, productionId FROM `dispatch_plans`"),
+        orders: await read("orders", "SELECT id, npdId, itemId, firmId FROM `orders`"),
+        invoiceLineItems: await read("invoice lines", "SELECT id, invoiceId, loadingSlipId, npdId, itemId, qty, itemSource, sourceFirmId, orderFirmId, sourceTransactionId FROM `invoice_line_items`"),
+        productions: await read("productions", "SELECT id, npdId, itemId, erpCode, sourceFirmId, destinationFirmId, status FROM `productions`"),
+        interFirm: await read("inter-firm pending", "SELECT id, sourceTransactionId, sourceFirmId, npdId, itemId FROM `inter_firm_pending_invoices`"),
+        processing: await read("machine entries", "SELECT productionId, machineName, qty, completionStatus FROM `production_processing`"),
+      };
+      npdStockRawCache = { at: Date.now(), generation, value };
+      return value;
+    })().finally(() => { npdStockRawInflight = null; });
+  }
+  return npdStockRawInflight;
+}
+
+async function getNpdInvoicedByItemFast(db: mysql.Pool) {
+  const raw = await loadNpdStockRaw(db);
+  const started = Date.now();
+  const result = computeInvoicedByItem({ npd: buildNpdIndexes(raw.npd), slipLines: raw.slipLines, invoices: raw.invoices, dispatchPlans: raw.dispatchPlans, orders: raw.orders, invoiceLineItems: raw.invoiceLineItems, loadingSlips: raw.loadingSlips });
+  recordNpdStockStep("fast match: invoiced per item", Date.now() - started, result.size);
+  return result;
+}
+
 // Admin diagnostics: step timings of the last NPD stock builds, shown under
 // "npd-stock" in /api/reports-timings. Timing only; results are unchanged.
 let npdStockSteps: Array<[string, number, number]> = [];
@@ -18676,6 +18753,71 @@ app.get("/api/reports-timings", requireAuth, async (req, res) => {
   if (!user || user.role !== "Admin") return res.status(403).json({ error: "Forbidden" });
   res.setHeader("Cache-Control", "no-store");
   return res.json(Object.fromEntries(reportBuildTimings));
+});
+// Admin: run the original and the fast NPD stock side by side and compare
+// every item total and every firm-wise figure. Read-only. POST starts it
+// (one at a time), GET returns the last result.
+let npdStockCompareState: any = { status: "idle" };
+async function runNpdStockCompare(db: mysql.Pool) {
+  const started = Date.now();
+  npdStockCompareState = { status: "running", startedAt: new Date().toISOString() };
+  const time = async <T,>(label: string, timings: Record<string, number>, load: () => Promise<T>) => {
+    const t = Date.now(); const value = await load(); timings[label] = Date.now() - t; return value;
+  };
+  const timings: Record<string, number> = {};
+  const oldTotals = await time("old item totals", timings, () => fetchActiveNpdItems(db, { status: "all", includeTotal: true }) as Promise<any>);
+  const oldIndex = await time("old firm-wise index", timings, () => buildFirmWiseStockIndex(db, "old"));
+  npdStockRawCache = null;
+  const newTotals = await time("fast item totals", timings, () => fetchActiveNpdItems(db, { status: "all", includeTotal: true, fast: true }) as Promise<any>);
+  const newIndex = await time("fast firm-wise index", timings, () => buildFirmWiseStockIndex(db, "fast"));
+  const diffs: any[] = [];
+  let totalDiffCount = 0;
+  const near = (a: any, b: any) => Math.abs(Number(a || 0) - Number(b || 0)) <= 0.005;
+  const newById = new Map((newTotals.rows as any[]).map((row: any) => [String(row.id), row]));
+  for (const row of oldTotals.rows as any[]) {
+    const other = newById.get(String(row.id));
+    if (!other) { totalDiffCount++; if (diffs.length < 30) diffs.push({ part: "totals", id: row.id, erp: row.erp, missing: true }); continue; }
+    for (const field of ["opening", "receipt", "production", "invoiced", "balance"]) {
+      if (!near(row[field], other[field])) {
+        totalDiffCount++;
+        if (diffs.length < 30) diffs.push({ part: "totals", id: row.id, erp: row.erp, field, old: row[field], fast: other[field] });
+      }
+    }
+  }
+  let firmDiffCount = 0;
+  const itemKeys = new Set([...oldIndex.stocks.keys(), ...newIndex.stocks.keys()]);
+  for (const item of itemKeys) {
+    const a = oldIndex.stocks.get(item) || new Map(); const b = newIndex.stocks.get(item) || new Map();
+    for (const firm of new Set([...a.keys(), ...b.keys()])) {
+      const x = a.get(firm) || {}; const y = b.get(firm) || {};
+      for (const field of ["opening", "receipt", "production", "invoiced", "corrugation"]) {
+        if (!near(x[field], y[field])) {
+          firmDiffCount++;
+          if (diffs.length < 60) diffs.push({ part: "firm", item, firm, field, old: x[field] ?? null, fast: y[field] ?? null });
+        }
+      }
+    }
+  }
+  npdStockCompareState = {
+    status: "done", finishedAt: new Date().toISOString(), totalMs: Date.now() - started, timings,
+    items: (oldTotals.rows as any[]).length, firmItems: itemKeys.size,
+    itemTotalDifferences: totalDiffCount, firmStockDifferences: firmDiffCount, sample: diffs,
+  };
+}
+app.post("/api/npd-stock-compare", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user || user.role !== "Admin") return res.status(403).json({ error: "Forbidden" });
+  if (npdStockCompareState.status === "running") return res.status(202).json(npdStockCompareState);
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  void runNpdStockCompare(db).catch((error) => { npdStockCompareState = { status: "failed", error: String((error as Error)?.message || error).slice(0, 300) }; });
+  return res.status(202).json({ status: "running" });
+});
+app.get("/api/npd-stock-compare", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user || user.role !== "Admin") return res.status(403).json({ error: "Forbidden" });
+  res.setHeader("Cache-Control", "no-store");
+  return res.json({ mode: npdStockMode, ...npdStockCompareState });
 });
 const reportJobs = new Map<string, Promise<any>>();
 async function buildServerReport(module: any, name: string, definition: any, firmId: string, authUserId: string, params: any, cacheKey: string, db: any) {
