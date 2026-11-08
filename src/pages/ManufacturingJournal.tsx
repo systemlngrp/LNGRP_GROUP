@@ -8,7 +8,7 @@ import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { formatDate } from "../lib/serial";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
-import { areUnitOneReelsComplete } from "../lib/manufacturingJournalCompletion";
+import { buildUnitOneReelsChecker } from "../lib/manufacturingJournalCompletion";
 
 type JournalRow = ProductionProcessing & { unit: "Unit-1" | "Unit-2"; firmId: string; firmName: string; itemName: string; erp: string };
 
@@ -34,6 +34,11 @@ export function ManufacturingJournal() {
   const unit2 = useMemo(() => firms.find((firm) => /unit[-\s]?ii/i.test(firm.firmName)), [firms]);
   const jobs = useMemo(() => [...productions, ...phpJobs, ...plateJobs], [plateJobs, phpJobs, productions]);
 
+  // Reel completion checked with lists indexed once (same answers as checking
+  // every reel line for every entry, which took over a minute).
+  const unitOneReelsComplete = useMemo(() => buildUnitOneReelsChecker(issueReels, returnReels, jobs), [issueReels, returnReels, jobs]);
+  const jobById = useMemo(() => { const map = new Map<string, Production>(); jobs.forEach((job) => { if (!map.has(job.id)) map.set(job.id, job); }); return map; }, [jobs]);
+
   const rows = useMemo<JournalRow[]>(() => processing
     .filter((entry) => {
       const stage = normalizeMachineName(entry.machineName);
@@ -41,18 +46,18 @@ export function ManufacturingJournal() {
     })
     .map((entry) => {
       const stage = normalizeMachineName(entry.machineName) as "Corrugation Liner" | "Printing";
-      const production = jobs.find((job) => job.id === entry.productionId);
+      const production = jobById.get(entry.productionId);
       const firm = stage === "Corrugation Liner" ? unit1 : unit2;
       return { ...entry, machineName: stage, unit: stage === "Corrugation Liner" ? "Unit-1" : "Unit-2", firmId: String(firm?.id || ""), firmName: firm ? getFirmDisplayNameById(String(firm.id), firms) : stage === "Corrugation Liner" ? "Unit-1" : "Unit-2", itemName: entry.itemName || production?.remarks || "-", erp: String(entry.erp || production?.erpCode || "-") };
     })
     .filter((row) => {
-      if (row.machineName === "Corrugation Liner" && !areUnitOneReelsComplete(row.productionId, row.jobNo, issueReels, returnReels, jobs)) return false;
+      if (row.machineName === "Corrugation Liner" && !unitOneReelsComplete(row.productionId, row.jobNo)) return false;
       const query = normalize(search);
       const haystack = [row.jobNo, row.itemName, row.erp, row.machineName, row.unit, row.firmName, row.operatorName, row.tallyPostingStatus].map(normalize).join(" ");
       const tally = String(row.tallyPostingStatus || "Pending").trim() || "Pending";
       return (!query || haystack.includes(query)) && (!firmFilter || row.firmId === firmFilter) && (!stageFilter || row.machineName === stageFilter) && (!tallyFilter || tally === tallyFilter) && (!fromDate || row.date >= fromDate) && (!toDate || row.date <= toDate);
     })
-    .sort((a, b) => String(b.date).localeCompare(String(a.date))), [firmFilter, firms, fromDate, issueReels, jobs, processing, returnReels, search, stageFilter, tallyFilter, toDate, unit1, unit2]);
+    .sort((a, b) => String(b.date).localeCompare(String(a.date))), [firmFilter, firms, fromDate, jobById, processing, search, stageFilter, tallyFilter, toDate, unit1, unit2, unitOneReelsComplete]);
 
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pageRows } = useClientPagination(rows, 25);
   const clear = () => { setSearch(""); setFirmFilter(""); setStageFilter(""); setTallyFilter(""); setFromDate(""); setToDate(""); setPage(1); };

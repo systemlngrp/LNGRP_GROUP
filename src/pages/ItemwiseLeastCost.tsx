@@ -36,7 +36,9 @@ interface LeastCostRecord {
 export function ItemwiseLeastCost() {
   const [productions, , prodsLoading] = useData<Production>("productions", []);
   const npdItems = useNpdItemsWithoutStock();
-  const [, , , itemActions] = useData<Item>("items", []);
+  // Only used to save Least GSM uploads; the item list itself is not shown,
+  // so it is not downloaded (that read took about 20 s).
+  const [, , , itemActions] = useData<Item>("items", [], { enabled: false, cacheToLocalStorage: false });
   const itemsLoading = false;
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");

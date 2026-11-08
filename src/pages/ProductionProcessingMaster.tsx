@@ -1,4 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { useData } from "../hooks/useData";
 import { Firm, Machine, Production, ProductionProcessing } from "../types";
 import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
@@ -167,11 +169,18 @@ export function ProductionProcessingMaster() {
     }
   };
 
+  // First job per id across productions, PHP and plate jobs (same pick as the
+  // earlier list search), built once.
+  const jobById = useMemo(() => {
+    const map = new Map<string, Production>();
+    [...productions, ...phpJobs, ...plateJobs].forEach((job) => { if (!map.has(job.id)) map.set(job.id, job); });
+    return map;
+  }, [productions, phpJobs, plateJobs]);
+
   const filtered = useMemo(() => {
-    const jobs = [...productions, ...phpJobs, ...plateJobs];
     return processing
       .filter((p) => {
-        const production = jobs.find((job) => job.id === p.productionId);
+        const production = jobById.get(p.productionId);
         const firmId = String(production?.firmId || production?.orderFirmId || "");
         const firmName = getFirmDisplayNameById(firmId, firms);
         if (firmFilter && firmId !== firmFilter) return false;
@@ -190,7 +199,11 @@ export function ProductionProcessingMaster() {
         return matchesSearch && matchesFrom && matchesTo;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [firmFilter, firms, fromDate, phpJobs, plateJobs, processing, productions, searchTerm, toDate]);
+  }, [firmFilter, firms, fromDate, jobById, processing, searchTerm, toDate]);
+
+  // The table draws 100 reports per page; filters cover every report.
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedReports } = useClientPagination(filtered, 100);
+  useEffect(() => { setPage(1); }, [firmFilter, fromDate, searchTerm, toDate, setPage]);
 
   return (
     <div className="space-y-6">
@@ -257,13 +270,13 @@ export function ProductionProcessingMaster() {
                   <td colSpan={11} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
                 </tr>
               ) : (
-                filtered.map((item) => {
+                pagedReports.map((item) => {
                   const isEditing = editingId === item.id;
                   const editMachineName = normalizeMachineName(machineOptions.find((option) => option.value === editDraft.machineId)?.label);
                   const editCompletionStatus = item.completionStatus || "Full";
                   const showEditCorrugationWastage = editMachineName === "Corrugation Liner" && editCompletionStatus === "Full";
                   const showEditPrintingWastage = editMachineName === "Printing" && editCompletionStatus === "Full";
-                  const linkedProduction = [...productions, ...phpJobs, ...plateJobs].find((job) => job.id === item.productionId);
+                  const linkedProduction = jobById.get(item.productionId);
                   const linkedFirmId = String(linkedProduction?.firmId || linkedProduction?.orderFirmId || "");
                   const firmName = getFirmDisplayNameById(linkedFirmId, firms);
 
@@ -424,6 +437,14 @@ export function ProductionProcessingMaster() {
           </table>
         </div>
       </div>
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        pageSizeOptions={[100, 250, 500]}
+      />
     </div>
   );
 }
