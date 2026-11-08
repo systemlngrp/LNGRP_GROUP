@@ -53,6 +53,14 @@ export function buildJobClosureStatusMap({
   resolveProductionItem,
 }: BuildJobClosureStatusMapArgs) {
   const result = new Map<string, JobClosureStatus>();
+  // Entries grouped by job once (same order as the full list) instead of
+  // scanning every entry for every job.
+  const recordsByProductionId = new Map<string, typeof processing>();
+  processing.forEach((entry) => {
+    const list = recordsByProductionId.get(entry.productionId);
+    if (list) list.push(entry);
+    else recordsByProductionId.set(entry.productionId, [entry]);
+  });
 
   productions.forEach((production) => {
     const item = resolveProductionItem(production);
@@ -61,7 +69,7 @@ export function buildJobClosureStatusMap({
       .map((machineName) => normalizeMachineName(machineName))
       .filter(Boolean);
     const uniqueRequired = Array.from(new Set(required));
-    const records = processing.filter((entry) => entry.productionId === production.id);
+    const records = recordsByProductionId.get(production.id) || [];
     const planQty = Number(production.qty || 0);
     const reasons: string[] = [];
     const missing: string[] = [];

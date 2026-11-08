@@ -149,7 +149,18 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       !p.tallyTimestamp
     );
 
+    // Machine entries grouped by job once (same order as the full list); every
+    // check below only looks at one job's entries, so the answers are unchanged.
+    const processingByProductionId = new Map<string, ProductionProcessing[]>();
+    processing.forEach((entry) => {
+      const list = processingByProductionId.get(entry.productionId);
+      if (list) list.push(entry);
+      else processingByProductionId.set(entry.productionId, [entry]);
+    });
+    const noProcessing: ProductionProcessing[] = [];
+
     activeProductions.forEach(p => {
+      const jobProcessing = processingByProductionId.get(p.id) || noProcessing;
       const schedule = scheduleById.get(String(p.scheduleId || ""));
       const order = schedule ? orderById.get(String(schedule.orderId || "")) : undefined;
       const source = getProductionOriginSource(p, phpJobIds, plateJobIds);
@@ -164,7 +175,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         )
       );
       if (!requiredMachines.length) return;
-      const currentMachineName = getCurrentProcessingMachine(processing, p.id, requiredMachines);
+      const currentMachineName = getCurrentProcessingMachine(jobProcessing, p.id, requiredMachines);
       
       requiredMachines.forEach(machineName => {
         const normalizedRequiredMachine = normalizeMachineName(machineName);
@@ -174,11 +185,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         if (!machine) return;
         if (filterMachineId && machine.id !== filterMachineId) return;
 
-        const machineProcessing = processing
+        const machineProcessing = jobProcessing
           .filter(pr => pr.productionId === p.id && normalizeMachineName(pr.machineName) === normalizedRequiredMachine);
         const reportedForThisMachine = machineProcessing
           .reduce((sum, pr) => sum + Number(pr.qty || 0), 0);
-        const stepIsFull = isMachineStepFull(processing, p.id, normalizedRequiredMachine);
+        const stepIsFull = isMachineStepFull(jobProcessing, p.id, normalizedRequiredMachine);
         const pending = Math.max(0, Number(p.qty || 0) - reportedForThisMachine);
 
         if (!stepIsFull && (pending > 0 || reportedForThisMachine > 0)) {
