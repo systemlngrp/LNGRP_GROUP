@@ -1183,11 +1183,18 @@ async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: numb
 
 async function buildSidebarPendingCounts(db: mysql.Pool) {
   const counts = Object.fromEntries(SIDEBAR_COUNT_KEYS.map((key) => [key, 0])) as Record<string, number>;
+  // Admin diagnostics: how long each count takes ("sidebar-counts" in
+  // /api/reports-timings). Timing only; the counts are unchanged.
+  const countTimings: Array<[string, number, number]> = [];
+  const buildStarted = Date.now();
   const count = async (key: string, sql: string, params: any[] = [], fallbackSql?: string) => {
+    const started = Date.now();
     try {
       const [rows] = await db.query(sql, params);
       counts[key] = Number((rows as any[])[0]?.count || 0);
+      countTimings.push([key, Date.now() - started, counts[key]]);
     } catch (error) {
+      countTimings.push([`${key} (failed)`, Date.now() - started, 0]);
       console.warn(`[SIDEBAR_COUNTS] ${key} query failed:`, (error as Error).message);
       if (!fallbackSql) return;
       try {
@@ -1234,8 +1241,16 @@ async function buildSidebarPendingCounts(db: mysql.Pool) {
     queueCount("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
   ];
   await runWithConcurrency(countTasks, 2);
+  const dailyStarted = Date.now();
   const pendingDaily = await fetchPendingDailyCount(db);
   counts["/material-movement/pending-non-job-issue"] = pendingDaily;
+  countTimings.push(["/material-movement/pending-non-job-issue", Date.now() - dailyStarted, pendingDaily]);
+  try {
+    reportBuildTimings.set("sidebar-counts", {
+      at: new Date().toISOString(), totalMs: Date.now() - buildStarted,
+      steps: [...countTimings].sort((a, b) => b[1] - a[1]),
+    });
+  } catch { /* timings are optional */ }
   const generatedAt = new Date().toISOString();
   return { counts, generatedAt };
 }
