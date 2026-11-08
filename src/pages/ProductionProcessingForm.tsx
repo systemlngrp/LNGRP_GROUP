@@ -374,6 +374,21 @@ function FullReportForm() {
   const isFullReport = completionStatus === "Full";
   const showCorrugationWastage = isCorrugationLiner && isFullReport;
   const showPrintingWastage = isPrinting && isFullReport;
+  // Same "No Hisab" kg calculation as the quick (locked) entry form.
+  const fullCorrugationQty = processing
+    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && (entry.completionStatus || "Full") === "Full")
+    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0) + (isCorrugationLiner && isFullReport ? Number(qty || 0) : 0);
+  const automaticNoHisab = useMemo(() => {
+    if (!showCorrugationWastage || !selectedProduction) return 0;
+    const values = buildCorrugationWastageValues(wastageDraft, selectedProduction);
+    return getAutomaticNoHisabKg({
+      actualPaperUsedKg: materialUsageMap.get(selectedProduction.id) ?? selectedProduction.actualPaperUsed,
+      requiredReelKg: selectedProduction.totalPaperWeight,
+      planQuantity: selectedProduction.qty || selectedProduction.plannedQty,
+      fullCorrugationQty,
+      ...values,
+    }).noHisabKg;
+  }, [fullCorrugationQty, materialUsageMap, selectedProduction, showCorrugationWastage, wastageDraft]);
   const materialIssueBlocked = isPrinting &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
   const materialIssueMessage = issuedProductionIds.has(productionId) ? PRINTING_RETURNED_MESSAGE : PRINTING_MATERIAL_MESSAGE;
