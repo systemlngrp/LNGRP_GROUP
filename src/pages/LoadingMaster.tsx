@@ -24,7 +24,7 @@ import {
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildLinkedLoadingDetailsFromSlip } from "../lib/linkedLoading";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
@@ -54,7 +54,7 @@ export function LoadingMaster() {
   const [trucks] = useData<Truck>("trucks", []);
   const [plans, setPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const { resolveOrderItem, itemsBySource, allItems } = useOrderItemCatalog();
   const [companies] = useData<Company>("companies", [], { firmScope: "all", storageKey: "companies-all-firms" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all", storageKey: "firms-all" });

@@ -7,7 +7,7 @@ import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { Company, DispatchPlan, Invoice, LoadingSlip, Order, OrderSchedule } from "../types";
 import { formatDate, getFinancialYear } from "../lib/serial";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 
 type DelayBucket = "0-3" | "4-7" | "8-10" | "11-15" | ">15" | "";
 type RowStatus = "Hit" | "Miss" | "Pending";
@@ -88,7 +88,7 @@ export function HitVsMissReport() {
   const [schedules] = useData<OrderSchedule>("orders_schedule", []);
   const [orders] = useData<Order>("orders", []);
   const [companies] = useData<Company>("companies", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [plans] = useData<DispatchPlan>("dispatch_plans", []);
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [invoices] = useData<Invoice>("invoices", []);

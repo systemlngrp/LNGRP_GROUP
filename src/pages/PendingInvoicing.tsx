@@ -324,13 +324,35 @@ export function PendingInvoicing() {
     return itemId ? `${itemSource}::${itemId}` : "";
   };
 
+  // Lookups built once per data change (first record per id, line items per
+  // loading slip in their original order) instead of scanning lists per slip.
+  const lookup = useMemo(() => {
+    const firstById = <T extends { id: string }>(rows: T[]) => {
+      const map = new Map<string, T>();
+      rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); });
+      return map;
+    };
+    const lineItemsBySlipId = new Map<string, InvoiceLineItem[]>();
+    invoiceLineItems.forEach((line) => {
+      const key = String(line.loadingSlipId || "").trim();
+      const list = lineItemsBySlipId.get(key);
+      if (list) list.push(line);
+      else lineItemsBySlipId.set(key, [line]);
+    });
+    return {
+      planById: firstById(plans),
+      orderById: firstById(orders),
+      companyById: firstById(companies),
+      slipById: firstById(loadingSlips),
+      lineItemsBySlipId,
+    };
+  }, [plans, orders, companies, loadingSlips, invoiceLineItems]);
+
   const getPendingSlip = (slip: LoadingSlip, includeInvoiceId = "") => {
     if (slip.status === "Cancelled") return null;
 
-    const relevantLineItems = invoiceLineItems.filter(
-      (line) =>
-        String(line.loadingSlipId || "").trim() === slip.id &&
-        (!includeInvoiceId || String(line.invoiceId || "").trim() !== includeInvoiceId)
+    const relevantLineItems = (lookup.lineItemsBySlipId.get(slip.id) || []).filter(
+      (line) => !includeInvoiceId || String(line.invoiceId || "").trim() !== includeInvoiceId
     );
 
     if (slip.invoiceId && relevantLineItems.length === 0 && !includeInvoiceId) return null;
@@ -346,8 +368,8 @@ export function PendingInvoicing() {
 
     const pendingLines = (slip.lines || [])
       .map((line: any) => {
-        const plan = plans.find((p) => p.id === line.dispatchPlanId);
-        const order = orders.find((o) => o.id === plan?.orderId);
+        const plan = lookup.planById.get(line.dispatchPlanId);
+        const order = lookup.orderById.get(plan?.orderId as string);
         const lineKey = getSlipLineKey(line, order);
         if (!lineKey) return null;
 
@@ -493,11 +515,11 @@ export function PendingInvoicing() {
     pendingSlips.forEach(s => {
       const firstLine = s.lines[0];
       if (!firstLine) return;
-      const plan = plans.find(p => p.id === firstLine.dispatchPlanId);
-      const order = orders.find(o => o.id === plan?.orderId);
+      const plan = lookup.planById.get(firstLine.dispatchPlanId);
+      const order = lookup.orderById.get(plan?.orderId as string);
       const firmId = String(order?.firmId || plan?.orderFirmId || plan?.firmId || s.orderFirmId || s.firmId || "");
       const firmName = getFirmDisplayNameById(firmId, firms);
-      const company = companies.find(c => c.id === (order?.companyId || s.companyId || firstLine.companyId));
+      const company = lookup.companyById.get((order?.companyId || s.companyId || firstLine.companyId) as string);
       const companyName = company?.name || s.companyName || firstLine.companyName || "";
 
       if (!company && !companyName) return;
@@ -517,13 +539,13 @@ export function PendingInvoicing() {
 
       const totalQty = s.lines.reduce((sum, l) => sum + Number(l.loadedQty || 0), 0);
       const slipItems = s.lines.map(l => {
-        const lp = plans.find(p => p.id === l.dispatchPlanId);
-        const lo = orders.find(o => o.id === lp?.orderId);
+        const lp = lookup.planById.get(l.dispatchPlanId);
+        const lo = lookup.orderById.get(lp?.orderId as string);
         return resolveSlipLineItemName(l, lo);
       });
       const slipItemKeys = s.lines.map(l => {
-        const lp = plans.find(p => p.id === l.dispatchPlanId);
-        const lo = orders.find(o => o.id === lp?.orderId);
+        const lp = lookup.planById.get(l.dispatchPlanId);
+        const lo = lookup.orderById.get(lp?.orderId as string);
         const itemId = resolveCanonicalSlipLineItemId(l, lo);
         const itemName = resolveSlipLineItemName(l, lo);
         const erp = String(l.erpCode || l.masterErp || lo?.erpCode || "").trim();
@@ -550,7 +572,7 @@ export function PendingInvoicing() {
         return `${group.firmName} ${group.companyName} ${slipText}`.toLowerCase().includes(needle);
       })
       .sort((a, b) => a.companyName.localeCompare(b.companyName));
-  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, findItemAcrossSources, resolveOrderItem]);
+  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, findItemAcrossSources, resolveOrderItem, lookup]);
 
   const companyOptions = useMemo(() => Array.from(new Map(groupedData.map((group) => [group.companyId, { value: group.companyId, label: group.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); groupedData.forEach((group) => group.slips.forEach((slip) => slip.items.forEach((name, index) => { const key = slip.itemKeys[index] || name; if (!key || map.has(key)) return; map.set(key, { value: key, label: name, searchText: name }); }))); return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label)); }, [groupedData]);
@@ -586,21 +608,21 @@ export function PendingInvoicing() {
     const dispatchedMap = new Map<string, number>();
     invoiceLineItems.forEach((lineItem) => {
       if (editInvoiceId && lineItem.invoiceId === editInvoiceId) return;
-      const slip = loadingSlips.find((entry) => entry.id === lineItem.loadingSlipId);
+      const slip = lookup.slipById.get(lineItem.loadingSlipId as string);
       const slipLine = slip?.lines?.find((entry: any) => {
-        const plan = plans.find((p) => p.id === entry.dispatchPlanId);
-        const order = orders.find((o) => o.id === plan?.orderId);
+        const plan = lookup.planById.get(entry.dispatchPlanId);
+        const order = lookup.orderById.get(plan?.orderId as string);
         return (
           getSlipLineKey(entry, order) ===
           `${normalizeOrderItemSource(lineItem.itemSource || "FG")}::${String(lineItem.npdId || lineItem.itemId || "").trim()}`
         );
       });
-      const plan = slipLine ? plans.find((entry) => entry.id === slipLine.dispatchPlanId) : undefined;
+      const plan = slipLine ? lookup.planById.get(slipLine.dispatchPlanId) : undefined;
       if (!plan?.orderId) return;
       dispatchedMap.set(plan.orderId, (dispatchedMap.get(plan.orderId) || 0) + Number(lineItem.qty || 0));
     });
     return dispatchedMap;
-  }, [invoiceLineItems, loadingSlips, plans, orders, editInvoiceId]);
+  }, [invoiceLineItems, loadingSlips, plans, orders, editInvoiceId, lookup]);
 
   const handleOpenInvoiceForm = () => {
     if (!billingMode) return;

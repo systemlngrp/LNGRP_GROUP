@@ -30,7 +30,7 @@ import { generateTransactionNo } from "../lib/serial";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { applySupplyTypeTaxRates, calculateNetSupplierPayable, normalizeInvoiceCurrency, normalizeTdsAmount, recalculateMaterialLine, summarizeMaterialInLines, validateTdsAmount } from "../lib/materialInTaxes";
 import { getGatePassLinesWithReturns } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
@@ -171,7 +171,7 @@ export function MaterialInForm() {
   const [materialGroups] = useData<MaterialGroup>("material-groups", []);
   const [units] = useData<UnitMaster>("units", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);

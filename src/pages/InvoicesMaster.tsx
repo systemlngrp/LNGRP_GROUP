@@ -124,14 +124,44 @@ export function InvoicesMaster() {
   const getGrandTotal = (invoice: Invoice) =>
     Number(invoice.totalAfterGst || 0) + (hasTaxableOtherCharges(invoice) ? 0 : getOtherCharges(invoice)) + getRoundOff(invoice);
 
-  const getInvoiceSlips = (invoiceId: string) =>
-    slips.filter((slip) => slip.invoiceId === invoiceId && slip.status !== "Cancelled");
+  // Lookups built once per data change (first record per id; per-invoice
+  // lists keep their original order), so each invoice does not scan every list.
+  const lookup = useMemo(() => {
+    const firstById = <T extends { id: string }>(rows: T[]) => {
+      const map = new Map<string, T>();
+      rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); });
+      return map;
+    };
+    const groupBy = <T,>(rows: T[], keyOf: (row: T) => string) => {
+      const map = new Map<string, T[]>();
+      rows.forEach((row) => {
+        const key = keyOf(row);
+        const list = map.get(key);
+        if (list) list.push(row);
+        else map.set(key, [row]);
+      });
+      return map;
+    };
+    return {
+      activeSlipsByInvoice: groupBy(slips.filter((slip) => slip.status !== "Cancelled"), (slip) => slip.invoiceId as string),
+      linesByInvoice: groupBy(lineItems, (line) => line.invoiceId as string),
+      slipById: firstById(slips),
+      truckById: firstById(trucks),
+      planById: firstById(dispatchPlans),
+      orderById: firstById(orders),
+      npdById: firstById(npdItems as Array<{ id: string }>),
+      materialById: firstById(materials),
+      companyById: firstById(companies),
+    };
+  }, [slips, lineItems, trucks, dispatchPlans, orders, npdItems, materials, companies]);
+
+  const getInvoiceSlips = (invoiceId: string) => lookup.activeSlipsByInvoice.get(invoiceId) || [];
 
   const resolveInvoiceLineItemMasterId = (line: InvoiceLineItem) =>
     String(line.npdId || line.itemId || "").trim();
 
   const buildInvoiceDetails = (invoice: Invoice): InvoiceDetailRow[] => {
-    const invLines = lineItems.filter((line) => line.invoiceId === invoice.id);
+    const invLines = lookup.linesByInvoice.get(invoice.id) || [];
     const invoiceSlips = getInvoiceSlips(invoice.id);
 
     const storedLineQueues = new Map<string, InvoiceLineItem[]>();
@@ -150,10 +180,10 @@ export function InvoicesMaster() {
 
     if (invoiceSlips.length > 0) {
       const derivedRows = invoiceSlips.flatMap((slip) => {
-        const truck = trucks.find((row) => row.id === slip.truckId);
+        const truck = lookup.truckById.get(slip.truckId as string);
         return (slip.lines || []).map((slipLine: any, index: number) => {
-          const plan = dispatchPlans.find((row) => row.id === slipLine.dispatchPlanId);
-          const order = orders.find((row) => row.id === plan?.orderId);
+          const plan = lookup.planById.get(slipLine.dispatchPlanId);
+          const order = lookup.orderById.get(plan?.orderId as string);
           let masterId = String(order?.itemId || slipLine.itemId || "").trim();
 
           const exactKey = `${slip.id}__${masterId}`;
@@ -163,7 +193,7 @@ export function InvoicesMaster() {
             if (storedLine && !masterId) masterId = resolveInvoiceLineItemMasterId(storedLine);
           }
 
-          const item = npdItems.find((row) => row.id === masterId);
+          const item = lookup.npdById.get(masterId) as (typeof npdItems)[number] | undefined;
           const qty = Number(slipLine.loadedQty || storedLine?.qty || 0);
           const rate = Number(storedLine?.rate ?? order?.rate ?? 0);
           const amountFromLine = Number(storedLine?.amount || 0);
@@ -193,13 +223,13 @@ export function InvoicesMaster() {
     return invLines.map((line, index) => {
       const masterId = resolveInvoiceLineItemMasterId(line);
       const material = String(line.itemSource || "").toUpperCase() === "MATERIAL"
-        ? materials.find((row) => row.id === line.itemId)
+        ? lookup.materialById.get(line.itemId as string)
         : undefined;
       const item = material
         ? ({ name: material.name, erp: material.erpCode } as any)
-        : npdItems.find((row) => row.id === masterId);
-      const slip = slips.find((row) => row.id === line.loadingSlipId);
-      const truck = trucks.find((row) => row.id === slip?.truckId);
+        : (lookup.npdById.get(masterId) as (typeof npdItems)[number] | undefined);
+      const slip = lookup.slipById.get(line.loadingSlipId as string);
+      const truck = lookup.truckById.get(slip?.truckId as string);
       return {
         id: line.id || `${invoice.id}-${index}`,
         itemId: masterId,
@@ -283,11 +313,20 @@ export function InvoicesMaster() {
     }
   };
 
+  // Each invoice's detail lines worked out once and shared by the list and
+  // the item filter options.
+  const detailsByInvoice = useMemo(() => {
+    const map = new WeakMap<Invoice, InvoiceDetailRow[]>();
+    invoices.forEach((invoice) => map.set(invoice, buildInvoiceDetails(invoice)));
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, lookup]);
+
   const processedInvoices = useMemo(() => {
     return invoices
       .map((invoice) => {
-        const company = companies.find((row) => row.id === invoice.companyId);
-        const details = buildInvoiceDetails(invoice);
+        const company = lookup.companyById.get(invoice.companyId);
+        const details = detailsByInvoice.get(invoice) || buildInvoiceDetails(invoice);
         const itemSummary =
           Array.from(
             new Set(
@@ -335,7 +374,7 @@ export function InvoicesMaster() {
         if (bSort.numeric !== aSort.numeric) return bSort.numeric - aSort.numeric;
         return bSort.raw.localeCompare(aSort.raw, undefined, { sensitivity: "base" });
       });
-  }, [invoices, companies, searchTerm, companyFilter, itemFilter, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials]);
+  }, [invoices, companies, searchTerm, companyFilter, itemFilter, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, lookup, detailsByInvoice]);
 
   const billingSummary = useMemo(
     () => ({
@@ -347,14 +386,14 @@ export function InvoicesMaster() {
   );
 
   const companyOptions = useMemo(() => {
-    const names = Array.from(new Set(invoices.map((invoice) => companies.find((company) => company.id === invoice.companyId)?.name || "").filter(Boolean)));
+    const names = Array.from(new Set(invoices.map((invoice) => lookup.companyById.get(invoice.companyId)?.name || "").filter(Boolean)));
     return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).map((name) => ({ value: name, label: name }));
-  }, [companies, invoices]);
+  }, [companies, invoices, lookup]);
 
   const itemOptions = useMemo(() => {
     const map = new Map<string, { value: string; label: string; searchText: string }>();
     invoices.forEach((invoice) => {
-      buildInvoiceDetails(invoice).forEach((line) => {
+      (detailsByInvoice.get(invoice) || buildInvoiceDetails(invoice)).forEach((line) => {
         const itemName = String(line.itemName || "").trim();
         const erp = String(line.erp || "").trim();
         const key = itemName || erp ? `${itemName}::${erp}` : "";
@@ -364,7 +403,7 @@ export function InvoicesMaster() {
       });
     });
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
-  }, [invoices, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials]);
+  }, [invoices, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, detailsByInvoice]);
 
   const {
     page,

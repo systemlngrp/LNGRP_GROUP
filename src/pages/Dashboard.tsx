@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { ChevronRight, Info } from "lucide-react";
 import { useData } from "../hooks/useData";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import {
   Company,
   Consumption,
@@ -70,7 +70,7 @@ export function Dashboard() {
   const [materialReturns] = useData<MaterialReturn>("material-returns", []);
   const [materialReturnLines] = useData<MaterialReturnLine>("material-return-lines", []);
   const [materialReturnReelLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [materials] = useData<Material>("materials", []);
   const [orders] = useData<Order>("orders", []);
   const [consumptions] = useData<Consumption>("consumptions", []);

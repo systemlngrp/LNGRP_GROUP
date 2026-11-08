@@ -26,7 +26,7 @@ import {
   buildProductionMaterialUsageMap,
   syncProductionWorkflowFromUsage,
 } from "../lib/productionMaterialUsage";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 
 type ReturnMaterialOption = Material & { isNpdConsumableItem?: boolean; npdSourceId?: string; rate?: number };
@@ -57,7 +57,7 @@ export function MaterialReturnForm() {
   // Read-only: receipt lines, firm and date (reel rate, latest purchase rate).
   const [materialIn] = useData<MaterialIn>("material-in", [], { fields: ["lines", "firmId", "timestamp", "date"] });
   const [packingSlips] = useData<MaterialInPackingSlip>("material-in-packing-slips", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const [productions, setProductions] = useData<Production>("productions", []);
   const [materialIssues] = useData<MaterialIssue>("material-issues", []);
   const [materialIssueLines] = useData<MaterialIssueLine>("material-issue-lines", []);

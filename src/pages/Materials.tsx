@@ -10,7 +10,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
 import { useClientPagination } from "../hooks/useClientPagination";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { getNextPlainNumber } from "../lib/materialNumbering";
 import { useConfirm } from "../components/ConfirmDialog";
 import { OPENING_REEL_MATERIAL_IN_ID, isOpeningReelPackingSlip } from "../lib/materialMovement";
@@ -159,7 +159,7 @@ export function Materials() {
   const [returnLines] = useData<MaterialReturnLine>("material-return-lines", [], { fields: ["materialReturnId", "materialId", "qty", "amount", "rate", "lastPurchaseRate", "openingRate"] });
   const [reelReturnLines] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { fields: ["materialReturnId", "materialReturnLineId", "materialId", "weightKg", "packingSlipId"] });
   const [suppliers] = useData<Supplier>("suppliers", []);
-  const npdItems = useNpdItems();
+  const npdItems = useNpdItemsWithoutStock();
   const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
