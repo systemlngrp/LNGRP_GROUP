@@ -12,6 +12,7 @@ import crypto from "crypto";
 import { exec } from "child_process";
 import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
+import { countPendingMaterialReturnJobs } from "./pendingCountsFast.js";
 import { buildNpdIndexes, computeInvoicedByItem, computeInvoiceOutputs, computeProcessedOutputs, ck as npdCk, round2 as npdRound2 } from "./npdStockFast.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
@@ -1241,6 +1242,19 @@ async function buildSidebarPendingCounts(db: mysql.Pool) {
     queueCount("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
   ];
   await runWithConcurrency(countTasks, 2);
+  // Comparison only (the SQL count above stays live): the same count worked
+  // out on the server from three plain reads, recorded next to it.
+  try {
+    const fastStarted = Date.now();
+    const [prodRows] = await db.query("SELECT id, transactionNo, jobCardNo, status, cancelTimestamp FROM productions");
+    const [issueRows] = await db.query("SELECT productionId, jobNo, packingSlipId, ourReelNo, weightKg FROM material_issue_reel_lines");
+    const [returnRows] = await db.query("SELECT productionId, jobNo, packingSlipId, ourReelNo, weightKg FROM material_return_reel_lines");
+    const fastCount = countPendingMaterialReturnJobs({ productions: prodRows as any[], issueReels: issueRows as any[], returnReels: returnRows as any[] });
+    const sqlCount = counts["/production/pending-material-return"];
+    countTimings.push([`FAST /production/pending-material-return ${fastCount === sqlCount ? "MATCH" : "DIFF sql=" + sqlCount}`, Date.now() - fastStarted, fastCount]);
+  } catch (error) {
+    countTimings.push([`FAST /production/pending-material-return failed: ${String((error as Error)?.message || error).slice(0, 80)}`, 0, 0]);
+  }
   const dailyStarted = Date.now();
   const pendingDaily = await fetchPendingDailyCount(db);
   counts["/material-movement/pending-non-job-issue"] = pendingDaily;
