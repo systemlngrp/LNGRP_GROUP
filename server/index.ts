@@ -12,7 +12,6 @@ import crypto from "crypto";
 import { exec } from "child_process";
 import util from "util";
 import { shouldExcludeFirmWiseNpdReceipt } from "./npdReceipt.js";
-import { countPendingMaterialReturnJobs } from "./pendingCountsFast.js";
 import { buildNpdIndexes, computeInvoicedByItem, computeInvoiceOutputs, computeProcessedOutputs, ck as npdCk, round2 as npdRound2 } from "./npdStockFast.js";
 import { getCurrentRequiredMachine, getProcessingMachineRoute } from "./processingMachineRoute.js";
 import { registerSalesOrderSync } from "./salesOrderSync.js";
@@ -1028,9 +1027,6 @@ const firmWiseNpdInflight = new Map<string, Promise<{ rows: any[]; total: number
 let firmWiseStockIndexCache: FirmWiseStockIndex | null = null;
 let firmWiseStockIndexInflight: Promise<FirmWiseStockIndex> | null = null;
 let firmWiseStockIndexGeneration = 0;
-const SIDEBAR_COUNT_CACHE_TTL_MS = 30_000;
-let sidebarCountCache: { expiresAt: number; value: { counts: Record<string, number>; generatedAt: string } } | null = null;
-let sidebarCountInflight: Promise<{ counts: Record<string, number>; generatedAt: string }> | null = null;
 
 function pendingDailyTallyWhere(alias = "material_issues") {
   return `LOWER(TRIM(COALESCE(${alias}.issueType, ''))) IN ('general', 'without job', 'withoutjob', 'without_job')
@@ -1056,237 +1052,9 @@ function publishRealtimeDataChange(entities: string[] = ["*"]) {
   realtimeDataVersion += 1;
   recordChangeVersion(realtimeDataVersion, entities.length ? entities : ["*"]);
   markSnapshotTablesChanged(entities);
-  // Keep the last sidebar numbers and mark them for a background refresh,
-  // instead of making the next page wait for 25 count queries.
-  if (sidebarCountCache) sidebarCountCache.expiresAt = 0;
   if (pendingJobClosureCountCache) pendingJobClosureCountCache.stale = true;
 }
 
-const SIDEBAR_COUNT_KEYS = [
-  "/indent/pending", "/purchase-orders/pending-indent-lines", "/purchase-orders/pending-approval", "/material-receipt/pending-mrr",
-  "/material-receipt/approvals", "/material-receipt/pending-tally", "/material-receipt/pending-debit-note", "/material-receipt/pending-credit-note",
-  "/material-movement/pending-non-job-issue", "/material-movement/pending-consumption-tally", "/orders/pending-ph", "/orders/pending-scheduling",
-  "/production/pending", "/production/pending-npd", "/production/pending-consumption", "/production/pending-material-return", "/production/pending-job-transfer",
-  "/production/pending-printing", "/production/pending-tally", "/production/pending-job-closure", "/production/pending-machine-processing",
-  "/production/php/pending-planning", "/production/plate/pending-planning", "/production/php-plate/pending-production", "/samples/pending",
-  "/dispatch/pending-planning", "/loading/pending", "/loading/php/pending-tally", "/loading/plate/pending-tally", "/billing/pending", "/billing/pending-tally",
-  "/gate-pass/pending-returnable",
-] as const;
-
-// Mirrors isProductionPendingConsumption() used by the Pending Material Issue
-// page: open (not cancelled, not tally-posted) jobs with no net paper usage.
-// Net usage = Job issue lines - Job return lines (+/- reel lines that have no
-// item line), or any net corrugated-sheet usage.
-const PENDING_MATERIAL_ISSUE_COUNT_SQL = `
-  SELECT COUNT(*) AS count
-  FROM productions p
-  LEFT JOIN (
-    SELECT productionId, SUM(qty) AS netQty, SUM(sheetQty) AS sheetQty
-    FROM (
-      SELECT mi.productionId, COALESCE(mil.qty, 0) AS qty,
-        CASE WHEN LOWER(COALESCE(m.name, '')) LIKE '%corrugated sheet%' THEN COALESCE(mil.qty, 0) ELSE 0 END AS sheetQty
-      FROM material_issue_lines mil
-      JOIN material_issues mi ON mi.id = mil.materialIssueId AND mi.issueType = 'Job'
-      LEFT JOIN materials m ON m.id = mil.materialId
-      WHERE COALESCE(mi.productionId, '') <> ''
-      UNION ALL
-      SELECT mr.productionId, -COALESCE(mrl.qty, 0),
-        CASE WHEN LOWER(COALESCE(m.name, '')) LIKE '%corrugated sheet%' THEN -COALESCE(mrl.qty, 0) ELSE 0 END
-      FROM material_return_lines mrl
-      JOIN material_returns mr ON mr.id = mrl.materialReturnId AND mr.returnType = 'Job'
-      LEFT JOIN materials m ON m.id = mrl.materialId
-      WHERE COALESCE(mr.productionId, '') <> ''
-      UNION ALL
-      SELECT COALESCE(NULLIF(irl.productionId, ''), mi.productionId), COALESCE(irl.weightKg, 0), 0
-      FROM material_issue_reel_lines irl
-      LEFT JOIN material_issue_lines mil ON mil.id = irl.materialIssueLineId
-      LEFT JOIN material_issues mi ON mi.id = irl.materialIssueId AND mi.issueType = 'Job'
-      WHERE mil.id IS NULL
-      UNION ALL
-      SELECT COALESCE(NULLIF(rrl.productionId, ''), mr.productionId), -COALESCE(rrl.weightKg, 0), 0
-      FROM material_return_reel_lines rrl
-      LEFT JOIN material_return_lines mrl ON mrl.id = rrl.materialReturnLineId
-      LEFT JOIN material_returns mr ON mr.id = rrl.materialReturnId AND mr.returnType = 'Job'
-      WHERE mrl.id IS NULL
-    ) usageRows
-    WHERE COALESCE(productionId, '') <> ''
-    GROUP BY productionId
-  ) u ON u.productionId = p.id
-  WHERE COALESCE(p.cancelTimestamp, '') = ''
-    AND COALESCE(p.tallyTimestamp, '') = ''
-    -- Jobs with no issue/return rows fall back to the stored actualPaperUsed.
-    AND (CASE WHEN u.productionId IS NULL THEN COALESCE(p.actualPaperUsed, 0) ELSE u.netQty END) <= 0
-    AND COALESCE(u.sheetQty, 0) <= 0
-`;
-
-// Mirrors getAllReturnableReelLines() used by the Pending Material Return page:
-// active jobs with an issued reel (by packing slip or reel no.) that the same
-// job has not returned.
-// Job number (transactionNo or jobCardNo) -> production id, used when a reel
-// line has no valid productionId (same fallback as the client resolver).
-const JOB_NO_TO_PRODUCTION_SQL = `
-  SELECT jobKey, MAX(id) AS id FROM (
-    SELECT LOWER(TRIM(transactionNo)) AS jobKey, id FROM productions WHERE COALESCE(TRIM(transactionNo), '') <> ''
-    UNION ALL
-    SELECT LOWER(TRIM(jobCardNo)) AS jobKey, id FROM productions WHERE COALESCE(TRIM(jobCardNo), '') <> ''
-  ) jobKeys GROUP BY jobKey
-`;
-
-const RESOLVED_RETURN_REEL_LINES_SQL = `
-  SELECT
-    CASE WHEN pd.id IS NOT NULL THEN pd.id ELSE COALESCE(jm.id, NULLIF(TRIM(rrl.productionId), '')) END AS pid,
-    rrl.packingSlipId, rrl.ourReelNo
-  FROM material_return_reel_lines rrl
-  LEFT JOIN productions pd ON pd.id = TRIM(rrl.productionId)
-  LEFT JOIN (${JOB_NO_TO_PRODUCTION_SQL}) jm ON jm.jobKey = LOWER(TRIM(rrl.jobNo))
-  WHERE COALESCE(rrl.weightKg, 0) > 0.004
-`;
-
-const PENDING_MATERIAL_RETURN_COUNT_SQL = `
-  SELECT COUNT(DISTINCT iss.pid) AS count
-  FROM (
-    SELECT
-      CASE WHEN pd.id IS NOT NULL THEN pd.id ELSE COALESCE(jm.id, NULLIF(TRIM(irl.productionId), '')) END AS pid,
-      irl.packingSlipId, irl.ourReelNo, irl.weightKg
-    FROM material_issue_reel_lines irl
-    LEFT JOIN productions pd ON pd.id = TRIM(irl.productionId)
-    LEFT JOIN (${JOB_NO_TO_PRODUCTION_SQL}) jm ON jm.jobKey = LOWER(TRIM(irl.jobNo))
-  ) iss
-  JOIN productions p ON p.id = iss.pid
-  LEFT JOIN (
-    SELECT DISTINCT ret.pid, LOWER(TRIM(ret.packingSlipId)) AS slipKey
-    FROM (${RESOLVED_RETURN_REEL_LINES_SQL}) ret
-    WHERE COALESCE(TRIM(ret.packingSlipId), '') <> ''
-  ) rs ON rs.pid = iss.pid AND rs.slipKey = LOWER(TRIM(iss.packingSlipId))
-  LEFT JOIN (
-    SELECT DISTINCT ret.pid, LOWER(TRIM(ret.ourReelNo)) AS reelKey
-    FROM (${RESOLVED_RETURN_REEL_LINES_SQL}) ret
-    WHERE COALESCE(TRIM(ret.ourReelNo), '') <> ''
-  ) rn ON rn.pid = iss.pid AND rn.reelKey = LOWER(TRIM(iss.ourReelNo))
-  WHERE COALESCE(p.status, '') <> 'Cancelled'
-    AND COALESCE(p.cancelTimestamp, '') = ''
-    AND COALESCE(iss.weightKg, 0) > 0.004
-    AND (COALESCE(TRIM(iss.packingSlipId), '') <> '' OR COALESCE(TRIM(iss.ourReelNo), '') <> '')
-    AND rs.pid IS NULL
-    AND rn.pid IS NULL
-`;
-
-async function runWithConcurrency(tasks: Array<() => Promise<void>>, limit: number) {
-  let next = 0;
-  const worker = async () => {
-    while (next < tasks.length) {
-      const task = tasks[next++];
-      await task();
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
-}
-
-async function buildSidebarPendingCounts(db: mysql.Pool) {
-  const counts = Object.fromEntries(SIDEBAR_COUNT_KEYS.map((key) => [key, 0])) as Record<string, number>;
-  // Admin diagnostics: how long each count takes ("sidebar-counts" in
-  // /api/reports-timings). Timing only; the counts are unchanged.
-  const countTimings: Array<[string, number, number]> = [];
-  const buildStarted = Date.now();
-  const count = async (key: string, sql: string, params: any[] = [], fallbackSql?: string) => {
-    const started = Date.now();
-    try {
-      const [rows] = await db.query(sql, params);
-      counts[key] = Number((rows as any[])[0]?.count || 0);
-      countTimings.push([key, Date.now() - started, counts[key]]);
-    } catch (error) {
-      countTimings.push([`${key} (failed)`, Date.now() - started, 0]);
-      console.warn(`[SIDEBAR_COUNTS] ${key} query failed:`, (error as Error).message);
-      if (!fallbackSql) return;
-      try {
-        const [rows] = await db.query(fallbackSql);
-        counts[key] = Number((rows as any[])[0]?.count || 0);
-      } catch (fallbackError) {
-        console.warn(`[SIDEBAR_COUNTS] ${key} fallback query failed:`, (fallbackError as Error).message);
-      }
-    }
-  };
-  // The database pool has only a few connections; run the counts two at a
-  // time so other screens and saves are not queued behind them.
-  const countTasks: Array<() => Promise<void>> = [];
-  const queueCount = (key: string, sql: string, params: any[] = [], fallbackSql?: string) => {
-    countTasks.push(() => count(key, sql, params, fallbackSql));
-  };
-  [
-    queueCount("/indent/pending", "SELECT COUNT(*) AS count FROM indents WHERE LOWER(COALESCE(status, '')) = 'pending'"),
-    queueCount("/purchase-orders/pending-approval", "SELECT COUNT(*) AS count FROM purchase_orders WHERE LOWER(COALESCE(status, '')) = 'pending approval'"),
-    queueCount("/purchase-orders/pending-indent-lines", "SELECT COUNT(*) AS count FROM indent_lines WHERE COALESCE(qty, 0) - COALESCE(cancelledQty, 0) - COALESCE(orderedQty, 0) > 0"),
-    queueCount("/material-receipt/approvals", "SELECT COUNT(*) AS count FROM material_in WHERE status IN ('Pending PH', 'Pending Accounts', 'Pending MD')"),
-    queueCount("/material-receipt/pending-ph-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending PH'"),
-    queueCount("/material-receipt/pending-accounts-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Accounts'"),
-    queueCount("/material-receipt/pending-md-approval", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending MD'"),
-    queueCount("/material-receipt/pending-tally", "SELECT COUNT(*) AS count FROM material_in WHERE status = 'Pending Tally' AND LOWER(COALESCE(mrrType, '')) <> 'rejection in'"),
-    queueCount("/material-receipt/pending-debit-note", "SELECT COUNT(*) AS count FROM material_in WHERE COALESCE(debitNote, '') <> '' AND COALESCE(tallyTimestamp, '') = ''"),
-    queueCount("/material-receipt/pending-credit-note", "SELECT COUNT(*) AS count FROM material_in WHERE mrrType = 'Rejection In' AND COALESCE(creditTallyTimestamp, '') = ''"),
-    queueCount("/orders/pending-ph", "SELECT COUNT(*) AS count FROM orders WHERE status IN ('Pending PH', 'Pending Salesman Approval')"),
-    queueCount("/orders/pending-scheduling", "SELECT COUNT(*) AS count FROM orders WHERE status = 'Pending Scheduling'"),
-    queueCount("/samples/pending", "SELECT COUNT(*) AS count FROM sample_requests WHERE COALESCE(jobCardNo, '') = '' AND COALESCE(cancelTimestamp, '') = ''"),
-    queueCount("/production/pending", "SELECT COUNT(*) AS count FROM productions WHERE status IN ('Pending PH', 'Pending Production', 'Pending Planning')"),
-    queueCount("/production/pending-consumption", PENDING_MATERIAL_ISSUE_COUNT_SQL, [],
-      "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(status, '') NOT IN ('Cancelled', 'Completed')"),
-    queueCount("/production/pending-tally", "SELECT COUNT(*) AS count FROM productions WHERE COALESCE(tallyPostingStatus, '') <> 'Completed' AND COALESCE(tallyTimestamp, '') = '' AND COALESCE(status, '') NOT IN ('Cancelled', 'Pending PH')"),
-    queueCount("/production/pending-material-return", PENDING_MATERIAL_RETURN_COUNT_SQL, [],
-      "SELECT COUNT(DISTINCT productionId) AS count FROM material_issue_reel_lines WHERE COALESCE(productionId, '') <> ''"),
-    queueCount("/production/pending-machine-processing", "SELECT COUNT(*) AS count FROM production_processing WHERE COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
-    queueCount("/production/pending-printing", "SELECT COUNT(*) AS count FROM production_processing WHERE LOWER(COALESCE(machineName, '')) LIKE '%printing%' AND COALESCE(status, '') NOT IN ('Completed', 'Cancelled')"),
-    queueCount("/loading/php/pending-tally", "SELECT COUNT(*) AS count FROM php_loading_slips WHERE COALESCE(phpConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
-    queueCount("/loading/plate/pending-tally", "SELECT COUNT(*) AS count FROM plate_loading_slips WHERE COALESCE(plateConsumptionTransactionNo, '') <> '' AND COALESCE(tallyTimestamp, '') = '' AND LOWER(COALESCE(status, 'active')) <> 'cancelled'"),
-    queueCount("/material-movement/pending-consumption-tally", `SELECT COUNT(*) AS count FROM daily_consumptions WHERE ${pendingDailyTallyWhere("daily_consumptions")}`),
-    queueCount("/billing/pending", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = ''"),
-    queueCount("/billing/pending-tally", "SELECT COUNT(*) AS count FROM invoices WHERE COALESCE(tallyTimestamp, '') = '' AND COALESCE(tallyPostingStatus, '') <> 'Not Applicable'"),
-    queueCount("/gate-pass/pending-returnable", "SELECT COUNT(*) AS count FROM gate_passes WHERE LOWER(COALESCE(status, '')) IN ('pending', 'open')"),
-  ];
-  await runWithConcurrency(countTasks, 2);
-  // Comparison only (the SQL count above stays live): the same count worked
-  // out on the server from three plain reads, recorded next to it.
-  try {
-    const fastStarted = Date.now();
-    const [prodRows] = await db.query("SELECT id, transactionNo, jobCardNo, status, cancelTimestamp FROM productions");
-    const [issueRows] = await db.query("SELECT productionId, jobNo, packingSlipId, ourReelNo, weightKg FROM material_issue_reel_lines");
-    const [returnRows] = await db.query("SELECT productionId, jobNo, packingSlipId, ourReelNo, weightKg FROM material_return_reel_lines");
-    const fastCount = countPendingMaterialReturnJobs({ productions: prodRows as any[], issueReels: issueRows as any[], returnReels: returnRows as any[] });
-    const sqlCount = counts["/production/pending-material-return"];
-    countTimings.push([`FAST /production/pending-material-return ${fastCount === sqlCount ? "MATCH" : "DIFF sql=" + sqlCount}`, Date.now() - fastStarted, fastCount]);
-  } catch (error) {
-    countTimings.push([`FAST /production/pending-material-return failed: ${String((error as Error)?.message || error).slice(0, 80)}`, 0, 0]);
-  }
-  const dailyStarted = Date.now();
-  const pendingDaily = await fetchPendingDailyCount(db);
-  counts["/material-movement/pending-non-job-issue"] = pendingDaily;
-  countTimings.push(["/material-movement/pending-non-job-issue", Date.now() - dailyStarted, pendingDaily]);
-  try {
-    reportBuildTimings.set("sidebar-counts", {
-      at: new Date().toISOString(), totalMs: Date.now() - buildStarted,
-      steps: [...countTimings].sort((a, b) => b[1] - a[1]),
-    });
-  } catch { /* timings are optional */ }
-  const generatedAt = new Date().toISOString();
-  return { counts, generatedAt };
-}
-
-async function fetchPendingDailyCount(db: mysql.Pool) {
-  const [productionRows] = await db.query("SELECT COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) AS firmId, MIN(LEFT(p.date, 10)) AS firstJobDate FROM productions p LEFT JOIN orders_schedule os ON os.id = p.scheduleId LEFT JOIN orders o ON o.id = os.orderId WHERE COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) <> '' AND LEFT(p.date, 10) <> '' GROUP BY COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), ''))");
-  const [issueRows] = await db.query("SELECT firmId, LEFT(date, 10) AS issueDate FROM material_issues WHERE LOWER(TRIM(COALESCE(issueType, ''))) IN ('general', 'without job', 'withoutjob', 'without_job') AND NOT (LOWER(TRIM(COALESCE(interFirmFlow, ''))) = 'yes' AND LOWER(TRIM(COALESCE(autoGenerated, ''))) = 'yes' AND LOWER(TRIM(COALESCE(sourceTransactionType, ''))) = 'production processing') AND COALESCE(TRIM(firmId), '') <> '' AND LEFT(date, 10) <> ''");
-  const completed = new Set((issueRows as any[]).map((row) => `${row.firmId}:${row.issueDate}`));
-  const today = new Date().toISOString().slice(0, 10);
-  let total = 0;
-  for (const row of productionRows as any[]) {
-    const first = String(row.firstJobDate || "").slice(0, 10);
-    if (!first) continue;
-    for (let date = first; date <= today; ) {
-      if (!completed.has(`${row.firmId}:${date}`)) total += 1;
-      const next = new Date(`${date}T00:00:00Z`);
-      next.setUTCDate(next.getUTCDate() + 1);
-      date = next.toISOString().slice(0, 10);
-    }
-  }
-  return total;
-}
 function getCookieValue(req: express.Request, name: string) {
   const prefix = `${name}=`;
   return String(req.headers.cookie || "").split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length) || "";
@@ -1450,39 +1218,6 @@ app.get("/api/version", (_req, res) => {
   res.json({ build: APP_BUILD_MARKER });
 });
 
-app.get("/api/sidebar/pending-counts", requireAuth, async (_req, res) => {
-  const db = await getPool();
-  if (!db) return res.status(503).json({ error: "Database unavailable" });
-  try { await ensureDailyConsumptionReady(db); }
-  catch { return res.status(503).json({ error: "Daily Consumption schema unavailable. Please retry shortly." }); }
-  const now = Date.now();
-  if (sidebarCountCache && sidebarCountCache.expiresAt > now) {
-    return res.json(sidebarCountCache.value);
-  }
-  const staleValue = sidebarCountCache?.value;
-  if (!sidebarCountInflight) {
-    const startedAt = now;
-    sidebarCountInflight = buildSidebarPendingCounts(db)
-      .then((value) => {
-        sidebarCountCache = { expiresAt: Date.now() + SIDEBAR_COUNT_CACHE_TTL_MS, value };
-        console.info(`[SIDEBAR_COUNTS] refreshed keys=${Object.keys(value.counts).length} elapsedMs=${Date.now() - startedAt}`);
-        return value;
-      })
-      .finally(() => { sidebarCountInflight = null; });
-  }
-  if (staleValue) {
-    // Badges are informational: answer with the previous numbers while the
-    // refresh runs in the background.
-    sidebarCountInflight.catch((error) => console.error("[SIDEBAR_COUNTS] background refresh failed:", error));
-    return res.json(staleValue);
-  }
-  try {
-    return res.json(await sidebarCountInflight);
-  } catch (error) {
-    console.error("[SIDEBAR_COUNTS] failed:", error);
-    return res.status(500).json({ error: "Failed to load sidebar counts" });
-  }
-});
 
 // The firm-wise stock report used to be readable without signing in. When
 // NPD_FIRM_WISE_PUBLIC_KEY is set, callers must be signed in or pass ?key=<that
