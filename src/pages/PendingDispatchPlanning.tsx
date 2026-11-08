@@ -30,8 +30,9 @@ export function PendingDispatchPlanning() {
   const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
   const [dispatchPlans, setDispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
-  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
-  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms" });
+  // Read-only here: only the columns this screen uses are downloaded.
+  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms-dispatch-planning", fields: ["status", "lines"] });
+  const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms-dispatch-planning", fields: ["itemId", "status", "cancelTimestamp", "qty"] });
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [selectedFirmId, setSelectedFirmId] = useState<string>("");
@@ -41,12 +42,20 @@ export function PendingDispatchPlanning() {
   const [sortKey, setSortKey] = useState<SortKey>("scheduledDate");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  tomorrow.setHours(23, 59, 59, 999);
+  // Same dates as before, but kept stable through the day so the schedule
+  // list is not recalculated on every screen update.
+  const dayKey = new Date().toDateString();
+  const today = useMemo(() => {
+    const value = new Date();
+    value.setHours(0, 0, 0, 0);
+    return value;
+  }, [dayKey]);
+  const tomorrow = useMemo(() => {
+    const value = new Date(today);
+    value.setDate(value.getDate() + 1);
+    value.setHours(23, 59, 59, 999);
+    return value;
+  }, [today]);
 
   const isFfgFilled = (value: unknown) => {
     if (value === null || value === undefined) return false;

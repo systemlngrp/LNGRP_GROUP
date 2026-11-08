@@ -24,10 +24,12 @@ const MAX_CONCURRENT_REQUESTS = 4;
 // Server cursor pages accept up to 500 rows; NPD endpoints cap at 250.
 const BATCH_SIZE = 500;
 const NPD_BATCH_SIZE = 250;
-/** The NPD catalog (item details, no stock) is a plain read: 1000 per request. */
-const NPD_CATALOG_BATCH_SIZE = 1000;
+/** The NPD catalog (plain read) and the firm-wise stock list (slices of a
+ * cached full list) are read 1000 rows per request. */
+const NPD_LARGE_BATCH_SIZE = 1000;
 function npdBatchSize(endpoint: string) {
-  return new URL(endpoint, window.location.origin).pathname === "/api/npd/catalog" ? NPD_CATALOG_BATCH_SIZE : NPD_BATCH_SIZE;
+  const path = new URL(endpoint, window.location.origin).pathname;
+  return path === "/api/npd/catalog" || path === "/api/npd-firm-wise" ? NPD_LARGE_BATCH_SIZE : NPD_BATCH_SIZE;
 }
 /** Long lists of small rows (issue/return lines, reels, packing slips,
  * invoices, orders, schedules, dispatch plans): read
