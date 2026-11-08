@@ -17757,15 +17757,12 @@ app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
         return res.status(500).json({ error: "Failed to build dashboard summary" });
     }
 });
-const DASHBOARD_SUMMARY_WAIT_MS = 25_000;
-async function buildOperationDashboardSummary(db, firmId, authUserId, options, cacheKey) {
-    const startedAt = Date.now();
-    const { from, to, closedJobFilter, includeExportRows } = options;
+// The lists the Operation Dashboard reads, in load order. Shared by the
+// dashboard build and the after-restart warm-up so both read the same lists.
+function operationDashboardListPlan(db, firmId, authUserId) {
     const withFirm = (entity) => loadCollectionLikeClient(entity, firmId, authUserId);
     const allFirms = (entity) => loadCollectionLikeClient(entity, "", authUserId);
-    // Load sequentially: one DB connection at a time (hosting connection quota).
-    const lists = {};
-    const plan = [
+    return [
         ["productions", () => withFirm("productions")],
         ["firms", () => withFirm("firms")],
         ["phpJobMaster", () => withFirm("php_job_master")],
@@ -17804,6 +17801,45 @@ async function buildOperationDashboardSummary(db, firmId, authUserId, options, c
         ["npdFirmWiseRows", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }))],
         ["catalogFgRows", () => loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }))],
     ];
+}
+// After a restart, read the dashboard's lists once in the background so the
+// first person to open a screen does not wait for every list to load from the
+// database. Starts 1 minute after startup, reads one list at a time (one DB
+// connection), runs once per restart and only reads: no figure or record
+// changes. Set DASHBOARD_WARMUP=off to disable.
+let dashboardWarmupStarted = false;
+async function warmDashboardSnapshots() {
+    if (dashboardWarmupStarted)
+        return;
+    dashboardWarmupStarted = true;
+    const startedAt = Date.now();
+    const db = await getPool();
+    if (!db)
+        return;
+    const [adminRows] = await db.query("SELECT id FROM users WHERE role = 'Admin' ORDER BY id ASC LIMIT 1");
+    const adminId = String(adminRows[0]?.id || "");
+    if (!adminId)
+        return;
+    const [firmRows] = await db.query("SELECT id FROM firms ORDER BY firmName ASC, id ASC");
+    const firmIds = firmRows.map((row) => String(row?.id || "")).filter(Boolean);
+    let lists = 0;
+    for (const firmId of firmIds) {
+        for (const [, load] of operationDashboardListPlan(db, firmId, adminId)) {
+            await load();
+            lists += 1;
+        }
+    }
+    await loadDashboardSummaryModule();
+    reportBuildTimings.set("dashboard-warmup", { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [["lists", Date.now() - startedAt, lists]] });
+    console.info(`[WARMUP] dashboard lists ready firms=${firmIds.length} lists=${lists} ms=${Date.now() - startedAt}`);
+}
+const DASHBOARD_SUMMARY_WAIT_MS = 25_000;
+async function buildOperationDashboardSummary(db, firmId, authUserId, options, cacheKey) {
+    const startedAt = Date.now();
+    const { from, to, closedJobFilter, includeExportRows } = options;
+    // Load sequentially: one DB connection at a time (hosting connection quota).
+    const lists = {};
+    const plan = operationDashboardListPlan(db, firmId, authUserId);
     const steps = [];
     for (const [key, load] of plan) {
         const stepStart = Date.now();
@@ -18094,6 +18130,11 @@ async function startServer() {
     // Keep the web server available while migrations run; Daily Consumption
     // endpoints await databaseInitializationPromise before querying.
     void initializedPromise.then(() => {
+        if (String(process.env.DASHBOARD_WARMUP || "on").toLowerCase() !== "off") {
+            setTimeout(() => {
+                void warmDashboardSnapshots().catch((error) => console.warn("[WARMUP] dashboard warm-up failed:", error.message));
+            }, 60_000);
+        }
         setInterval(() => {
             void retryPendingWhatsappComplaints();
             void retryPrintingShiftReports();

@@ -18684,6 +18684,81 @@ app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
   }
 });
 
+// The lists the Operation Dashboard reads, in load order. Shared by the
+// dashboard build and the after-restart warm-up so both read the same lists.
+function operationDashboardListPlan(db: mysql.Pool, firmId: string, authUserId: string): Array<[string, () => Promise<any[]>]> {
+  const withFirm = (entity: string) => loadCollectionLikeClient(entity, firmId, authUserId);
+  const allFirms = (entity: string) => loadCollectionLikeClient(entity, "", authUserId);
+  return [
+    ["productions", () => withFirm("productions")],
+    ["firms", () => withFirm("firms")],
+    ["phpJobMaster", () => withFirm("php_job_master")],
+    ["plateJobMaster", () => withFirm("plate_job_master")],
+    ["materials", () => withFirm("materials")],
+    ["materialIn", () => withFirm("material_in")],
+    ["packingSlips", () => withFirm("material_in_packing_slips")],
+    ["schedules", () => withFirm("orders_schedule")],
+    ["orders", () => withFirm("orders")],
+    ["companies", () => withFirm("companies")],
+    ["gateEntries", () => withFirm("gate_entries")],
+    ["dispatchPlans", () => withFirm("dispatch_plans")],
+    ["processing", () => withFirm("production_processing")],
+    ["loadingSlips", () => withFirm("loading_slips")],
+    ["materialIssues", () => withFirm("material_issues")],
+    ["materialIssueLines", () => withFirm("material_issue_lines")],
+    ["issueReelLines", () => withFirm("material_issue_reel_lines")],
+    ["materialReturns", () => withFirm("material_returns")],
+    ["materialReturnLines", () => withFirm("material_return_lines")],
+    ["returnReelLines", () => withFirm("material_return_reel_lines")],
+    ["invoices", () => withFirm("invoices")],
+    ["invoiceLineItems", () => withFirm("invoice_line_items")],
+    ["consumptions", () => withFirm("consumptions")],
+    ["sampleRequests", () => withFirm("sample_requests")],
+    ["indents", () => withFirm("indents")],
+    ["indentLines", () => withFirm("indent_lines")],
+    ["purchaseOrders", () => withFirm("purchase_orders")],
+    ["phpLoadingSlips", () => withFirm("php_loading_slips")],
+    ["plateLoadingSlips", () => withFirm("plate_loading_slips")],
+    ["gatePasses", () => withFirm("gate_passes")],
+    ["machines", () => withFirm("machines")],
+    ["settings", () => withFirm("settings")],
+    ["catalogPhpRows", () => allFirms("php_item_master")],
+    ["catalogPlateRows", () => allFirms("plate_item_master")],
+    ["catalogMaterialRows", () => allFirms("materials")],
+    ["npdFirmWiseRows", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }))],
+    ["catalogFgRows", () => loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }))],
+  ];
+}
+
+// After a restart, read the dashboard's lists once in the background so the
+// first person to open a screen does not wait for every list to load from the
+// database. Starts 1 minute after startup, reads one list at a time (one DB
+// connection), runs once per restart and only reads: no figure or record
+// changes. Set DASHBOARD_WARMUP=off to disable.
+let dashboardWarmupStarted = false;
+async function warmDashboardSnapshots() {
+  if (dashboardWarmupStarted) return;
+  dashboardWarmupStarted = true;
+  const startedAt = Date.now();
+  const db = await getPool();
+  if (!db) return;
+  const [adminRows] = await db.query("SELECT id FROM users WHERE role = 'Admin' ORDER BY id ASC LIMIT 1");
+  const adminId = String((adminRows as any[])[0]?.id || "");
+  if (!adminId) return;
+  const [firmRows] = await db.query("SELECT id FROM firms ORDER BY firmName ASC, id ASC");
+  const firmIds = (firmRows as any[]).map((row) => String(row?.id || "")).filter(Boolean);
+  let lists = 0;
+  for (const firmId of firmIds) {
+    for (const [, load] of operationDashboardListPlan(db, firmId, adminId)) {
+      await load();
+      lists += 1;
+    }
+  }
+  await loadDashboardSummaryModule();
+  reportBuildTimings.set("dashboard-warmup", { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [["lists", Date.now() - startedAt, lists]] });
+  console.info(`[WARMUP] dashboard lists ready firms=${firmIds.length} lists=${lists} ms=${Date.now() - startedAt}`);
+}
+
 const DASHBOARD_SUMMARY_WAIT_MS = 25_000;
 async function buildOperationDashboardSummary(
   db: mysql.Pool,
@@ -18694,49 +18769,9 @@ async function buildOperationDashboardSummary(
 ) {
     const startedAt = Date.now();
     const { from, to, closedJobFilter, includeExportRows } = options;
-    const withFirm = (entity: string) => loadCollectionLikeClient(entity, firmId, authUserId);
-    const allFirms = (entity: string) => loadCollectionLikeClient(entity, "", authUserId);
     // Load sequentially: one DB connection at a time (hosting connection quota).
     const lists: Record<string, any[]> = {};
-    const plan: Array<[string, () => Promise<any[]>]> = [
-      ["productions", () => withFirm("productions")],
-      ["firms", () => withFirm("firms")],
-      ["phpJobMaster", () => withFirm("php_job_master")],
-      ["plateJobMaster", () => withFirm("plate_job_master")],
-      ["materials", () => withFirm("materials")],
-      ["materialIn", () => withFirm("material_in")],
-      ["packingSlips", () => withFirm("material_in_packing_slips")],
-      ["schedules", () => withFirm("orders_schedule")],
-      ["orders", () => withFirm("orders")],
-      ["companies", () => withFirm("companies")],
-      ["gateEntries", () => withFirm("gate_entries")],
-      ["dispatchPlans", () => withFirm("dispatch_plans")],
-      ["processing", () => withFirm("production_processing")],
-      ["loadingSlips", () => withFirm("loading_slips")],
-      ["materialIssues", () => withFirm("material_issues")],
-      ["materialIssueLines", () => withFirm("material_issue_lines")],
-      ["issueReelLines", () => withFirm("material_issue_reel_lines")],
-      ["materialReturns", () => withFirm("material_returns")],
-      ["materialReturnLines", () => withFirm("material_return_lines")],
-      ["returnReelLines", () => withFirm("material_return_reel_lines")],
-      ["invoices", () => withFirm("invoices")],
-      ["invoiceLineItems", () => withFirm("invoice_line_items")],
-      ["consumptions", () => withFirm("consumptions")],
-      ["sampleRequests", () => withFirm("sample_requests")],
-      ["indents", () => withFirm("indents")],
-      ["indentLines", () => withFirm("indent_lines")],
-      ["purchaseOrders", () => withFirm("purchase_orders")],
-      ["phpLoadingSlips", () => withFirm("php_loading_slips")],
-      ["plateLoadingSlips", () => withFirm("plate_loading_slips")],
-      ["gatePasses", () => withFirm("gate_passes")],
-      ["machines", () => withFirm("machines")],
-      ["settings", () => withFirm("settings")],
-      ["catalogPhpRows", () => allFirms("php_item_master")],
-      ["catalogPlateRows", () => allFirms("plate_item_master")],
-      ["catalogMaterialRows", () => allFirms("materials")],
-      ["npdFirmWiseRows", () => loadNpdPagesLikeClient((offset) => getCachedFirmWiseNpdItems(db, { search: "", status: "all", limit: 250, offset }))],
-      ["catalogFgRows", () => loadNpdPagesLikeClient((offset) => fetchNpdCatalogItems(db, { search: "", status: "all", limit: 250, offset }))],
-    ];
+    const plan = operationDashboardListPlan(db, firmId, authUserId);
     const steps: Array<[string, number, number]> = [];
     for (const [key, load] of plan) {
       const stepStart = Date.now();
@@ -19017,6 +19052,11 @@ async function startServer() {
   // Keep the web server available while migrations run; Daily Consumption
   // endpoints await databaseInitializationPromise before querying.
   void initializedPromise.then(() => {
+    if (String(process.env.DASHBOARD_WARMUP || "on").toLowerCase() !== "off") {
+      setTimeout(() => {
+        void warmDashboardSnapshots().catch((error) => console.warn("[WARMUP] dashboard warm-up failed:", (error as Error).message));
+      }, 60_000);
+    }
     setInterval(() => {
       void retryPendingWhatsappComplaints();
       void retryPrintingShiftReports();
