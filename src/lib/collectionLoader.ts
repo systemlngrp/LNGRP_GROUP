@@ -220,7 +220,10 @@ function pageUrl(endpoint: string, cursor: string | null, page: number) {
     url.searchParams.set("page", String(page));
     url.searchParams.set("pageSize", String(npdBatchSize(endpoint)));
   } else {
-    url.searchParams.set("limit", String(LARGE_BATCH_LISTS.has(normalizeEntityName(url.pathname)) ? LARGE_BATCH_SIZE : BATCH_SIZE));
+    // Long lists of small rows, and any list read with only a few columns
+    // (?fields=), come 2000 rows per request.
+    const largeBatch = LARGE_BATCH_LISTS.has(normalizeEntityName(url.pathname)) || url.searchParams.has("fields");
+    url.searchParams.set("limit", String(largeBatch ? LARGE_BATCH_SIZE : BATCH_SIZE));
     if (cursor) url.searchParams.set("cursor", cursor);
     else url.searchParams.delete("cursor");
   }
