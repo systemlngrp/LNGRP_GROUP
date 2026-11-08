@@ -3251,7 +3251,15 @@ function getFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockIndex> {
   return firmWiseStockIndexInflight;
 }
 
-async function buildFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockIndex> {
+async function buildFirmWiseStockIndex(rawDb: mysql.Pool): Promise<FirmWiseStockIndex> {
+  // Timing only (Admin diagnostics): every query is timed under its stage name.
+  let timingLabel = "stock index: firms";
+  const db = { query: async (sql: any, params?: any) => {
+    const started = Date.now();
+    const result: any = await rawDb.query(sql, params);
+    recordNpdStockStep(timingLabel, Date.now() - started, Array.isArray(result?.[0]) ? result[0].length : -1);
+    return result;
+  } } as unknown as mysql.Pool;
   // The firms table has no active/status column; every Firm Master row is a valid firm.
   const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
   const firms = (firmRows as any[]).filter((firm) => String(firm.id || "").trim()).map((firm) => ({ id: String(firm.id), firmName: String(firm.firmName || firm.id) }));
@@ -3279,6 +3287,7 @@ async function buildFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockInd
   };
   // The API is paginated, but historical production must resolve against the
   // complete NPD master, not only the rows displayed on the current page.
+  timingLabel = "stock index: npd keys";
   const [allNpdRows] = await db.query("SELECT id, npdId, erp, itemName FROM `npd`");
   for (const row of allNpdRows as any[]) {
     const itemId = stringOrEmpty(row.id || row.npdId);
@@ -3312,13 +3321,13 @@ async function buildFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockInd
   {
     let aggregationStage = "initialization";
     try {
-      aggregationStage = "firm openings";
+      aggregationStage = "firm openings"; timingLabel = "stock index: firm openings";
       const [firmOpenings] = await db.query("SELECT npdId, firmId, openingQty FROM `npd_firm_openings`");
       for (const row of firmOpenings as any[]) {
         const stock = ensure(resolveStockItemId(row.npdId), String(row.firmId || "").trim());
         if (stock) stock.opening += Number(row.openingQty || 0);
       }
-      aggregationStage = "material receipts";
+      aggregationStage = "material receipts"; timingLabel = "stock index: material receipts";
       // FG Purchase/Rejection In is a physical receipt as soon as the MRR is
       // created. The Unit-I -> Unit-II automatic transfer is accounted for by
       // Unit-II production, so exclude only that auto MRR from firm-wise stock.
@@ -3329,7 +3338,7 @@ async function buildFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockInd
         const stock = ensure(resolveStockItemId(row.npdId, row.itemId), firm);
         if (stock) stock.receipt += Number(row.qty || 0);
       }
-      aggregationStage = "machine processing outputs";
+      aggregationStage = "machine processing outputs"; timingLabel = "stock index: machine processing outputs";
       const [processedOutputs] = await db.query(`
         SELECT p.sourceFirmId, p.destinationFirmId, p.erpCode,
           p.itemId, p.npdId, pn.id AS resolvedNpdId, pn.itemName AS npdItemName,
@@ -3357,7 +3366,7 @@ async function buildFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockInd
         if (isCorrugationLiner) stock.corrugation += Number(row.qty || 0);
         if (isPrinting) stock.production += Number(row.qty || 0);
       }
-      aggregationStage = "invoice outputs";
+      aggregationStage = "invoice outputs"; timingLabel = "stock index: invoice outputs";
       // Invoice stock reduces the source/stock-owning firm. The current
       // invoice schema stores that on sourceFirmId/orderFirmId, not firmId.
       const [invoiceSettingsRows] = await db.query("SELECT invoiceNumberSeries FROM `settings` ORDER BY updateTimestamp DESC LIMIT 1");
@@ -3418,7 +3427,9 @@ async function buildFirmWiseStockIndex(db: mysql.Pool): Promise<FirmWiseStockInd
 async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
   let base: { rows: any[]; total: number };
   try {
+    const totalsStart = Date.now();
     base = await fetchActiveNpdItems(db, { ...options, includeTotal: true, status: (options.status || "active") as any }) as { rows: any[]; total: number };
+    recordNpdStockStep("item totals query (opening/receipt/production/invoiced)", Date.now() - totalsStart, base.rows.length);
   } catch (error) {
     console.error("[DB] Firm-wise NPD aggregation failed; using basic NPD fallback:", error);
     const status = String(options.status || "active").trim().toLowerCase();
@@ -3438,7 +3449,9 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
     const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM \`npd\` n ${whereSql}`, params);
     base = { rows: rows as any[], total: Number((countRows as any[])[0]?.total || 0) };
   }
+  const indexStart = Date.now();
   const { firms, stocks, unit1FirmId, unit2FirmId } = await getFirmWiseStockIndex(db);
+  recordNpdStockStep("firm-wise stock index (wait, cached or built)", Date.now() - indexStart, stocks.size);
   const rows = base.rows.map((row) => {
     const firmStocks: Record<string, any> = {};
     const rowKeys = [row.id, row.npdId].map((value) => String(value || "").trim()).filter(Boolean);
@@ -3467,6 +3480,17 @@ async function fetchFirmWiseNpdItems(db: mysql.Pool, options: { search?: string;
 // calculation for every page. Without a search, compute the full list once
 // (same order as the SQL) and serve pages as slices of it.
 const NPD_FULL_LIST_LIMIT = 1_000_000;
+// Admin diagnostics: step timings of the last NPD stock builds, shown under
+// "npd-stock" in /api/reports-timings. Timing only; results are unchanged.
+let npdStockSteps: Array<[string, number, number]> = [];
+function recordNpdStockStep(label: string, ms: number, rows: number) {
+  npdStockSteps.push([label, ms, rows]);
+  if (npdStockSteps.length > 40) npdStockSteps = npdStockSteps.slice(-40);
+  try {
+    reportBuildTimings.set("npd-stock", { at: new Date().toISOString(), totalMs: npdStockSteps.reduce((sum, step) => sum + step[1], 0), steps: [...npdStockSteps] });
+  } catch { /* timings are optional */ }
+}
+
 async function getCachedFirmWiseNpdItems(db: mysql.Pool, options: { search?: string; limit: number; offset: number; status?: string }) {
   if (!String(options.search || "").trim() && options.limit < NPD_FULL_LIST_LIMIT) {
     const full = await getCachedFirmWiseNpdItems(db, { search: "", status: options.status, limit: NPD_FULL_LIST_LIMIT, offset: 0 });
@@ -3485,10 +3509,12 @@ async function getCachedFirmWiseNpdItems(db: mysql.Pool, options: { search?: str
     return pending;
   }
   console.info(`[NPD] cache miss key=${key}`);
+  npdStockSteps = [];
   const startedAt = Date.now();
   const request = fetchFirmWiseNpdItems(db, options).then((value) => {
     firmWiseNpdCache.set(key, { expiresAt: Date.now() + NPD_CACHE_TTL_MS, value });
     console.info(`[NPD] aggregation rows=${value.rows.length} total=${value.total} elapsedMs=${Date.now() - startedAt}`);
+    recordNpdStockStep(`TOTAL npd list build (${key.slice(0, 60)})`, Date.now() - startedAt, value.rows.length);
     return value;
   }).finally(() => firmWiseNpdInflight.delete(key));
   firmWiseNpdInflight.set(key, request);
