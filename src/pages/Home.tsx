@@ -3,13 +3,10 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ArrowLeft, ChevronRight, LayoutDashboard } from "lucide-react";
 import { NAVIGATION, type NavEntry, type NavGroup, type NavItem } from "../components/Sidebar";
 import { useAuth } from "../auth/AuthContext";
-import { usePendingTaskCounts } from "../hooks/usePendingTaskCounts";
-import { Spinner } from "../components/Spinner";
 
 /**
- * Light landing page. It loads no business data of its own: pending counts come
- * from the shared, server-computed sidebar counts (one small cached request).
- * Heavy pages such as the Operation Dashboard load only when opened.
+ * Light landing page: a clickable menu of sections. It loads no business data
+ * (no pending counts); pages load their own data only when opened.
  */
 
 const QUICK_ACCESS_SECTION = "Quick Access";
@@ -35,7 +32,6 @@ function sectionSlug(section: string) {
 
 export function Home() {
   const { user, hasAccess } = useAuth();
-  const { counts, loading: countsLoading } = usePendingTaskCounts();
   const [searchParams, setSearchParams] = useSearchParams();
   const selectedSlug = searchParams.get("section") || "";
 
@@ -43,36 +39,14 @@ export function Home() {
     return NAVIGATION.filter((group) => !HIDDEN_SECTIONS.has(group.section))
       .map((group: NavGroup) => {
         const links = flattenEntries(group.items).filter((link) => !link.disabled && hasAccess(link.href));
-        const seenKeys = new Set<string>();
-        let pendingTotal = 0;
-        links.forEach((link) => {
-          if (!link.countKey || seenKeys.has(link.countKey)) return;
-          seenKeys.add(link.countKey);
-          pendingTotal += Number(counts[link.countKey] || 0);
-        });
-        const topPending = links
-          .filter((link) => link.countKey && Number(counts[link.countKey] || 0) > 0)
-          .sort((a, b) => Number(counts[b.countKey!] || 0) - Number(counts[a.countKey!] || 0))
-          .filter((link, index, list) => list.findIndex((other) => other.countKey === link.countKey) === index)
-          .slice(0, 3);
-        return { ...group, slug: sectionSlug(group.section), links, pendingTotal, topPending };
+        return { ...group, slug: sectionSlug(group.section), links };
       })
       .filter((group) => group.links.length > 0);
-  }, [counts, hasAccess]);
+  }, [hasAccess]);
 
   const quickAccess = groups.find((group) => group.section === QUICK_ACCESS_SECTION);
   const moduleGroups = groups.filter((group) => group.section !== QUICK_ACCESS_SECTION);
   const selectedGroup = moduleGroups.find((group) => group.slug === selectedSlug);
-
-  const countBadge = (countKey?: string) => {
-    const value = countKey ? Number(counts[countKey] || 0) : 0;
-    if (!value) return null;
-    return (
-      <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black text-slate-950">
-        {value.toLocaleString()}
-      </span>
-    );
-  };
 
   if (selectedGroup) {
     const subSections = Array.from(
@@ -106,7 +80,6 @@ export function Home() {
                       <Link to={link.href} className="flex items-center gap-3 px-4 py-2.5 text-sm font-bold text-slate-900 hover:bg-indigo-50">
                         <Icon size={16} className="shrink-0 text-slate-500" />
                         <span className="flex-1">{link.name}</span>
-                        {countBadge(link.countKey)}
                         <ChevronRight size={14} className="text-slate-400" />
                       </Link>
                     </li>
@@ -126,12 +99,7 @@ export function Home() {
         <h2 className="text-xl font-black uppercase tracking-tight text-slate-950 md:text-2xl">
           Welcome{user?.name ? `, ${user.name}` : ""}
         </h2>
-        <p className="flex items-center gap-2 text-xs font-bold text-slate-600">
-          Choose an area to start.
-          {countsLoading ? (
-            <span className="inline-flex items-center gap-1 text-indigo-700"><Spinner size={12} /> Updating pending counts…</span>
-          ) : null}
-        </p>
+        <p className="text-xs font-bold text-slate-600">Choose an area to start.</p>
       </div>
 
       {quickAccess ? (
@@ -157,26 +125,9 @@ export function Home() {
             onClick={() => setSearchParams({ section: group.slug })}
             className="group flex flex-col overflow-hidden rounded-xl border-2 border-slate-900 bg-white text-left shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]"
           >
-            <div className={`${group.color} flex items-center justify-between px-4 py-3`}>
+            <div className={`${group.color} flex items-center justify-between px-4 py-4`}>
               <span className="text-base font-black uppercase tracking-tight text-white">{group.section}</span>
-              {group.pendingTotal > 0 ? (
-                <span className="rounded-full bg-white px-2.5 py-0.5 text-xs font-black text-slate-950">
-                  {group.pendingTotal.toLocaleString()} pending
-                </span>
-              ) : null}
-            </div>
-            <div className="flex flex-1 flex-col gap-1.5 px-4 py-3">
-              {group.topPending.length ? (
-                group.topPending.map((link) => (
-                  <div key={link.href} className="flex items-center justify-between gap-2 text-xs font-bold text-slate-700">
-                    <span className="truncate">{link.name}</span>
-                    {countBadge(link.countKey)}
-                  </div>
-                ))
-              ) : (
-                <div className="text-xs font-bold text-slate-500">{group.links.length} pages</div>
-              )}
-              <div className="mt-auto pt-2 text-[11px] font-black uppercase text-indigo-700 group-hover:underline">Open →</div>
+              <ChevronRight size={18} className="text-white/80" />
             </div>
           </button>
         ))}
