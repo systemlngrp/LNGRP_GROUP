@@ -69,6 +69,25 @@ export function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRow
     return itemMap.get(getOrderItemCompositeKey(normalizedSource, normalizedItemId));
   };
 
+  // ERP lookup per source, built on first use: for each ERP value the first
+  // item in list order that carries it, same as searching the list in order.
+  const erpIndexBySource = new Map<string, Map<string, OrderCatalogItem>>();
+  const getErpIndex = (source: OrderItemSource) => {
+    let index = erpIndexBySource.get(source);
+    if (!index) {
+      index = new Map<string, OrderCatalogItem>();
+      for (const item of (itemsBySource[source] || []) as OrderCatalogItem[]) {
+        const raw = item.raw || {};
+        for (const value of [item.erp, raw.erpCode, raw.erpItemCode, raw.masterItemNameErpCode]) {
+          const key = String(value || "").trim().toLowerCase();
+          if (key && !index.has(key)) index.set(key, item);
+        }
+      }
+      erpIndexBySource.set(source, index);
+    }
+    return index;
+  };
+
   const findItemAcrossSources = (
     itemId: string | undefined,
     preferredSource?: OrderItemSource,
@@ -89,13 +108,7 @@ export function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRow
 
     if (normalizedErp) {
       for (const source of orderedSources) {
-        const match = (itemsBySource[source] || []).find((item) => {
-          const raw = item.raw || {};
-          return [item.erp, raw.erpCode, raw.erpItemCode, raw.masterItemNameErpCode]
-            .map((value) => String(value || "").trim().toLowerCase())
-            .filter(Boolean)
-            .includes(normalizedErp);
-        });
+        const match = getErpIndex(source).get(normalizedErp);
         if (match) return match;
       }
     }

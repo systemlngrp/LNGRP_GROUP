@@ -16,6 +16,11 @@ type UseDataOptions = {
    * Do not use on a collection the screen saves through its setter.
    */
   fields?: string[];
+  /**
+   * Loads with the page but does not hold the page's loading spinner: for data
+   * only needed later (e.g. when a dialog is opened).
+   */
+  deferred?: boolean;
 };
 
 // Above this many rows a list is always larger than the 250 KB storage limit.
@@ -77,6 +82,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   const loadingRegistry = useContext(DataLoadingContext);
   const loadId = useId();
   const enabled = options?.enabled !== false;
+  const deferred = options?.deferred === true;
   const [data, setDataState] = useState<T[]>(initialValue);
   const dataRef = useRef<T[]>(initialValue);
   const [loading, setLoading] = useState(enabled);
@@ -194,13 +200,13 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
   }, [enabled, endpoint, entity, includeActiveFirm, loadingRegistry, shouldCacheToLocalStorage, storageKey]);
 
   useEffect(() => {
-    if (!loadingRegistry || !enabled) return;
+    if (!loadingRegistry || !enabled || deferred) return;
     loadingRegistry.register(loadId, { loading: true, error: null, loaded: 0, total: null, retry: () => void fetchData({ force: true }) });
     return () => loadingRegistry.unregister(loadId);
-  }, [enabled, loadingRegistry, loadId, fetchData]);
+  }, [enabled, deferred, loadingRegistry, loadId, fetchData]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || deferred) return;
     loadingRegistry?.update(loadId, {
       loading,
       error,
@@ -208,7 +214,7 @@ export function useData<T extends { id: string }>(entity: string, initialValue: 
       total: progress.total,
       retry: () => void fetchData({ force: true }),
     });
-  }, [enabled, loadingRegistry, loadId, loading, error, progress.loaded, progress.total, fetchData]);
+  }, [enabled, deferred, loadingRegistry, loadId, loading, error, progress.loaded, progress.total, fetchData]);
 
   useEffect(() => {
     if (!enabled) {

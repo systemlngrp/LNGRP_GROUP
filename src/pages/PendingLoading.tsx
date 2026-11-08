@@ -32,7 +32,7 @@ import {
 import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
-import { useNpdItems } from "../hooks/useNpdItems";
+import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildLinkedLoadingDetailsFromSlip, findLinkedItemByMasterErp, getLinkedSetsPerBox } from "../lib/linkedLoading";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
@@ -98,7 +98,9 @@ export function PendingLoading() {
   const { loading: pageLoading } = usePageDataStatus();
   const [plans, updatePlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
-  const npdItems = useNpdItems();
+  // FG stock is only needed in the loading dialog: it loads in the background
+  // and the dialog cannot be saved until it has arrived.
+  const { items: npdItems, loading: npdStockLoading } = useNpdItemsWithStatus({ deferred: true });
   const { resolveOrderItem, findItemAcrossSources, itemsBySource } = useOrderItemCatalog({ includeMaterials: false });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", storageKey: "orders-all-firms" });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", storageKey: "orders-schedule-all-firms" });
@@ -337,6 +339,7 @@ export function PendingLoading() {
       errors.push(`Job allocations cannot exceed ${firmBalance.toLocaleString()} available FG stock.`);
     }
 
+    if (modal.itemSource === "FG" && npdStockLoading) errors.unshift("FG stock is still loading. Please wait a moment.");
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
     if (openingStockQty < 0) errors.push(`${stockLabel} quantity cannot be negative.`);
     if (modal.itemSource === "FG") {
@@ -357,7 +360,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, itemsBySource.FG, firms]);
+  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);

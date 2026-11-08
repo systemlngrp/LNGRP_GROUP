@@ -1837,6 +1837,22 @@ function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRows }) {
     if (!normalizedItemId) return void 0;
     return itemMap.get(getOrderItemCompositeKey(normalizedSource, normalizedItemId));
   };
+  const erpIndexBySource = /* @__PURE__ */ new Map();
+  const getErpIndex = (source) => {
+    let index = erpIndexBySource.get(source);
+    if (!index) {
+      index = /* @__PURE__ */ new Map();
+      for (const item of itemsBySource[source] || []) {
+        const raw = item.raw || {};
+        for (const value of [item.erp, raw.erpCode, raw.erpItemCode, raw.masterItemNameErpCode]) {
+          const key = String(value || "").trim().toLowerCase();
+          if (key && !index.has(key)) index.set(key, item);
+        }
+      }
+      erpIndexBySource.set(source, index);
+    }
+    return index;
+  };
   const findItemAcrossSources = (itemId, preferredSource, erpCode) => {
     const normalizedItemId = String(itemId || "").trim();
     const normalizedErp = String(erpCode || "").trim().toLowerCase();
@@ -1849,10 +1865,7 @@ function createOrderItemCatalog({ fgRows, phpRows, plateRows, materialRows }) {
     }
     if (normalizedErp) {
       for (const source of orderedSources) {
-        const match = (itemsBySource[source] || []).find((item) => {
-          const raw = item.raw || {};
-          return [item.erp, raw.erpCode, raw.erpItemCode, raw.masterItemNameErpCode].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean).includes(normalizedErp);
-        });
+        const match = getErpIndex(source).get(normalizedErp);
         if (match) return match;
       }
     }

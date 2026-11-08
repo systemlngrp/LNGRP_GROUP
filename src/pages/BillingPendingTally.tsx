@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -31,6 +31,8 @@ import { Select } from "../components/Select";
 import { useAuth } from "../auth/AuthContext";
 import { getInvoiceGrandTotal } from "../lib/gatePasses";
 import { normalizeOrderItemSource } from "../lib/orderItems";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 
 const formatInr = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 2,
@@ -67,8 +69,38 @@ export function BillingPendingTally() {
     setExpandedRows(next);
   };
 
-  const getInvoiceSlips = (invoiceId: string) =>
-    slips.filter((slip) => slip.invoiceId === invoiceId && slip.status !== "Cancelled");
+  // Lookups built once per data change (first record per id and per-invoice
+  // lists in the original order), so each invoice no longer scans every list.
+  const lookup = useMemo(() => {
+    const firstById = <T extends { id: string }>(rows: T[]) => {
+      const map = new Map<string, T>();
+      rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); });
+      return map;
+    };
+    const groupBy = <T,>(rows: T[], keyOf: (row: T) => string) => {
+      const map = new Map<string, T[]>();
+      rows.forEach((row) => {
+        const key = keyOf(row);
+        const list = map.get(key);
+        if (list) list.push(row);
+        else map.set(key, [row]);
+      });
+      return map;
+    };
+    return {
+      activeSlipsByInvoice: groupBy(slips.filter((slip) => slip.status !== "Cancelled"), (slip) => slip.invoiceId as string),
+      linesByInvoice: groupBy(lineItems, (line) => line.invoiceId as string),
+      slipById: firstById(slips),
+      planById: firstById(dispatchPlans),
+      orderById: firstById(orders),
+      companyById: firstById(companies),
+      invoiceById: firstById(invoices),
+      interFirmById: firstById(interFirmPending),
+      allFirmOrderById: firstById(allFirmOrders),
+    };
+  }, [slips, lineItems, dispatchPlans, orders, companies, invoices, interFirmPending, allFirmOrders]);
+
+  const getInvoiceSlips = (invoiceId: string) => lookup.activeSlipsByInvoice.get(invoiceId) || [];
 
   const resolveDisplayUom = (itemSource: string | undefined, rawUom: string | undefined) => {
     const normalizedSource = normalizeOrderItemSource(itemSource);
@@ -90,8 +122,8 @@ export function BillingPendingTally() {
 
     invoiceSlips.forEach((slip) => {
       slip.lines.forEach((slipLine: any, index: number) => {
-        const plan = dispatchPlans.find((dp) => dp.id === slipLine.dispatchPlanId);
-        const order = orders.find((o) => o.id === plan?.orderId);
+        const plan = lookup.planById.get(slipLine.dispatchPlanId);
+        const order = lookup.orderById.get(plan?.orderId as string);
         const item = resolveOrderItem(order);
         const itemSource = normalizeOrderItemSource(order?.itemSource || slipLine.itemSource);
         const qty = Number(slipLine.loadedQty || 0);
@@ -118,8 +150,8 @@ export function BillingPendingTally() {
 
     invoiceSlips.forEach((slip) => {
       slip.lines.forEach((slipLine: any) => {
-        const plan = dispatchPlans.find((dp) => dp.id === slipLine.dispatchPlanId);
-        const order = plan ? orders.find((o) => o.id === plan.orderId) : undefined;
+        const plan = lookup.planById.get(slipLine.dispatchPlanId);
+        const order = plan ? lookup.orderById.get(plan.orderId) : undefined;
         if (order?.poNumber) poNums.add(order.poNumber);
       });
     });
@@ -127,9 +159,9 @@ export function BillingPendingTally() {
     // Inter-firm invoices have no loading slip: take the PO from the
     // customer order of the job that triggered the transfer.
     if (poNums.size === 0) {
-      const invoice = invoices.find((row) => row.id === invoiceId) as any;
-      const pending = invoice && interFirmPending.find((row) => row.id === invoice.sourceTransactionId);
-      const order = pending?.customerOrderId ? allFirmOrders.find((o) => o.id === pending.customerOrderId) : undefined;
+      const invoice = lookup.invoiceById.get(invoiceId) as any;
+      const pending = invoice && lookup.interFirmById.get(invoice.sourceTransactionId);
+      const order = pending?.customerOrderId ? lookup.allFirmOrderById.get(pending.customerOrderId) : undefined;
       if (order?.poNumber) poNums.add(order.poNumber);
     }
 
@@ -140,8 +172,8 @@ export function BillingPendingTally() {
     return invoices
       .filter(inv => !inv.tallyTimestamp)
       .map(inv => {
-        const company = companies.find(c => c.id === inv.companyId);
-        const invLines = lineItems.filter(li => li.invoiceId === inv.id);
+        const company = lookup.companyById.get(inv.companyId);
+        const invLines = lookup.linesByInvoice.get(inv.id) || [];
         const invoiceSlips = getInvoiceSlips(inv.id);
         const poNumbers = getPoNumbers(inv.id);
         const details = invLines.length > 0
@@ -153,7 +185,7 @@ export function BillingPendingTally() {
                 itemName: item?.name || "Unknown",
                 erp: String(item?.erp || "").trim(),
                 uom: resolveDisplayUom(itemSource, String(item?.uom || "").trim()),
-                slipNo: slips.find((s) => s.id === li.loadingSlipId)?.slipNo || "N/A"
+                slipNo: lookup.slipById.get(li.loadingSlipId as string)?.slipNo || "N/A"
               };
             })
           : buildSlipDerivedDetails(inv.id);
@@ -180,7 +212,11 @@ export function BillingPendingTally() {
         return searchStr.includes(searchTerm.toLowerCase());
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoices, companies, companyFilter, itemFilter, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, searchTerm]);
+  }, [invoices, companies, companyFilter, itemFilter, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, searchTerm, lookup, resolveOrderItem]);
+
+  // The table draws 100 invoices per page; filters still cover every invoice.
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedInvoices } = useClientPagination(processedInvoices, 100);
+  useEffect(() => { setPage(1); }, [companyFilter, itemFilter, searchTerm, setPage]);
 
   const companyOptions = useMemo(() => Array.from(new Map(processedInvoices.map((inv) => [inv.companyId, { value: inv.companyId, label: inv.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [processedInvoices]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); processedInvoices.forEach((inv) => inv.details.forEach((line: any) => { const key = line.itemId || `${line.itemName || ""}::${line.erp || ""}`; if (!key || map.has(key)) return; const name = line.itemName || ""; const erp = line.erp || ""; map.set(key, { value: key, label: erp && name && !name.toLowerCase().includes(String(erp).toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }); })); return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)); }, [processedInvoices]);
@@ -256,7 +292,7 @@ export function BillingPendingTally() {
                 </td>
               </tr>
             ) : (
-              processedInvoices.map((inv) => (
+              pagedInvoices.map((inv) => (
                 <React.Fragment key={inv.id}>
                   <tr className="hover:bg-slate-50 transition-colors divide-x divide-black">
                     <td className="px-4 py-4 text-center">
@@ -361,6 +397,14 @@ export function BillingPendingTally() {
           </tbody>
         </table>
       </div>
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+        pageSizeOptions={[100, 250, 500]}
+      />
     </div>
   );
 }
