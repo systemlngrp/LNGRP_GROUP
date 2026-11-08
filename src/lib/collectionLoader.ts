@@ -24,6 +24,11 @@ const MAX_CONCURRENT_REQUESTS = 4;
 // Server cursor pages accept up to 500 rows; NPD endpoints cap at 250.
 const BATCH_SIZE = 500;
 const NPD_BATCH_SIZE = 250;
+/** The NPD catalog (item details, no stock) is a plain read: 1000 per request. */
+const NPD_CATALOG_BATCH_SIZE = 1000;
+function npdBatchSize(endpoint: string) {
+  return new URL(endpoint, window.location.origin).pathname === "/api/npd/catalog" ? NPD_CATALOG_BATCH_SIZE : NPD_BATCH_SIZE;
+}
 /** Long lists of small rows (issue/return lines, reels, packing slips,
  * invoices, orders, schedules, dispatch plans): read
  * 2000 rows per request instead of 500, so a screen needs a quarter of the
@@ -211,7 +216,7 @@ function pageUrl(endpoint: string, cursor: string | null, page: number) {
   const url = new URL(endpoint, window.location.origin);
   if (/^\/api\/(npd|npd-firm-wise|npd\/catalog)$/.test(url.pathname)) {
     url.searchParams.set("page", String(page));
-    url.searchParams.set("pageSize", String(NPD_BATCH_SIZE));
+    url.searchParams.set("pageSize", String(npdBatchSize(endpoint)));
   } else {
     url.searchParams.set("limit", String(LARGE_BATCH_LISTS.has(normalizeEntityName(url.pathname)) ? LARGE_BATCH_SIZE : BATCH_SIZE));
     if (cursor) url.searchParams.set("cursor", cursor);
@@ -285,7 +290,7 @@ export function loadCollection<T extends { id: string }>(
         const rows = Array.from(rowsById.values());
         const nextCursor = typeof payload?.nextCursor === "string" && payload.nextCursor ? payload.nextCursor : null;
         const done = Array.isArray(payload) || (isNpd
-          ? batch.length === 0 || batch.length < NPD_BATCH_SIZE || (total !== null && page * NPD_BATCH_SIZE >= total)
+          ? batch.length === 0 || batch.length < npdBatchSize(endpoint) || (total !== null && page * npdBatchSize(endpoint) >= total)
           : !nextCursor);
         currentTask.progress = { rows, loaded: rows.length, total, done };
         currentTask.listeners.forEach((listener) => listener(currentTask.progress));

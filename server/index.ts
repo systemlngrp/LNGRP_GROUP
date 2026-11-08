@@ -1508,7 +1508,8 @@ app.get("/api/npd-firm-wise", async (req, res) => {
   if (!db) return res.status(500).json({ error: "DB connection not available" });
   try {
     const page = Math.max(1, Number(req.query.page || 1));
-    const pageSize = Math.min(NPD_PAGE_SIZE_MAX, Math.max(25, Number(req.query.pageSize || NPD_PAGE_SIZE_MAX)));
+    // Plain catalog read (no stock work): up to 1000 rows per page.
+    const pageSize = Math.min(1000, Math.max(25, Number(req.query.pageSize || NPD_PAGE_SIZE_MAX)));
     const statusParam = String(req.query.status || "active").trim().toLowerCase();
     const status = statusParam === "removed" || statusParam === "all" ? statusParam : "active";
     const search = String(req.query.search || "").trim();
