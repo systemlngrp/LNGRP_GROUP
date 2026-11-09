@@ -23,6 +23,11 @@ function makeOptions(values: Array<string | number>) {
     .map((value) => ({ value, label: value }));
 }
 
+function tileNumber(value: number) {
+  const rounded = Math.round(Number(value || 0) * 100) / 100;
+  return rounded.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 function isOpeningMrrNo(value?: string | number | null) {
   return String(value ?? "").trim() === "1";
 }
@@ -308,6 +313,8 @@ export function MaterialInItemMaster() {
       generalReceiptValue: others.filter(l => !l.isOpeningMrr).reduce((sum, l) => sum + Number(l.value || 0), 0),
       generalReceipts: new Set(others.filter(l => !l.isOpeningMrr).map(l => l.parentId)).size,
       generalLines: others.filter(l => !l.isOpeningMrr).length,
+      generalCount: others.length,
+      generalQty: others.reduce((sum, l) => sum + Number(l.actualQty ?? l.qty ?? 0), 0),
       // Reel Summary is server-paginated; use the server's full filtered
       // total instead of summing only the currently loaded page/raw cache.
       reelValue: remoteSummaryMetrics.receiptValue || reelSummary.reduce((sum, l) => sum + Number(l.value || 0), 0)
@@ -547,18 +554,16 @@ export function MaterialInItemMaster() {
 
       {/* Tiles follow the selected tab: General Materials or Reels, never combined. */}
       {activeTab === "others" ? (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <ItemMasterTile tone="indigo" label="Opening Value" value={processedData.metrics.generalOpeningValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
-          <ItemMasterTile tone="emerald" label="Receipts" value={processedData.metrics.generalReceipts.toLocaleString()} note={`${processedData.metrics.generalLines.toLocaleString()} lines`} />
-          <ItemMasterTile tone="amber" label="Item Value" value={processedData.metrics.generalReceiptValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
-          <ItemMasterTile tone="rose" label="Total Value" value={processedData.metrics.othersValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} note="Opening + receipts" />
+        <div className="grid grid-cols-3 gap-3">
+          <ItemMasterTile tone="indigo" label="Count" value={processedData.metrics.generalCount.toLocaleString()} note={`${processedData.metrics.generalReceipts.toLocaleString()} MRR`} />
+          <ItemMasterTile tone="amber" label="Qty" value={tileNumber(processedData.metrics.generalQty)} />
+          <ItemMasterTile tone="rose" label="Value" value={tileNumber(processedData.metrics.othersValue)} note={processedData.metrics.generalOpeningValue ? `Opening ${tileNumber(processedData.metrics.generalOpeningValue)}` : undefined} />
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <ItemMasterTile tone="indigo" label="Opening" value={`${processedData.metrics.openingReelWeight.toLocaleString(undefined, { minimumFractionDigits: 2 })} KG`} note={`Value ${processedData.metrics.openingValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
-          <ItemMasterTile tone="emerald" label="Receipts" value={`${processedData.metrics.receiptReelWeight.toLocaleString(undefined, { minimumFractionDigits: 2 })} KG`} note={`${processedData.metrics.totalReceipts.toLocaleString()} MRR`} />
-          <ItemMasterTile tone="amber" label="Item Value" value={processedData.metrics.receiptValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
-          <ItemMasterTile tone="rose" label="Reel Value" value={processedData.metrics.reelValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+        <div className="grid grid-cols-3 gap-3">
+          <ItemMasterTile tone="indigo" label="Count" value={remoteSummaryTotalRows.toLocaleString()} note={`${processedData.metrics.totalReceipts.toLocaleString()} MRR`} />
+          <ItemMasterTile tone="amber" label="KG" value={tileNumber(processedData.metrics.openingReelWeight + processedData.metrics.receiptReelWeight)} note={processedData.metrics.openingReelWeight ? `Opening ${tileNumber(processedData.metrics.openingReelWeight)}` : undefined} />
+          <ItemMasterTile tone="rose" label="Value" value={tileNumber(processedData.metrics.openingValue + processedData.metrics.reelValue)} note={processedData.metrics.openingValue ? `Opening ${tileNumber(processedData.metrics.openingValue)}` : undefined} />
         </div>
       )}
 
