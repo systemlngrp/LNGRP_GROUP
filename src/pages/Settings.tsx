@@ -940,7 +940,6 @@ export function SettingsPage() {
             onChange={(event) => setNewRole(event.target.value)}
             disabled={loading || saving}
             maxLength={ROLE_NAME_MAX_LENGTH}
-            placeholder="Enter role name"
             className="flex-1 rounded border-2 border-black p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
           <button
@@ -1592,7 +1591,6 @@ export function SettingsPage() {
                             value={row.prefix}
                             onChange={(e) => setInvoiceSeriesDraft((prev) => prev.map((r, i) => (i === idx ? { ...r, prefix: e.target.value.toUpperCase() } : r)))}
                             disabled={loading || saving}
-                            placeholder="LNGRP"
                             className="w-full border border-black rounded px-2 py-1 text-sm font-semibold text-black outline-none bg-white"
                           />
                         </td>
@@ -1725,7 +1723,6 @@ export function SettingsPage() {
               value={newDesignation}
               onChange={(e) => setNewDesignation(e.target.value)}
               disabled={loading || saving}
-              placeholder="Enter designation"
               className="flex-1 rounded border-2 border-black p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
             <button
@@ -2082,7 +2079,7 @@ export function SettingsPage() {
             <select value={pairToFirmId} onChange={(e) => setPairToFirmId(e.target.value)} className="rounded border-2 border-black bg-white p-2 text-black">
               <option value="">To Unit</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
             </select>
-            <input type="number" min="0" max="100" step="0.01" value={pairRate} onChange={(e) => setPairRate(e.target.value)} placeholder="Rate %" className="rounded border-2 border-black bg-white p-2 text-black" />
+            <input type="number" min="0" max="100" step="0.01" value={pairRate} onChange={(e) => setPairRate(e.target.value)} className="rounded border-2 border-black bg-white p-2 text-black" />
             <button type="button" onClick={() => void saveInterFirmPairRate()} disabled={loading || saving || user?.role !== "Admin"} className="rounded border-2 border-black bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">Add / Update Rate</button>
           </div>
           <div className="overflow-x-auto rounded border-2 border-black"><table className="w-full text-sm"><thead className="bg-black text-white"><tr><th className="p-2 text-left">From Unit</th><th className="p-2 text-left">To Unit</th><th className="p-2 text-right">Billing Rate</th><th className="p-2">Action</th></tr></thead><tbody>{interFirmPairRatesDraft.map((row) => <tr key={`${row.fromFirmId}-${row.toFirmId}`} className="border-t border-black"><td className="p-2">{firms.find((firm) => firm.id === row.fromFirmId)?.firmName || row.fromFirmId}</td><td className="p-2">{firms.find((firm) => firm.id === row.toFirmId)?.firmName || row.toFirmId}</td><td className="p-2 text-right font-bold">{row.rate}%</td><td className="p-2 text-center"><button type="button" onClick={() => { setPairFromFirmId(row.fromFirmId); setPairToFirmId(row.toFirmId); setPairRate(String(row.rate)); }} className="mr-2 font-bold text-indigo-700">Edit</button><button type="button" onClick={() => void deleteInterFirmPairRate(row)} disabled={saving || user?.role !== "Admin"} className="font-bold text-red-700">Delete</button></td></tr>)}{interFirmPairRatesDraft.length === 0 && <tr><td colSpan={4} className="p-3 text-center text-slate-500">No pair rates configured.</td></tr>}</tbody></table></div>

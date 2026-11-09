@@ -1300,7 +1300,6 @@ export function PendingInvoicing() {
                     type="text"
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
-                    placeholder="Enter destination"
                     required
                     className="w-full rounded border-2 border-black px-3 py-2 text-sm font-medium"
                   />
@@ -1314,7 +1313,6 @@ export function PendingInvoicing() {
                       type="text"
                       value={transporter}
                       onChange={(e) => setTransporter(e.target.value)}
-                      placeholder="Enter transporter"
                       className="w-full rounded border-2 border-black px-3 py-2 text-sm font-medium"
                     />
                   </div>

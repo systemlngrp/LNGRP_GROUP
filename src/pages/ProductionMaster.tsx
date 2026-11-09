@@ -1160,7 +1160,6 @@ export function ProductionMaster() {
                     setCancelRemarks(e.target.value);
                     if (cancelError) setCancelError("");
                   }}
-                  placeholder="Enter cancellation reason"
                   className={`w-full rounded border-2 px-3 py-2 text-sm text-black outline-none ${cancelError ? "border-red-600" : "border-black"}`}
                 />
                 {cancelError ? <div className="text-xs font-bold text-red-600">{cancelError}</div> : null}

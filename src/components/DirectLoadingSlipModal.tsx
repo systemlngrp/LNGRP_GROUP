@@ -307,7 +307,6 @@ export function DirectLoadingSlipModal({
                             const match = availableTrucks.find((truck) => truck.truckNo.trim().toUpperCase() === value.trim().toUpperCase());
                             setDraft((prev) => ({ ...prev, manualTruckNo: value, truckId: match?.id || "" }));
                           }}
-                          placeholder="Select or enter truck no"
                           className="w-full rounded border border-black px-3 py-2 text-sm uppercase"
                         />
                         <datalist id="direct-loading-truck-options">
@@ -347,7 +346,6 @@ export function DirectLoadingSlipModal({
                     value={draft.rate}
                     onChange={(e) => setDraft((prev) => ({ ...prev, rate: e.target.value === "" ? "" : Number(e.target.value) }))}
                     className="w-full rounded border border-black px-3 py-2 text-sm"
-                    placeholder="Enter Rate"
                   />
                 )}
               </div>

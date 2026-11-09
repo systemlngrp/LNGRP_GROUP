@@ -326,7 +326,6 @@ export function PendingProduction() {
                       value={cancelValues[schedule.id] || ""}
                       onChange={(e) => setCancelValues((prev) => ({ ...prev, [schedule.id]: e.target.value }))}
                       className="border-2 border-black rounded p-1 w-28"
-                      placeholder="0"
                     />
                   </td>
                   <td className="px-3 py-2 border border-black">

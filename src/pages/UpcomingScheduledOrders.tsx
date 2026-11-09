@@ -222,7 +222,6 @@ export function UpcomingScheduledOrders() {
                       value={cancelValues[schedule.id] || ""}
                       onChange={(e) => setCancelValues((prev) => ({ ...prev, [schedule.id]: e.target.value }))}
                       className="w-full border-2 border-black rounded px-2 py-1 text-right font-bold"
-                      placeholder="0"
                     />
                   </td>
                   <td className="px-3 py-2 border border-black text-center">

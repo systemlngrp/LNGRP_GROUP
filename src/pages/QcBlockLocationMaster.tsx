@@ -117,7 +117,7 @@ export function QcBlockLocationMaster() {
     {message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}
     {usageError && <div className="rounded border border-red-700 bg-red-100 p-3">{usageError} Delete is unavailable until usage can be checked.</div>}
     <div className="flex flex-wrap gap-2">
-      <input className="rounded border-2 border-black px-3 py-2" value={name} onChange={event => setName(event.target.value)} placeholder="Block Location" readOnly={editingUsed}/>
+      <input className="rounded border-2 border-black px-3 py-2" value={name} onChange={event => setName(event.target.value)} readOnly={editingUsed}/>
       <button type="button" disabled={Boolean(busyId)} onClick={() => void save()} className="rounded bg-cyan-700 px-4 py-2 font-bold text-white disabled:opacity-50">{editing ? "Update" : "Add"}</button>
       {editing && <button type="button" onClick={() => { setEditing(""); setName(""); }} className="rounded border-2 border-black px-4 py-2 font-bold">Cancel</button>}
       {editingUsed && <span className="self-center text-sm">Used locations cannot be renamed.</span>}

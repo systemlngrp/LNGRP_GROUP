@@ -262,7 +262,6 @@ function LockedReportForm() {
                 type="number"
                 value={qty}
                 onChange={(e) => setQty(e.target.value)}
-                placeholder="Enter processed quantity"
                 min="0"
                 required
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600"
@@ -588,8 +587,7 @@ function FullReportForm() {
               <input 
                 type="number" 
                 value={qty} 
-                onChange={(e) => setQty(e.target.value)} 
-                placeholder="Enter processed quantity"
+                onChange={(e) => setQty(e.target.value)}
                 min="0"
                 required 
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600" 

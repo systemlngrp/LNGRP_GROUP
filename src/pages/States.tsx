@@ -112,7 +112,6 @@ export function States() {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="State name"
                 autoFocus
                 required
                 className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"

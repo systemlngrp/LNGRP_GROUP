@@ -106,11 +106,11 @@ export function GstRateMasters() {
           <form id="gst-rate-form" onSubmit={handleSubmit} className="max-w-xl space-y-5">
             <div className="space-y-2">
               <label className="text-blue-700 font-bold">GST Name <span className="text-red-500">*</span></label>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="GST 18%" autoFocus required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input value={name} onChange={(e) => setName(e.target.value)} autoFocus required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div className="space-y-2">
               <label className="text-blue-700 font-bold">Rate % <span className="text-red-500">*</span></label>
-              <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} placeholder="18" required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-xl focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div className="space-y-2">
               <label className="text-blue-700 font-bold">Active</label>

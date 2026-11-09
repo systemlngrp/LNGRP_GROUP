@@ -1871,7 +1871,6 @@ export function Materials() {
                                 <input
                                   value={row.ourReelNo}
                                   onChange={(e) => setOpeningReels((current) => current.map((entry) => entry.id === row.id ? { ...entry, ourReelNo: e.target.value } : entry))}
-                                  placeholder="Enter manually"
                                   className="w-36 rounded border border-black px-2 py-1.5 text-xs font-bold outline-none"
                                 />
                               </td>

@@ -391,7 +391,6 @@ export function ReelStockTakerReport() {
                 type="text"
                 value={manualReelNo}
                 onChange={(e) => setManualReelNo(e.target.value)}
-                placeholder="Reel Number"
                 className="h-[40px] w-full rounded border-2 border-black pl-9 pr-3 text-sm font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
               />
             </div>

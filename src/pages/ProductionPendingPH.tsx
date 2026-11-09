@@ -218,7 +218,6 @@ export function ProductionPendingPH() {
                       <input 
                         type="text"
                         autoFocus
-                        placeholder="Reason for cancellation..."
                         value={cancelRemarks}
                         onChange={(e) => setCancelRemarks(e.target.value)}
                         className="text-sm p-3 border-2 border-black rounded focus:outline-none focus:border-red-600 shadow-sm"

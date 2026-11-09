@@ -571,7 +571,6 @@ export function MrrApprovals() {
                                       <textarea
                                         value={remarks[m.id] || ""}
                                         onChange={e => setRemarks(prev => ({ ...prev, [m.id]: e.target.value }))}
-                                        placeholder="Remark *"
                                         className="h-20 w-full border border-black rounded p-1 text-[9px] uppercase outline-none focus:ring-1 focus:ring-indigo-600"
                                       />
                                     </div>

@@ -379,7 +379,6 @@ export function ReelIssueReturnForm() {
                 <input
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Add optional notes..."
                   className="h-[52px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
                 />
               </Field>

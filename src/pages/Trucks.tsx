@@ -160,7 +160,6 @@ export function Trucks() {
                 onChange={(e) => setTruckNo(e.target.value)}
                 required
                 autoFocus
-                placeholder="e.g. MH 01 AB 1234"
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors uppercase"
               />
             </div>
@@ -174,7 +173,6 @@ export function Trucks() {
                 value={driverName}
                 onChange={(e) => setDriverName(e.target.value)}
                 required
-                placeholder="e.g. John Doe"
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors"
               />
             </div>
@@ -189,7 +187,6 @@ export function Trucks() {
                 pattern="[0-9]*"
                 value={mobileNo}
                 onChange={(e) => setMobileNo(e.target.value.replace(/\D/g, ""))}
-                placeholder="e.g. 9876543210"
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors"
               />
             </div>

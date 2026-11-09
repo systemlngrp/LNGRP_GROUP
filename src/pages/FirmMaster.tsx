@@ -149,7 +149,7 @@ export function FirmMaster() {
             </div>
             <div className="flex flex-col space-y-1">
               <label className="font-bold text-black">Short Name <span className="text-red-600">*</span></label>
-              <input value={shortName} onChange={(event) => setShortName(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20))} required className={inputClass} placeholder="e.g. LNCB" />
+              <input value={shortName} onChange={(event) => setShortName(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 20))} required className={inputClass} />
             </div>
             <div className="md:col-span-2 flex flex-col space-y-1">
               <label className="font-bold text-black">Address</label>
@@ -170,7 +170,7 @@ export function FirmMaster() {
                   <option value="">Destination firm</option>
                 {firms.filter((firm) => firm.id !== routeSourceFirmId).map((firm) => <option key={firm.id} value={firm.id}>{firm.shortName || generateFirmShortName(firm.firmName)}</option>)}
                 </select>
-                <input type="number" min="1" value={routeSequence} onChange={(e) => setRouteSequence(e.target.value)} className={inputClass} placeholder="Sequence" />
+                <input type="number" min="1" value={routeSequence} onChange={(e) => setRouteSequence(e.target.value)} className={inputClass} />
                 <select value={routeActive} onChange={(e) => setRouteActive(e.target.value as "Yes" | "No")} className={inputClass}>
                   <option value="No">Route inactive</option>
                   <option value="Yes">Route active</option>
@@ -180,7 +180,7 @@ export function FirmMaster() {
 
             <div className="flex flex-col space-y-1">
               <label className="font-bold text-black">Tally Port No</label>
-              <input value={tallyPortNo} onChange={(event) => setTallyPortNo(event.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" placeholder="9000" className={inputClass} />
+              <input value={tallyPortNo} onChange={(event) => setTallyPortNo(event.target.value.replace(/\D/g, "").slice(0, 5))} inputMode="numeric" className={inputClass} />
             </div>
 
           </div>

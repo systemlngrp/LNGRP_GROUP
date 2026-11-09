@@ -328,15 +328,15 @@ export function GateEntryForm() {
             </Field>
 
             <Field label="Invoice No" required>
-              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} required placeholder="INV-001" className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </Field>
 
             <Field label="Invoice Value" required>
-              <input type="number" min="0" step="0.01" value={invoiceValue} onChange={(e) => setInvoiceValue(e.target.value)} required placeholder="0.00" className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input type="number" min="0" step="0.01" value={invoiceValue} onChange={(e) => setInvoiceValue(e.target.value)} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </Field>
 
             <Field label="Truck No" required className="md:max-w-[420px]">
-              <input value={truckNo} onChange={(e) => setTruckNo(e.target.value.toUpperCase())} required placeholder="AS-01-XXXX" className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input value={truckNo} onChange={(e) => setTruckNo(e.target.value.toUpperCase())} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500" />
             </Field>
           </div>
 

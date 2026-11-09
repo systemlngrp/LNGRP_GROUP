@@ -858,7 +858,6 @@ export function ProductionForm() {
                   }
                   readOnly={isSampleItem}
                   required
-                  placeholder={isSampleItem ? "Auto-filled from sample request" : "Enter planned quantity"}
                   className={cn(
                     "w-full border-2 border-black rounded p-2 text-[15px] text-black shadow-sm",
                     isSampleItem

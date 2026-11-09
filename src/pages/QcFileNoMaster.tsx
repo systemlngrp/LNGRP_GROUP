@@ -73,7 +73,7 @@ export function QcFileNoMaster() {
     <h2 className="border-b border-black pb-3 text-xl font-bold uppercase">File No. Master</h2>
     {message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}
     <div className="flex flex-wrap gap-2 rounded border-2 border-black bg-white p-3">
-      <input className="min-w-64 flex-1 rounded border-2 border-black px-3 py-2" value={fileNo} onChange={event => setFileNo(event.target.value)} placeholder="File No." disabled={Boolean(busyId)} />
+      <input className="min-w-64 flex-1 rounded border-2 border-black px-3 py-2" value={fileNo} onChange={event => setFileNo(event.target.value)} disabled={Boolean(busyId)} />
       <button type="button" disabled={Boolean(busyId)} onClick={() => void save()} className="rounded bg-cyan-700 px-4 py-2 font-bold text-white disabled:opacity-50">{editing ? "Update" : "Add"}</button>
       {editing && <button type="button" disabled={Boolean(busyId)} onClick={() => { setEditing(""); setFileNo(""); setMessage(""); }} className="rounded border-2 border-black px-4 py-2 font-bold disabled:opacity-50">Cancel</button>}
     </div>

@@ -85,7 +85,7 @@ export function ReelTransferForm() {
         <Field label="Transfer Date"><input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded border-2 border-black p-2 text-sm" /></Field>
         <Field label="Original / Eligible Job"><Select disabled={lockSource} options={sourceOptions} value={sourceId} onChange={handleSource} placeholder="Select source job" /></Field>
         <Field label="Transfer Job"><Select disabled={!sourceId} options={targetOptions} value={targetId} onChange={setTargetId} placeholder="Select transfer job" noOptionsMessage="No eligible transfer job available." /></Field>
-        <Field label="Remarks" className="md:col-span-2 xl:col-span-3"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Remarks" className="w-full rounded border-2 border-black p-2 text-sm" /></Field>
+        <Field label="Remarks" className="md:col-span-2 xl:col-span-3"><input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full rounded border-2 border-black p-2 text-sm" /></Field>
       </div>
 
       {sourceContext ? <section className="grid gap-3 border-y border-black bg-blue-50/40 py-4 sm:grid-cols-2 lg:grid-cols-5">

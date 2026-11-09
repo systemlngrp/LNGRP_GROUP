@@ -93,7 +93,6 @@ export function SampleForm() {
               value={selectedItem?.erp ?? ""}
               disabled
               className="border-2 border-black rounded p-2 text-black bg-slate-100 w-full font-medium"
-              placeholder="Auto fetched from item"
             />
           </div>
 
@@ -124,7 +123,6 @@ export function SampleForm() {
               }
               required
               className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
-              placeholder="Enter planned quantity"
             />
           </div>
         </div>

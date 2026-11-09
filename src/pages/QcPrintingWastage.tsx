@@ -104,7 +104,7 @@ export function QcPrintingWastageForm() {
         <label><b>Company</b><input className={derivedInputClass} value={selectedCompany} readOnly /></label>
         <label><b>Total Wastage (KG)</b><input className={derivedInputClass} value={selectedWastage ? formatMetric(selectedWastage.totalWastageKg) : "-"} readOnly /></label>
         <label><b>Actual Paper Used (KG)</b><input className={derivedInputClass} value={selectedActualPaperUsed} readOnly /></label>
-        <label><b>Quantity *</b><input type="number" min="0" step="0.01" className={inputClass} value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder="Enter quantity" /></label>
+        <label><b>Quantity *</b><input type="number" min="0" step="0.01" className={inputClass} value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
       </div>
     </section>
     <div className="flex justify-end gap-3"><button type="button" onClick={() => navigate("/quality/printing-wastage/master")} className="rounded border-2 border-black bg-white px-5 py-2 font-bold">Cancel</button><button type="button" disabled={saving} onClick={() => void save()} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Save"}</button></div>

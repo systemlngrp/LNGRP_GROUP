@@ -488,14 +488,12 @@ export function ReelwiseStockReport() {
               type="number"
               value={minAge}
               onChange={(e) => setMinAge(e.target.value)}
-              placeholder="Min age"
               className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
             <input
               type="number"
               value={maxAge}
               onChange={(e) => setMaxAge(e.target.value)}
-              placeholder="Max age"
               className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
             <div className="grid h-[34px] grid-cols-3 gap-1 rounded border-2 border-black bg-white p-1">

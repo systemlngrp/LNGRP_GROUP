@@ -218,7 +218,6 @@ export function PendingNonJobMaterialIssue() {
               autoFocus
               disabled={!!markingDate}
               className="w-full resize-none rounded border-2 border-black p-3 text-sm font-semibold text-black focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100"
-              placeholder="Enter mandatory remarks..."
             />
             {notApplicableError ? <div className="mt-2 text-xs font-bold text-red-600">{notApplicableError}</div> : null}
 

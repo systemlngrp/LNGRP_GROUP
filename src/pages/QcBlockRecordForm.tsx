@@ -69,7 +69,7 @@ export function QcBlockRecordForm() {
         <label><b>Party Name</b><input className={input} style={readOnlyStyle} value={clean(selectedItem?.customer)} readOnly/></label>
         <label><b>Item Name</b><input className={input} style={readOnlyStyle} value={clean(selectedItem?.name)} readOnly/></label>
         <label><b>Block Location *</b><Select value={location} onChange={changeLocation} options={locationOptions} placeholder="Select Location"/></label>
-        <label><b>Block No. *</b><input className={input} value={blockNo} onChange={event => changeBlockNo(event.target.value)} placeholder="Block No."/></label>
+        <label><b>Block No. *</b><input className={input} value={blockNo} onChange={event => changeBlockNo(event.target.value)}/></label>
       </div>
     </section>
     <div className="flex justify-end"><button type="button" disabled={saving} onClick={() => void save()} className="rounded bg-cyan-700 px-5 py-3 font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Save Block Record"}</button></div>

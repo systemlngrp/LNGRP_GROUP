@@ -898,7 +898,6 @@ export function PendingLoading() {
                       setModalManualTruckNo(value);
                       setModalTruckId(match?.id || "");
                     }}
-                    placeholder="Select or enter truck no"
                     className="h-10 w-full rounded border-2 border-slate-400 bg-white px-3 text-sm font-bold uppercase focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100"
                   />
                   <datalist id="pending-loading-truck-options">
@@ -1224,7 +1223,6 @@ export function PendingLoading() {
                                                 value={extraItemsQty ?? ""}
                                                 onChange={(e) => setExtraItemsQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
                                                 className="w-full rounded border-2 border-yellow-500 bg-yellow-100 px-2 py-1.5 text-right font-black text-xs text-black focus:ring-0"
-                                                placeholder="Enter Extra Qty"
                                             />
                                         </td>
                                         <td className="px-4 py-2 text-center">
