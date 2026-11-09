@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { OneLine } from "../components/ReelSpecs";
 import { ArrowLeft, Camera, Save, X } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
@@ -552,7 +553,7 @@ export function ReelIssueReturnScan() {
                   <tr key={draft.id} className="odd:bg-white even:bg-slate-50">
                     <td className="break-words border border-black px-3 py-2 font-black text-black">{draft.ourReelNo}</td>
                     <td className="break-words border border-black px-3 py-2 font-semibold">{draft.jobNo || "-"}</td>
-                    <td className="break-words border border-black px-3 py-2 font-semibold">{draft.materialName}</td>
+                    <td className="max-w-[320px] border border-black px-3 py-2 font-semibold"><OneLine text={draft.materialName} /></td>
                     <td className="break-words border border-black px-3 py-2 font-semibold">{draft.materialCode || "-"}</td>
                     <td className="border border-black px-3 py-2 font-black text-emerald-700">{formatQty(draft.issueWeight)}</td>
                     <td className="border border-black px-3 py-2">
@@ -614,7 +615,7 @@ function MobileField({ label, value, accent = false }: { label: string; value: s
   return (
     <div className="rounded border border-slate-300 bg-slate-50 p-2">
       <div className="text-[10px] font-black uppercase text-slate-500">{label}</div>
-      <div className={`mt-1 break-words text-sm font-black ${accent ? "text-emerald-700" : "text-black"}`}>{value}</div>
+      <OneLine text={value} className={`mt-1 text-sm font-black ${accent ? "text-emerald-700" : "text-black"}`} />
     </div>
   );
 }

@@ -72,7 +72,8 @@ export function MaterialReturnForm() {
         .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
         .map((production) => ({
           value: production.id,
-          label: `${production.transactionNo}${production.date ? ` | ${production.date.split("T")[0]}` : ""}`,
+          label: production.transactionNo,
+          searchText: `${production.transactionNo} ${production.date ? production.date.split("T")[0] : ""}`,
         })),
     [productions]
   );
@@ -404,7 +405,7 @@ export function MaterialReturnForm() {
       setCurrentQty("");
       setLines([]);
       setReturnQtyDrafts({});
-      alert(`Material Return created with Return No: ${returnNo}`);
+      alert("Material Return saved.");
     } catch (error) {
       console.error("Failed to save material return:", error);
       alert("Failed to save material return.");
@@ -416,18 +417,26 @@ export function MaterialReturnForm() {
   return (
     <>
 
-      <div className="bg-white p-6 rounded shadow-sm border border-black text-black">
-      <div className="mb-6 border-b border-black pb-2"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Material Return Form</h2></div>
+      <div className="bg-white p-4 md:p-6 rounded shadow-sm border border-black text-black">
+      <div className="mb-4 border-b border-black pb-2"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Material Return Form</h2></div>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Date" required>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className="w-full border-2 border-black rounded p-2" />
           </Field>
-          <Field label="Return No (Auto)">
-            <input type="text" value="Generated on Submit" disabled className="w-full border-2 border-black rounded p-2 bg-slate-50 opacity-70" />
-          </Field>
           <Field label="Return Type" required>
-            <Select options={typeOptions} value={returnType} onChange={(value) => setReturnType(value === "Job" ? "Job" : "General")} required />
+            <div className="flex flex-wrap gap-2">
+              {typeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setReturnType(option.value === "Job" ? "Job" : "General")}
+                  className={`rounded-md border-2 px-3 py-2 text-sm font-bold ${returnType === option.value ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black"}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </Field>
           {returnType === "Job" ? (
             <Field label="Job No." required>
@@ -452,29 +461,29 @@ export function MaterialReturnForm() {
                 <input type="number" value={currentQty} onChange={(e) => setCurrentQty(e.target.value === "" ? "" : parseFloat(e.target.value))} className="w-full border-2 border-black rounded p-[6px]" />
               </div>
             ) : null}
-            <button type="button" onClick={handleAddLine} className="bg-black text-white p-[10px] rounded hover:bg-slate-800 transition">
-              <Plus size={20} />
-            </button>
+            <div className="flex w-full justify-center md:w-auto">
+              <button type="button" onClick={handleAddLine} title="Add line" aria-label="Add line" className="indent-line-action rounded bg-black p-[10px] text-white transition hover:bg-slate-800">
+                <Plus size={20} />
+              </button>
+            </div>
           </div>
 
-          {lines.length === 0 ? (
-            <div className="p-4 bg-slate-50 border border-dashed border-black text-center text-sm">No return lines added yet.</div>
-          ) : (
+          {lines.length === 0 ? null : (
             <div className="space-y-4">
               {lines.map((line) => {
                 const material = getMaterial(line.materialId);
                 const returnableReels = line.isReel ? getReturnableReels(line.materialId) : [];
                 const draftQtys = returnQtyDrafts[line.id] || {};
                 return (
-                  <div key={line.id} className="rounded border border-black p-4 space-y-3">
+                  <div key={line.id} className="rounded-md border-2 border-black p-3 space-y-3">
                     <div className="flex items-start justify-between gap-4">
                       <div>
                         <div className="text-sm font-black">{material?.name || 'Unknown Material'}</div>
                         <div className="text-xs text-slate-500">{line.isReel ? `Selected Weight: ${line.qty.toFixed(2)} KG` : `Return Qty: ${line.qty} ${line.uom}`}</div>
                       </div>
                       <div>
-                        <button type="button" onClick={() => handleRemoveLine(line.id)} className="text-red-600 hover:text-red-800">
-                          <Trash2 size={18} />
+                        <button type="button" onClick={() => handleRemoveLine(line.id)} title="Remove Line" aria-label="Remove Line" className="inline-flex h-8 w-8 items-center justify-center rounded-md border-2 border-red-600 bg-white text-red-600">
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </div>
@@ -492,13 +501,13 @@ export function MaterialReturnForm() {
                           <tbody>
                             {returnableReels.length === 0 ? (
                               <tr>
-                                <td colSpan={3} className="border border-black px-4 py-6 text-center text-sm text-slate-500">No issued reels available for return for this job.</td>
+                                <td colSpan={3} className="h-12 border border-black" aria-label="No records" />
                               </tr>
                             ) : (
                               returnableReels.map((reelLine) => (
                                 <tr key={`${reelLine.packingSlipId}-${reelLine.productionId}`}>
                                   <td className="border border-black px-3 py-2 text-sm">{reelLine.ourReelNo}</td>
-                                  <td className="border border-black px-3 py-2 text-sm">{Number(reelLine.weightKg || 0).toFixed(2)}</td>
+                                  <td className="border border-black px-3 py-2 text-right text-sm">{Number(Number(reelLine.weightKg || 0).toFixed(2)).toLocaleString()}</td>
                                   <td className="border border-black px-3 py-2 text-sm">
                                     <input
                                       type="number"
@@ -525,8 +534,8 @@ export function MaterialReturnForm() {
         </div>
 
         <div className="flex justify-end">
-          <button type="submit" disabled={isSubmitting || lines.length === 0} className="min-w-[150px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 disabled:opacity-50">
-            {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save Return"}
+          <button type="submit" disabled={isSubmitting || lines.length === 0} className="w-full bg-black text-white px-6 py-3 rounded font-black uppercase tracking-widest text-sm hover:bg-slate-800 disabled:opacity-30 md:w-auto md:min-w-[150px]">
+            {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save"}
           </button>
         </div>
       </form>

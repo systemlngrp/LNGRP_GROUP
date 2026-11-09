@@ -133,6 +133,7 @@ export function MaterialReturnMaster() {
           remarks: parent.remarks,
           materialName: material?.name || "Unknown Material",
           returnType: parent.returnType,
+          value: Number(line.qty || 0) * resolveLineRate(line, material),
           reelNos: reelLines
             .filter((reel) => reel.materialReturnLineId === line.id)
             .map((reel) => reel.ourReelNo)
@@ -197,7 +198,21 @@ export function MaterialReturnMaster() {
     const visibleReturnIds = new Set([...finalGeneral, ...finalReelDetails].map((row) => row.materialReturnId));
     const visibleReturns = filteredReturns.filter((returnEntry) => visibleReturnIds.has(returnEntry.id));
 
+    const reelReturnCount = new Set(finalReelDetails.map((row) => row.materialReturnId)).size;
+    const reelWeight = finalReelDetails.reduce((sum, row) => sum + Number(row.weightKg || 0), 0);
+    const reelValue = finalReelDetails.reduce((sum, row) => sum + Number(row.value || 0), 0);
+    const tabMetrics = {
+      general: {
+        count: new Set(finalGeneral.map((row) => row.materialReturnId)).size,
+        countNote: `${finalGeneral.length.toLocaleString()} lines`,
+        amount: finalGeneral.reduce((sum, row) => sum + Number(row.qty || 0), 0),
+        value: finalGeneral.reduce((sum, row) => sum + Number(row.value || 0), 0),
+      },
+      "reel-summary": { count: reelReturnCount, countNote: `${finalReelSummary.length.toLocaleString()} lines`, amount: reelWeight, value: reelValue },
+      "reel-details": { count: finalReelDetails.length, countNote: `${reelReturnCount.toLocaleString()} returns`, amount: reelWeight, value: reelValue },
+    };
     const metrics = {
+      tabs: tabMetrics,
       totalTransactions: visibleReturns.length,
       totalWeight: finalReelDetails.reduce((sum, row) => sum + Number(row.weightKg || 0), 0),
       totalValue: finalReelDetails.reduce((sum, row) => sum + Number(row.value || 0), 0),
@@ -247,6 +262,19 @@ export function MaterialReturnMaster() {
   const getJobDate = (productionId?: string) =>
     productions.find((p) => p.id === productionId)?.date || "";
 
+  const activeMetrics = processedData.metrics.tabs[activeTab];
+
+  const qrButton = (row: any) => (
+    <button
+      type="button"
+      onClick={() => handleDownloadReturnQrPdf(row)}
+      className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border-2 border-indigo-700 bg-white px-2 text-[11px] font-bold text-indigo-800 hover:bg-indigo-50"
+      title="Download return reel QR PDF"
+    >
+      <Download size={12} /> QR
+    </button>
+  );
+
   const activeRows = activeTab === "general"
     ? processedData.general
     : activeTab === "reel-summary"
@@ -267,37 +295,21 @@ export function MaterialReturnMaster() {
   }, [activeTab, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter, setPage]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
+    <div className="space-y-4">
+      <div className="flex justify-between items-center pb-3 border-b border-black">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Material Return Master</h2>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Total Transactions</div>
-          <div className="text-3xl font-black">{processedData.metrics.totalTransactions.toLocaleString()}</div>
-        </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Total Reel Weight</div>
-          <div className="text-3xl font-black">{formatNumber(processedData.metrics.totalWeight)} <span className="text-xs">KG</span></div>
-        </div>
-        <div className="bg-gradient-to-br from-cyan-500 to-cyan-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Total Reel Value</div>
-          <div className="text-3xl font-black">{formatNumber(processedData.metrics.totalValue)}</div>
-        </div>
-        <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Job Returns</div>
-          <div className="text-3xl font-black">{processedData.metrics.jobReturns.toLocaleString()}</div>
-        </div>
-        <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">General Returns</div>
-          <div className="text-3xl font-black">{processedData.metrics.generalReturns.toLocaleString()}</div>
-        </div>
+      {/* Tiles follow the selected tab and the active filters. */}
+      <div className="grid grid-cols-3 gap-3">
+        <ReturnTile tone="bg-indigo-50 text-indigo-900" label="Count" value={activeMetrics.count.toLocaleString()} note={activeMetrics.countNote} />
+        <ReturnTile tone="bg-amber-50 text-amber-900" label={activeTab === "general" ? "Qty" : "KG"} value={formatNumber(activeMetrics.amount)} />
+        <ReturnTile tone="bg-rose-50 text-rose-900" label="Value" value={formatNumber(activeMetrics.value)} />
       </div>
 
-      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-[minmax(260px,1.4fr)_repeat(6,minmax(140px,1fr))_auto] xl:items-center">
+      <div className="grid gap-3 rounded border border-black bg-white p-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[minmax(260px,1.4fr)_repeat(6,minmax(130px,1fr))_auto] xl:items-center">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
             <input
@@ -337,159 +349,171 @@ export function MaterialReturnMaster() {
               }}
               className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
             >
-              Clear Filters
+              Clear
             </button>
           ) : null}
       </div>
-      <div className="flex overflow-x-auto overflow-y-hidden border-b border-black mt-2 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`px-4 py-2 text-xs font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] flex items-center gap-2 transition-all ${
-            activeTab === "general" ? "bg-white border-b-transparent text-indigo-700" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
-          }`}
-        >
-          <Package size={14} /> General Material ({processedData.general.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("reel-summary")}
-          className={`px-4 py-2 text-xs font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
-            activeTab === "reel-summary" ? "bg-white border-b-transparent text-emerald-700" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
-          }`}
-        >
-          <Layers size={14} /> Reel Summary ({processedData.reelSummary.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("reel-details")}
-          className={`px-4 py-2 text-xs font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
-            activeTab === "reel-details" ? "bg-white border-b-transparent text-amber-700" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
-          }`}
-        >
-          <Disc size={14} /> Reel Details ({processedData.reelDetails.length})
-        </button>
+      <div className="flex flex-wrap gap-2">
+        {([
+          ["general", "General Material", processedData.general.length, Package],
+          ["reel-summary", "Reel Summary", processedData.reelSummary.length, Layers],
+          ["reel-details", "Reel Details", processedData.reelDetails.length, Disc],
+        ] as const).map(([key, label, count, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setActiveTab(key)}
+            className={`inline-flex items-center gap-2 rounded-md border-2 px-3 py-2 text-sm font-bold ${activeTab === key ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black"}`}
+          >
+            <Icon size={14} /> {label}
+            <span className={`rounded-full px-1.5 text-[11px] font-black ${activeTab === key ? "bg-white text-indigo-700" : "bg-slate-200 text-slate-700"}`}>{count.toLocaleString()}</span>
+          </button>
+        ))}
       </div>
 
-      <div className="bg-white rounded-b shadow-sm overflow-hidden border border-black">
-        <div className="overflow-x-auto">
-          {activeTab === "general" && (
-            <table className="min-w-full divide-y divide-black border-collapse">
-              <thead className="sticky top-0 z-30 bg-slate-100">
-                <tr className="divide-x divide-black">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Return No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Job No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Material</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Qty</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">UOM</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Remarks</th>
+      {/* Desktop tables (also shown on phones when empty) */}
+      <div className={`${activeRows.length === 0 ? "block" : "hidden md:block"} overflow-x-auto rounded border border-black bg-white`}>
+        {activeTab === "general" && (
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
+              <tr>
+                <th className="border border-black px-3 py-3 text-left">Return No</th>
+                <th className="border border-black px-3 py-3 text-left">Date</th>
+                <th className="border border-black px-3 py-3 text-left">Job No</th>
+                <th className="border border-black px-3 py-3 text-left">Material</th>
+                <th className="border border-black px-3 py-3 text-right">Qty</th>
+                <th className="border border-black px-3 py-3 text-left">UOM</th>
+                <th className="border border-black px-3 py-3 text-right">Value</th>
+                <th className="border border-black px-3 py-3 text-left">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeRows.length === 0 ? (
+                <tr><td colSpan={8} className="h-16" aria-label="No records" /></tr>
+              ) : paginatedItems.map((row: any) => (
+                <tr key={row.id} className="hover:bg-slate-50">
+                  <td className="border border-black px-3 py-2 font-bold text-indigo-700">{row.returnNo}</td>
+                  <td className="border border-black px-3 py-2">{formatDate(row.date)}</td>
+                  <td className="border border-black px-3 py-2 font-medium">{row.jobNo || "-"}</td>
+                  <td className="border border-black px-3 py-2">{row.materialName}</td>
+                  <td className="border border-black px-3 py-2 text-right font-bold text-indigo-600">{formatNumber(row.qty)}</td>
+                  <td className="border border-black px-3 py-2 uppercase">{row.uom}</td>
+                  <td className="border border-black px-3 py-2 text-right font-bold text-cyan-700">{formatNumber(row.value)}</td>
+                  <td className="border border-black px-3 py-2 text-slate-500">{row.remarks || "-"}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-black">
-                {activeRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No general material returns found.</td>
-                  </tr>
-                ) : (
-                  paginatedItems.map((row: any) => (
-                    <tr key={row.id} className="divide-x divide-black hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-sm font-bold text-indigo-700">{row.returnNo}</td>
-                      <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
-                      <td className="px-4 py-3 text-sm font-medium">{row.jobNo || "-"}</td>
-                      <td className="px-4 py-3 text-sm">{row.materialName}</td>
-                      <td className="px-4 py-3 text-sm text-right font-bold text-indigo-600">{row.qty.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-sm uppercase">{row.uom}</td>
-                      <td className="px-4 py-3 text-sm text-slate-500 italic">{row.remarks || "-"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          )}
+              ))}
+            </tbody>
+          </table>
+        )}
 
-          {activeTab === "reel-summary" && (
-            <table className="min-w-full divide-y divide-black border-collapse">
-              <thead className="sticky top-0 z-30 bg-slate-100">
-                <tr className="divide-x divide-black">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Return No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Job No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Material Specs</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Total Weight (KG)</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Total Value</th>
-                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">Reel Count</th>
+        {activeTab === "reel-summary" && (
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
+              <tr>
+                <th className="border border-black px-3 py-3 text-left">Return No</th>
+                <th className="border border-black px-3 py-3 text-left">Date</th>
+                <th className="border border-black px-3 py-3 text-left">Job No</th>
+                <th className="border border-black px-3 py-3 text-left">Material Specs</th>
+                <th className="border border-black px-3 py-3 text-right">Weight (KG)</th>
+                <th className="border border-black px-3 py-3 text-right">Value</th>
+                <th className="border border-black px-3 py-3 text-center">Reels</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeRows.length === 0 ? (
+                <tr><td colSpan={7} className="h-16" aria-label="No records" /></tr>
+              ) : paginatedItems.map((row: any, idx) => (
+                <tr key={`${row.materialReturnId}-${row.materialId}-${idx}`} className="hover:bg-slate-50">
+                  <td className="border border-black px-3 py-2 font-bold text-emerald-700">{row.returnNo}</td>
+                  <td className="border border-black px-3 py-2">{formatDate(row.date)}</td>
+                  <td className="border border-black px-3 py-2 font-medium">{row.jobNo || "-"}</td>
+                  <td className="border border-black px-3 py-2"><ReelSpecs text={row.specs} /></td>
+                  <td className="border border-black px-3 py-2 text-right font-black text-emerald-600">{formatNumber(row.totalWeight)}</td>
+                  <td className="border border-black px-3 py-2 text-right font-black text-cyan-700">{formatNumber(row.totalValue)}</td>
+                  <td className="border border-black px-3 py-2 text-center font-bold">{row.reelCount}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-black">
-                {activeRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No reel returns found.</td>
-                  </tr>
-                ) : (
-                  paginatedItems.map((row: any, idx) => (
-                    <tr key={idx} className="divide-x divide-black hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-sm font-bold text-emerald-700">{row.returnNo}</td>
-                      <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
-                      <td className="px-4 py-3 text-sm font-medium">{row.jobNo || "-"}</td>
-                      <td className="px-4 py-3 text-sm"><ReelSpecs text={row.specs} /></td>
-                      <td className="px-4 py-3 text-sm text-right font-black text-emerald-600">{formatNumber(row.totalWeight)}</td>
-                      <td className="px-4 py-3 text-sm text-right font-black text-cyan-700">{formatNumber(row.totalValue)}</td>
-                      <td className="px-4 py-3 text-sm text-center font-bold">{row.reelCount}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          )}
+              ))}
+            </tbody>
+          </table>
+        )}
 
-          {activeTab === "reel-details" && (
-            <table className="min-w-full divide-y divide-black border-collapse">
-              <thead className="sticky top-0 z-30 bg-slate-100">
-                <tr className="divide-x divide-black">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Return No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Job No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Material Specs</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Our Reel No</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Weight (KG)</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Value</th>
-                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">QR PDF</th>
+        {activeTab === "reel-details" && (
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
+              <tr>
+                <th className="border border-black px-3 py-3 text-left">Return No</th>
+                <th className="border border-black px-3 py-3 text-left">Date</th>
+                <th className="border border-black px-3 py-3 text-left">Job No</th>
+                <th className="border border-black px-3 py-3 text-left">Material Specs</th>
+                <th className="border border-black px-3 py-3 text-left">Our Reel No</th>
+                <th className="border border-black px-3 py-3 text-right">Weight (KG)</th>
+                <th className="border border-black px-3 py-3 text-right">Value</th>
+                <th className="border border-black px-3 py-3 text-center">QR PDF</th>
+              </tr>
+            </thead>
+            <tbody>
+              {activeRows.length === 0 ? (
+                <tr><td colSpan={8} className="h-16" aria-label="No records" /></tr>
+              ) : paginatedItems.map((row: any) => (
+                <tr key={row.id} className="hover:bg-slate-50">
+                  <td className="border border-black px-3 py-2 font-bold text-amber-700">{row.returnNo}</td>
+                  <td className="border border-black px-3 py-2">{formatDate(row.date)}</td>
+                  <td className="border border-black px-3 py-2 font-medium">{row.jobNo || "-"}</td>
+                  <td className="border border-black px-3 py-2"><ReelSpecs text={row.specs} /></td>
+                  <td className="border border-black px-3 py-2 font-black">{row.ourReelNo}</td>
+                  <td className="border border-black px-3 py-2 text-right font-bold text-amber-600">{formatNumber(row.weightKg)}</td>
+                  <td className="border border-black px-3 py-2 text-right font-bold text-cyan-700">{formatNumber(row.value)}</td>
+                  <td className="border border-black px-3 py-2 text-center">{qrButton(row)}</td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-black">
-                {activeRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="px-6 py-8 text-center text-slate-600 font-medium">No reel details found.</td>
-                  </tr>
-                ) : (
-                  paginatedItems.map((row: any) => (
-                    <tr key={row.id} className="divide-x divide-black hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3 text-sm font-bold text-amber-700">{row.returnNo}</td>
-                      <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
-                      <td className="px-4 py-3 text-sm font-medium">{row.jobNo || "-"}</td>
-                      <td className="px-4 py-3 text-sm"><ReelSpecs text={row.specs} /></td>
-                      <td className="px-4 py-3 text-sm font-black text-slate-900">{row.ourReelNo}</td>
-                      <td className="px-4 py-3 text-sm text-right font-bold text-amber-600">{formatNumber(row.weightKg)}</td>
-                      <td className="px-4 py-3 text-sm text-right font-bold text-cyan-700">{formatNumber(row.value)}</td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleDownloadReturnQrPdf(row)}
-                          className="inline-flex items-center gap-1 rounded border border-indigo-700 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-800 hover:bg-indigo-100"
-                          title="Download return reel QR PDF"
-                        >
-                          <Download size={12} />
-                          QR PDF
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          )}
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Phone cards */}
+      {activeRows.length > 0 ? (
+        <div className="space-y-3 md:hidden">
+          {paginatedItems.map((row: any, idx) => (
+            <div key={`${row.id}-${idx}`} className="rounded-md border-2 border-black bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-black">{row.returnNo}</div>
+                  <div className="text-xs font-semibold text-slate-600">{formatDate(row.date)}{row.jobNo ? ` · ${row.jobNo}` : ""}</div>
+                </div>
+                {activeTab === "reel-details" ? qrButton(row) : null}
+              </div>
+              <div className="mt-1 text-sm">
+                {activeTab === "general" ? row.materialName : <ReelSpecs text={row.specs} />}
+              </div>
+              {activeTab === "reel-details" ? <div className="mt-1 text-xs font-bold">Reel {row.ourReelNo}</div> : null}
+              <div className="mt-2 grid grid-cols-2 gap-2 rounded bg-slate-50 px-2 py-1.5 text-xs">
+                <div>
+                  <div className="font-bold text-slate-500">{activeTab === "general" ? "Qty" : activeTab === "reel-summary" ? `KG · ${row.reelCount} reels` : "KG"}</div>
+                  <div className="text-sm font-black tabular-nums">{activeTab === "general" ? `${formatNumber(row.qty)} ${row.uom || ""}` : formatNumber(activeTab === "reel-summary" ? row.totalWeight : row.weightKg)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-slate-500">Value</div>
+                  <div className="text-sm font-black tabular-nums text-cyan-700">{formatNumber(activeTab === "reel-summary" ? row.totalValue : row.value)}</div>
+                </div>
+              </div>
+              {activeTab === "general" && row.remarks ? <div className="mt-1 text-xs text-slate-600">{row.remarks}</div> : null}
+            </div>
+          ))}
         </div>
-      </div>
+      ) : null}
 
       <ClientPagination page={page} pageSize={pageSize} totalItems={totalItems} onPageChange={setPage} onPageSizeChange={setPageSize} />
+    </div>
+  );
+}
+
+function ReturnTile({ label, value, note, tone }: { label: string; value: string; note?: string; tone: string }) {
+  return (
+    <div className={`rounded-lg border-2 border-black p-3 ${tone}`}>
+      <div className="text-[11px] font-black uppercase tracking-wide">{label}</div>
+      <div className="text-xl font-black tabular-nums">{value}</div>
+      {note ? <div className="text-[11px] font-semibold opacity-80">{note}</div> : null}
     </div>
   );
 }
