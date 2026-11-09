@@ -190,7 +190,11 @@ export function GatePassForm() {
     setReturnableLines((prev) => prev.map((line) => line.id === lineId ? { ...line, ...patch } : line));
   };
 
-  const addReturnableLine = () => setReturnableLines((prev) => [...prev, createBlankLine()]);
+  const addReturnableLine = (afterId?: string) => setReturnableLines((prev) => {
+    const index = afterId ? prev.findIndex((line) => line.id === afterId) : -1;
+    if (index < 0) return [...prev, createBlankLine()];
+    return [...prev.slice(0, index + 1), createBlankLine(), ...prev.slice(index + 1)];
+  });
   const removeReturnableLine = (lineId: string) => setReturnableLines((prev) => prev.length === 1 ? prev : prev.filter((line) => line.id !== lineId));
 
   const buildReturnableGatePass = (): GatePass | null => {
@@ -326,39 +330,48 @@ export function GatePassForm() {
             {isReturnable ? (
               <div className="space-y-3">
                 <div className="text-sm font-bold uppercase text-slate-500">Items</div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {returnableLines.map((line, index) => (
-                    <div key={line.id} className="space-y-2 rounded-md border-2 border-black bg-white p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-black uppercase text-slate-500">Item {index + 1}</span>
-                        <button type="button" onClick={() => removeReturnableLine(line.id)} title="Remove item" aria-label="Remove item" className="inline-flex h-8 w-8 items-center justify-center rounded-md border-2 border-red-600 bg-white text-red-600 hover:bg-red-50">
+                <div className="hidden grid-cols-[40px_minmax(0,1fr)_120px_140px_84px] gap-2 border-b border-black pb-1 text-xs font-black uppercase text-slate-600 md:grid">
+                  <span>#</span><span>Item Description</span><span>Qty</span><span>Unit</span><span />
+                </div>
+                <div className="space-y-2">
+                  {returnableLines.map((line, index) => {
+                    const actions = (
+                      <div className="flex items-center gap-1.5">
+                        <button type="button" onClick={() => removeReturnableLine(line.id)} title="Remove item" aria-label="Remove item" className="inline-flex h-9 w-9 items-center justify-center rounded-md border-2 border-red-600 bg-white text-red-600 hover:bg-red-50">
                           <Trash2 size={15} />
                         </button>
+                        <button type="button" onClick={() => addReturnableLine(line.id)} title="Add item below" aria-label="Add item below" className="indent-line-action inline-flex h-9 w-9 items-center justify-center rounded-md bg-black text-white hover:bg-slate-800">
+                          <Plus size={16} />
+                        </button>
                       </div>
-                      <label className="block">
-                        <span className="mb-1 block text-xs font-bold">Item Description</span>
-                        <input value={line.itemDescription || ""} onChange={(e) => updateReturnableLine(line.id, { itemDescription: e.target.value, itemName: e.target.value })} className="w-full rounded border border-black px-3 py-2 text-sm" />
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
+                    );
+                    return (
+                      <div key={line.id} className="rounded-md border-2 border-black bg-white p-3 md:grid md:grid-cols-[40px_minmax(0,1fr)_120px_140px_84px] md:items-center md:gap-2 md:rounded-none md:border-0 md:border-b md:border-slate-200 md:p-0 md:pb-2">
+                        <div className="mb-2 flex items-center justify-between md:mb-0 md:block">
+                          <span className="text-xs font-black uppercase text-slate-500 md:text-sm md:text-black"><span className="md:hidden">Item </span>{index + 1}</span>
+                          <div className="md:hidden">{actions}</div>
+                        </div>
                         <label className="block">
-                          <span className="mb-1 block text-xs font-bold">Qty</span>
-                          <input type="number" min="0" step="0.01" value={line.qty || ""} onChange={(e) => updateReturnableLine(line.id, { qty: Number(e.target.value || 0) })} className="w-full rounded border border-black px-3 py-2 text-right text-sm" />
+                          <span className="mb-1 block text-xs font-bold md:hidden">Item Description</span>
+                          <input value={line.itemDescription || ""} onChange={(e) => updateReturnableLine(line.id, { itemDescription: e.target.value, itemName: e.target.value })} className="w-full rounded border border-black px-3 py-2 text-sm" />
                         </label>
-                        <label className="block">
-                          <span className="mb-1 block text-xs font-bold">Unit</span>
-                          <select value={line.uom || "PCS"} onChange={(e) => updateReturnableLine(line.id, { uom: e.target.value || "PCS" })} className="w-full rounded border border-black bg-white px-2 py-2 text-sm font-semibold">
-                            {!unitOptions.some((option) => option.value === (line.uom || "PCS")) ? <option value={line.uom || "PCS"}>{line.uom || "PCS"}</option> : null}
-                            {unitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                          </select>
-                        </label>
+                        <div className="mt-2 grid grid-cols-2 gap-2 md:contents">
+                          <label className="block md:mt-0">
+                            <span className="mb-1 block text-xs font-bold md:hidden">Qty</span>
+                            <input type="number" min="0" step="0.01" value={line.qty || ""} onChange={(e) => updateReturnableLine(line.id, { qty: Number(e.target.value || 0) })} className="w-full rounded border border-black px-3 py-2 text-right text-sm" />
+                          </label>
+                          <label className="block">
+                            <span className="mb-1 block text-xs font-bold md:hidden">Unit</span>
+                            <select value={line.uom || "PCS"} onChange={(e) => updateReturnableLine(line.id, { uom: e.target.value || "PCS" })} className="w-full rounded border border-black bg-white px-2 py-2 text-sm font-semibold">
+                              {!unitOptions.some((option) => option.value === (line.uom || "PCS")) ? <option value={line.uom || "PCS"}>{line.uom || "PCS"}</option> : null}
+                              {unitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        <div className="hidden md:block">{actions}</div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-center">
-                  <button type="button" onClick={addReturnableLine} title="Add item" aria-label="Add item" className="indent-line-action rounded bg-black p-[10px] text-white transition hover:bg-slate-800">
-                    <Plus size={20} />
-                  </button>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
