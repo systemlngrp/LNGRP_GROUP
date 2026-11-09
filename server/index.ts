@@ -1257,9 +1257,35 @@ app.get("/api/npd-firm-wise", async (req, res) => {
     const pageSize = Math.min(1000, Math.max(25, Number(req.query.pageSize || NPD_PAGE_SIZE_MAX)));
     const status = String(req.query.status || "active").trim().toLowerCase();
     const search = String(req.query.search || "").trim();
-    const result = await getCachedFirmWiseNpdItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
+    // Column filters (NPD Items page). They run on the cached full list so totals
+    // and paging stay right; the dropdown choices come from the whole list.
+    const npdFilterKeys = ["customerName", "boxType", "fluteType", "ply", "uom"] as const;
+    const npdFilters = Object.fromEntries(npdFilterKeys.map((key) => [key, String(req.query[key] || "").trim()]).filter(([, value]) => value));
+    const consumableFilter = String(req.query.consumable || "").trim().toLowerCase();
+    const wantOptions = String(req.query.options || "") === "1";
+    if (!Object.keys(npdFilters).length && !consumableFilter && !wantOptions) {
+      const result = await getCachedFirmWiseNpdItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
+      res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
+      return res.json({ ...result, page, pageSize, search, status });
+    }
+    const full = await getCachedFirmWiseNpdItems(db, { search, status, limit: NPD_FULL_LIST_LIMIT, offset: 0 });
+    const isYes = (value: unknown) => ["yes", "true", "1", "y"].includes(String(value ?? "").trim().toLowerCase());
+    const filtered = (full.rows as any[]).filter((row) => {
+      for (const [key, value] of Object.entries(npdFilters)) {
+        if (String(row[key] ?? "").trim() !== value) return false;
+      }
+      if (consumableFilter === "yes" && !isYes(row.consumable)) return false;
+      if (consumableFilter === "no" && isYes(row.consumable)) return false;
+      return true;
+    });
+    let options: Record<string, string[]> | undefined;
+    if (wantOptions) {
+      const all = await getCachedFirmWiseNpdItems(db, { search: "", status, limit: NPD_FULL_LIST_LIMIT, offset: 0 });
+      options = Object.fromEntries(npdFilterKeys.map((key) => [key, Array.from(new Set((all.rows as any[]).map((row) => String(row[key] ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))]));
+    }
+    const offset = (page - 1) * pageSize;
     res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
-    return res.json({ ...result, page, pageSize, search, status });
+    return res.json({ rows: filtered.slice(offset, offset + pageSize), total: filtered.length, firms: full.firms, options, page, pageSize, search, status });
   } catch (error) {
     console.error("[DB] Error fetching firm-wise NPD items:", error);
     return res.status(500).json({ error: (error as Error).message || "Failed to fetch firm-wise NPD items" });

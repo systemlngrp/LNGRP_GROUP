@@ -26,7 +26,11 @@ export function PlateItemMaster() {
       filters={[
         { key: "company", label: "Company", searchable: true },
         { key: "itemName", label: "Item", searchable: true, optionLabelKeys: ["itemName", "erpItemCode"], optionSearchKeys: ["masterItemNameErpCode"] },
+        { key: "typeOfPlate", label: "Type of Plate" },
+        { key: "fluteType", label: "Flute Type" },
+        { key: "noOfPly", label: "No. of Ply" },
       ]}
+      stockKey="balance"
       searchPlaceholder="Search plate item master..."
     />
   );

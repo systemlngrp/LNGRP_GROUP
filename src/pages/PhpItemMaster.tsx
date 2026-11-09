@@ -26,7 +26,10 @@ export function PhpItemMaster() {
       filters={[
         { key: "company", label: "Company", searchable: true },
         { key: "itemName", label: "Item", searchable: true, optionLabelKeys: ["itemName", "erpItemCode"], optionSearchKeys: ["masterItemNameErpCode"] },
+        { key: "fluteType", label: "Flute Type" },
+        { key: "noOfPly", label: "No. of Ply" },
       ]}
+      stockKey="balance"
       searchPlaceholder="Search PHP item master..."
     />
   );

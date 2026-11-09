@@ -1523,6 +1523,7 @@ table td button:focus-visible {
     display: none !important;
   }
   [data-mobile-filters="collapsed"] [data-mf-unit],
+  [data-mobile-filters="collapsed"] [data-mf-actions],
   [data-mobile-filters="collapsed"][data-mf-follower] {
     display: none !important;
   }

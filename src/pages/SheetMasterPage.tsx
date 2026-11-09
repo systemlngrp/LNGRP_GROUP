@@ -1,7 +1,6 @@
-import { KeyboardEvent, useMemo, useState } from "react";
+import { KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { Select } from "../components/Select";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useData } from "../hooks/useData";
@@ -28,6 +27,7 @@ export function SheetMasterPage({
   filters = [],
   rowsOverride,
   editableColumns = [],
+  stockKey,
 }: {
   title: string;
   entity: string;
@@ -36,6 +36,8 @@ export function SheetMasterPage({
   filters?: SheetMasterFilter[];
   rowsOverride?: SheetMasterRow[];
   editableColumns?: string[];
+  /** Column holding the stock balance: adds a Stock filter (All / > 0 / 0 or less). */
+  stockKey?: string;
 }) {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
@@ -43,6 +45,7 @@ export function SheetMasterPage({
   const effectiveRows = rowsOverride || rows;
   const [searchTerm, setSearchTerm] = useState("");
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [stockFilter, setStockFilter] = useState("");
   const [draftValues, setDraftValues] = useState<Record<string, string>>({});
   const [savingCell, setSavingCell] = useState<string | null>(null);
 
@@ -85,13 +88,18 @@ export function SheetMasterPage({
     return effectiveRows.filter((row) => {
       const matchesSearch = !query || columns.some((column) => String(row[column.key] ?? "").toLowerCase().includes(query));
       if (!matchesSearch) return false;
+      if (stockKey && stockFilter) {
+        const balance = Number(row[stockKey] ?? 0) || 0;
+        if (stockFilter === "positive" && !(balance > 0)) return false;
+        if (stockFilter === "zero" && balance > 0) return false;
+      }
       return filters.every((filter) => {
         const selectedValue = String(filterValues[filter.key] || "").trim();
         if (!selectedValue) return true;
         return String(row[filter.key] ?? "").trim() === selectedValue;
       });
     });
-  }, [columns, effectiveRows, filterValues, filters, searchTerm]);
+  }, [columns, effectiveRows, filterValues, filters, searchTerm, stockFilter, stockKey]);
 
   const {
     page,
@@ -102,7 +110,17 @@ export function SheetMasterPage({
     paginatedItems: paginatedRows,
   } = useClientPagination(filteredRows, 25);
 
-  const hasActiveFilters = Boolean(searchTerm.trim()) || filters.some((filter) => String(filterValues[filter.key] || "").trim());
+  const hasActiveFilters = Boolean(searchTerm.trim()) || Boolean(stockFilter) || filters.some((filter) => String(filterValues[filter.key] || "").trim());
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, filterValues, stockFilter, setPage]);
+
+  const clearAll = () => {
+    setSearchTerm("");
+    setFilterValues({});
+    setStockFilter("");
+  };
 
   const getCellDraftKey = (rowId: string, columnKey: string) => `${rowId}::${columnKey}`;
 
@@ -179,76 +197,74 @@ export function SheetMasterPage({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-black pb-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <h2 className="text-xl font-bold uppercase tracking-tight text-black">{title}</h2>
-          {hasActiveFilters ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSearchTerm("");
-                setFilterValues({});
-              }}
-              className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-100"
-            >
-              Clear Filters
-            </button>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">{title}</h2>
+      </div>
+
+      <div className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder={searchPlaceholder}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          {filterOptions.map((filter) => (
+            <div key={filter.key} className="min-w-0">
+              <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">{filter.label}</span>
+              {filter.searchable ? (
+                <Select
+                  compact
+                  value={filterValues[filter.key] || ""}
+                  onChange={(value) => setFilterValues((prev) => ({ ...prev, [filter.key]: value }))}
+                  options={filter.options}
+                  placeholder="All"
+                />
+              ) : (
+                <select
+                  value={filterValues[filter.key] || ""}
+                  onChange={(e) => setFilterValues((prev) => ({ ...prev, [filter.key]: e.target.value }))}
+                  className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold"
+                >
+                  <option value="">All</option>
+                  {filter.options.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ))}
+          {stockKey ? (
+            <div className="min-w-0">
+              <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Stock</span>
+              <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold">
+                <option value="">All</option>
+                <option value="positive">Balance &gt; 0</option>
+                <option value="zero">Balance 0 or less</option>
+              </select>
+            </div>
           ) : null}
         </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          <div className="relative w-full xl:col-span-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder={searchPlaceholder}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full rounded border border-black py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black"
-            />
-          </div>
-          {filterOptions.map((filter) =>
-            filter.searchable ? (
-              <Select
-                key={filter.key}
-                value={filterValues[filter.key] || ""}
-                onChange={(value) => setFilterValues((prev) => ({ ...prev, [filter.key]: value }))}
-                options={filter.options}
-                placeholder={filter.label}
-              />
-            ) : (
-              <select
-                key={filter.key}
-                value={filterValues[filter.key] || ""}
-                onChange={(e) => setFilterValues((prev) => ({ ...prev, [filter.key]: e.target.value }))}
-                className="w-full rounded border border-black bg-white px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black"
-              >
-                <option value="">{filter.label}</option>
-                {filter.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            )
-          )}
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearAll} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
-      <DataSummaryTiles
-        totalRecords={effectiveRows.length}
-        filteredRecords={filteredRows.length}
-        showingRecords={paginatedRows.length}
-        pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`}
-      />
-
-      <div className="overflow-hidden rounded border border-black bg-white shadow-sm">
-        <div className="table-sticky-scroll">
-          <table className="min-w-full border-collapse border border-black text-sm">
-            <thead className="sticky top-0 z-30 bg-slate-100">
+      <div className="overflow-x-auto rounded border border-black bg-white">
+        <div>
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="bg-slate-100">
               <tr>
                 {columns.map((column) => (
-                  <th key={column.key} className="whitespace-nowrap border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black">
+                  <th key={column.key} className="border border-black px-2 py-2 text-left text-xs font-bold uppercase text-black">
                     {column.label}
                   </th>
                 ))}
@@ -257,9 +273,7 @@ export function SheetMasterPage({
             <tbody>
               {paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + 1} className="border border-black px-3 py-8 text-center font-medium italic text-black">
-                    No records found.
-                  </td>
+                  <td colSpan={columns.length + 1} className="h-16" aria-label="No records" />
                 </tr>
               ) : (
                 paginatedRows.map((row) => (
@@ -268,7 +282,7 @@ export function SheetMasterPage({
                       const draftKey = getCellDraftKey(row.id, column.key);
                       const isEditable = canManage && editableColumnSet.has(column.key);
                       return (
-                        <td key={column.key} className="whitespace-nowrap border border-black px-3 py-2 align-top">
+                        <td key={column.key} className="whitespace-nowrap border border-black px-2 py-1.5 align-top">
                           {isEditable ? (
                             <input
                               type="number"

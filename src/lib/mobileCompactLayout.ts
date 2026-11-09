@@ -248,8 +248,24 @@ function markFilterPanels(content: HTMLElement) {
     panel.querySelectorAll("[data-mf-search-row]").forEach((element) => element.removeAttribute("data-mf-search-row"));
   });
   ensureButton(leader);
+  // An "Apply" button inside the filters ([data-mf-apply]) closes the panel;
+  // the filters themselves already took effect when they were picked.
+  found.forEach((panel) => {
+    panel.querySelectorAll<HTMLElement>("[data-mf-apply]").forEach((apply) => {
+      if (applyWired.has(apply)) return;
+      applyWired.add(apply);
+      apply.addEventListener("click", () => {
+        const current = pagePanels[0];
+        if (!current) return;
+        panelOpen.set(current, false);
+        applyPanelState(current);
+      });
+    });
+  });
   applyPanelState(leader);
 }
+
+const applyWired = new WeakSet<HTMLElement>();
 
 function clearPanel(panel: HTMLElement) {
   panel.removeAttribute("data-mobile-filters");

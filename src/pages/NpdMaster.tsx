@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Search, Download } from "lucide-react";
 import { Spinner } from "../components/Spinner";
-import { ExcelExport } from "../components/ExcelExport";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
+import { Select } from "../components/Select";
+import { exportsAllowed } from "../lib/exportPolicy";
 import { useAutoRefreshEffect } from "../hooks/useAutoRefresh";
 import { useData } from "../hooks/useData";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
@@ -71,6 +71,14 @@ export function NpdMaster() {
   const [searchTerm, setSearchTerm] = useState("");
   // 50 rows by default: each row draws ~140 cells and inputs; 100–500 stay selectable.
   const [pageSize, setPageSize] = useState(50);
+  // Column filters (run on the server so totals and pages stay right).
+  const [npdFilters, setNpdFilters] = useState<Record<string, string>>({});
+  const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
+  const [exporting, setExporting] = useState(false);
+  const setNpdFilter = (key: string, value: string) => {
+    setPage(1);
+    setNpdFilters((prev) => ({ ...prev, [key]: value }));
+  };
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [consumableDrafts, setConsumableDrafts] = useState<Record<string, boolean>>({});
   const [savingRowIds, setSavingRowIds] = useState<Record<string, boolean>>({});
@@ -138,6 +146,8 @@ export function NpdMaster() {
         });
         if (customSearchTerm) params.set("search", customSearchTerm);
         params.set("status", "all");
+        Object.entries(npdFilters).forEach(([key, value]) => { if (value) params.set(key, value); });
+        if (!Object.keys(filterOptions).length) params.set("options", "1");
 
         const response = await fetch(`/api/npd-firm-wise?${params.toString()}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -153,6 +163,7 @@ export function NpdMaster() {
 
         setRows(nextRows);
         setTotal(Number(result.total || 0));
+        if (result.options && typeof result.options === "object") setFilterOptions(result.options);
         setConsumableDrafts((previous) => {
           const next = { ...previous };
           for (const row of nextRows) {
@@ -173,8 +184,46 @@ export function NpdMaster() {
         if (showLoader) setLoading(false);
       }
     },
-    [authLoading, page, pageSize, searchTerm]
+    // filterOptions is only read to ask for the choices once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [authLoading, page, pageSize, searchTerm, npdFilters]
   );
+
+  // Excel: every row matching the search and filters, fetched page by page.
+  const handleExportExcel = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const token = window.localStorage.getItem("authToken") || "";
+      const all: NpdRecord[] = [];
+      for (let next = 1; next < 500; next += 1) {
+        const params = new URLSearchParams({ page: String(next), pageSize: "1000", status: "all" });
+        if (searchTerm) params.set("search", searchTerm);
+        Object.entries(npdFilters).forEach(([key, value]) => { if (value) params.set(key, value); });
+        const response = await fetch(`/api/npd-firm-wise?${params.toString()}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+        if (!response.ok) throw new Error("Failed to load NPD rows for Excel.");
+        const result = await response.json();
+        const chunk = Array.isArray(result.rows) ? result.rows : [];
+        all.push(...chunk);
+        if (chunk.length < 1000 || all.length >= Number(result.total || 0)) break;
+      }
+      if (!all.length) return;
+      const XLSX = await import("xlsx");
+      const data = all.map((row, index) => Object.fromEntries([
+        ["SL No", index + 1],
+        ...tableColumns.map((column) => [column.label, row[column.key] ?? ""]),
+        ...displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => [`${firm.firmName} ${column.label}`, row.firmStocks?.[firm.id]?.[column.key] ?? ""])),
+      ]));
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "NPD Items");
+      XLSX.writeFile(wb, "npd-items-firm-wise.xlsx");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Excel download failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -320,83 +369,60 @@ export function NpdMaster() {
   };
 
   return (
-    <div className="space-y-6">
-
-      <div className="flex flex-col gap-4 border-b border-black pb-4 md:flex-row md:items-center md:justify-between">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">NPD Items</h2>
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+        {exportsAllowed() ? (
+          <button type="button" onClick={() => void handleExportExcel()} disabled={exporting} title="Download Excel" className="rounded border border-emerald-700 px-3 py-1.5 text-sm font-bold text-emerald-700 disabled:opacity-50">Excel</button>
+        ) : null}
+      </div>
+
+      <div className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
             type="text"
             placeholder="Search NPD, customer, item, PO..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full rounded border border-black py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-black"
+            className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+          <div className="col-span-2 min-w-0 md:col-span-1 xl:col-span-2">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Customer</span>
+            <Select compact value={npdFilters.customerName || ""} onChange={(value) => setNpdFilter("customerName", value)} options={(filterOptions.customerName || []).map((value) => ({ value, label: value }))} placeholder="All" />
+          </div>
+          {([["boxType", "Box Type"], ["fluteType", "Flute Type"], ["ply", "Ply"], ["uom", "UOM"]] as const).map(([key, label]) => (
+            <label key={key} className="min-w-0">
+              <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">{label}</span>
+              <select value={npdFilters[key] || ""} onChange={(e) => setNpdFilter(key, e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold">
+                <option value="">All</option>
+                {(filterOptions[key] || []).map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </label>
+          ))}
+          <label className="min-w-0">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Consumable</span>
+            <select value={npdFilters.consumable || ""} onChange={(e) => setNpdFilter("consumable", e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold">
+              <option value="">All</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {searchInput.trim() || Object.values(npdFilters).some(Boolean) ? (
+            <button type="button" onClick={() => { setSearchInput(""); setNpdFilters({}); setPage(1); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
-      <DataSummaryTiles
-        totalRecords={total}
-        filteredRecords={total}
-        showingRecords={rows.length}
-        pageLabel={`${page} / ${totalPages}`}
-      />
-
-      <div className="overflow-hidden rounded border border-black bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-black bg-slate-50 px-4 py-3 text-sm font-semibold text-black md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <span>{loading ? "Loading NPD items..." : pageLabel}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <ExcelExport data={exportRows} fileName="npd-items-firm-wise" sheetName="NPD Items" />
-            <label className="flex items-center gap-2 text-xs font-black uppercase">
-              Rows
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPage(1);
-                  setPageSize(Number(e.target.value));
-                }}
-                disabled={loading}
-                className="rounded border border-black bg-white px-2 py-1 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {[50, 100, 250, 500].map((size) => (
-                  <option key={size} value={size}>
-                    {size}
-                  </option>
-                ))}
-              </select>
-            </label>
-          {totalPages > 1 ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-                disabled={loading || page <= 1}
-                className="rounded border border-black px-3 py-1 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <span className="min-w-[90px] text-center text-xs font-black uppercase">
-                Page {page} / {totalPages}
-              </span>
-              <button
-                type="button"
-                onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={loading || page >= totalPages}
-                className="rounded border border-black px-3 py-1 text-xs font-bold uppercase disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
-          ) : null}
-          </div>
-        </div>
-
-        <div className="table-sticky-scroll">
+      <div className="overflow-x-auto rounded border border-black bg-white">
+        <div>
           <table data-table-pagination-external="true" className="min-w-max divide-y divide-black border-collapse border border-black">
-            <thead className="bg-slate-100 divide-x divide-black sticky top-0 z-10">
+            <thead className="bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th rowSpan={2} className="border border-black px-3 py-3 text-right text-xs font-bold uppercase text-black align-top min-w-[72px] whitespace-nowrap">SL No</th>
                 {tableColumns.map((column) => (
@@ -436,9 +462,7 @@ export function NpdMaster() {
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={1 + tableColumns.length + firmColumnCount + 1} className="px-6 py-8 text-center font-medium italic text-black">
-                    No NPD records found.
-                  </td>
+                  <td colSpan={1 + tableColumns.length + firmColumnCount + 1} className="h-16" aria-label="No records" />
                 </tr>
               ) : (
                 rows.map((row, index) => {
@@ -531,10 +555,11 @@ export function NpdMaster() {
                             type="button"
                             onClick={() => void handleDownloadCard(row)}
                             disabled={downloadingId === row.id}
-                            className="inline-flex items-center gap-2 rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Download Card"
+                            aria-label="Download Card"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md border-2 border-black bg-white hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {downloadingId === row.id ? <Spinner size={14} /> : <Download size={14} />}
-                            Download Card
                           </button>
                           <button
                             type="button"
@@ -566,6 +591,22 @@ export function NpdMaster() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-3 text-xs font-bold">
+        <span className="font-black" title="Total">{total.toLocaleString()}</span>
+        <select
+          value={pageSize}
+          onChange={(e) => { setPage(1); setPageSize(Number(e.target.value)); }}
+          disabled={loading}
+          aria-label="Rows per page"
+          className="rounded border border-black bg-white px-1 py-1 disabled:opacity-50"
+        >
+          {[50, 100, 250, 500].map((size) => <option key={size} value={size}>{size}</option>)}
+        </select>
+        <button type="button" onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={loading || page <= 1} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button>
+        <span>{page} / {totalPages}</span>
+        <button type="button" onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))} disabled={loading || page >= totalPages} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button>
       </div>
     </div>
   );
