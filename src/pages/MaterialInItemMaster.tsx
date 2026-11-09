@@ -300,6 +300,11 @@ export function MaterialInItemMaster() {
       receiptReelWeight: remoteSummaryMetrics.receiptQty || reelStockRows.reduce((sum, row) => sum + Number(row.mrrQty || 0), 0),
       totalReceipts: remoteSummaryMetrics.totalReceipts || new Set(receiptLines.map(l => l.parentId)).size,
       othersValue: others.reduce((sum, l) => sum + Number(l.value || 0), 0),
+      // General materials only (the General tab's tiles).
+      generalOpeningValue: others.filter(l => l.isOpeningMrr).reduce((sum, l) => sum + Number(l.value || 0), 0),
+      generalReceiptValue: others.filter(l => !l.isOpeningMrr).reduce((sum, l) => sum + Number(l.value || 0), 0),
+      generalReceipts: new Set(others.filter(l => !l.isOpeningMrr).map(l => l.parentId)).size,
+      generalLines: others.filter(l => !l.isOpeningMrr).length,
       // Reel Summary is server-paginated; use the server's full filtered
       // total instead of summing only the currently loaded page/raw cache.
       reelValue: remoteSummaryMetrics.receiptValue || reelSummary.reduce((sum, l) => sum + Number(l.value || 0), 0)
@@ -535,27 +540,22 @@ export function MaterialInItemMaster() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Material Receipt Item Master</h2>
       </div>
 
-      {/* Colorful Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Opening</div>
-          <div className="text-3xl font-black">{processedData.metrics.openingReelWeight.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs">KG</span></div>
-          <div className="text-[10px] font-bold mt-1 opacity-90">Value {processedData.metrics.openingValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+      {/* Tiles follow the selected tab: General Materials or Reels, never combined. */}
+      {activeTab === "others" ? (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <ItemMasterTile tone="indigo" label="Opening Value" value={processedData.metrics.generalOpeningValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+          <ItemMasterTile tone="emerald" label="Receipts" value={processedData.metrics.generalReceipts.toLocaleString()} note={`${processedData.metrics.generalLines.toLocaleString()} lines`} />
+          <ItemMasterTile tone="amber" label="Item Value" value={processedData.metrics.generalReceiptValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+          <ItemMasterTile tone="rose" label="Total Value" value={processedData.metrics.othersValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} note="Opening + receipts" />
         </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Receipts</div>
-          <div className="text-3xl font-black">{processedData.metrics.receiptReelWeight.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-xs">KG</span></div>
-          <div className="text-[10px] font-bold mt-1 opacity-90">{processedData.metrics.totalReceipts.toLocaleString()} MRR | Value {processedData.metrics.receiptValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <ItemMasterTile tone="indigo" label="Opening" value={`${processedData.metrics.openingReelWeight.toLocaleString(undefined, { minimumFractionDigits: 2 })} KG`} note={`Value ${processedData.metrics.openingValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
+          <ItemMasterTile tone="emerald" label="Receipts" value={`${processedData.metrics.receiptReelWeight.toLocaleString(undefined, { minimumFractionDigits: 2 })} KG`} note={`${processedData.metrics.totalReceipts.toLocaleString()} MRR`} />
+          <ItemMasterTile tone="amber" label="Item Value" value={processedData.metrics.receiptValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
+          <ItemMasterTile tone="rose" label="Reel Value" value={processedData.metrics.reelValue.toLocaleString(undefined, { maximumFractionDigits: 2 })} />
         </div>
-        <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Others Value</div>
-          <div className="text-3xl font-black">{processedData.metrics.othersValue.toLocaleString()}</div>
-        </div>
-        <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Reel Value</div>
-          <div className="text-3xl font-black">{processedData.metrics.reelValue.toLocaleString()}</div>
-        </div>
-      </div>
+      )}
 
       {/* Filters Bar */}
       <div className="flex flex-wrap items-end gap-4 bg-slate-50 p-4 border border-black rounded shadow-sm">
@@ -668,3 +668,19 @@ export function MaterialInItemMaster() {
   );
 }
 
+const ITEM_MASTER_TILE_TONES = {
+  indigo: "bg-indigo-50 text-indigo-900",
+  emerald: "bg-emerald-50 text-emerald-900",
+  amber: "bg-amber-50 text-amber-900",
+  rose: "bg-rose-50 text-rose-900",
+} as const;
+
+function ItemMasterTile({ label, value, note, tone }: { label: string; value: string; note?: string; tone: keyof typeof ITEM_MASTER_TILE_TONES }) {
+  return (
+    <div className={`rounded-lg border-2 border-black p-3 ${ITEM_MASTER_TILE_TONES[tone]}`}>
+      <div className="text-[11px] font-black uppercase tracking-wide">{label}</div>
+      <div className="text-xl font-black tabular-nums">{value}</div>
+      {note ? <div className="text-[11px] font-bold opacity-80">{note}</div> : null}
+    </div>
+  );
+}

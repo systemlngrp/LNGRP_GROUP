@@ -153,7 +153,7 @@ function roundCurrencyValue(value: number) {
   return Number(Number(value || 0).toFixed(4));
 }
 
-export function MaterialInForm() {
+export function MaterialInForm({ directService = false }: { directService?: boolean } = {}) {
   const confirm = useConfirm();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -226,7 +226,9 @@ export function MaterialInForm() {
 
   const gateEntryId = searchParams.get("gateEntryId") || "";
   const editId = searchParams.get("edit") || "";
-  const directServiceRequested = searchParams.get("directService") === "1";
+  // Direct Service has its own form (route /material-in/direct-service); the old
+  // ?directService=1 link still opens it too.
+  const directServiceRequested = directService || searchParams.get("directService") === "1";
   const linkedGateEntry = useMemo(
     () => gateEntries.find((entry) => entry.id === gateEntryId),
     [gateEntries, gateEntryId]
@@ -363,7 +365,6 @@ export function MaterialInForm() {
     { value: "Rejection In", label: "Rejection In" },
     { value: "FG Purchase", label: "FG Purchase" },
     { value: "Service Return", label: "Service Return" },
-    { value: "Direct Service", label: "Direct Service" },
   ];
 
   useEffect(() => {
@@ -2259,6 +2260,10 @@ export function MaterialInForm() {
       return;
     }
     if (!date || !invoiceNo || !invDate || !supplierId || lines.length === 0) return;
+    if (invDate > todayInputValue()) {
+      alert("Invoice Date cannot be a future date.");
+      return;
+    }
 
     if (!editingEntry && gateEntryId && !linkedGateEntry) {
       alert("Gate Entry could not be loaded. MRR cannot be created from this link.");
@@ -2674,14 +2679,17 @@ export function MaterialInForm() {
                   <Upload size={16} /> Upload Invoice
                   <input type="file" multiple accept="image/*,.pdf" className="hidden" onChange={(e) => handleAiFileUpload(e.target.files)} />
                 </label>
-                <button
-                  type="button"
-                  onClick={handleAiFetch}
-                  disabled={isAiFetching || aiFiles.length === 0}
-                  className="inline-flex items-center gap-2 rounded bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800 disabled:opacity-50"
-                >
-                  {isAiFetching ? <Spinner size={18} className="text-white" /> : <Wand2 size={16} />} Fetch From Invoice
-                </button>
+                {/* Shown only once an invoice file has been uploaded. */}
+                {aiFiles.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={handleAiFetch}
+                    disabled={isAiFetching}
+                    className="inline-flex items-center gap-2 rounded bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800 disabled:opacity-50"
+                  >
+                    {isAiFetching ? <Spinner size={18} className="text-white" /> : <Wand2 size={16} />} Fetch From Invoice
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -2958,15 +2966,17 @@ export function MaterialInForm() {
               className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
             />
           </div>
-          <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">MRR No</label>
-            <input
-              type="text"
-              value={editingEntry?.transactionNo || "Generated on Submit"}
-              disabled
-              className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-mono text-sm opacity-70"
-            />
-          </div>
+          {editingEntry ? (
+            <div className="flex flex-col space-y-1">
+              <label className="font-bold text-black">MRR No</label>
+              <input
+                type="text"
+                value={editingEntry.transactionNo || ""}
+                disabled
+                className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-mono text-sm opacity-70"
+              />
+            </div>
+          ) : null}
           <div className="flex flex-col space-y-1">
             <label className="font-bold text-black">
               {mrrType === "Reel" ? "Inventory Owner" : "Firm"} <span className="text-red-500">*</span>
@@ -2983,7 +2993,25 @@ export function MaterialInForm() {
             ) : linkedGateEntry?.purpose === "Returnable Receipt" ? (
               <input value="Service Return" disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
             ) : (
-              <Select options={mrrTypeOptions} value={mrrType} onChange={handleMrrTypeChange} required />
+              // Material type as buttons so the selected type is clear at a glance.
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="MRR Type">
+                {mrrTypeOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={mrrType === option.value}
+                    onClick={() => { if (mrrType !== option.value) handleMrrTypeChange(option.value); }}
+                    className={`rounded border-2 px-3 py-2 text-sm font-bold transition ${
+                      mrrType === option.value
+                        ? "border-indigo-700 bg-indigo-700 text-white"
+                        : "border-black bg-white text-black hover:bg-slate-50"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             )}
             {mrrType === "Others" ? (
               <>
@@ -3043,91 +3071,11 @@ export function MaterialInForm() {
               type="date"
               value={invDate}
               onChange={(e) => setInvDate(e.target.value)}
+              max={todayInputValue()}
               required
               className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
             />
           </div>
-          <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">Insurance</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={insurance}
-              onChange={(e) => setInsurance(e.target.value === "" ? "" : parseFloat(e.target.value))}
-              className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
-            />
-          </div>
-          <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">Other Charges</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={otherCharges}
-              onChange={(e) => setOtherCharges(e.target.value === "" ? "" : parseFloat(e.target.value))}
-              className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
-            />
-          </div>
-          <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">Expense CGST</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={expenseCGST}
-              onChange={(e) => handleExpenseCgstChange(e.target.value)}
-              disabled={!hasExpenseBase || isInterState}
-              className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full disabled:bg-slate-100 disabled:text-slate-500"
-            />
-          </div>
-          <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">Expense SGST</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={expenseSGST}
-              onChange={(e) => handleExpenseSgstChange(e.target.value)}
-              disabled={!hasExpenseBase || isInterState}
-              className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full disabled:bg-slate-100 disabled:text-slate-500"
-            />
-          </div>
-          <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">Expense IGST</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={expenseIGST}
-              onChange={(e) => handleExpenseIgstChange(e.target.value)}
-              disabled={!hasExpenseBase || !isInterState}
-              className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full disabled:bg-slate-100 disabled:text-slate-500"
-            />
-          </div>
-          <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">Round Off</label>
-            <input
-              type="number"
-              step="0.01"
-              value={roundOff}
-              onChange={(e) => setRoundOff(e.target.value === "" ? "" : parseFloat(e.target.value))}
-              className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
-            />
-          </div>
-          {isDirectService ? (
-            <div className="flex flex-col space-y-1">
-              <label className="font-bold text-black">TDS Deduction</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={tdsAmount}
-                onChange={(e) => setTdsAmount(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
-              />
-            </div>
-          ) : null}
           <div className="flex flex-col space-y-1 md:col-span-2">
             <label className="font-bold text-black">
               Party <span className="text-red-500">*</span>
@@ -3232,13 +3180,13 @@ export function MaterialInForm() {
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? "Quantity" : isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GST %</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Invoice Value (INR)</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Pre-GST Invoice Value (INR)</th>
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">CGST %</th> : null}
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">SGST %</th> : null}
                       {isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">IGST %</th> : null}
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Accepted Qty" : "Kanta Weight"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">UOM</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Actual Value</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Item Value</th>
                       <th className="px-4 py-3 text-right border border-black"></th>
                     </tr>
                   </thead>
@@ -3463,32 +3411,119 @@ export function MaterialInForm() {
               No items added yet. Please add at least one line item.
             </div>
           )}
-          <div className="mt-4 text-right font-bold text-black text-xl">
+          {/* Charges and deductions: shown once at least one item line is added. */}
+          {lines.length > 0 ? (
+            <div className="mt-4 grid grid-cols-1 gap-4 rounded border border-black bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-col space-y-1">
+                <label className="font-bold text-black">Insurance</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={insurance}
+                  onChange={(e) => setInsurance(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
+                />
+              </div>
+              <div className="flex flex-col space-y-1">
+                <label className="font-bold text-black">Other Charges</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={otherCharges}
+                  onChange={(e) => setOtherCharges(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
+                />
+              </div>
+              <div className="flex flex-col space-y-1">
+                <label className="font-bold text-black">Expense CGST</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={expenseCGST}
+                  onChange={(e) => handleExpenseCgstChange(e.target.value)}
+                  disabled={!hasExpenseBase || isInterState}
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+              <div className="flex flex-col space-y-1">
+                <label className="font-bold text-black">Expense SGST</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={expenseSGST}
+                  onChange={(e) => handleExpenseSgstChange(e.target.value)}
+                  disabled={!hasExpenseBase || isInterState}
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+              <div className="flex flex-col space-y-1">
+                <label className="font-bold text-black">Expense IGST</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={expenseIGST}
+                  onChange={(e) => handleExpenseIgstChange(e.target.value)}
+                  disabled={!hasExpenseBase || !isInterState}
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full disabled:bg-slate-100 disabled:text-slate-500"
+                />
+              </div>
+              <div className="flex flex-col space-y-1">
+                <label className="font-bold text-black">Round Off</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={roundOff}
+                  onChange={(e) => setRoundOff(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                  className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
+                />
+              </div>
+              {isDirectService ? (
+                <div className="flex flex-col space-y-1">
+                  <label className="font-bold text-black">TDS Deduction</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tdsAmount}
+                    onChange={(e) => setTdsAmount(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                    className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {/* Summary: only lines with a value; key totals larger. */}
+          <div className="mt-4 ml-auto w-full max-w-md space-y-1 rounded border border-black bg-white p-4 text-sm font-bold text-black">
             {isUsdInvoice ? (
               <>
-                <div>Invoice Currency: <span className="text-slate-700">USD</span></div>
-                <div>Exchange Rate: <span className="text-slate-700">{numericExchangeRate.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span></div>
-                <div>Total Invoice Value (USD): <span className="text-amber-700">USD {totalInvoiceValueUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-                <div>Total Actual Value (USD): <span className="text-indigo-700">USD {totalActualValueUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+                <SummaryLine label="Invoice Currency" value="USD" />
+                <SummaryLine label="Exchange Rate" value={numericExchangeRate.toLocaleString(undefined, { maximumFractionDigits: 4 })} />
+                <SummaryLine label="Pre-GST Invoice Value (USD)" value={`USD ${totalInvoiceValueUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
+                <SummaryLine label="Item Value (USD)" value={`USD ${totalActualValueUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`} />
               </>
             ) : null}
-            <div>Total Invoice Value: <span className="text-amber-700">{totalInvoiceValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Total CGST: <span className="text-slate-700">{totalCgst.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Total SGST: <span className="text-slate-700">{totalSgst.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Total IGST: <span className="text-slate-700">{totalIgst.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Invoice Value After GST: <span className="text-amber-700">{totalInvoiceValueAfterGst.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Total Actual Value: <span className="text-indigo-700">{totalActualValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Insurance: <span className="text-slate-700">{insuranceValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Other Charges: <span className="text-slate-700">{otherChargesValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Expense CGST: <span className="text-slate-700">{expenseCGSTValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Expense SGST: <span className="text-slate-700">{expenseSGSTValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Expense IGST: <span className="text-slate-700">{expenseIGSTValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Round Off: <span className="text-slate-700">{roundOffValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-            <div>Gross Total Amount: <span className="text-emerald-700">{totalAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+            <SummaryLine label="Pre-GST Invoice Value" amount={totalInvoiceValue} tone="text-amber-700" strong />
+            <SummaryLine label="CGST" amount={totalCgst} />
+            <SummaryLine label="SGST" amount={totalSgst} />
+            <SummaryLine label="IGST" amount={totalIgst} />
+            <SummaryLine label="Post-GST Invoice Value" amount={totalInvoiceValueAfterGst} tone="text-amber-700" strong />
+            <SummaryLine label="Item Value" amount={totalActualValue} tone="text-indigo-700" strong />
+            <SummaryLine label="Insurance" amount={insuranceValue} />
+            <SummaryLine label="Other Charges" amount={otherChargesValue} />
+            <SummaryLine label="Expense CGST" amount={expenseCGSTValue} />
+            <SummaryLine label="Expense SGST" amount={expenseSGSTValue} />
+            <SummaryLine label="Expense IGST" amount={expenseIGSTValue} />
+            <SummaryLine label="Round Off" amount={roundOffValue} />
+            <SummaryLine label="Gross Total Amount" amount={totalAmount} tone="text-emerald-700" strong always />
             {isDirectService ? (
               <>
-                <div>TDS Deduction: <span className="text-rose-700">{displayTdsAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
-                <div>Net Supplier Payable: <span className="text-indigo-700">{displayNetSupplierPayable.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span></div>
+                <SummaryLine label="TDS Deduction" amount={displayTdsAmount} tone="text-rose-700" />
+                <SummaryLine label="Net Supplier Payable" amount={displayNetSupplierPayable} tone="text-indigo-700" strong always />
               </>
             ) : null}
           </div>
@@ -3516,8 +3551,34 @@ export function MaterialInForm() {
   );
 }
 
+// Today's date as YYYY-MM-DD (local), for "not in the future" date limits.
+function todayInputValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
 
-
-
-
-
+// One summary line; hidden when its amount is zero unless "always".
+function SummaryLine({
+  label,
+  amount,
+  value,
+  tone = "text-slate-700",
+  strong = false,
+  always = false,
+}: {
+  label: string;
+  amount?: number;
+  value?: string;
+  tone?: string;
+  strong?: boolean;
+  always?: boolean;
+}) {
+  if (value === undefined && !always && !Number(amount || 0)) return null;
+  const shown = value ?? Number(amount || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return (
+    <div className={`flex items-baseline justify-between gap-4 ${strong ? "text-base" : "text-sm"}`}>
+      <span className={strong ? "font-black" : "font-semibold text-slate-600"}>{label}</span>
+      <span className={`${tone} ${strong ? "text-lg font-black" : "font-bold"} tabular-nums`}>{shown}</span>
+    </div>
+  );
+}

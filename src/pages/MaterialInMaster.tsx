@@ -284,10 +284,10 @@ export function MaterialInMaster() {
     Accounts: getApprovalText(entry.accTimestamp, entry.accEmailId),
     MD: getApprovalText(entry.mdTimestamp, entry.mdEmailId),
     Tally: entry.tallyTimestamp ? formatDate(entry.tallyTimestamp) : "-",
-    "Invoice Value": Number(entry.totalInvoiceValue || 0),
+    "Pre-GST Invoice Value": Number(entry.totalInvoiceValue || 0),
     GST: Number(getGstTotal(entry) || 0),
-    "Invoice After GST": Number(entry.totalInvoiceValueAfterGst || 0),
-    "Actual Value": Number(entry.totalActualValue || entry.totalAmount || 0),
+    "Post-GST Invoice Value": Number(entry.totalInvoiceValueAfterGst || 0),
+    "Item Value": Number(entry.totalActualValue || entry.totalAmount || 0),
     Insurance: Number(entry.insurance || 0),
     "Other Charges": Number(entry.otherCharges || 0),
     "Expense GST": Number(getExpenseGstTotal(entry) || 0),
@@ -309,26 +309,23 @@ export function MaterialInMaster() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Total Receipts</div>
-          <div className="text-2xl font-black">{metrics.receiptCount}</div>
-          <div className="text-[10px] font-bold mt-1 opacity-90">{metrics.completed} Fully Completed</div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-lg border-2 border-black bg-indigo-50 p-3 text-indigo-900">
+          <div className="text-[11px] font-black uppercase tracking-wide">Total Receipts</div>
+          <div className="text-xl font-black tabular-nums">{metrics.receiptCount.toLocaleString()}</div>
+          <div className="text-[11px] font-bold opacity-80">{metrics.completed.toLocaleString()} fully completed</div>
         </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Actual Value</div>
-          <div className="text-2xl font-black">{metrics.totalActual.toLocaleString()}</div>
-          <div className="text-[10px] font-bold mt-1 opacity-90">Net Purchase Value</div>
+        <div className="rounded-lg border-2 border-black bg-emerald-50 p-3 text-emerald-900">
+          <div className="text-[11px] font-black uppercase tracking-wide">Item Value</div>
+          <div className="text-xl font-black tabular-nums">{metrics.totalActual.toLocaleString()}</div>
         </div>
-        <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Invoice Value</div>
-          <div className="text-2xl font-black">{metrics.totalInvoice.toLocaleString()}</div>
-          <div className="text-[10px] font-bold mt-1 opacity-90">Reported on Invoices</div>
+        <div className="rounded-lg border-2 border-black bg-amber-50 p-3 text-amber-900">
+          <div className="text-[11px] font-black uppercase tracking-wide">Pre-GST Invoice Value</div>
+          <div className="text-xl font-black tabular-nums">{metrics.totalInvoice.toLocaleString()}</div>
         </div>
-        <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Invoice After GST</div>
-          <div className="text-2xl font-black">{metrics.totalInvoiceAfterGst.toLocaleString()}</div>
-          <div className="text-[10px] font-bold mt-1 opacity-90">Pre-tax plus GST</div>
+        <div className="rounded-lg border-2 border-black bg-rose-50 p-3 text-rose-900">
+          <div className="text-[11px] font-black uppercase tracking-wide">Post-GST Invoice Value</div>
+          <div className="text-xl font-black tabular-nums">{metrics.totalInvoiceAfterGst.toLocaleString()}</div>
         </div>
       </div>
 
@@ -398,8 +395,8 @@ export function MaterialInMaster() {
               <div className="text-sm">{formatDate(entry.date)} | {getSupplierName(entry.supplierId)}</div>
               <div className="flex justify-between items-center mt-2 border-t border-slate-100 pt-2">
                 <div className="text-right">
-                  <div className="font-bold text-sm text-slate-500">Invoice: {Number(entry.totalInvoiceValue || 0).toLocaleString()}</div>
-                  <div className="font-bold text-sm text-slate-500">Invoice After GST: {Number(entry.totalInvoiceValueAfterGst || 0).toLocaleString()}</div>
+                  <div className="font-bold text-sm text-slate-500">Pre-GST Invoice: {Number(entry.totalInvoiceValue || 0).toLocaleString()}</div>
+                  <div className="font-bold text-sm text-slate-500">Post-GST Invoice: {Number(entry.totalInvoiceValueAfterGst || 0).toLocaleString()}</div>
                   <div className="font-bold text-sm text-slate-500">
                     Insurance / Other: {Number(entry.insurance || 0).toLocaleString()} / {Number(entry.otherCharges || 0).toLocaleString()}
                   </div>
@@ -473,10 +470,10 @@ export function MaterialInMaster() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Accounts</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MD</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Tally</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Invoice Value</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Pre-GST Invoice Value</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">GST</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Invoice After GST</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Actual Value</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Post-GST Invoice Value</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Item Value</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Insurance</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Other Charges</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Expense GST</th>

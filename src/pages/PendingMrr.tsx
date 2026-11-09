@@ -146,7 +146,7 @@ export function PendingMrr() {
         <div className="flex items-center gap-2 justify-self-end">
           <button
             type="button"
-            onClick={() => navigate("/material-in/form?directService=1")}
+            onClick={() => navigate("/material-in/direct-service")}
             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded border border-indigo-700 bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase text-white transition hover:bg-indigo-700"
           >
             <FilePlus2 size={14} /> Direct Service

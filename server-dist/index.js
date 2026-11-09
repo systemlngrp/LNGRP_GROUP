@@ -11619,6 +11619,23 @@ const createHandlers = (tableName) => {
             let materialOpening = null;
             let whatsappDelivery;
             try {
+                // Material receipts: the invoice date cannot be in the future (India
+                // date). Only checked when the date is new or changed, so saving an
+                // existing record for approvals is never blocked.
+                if (tableName === "material_in" && data && !Array.isArray(data)) {
+                    const invDate = String(data.invDate || "").slice(0, 10);
+                    const todayIndia = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(invDate) && invDate > todayIndia) {
+                        const recordId = String(data.id || "").trim();
+                        const [existingRows] = recordId
+                            ? await db.query("SELECT invDate FROM `material_in` WHERE id = ? LIMIT 1", [recordId])
+                            : [[]];
+                        const storedInvDate = String(existingRows[0]?.invDate || "").slice(0, 10);
+                        if (storedInvDate !== invDate) {
+                            return res.status(400).json({ error: "Invoice Date cannot be a future date." });
+                        }
+                    }
+                }
                 if (tableName === "whatsapp_configs") {
                     const id = String(data.id || "").trim();
                     const loginId = String(data.loginId || "").trim();

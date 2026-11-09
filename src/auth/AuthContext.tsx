@@ -131,6 +131,12 @@ function isAllowed(user: AuthUser | null, href: string) {
     return true;
   }
   if (href === "/truck/logs" && list.includes("/reports/truck-status")) return true;
+  // Direct Service has its own form now; whoever could open it before (from
+  // Pending Material Receipt or the Material Receipt form) still can.
+  if (
+    href === "/material-in/direct-service" &&
+    ["/material-in/form", "/material-receipt/pending-mrr"].some((path) => list.includes(path))
+  ) return true;
   if (!href) return false;
   return list.some((entry) => {
     if (!entry) return false;

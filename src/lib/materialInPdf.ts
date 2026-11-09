@@ -187,7 +187,7 @@ export async function downloadMaterialInPdf({
     footerY += 3;
     autoTable(doc, {
       startY: footerY,
-      head: [["Item", "Invoice Qty", "Actual Qty", "Invoice Value", "Actual Value"]],
+      head: [["Item", "Invoice Qty", "Actual Qty", "Pre-GST Invoice Value", "Item Value"]],
       body: reconciliationRows,
       theme: "grid",
       headStyles: { fillColor: [234, 239, 247], textColor: [43, 63, 100], fontStyle: "bold", fontSize: 7.2, cellPadding: 1.5 },

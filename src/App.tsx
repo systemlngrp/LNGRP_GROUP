@@ -355,6 +355,7 @@ export default function App() {
           
           {/* Material In */}
           <Route path="material-in/form" element={<MaterialInForm />} />
+          <Route path="material-in/direct-service" element={<MaterialInForm key="direct-service" directService />} />
           <Route path="material-in/master" element={<MaterialInMaster />} />
           <Route path="material-in/item-master" element={<MaterialInItemMaster />} />
           
