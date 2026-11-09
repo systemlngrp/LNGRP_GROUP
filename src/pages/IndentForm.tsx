@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, User } from "../types";
 import { Select } from "../components/Select";
@@ -76,7 +76,9 @@ export function IndentForm() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((material) => ({
       value: material.id,
-      label: `${material.erpCode ? `${material.erpCode} - ` : ""}${material.name}`,
+      // Name only (the ERP shows in its own column); typing an ERP still finds it.
+      label: material.name,
+      searchText: `${material.erpCode || ""} ${material.name}`,
     }));
 
   const handleLineChange = (lineId: string, field: "materialId" | "qty" | "targetDeliveryDate", value: string) => {
@@ -93,8 +95,14 @@ export function IndentForm() {
     );
   };
 
-  const handleAddRow = () => {
-    setLines((prev) => [...prev, createEmptyLine()]);
+  // Adds a new empty line just below the given line.
+  const handleAddRowAfter = (lineId: string) => {
+    setLines((prev) => {
+      const index = prev.findIndex((line) => line.id === lineId);
+      const next = [...prev];
+      next.splice(index < 0 ? next.length : index + 1, 0, createEmptyLine());
+      return next;
+    });
   };
 
   const handleRemoveRow = (lineId: string) => {
@@ -249,99 +257,86 @@ export function IndentForm() {
         </div>
 
         <div className="rounded-xl border border-black overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-black bg-slate-50">
+          <div className="px-4 py-3 border-b border-black bg-slate-50">
             <h3 className="text-sm font-bold uppercase tracking-tight text-blue-700">Items</h3>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => navigate("/masters/materials?new=1")}
-                className="px-4 py-2 rounded border border-black text-indigo-700 font-bold hover:bg-white transition"
-              >
-                + New Item
-              </button>
-              <button
-                type="button"
-                onClick={handleAddRow}
-                className="px-4 py-2 rounded border border-black text-indigo-700 font-bold hover:bg-white transition"
-              >
-                + Add Row
-              </button>
-            </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse">
-              <thead className="sticky top-0 z-30">
-                <tr className="bg-indigo-700 text-white">
-                  <th className="px-4 py-3 text-left text-sm font-bold border-2 border-black">ERP</th>
-                  <th className="px-4 py-3 text-left text-sm font-bold border-2 border-black min-w-[420px]">Select Item <span className="text-red-200">*</span></th>
-                  <th className="px-4 py-3 text-left text-sm font-bold border-2 border-black">Unit</th>
-                  <th className="px-4 py-3 text-right text-sm font-bold border-2 border-black">Qty <span className="text-red-200">*</span></th>
-                  <th className="px-4 py-3 text-left text-sm font-bold border-2 border-black min-w-[180px]">Target Delivery</th>
-                  <th className="px-4 py-3 text-center text-sm font-bold border-2 border-black w-16"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line) => {
-                  const material = activeMaterials.find((row) => row.id === line.materialId);
-                  return (
-                    <tr key={line.id} className="bg-white">
-                      <td className="px-3 py-3 border-2 border-black">
-                        <input
-                          value={material?.erpCode ? String(material.erpCode) : "Auto"}
-                          readOnly
-                          className="w-full rounded border border-slate-300 bg-slate-50 px-3 py-2 text-black"
-                        />
-                      </td>
-                      <td className="px-3 py-3 border-2 border-black">
-                        <Select
-                          options={materialOptions}
-                          value={line.materialId}
-                          onChange={(value) => handleLineChange(line.id, "materialId", value)}
-                          wrapLabels
-                          placeholder={activeMaterials.length === 0 ? "No material available..." : "Select Item..."}
-                        />
-                      </td>
-                      <td className="px-3 py-3 border-2 border-black">
-                        <input
-                          value={getIndentLineUom(indentType, material)}
-                          readOnly
-                          className="w-full rounded border border-slate-300 bg-slate-50 px-3 py-2 text-black"
-                        />
-                      </td>
-                      <td className="px-3 py-3 border-2 border-black">
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={line.qty}
-                          onChange={(e) => handleLineChange(line.id, "qty", e.target.value)}
-                          className="w-full rounded border border-slate-300 px-3 py-2 text-right text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                        />
-                      </td>
-                      <td className="px-3 py-3 border-2 border-black">
-                        <input
-                          type="date"
-                          value={line.targetDeliveryDate}
-                          onChange={(e) => handleLineChange(line.id, "targetDeliveryDate", e.target.value)}
-                          className="w-full rounded border border-slate-300 px-3 py-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                        />
-                      </td>
-                      <td className="px-3 py-3 border-2 border-black text-center">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveRow(line.id)}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 text-red-600 hover:bg-red-50 transition"
-                          title="Remove row"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {/* Desktop: a header row over the lines (ERP, Item, Unit, Qty, Target Delivery, icons). Phones: each line is a card. */}
+          <div className={`hidden md:grid md:grid-cols-[110px_minmax(0,1fr)_70px_110px_150px_88px] gap-2 bg-indigo-700 px-3 py-2 text-sm font-bold text-white`}>
+            <div>ERP</div>
+            <div>Select Item <span className="text-red-200">*</span></div>
+            <div>Unit</div>
+            <div className="text-right">Qty <span className="text-red-200">*</span></div>
+            <div>Target Delivery</div>
+            <div />
+          </div>
+          <div className="divide-y divide-black">
+            {lines.map((line) => {
+              const material = activeMaterials.find((row) => row.id === line.materialId);
+              const unit = getIndentLineUom(indentType, material);
+              return (
+                <div key={line.id} className="grid grid-cols-2 gap-2 bg-white p-3 md:grid-cols-[110px_minmax(0,1fr)_70px_110px_150px_88px] md:items-center">
+                  <div className="hidden truncate font-semibold text-black md:block" title={material?.erpCode ? String(material.erpCode) : ""}>
+                    {material?.erpCode ? String(material.erpCode) : "—"}
+                  </div>
+                  <div className="col-span-2 min-w-0 md:col-span-1">
+                    <Select
+                      options={materialOptions}
+                      value={line.materialId}
+                      onChange={(value) => handleLineChange(line.id, "materialId", value)}
+                      onAdd={() => navigate("/masters/materials?new=1")}
+                      wrapLabels
+                      placeholder={activeMaterials.length === 0 ? "No material available..." : "Select Item..."}
+                    />
+                  </div>
+                  {/* Phones: ERP and unit as one small line under the item. */}
+                  <div className="col-span-2 -mt-1 text-xs font-semibold text-slate-600 md:hidden">
+                    {material ? `ERP ${material.erpCode || "—"}${unit ? ` · ${unit}` : ""}` : null}
+                  </div>
+                  <div className="hidden truncate text-black md:block">{unit || "—"}</div>
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-xs font-bold text-blue-700 md:hidden">Qty <span className="text-red-500">*</span></span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={line.qty}
+                      onChange={(e) => handleLineChange(line.id, "qty", e.target.value)}
+                      className="w-full rounded border border-slate-300 px-3 py-2 text-right text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                    />
+                  </label>
+                  <label className="min-w-0">
+                    <span className="mb-1 block text-xs font-bold text-blue-700 md:hidden">Target Delivery</span>
+                    <input
+                      type="date"
+                      value={line.targetDeliveryDate}
+                      onChange={(e) => handleLineChange(line.id, "targetDeliveryDate", e.target.value)}
+                      className="w-full min-w-0 rounded border border-slate-300 px-2 py-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                    />
+                  </label>
+                  <div className="col-span-2 flex items-center justify-end gap-2 md:col-span-1">
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveRow(line.id)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 text-red-600 hover:bg-red-50 transition"
+                      title="Remove row"
+                      aria-label="Remove row"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddRowAfter(line.id)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-300 text-indigo-700 hover:bg-indigo-50 transition"
+                      title="Add row"
+                      aria-label="Add row"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -351,7 +346,7 @@ export function IndentForm() {
             disabled={isSubmitting}
             className="inline-flex items-center justify-center min-w-[160px] rounded bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save Indent"}
+            {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
           </button>
         </div>
       </form>

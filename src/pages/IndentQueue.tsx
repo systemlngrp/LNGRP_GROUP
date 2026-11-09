@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -195,6 +195,11 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
     totalItems,
     paginatedItems: paginatedDisplayRows,
   } = useClientPagination(displayRows, 25);
+
+  // Any search or filter change starts again from page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, firmFilter, requestedByFilter, indentTypeFilter, itemFilter, dateFrom, dateTo, setPage]);
 
   const handleExportPdf = () => {
     const doc = new jsPDF("l", "mm", "a4");
@@ -470,7 +475,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{getQueueTitle(mode)}</h2>
       </div>
 
-<div className="grid gap-3 md:grid-cols-3 xl:grid-cols-[minmax(260px,1.4fr)_repeat(5,minmax(145px,1fr))_auto] xl:items-center">
+<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-center">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
@@ -506,7 +511,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         ) : null}
       </div>
 
-      <div className="overflow-hidden rounded border border-black bg-white shadow-sm">
+      <div className="overflow-x-auto rounded border border-black bg-white shadow-sm">
         <table className="min-w-full border-collapse">
           <thead className="sticky top-0 z-30">
             <tr className="bg-slate-100">
