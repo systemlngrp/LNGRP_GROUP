@@ -11307,7 +11307,8 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
         const minAge = query.minAge === undefined || query.minAge === "" ? null : Number(query.minAge);
         const maxAge = query.maxAge === undefined || query.maxAge === "" ? null : Number(query.maxAge);
         const filteredRows = reportRows.filter((row) => {
-            const haystack = [row.ourReelNo, row.erp, row.firmName, row.supplierName, row.mrrNo, row.gsm, row.size, row.bf].join(" ").toLowerCase();
+            // Universal search: every value of the row (MRR, ERP, reel, specs, supplier, dates…).
+            const haystack = text ? Object.values(row).map((value) => (value === null || value === undefined ? "" : String(value))).join(" ").toLowerCase() : "";
             if (text && !haystack.includes(text))
                 return false;
             if (!equals("mrr", row.mrrNo) || !equals("erp", row.erp) || !equals("gsm", row.gsm) || !equals("size", row.size) || !equals("bf", row.bf))
@@ -11359,7 +11360,7 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
     }
     catch (error) {
         console.error("[REELWISE_STOCK] failed:", error);
-        return res.status(500).json({ error: "Could not load Reelwise Stock report." });
+        return res.status(500).json({ error: "Could not load Reel Stock." });
     }
 });
 const createHandlers = (tableName) => {
