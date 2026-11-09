@@ -118,7 +118,7 @@ export function QcBlockLocationMaster() {
 
   const editingUsed = Boolean(editing && usage[editing]?.count);
   return <div className="space-y-4">
-    <h2 className="border-b border-black pb-3 text-xl font-bold uppercase">QC Block Location Master</h2>
+    <h2 className="border-b border-black pb-3 text-xl font-bold uppercase">Block Location Master</h2>
     {message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}
     {usageError && <div className="rounded border border-red-700 bg-red-100 p-3">{usageError} Delete is unavailable until usage can be checked.</div>}
     <div className="flex flex-wrap gap-2">

@@ -484,7 +484,7 @@ export function PendingDispatchPlanning() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-black pb-4">
           <div>
-            <h2 className="text-2xl font-black text-black tracking-tight uppercase">Dispatch Planning</h2>
+            <h2 className="text-2xl font-black text-black tracking-tight uppercase">Pending Dispatch Planning</h2>
           </div>
           
           <div className="flex items-center gap-3">

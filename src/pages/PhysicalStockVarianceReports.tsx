@@ -89,7 +89,7 @@ function PhysicalStockVarianceReport({ mode }: { mode: ReportMode }) {
   );
 
   const isShortage = mode === "shortage";
-  const title = isShortage ? "Physical Stock Shortage Report" : "Physical Stock Excess Report";
+  const title = isShortage ? "Shortage Stock Report" : "Excess Stock Report";
   const sessionPanelClass = isShortage ? "rounded border-2 border-black bg-rose-50 p-3" : "rounded border-2 border-black bg-emerald-50 p-3";
   const sessionLabelClass = isShortage ? "text-[10px] font-black uppercase text-rose-700" : "text-[10px] font-black uppercase text-emerald-700";
   const sessionValueClass = isShortage ? "mt-1 text-lg font-black text-rose-900" : "mt-1 text-lg font-black text-emerald-900";

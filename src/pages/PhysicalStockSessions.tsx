@@ -186,7 +186,7 @@ export function PhysicalStockSessions() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Physical Stock Sessions</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Start / Close Session</h2>
         <button
           type="button"
           onClick={refreshAll}

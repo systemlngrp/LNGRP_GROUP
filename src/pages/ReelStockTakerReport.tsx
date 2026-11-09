@@ -337,7 +337,7 @@ export function ReelStockTakerReport() {
     <div className="space-y-3">
       <div className="flex flex-col gap-3 border-b border-black pb-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h2 className="text-xl font-bold uppercase tracking-tight text-black">Physical Stock Entry</h2>
+          <h2 className="text-xl font-bold uppercase tracking-tight text-black">Stock Entry Scan</h2>
           <div className="mt-1 text-xs font-bold text-slate-700">
             {activeSession ? `${activeSession.sessionNo} | ${logs.filter((log) => log.sessionId === activeSession.id).length} scanned | Started ${formatDateTime(activeSession.startedAt)}` : "No active session"}
           </div>

@@ -57,7 +57,7 @@ function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) 
       );
   }, [fgSlipMap, loadingSlips, searchTerm, source]);
 
-  const heading = source === "PHP" ? "Pending PHP Tally Posting" : "Pending Plate Tally Posting";
+  const heading = source === "PHP" ? "Pending PHP Tally" : "Pending Plate Tally";
   const consumptionLabel = source === "PHP" ? "PHP Cons. No" : "Plate Cons. No";
 
   return (
