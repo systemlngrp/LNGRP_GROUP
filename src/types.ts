@@ -201,6 +201,8 @@ export interface MaterialIssue {
   consumptionTransactionNo?: string;
   date: string;
   issueType: "Job" | "Without Job" | "General";
+  // How a reel issue was made: "MANUAL" (Manual reel issue form) or "QR" (QR scan).
+  issueMethod?: "MANUAL" | "QR" | string;
   productionId?: string;
   jobNo?: string;
   remarks?: string;

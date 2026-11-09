@@ -101,7 +101,7 @@ const materialReceiptItems: NavItem[] = [
 
 const materialIssueItems: NavItem[] = [
   { name: "Material Issue Form", href: "/material-movement/issue", icon: ClipboardList },
-  { name: "Reel Issue QR Scan", href: "/material-movement/reel-issue-return-scan", icon: Camera },
+  { name: "QR Reel Issue", href: "/material-movement/reel-issue-return-scan", icon: Camera },
   { name: "Material Issue Master", href: "/material-movement/issue-master", icon: Database },
   { name: "Pending Daily Consumables Entry", href: "/material-movement/pending-non-job-issue", icon: FileText, countKey: "/material-movement/pending-non-job-issue" },
   { name: "Pending Daily Consumables Tally Posting", href: "/material-movement/pending-consumption-tally", icon: FileText, countKey: "/material-movement/pending-consumption-tally" },

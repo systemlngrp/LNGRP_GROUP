@@ -222,6 +222,7 @@ export function ReelIssueReturnForm() {
           issueNo,
           date,
           issueType: "Job",
+          issueMethod: "MANUAL",
           productionId,
           jobNo: selectedProduction?.transactionNo || "",
           remarks: remarks.trim() || undefined,
@@ -335,7 +336,7 @@ export function ReelIssueReturnForm() {
               <Package2 size={20} />
             </div>
             <div>
-              <h2 className="text-xl font-black tracking-tight">Manual Reel Issue</h2>
+              <h2 className="text-xl font-black tracking-tight">MANUAL Reel Issue</h2>
             </div>
           </div>
         </div>

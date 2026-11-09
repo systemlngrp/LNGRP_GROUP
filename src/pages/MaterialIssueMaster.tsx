@@ -43,7 +43,9 @@ export function MaterialIssueMaster() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"general" | "reel-summary" | "reel-details">("general");
+  // Tabs: General material, MANUAL reel issues, QR (scanned) reel issues.
+  const [activeTab, setActiveTab] = useState<"general" | "manual" | "qr">("general");
+  const [reelView, setReelView] = useState<"summary" | "details">("details");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -176,6 +178,8 @@ export function MaterialIssueMaster() {
           date: parent.date,
           jobNo: parent.jobNo,
           remarks: parent.remarks,
+          // Reel issues saved before the method was recorded count as MANUAL.
+          method: String(parent.issueMethod || "").toUpperCase() === "QR" ? "QR" : "MANUAL",
           specs,
           materialName: material?.name || "Unknown Material",
           issueType: parent.issueType,
@@ -189,50 +193,61 @@ export function MaterialIssueMaster() {
         return matchesCommonFilters(reel);
       }) as any[];
 
-    const summaryMap = new Map<string, any>();
-    reelDetails.forEach((reel) => {
-      const key = `${reel.materialIssueId}_${reel.materialId}`;
-      if (!summaryMap.has(key)) {
-        summaryMap.set(key, {
-          ...reel,
-          totalWeight: 0,
-          totalValue: 0,
-          reelCount: 0,
-        });
-      }
-      const existing = summaryMap.get(key);
-      existing.totalWeight += Number(reel.weightKg || 0);
-      existing.totalValue += Number(reel.value || 0);
-      existing.reelCount += 1;
-    });
+    const summarize = (rows: any[]) => {
+      const summaryMap = new Map<string, any>();
+      rows.forEach((reel) => {
+        const key = `${reel.materialIssueId}_${reel.materialId}`;
+        if (!summaryMap.has(key)) summaryMap.set(key, { ...reel, totalWeight: 0, totalValue: 0, reelCount: 0 });
+        const existing = summaryMap.get(key);
+        existing.totalWeight += Number(reel.weightKg || 0);
+        existing.totalValue += Number(reel.value || 0);
+        existing.reelCount += 1;
+      });
+      return Array.from(summaryMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+    };
 
     const finalGeneral = general.sort((a, b) => b.date.localeCompare(a.date));
-    const finalReelSummary = Array.from(summaryMap.values()).sort((a, b) => b.date.localeCompare(a.date));
     const finalReelDetails = reelDetails.sort((a, b) => b.date.localeCompare(a.date));
-    const visibleIssueIds = new Set([...finalGeneral, ...finalReelDetails].map((row) => row.materialIssueId));
-    const visibleIssues = filteredIssues.filter((issue) => visibleIssueIds.has(issue.id));
+    const manualDetails = finalReelDetails.filter((row) => row.method === "MANUAL");
+    const qrDetails = finalReelDetails.filter((row) => row.method === "QR");
 
+    // Tiles per tab, from that tab's rows only (so they always match the table).
+    const reelMetrics = (rows: any[]) => ({
+      issues: new Set(rows.map((row) => row.materialIssueId)).size,
+      reels: rows.length,
+      weight: rows.reduce((sum, row) => sum + Number(row.weightKg || 0), 0),
+      value: rows.reduce((sum, row) => sum + Number(row.value || 0), 0),
+    });
+    const generalIssueIds = new Set(finalGeneral.map((row) => row.materialIssueId));
     const metrics = {
-      totalTransactions: visibleIssues.length,
-      totalWeight: finalReelDetails.reduce((sum, row) => sum + Number(row.weightKg || 0), 0),
-      totalValue: finalReelDetails.reduce((sum, row) => sum + Number(row.value || 0), 0),
-      jobIssues: visibleIssues.filter((issue) => !isWithoutJobIssue(issue.issueType)).length,
-      generalIssues: visibleIssues.filter((issue) => isWithoutJobIssue(issue.issueType)).length,
+      general: {
+        issues: generalIssueIds.size,
+        lines: finalGeneral.length,
+        withoutJob: filteredIssues.filter((issue) => generalIssueIds.has(issue.id) && isWithoutJobIssue(issue.issueType)).length,
+        value: finalGeneral.reduce((sum, row) => {
+          const rate = resolveLineRate(row, materialMap.get(row.materialId));
+          return sum + (Number(row.amount || 0) > 0 ? Number(row.amount) : Number(row.qty || 0) * rate);
+        }, 0),
+      },
+      manual: reelMetrics(manualDetails),
+      qr: reelMetrics(qrDetails),
     };
 
     return {
       general: finalGeneral,
-      reelSummary: finalReelSummary,
-      reelDetails: finalReelDetails,
+      manualDetails,
+      manualSummary: summarize(manualDetails),
+      qrDetails,
+      qrSummary: summarize(qrDetails),
       metrics,
     };
   }, [materialIssues, operationalIssueIds, issueLines, reelLines, reelLineIdsByIssueLineId, materialMap, issueLineMap, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter]);
 
   const activeRows = activeTab === "general"
     ? processedData.general
-    : activeTab === "reel-summary"
-      ? processedData.reelSummary
-      : processedData.reelDetails;
+    : activeTab === "manual"
+      ? (reelView === "summary" ? processedData.manualSummary : processedData.manualDetails)
+      : (reelView === "summary" ? processedData.qrSummary : processedData.qrDetails);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const totalPages = Math.max(1, Math.ceil(activeRows.length / pageSize));
@@ -240,7 +255,7 @@ export function MaterialIssueMaster() {
 
   useEffect(() => {
     setPage(1);
-  }, [activeTab, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter, pageSize]);
+  }, [activeTab, reelView, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -264,27 +279,23 @@ export function MaterialIssueMaster() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Total Transactions</div>
-          <div className="text-3xl font-black">{processedData.metrics.totalTransactions.toLocaleString()}</div>
-        </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Total Reel Weight</div>
-          <div className="text-3xl font-black">{formatNumber(processedData.metrics.totalWeight)} <span className="text-xs">KG</span></div>
-        </div>
-        <div className="bg-gradient-to-br from-cyan-500 to-cyan-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Total Reel Value</div>
-          <div className="text-3xl font-black">{formatNumber(processedData.metrics.totalValue)}</div>
-        </div>
-        <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">Job Issues</div>
-          <div className="text-3xl font-black">{processedData.metrics.jobIssues.toLocaleString()}</div>
-        </div>
-        <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white transition-transform hover:scale-[1.02]">
-          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest mb-1">General Issues</div>
-          <div className="text-3xl font-black">{processedData.metrics.generalIssues.toLocaleString()}</div>
-        </div>
+      {/* Tiles for the selected tab only */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {activeTab === "general" ? (
+          <>
+            <IssueTile tone="indigo" label="Issues" value={processedData.metrics.general.issues.toLocaleString()} />
+            <IssueTile tone="emerald" label="Lines" value={processedData.metrics.general.lines.toLocaleString()} />
+            <IssueTile tone="amber" label="Without Job" value={processedData.metrics.general.withoutJob.toLocaleString()} />
+            <IssueTile tone="rose" label="Value" value={formatNumber(processedData.metrics.general.value)} />
+          </>
+        ) : (
+          <>
+            <IssueTile tone="indigo" label="Issues" value={processedData.metrics[activeTab].issues.toLocaleString()} />
+            <IssueTile tone="emerald" label="Reels" value={processedData.metrics[activeTab].reels.toLocaleString()} />
+            <IssueTile tone="amber" label="Weight" value={`${formatNumber(processedData.metrics[activeTab].weight)} KG`} />
+            <IssueTile tone="rose" label="Value" value={formatNumber(processedData.metrics[activeTab].value)} />
+          </>
+        )}
       </div>
 
       <div className="rounded border border-black bg-white p-3">
@@ -333,31 +344,43 @@ export function MaterialIssueMaster() {
           ) : null}
         </div>
       </div>
-      <div className="flex overflow-x-auto overflow-y-hidden border-b border-black mt-2 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
-        <button
-          onClick={() => setActiveTab("general")}
-          className={`px-4 py-2 text-xs font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] flex items-center gap-2 transition-all ${
-            activeTab === "general" ? "bg-white border-b-transparent text-indigo-700" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
-          }`}
-        >
-          <Package size={14} /> General Material ({processedData.general.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("reel-summary")}
-          className={`px-4 py-2 text-xs font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
-            activeTab === "reel-summary" ? "bg-white border-b-transparent text-emerald-700" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
-          }`}
-        >
-          <Layers size={14} /> Reel Summary ({processedData.reelSummary.length})
-        </button>
-        <button
-          onClick={() => setActiveTab("reel-details")}
-          className={`px-4 py-2 text-xs font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] ml-1 flex items-center gap-2 transition-all ${
-            activeTab === "reel-details" ? "bg-white border-b-transparent text-amber-700" : "bg-slate-50 text-slate-400 opacity-70 hover:opacity-100"
-          }`}
-        >
-          <Disc size={14} /> Reel Details ({processedData.reelDetails.length})
-        </button>
+      {/* Tabs (same style on desktop and phones; scroll sideways if needed) */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Issue type">
+          {([
+            ["general", "General Material Issue", processedData.general.length, Package],
+            ["manual", "MANUAL", processedData.manualDetails.length, Layers],
+            ["qr", "QR", processedData.qrDetails.length, Disc],
+          ] as const).map(([value, label, count, Icon]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === value}
+              onClick={() => setActiveTab(value)}
+              className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md border-2 px-3 py-2 text-sm font-bold transition ${
+                activeTab === value ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black hover:bg-slate-50"
+              }`}
+            >
+              <Icon size={14} /> {label}
+              <span className={`rounded-full px-2 text-xs font-black ${activeTab === value ? "bg-white text-indigo-700" : "bg-slate-100 text-slate-700"}`}>{count}</span>
+            </button>
+          ))}
+        </div>
+        {activeTab !== "general" ? (
+          <div className="inline-flex overflow-hidden rounded-md border-2 border-black" role="group" aria-label="Reel view">
+            {(["summary", "details"] as const).map((view) => (
+              <button
+                key={view}
+                type="button"
+                onClick={() => setReelView(view)}
+                className={`px-3 py-1.5 text-xs font-black uppercase ${reelView === view ? "bg-black text-white" : "bg-white text-black hover:bg-slate-50"}`}
+              >
+                {view === "summary" ? "Summary" : "Details"}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="bg-white rounded-b shadow-sm overflow-hidden border border-black">
@@ -378,7 +401,7 @@ export function MaterialIssueMaster() {
               <tbody className="divide-y divide-black">
                 {processedData.general.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No general material issues found.</td>
+                    <td colSpan={7} className="h-16" aria-label="No records" />
                   </tr>
                 ) : (
                   paginatedRows.map((row: any) => (
@@ -397,7 +420,7 @@ export function MaterialIssueMaster() {
             </table>
           )}
 
-          {activeTab === "reel-summary" && (
+          {activeTab !== "general" && reelView === "summary" && (
             <table className="min-w-full divide-y divide-black border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr className="divide-x divide-black">
@@ -411,9 +434,9 @@ export function MaterialIssueMaster() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-black">
-                {processedData.reelSummary.length === 0 ? (
+                {activeRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No reel issues found.</td>
+                    <td colSpan={7} className="h-16" aria-label="No records" />
                   </tr>
                 ) : (
                   paginatedRows.map((row: any, idx) => (
@@ -432,7 +455,7 @@ export function MaterialIssueMaster() {
             </table>
           )}
 
-          {activeTab === "reel-details" && (
+          {activeTab !== "general" && reelView === "details" && (
             <table className="min-w-full divide-y divide-black border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr className="divide-x divide-black">
@@ -446,9 +469,9 @@ export function MaterialIssueMaster() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-black">
-                {processedData.reelDetails.length === 0 ? (
+                {activeRows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-8 text-center text-slate-600 font-medium">No reel details found.</td>
+                    <td colSpan={7} className="h-16" aria-label="No records" />
                   </tr>
                 ) : (
                   paginatedRows.map((row: any) => (
@@ -476,6 +499,22 @@ export function MaterialIssueMaster() {
           pageSizeOptions={[50, 100, 250]}
         />
       </div>
+    </div>
+  );
+}
+
+const ISSUE_TILE_TONES = {
+  indigo: "bg-indigo-50 text-indigo-900",
+  emerald: "bg-emerald-50 text-emerald-900",
+  amber: "bg-amber-50 text-amber-900",
+  rose: "bg-rose-50 text-rose-900",
+} as const;
+
+function IssueTile({ label, value, tone }: { label: string; value: string; tone: keyof typeof ISSUE_TILE_TONES }) {
+  return (
+    <div className={`rounded-lg border-2 border-black p-3 ${ISSUE_TILE_TONES[tone]}`}>
+      <div className="text-[11px] font-black uppercase tracking-wide">{label}</div>
+      <div className="text-xl font-black tabular-nums">{value}</div>
     </div>
   );
 }

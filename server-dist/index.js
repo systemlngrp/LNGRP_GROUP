@@ -3235,6 +3235,11 @@ async function ensureInterFirmSchema(db, database) {
         }
         catch { }
     }
+    // How a reel issue was made: MANUAL (Manual Reel Issue form) or QR (QR scan).
+    try {
+        await ensureColumnExists(db, database, "material_issues", "issueMethod", "VARCHAR(20)");
+    }
+    catch { }
     // Older deployments may not have received the global audit-column
     // migration. Inter-firm MRR creation must repair these columns before its
     // transaction begins because the insert always records the local audit

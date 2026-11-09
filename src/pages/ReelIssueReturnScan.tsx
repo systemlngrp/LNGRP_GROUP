@@ -373,6 +373,7 @@ export function ReelIssueReturnScan() {
         issueNo,
         date,
         issueType: "Job",
+        issueMethod: "QR",
         productionId,
         jobNo: selectedProduction.transactionNo || "",
         updatedBy: "System User",
@@ -465,7 +466,7 @@ export function ReelIssueReturnScan() {
           >
             <ArrowLeft size={15} /> Jobs
           </button>
-          <h2 className="break-words text-xl font-bold uppercase tracking-tight text-black">Reel Issue QR Scan</h2>
+          <h2 className="break-words text-xl font-bold uppercase tracking-tight text-black">QR Reel Issue</h2>
         </div>
       </div>
 

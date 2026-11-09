@@ -767,9 +767,9 @@ export function ProductionPendingConsumption() {
       showTotalIssuedQty
       hideProdFfgColumn
       issueActionPath="/material-movement/reel-issue-return-scan/form"
-      issueActionLabel="QR Issue"
+      issueActionLabel="QR"
       secondaryIssueActionPath="/material-movement/reel-issue-return"
-      secondaryIssueActionLabel="Manual Issue"
+      secondaryIssueActionLabel="MANUAL"
     />
   );
 }
@@ -783,9 +783,9 @@ export function ProductionPendingReelIssueScan() {
       enableIssueAction
       hideStatusColumn
       issueActionPath="/material-movement/reel-issue-return"
-      issueActionLabel="Manual Issue"
+      issueActionLabel="MANUAL"
       secondaryIssueActionPath="/material-movement/reel-issue-return-scan/form"
-      secondaryIssueActionLabel="QR Issue"
+      secondaryIssueActionLabel="QR"
       showIssueSheetAction={false}
     />
   );

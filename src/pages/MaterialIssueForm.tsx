@@ -641,10 +641,6 @@ export function MaterialIssueForm() {
       return;
     }
     if (issueType === "Job" && !productionId) return;
-    if (isWithoutJobIssue(issueType) && !remarks.trim()) {
-      alert("Remarks are mandatory for Without Job material issue.");
-      return;
-    }
 
     for (const line of lines) {
       if (line.isReel) {
@@ -876,17 +872,27 @@ export function MaterialIssueForm() {
               className="w-full border-2 border-black rounded p-2 disabled:bg-slate-50 disabled:opacity-80"
             />
           </Field>
-          <Field label="Issue No (Auto)" className={issueType === "Job" ? "hidden md:block" : ""}>
-            <input type="text" value="Generated on Submit" disabled className="w-full border-2 border-black rounded p-2 bg-slate-50 opacity-70" />
-          </Field>
           <Field label="Issue Type" required>
-            <Select
-              options={issueTypeOptions}
-              value={issueType}
-              onChange={(value) => setIssueType(value === "Job" ? "Job" : "Without Job")}
-              required
-              disabled={lockIssueType}
-            />
+            {/* Issue type as buttons so the selected type is clear. */}
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Issue Type">
+              {issueTypeOptions.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={issueType === option.value}
+                  disabled={lockIssueType && issueType !== option.value}
+                  onClick={() => { if (issueType !== option.value) setIssueType(option.value === "Job" ? "Job" : "Without Job"); }}
+                  className={`rounded border-2 px-4 py-2 text-sm font-bold transition disabled:opacity-40 ${
+                    issueType === option.value
+                      ? "border-indigo-700 bg-indigo-700 text-white"
+                      : "border-black bg-white text-black hover:bg-slate-50"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
           </Field>
           {!(lockIssueType && issueType === "Without Job") && (
             <div className={`${issueType === "Job" ? "hidden md:block" : ""} md:col-span-2 rounded border border-black bg-slate-50 p-3`}>
@@ -950,8 +956,8 @@ export function MaterialIssueForm() {
               {scannerMessage}
             </div>
           ) : null}
-          <Field label="Remarks" required={isWithoutJobIssue(issueType)} className={issueType === "Job" ? "hidden md:block md:col-span-2" : "md:col-span-2"}>
-            <input value={remarks} onChange={(e) => setRemarks(e.target.value)} required={isWithoutJobIssue(issueType)} className="w-full border-2 border-black rounded p-2" />
+          <Field label="Remarks" className={issueType === "Job" ? "hidden md:block md:col-span-2" : "md:col-span-2"}>
+            <input value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full border-2 border-black rounded p-2" />
           </Field>
         </div>
 
@@ -974,11 +980,7 @@ export function MaterialIssueForm() {
             </button>
           </div>
 
-          {lines.length === 0 ? (
-            <div className={`${issueType === "Job" ? "hidden md:block" : ""} p-4 bg-slate-50 border border-dashed border-black text-center text-sm font-bold text-slate-600 uppercase`}>
-              No issue lines added yet.
-            </div>
-          ) : (
+          {lines.length === 0 ? null : (
             <>
               {issueType === "Job" ? (
                 <div className="space-y-3 md:hidden">
@@ -1167,7 +1169,7 @@ export function MaterialIssueForm() {
                 <Spinner size={16} className="text-white border-white" />
                 <span>Saving...</span>
               </div>
-            ) : "Save Issue"}
+            ) : "Save"}
           </button>
         </div>
       </form>
