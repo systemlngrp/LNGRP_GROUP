@@ -165,7 +165,6 @@ const ErpWiseReelStockReport = lazy(() => import("./pages/ErpWiseReelStockReport
 const FGStockReport = lazy(() => import("./pages/FGStockReport").then((module) => ({ default: module.FGStockReport })));
 const ReelwiseStockReport = lazy(() => import("./pages/ReelwiseStockReport").then((module) => ({ default: module.ReelwiseStockReport })));
 const JobwiseReelConsumptionReport = lazy(() => import("./pages/JobwiseReelConsumptionReport").then((module) => ({ default: module.JobwiseReelConsumptionReport })));
-const JobConsumption = lazy(() => import("./pages/JobConsumption").then((module) => ({ default: module.JobConsumption })));
 const JobsInProgressReport = lazy(() => import("./pages/JobsInProgressReport").then((module) => ({ default: module.JobsInProgressReport })));
 const EfficiencyReport = lazy(() => import("./pages/EfficiencyReport").then((module) => ({ default: module.EfficiencyReport })));
 const PrintingShiftReport = lazy(() => import("./pages/PrintingShiftReport").then((module) => ({ default: module.PrintingShiftReport })));
@@ -477,7 +476,6 @@ export default function App() {
           <Route path="physical-stock/shortage" element={<PhysicalStockShortageReport />} />
           <Route path="physical-stock/master" element={<PhysicalStockMaster />} />
           <Route path="reports/jobwise-reel-consumption" element={<JobwiseReelConsumptionReport />} />
-          <Route path="reports/job-consumption" element={<JobConsumption />} />
           <Route path="reports/jobs-in-progress" element={<JobsInProgressReport />} />
           <Route path="reports/efficiency" element={<EfficiencyReport />} />
           <Route path="reports/printing-shift" element={<PrintingShiftReport />} />

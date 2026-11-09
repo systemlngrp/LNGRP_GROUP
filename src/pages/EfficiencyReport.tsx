@@ -256,18 +256,18 @@ export function EfficiencyReport() {
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>
-          <input
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="min-w-[140px] flex-[0_1_160px] rounded border-2 border-black px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          />
-          <input
+          /></label>
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="min-w-[140px] flex-[0_1_160px] rounded border-2 border-black px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          />
+          /></label>
           <div className="min-w-[210px] flex-[1_1_220px]"><Select value={viewMode} onChange={(value) => setViewMode(value as ViewMode)} options={viewModeOptions} placeholder="View" /></div>
           <div className="min-w-[150px] flex-[1_1_160px]"><Select value={shift} onChange={(value) => setShift(value as "" | Shift)} options={shiftOptions} placeholder="Shift" /></div>
           <div className="min-w-[180px] flex-[1_1_200px]"><Select value={machineId} onChange={setMachineId} options={machineOptions} placeholder="Machine" /></div>

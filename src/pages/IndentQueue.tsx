@@ -500,8 +500,8 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         <Select value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="Requested By" />
         <Select value={indentTypeFilter} onChange={setIndentTypeFilter} options={indentTypeOptions} placeholder="Indent Types" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
-        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+        <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
+        <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
         {searchTerm || firmFilter || requestedByFilter || indentTypeFilter || itemFilter || dateFrom || dateTo ? (
           <button
             type="button"

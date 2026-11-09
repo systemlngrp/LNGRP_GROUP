@@ -70,12 +70,12 @@ export function DeliveryBook() {
         </div>
         
         <div className="flex flex-wrap gap-2">
-          <input
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Date</span><input
             type="date"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
             className="px-3 py-2 border border-black rounded text-sm focus:outline-none focus:ring-1 focus:ring-black bg-white font-bold"
-          />
+          /></label>
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input

@@ -467,7 +467,7 @@ export function ReelwiseStockReport() {
   };
 
   return (
-    <div className="space-y-4">
+    <div data-disable-table-pagination="true" className="space-y-4">
       <div className="flex items-center justify-between gap-3 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Reel Stock</h2>
         {exportsAllowed() ? (

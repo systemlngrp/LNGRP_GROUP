@@ -363,20 +363,20 @@ export function LmL1Report() {
               className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>
-          <input
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
             type="date"
             value={dateFrom}
             onChange={(event) => setDateFrom(event.target.value)}
             title="Date From"
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          />
-          <input
+          /></label>
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input
             type="date"
             value={dateTo}
             onChange={(event) => setDateTo(event.target.value)}
             title="Date To"
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          />
+          /></label>
           <select
             value={yearFilter}
             onChange={(event) => setYearFilter(event.target.value)}

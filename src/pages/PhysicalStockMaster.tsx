@@ -60,8 +60,8 @@ export function PhysicalStockMaster() {
               className="h-[34px] w-full rounded border-2 border-black pl-8 pr-2 text-xs font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>
-          <input type="date" value={scanDateFrom} onChange={(e) => setScanDateFrom(e.target.value)} title="Scan Date From" className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
-          <input type="date" value={scanDateTo} onChange={(e) => setScanDateTo(e.target.value)} title="Scan Date To" className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" value={scanDateFrom} onChange={(e) => setScanDateFrom(e.target.value)} title="Scan Date From" className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></label>
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" value={scanDateTo} onChange={(e) => setScanDateTo(e.target.value)} title="Scan Date To" className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></label>
           {scanSearchTerm || scanDateFrom || scanDateTo ? (
             <button type="button" onClick={() => { setScanSearchTerm(""); setScanDateFrom(""); setScanDateTo(""); }} className="h-[34px] rounded border border-black bg-white px-2 text-[11px] font-bold text-black hover:bg-slate-50">
               Clear

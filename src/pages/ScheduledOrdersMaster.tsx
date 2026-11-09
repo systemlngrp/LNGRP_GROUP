@@ -414,6 +414,8 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         </div>
 
         {/* From Date */}
+        <label className="block min-w-0">
+        <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span>
         <div className="relative">
           <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
@@ -423,8 +425,11 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
             className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"
           />
         </div>
+        </label>
 
         {/* To Date */}
+        <label className="block min-w-0">
+        <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span>
         <div className="relative">
           <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
@@ -434,6 +439,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
             className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"
           />
         </div>
+        </label>
       </div>
 
       {schedulesState.error ? (

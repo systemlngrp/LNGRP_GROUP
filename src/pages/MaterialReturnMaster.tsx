@@ -323,18 +323,18 @@ export function MaterialReturnMaster() {
           <Select options={materialOptions} value={materialFilter} onChange={setMaterialFilter} placeholder="Materials" />
           <Select options={jobOptions} value={jobFilter} onChange={setJobFilter} placeholder="Jobs" />
           <Select options={reelOptions} value={reelFilter} onChange={setReelFilter} placeholder="Reels" />
-          <input
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          />
-          <input
+          /></label>
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          />
+          /></label>
           {(fromDate || toDate || typeFilter !== "all" || searchTerm || materialFilter || jobFilter || reelFilter) ? (
             <button
               type="button"

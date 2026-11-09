@@ -240,7 +240,7 @@ export function PaperRequirementReport() {
 
       <div className="rounded border border-black bg-white p-3">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(150px,0.7fr)_minmax(250px,1.2fr)_repeat(3,minmax(160px,0.8fr))_repeat(2,auto)] xl:items-center">
-          <input type="date" value={uptoDate} onChange={(e) => setUptoDate(e.target.value)} title="Upto Date" className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Up to Date</span><input type="date" value={uptoDate} onChange={(e) => setUptoDate(e.target.value)} title="Upto Date" className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></label>
           <Select
             value={selectedRangeGsm}
             onChange={(option) => setSelectedRangeGsm(option as RangeGsmOption | null)}

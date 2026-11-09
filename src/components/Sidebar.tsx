@@ -294,7 +294,6 @@ const reportStockItems: NavItem[] = [
   { name: "ERP Wise Reel Stock", href: "/reports/erp-wise-reel-stock", icon: BarChart3 },
   { name: "Reel Stock", href: "/reports/reelwise-stock", icon: BarChart3 },
   { name: "Jobwise Reel Consumption", href: "/reports/jobwise-reel-consumption", icon: BarChart3 },
-  { name: "JobConsumption", href: "/reports/job-consumption", icon: BarChart3 },
 ];
 
 const reportProductionItems: NavItem[] = [
@@ -339,7 +338,6 @@ const storeReportItems: NavItem[] = [
   { name: "ERP Wise Reel Stock", href: "/reports/erp-wise-reel-stock", icon: BarChart3 },
   { name: "Reel Stock", href: "/reports/reelwise-stock", icon: BarChart3 },
   { name: "Jobwise Reel Consumption", href: "/reports/jobwise-reel-consumption", icon: BarChart3 },
-  { name: "JobConsumption", href: "/reports/job-consumption", icon: BarChart3 },
 ];
 
 const npdDirectItems: NavItem[] = [

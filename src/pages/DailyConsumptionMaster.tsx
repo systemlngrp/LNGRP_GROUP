@@ -44,7 +44,7 @@ export function DailyConsumptionMaster() {
         </div>
         <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
           <div className="w-full md:w-44">
-            <input
+            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Date</span><input
               type="date"
               value={date}
               onChange={(e) => {
@@ -53,7 +53,7 @@ export function DailyConsumptionMaster() {
                 setSelectedIssueId(null);
               }}
               className="w-full px-3 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
-            />
+            /></label>
           </div>
           <select value={firmFilter} onChange={(e) => { setFirmFilter(e.target.value); setPage(1); setSelectedIssueId(null); }} className="w-full md:w-52 px-3 py-2 border border-black rounded text-sm font-bold bg-white">
             <option value="">All firms</option>

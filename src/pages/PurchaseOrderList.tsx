@@ -1146,8 +1146,8 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
               }}
             />
           </div>
-          <input type="date" value={fromDateFilter} onChange={(e) => setFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date From" title="PO Date From" />
-          <input type="date" value={toDateFilter} onChange={(e) => setToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date To" title="PO Date To" />
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">PO From Date</span><input type="date" value={fromDateFilter} onChange={(e) => setFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date From" title="PO Date From" /></label>
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">PO To Date</span><input type="date" value={toDateFilter} onChange={(e) => setToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date To" title="PO Date To" /></label>
         </div>
       </PageHeader>
 
