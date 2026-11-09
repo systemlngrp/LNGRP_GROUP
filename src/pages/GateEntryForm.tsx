@@ -343,23 +343,34 @@ export function GateEntryForm() {
               {photoSlots.map((slot, index) => {
                 const openOnPhone = index === 0 || Boolean(slot.filename) || Boolean(photoSlots[index - 1]?.filename) || slot.uploading;
                 return (
-                <div key={index} className={`${openOnPhone ? "" : "hidden md:block "}md:rounded-2xl md:border md:border-slate-200 md:bg-slate-50 md:p-4`}>
+                <div key={index} className={`${openOnPhone ? "" : "hidden md:block "}min-w-0 md:rounded-2xl md:border md:border-slate-200 md:bg-slate-50 md:p-4`}>
                   <div className="mb-2 flex items-center justify-between md:mb-3">
                     <span className="font-bold text-blue-700 md:text-sm md:text-slate-700">Pic {index + 1}</span>
                     {slot.filename ? (
-                      <button type="button" onClick={() => updateSlot(index, { filename: "" })} className="rounded-full border border-slate-300 p-2 text-slate-600 hover:bg-white">
+                      <button type="button" onClick={() => updateSlot(index, { filename: "" })} className="hidden rounded-full border border-slate-300 p-2 text-slate-600 hover:bg-white md:inline-flex">
                         <Trash2 size={15} />
                       </button>
                     ) : null}
                   </div>
-                  <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-left transition hover:border-indigo-400 hover:bg-indigo-50/40 md:min-h-[180px] md:flex-col md:justify-center md:border-dashed md:px-4 md:py-6 md:text-center">
+                  <label className="flex w-full min-w-0 min-h-[56px] cursor-pointer overflow-hidden items-center gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-left transition hover:border-indigo-400 hover:bg-indigo-50/40 md:min-h-[180px] md:flex-col md:justify-center md:border-dashed md:px-4 md:py-6 md:text-center">
                     {slot.uploading ? (
                       <Loader2 className="animate-spin text-indigo-700" size={22} />
                     ) : (
                       <Camera size={22} className="shrink-0 text-slate-500" />
                     )}
                     {slot.filename ? (
-                      <span className="min-w-0 truncate text-sm font-semibold text-slate-700 md:line-clamp-3 md:whitespace-normal">{slot.filename}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-700 md:flex-none md:line-clamp-3 md:whitespace-normal" title={slot.filename}>{shortFileName(slot.filename)}</span>
+                    ) : null}
+                    {slot.filename ? (
+                      // Phones: delete sits at the right end of the file box.
+                      <button
+                        type="button"
+                        onClick={(event) => { event.preventDefault(); event.stopPropagation(); updateSlot(index, { filename: "" }); }}
+                        className="ml-auto shrink-0 rounded-full border border-slate-300 p-2 text-slate-600 hover:bg-slate-50 md:hidden"
+                        aria-label={`Remove Pic ${index + 1}`}
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     ) : null}
                     <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => handlePhotoUpload(index, e.target.files?.[0])} />
                   </label>
@@ -378,6 +389,14 @@ export function GateEntryForm() {
       </div>
     </div>
   );
+}
+
+// Long stored names (e.g. c4565be1-530c-….pdf) shown short: first 8 characters and the extension.
+function shortFileName(filename: string) {
+  const dot = filename.lastIndexOf(".");
+  const ext = dot > 0 ? filename.slice(dot) : "";
+  const base = dot > 0 ? filename.slice(0, dot) : filename;
+  return base.length > 10 ? `${base.slice(0, 8)}…${ext}` : filename;
 }
 
 function Field({
