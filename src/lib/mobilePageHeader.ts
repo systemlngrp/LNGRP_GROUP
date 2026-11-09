@@ -3,15 +3,19 @@
 // the top bar that presses the page's own button. Desktop is not changed:
 // the CSS that hides the moved elements sits inside a max-width media query.
 
+import { ExportKind, markExportButtons, pageExportButtons } from "./exportButtons";
+
 export type MobilePageHeader = {
   title: string;
   addButton: HTMLElement | null;
   addLabel: string;
+  exports: { kind: ExportKind; button: HTMLElement }[];
 };
 
 const MOVED_TITLE = "data-mobile-title-moved";
 const MOVED_ADD = "data-mobile-add-moved";
 const MOVED_ROW = "data-mobile-title-row";
+const MOVED_EXPORT = "data-mobile-export-moved";
 
 function isVisible(element: Element) {
   return (element as HTMLElement).offsetParent !== null || element.getClientRects().length > 0;
@@ -24,10 +28,11 @@ function actionLabel(action: HTMLElement) {
 }
 
 export function clearMobilePageHeader(content: HTMLElement) {
-  content.querySelectorAll(`[${MOVED_TITLE}], [${MOVED_ADD}], [${MOVED_ROW}]`).forEach((element) => {
+  content.querySelectorAll(`[${MOVED_TITLE}], [${MOVED_ADD}], [${MOVED_ROW}], [${MOVED_EXPORT}]`).forEach((element) => {
     element.removeAttribute(MOVED_TITLE);
     element.removeAttribute(MOVED_ADD);
     element.removeAttribute(MOVED_ROW);
+    element.removeAttribute(MOVED_EXPORT);
   });
 }
 
@@ -43,14 +48,26 @@ function findPageTitle(content: HTMLElement) {
   return first;
 }
 
+// Page-level PDF / Excel buttons are shown as download icons in the top bar.
+function readExports(content: HTMLElement) {
+  markExportButtons(content);
+  const buttons = pageExportButtons(content);
+  content.querySelectorAll(`[${MOVED_EXPORT}]`).forEach((element) => {
+    if (!buttons.includes(element as HTMLElement)) element.removeAttribute(MOVED_EXPORT);
+  });
+  buttons.forEach((button) => button.setAttribute(MOVED_EXPORT, "true"));
+  return buttons.map((button) => ({ kind: button.dataset.export as ExportKind, button }));
+}
+
 export function readMobilePageHeader(content: HTMLElement): MobilePageHeader {
+  const exports = readExports(content);
   const title = findPageTitle(content);
   const previous = content.querySelector(`[${MOVED_TITLE}]`);
   if (previous && previous !== title) clearMobilePageHeader(content);
-  if (!title) return { title: "", addButton: null, addLabel: "" };
+  if (!title) return { title: "", addButton: null, addLabel: "", exports };
 
   const text = (title.textContent || "").replace(/\s+/g, " ").trim();
-  if (!text) return { title: "", addButton: null, addLabel: "" };
+  if (!text) return { title: "", addButton: null, addLabel: "", exports };
   title.setAttribute(MOVED_TITLE, "true");
 
   const row = title.parentElement && title.parentElement !== content ? title.parentElement : null;
@@ -71,6 +88,8 @@ export function readMobilePageHeader(content: HTMLElement): MobilePageHeader {
     // Hide the whole line (and its divider) when nothing else is left on it.
     const others = Array.from(row.children).filter((child) => {
       if (child === title || child === addButton) return false;
+      if (child.hasAttribute(MOVED_EXPORT)) return false;
+      if (child.querySelector("button, a") && Array.from(child.querySelectorAll("button, a")).every((button) => button.hasAttribute(MOVED_EXPORT) || button === addButton)) return false;
       if (addButton && child.contains(addButton) && (child.textContent || "").trim() === (addButton.textContent || "").trim()) return false;
       if (addButton && child.contains(addButton) && child.querySelectorAll("button, a").length === 1) return false;
       return isVisible(child) && ((child.textContent || "").trim() !== "" || child.querySelector("button, a, input, select, svg"));
@@ -79,5 +98,5 @@ export function readMobilePageHeader(content: HTMLElement): MobilePageHeader {
     else row.removeAttribute(MOVED_ROW);
   }
   const addLabel = addButton ? actionLabel(addButton).replace(/^\+\s*/, "").trim() : "";
-  return { title: text, addButton, addLabel };
+  return { title: text, addButton, addLabel, exports };
 }

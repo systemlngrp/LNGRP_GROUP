@@ -1,16 +1,17 @@
-import { Plus } from "lucide-react";
+import { Download, Plus } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { clearMobilePageHeader, readMobilePageHeader } from "../lib/mobilePageHeader";
 import { MOBILE_QUERY } from "../lib/mobileCompactLayout";
 
-type HeaderState = { title: string; addLabel: string };
+type HeaderState = { title: string; addLabel: string; exportKinds: string };
 
 // Reads the current page's title (and single "New …" button) on phones.
 export function useMobilePageHeader() {
   const location = useLocation();
-  const [state, setState] = useState<HeaderState>({ title: "", addLabel: "" });
+  const [state, setState] = useState<HeaderState>({ title: "", addLabel: "", exportKinds: "" });
   const addButtonRef = useRef<HTMLElement | null>(null);
+  const exportButtonsRef = useRef<HTMLElement[]>([]);
 
   useEffect(() => {
     const content = document.querySelector<HTMLElement>(".app-view-content");
@@ -21,15 +22,18 @@ export function useMobilePageHeader() {
       if (!media.matches) {
         clearMobilePageHeader(content);
         addButtonRef.current = null;
-        setState((current) => (current.title || current.addLabel ? { title: "", addLabel: "" } : current));
+        exportButtonsRef.current = [];
+        setState((current) => (current.title || current.addLabel || current.exportKinds ? { title: "", addLabel: "", exportKinds: "" } : current));
         return;
       }
       const header = readMobilePageHeader(content);
       addButtonRef.current = header.addButton;
+      exportButtonsRef.current = header.exports.map((item) => item.button);
+      const exportKinds = header.exports.map((item) => item.kind).join(",");
       setState((current) =>
-        current.title === header.title && current.addLabel === header.addLabel
+        current.title === header.title && current.addLabel === header.addLabel && current.exportKinds === exportKinds
           ? current
-          : { title: header.title, addLabel: header.addLabel },
+          : { title: header.title, addLabel: header.addLabel, exportKinds },
       );
     };
 
@@ -57,7 +61,35 @@ export function useMobilePageHeader() {
     if (button && button.isConnected) button.click();
   };
 
-  return { ...state, pressAdd };
+  const pressExport = (index: number) => {
+    const button = exportButtonsRef.current[index];
+    if (button && button.isConnected) button.click();
+  };
+
+  return { ...state, pressAdd, pressExport };
+}
+
+// Phone top bar: one download icon per PDF / Excel button of the page.
+export function MobileExportButtons({ kinds, onPress }: { kinds: string; onPress: (index: number) => void }) {
+  if (!kinds) return null;
+  return (
+    <>
+      {kinds.split(",").map((kind, index) => (
+        <button
+          key={`${kind}-${index}`}
+          type="button"
+          onClick={() => onPress(index)}
+          aria-label={kind === "pdf" ? "Download PDF" : "Download Excel"}
+          title={kind === "pdf" ? "Download PDF" : "Download Excel"}
+          className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border-2 md:hidden ${
+            kind === "pdf" ? "border-red-600 bg-red-50 text-red-600" : "border-emerald-600 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          <Download size={18} aria-hidden="true" />
+        </button>
+      ))}
+    </>
+  );
 }
 
 // Page name in the phone top bar. Reports whether the name is too long to

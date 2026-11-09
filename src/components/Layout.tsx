@@ -12,8 +12,9 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useRealtimeDataSync } from "../hooks/useRealtimeDataSync";
 import { ResizableTables } from "./ResizableTables";
 import { MobileCompactLayout } from "./MobileCompactLayout";
-import { MobileAddButton, MobilePageTitle, useMobilePageHeader } from "./MobileTopBar";
+import { MobileAddButton, MobileExportButtons, MobilePageTitle, useMobilePageHeader } from "./MobileTopBar";
 import { UpdateNotice } from "./UpdateNotice";
+import { markExportButtons } from "../lib/exportButtons";
 import { FullscreenViewControl } from "./FullscreenViewControl";
 import { BackNavigationControl } from "./BackNavigationControl";
 
@@ -75,6 +76,7 @@ export function Layout() {
     if (!content) return;
 
     const normalizeHeaders = () => {
+      markExportButtons(content);
       content.querySelectorAll<HTMLElement>("button, a").forEach((action) => {
         const hasPlus = Boolean(action.querySelector("svg.lucide-plus"));
         const textPlus = (action.textContent || "").trim().startsWith("+");
@@ -97,14 +99,19 @@ export function Layout() {
         const header = title.parentElement as HTMLElement | null;
         if (!header || header.children.length < 2 || getComputedStyle(header).display !== "flex") return;
         const children = Array.from(header.children) as HTMLElement[];
-        const isSingleAddAction = children.length === 2 && children.some(child =>
-          child !== title && (child.classList.contains("app-add-action") ||
-            (child.children.length === 1 && child.firstElementChild?.classList.contains("app-add-action")))
+        // Add (+) and download (PDF/Excel) buttons sit at the right of the title.
+        const isHeaderAction = (element: Element) =>
+          element.classList.contains("app-add-action") || element.hasAttribute("data-export");
+        const actions = children.filter(child => child !== title);
+        const isSingleAddAction = actions.length >= 1 && actions.length <= 4 && actions.every(child =>
+          isHeaderAction(child) ||
+            (child.children.length >= 1 && Array.from(child.children).every(isHeaderAction))
         );
         if (isSingleAddAction) {
           header.classList.add("app-add-header");
           header.style.display = "grid";
-          header.style.gridTemplateColumns = "minmax(0, 1fr) auto";
+          header.style.gridTemplateColumns = `minmax(0, 1fr) repeat(${actions.length}, auto)`;
+          header.style.columnGap = "0.5rem";
           header.style.alignItems = "center";
           title.style.width = "auto";
           title.style.whiteSpace = "normal";
@@ -229,6 +236,7 @@ export function Layout() {
                     <Menu size={20} />
                  </button>
                  <MobilePageTitle title={mobileHeader.title} onTooLong={setHideFullscreenOnPhone} />
+                 <MobileExportButtons kinds={mobileHeader.exportKinds} onPress={mobileHeader.pressExport} />
                  <button
                     className="hidden md:inline-flex items-center justify-center rounded border border-black bg-white p-2 text-black hover:bg-slate-100 transition"
                     onClick={toggleSidebarCollapsed}
