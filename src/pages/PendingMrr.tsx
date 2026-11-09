@@ -165,7 +165,7 @@ export function PendingMrr() {
           />
         </div>
         <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
-        <Select value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers / Customers" />
+        <Select value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Parties" />
         <input type="date" aria-label="From date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
         <input type="date" aria-label="To date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
         <button
@@ -182,7 +182,7 @@ export function PendingMrr() {
         <table className="min-w-full border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              {["Gate Entry No", "Firm", "Date", "Supplier/Customer", "Invoice No", "Invoice Value", "Truck No", "Photos", "Action"].map((heading) => (
+              {["Gate Entry No", "Firm", "Date", "Party", "Invoice No", "Invoice Value", "Truck No", "Photos", "Action"].map((heading) => (
                 <th key={heading} className="whitespace-nowrap border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">
                   {heading}
                 </th>

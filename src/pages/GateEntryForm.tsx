@@ -310,7 +310,7 @@ export function GateEntryForm() {
               </select>
             </Field>
 
-            <Field label="Supplier / Customer Name" required>
+            <Field label="Party Name" required>
               <Select
                 value={supplierId}
                 onChange={(value) => {
@@ -321,7 +321,7 @@ export function GateEntryForm() {
                 placeholder={
                   purpose === "Returnable Receipt"
                     ? "Select party with pending returnable gate pass..."
-                    : "Search or Select Supplier / Customer..."
+                    : "Search or Select Party..."
                 }
                 required
               />

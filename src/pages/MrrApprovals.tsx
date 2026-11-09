@@ -403,7 +403,7 @@ export function MrrApprovals() {
                       {renderSortIcon("transactionNo")}
                     </button>
                   </th>
-                  <th className="px-4 py-3 text-left">Supplier/Customer</th>
+                  <th className="px-4 py-3 text-left">Party</th>
                   <th className="px-4 py-3 text-left">Status</th>
                   <th className="px-4 py-3 text-left">MRR Type</th>
                   <th className="px-4 py-3 text-left whitespace-nowrap">Items</th>

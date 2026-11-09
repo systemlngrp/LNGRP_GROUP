@@ -70,7 +70,7 @@ export async function downloadMaterialInPdf({
   const hasCgstOrSgst = Number(mrr.totalCgst || 0) > 0 || Number(mrr.totalSgst || 0) > 0;
 
   const metadataRows: Array<[string, string, string, string]> = [
-    ["Supplier / Customer", supplierLabel, "Invoice No.", mrr.invoiceNo || "-"],
+    ["Party", supplierLabel, "Invoice No.", mrr.invoiceNo || "-"],
     ["Invoice Date", formatDisplayDate(mrr.invDate), "MRR No.", mrr.transactionNo],
     ["MRR Date", formatDisplayDate(mrr.date), "Gate Entry No.", mrr.gateEntryNo || "-"],
     ["Currency", mrr.invoiceCurrency || "INR", "Status", mrr.status || "-"],

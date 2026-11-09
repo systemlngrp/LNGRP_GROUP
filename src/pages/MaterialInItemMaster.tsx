@@ -344,7 +344,7 @@ export function MaterialInItemMaster() {
         "MRR No": line.parentTransactionNo,
         Date: formatDate(line.parentDate),
         "Vehicle No": line.parentVehicleNo,
-        "Supplier / Customer": getSupplierName(line.parentSupplierId),
+        "Party": getSupplierName(line.parentSupplierId),
         "Item Name": itemName,
         "Invoice No": line.parentInvoiceNo || "-",
         Qty: Number(line.qty || 0),
@@ -437,7 +437,7 @@ export function MaterialInItemMaster() {
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MRR No</th>
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Date</th>
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Vehicle No</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[240px]">Supplier / Customer</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[240px]">Party</th>
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[320px]">Item Name</th>
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Invoice No</th>
             <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Qty</th>

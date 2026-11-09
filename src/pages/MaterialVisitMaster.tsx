@@ -100,7 +100,7 @@ export function MaterialVisitMaster() {
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Visit No</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Date</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Visitor Name</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Supplier / Customer</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Party</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Purpose</th>
               <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Status</th>
               <th className="px-4 py-3 text-right border border-black"></th>

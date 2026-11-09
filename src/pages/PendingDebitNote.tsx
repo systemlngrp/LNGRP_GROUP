@@ -92,7 +92,7 @@ export function PendingDebitNote() {
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">MRR Details</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Supplier/Customer</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Party</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Amount</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Debit Note Tally Sync Remarks</th>

@@ -290,7 +290,7 @@ export function GatePassForm() {
               {isReturnable ? (
                 <>
                   <Field label="Recipient" required>
-                    <Select value={recipientId} onChange={setRecipientId} options={recipientOptions} placeholder="Select supplier / customer..." />
+                    <Select value={recipientId} onChange={setRecipientId} options={recipientOptions} placeholder="Select party..." />
                   </Field>
                   <Field label="Sent By" required>
                     <Select value={sentByUserId} onChange={setSentByUserId} options={userOptions} placeholder="Select user..." />

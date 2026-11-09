@@ -3130,12 +3130,12 @@ export function MaterialInForm() {
           ) : null}
           <div className="flex flex-col space-y-1 md:col-span-2">
             <label className="font-bold text-black">
-              Supplier/Customer <span className="text-red-500">*</span>
+              Party <span className="text-red-500">*</span>
             </label>
             {linkedGateEntry ? (
               <input type="text" value={linkedSupplierName} disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
             ) : (
-              <Select options={supplierOptions} value={supplierId} onChange={setSupplierId} required placeholder="Select Supplier/Customer..." />
+              <Select options={supplierOptions} value={supplierId} onChange={setSupplierId} required placeholder="Select Party..." />
             )}
           </div>
         </div>
