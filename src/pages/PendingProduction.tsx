@@ -15,6 +15,7 @@ import { formatDate } from "../lib/serial";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function getPendingProductionQty(schedule: OrderSchedule, consumedQty: number) {
   return Math.max(
@@ -96,7 +97,7 @@ export function PendingProduction() {
   );
 
   const pendingRows = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return schedules
       .filter((schedule) => {
         const consumedQty = Number(consumptionByScheduleId.get(schedule.id)?.effectiveConsumedQty || 0);
@@ -146,34 +147,29 @@ export function PendingProduction() {
           pendingQty: getPendingProductionQty(schedule, consumedQty),
         };
       })
-      .filter(({ schedule, order, item, company, firm, firmId, pendingQty, plannedQty, actualProducedQty, plannedWithoutFfgQty, consumedQty }) => {
+      .filter(({ schedule, order, item, company, firm, firmId, pendingQty, plannedQty, actualProducedQty }) => {
         if (firmFilter && firmId !== firmFilter) return false;
         if (companyFilter && order?.companyId !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${getPendingProductionErp(item, order)}`;
         if (itemFilter && itemKey !== itemFilter) return false;
-        if (!normalizedSearch) return true;
+        if (!words.length) return true;
         const canPlanFgJob = normalizeOrderItemSource(order?.itemSource) === "FG";
         const boxType = canPlanFgJob ? String((item as any)?.boxType || "").trim() : "";
-        const erpCode = getPendingProductionErp(item, order);
-        const haystack = [
+        return matchesTableSearch([
           order?.orderNo,
+          schedule.scheduleNo,
           formatDate(schedule.scheduledDate),
           company?.name,
           firm,
-          erpCode,
+          getPendingProductionErp(item, order),
           item?.name,
-          boxType,
-          String(schedule.qty || 0),
-          String(plannedQty),
-          String(actualProducedQty),
-          String(plannedWithoutFfgQty),
-          String(consumedQty),
-          String(schedule.canceledQty || 0),
-          String(pendingQty),
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(normalizedSearch);
+          boxType || "Missing",
+          schedule.qty || 0,
+          plannedQty,
+          actualProducedQty,
+          schedule.canceledQty || 0,
+          pendingQty,
+        ], words);
       })
       .sort((a, b) => {
         const timeA = new Date(a.schedule.updateTimestamp || a.schedule.scheduledDate || 0).getTime();
@@ -254,7 +250,7 @@ export function PendingProduction() {
       <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] xl:items-end">
         <div className="relative min-w-0">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search..." className="h-[42px] w-full rounded border-2 border-black py-2 pl-10 pr-3 text-sm font-medium focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search" className="h-[42px] w-full rounded border-2 border-black py-2 pl-10 pr-3 text-sm font-medium focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
         </div>
         <FirmFilter value={firmFilter} onChange={setFirmFilter} compact={false} className="min-w-0" />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />

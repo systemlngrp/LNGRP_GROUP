@@ -7,6 +7,7 @@ import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function OrdersPendingScheduling() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,7 +41,7 @@ export function OrdersPendingScheduling() {
   const today = new Date().toISOString().slice(0, 10);
   
   const pending = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return orders
       .filter((order) => order.status === "Pending Scheduling")
       .map((order) => {
@@ -52,23 +53,16 @@ export function OrdersPendingScheduling() {
         return { order, item, firmName, companyName, scheduledQty, pendingQty };
       })
       .filter(({ pendingQty }) => pendingQty > 0)
-      .filter(({ order, item, firmName, companyName, pendingQty, scheduledQty }) => {
-        if (!normalizedSearch) return true;
-        const haystack = [
-          order.orderNo,
-          firmName,
-          companyName,
-          item?.name,
-          item?.erp,
-          item?.uom,
-          String(order.qty || ""),
-          String(scheduledQty),
-          String(pendingQty),
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(normalizedSearch);
-      })
+      .filter(({ order, item, firmName, companyName, pendingQty, scheduledQty }) => matchesTableSearch([
+        order.orderNo,
+        firmName,
+        companyName,
+        item?.name,
+        formatQty(order.qty),
+        formatQty(scheduledQty),
+        formatQty(pendingQty),
+        item?.uom,
+      ], words))
       .sort((a, b) => {
         const aNo = a.order.orderNo || "";
         const bNo = b.order.orderNo || "";

@@ -18,6 +18,7 @@ import { getProductionEffectiveType, getRequiredMachinesForProduction, resolvePr
 import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/jobClosureValidation";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function firstById<T extends { id: string }>(rows: T[]) {
   const map = new Map<string, T>();
@@ -343,7 +344,9 @@ export function PendingJobClosure() {
   const companyById = useMemo(() => firstById(companies), [companies]);
 
   // Worked out once per data or filter change instead of on every render.
-  const filteredList = useMemo(() => productions
+  const filteredList = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return productions
     .filter(p => {
       // Rule: Only show jobs where closeBy and closeDate are empty/not filled
       const isNotClosed = !p.closeBy && !p.closeDate;
@@ -360,15 +363,73 @@ export function PendingJobClosure() {
       if (firmFilter && firmId !== firmFilter) return false;
       const itemKey = item?.id || `${item?.name || ""}::${p.erpCode || ""}`;
       if (itemFilter && itemKey !== itemFilter) return false;
-      return p.transactionNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (order?.orderNo || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (company?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      getFirmDisplayNameById(firmId, firms).toLowerCase().includes(searchTerm.toLowerCase());
+      if (!words.length) return true;
+      // Visible table columns only (as the cells show them).
+      const anyItem = item as any;
+      const erp = String(p.erpCode || "").trim();
+      const status = jobClosureStatusMap.get(p.id);
+      const required = status?.required || [];
+      const missing = status?.missing || [];
+      const done = status?.done || 0;
+      const procTotals = processingTotalsMap.get(p.id) || { paper: 0, liner: 0, printing: 0, pasting: 0, stitching: 0, punching: 0, gluing: 0 };
+      return matchesTableSearch([
+        p.transactionNo,
+        getFirmDisplayNameById(firmId, firms),
+        order?.orderNo,
+        p.erpCode,
+        company?.name,
+        p.date,
+        item?.name || "Unknown",
+        anyItem?.isSample ? "Yes" : "",
+        getProductionEffectiveType(p, item),
+        required.length === 0 ? "" : missing.length === 0 ? `Done ${done}/${required.length}` : `Pending ${done}/${required.length} Missing: ${missing.join(", ")}`,
+        `${p.qty} ${p.uom}`,
+        p.qty,
+        p.ups || anyItem?.ups,
+        Number(loadedQtyByProductionId.get(p.id) || 0),
+        procTotals.paper,
+        procTotals.liner,
+        procTotals.printing,
+        procTotals.pasting,
+        procTotals.stitching,
+        procTotals.punching,
+        procTotals.gluing,
+        p.length || "",
+        p.breadth || "",
+        p.height || "",
+        anyItem?.lOd || item?.raw?.lOd,
+        anyItem?.wOd || item?.raw?.wOd,
+        anyItem?.hOd || item?.raw?.hOd,
+        p.ply || "",
+        p.flute,
+        p.l1 || anyItem?.l1,
+        p.f1 || anyItem?.f1,
+        p.l2 || anyItem?.l2,
+        p.f2 || anyItem?.f2,
+        p.l3 || anyItem?.l3,
+        p.gsm || "",
+        erpLeastGsmMap.get(erp) || "",
+        p.color1,
+        p.color2,
+        p.printingColor,
+        p.totalPaperWeight || "",
+        Number(p.realizationPerKg || 0) ? Number(p.realizationPerKg || 0).toFixed(2) : "",
+        (p as any).reelAsPerCalc || "",
+        (p as any).reelActualWithTrimming || "",
+        (p as any).cuttingWithTrimming || anyItem?.cuttingSize || item?.raw?.cuttingSize,
+        p.plannedProductionInMeter,
+        p.sheetWeight || "",
+        p.fluteBatches,
+        Number(p.rate) ? Number(p.rate).toFixed(2) : p.rate,
+        Number(p.qty || 0) && Number(p.rate || 0) ? Number(p.qty || 0) * Number(p.rate || 0) : "",
+        Number(p.prodFromFFG || 0),
+        Number(p.actualPaperUsed || 0).toFixed(2),
+      ], words);
     })
-    .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: 'base' })),
+    .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: 'base' }));
+  },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [companyById, companyFilter, firmFilter, firms, findItemAcrossSources, itemFilter, orderById, productions, scheduleById, searchTerm]);
+  [companyById, companyFilter, erpLeastGsmMap, firmFilter, firms, findItemAcrossSources, itemFilter, jobClosureStatusMap, loadedQtyByProductionId, orderById, processingTotalsMap, productions, scheduleById, searchTerm]);
 
   const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const schedule = scheduleById.get(row.scheduleId); const order = orderById.get(schedule?.orderId as string); const company = companyById.get(order?.companyId as string); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companyById, filteredList, orderById, scheduleById]);
   const itemOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const item = resolveProductionItem(row); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [filteredList, findItemAcrossSources]);
@@ -406,7 +467,7 @@ export function PendingJobClosure() {
         <TableControls
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          placeholder="Search pending closures..."
+          placeholder="Search"
         />
         <FirmFilter value={firmFilter} onChange={setFirmFilter} />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />

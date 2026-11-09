@@ -8,6 +8,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/utils";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { Company, DispatchPlan, Firm, LoadingSlip, Order, OrderSchedule, User, Supplier } from "../types";
 
 type SortDirection = "asc" | "desc";
@@ -158,9 +159,27 @@ export function OrdersMaster() {
     });
   }, [canceledQtyByOrderId, companyMap, firmMap, invoicedQtyByOrderId, itemMap, orders, userMap]);
 
-  const filteredRows = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+  // Search text of each row from the table's visible columns, built once per row list.
+  const searchTextByRow = useMemo(() => new Map(rows.map((row) => [row, rowSearchText([
+    row.order.orderNo,
+    formatDate(row.order.orderDate),
+    row.firmName,
+    row.companyName,
+    row.order.erpCode,
+    row.itemName,
+    row.order.poNumber,
+    formatAmount(toNumber(row.order.qty)),
+    formatAmount(toNumber(row.order.rate)),
+    formatAmount(row.orderAmount),
+    formatAmount(row.invoicedQty),
+    formatAmount(row.canceledQty),
+    formatAmount(row.pendingQty),
+    row.orderByName,
+  ])])), [rows]);
+  const searchWordsList = useMemo(() => searchWords(searchTerm), [searchTerm]);
+  const matchesSearch = (row: OrderMasterRow) => matchesTableSearch(searchTextByRow.get(row) || "", searchWordsList);
 
+  const filteredRows = useMemo(() => {
     return rows
       .filter((row) => {
         if (companyFilter && row.companyName !== companyFilter) return false;
@@ -169,19 +188,7 @@ export function OrdersMaster() {
         if (orderByFilter && row.orderByName !== orderByFilter) return false;
         if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return false;
 
-        if (!normalizedSearch) return true;
-
-        return [
-          row.order.orderNo,
-          row.firmName,
-          row.companyName,
-          row.itemName,
-          row.itemErp,
-          row.order.erpCode,
-          row.order.poNumber,
-          row.orderByName,
-        ]
-          .some((value) => String(value || "").toLowerCase().includes(normalizedSearch));
+        return matchesSearch(row);
       })
       .sort((left, right) => {
         const serialDiff = parseOrderSerial(left.order.orderNo) - parseOrderSerial(right.order.orderNo);
@@ -192,39 +199,29 @@ export function OrdersMaster() {
         const orderNoCompare = String(left.order.orderNo || "").localeCompare(String(right.order.orderNo || ""));
         return orderNoSort === "asc" ? orderNoCompare : -orderNoCompare;
       });
-  }, [companyFilter, dateFrom, dateTo, firmFilter, itemFilter, orderByFilter, orderNoSort, rows, searchTerm]);
+  }, [companyFilter, dateFrom, dateTo, firmFilter, itemFilter, orderByFilter, orderNoSort, rows, searchTextByRow, searchWordsList]);
 
   const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)), [firms]);
 
   const availableCompanies = useMemo(() => {
-    const ns = searchTerm.trim().toLowerCase();
     const set = new Set<string>();
     rows.forEach((row) => {
       if (itemFilter && row.itemKey !== itemFilter) return;
       if (orderByFilter && row.orderByName !== orderByFilter) return;
       if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return;
-      if (ns) {
-        const anyMatch = [row.order.orderNo, row.companyName, row.itemName, row.itemErp, row.order.erpCode, row.order.poNumber, row.orderByName]
-          .some((v) => String(v || "").toLowerCase().includes(ns));
-        if (!anyMatch) return;
-      }
+      if (!matchesSearch(row)) return;
       if (row.companyName) set.add(row.companyName);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows, itemFilter, orderByFilter, dateFrom, dateTo, searchTerm]);
+  }, [rows, itemFilter, orderByFilter, dateFrom, dateTo, searchTextByRow, searchWordsList]);
 
   const availableItems = useMemo(() => {
-    const ns = searchTerm.trim().toLowerCase();
     const set = new Set<string>();
     rows.forEach((row) => {
       if (companyFilter && row.companyName !== companyFilter) return;
       if (orderByFilter && row.orderByName !== orderByFilter) return;
       if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return;
-      if (ns) {
-        const anyMatch = [row.order.orderNo, row.companyName, row.itemName, row.itemErp, row.order.erpCode, row.order.poNumber, row.orderByName]
-          .some((v) => String(v || "").toLowerCase().includes(ns));
-        if (!anyMatch) return;
-      }
+      if (!matchesSearch(row)) return;
       if (row.itemKey) set.add(row.itemKey);
     });
     return Array.from(set)
@@ -234,24 +231,19 @@ export function OrdersMaster() {
         return { value: key, label, searchText: `${name} ${erp}` };
       })
       .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
-  }, [rows, companyFilter, orderByFilter, dateFrom, dateTo, searchTerm]);
+  }, [rows, companyFilter, orderByFilter, dateFrom, dateTo, searchTextByRow, searchWordsList]);
 
   const availableUsers = useMemo(() => {
-    const ns = searchTerm.trim().toLowerCase();
     const set = new Set<string>();
     rows.forEach((row) => {
       if (companyFilter && row.companyName !== companyFilter) return;
       if (itemFilter && row.itemKey !== itemFilter) return;
       if ((dateFrom || dateTo) && !isWithinDateRange(row.order.orderDate, dateFrom, dateTo)) return;
-      if (ns) {
-        const anyMatch = [row.order.orderNo, row.companyName, row.itemName, row.itemErp, row.order.erpCode, row.order.poNumber, row.orderByName]
-          .some((v) => String(v || "").toLowerCase().includes(ns));
-        if (!anyMatch) return;
-      }
+      if (!matchesSearch(row)) return;
       if (row.orderByName) set.add(row.orderByName);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [rows, companyFilter, itemFilter, dateFrom, dateTo, searchTerm]);
+  }, [rows, companyFilter, itemFilter, dateFrom, dateTo, searchTextByRow, searchWordsList]);
 
   const {
     page,
@@ -315,7 +307,7 @@ export function OrdersMaster() {
               <input
                 value={searchTerm}
                 onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search order, firm, ERP, company, item, PO..."
+                placeholder="Search"
                 className="w-full rounded border border-black py-2 pl-10 pr-3 font-normal"
               />
             </div>

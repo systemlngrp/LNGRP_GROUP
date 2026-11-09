@@ -11,6 +11,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function getPendingProductionQty(schedule: OrderSchedule, consumedQty: number) {
   return Math.max(
@@ -65,7 +66,7 @@ export function UpcomingScheduledOrders() {
   );
 
   const upcomingRows = useMemo(() => {
-    const lowered = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return schedules
         .filter((schedule) => {
           const consumedQty = Number(consumptionByScheduleId.get(schedule.id)?.effectiveConsumedQty || 0);
@@ -96,11 +97,19 @@ export function UpcomingScheduledOrders() {
         })
         .filter(({ schedule, order, item, company, firmId, firmName, pendingQty, plannedQty, actualProducedQty }) => {
           if (firmFilter && firmId !== firmFilter) return false;
-          if (!lowered) return true;
-          return [order?.orderNo, formatDate(schedule.scheduledDate), firmName, company?.name, item?.name, schedule.qty, plannedQty, actualProducedQty, schedule.canceledQty, pendingQty]
-            .join(" ")
-            .toLowerCase()
-            .includes(lowered);
+          return matchesTableSearch([
+            order?.orderNo,
+            schedule.scheduleNo,
+            formatDate(schedule.scheduledDate),
+            firmName,
+            company?.name,
+            item?.name,
+            schedule.qty || 0,
+            plannedQty,
+            actualProducedQty,
+            schedule.canceledQty || 0,
+            pendingQty,
+          ], words);
         })
         .sort((a, b) => {
           const timeA = new Date(a.schedule.scheduledDate || 0).getTime();

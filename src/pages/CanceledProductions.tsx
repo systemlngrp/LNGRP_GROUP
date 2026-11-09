@@ -10,6 +10,7 @@ import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useConfirm } from "../components/ConfirmDialog";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function CanceledProductions() {
   const confirm = useConfirm();
@@ -67,16 +68,24 @@ export function CanceledProductions() {
 const canceledProductions = useMemo(() => productions.filter((production) => production.status === "Cancelled"), [productions]);
 
   const filteredList = useMemo(() => {
-    const needle = searchTerm.trim().toLowerCase();    return canceledProductions
+    const words = searchWords(searchTerm);
+    return canceledProductions
       .filter((production) => {
         const item = npdItems.find((row) => row.id === production.itemId);
         const schedule = schedules.find((row) => row.id === production.scheduleId);
         const order = orders.find((row) => row.id === schedule?.orderId);
-        const company = companies.find((row) => row.id === order?.companyId);
         const firmId = String(schedule?.firmId || production.firmId || production.orderFirmId || order?.firmId || "");
         if (firmFilter && firmId !== firmFilter) return false;
-        if (!needle) return true;
-        return [production.transactionNo, item?.name, order?.orderNo, company?.name, getFirmDisplayNameById(firmId, firms)].join(" ").toLowerCase().includes(needle);
+        if (!words.length) return true;
+        return matchesTableSearch([
+          production.transactionNo,
+          order?.orderNo,
+          getFirmDisplayNameById(firmId, firms),
+          item?.name || "Unknown",
+          [production.qty, `${production.qty} ${production.uom || ""}`],
+          production.cancelTimestamp,
+          production.cancelRemarks,
+        ], words);
       })
       .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: "base" }));
   }, [canceledProductions, companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
@@ -90,7 +99,7 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
       <div className="flex flex-wrap items-end gap-3"><div className="min-w-[280px] flex-1"><TableControls
         searchTerm={searchTerm} 
         onSearchChange={setSearchTerm} 
-        placeholder="Search canceled jobs..." 
+        placeholder="Search" 
       /></div><FirmFilter value={firmFilter} onChange={setFirmFilter} /></div>
 
       <DataSummaryTiles totalRecords={canceledProductions.length} filteredRecords={filteredList.length} showingRecords={filteredList.length} pageLabel="1 / 1" />

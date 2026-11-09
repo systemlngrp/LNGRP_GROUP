@@ -13,6 +13,7 @@ import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { resolvePhpPlateFgLink } from "../lib/phpPlateFgLink";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { resolvePhpPlateFirmId } from "../lib/phpPlateFirm";
+import { rowSearchText, searchWords } from "../lib/tableSearch";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -97,29 +98,57 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         itemKey,
         companyName,
         firmId,
-        searchText: [
+        // Values of the table columns, in MASTER_COLUMNS order (Action excluded).
+        cells: [
           production.transactionNo,
           production.date,
+          getFirmDisplayNameById(firmId, firms),
           production.shift,
           production.category,
           production.masterErp,
-          production.erpCode,
-          companyName, getFirmDisplayNameById(firmId, firms),
-          production.status,
-          production.remarks,
-          production.planningId,
-          production.scheduledDate,
-          production.methodology,
-          production.jobType,
-          production.sequence,
-          production.jobCompletionTimeOutput,
+          production.erpCode || item?.erp,
+          item?.name || production.itemId,
+          production.setsPerBox,
+          production.length,
+          production.breadth,
+          production.height,
+          production.ply,
+          production.noOfHolesInPhp,
+          production.fluteType || production.flute,
+          production.l1,
+          production.f1,
+          production.l2,
+          production.f2,
+          production.l3,
+          production.boardGsmReq || production.gsm,
+          production.brustingStrengthReq,
+          production.weightPerPcSetReq || production.plateWeight,
           production.printingColor,
-          itemName,
-          itemErp,
-        ].join(" ").toLowerCase(),
+          production.requiredQty || production.qty,
+          schedules.find((schedule) => String(schedule.id) === String(production.scheduleId || ""))?.scheduleNo || production.planningId || production.scheduleId,
+          production.scheduledDate,
+          production.plannedQty || production.qty,
+          production.methodology,
+          Number(resolvePhpPlateFgLink(production, fgProductions, source).fgValue) || 0,
+          production.jobType,
+          production.scheduledDate && production.shift && production.methodology && !String(production.sequence || "").trim() && production.status !== "Cancelled" && production.status !== "Completed" && !String(production.jobCompletionTimeOutput || "").trim() ? "Needs sequencing" : production.sequence,
+          production.jobCompletionTimeOutput,
+          production.productionOutputQty,
+          production.qty,
+          production.uom || item?.uom,
+          production.status,
+          production.cancelRemarks || production.remarks,
+        ] as unknown[],
       };
     });
-  }, [firms, items, orders, productions, schedules]);
+  }, [fgProductions, firms, items, orders, productions, schedules, source]);
+
+  // Search text of each row from the columns currently shown (hidden columns
+  // are not searched), built once per row list / column choice.
+  const searchTextByRow = useMemo(() => {
+    const hidden = new Set(hiddenColumns);
+    return new Map(productionFilterRows.map((row) => [row, rowSearchText(row.cells.filter((_, index) => !hidden.has(index)))] as const));
+  }, [hiddenColumns, productionFilterRows]);
 
   const companyOptions = useMemo(() => {
     const names = Array.from(new Set(productionFilterRows.map((row) => row.companyName).filter(Boolean)));
@@ -137,7 +166,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
   const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
 
   const filteredList = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return productionFilterRows
       .filter((row) => {
         if (companyFilter && row.companyName !== companyFilter) return false;
@@ -146,11 +175,13 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         const date = String(row.production.date || "").slice(0, 10);
         if (fromDate && date < fromDate) return false;
         if (toDate && date > toDate) return false;
-        return !normalizedSearch || row.searchText.includes(normalizedSearch);
+        if (!words.length) return true;
+        const text = searchTextByRow.get(row) || "";
+        return words.every((word) => text.includes(word));
       })
       .map((row) => row.production)
       .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
-  }, [companyFilter, firmFilter, fromDate, itemFilter, productionFilterRows, searchTerm, toDate]);
+  }, [companyFilter, firmFilter, fromDate, itemFilter, productionFilterRows, searchTerm, searchTextByRow, toDate]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredList, 25);
 
   const handleCancel = async (id: string) => {
@@ -182,7 +213,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{sourceLabel} Production Master</h2>
       </div>
       <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,1fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_150px_150px_auto_auto] md:items-center">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search job, ERP, company, item..." />
+        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
         <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />

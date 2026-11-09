@@ -10,6 +10,7 @@ import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function PendingNpd() {
   // Load every firm's orders/schedules; the page's own Firm filter narrows them.
@@ -58,29 +59,21 @@ export function PendingNpd() {
       .filter((row) => row.item && (!row.boxType || !row.rapcValue))
       .filter((row) => !firmFilter || row.firmId === firmFilter);
 
-    const needle = searchTerm.trim().toLowerCase();
-    if (!needle) return rows;
+    const words = searchWords(searchTerm);
+    if (!words.length) return rows;
 
-    return rows.filter(({ schedule, order, item, company, firmName, boxType, rapcValue }) => {
-      const blob = [
-        order.orderNo,
-        order.orderDate,
-        schedule.scheduledDate,
-        order.erpCode,
-        company?.name,
-        firmName,
-        item?.name,
-        (item as any)?.raw?.itemName,
-        (item as any)?.raw?.customerName,
-        (item as any)?.raw?.contactPerson,
-        boxType,
-        rapcValue,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return blob.includes(needle);
-    });
+    return rows.filter(({ schedule, order, item, company, firmName, boxType, rapcValue }) => matchesTableSearch([
+      order.orderNo,
+      formatDate(order.orderDate),
+      schedule.scheduleNo,
+      formatDate(schedule.scheduledDate),
+      firmName,
+      company?.name,
+      order.erpCode,
+      item?.name,
+      boxType || "Missing",
+      rapcValue || "Missing",
+    ], words));
   }, [companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
   // The table draws 100 rows per page; the count tile covers every row.
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(pendingRows, 100);
@@ -98,7 +91,7 @@ export function PendingNpd() {
           <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search order, company, item, ERP..."
+            placeholder="Search"
             className="h-10 w-full rounded border border-black pl-10 pr-3 text-sm font-normal"
           />
           </div>

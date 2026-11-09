@@ -17,6 +17,7 @@ import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, printingWastageDraftFromEntry, type PrintingWastageDraft } from "../lib/printingWastage";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { rowSearchText, searchWords } from "../lib/tableSearch";
 
 type EditDraft = {
   date: string;
@@ -177,29 +178,45 @@ export function ProductionProcessingMaster() {
     return map;
   }, [productions, phpJobs, plateJobs]);
 
+  // Search text of each report from its table columns (Date, Job No, Firm,
+  // Item Name, ERP, Box Type, Machine, Shift, Part / Full, Quantity), built once.
+  const searchTextById = useMemo(() => {
+    const map = new Map<string, string>();
+    processing.forEach((p) => {
+      const production = jobById.get(p.productionId);
+      const firmId = String(production?.firmId || production?.orderFirmId || "");
+      map.set(p.id, rowSearchText([
+        formatDate(p.date),
+        p.date,
+        p.jobNo,
+        getFirmDisplayNameById(firmId, firms),
+        p.itemName,
+        p.erp,
+        p.boxType,
+        p.machineName,
+        p.shift || "Day",
+        p.completionStatus || "Full",
+        Number(p.qty || 0),
+      ]));
+    });
+    return map;
+  }, [firms, jobById, processing]);
+
   const filtered = useMemo(() => {
+    const words = searchWords(searchTerm);
     return processing
       .filter((p) => {
         const production = jobById.get(p.productionId);
         const firmId = String(production?.firmId || production?.orderFirmId || "");
-        const firmName = getFirmDisplayNameById(firmId, firms);
         if (firmFilter && firmId !== firmFilter) return false;
-        const query = searchTerm.toLowerCase();
-        const matchesSearch = (
-          String(p.jobNo || "").toLowerCase().includes(query) ||
-          (p.machineName || "").toLowerCase().includes(query) ||
-          String(p.shift || "Day").toLowerCase().includes(query) ||
-          String(p.itemName || "").toLowerCase().includes(query) ||
-          String(p.erp || "").toLowerCase().includes(query) ||
-          String(p.boxType || "").toLowerCase().includes(query) ||
-          firmName.toLowerCase().includes(query)
-        );
+        const text = searchTextById.get(p.id) || "";
+        const matchesSearch = words.every((word) => text.includes(word));
         const matchesFrom = !fromDate || String(p.date || "") >= fromDate;
         const matchesTo = !toDate || String(p.date || "") <= toDate;
         return matchesSearch && matchesFrom && matchesTo;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [firmFilter, firms, fromDate, jobById, processing, searchTerm, toDate]);
+  }, [firmFilter, fromDate, jobById, processing, searchTerm, searchTextById, toDate]);
 
   // The table draws 100 reports per page; filters cover every report.
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedReports } = useClientPagination(filtered, 100);
@@ -220,7 +237,7 @@ export function ProductionProcessingMaster() {
 
       <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.5fr)_minmax(180px,0.9fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)_auto] xl:items-end">
         <div className="min-w-0">
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search by Job No, Machine, Item, or ERP..." />
+          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
         </div>
         <FirmFilter value={firmFilter} onChange={setFirmFilter} compact={false} className="min-w-0" />
         <label className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-600">

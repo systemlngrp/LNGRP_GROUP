@@ -7,6 +7,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { OrderItemSource, Production } from "../types";
 import { Select } from "../components/Select";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -46,7 +47,7 @@ export function StandaloneProductionSequencing({ source }: Props) {
   const activeSourceFilter = source === "ALL" ? sourceFilter : source;
 
   const pendingJobs = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return jobs
       .filter((job) => job.status !== "Cancelled" && job.status !== "Completed")
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
@@ -54,9 +55,8 @@ export function StandaloneProductionSequencing({ source }: Props) {
       .filter((job) => !String(job.sequence || "").trim())
       .filter((job) => {
         const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
-        if (!query) return true;
-        const haystack = [job.jobSource, job.transactionNo, job.erpCode, job.masterErp, job.scheduledDate, item?.name].join(" ").toLowerCase();
-        return haystack.includes(query);
+        if (!words.length) return true;
+        return matchesTableSearch([job.jobSource, job.transactionNo, item?.name || job.itemId, job.scheduledDate, job.shift, job.methodology], words);
       })
       .sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || String(a.transactionNo || "").localeCompare(String(b.transactionNo || "")));
   }, [activeSourceFilter, itemsBySource, jobs, searchTerm]);
@@ -100,7 +100,7 @@ export function StandaloneProductionSequencing({ source }: Props) {
           </div>
         ) : null}
       </div>
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search job no, item, date..." />
+      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
       <div className="bg-white border border-black rounded shadow-sm overflow-auto">
         <table className="min-w-[1280px] w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">

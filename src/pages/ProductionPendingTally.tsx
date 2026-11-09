@@ -18,6 +18,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { cn } from "../lib/utils";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import {
   buildProductionCorrugatedSheetUsageMap,
   buildProductionMaterialUsageMap,
@@ -107,12 +108,20 @@ export function ProductionPendingTally() {
     }, 500);
   };
 
+  const searchWordList = searchWords(searchTerm);
   const pendingList = productions
     .filter(p => 
-      isProductionReadyForTally(p, getProductionActualPaperUsed(p, usageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap)) && (
-        p.transactionNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (resolveProductionTallyItem(p, npdItems)?.name || "").toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      isProductionReadyForTally(p, getProductionActualPaperUsed(p, usageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap)) &&
+      matchesTableSearch([
+        p.transactionNo,
+        p.date,
+        resolveProductionTallyItem(p, npdItems)?.name || "Unknown",
+        Number(p.prodFromFFG || 0),
+        p.uom,
+        p.tallyPostingStatus,
+        p.tallyPostingRemark,
+        p.tallyPostingError,
+      ], searchWordList)
     )
     .sort((a, b) => new Date(b.updateTimestamp).getTime() - new Date(a.updateTimestamp).getTime());
 
@@ -135,7 +144,7 @@ export function ProductionPendingTally() {
         <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
         <input
           type="text"
-          placeholder="Search entries..."
+          placeholder="Search"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600"

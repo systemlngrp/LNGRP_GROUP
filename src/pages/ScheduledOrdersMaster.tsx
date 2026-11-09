@@ -16,6 +16,7 @@ import Select from "react-select";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { rowSearchText, searchWords } from "../lib/tableSearch";
 
 type SelectOption = {
   value: string;
@@ -224,18 +225,33 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
     });
   }, [pendingOnly, scheduleDispatchDetails, schedulesLoading, plansLoading, loadingSlipsLoading, setSchedules]);
 
+  // Search text of each schedule from the table's visible columns, built once per list.
+  const searchTextById = useMemo(() => new Map(scheduleDispatchDetails.map((s) => [s.id, rowSearchText([
+    formatDate(s.scheduledDate),
+    s.scheduleNo,
+    s.orderNo,
+    s.firmName,
+    s.companyName,
+    s.itemName,
+    s.itemErp,
+    (Number(s.qty) || 0).toLocaleString(),
+    (Number(s.canceledQty) || 0).toLocaleString(),
+    s.plannedQty.toLocaleString(),
+    s.producedFgQty.toLocaleString(),
+    s.pendingPlanning.toLocaleString(),
+    s.loaded.toLocaleString(),
+    s.invoiced.toLocaleString(),
+    s.pendingInvoice.toLocaleString(),
+    s.pendingOrderQty.toLocaleString(),
+  ])])), [scheduleDispatchDetails]);
+
   const detailedSchedules = useMemo(() => {
+    const words = searchWords(searchTerm);
     return scheduleDispatchDetails
       .filter((s) => !pendingOnly || s.pendingOrderQty > 0)
       .filter(s => {
-        const normalizedSearch = searchTerm.trim().toLowerCase();
-        const matchSearch = !normalizedSearch || [
-          s.orderNo,
-          s.orderErp,
-          s.companyName,
-          s.itemName,
-          s.itemErp,
-        ].some((value) => String(value || "").toLowerCase().includes(normalizedSearch));
+        const text = searchTextById.get(s.id) || "";
+        const matchSearch = words.every((word) => text.includes(word));
         const matchCompany = !companyFilter || s.companyId === companyFilter;
         const matchFirm = !firmFilter || s.firmId === firmFilter;
         const matchItem = !itemFilter || s.itemId === itemFilter;
@@ -251,7 +267,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         if (comparison !== 0) return scheduleNoSortDirection === "asc" ? comparison : -comparison;
         return b.scheduledDate.localeCompare(a.scheduledDate);
       });
-  }, [scheduleDispatchDetails, pendingOnly, searchTerm, firmFilter, companyFilter, itemFilter, fromDate, toDate, scheduleNoSortDirection]);
+  }, [scheduleDispatchDetails, searchTextById, pendingOnly, searchTerm, firmFilter, companyFilter, itemFilter, fromDate, toDate, scheduleNoSortDirection]);
   const {
     page,
     setPage,
@@ -340,7 +356,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input 
             type="text"
-            placeholder="Search order, firm, ERP, company, item..."
+            placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"

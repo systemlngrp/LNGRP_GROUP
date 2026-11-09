@@ -9,6 +9,7 @@ import { formatDate } from "../lib/serial";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { buildUnitOneReelsChecker } from "../lib/manufacturingJournalCompletion";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 type JournalRow = ProductionProcessing & { unit: "Unit-1" | "Unit-2"; firmId: string; firmName: string; itemName: string; erp: string };
 
@@ -39,6 +40,7 @@ export function ManufacturingJournal() {
   const unitOneReelsComplete = useMemo(() => buildUnitOneReelsChecker(issueReels, returnReels, jobs), [issueReels, returnReels, jobs]);
   const jobById = useMemo(() => { const map = new Map<string, Production>(); jobs.forEach((job) => { if (!map.has(job.id)) map.set(job.id, job); }); return map; }, [jobs]);
 
+  const words = useMemo(() => searchWords(search), [search]);
   const rows = useMemo<JournalRow[]>(() => processing
     .filter((entry) => {
       const stage = normalizeMachineName(entry.machineName);
@@ -52,12 +54,10 @@ export function ManufacturingJournal() {
     })
     .filter((row) => {
       if (row.machineName === "Corrugation Liner" && !unitOneReelsComplete(row.productionId, row.jobNo)) return false;
-      const query = normalize(search);
-      const haystack = [row.jobNo, row.itemName, row.erp, row.machineName, row.unit, row.firmName, row.operatorName, row.tallyPostingStatus].map(normalize).join(" ");
       const tally = String(row.tallyPostingStatus || "Pending").trim() || "Pending";
-      return (!query || haystack.includes(query)) && (!firmFilter || row.firmId === firmFilter) && (!stageFilter || row.machineName === stageFilter) && (!tallyFilter || tally === tallyFilter) && (!fromDate || row.date >= fromDate) && (!toDate || row.date <= toDate);
+      return matchesTableSearch([row.date, row.jobNo, `${row.unit} - ${row.firmName}`, row.itemName, row.erp, row.machineName, row.shift || "Day", Number(row.qty || 0), row.operatorName, row.completionStatus || "Full", row.tallyPostingStatus || "Pending"], words) && (!firmFilter || row.firmId === firmFilter) && (!stageFilter || row.machineName === stageFilter) && (!tallyFilter || tally === tallyFilter) && (!fromDate || row.date >= fromDate) && (!toDate || row.date <= toDate);
     })
-    .sort((a, b) => String(b.date).localeCompare(String(a.date))), [firmFilter, firms, fromDate, jobById, processing, search, stageFilter, tallyFilter, toDate, unit1, unit2, unitOneReelsComplete]);
+    .sort((a, b) => String(b.date).localeCompare(String(a.date))), [firmFilter, firms, fromDate, jobById, processing, stageFilter, tallyFilter, toDate, unit1, unit2, unitOneReelsComplete, words]);
 
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pageRows } = useClientPagination(rows, 25);
   const clear = () => { setSearch(""); setFirmFilter(""); setStageFilter(""); setTallyFilter(""); setFromDate(""); setToDate(""); setPage(1); };
@@ -71,7 +71,7 @@ export function ManufacturingJournal() {
   return <div className="space-y-5">
     <div className="border-b border-black pb-4"><h2 className="text-xl font-black uppercase">Manufacturing Journal</h2></div>
     <div className="grid grid-cols-1 gap-3 rounded border-2 border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-6">
-      <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search job, item, ERP, operator..." className="rounded border-2 border-black px-3 py-2 text-sm" />
+      <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search" className="rounded border-2 border-black px-3 py-2 text-sm" />
       <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm"><option value="">All Units</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}</select>
       <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm"><option value="">All Stages</option>{stageNames.map((stage) => <option key={stage}>{stage}</option>)}</select>
       <select value={tallyFilter} onChange={(e) => setTallyFilter(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm"><option value="">All Tally Status</option><option>Pending</option><option>Posted</option><option>Completed</option><option>Not Applicable</option></select>

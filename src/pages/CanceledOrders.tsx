@@ -8,6 +8,7 @@ import { formatDate } from "../lib/utils";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { Firm } from "../types";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function CanceledOrders() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -28,18 +29,23 @@ export function CanceledOrders() {
         const itemKey = item?.id || `${item?.name || ""}::${item?.erp || ""}`;
         return { order, company, item, companyName: company?.name || "", itemKey };
       });
-    const needle = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return rows.filter(({ order, companyName, item, itemKey }) => {
       if (firmFilter && String(order.firmId || "") !== firmFilter) return false;
       if (companyFilter && order.companyId !== companyFilter) return false;
       if (itemFilter && itemKey !== itemFilter) return false;
-      if (!needle) return true;
-      return [order.orderNo, formatDate(order.orderDate), companyName, item?.name, item?.erp, order.qty, order.remarks]
-        .join(" ")
-        .toLowerCase()
-        .includes(needle);
+      return matchesTableSearch([
+        order.orderNo,
+        formatDate(order.orderDate),
+        getFirmDisplayNameById(order.firmId, firms, order.firmName),
+        companyName,
+        item?.name,
+        item?.erp,
+        order.qty,
+        order.remarks,
+      ], words);
     });
-  }, [companies, companyFilter, firmFilter, itemFilter, orders, resolveOrderItem, searchTerm]);
+  }, [companies, companyFilter, firmFilter, firms, itemFilter, orders, resolveOrderItem, searchTerm]);
 
   const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })), [firms]);
 

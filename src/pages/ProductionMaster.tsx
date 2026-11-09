@@ -28,6 +28,7 @@ import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { isScrapLinkedProduction } from "../lib/productionOrigin";
 import { useQcColumnLayout } from "../hooks/useQcColumnLayout";
 import { QC_REPORT_COLUMN_COUNTS, QC_REPORT_COLUMN_SCHEMA_VERSIONS } from "../lib/qcColumnLayout";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 
 const firstNonBlank = (...values: unknown[]) => {
   for (const value of values) {
@@ -452,21 +453,6 @@ export function ProductionMaster() {
         firmName,
         firmId,
         fallbackErps,
-        searchText: [
-          production.transactionNo,
-          production.date,
-          production.masterErp,
-          production.erpCode,
-          production.companyName,
-          companyName,
-          itemName,
-          itemErp,
-          order?.orderNo,
-          firmName,
-          order?.erpCode,
-          production.status,
-          production.remarks,
-        ].join(" ").toLowerCase(),
       };
     });
   }, [visibleProductions, scheduleById, orderById, companyById, firmMap, resolveOrderItem]);
@@ -489,18 +475,136 @@ export function ProductionMaster() {
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
   }, [productionFilterRows]);
 
+  // Values of the table's columns, in PRODUCTION_MASTER_COLUMN_LABELS order, as
+  // the desktop table cells show them. Sr. No., Job Closer and Close Date
+  // (row position / editable inputs) are not searched.
+  const getTableColumnValues = (p: Production): unknown[] => {
+    const schedule = p.scheduleId ? scheduleById.get(p.scheduleId) : undefined;
+    const order = (schedule?.orderId ? orderById.get(schedule.orderId) : undefined) || orderById.get(String((p as Production & { orderId?: string }).orderId || ""));
+    const company = order?.companyId ? companyById.get(order.companyId) : undefined;
+    const item = resolveProductionItem(p, order);
+    const normalizedFields = getProductionMatchingFields(p, item);
+    const displayRow = { ...p, ...normalizedFields, erpCode: resolveProductionErp(p, order, item) };
+    const closureStatus = jobClosureStatusMap.get(p.id);
+    const mandatory = { required: closureStatus?.required || [], done: closureStatus?.done || 0, missing: closureStatus?.missing || [] };
+    const erp = String(displayRow.erpCode || "").trim();
+    const procTotals = processingTotalsMap.get(p.id) || { paper: 0, liner: 0, printing: 0, pasting: 0, stitching: 0, punching: 0, gluing: 0 };
+    const wastageTotals = corrugationWastageTotalsMap.get(p.id) || {
+      warpageBoxes: 0, warpageKg: 0, delaminationBoxes: 0, delaminationKg: 0,
+      misalignmentBoxes: 0, misalignmentKg: 0, twoPlyPaperKg: 0, deckelWastageKg: 0,
+      sheerCutterBoxes: 0, sheerCutterKg: 0,
+    };
+    const printingWastageTotals = printingWastageTotalsMap.get(p.id) || {
+      slotting: 0, delaminationPrinting: 0, misalignmentPrinting: 0,
+      drySheets: 0, warp: 0, misprinting: 0, jobSetting: 0,
+    };
+    const firmId = String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "").trim();
+    return [
+      "", // Sr. No.
+      normalizeProductionJobNumber(p.transactionNo),
+      order?.orderNo || (p as Production & { orderNo?: string }).orderNo,
+      displayRow.erpCode,
+      firmMap.get(firmId) || (schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId ? "Unknown firm" : "Unassigned"),
+      company?.name || displayRow.companyName,
+      p.date,
+      item?.name || "Unknown",
+      getItemValue(item, "isSample") ? "Yes" : "",
+      getProductionEffectiveType(p, item),
+      mandatory.required.length === 0
+        ? ""
+        : mandatory.missing.length === 0
+          ? `Done ${mandatory.done}/${mandatory.required.length}`
+          : `Pending ${mandatory.done}/${mandatory.required.length} Missing: ${mandatory.missing.join(", ")}`,
+      [formatDecimal(p.qty), `${formatDecimal(p.qty)} ${p.uom || ""}`],
+      p.remarks,
+      formatDecimal(firstNonBlank(p.ups, getItemValue(item, "ups"))),
+      formatDecimal(p.noOfParts),
+      formatDecimal(loadedQtyByProductionId.get(p.id) || 0),
+      formatDecimal(procTotals.paper),
+      formatDecimal(procTotals.liner),
+      formatDecimal(wastageTotals.warpageBoxes), formatDecimal(wastageTotals.warpageKg),
+      formatDecimal(wastageTotals.delaminationBoxes), formatDecimal(wastageTotals.delaminationKg),
+      formatDecimal(wastageTotals.misalignmentBoxes), formatDecimal(wastageTotals.misalignmentKg),
+      formatDecimal(wastageTotals.twoPlyPaperKg), formatDecimal(wastageTotals.deckelWastageKg),
+      formatDecimal(wastageTotals.sheerCutterBoxes), formatDecimal(wastageTotals.sheerCutterKg),
+      formatDecimal(procTotals.printing),
+      formatDecimal(printingWastageTotals.slotting), formatDecimal(printingWastageTotals.delaminationPrinting),
+      formatDecimal(printingWastageTotals.misalignmentPrinting), formatDecimal(printingWastageTotals.drySheets),
+      formatDecimal(printingWastageTotals.warp), formatDecimal(printingWastageTotals.misprinting),
+      formatDecimal(printingWastageTotals.jobSetting),
+      formatDecimal(procTotals.pasting),
+      formatDecimal(procTotals.stitching),
+      formatDecimal(procTotals.punching),
+      formatDecimal(procTotals.gluing),
+      formatDecimal(displayRow.length),
+      formatDecimal(displayRow.breadth),
+      formatDecimal(displayRow.height),
+      formatDecimal(getItemValue(item, "lOd")),
+      formatDecimal(getItemValue(item, "wOd")),
+      formatDecimal(getItemValue(item, "hOd")),
+      formatDecimal(displayRow.ply),
+      displayRow.flute || displayRow.fluteType,
+      formatDecimal(p.idToOd),
+      formatDecimal(p.idToOd2),
+      formatDecimal(p.takeUpFactor),
+      formatDecimal(firstNonBlank(displayRow.l1, (item as any)?.l1)),
+      formatDecimal(firstNonBlank(displayRow.f1, (item as any)?.f1)),
+      formatDecimal(firstNonBlank(displayRow.l2, (item as any)?.l2)),
+      formatDecimal(firstNonBlank(displayRow.f2, (item as any)?.f2)),
+      formatDecimal(firstNonBlank(displayRow.l3, (item as any)?.l3)),
+      formatDecimal(firstNonBlank(displayRow.gsm, displayRow.boardGsmReq)),
+      formatDecimal(erpLeastGsmMap.get(erp)),
+      p.color1,
+      p.color2,
+      displayRow.printingColor,
+      formatDecimal(p.totalPaperWeight),
+      formatDecimal(p.realizationPerKg),
+      formatDecimal((p as any).reelAsPerCalc),
+      formatDecimal(p.noOfUpsInCuttingForPlates),
+      formatDecimal((p as any).reelActualWithTrimming),
+      formatDecimal(firstNonBlank((p as any).cuttingWithTrimming, getItemValue(item, "cuttingSize"))),
+      formatDecimal(p.plannedProductionInMeter),
+      formatDecimal(p.sheetWeight),
+      formatDecimal(p.plateWeight),
+      formatDecimal(p.totalWeightOfSet),
+      p.fluteBatches,
+      formatDecimal(p.rate),
+      formatDecimal(Number(p.qty || 0) * Number(p.rate || 0)),
+      formatDecimal(p.prodFromSheetPlant),
+      formatDecimal(p.prodFromFFG || 0),
+      formatDecimal(p.productionInMeter),
+      formatDecimal(p.actualPaperUsed || 0),
+      "", // Job Closer (editable)
+      "", // Close Date (editable)
+    ];
+  };
+
+  // Search text of each row from the columns currently shown (Hide Columns).
+  const tableSearchTextById = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!searchWords(searchTerm).length) return map;
+    productionFilterRows.forEach(({ production }) => {
+      const values = getTableColumnValues(production)
+        .filter((_, index) => visibleDataColumnSet.has(index))
+        .map((value) => (value === "-" ? "" : value));
+      map.set(production.id, rowSearchText(values));
+    });
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productionFilterRows, visibleDataColumnSet, Boolean(searchWords(searchTerm).length), scheduleById, orderById, companyById, firmMap, itemsBySource, processingTotalsMap, corrugationWastageTotalsMap, printingWastageTotalsMap, loadedQtyByProductionId, erpLeastGsmMap, jobClosureStatusMap]);
+
   const filteredList = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return productionFilterRows
       .filter((row) => {
         if (companyFilter && row.companyName !== companyFilter) return false;
         if (firmFilter && row.firmId !== firmFilter) return false;
         if (itemFilter && row.itemKey !== itemFilter) return false;
-        return !normalizedSearch || row.searchText.includes(normalizedSearch);
+        return matchesTableSearch(tableSearchTextById.get(row.production.id) || "", words);
       })
       .map((row) => row.production)
       .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: 'base' }));
-  }, [companyFilter, firmFilter, itemFilter, productionFilterRows, searchTerm]);
+  }, [companyFilter, firmFilter, itemFilter, productionFilterRows, searchTerm, tableSearchTextById]);
   const {
     page,
     setPage,
@@ -582,7 +686,7 @@ export function ProductionMaster() {
           <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search job, order, ERP, company, item..."
+            placeholder="Search"
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm font-medium focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>

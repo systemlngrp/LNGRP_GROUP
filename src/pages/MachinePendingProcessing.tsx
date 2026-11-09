@@ -7,6 +7,7 @@ import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { normalizeMachineName } from "../lib/productionMachineNames";
@@ -216,6 +217,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       });
     });
 
+    const words = searchWords(searchTerm);
     return Array.from(groups.values())
       .filter(g => g.jobs.length > 0)
       .map(g => ({
@@ -225,9 +227,19 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
           if (firmFilter && j.firmId !== firmFilter) return false;
           const itemKey = j.item?.id ? `${j.source}::${j.item.id}` : `${j.source}::${j.itemName}::${j.erpCode}`;
           if (itemFilter && itemKey !== itemFilter) return false;
-          const search = searchTerm.toLowerCase();
-          const blob = `${j.production.transactionNo} ${j.production.jobCardNo || ""} ${j.itemName} ${j.companyName} ${j.firmName} ${j.erpCode} ${j.fallbackErps.join(" ")}`.toLowerCase();
-          return blob.includes(search);
+          return matchesTableSearch([
+            j.production.transactionNo,
+            j.source,
+            j.production.date,
+            j.erpCode,
+            j.firmName,
+            j.companyName,
+            j.itemName,
+            j.requiredQty,
+            j.ffgQty,
+            j.reportedQty,
+            j.pendingQty,
+          ], words);
         }).sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }))
       }))
       .filter(g => g.jobs.length > 0)
@@ -313,7 +325,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
               <input
                 id="pending-processing-search"
                 type="text"
-                placeholder="Job, item, company..."
+                placeholder="Search"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="h-[34px] w-full rounded border-2 border-black bg-white py-1.5 pl-9 pr-3 text-xs font-semibold text-black outline-none transition placeholder:text-slate-500 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"

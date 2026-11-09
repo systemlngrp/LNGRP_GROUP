@@ -6,6 +6,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { TableControls } from "../components/TableControls";
 import { buildReelIssueHistoryChecker, buildReelTransferContexts, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
 import { formatDate } from "../lib/utils";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import type { MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
 
 export function PendingJobTransfer() {
@@ -47,14 +48,17 @@ export function PendingJobTransfer() {
   }, [findItemAcrossSources, issueLines, issueReels, processing, productions, returnReels, windowHours]);
 
   const filteredRows = useMemo(() => {
-    const needle = searchTerm.trim().toLowerCase();
-    if (!needle) return rows;
-    return rows.filter(({ production, company, item, context }) =>
-      [production.transactionNo, production.jobCardNo, production.date, company, item, ...context.reels.map((reel) => reel.ourReelNo)]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(needle)
+    const words = searchWords(searchTerm);
+    if (!words.length) return rows;
+    return rows.filter(({ production, company, item, transferableReels }) =>
+      matchesTableSearch([
+        production.transactionNo,
+        production.date,
+        company,
+        item,
+        transferableReels.length,
+        transferableReels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0).toFixed(2),
+      ], words)
     );
   }, [rows, searchTerm]);
 
@@ -74,7 +78,7 @@ export function PendingJobTransfer() {
         <TableControls
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          placeholder="Search job, company, item, reel..."
+          placeholder="Search"
         />
       </div>
 

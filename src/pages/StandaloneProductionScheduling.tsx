@@ -11,6 +11,7 @@ import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../type
 import { Select } from "../components/Select";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -117,7 +118,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
   const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
 
   const filteredJobs = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return jobs
       .filter((job) => job.status !== "Cancelled")
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
@@ -126,22 +127,23 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
       .filter((job) => !String(job.scheduledDate || "").trim() || !String(job.shift || "").trim() || !String(job.methodology || "").trim() || !(Number(job.plannedQty || 0) > 0))
       .filter((job) => {
         const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
-        if (!query) return true;
-        const haystack = [
+        if (!words.length) return true;
+        return matchesTableSearch([
           job.jobSource,
+          getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms),
           job.transactionNo,
-          job.erpCode,
+          item?.name || job.itemId,
           job.masterErp,
-          job.companyName,
-          job.shift,
+          job.erpCode,
+          job.requiredQty || job.qty,
+          job.plannedQty,
           job.scheduledDate,
+          job.shift,
           job.methodology,
-          item?.name,
-        ].join(" ").toLowerCase();
-        return haystack.includes(query);
+        ], words);
       })
       .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
-  }, [activeSourceFilter, firmFilter, fromDate, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
+  }, [activeSourceFilter, firmFilter, firms, fromDate, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
 
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredJobs, 25);
 
@@ -281,7 +283,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search job no, ERP, item..." />
+        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
         <div className="min-w-[180px]"><Select options={firmOptions} value={firmFilter} onChange={(value) => { setFirmFilter(value); resetScheduler(); }} placeholder="Firms" /></div>
         <label className="text-xs font-bold uppercase">From Date<input type="date" aria-label="From Date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); resetScheduler(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
         <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => { setToDate(e.target.value); resetScheduler(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>

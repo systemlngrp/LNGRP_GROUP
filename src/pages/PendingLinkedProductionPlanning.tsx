@@ -9,6 +9,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionMatchingFields } from "../lib/productionMatching";
 import { generateTransactionNo, getProductionJobPrefix, formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import type { Company, Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import type { OrderCatalogItem } from "../lib/orderItems";
@@ -291,7 +292,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((row) => { const item = row.linkedItem || row.fgItem; const erp = String(item?.erp || row.order?.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
 
   const filteredRows = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     const filtered = rows.filter((row) => {
       if (selectedCompanyId && row.company?.id !== selectedCompanyId) return false;
       const firmId = String(row.schedule.firmId || row.order?.firmId || "");
@@ -302,19 +303,23 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
       const item = row.linkedItem || row.fgItem;
       const itemKey = item?.id || `${item?.name || ""}::${item?.erp || row.order?.erpCode || ""}`;
       if (selectedItemId && itemKey !== selectedItemId) return false;
-      if (!normalizedSearch) return true;
-      const haystack = [
+      if (!words.length) return true;
+      return matchesTableSearch([
         formatDate(row.schedule.scheduledDate),
+        row.schedule.scheduleNo,
+        getFirmDisplayNameById(firmId, firms),
         row.order?.orderNo,
-        row.company?.name, getFirmDisplayNameById(firmId, firms),
-        row.fgItem?.name,
-        row.fgItem?.erp,
+        row.company?.name,
+        row.isDirectSourceOrder ? "Direct Order" : row.fgItem?.name,
+        String(row.order?.erpCode || row.fgItem?.erp || ""),
         row.linkedItem?.name,
-        row.linkedItem?.erp,
+        row.scheduledQty,
+        row.isDirectSourceOrder ? "Direct" : row.setsPerBox,
+        row.requiredQty,
+        row.alreadyPlannedQty,
+        row.remainingQty,
         row.matchStatus,
-        String(row.remainingQty || ""),
-      ].join(" ").toLowerCase();
-      return haystack.includes(normalizedSearch);
+      ], words);
     });
 
     return filtered.sort((a, b) => {
@@ -498,7 +503,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[240px] space-y-1">
               <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Search Orders</div>
-              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder={`Search ${source} planning rows...`} />
+              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
             </div>
             <div className="min-w-[220px] flex-1 space-y-1">
               <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Company</div>

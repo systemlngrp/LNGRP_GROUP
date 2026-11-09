@@ -13,6 +13,7 @@ import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel
 import { Firm } from "../types";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { TableActionCell } from "../components/TableActionCell";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function OrdersPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -103,7 +104,7 @@ export function OrdersPendingPH() {
   }, [invoiceLines, invoices, productions]);
 
   const filtered = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return pending
       .map((order) => {
         const item = resolveOrderItem(order);
@@ -117,23 +118,23 @@ export function OrdersPendingPH() {
           commercialHistory: commercialHistoryByItem.get(String(order.npdId || order.itemId || "").trim()) || {},
         };
       })
-      .filter(({ order, item, companyName, firmName, orderByLabel }) => {
+      .filter(({ order, item, companyName, firmName, orderByLabel, commercialHistory }) => {
         if (firmFilter && String(order.firmId || "") !== firmFilter) return false;
         if (orderByFilter && String(order.orderBy || "") !== orderByFilter) return false;
-        if (!normalizedSearch) return true;
-        const haystack = [
+        return matchesTableSearch([
           order.orderNo,
           formatDate(order.orderDate),
-          companyName,
           firmName,
+          companyName,
           item?.name,
           item?.erp,
           orderByLabel,
-          String(order.qty || ""),
-        ]
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(normalizedSearch);
+          order.qty,
+          commercialHistory.billing1,
+          commercialHistory.billing2,
+          commercialHistory.rapc1,
+          commercialHistory.rapc2,
+        ], words);
       })
       .sort((a, b) => {
         const aNo = a.order.orderNo || "";
