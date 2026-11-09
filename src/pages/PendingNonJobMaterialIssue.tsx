@@ -134,16 +134,18 @@ export function PendingNonJobMaterialIssue() {
           type="button"
           onClick={() => openNotApplicableModal(row.firmId, row.date)}
           disabled={markingDate === key}
+          title="Not Applicable"
           className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-slate-700 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
         >
-          <Ban size={14} /> {markingDate === key ? "Saving..." : "Not Applicable"}
+          <Ban size={14} /> {markingDate === key ? "Saving..." : "NA"}
         </button>
         <button
           type="button"
           onClick={() => openForm(row.firmId, row.date)}
+          title="Create Issue"
           className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-indigo-800 bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
         >
-          <FilePlus2 size={14} /> Create Issue
+          <FilePlus2 size={14} /> Issue
         </button>
       </div>
     );
@@ -250,7 +252,7 @@ export function PendingNonJobMaterialIssue() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
           <div className="w-full max-w-md rounded-t-xl border-2 border-black bg-white p-5 shadow-2xl sm:rounded-xl">
             <div className="mb-4 border-b border-black pb-3">
-              <h3 className="text-lg font-black uppercase tracking-tight text-black">Not Applicable</h3>
+              <h3 className="text-lg font-black uppercase tracking-tight text-black">NA (Not Applicable)</h3>
               <p className="mt-1 text-sm font-bold text-slate-600">{(() => { const [firmId, date] = notApplicableDate.split(":"); return `${firmCode(firmId, firmId)} — ${formatDate(date) || date}`; })()}</p>
             </div>
 
