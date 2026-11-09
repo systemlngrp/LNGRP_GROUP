@@ -56,7 +56,10 @@ function readExports(content: HTMLElement) {
     if (!buttons.includes(element as HTMLElement)) element.removeAttribute(MOVED_EXPORT);
   });
   buttons.forEach((button) => button.setAttribute(MOVED_EXPORT, "true"));
-  return buttons.map((button) => ({ kind: button.dataset.export as ExportKind, button }));
+  // Refresh sits last, right next to the Back arrow.
+  return buttons
+    .map((button) => ({ kind: button.dataset.export as ExportKind, button }))
+    .sort((a, b) => Number(a.kind === "refresh") - Number(b.kind === "refresh"));
 }
 
 export function readMobilePageHeader(content: HTMLElement): MobilePageHeader {

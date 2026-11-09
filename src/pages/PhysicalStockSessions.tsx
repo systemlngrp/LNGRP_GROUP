@@ -185,22 +185,24 @@ export function PhysicalStockSessions() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 border-b border-black pb-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex items-center justify-between gap-2 border-b border-black pb-3">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Physical Stock Sessions</h2>
         <button
           type="button"
           onClick={refreshAll}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded border border-black bg-white px-3 text-xs font-black uppercase text-black hover:bg-slate-50"
+          data-export="refresh"
+          title="Refresh"
+          aria-label="Refresh"
+          className="rounded border border-black bg-white text-black"
         >
-          <RefreshCw size={14} />
-          Refresh
+          <RefreshCw size={16} />
         </button>
       </div>
 
       {message ? <div className="rounded border border-emerald-700 bg-emerald-50 p-3 text-sm font-bold text-emerald-900">{message}</div> : null}
 
+      {activeSession ? (
       <div className="rounded border-2 border-black bg-white p-4 shadow-sm">
-        {activeSession ? (
           <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
             <div>
               <div className="text-[10px] font-black uppercase text-emerald-700">Session In Progress</div>
@@ -218,24 +220,20 @@ export function PhysicalStockSessions() {
               Close Session
             </button>
           </div>
+      </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
-            <div>
-              <div className="text-[10px] font-black uppercase text-slate-600">No Active Session</div>
-              <div className="mt-1 text-lg font-black text-black">Start a new session or restart a closed session before scanning.</div>
-            </div>
+          <div className="flex justify-end">
             <button
               type="button"
               onClick={handleStartSession}
               disabled={Boolean(busySessionId)}
-              className="inline-flex h-[42px] items-center justify-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-4 text-sm font-black uppercase text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-[42px] w-full items-center justify-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-4 text-sm font-black uppercase text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50 md:w-auto"
             >
               <Play size={15} />
               Start Session
             </button>
           </div>
         )}
-      </div>
 
       <div className="overflow-hidden rounded border-2 border-black bg-white shadow-sm">
         <div className="max-h-[calc(100vh-310px)] overflow-auto">

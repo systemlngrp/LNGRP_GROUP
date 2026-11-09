@@ -3,7 +3,9 @@
 // look changes (index.css, [data-export]). On phones the page-level ones are
 // also shown in the top bar after the page name (see MobileTopBar.tsx).
 
-export type ExportKind = "pdf" | "excel";
+// "refresh" is opt-in only: a page sets data-export="refresh" on its own
+// Refresh button to show it as an icon (and in the phone top bar, by Back).
+export type ExportKind = "pdf" | "excel" | "refresh";
 
 const PDF_TEXT = /^(export\s+|download\s+)?pdf(\s+export|\s+download)?$/i;
 const EXCEL_TEXT = /^(export\s+|download\s+)?(excel|xlsx|xls)(\s+export|\s+download)?$/i;
@@ -23,6 +25,7 @@ export function exportKindOf(button: HTMLElement): ExportKind | null {
 export function markExportButtons(content: HTMLElement) {
   content.querySelectorAll<HTMLElement>("button, a").forEach((button) => {
     const kind = button.dataset.export as ExportKind | undefined;
+    if (kind === "refresh") return;
     const next = exportKindOf(button) || (kind && !buttonText(button) ? kind : null);
     if (next) {
       if (kind !== next) button.dataset.export = next;

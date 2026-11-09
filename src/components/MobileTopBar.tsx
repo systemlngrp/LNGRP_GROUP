@@ -1,4 +1,4 @@
-import { Download, Plus } from "lucide-react";
+import { Download, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { clearMobilePageHeader, readMobilePageHeader } from "../lib/mobilePageHeader";
@@ -79,13 +79,13 @@ export function MobileExportButtons({ kinds, onPress }: { kinds: string; onPress
           key={`${kind}-${index}`}
           type="button"
           onClick={() => onPress(index)}
-          aria-label={kind === "pdf" ? "Download PDF" : "Download Excel"}
-          title={kind === "pdf" ? "Download PDF" : "Download Excel"}
+          aria-label={kind === "pdf" ? "Download PDF" : kind === "refresh" ? "Refresh" : "Download Excel"}
+          title={kind === "pdf" ? "Download PDF" : kind === "refresh" ? "Refresh" : "Download Excel"}
           className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded border-2 md:hidden ${
-            kind === "pdf" ? "border-red-600 bg-red-50 text-red-600" : "border-emerald-600 bg-emerald-50 text-emerald-700"
+            kind === "pdf" ? "border-red-600 bg-red-50 text-red-600" : kind === "refresh" ? "border-black bg-white text-black" : "border-emerald-600 bg-emerald-50 text-emerald-700"
           }`}
         >
-          <Download size={18} aria-hidden="true" />
+          {kind === "refresh" ? <RefreshCw size={18} aria-hidden="true" /> : <Download size={18} aria-hidden="true" />}
         </button>
       ))}
     </>
