@@ -180,211 +180,166 @@ export function PendingTallyEntry() {
   const firmOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Tally").map(getFirmName))).sort();
   const supplierOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Tally").map((m) => getSupplierName(m.supplierId)))).sort();
 
-  return (
-    <div className="flex flex-col min-h-screen bg-slate-50 pb-20">
-      <div className="p-4 bg-white border-b border-black flex justify-between items-center">
-        <h1 className="text-3xl font-black text-fuchsia-700 uppercase tracking-tighter">Pending Tally Posting</h1>
-      </div>
+  const allSelected = selectedIds.length === pendingList.length && pendingList.length > 0;
+  const th = "border border-black px-3 py-3 text-xs font-bold uppercase";
+  const td = "border border-black px-3 py-2";
+  const money = "border border-black px-3 py-2 text-right tabular-nums";
 
-      <div className="p-4">
+  return (
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Tally Posting</h2>
+      </div>
 
       <MaterialReceiptFilters firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={firmOptions} suppliers={supplierOptions} />
 
-      <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-          <div className="bg-fuchsia-700 px-4 py-2 text-white font-black uppercase text-sm border-b border-black flex justify-between items-center">
-            <span>Pending Records ({pendingList.length})</span>
-            {canPostTally ? (
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-2 cursor-pointer text-[10px]">
-                  <input 
-                    type="checkbox" 
-                    checked={selectedIds.length === pendingList.length && pendingList.length > 0}
-                    onChange={toggleSelectAll}
-                    className="accent-white h-3 w-3"
-                  />
-                  Select All
-                </label>
-              </div>
-            ) : null}
-          </div>
-          
-          <div className="max-h-[calc(100vh-300px)] overflow-auto">
-            <table className="min-w-[1500px] divide-y divide-black border-collapse">
-              <thead className="sticky top-0 z-30 bg-fuchsia-700 text-white text-[10px] font-black uppercase tracking-widest">
-                <tr className="divide-x divide-white/20">
-                  {canPostTally ? (
-                    <th className="px-2 py-3 text-center w-10">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedIds.length === pendingList.length && pendingList.length > 0}
-                        onChange={toggleSelectAll}
-                        className="accent-white h-4 w-4"
-                      />
-                    </th>
-                  ) : null}
-                  <th className="px-4 py-3 text-left">Trn No</th>
-                  <th className="px-4 py-3 text-left">Firm</th>
-                  <th className="px-4 py-3 text-left">MRR Type</th>
-                  <th className="px-4 py-3 text-left">Date</th>
-                  <th className="px-4 py-3 text-left">Supplier</th>
-                  <th className="px-4 py-3 text-left">Items</th>
-                  <th className="px-6 py-3 text-right">Gross Amount</th>
-                  <th className="px-6 py-3 text-right">TDS</th>
-                  <th className="px-6 py-3 text-right">Net Payable</th>
-                  <th className="px-6 py-3 text-right">Item Value</th>
-                  <th className="px-6 py-3 text-right">Invoice Value</th>
-                  <th className="px-6 py-3 text-right">Actual Value</th>
-                  <th className="px-6 py-3 text-right">CGST</th>
-                  <th className="px-6 py-3 text-right">SGST</th>
-                  <th className="px-6 py-3 text-right">IGST</th>
-                  <th className="px-6 py-3 text-right">After GST</th>
-                  <th className="px-6 py-3 text-right">Insurance</th>
-                  <th className="px-6 py-3 text-right">Other Charges</th>
-                  <th className="px-6 py-3 text-right">Round Off</th>
-                  <th className="px-4 py-3 text-left">Tally Sync Remarks</th>
-                  <th className="px-4 py-3 text-center">Details</th>
-                  {canPostTally ? <th className="px-6 py-3 text-right">Actions</th> : null}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black bg-white">
-                {pendingList.length === 0 ? (
-                  <tr>
-                    <td colSpan={tableColumnCount} className="px-6 py-20 text-center text-black font-bold uppercase tracking-widest text-sm">
-                      No pending entries.
-                    </td>
-                  </tr>
-                ) : (
-                  pendingPagination.paginatedItems.map((m) => {
-                    const isExpanded = expandedIds.includes(m.id);
-                    return (
-                      <Fragment key={m.id}>
-                        <tr className="hover:bg-slate-50 divide-x divide-black transition-colors text-[11px] text-black font-medium uppercase">
-                          {canPostTally ? (
-                            <td className="px-2 py-4 text-center">
-                              <input 
-                                type="checkbox" 
-                                checked={selectedIds.includes(m.id)}
-                                onChange={() => toggleSelect(m.id)}
-                                className="accent-fuchsia-600 h-4 w-4"
-                              />
-                            </td>
-                          ) : null}
-                          <td className="px-4 py-4 whitespace-nowrap">{m.transactionNo}</td>
-                          <td className="px-4 py-4 max-w-[130px] break-words">{getFirmName(m)}</td>
-                          <td className="px-4 py-4 whitespace-nowrap">{m.mrrType || "-"}</td>
-                          <td className="px-4 py-4 whitespace-nowrap">{formatDate(m.date)}</td>
-                          <td className="px-4 py-4">{getSupplierName(m.supplierId)}</td>
-                          <td className="px-4 py-4 whitespace-nowrap">{m.lines?.length || 0} Item(s)</td>
-                          <td className="px-6 py-4 text-right font-mono font-bold whitespace-nowrap">{formatMoney(m.totalAmount)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.tdsAmount)}</td>
-                          <td className="px-6 py-4 text-right font-mono font-bold whitespace-nowrap">{formatMoney(m.netSupplierPayable ?? (Number(m.totalAmount || 0) - Number(m.tdsAmount || 0)))}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(getItemValue(m.lines))}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalInvoiceValue)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalActualValue)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalCgst)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalSgst)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalIgst)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.totalInvoiceValueAfterGst)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.insurance)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.otherCharges)}</td>
-                          <td className="px-6 py-4 text-right font-mono whitespace-nowrap">{formatMoney(m.roundOff)}</td>
-                          <td className="px-4 py-4 align-top min-w-[280px]">
-                            <div
-                              className="max-w-[320px] whitespace-pre-wrap break-words text-[10px] normal-case text-rose-700 font-semibold"
-                              title={m.tallySyncRemark || ""}
-                            >
-                              {m.tallySyncRemark || "-"}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(m.id)}
-                              className="inline-flex items-center justify-center h-8 w-8 rounded border border-black bg-white hover:bg-slate-100 transition-colors"
-                              title={isExpanded ? "Hide item details" : "Show item details"}
-                            >
-                              {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            </button>
-                          </td>
-                          {canPostTally ? (
-                            <td className="px-6 py-4 text-right">
-                              <button
-                                onClick={() => handleComplete(m.id)}
-                                disabled={submittingId === m.id || isBulkSubmitting}
-                                className={cn(
-                                  "inline-flex items-center justify-center min-w-[100px] px-3 py-1.5 rounded font-black transition-all border disabled:opacity-50 text-[10px] uppercase tracking-wider gap-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]",
-                                  confirmId === m.id 
-                                    ? "bg-amber-600 text-white border-black animate-pulse" 
-                                    : "bg-emerald-100 text-emerald-800 border-emerald-800 hover:bg-emerald-200"
-                                )}
-                              >
-                                {submittingId === m.id ? (
-                                  <Spinner size={12} />
-                                ) : (
-                                  <>
-                                    <CheckCircle size={14} />
-                                    {confirmId === m.id ? "Confirm?" : "Post"}
-                                  </>
-                                )}
-                              </button>
-                            </td>
-                          ) : null}
-                        </tr>
-                        {isExpanded && (
-                          <tr className="bg-slate-50">
-                            <td colSpan={tableColumnCount} className="px-6 py-4 border-t border-black">
-                              <div className="text-[10px] font-black uppercase tracking-wider text-slate-700 mb-2">
-                                Item Level Details
-                              </div>
-                              {getLineItemsElement(m.lines)}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-          <ClientPagination
-            page={pendingPagination.page}
-            pageSize={pendingPagination.pageSize}
-            totalItems={pendingPagination.totalItems}
-            onPageChange={pendingPagination.setPage}
-            onPageSizeChange={pendingPagination.setPageSize}
-          />
-        </div>
-      </div>
-
-      {/* Footer / Bulk Actions */}
-      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t-2 border-black flex items-center justify-end px-8 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-40">
-
-        {canPostTally ? (
-          <div className="flex items-center gap-8">
-            <label className="flex items-center gap-2 font-bold text-xs uppercase cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={selectedIds.length === pendingList.length && pendingList.length > 0}
-                onChange={toggleSelectAll}
-                className="accent-fuchsia-600 h-4 w-4"
-              />
-              Select All Visible
-            </label>
-
+      {/* Bulk posting: shown once something is selected */}
+      {canPostTally && selectedIds.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border-2 border-indigo-700 bg-indigo-50 px-3 py-2">
+          <span className="text-sm font-black text-indigo-900">{selectedIds.length} selected</span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setSelectedIds([])} className="rounded border border-black bg-white px-3 py-1.5 text-sm font-bold hover:bg-slate-50">
+              Clear
+            </button>
             <button
-              disabled={selectedIds.length === 0 || isBulkSubmitting}
+              type="button"
+              disabled={isBulkSubmitting}
               onClick={handleBulkComplete}
-              className={cn(
-                "px-8 py-2 bg-fuchsia-700 text-white rounded font-black text-xs uppercase tracking-widest transition-all border border-black",
-                selectedIds.length > 0 ? "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5" : "opacity-50"
-              )}
+              className="inline-flex items-center gap-1.5 rounded border-2 border-emerald-800 bg-emerald-600 px-4 py-1.5 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-50"
             >
-              {isBulkSubmitting ? <Spinner size={16} className="text-white" /> : `Post Selected (${selectedIds.length})`}
+              {isBulkSubmitting ? <Spinner size={14} className="text-white" /> : <CheckCircle size={16} />} Post Selected
             </button>
           </div>
-        ) : null}
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto rounded border border-black bg-white">
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="bg-slate-100 text-black">
+            <tr>
+              {canPostTally ? (
+                <th className={`${th} w-10 text-center`}>
+                  <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-indigo-600" aria-label="Select all" />
+                </th>
+              ) : null}
+              <th className={`${th} text-left`}>Trn No</th>
+              <th className={`${th} text-left`}>Firm</th>
+              <th className={`${th} text-left`}>MRR Type</th>
+              <th className={`${th} text-left`}>Date</th>
+              <th className={`${th} text-left`}>Party</th>
+              <th className={`${th} text-left`}>Items</th>
+              <th className={`${th} text-right`}>Gross Amount</th>
+              <th className={`${th} text-right`}>TDS</th>
+              <th className={`${th} text-right`}>Net Payable</th>
+              <th className={`${th} text-right`}>Item Value</th>
+              <th className={`${th} text-right`}>Pre-GST Invoice Value</th>
+              <th className={`${th} text-right`}>Actual Value</th>
+              <th className={`${th} text-right`}>CGST</th>
+              <th className={`${th} text-right`}>SGST</th>
+              <th className={`${th} text-right`}>IGST</th>
+              <th className={`${th} text-right`}>Post-GST Invoice Value</th>
+              <th className={`${th} text-right`}>Insurance</th>
+              <th className={`${th} text-right`}>Other Charges</th>
+              <th className={`${th} text-right`}>Round Off</th>
+              <th className={`${th} text-left`}>Tally Sync Remarks</th>
+              <th className={`${th} text-center`}>Details</th>
+              {canPostTally ? <th className={`${th} text-center`}>Actions</th> : null}
+            </tr>
+          </thead>
+          <tbody className="bg-white text-black">
+            {pendingList.length === 0 ? (
+              <tr>
+                <td colSpan={tableColumnCount} className="px-4 py-12 text-center font-bold text-slate-500">
+                  No pending entries.
+                </td>
+              </tr>
+            ) : (
+              pendingPagination.paginatedItems.map((m) => {
+                const isExpanded = expandedIds.includes(m.id);
+                return (
+                  <Fragment key={m.id}>
+                    <tr className={cn("align-middle hover:bg-slate-50", selectedIds.includes(m.id) && "bg-indigo-50/60")}>
+                      {canPostTally ? (
+                        <td className={`${td} text-center`}>
+                          <input type="checkbox" checked={selectedIds.includes(m.id)} onChange={() => toggleSelect(m.id)} className="h-4 w-4 accent-indigo-600" aria-label={`Select ${m.transactionNo}`} />
+                        </td>
+                      ) : null}
+                      <td className={`${td} font-bold`}>{m.transactionNo}</td>
+                      <td className={`${td} font-semibold`}>{getFirmName(m)}</td>
+                      <td className={td}>{m.mrrType || "-"}</td>
+                      <td className={td}>{formatDate(m.date)}</td>
+                      <td className={td}>{getSupplierName(m.supplierId)}</td>
+                      <td className={td}>{m.lines?.length || 0} item{(m.lines?.length || 0) === 1 ? "" : "s"}</td>
+                      <td className={`${money} font-bold`}>{formatMoney(m.totalAmount)}</td>
+                      <td className={money}>{formatMoney(m.tdsAmount)}</td>
+                      <td className={`${money} font-bold`}>{formatMoney(m.netSupplierPayable ?? (Number(m.totalAmount || 0) - Number(m.tdsAmount || 0)))}</td>
+                      <td className={money}>{formatMoney(getItemValue(m.lines))}</td>
+                      <td className={money}>{formatMoney(m.totalInvoiceValue)}</td>
+                      <td className={money}>{formatMoney(m.totalActualValue)}</td>
+                      <td className={money}>{formatMoney(m.totalCgst)}</td>
+                      <td className={money}>{formatMoney(m.totalSgst)}</td>
+                      <td className={money}>{formatMoney(m.totalIgst)}</td>
+                      <td className={money}>{formatMoney(m.totalInvoiceValueAfterGst)}</td>
+                      <td className={money}>{formatMoney(m.insurance)}</td>
+                      <td className={money}>{formatMoney(m.otherCharges)}</td>
+                      <td className={money}>{formatMoney(m.roundOff)}</td>
+                      <td className={td}>
+                        <div className="max-w-[320px] whitespace-pre-wrap break-words text-xs font-semibold text-rose-700" title={m.tallySyncRemark || ""}>
+                          {m.tallySyncRemark || "-"}
+                        </div>
+                      </td>
+                      <td className={`${td} text-center`}>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(m.id)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white hover:bg-slate-100"
+                          title={isExpanded ? "Hide item details" : "Show item details"}
+                          aria-label={isExpanded ? "Hide item details" : "Show item details"}
+                        >
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      </td>
+                      {canPostTally ? (
+                        <td className={`${td} text-center`}>
+                          <button
+                            type="button"
+                            onClick={() => handleComplete(m.id)}
+                            disabled={submittingId === m.id || isBulkSubmitting}
+                            className={cn(
+                              "inline-flex min-w-[88px] items-center justify-center gap-1.5 rounded-md border-2 px-3 py-1.5 text-xs font-black transition disabled:opacity-50",
+                              confirmId === m.id
+                                ? "animate-pulse border-amber-700 bg-amber-500 text-white"
+                                : "border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700"
+                            )}
+                            title={confirmId === m.id ? "Click again to confirm" : "Post to Tally"}
+                          >
+                            {submittingId === m.id ? <Spinner size={12} className="text-white" /> : <><CheckCircle size={14} />{confirmId === m.id ? "Confirm?" : "Post"}</>}
+                          </button>
+                        </td>
+                      ) : null}
+                    </tr>
+                    {isExpanded && (
+                      <tr className="bg-slate-50">
+                        <td colSpan={tableColumnCount} className="border border-black px-4 py-3">
+                          <div className="mb-2 text-xs font-black uppercase text-slate-700">Item details</div>
+                          {getLineItemsElement(m.lines)}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
+      <ClientPagination
+        page={pendingPagination.page}
+        pageSize={pendingPagination.pageSize}
+        totalItems={pendingPagination.totalItems}
+        onPageChange={pendingPagination.setPage}
+        onPageSizeChange={pendingPagination.setPageSize}
+      />
     </div>
   );
 }
