@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { Consumption } from "../types";
 import { formatDate } from "../lib/serial";
@@ -27,10 +28,8 @@ export function ConsumptionMaster() {
   };
 
   const filteredList = consumptions
-    .filter(c => 
-      c.transactionNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (npdItems.find(i => i.id === c.itemId)?.name || "").toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    // Search: the table's columns (Trn No, Date, Item Name, Consumed Qty, UOM, Status).
+    .filter(c => matchesTableSearch([c.transactionNo, c.date, npdItems.find(i => i.id === c.itemId)?.name, (c as any).qty ?? (c as any).consumedQty, (c as any).uom, (c as any).status], searchWords(searchTerm)))
     .sort((a, b) => {
       const timeA = new Date(a.updateTimestamp || a.date || 0).getTime();
       const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
@@ -46,7 +45,7 @@ export function ConsumptionMaster() {
       <TableControls 
         searchTerm={searchTerm} 
         onSearchChange={setSearchTerm} 
-        placeholder="Search consumptions..." 
+        placeholder="Search" 
       />
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">

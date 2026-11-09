@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -69,7 +70,7 @@ export function ItemGroups() {
   };
 
   const filteredGroups = groups.filter(g => 
-    g.name.toLowerCase().includes(searchTerm.toLowerCase())
+    matchesTableSearch([g.name], searchWords(searchTerm))
   );
 
   return (
@@ -114,7 +115,7 @@ export function ItemGroups() {
         </div>
       ) : (
         <>
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search groups..." />
+          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
           <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
             {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4 p-2">

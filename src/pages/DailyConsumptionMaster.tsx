@@ -63,7 +63,7 @@ export function DailyConsumptionMaster() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search issue no / remarks..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setPage(1); setSelectedIssueId(null); }}
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"

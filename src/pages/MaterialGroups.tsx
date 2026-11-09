@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -68,7 +69,7 @@ export function MaterialGroups() {
   };
 
   const filteredGroups = groups
-    .filter((group) => group.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((group) => matchesTableSearch([group.name], searchWords(searchTerm)))
     .sort((a, b) => {
       const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
       const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
@@ -129,7 +130,7 @@ export function MaterialGroups() {
         </div>
       ) : (
         <>
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search groups..." />
+          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
           <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
             <div className="block md:hidden space-y-4 p-2">
               {filteredGroups.map((group) => (
