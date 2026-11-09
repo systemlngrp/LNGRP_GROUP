@@ -12,6 +12,7 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useRealtimeDataSync } from "../hooks/useRealtimeDataSync";
 import { ResizableTables } from "./ResizableTables";
 import { MobileCompactLayout } from "./MobileCompactLayout";
+import { MobileAddButton, MobilePageTitle, useMobilePageHeader } from "./MobileTopBar";
 import { UpdateNotice } from "./UpdateNotice";
 import { FullscreenViewControl } from "./FullscreenViewControl";
 import { BackNavigationControl } from "./BackNavigationControl";
@@ -26,6 +27,8 @@ export function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [alertQueue, setAlertQueue] = useState<string[]>([]);
   const location = useLocation();
+  const mobileHeader = useMobilePageHeader();
+  const [hideFullscreenOnPhone, setHideFullscreenOnPhone] = useState(false);
   const { user, activeFirm, setActiveFirm, hasAccess, logout } = useAuth();
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const isFormRoute =
@@ -217,14 +220,15 @@ export function Layout() {
         ) : null}
         <header className="bg-white shadow-sm relative z-10 border-b border-black">
           <div className="w-full px-3 py-3 sm:px-4 lg:px-5">
-             <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-               <div className="flex shrink-0 items-center gap-4">
+             <div className="flex min-h-8 flex-nowrap items-center justify-between gap-2 md:flex-wrap">
+               <div className="flex min-w-0 flex-1 items-center gap-2 md:flex-none md:shrink-0 md:gap-4">
                  <button 
                     className="md:hidden p-2 -ml-2 text-black"
                     onClick={() => setSidebarOpen(true)}
                  >
                     <Menu size={20} />
                  </button>
+                 <MobilePageTitle title={mobileHeader.title} onTooLong={setHideFullscreenOnPhone} />
                  <button
                     className="hidden md:inline-flex items-center justify-center rounded border border-black bg-white p-2 text-black hover:bg-slate-100 transition"
                     onClick={toggleSidebarCollapsed}
@@ -233,9 +237,14 @@ export function Layout() {
                     {sidebarCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
                  </button>
                  <BackNavigationControl />
-                 <FullscreenViewControl />
+                 {/* On phones the full-screen button steps aside when the page name is too long. */}
+                 <span className={hideFullscreenOnPhone ? "hidden md:contents" : "contents"}>
+                   <FullscreenViewControl />
+                 </span>
+                 <MobileAddButton label={mobileHeader.addLabel} onPress={mobileHeader.pressAdd} />
                </div>
-               <div className="flex shrink-0 min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4">
+               {/* On phones the user's name, role and Logout are at the bottom of the left menu. */}
+               <div className="hidden shrink-0 min-w-0 flex-wrap items-center justify-end gap-2 sm:gap-4 md:flex">
                   {user && (
                     <div className="hidden lg:flex flex-col items-end leading-tight rounded border border-slate-300 bg-slate-50 px-3 py-1">
                       <div className="text-[10px] font-black uppercase text-slate-500">

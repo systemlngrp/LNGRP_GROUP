@@ -1451,3 +1451,13 @@ table td button:focus-visible {
     display: none !important;
   }
 }
+
+/* Phone top bar (mobilePageHeader.ts): the page's title line is shown in the
+   top bar instead. Nothing here applies above 767 px. */
+@media (max-width: 767px) {
+  .app-view-content [data-mobile-title-row],
+  .app-view-content [data-mobile-title-moved],
+  .app-view-content [data-mobile-add-moved] {
+    display: none !important;
+  }
+}

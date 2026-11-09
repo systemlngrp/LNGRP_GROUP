@@ -468,7 +468,7 @@ const NAVIGATION_FOR_STANDARD_USERS: NavGroup[] = NAVIGATION;
 
 export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   const location = useLocation();
-  const { hasAccess, user } = useAuth();
+  const { hasAccess, user, logout } = useAuth();
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [menuSearchTerm, setMenuSearchTerm] = useState("");
   // Menu items show no counts: the menu no longer asks the server for pending
@@ -742,6 +742,25 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
           );
         })}
       </nav>
+      {user ? (
+        // Phones only: who is signed in, and Logout (the top bar has no room).
+        <div className="flex shrink-0 items-center gap-3 border-t border-white/15 bg-slate-900 px-4 py-3 md:hidden">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white bg-white font-bold text-black">
+            {(user.name || user.userId || "U").trim().slice(0, 1).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-xs font-black text-white">{user.name}</div>
+            <div className="truncate text-[10px] font-bold text-white/60">{user.role}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => { onClose(); logout(); }}
+            className="shrink-0 rounded border border-black bg-red-600 px-3 py-1.5 text-[11px] font-black text-white"
+          >
+            Logout
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
