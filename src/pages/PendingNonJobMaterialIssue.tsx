@@ -3,7 +3,7 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Firm, MaterialIssue } from "../types";
-import { TableControls } from "../components/TableControls";
+import { Ban, FilePlus2, Search } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { formatDate } from "../lib/serial";
 import { usePendingDailyConsumables } from "../hooks/usePendingDailyConsumables";
@@ -107,108 +107,154 @@ export function PendingNonJobMaterialIssue() {
     }
   };
 
+  const firmById = useMemo(() => new Map(firms.map((firm) => [firm.id, firm])), [firms]);
+  const firmCode = (firmId: string, fallback: string) => getFirmDisplayName(firmById.get(firmId) || { firmName: fallback });
+  const rows = useMemo(() => groupedByFirm.flatMap((group) => group.rows), [groupedByFirm]);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const daysPending = (date: string) => {
+    const ms = new Date(`${todayKey}T00:00:00`).getTime() - new Date(`${String(date).slice(0, 10)}T00:00:00`).getTime();
+    return Number.isFinite(ms) ? Math.max(0, Math.round(ms / 86_400_000)) : 0;
+  };
+  const weekday = (date: string) => {
+    const value = new Date(`${String(date).slice(0, 10)}T00:00:00`);
+    return Number.isNaN(value.getTime()) ? "" : value.toLocaleDateString("en-IN", { weekday: "short" });
+  };
+  const statusMessage = firmsLoading || (pending.loading && filtered.length === 0)
+    ? "Loading..."
+    : loadError
+      ? `Unable to load: ${loadError}`
+      : "";
+
+  // Not Applicable / Create Issue, shared by table rows and phone cards.
+  const renderActions = (row: { firmId: string; date: string }, wide = false) => {
+    const key = `${row.firmId}:${row.date}`;
+    return (
+      <div className={wide ? "grid grid-cols-2 gap-2" : "flex items-center justify-end gap-2"}>
+        <button
+          type="button"
+          onClick={() => openNotApplicableModal(row.firmId, row.date)}
+          disabled={markingDate === key}
+          className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-slate-700 bg-white px-3 py-1.5 text-xs font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-50"
+        >
+          <Ban size={14} /> {markingDate === key ? "Saving..." : "Not Applicable"}
+        </button>
+        <button
+          type="button"
+          onClick={() => openForm(row.firmId, row.date)}
+          className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-indigo-800 bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"
+        >
+          <FilePlus2 size={14} /> Create Issue
+        </button>
+      </div>
+    );
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <div>
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Non-Job Material Issue</h2>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Non-Job Material Issue</h2>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="rounded-lg border-2 border-black bg-indigo-50 p-3 text-indigo-900">
+          <div className="text-[11px] font-black uppercase tracking-wide">Pending Dates</div>
+          <div className="text-xl font-black tabular-nums">{pending.total.toLocaleString()}</div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <TableControls searchTerm={searchTerm} onSearchChange={(value) => { setSearchTerm(value); setPage(1); }} placeholder="Search firm or date..." />
-        <select value={firmFilter} onChange={(e) => { setFirmFilter(e.target.value); setPage(1); }} className="min-w-52 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold">
-          <option value="">All firms</option>
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 sm:grid-cols-[minmax(0,2fr)_minmax(160px,1fr)]">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
+            placeholder="Search firm or date..."
+            className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <select
+          value={firmFilter}
+          onChange={(e) => { setFirmFilter(e.target.value); setPage(1); }}
+          aria-label="Firm"
+          className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold"
+        >
+          <option value="">Firms</option>
           {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
         </select>
       </div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-black border-collapse">
-            <thead className="sticky top-0 z-30 bg-slate-100">
-              <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase">Action</th>
+      {statusMessage ? (
+        <div className={`rounded border px-3 py-2 text-sm font-bold ${loadError ? "border-red-300 bg-red-50 text-red-700" : "border-slate-300 bg-slate-50 text-slate-600"}`}>{statusMessage}</div>
+      ) : null}
+
+      {/* Desktop table (also shown on phones when empty) */}
+      <div className={`${rows.length === 0 ? "block" : "hidden md:block"} overflow-x-auto rounded border border-black bg-white`}>
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
+            <tr>
+              <th className="border border-black px-3 py-3 text-left">Firm</th>
+              <th className="border border-black px-3 py-3 text-left">Date</th>
+              <th className="border border-black px-3 py-3 text-left">Day</th>
+              <th className="border border-black px-3 py-3 text-right">Days Pending</th>
+              <th className="border border-black px-3 py-3 text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={5} className="h-16" aria-label="No records" /></tr>
+            ) : rows.map((row) => (
+              <tr key={`${row.firmId}:${row.date}`} className="hover:bg-slate-50">
+                <td className="border border-black px-3 py-2 font-bold">{firmCode(row.firmId, row.firmName)}</td>
+                <td className="border border-black px-3 py-2 font-semibold">{formatDate(row.date) || row.date}</td>
+                <td className="border border-black px-3 py-2">{weekday(row.date)}</td>
+                <td className="border border-black px-3 py-2 text-right tabular-nums">{daysPending(row.date)}</td>
+                <td className="border border-black px-3 py-2">{renderActions(row)}</td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-black">
-              {firmsLoading || (pending.loading && filtered.length === 0) ? (
-                <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-slate-600 font-medium">Loading pending Daily Consumables...</td>
-                </tr>
-              ) : loadError ? (
-                <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center font-medium text-red-600">Unable to load pending Daily Consumables: {loadError}</td>
-                </tr>
-              ) : firms.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-slate-600 font-medium">
-                    No firms are configured.
-                  </td>
-                </tr>
-              ) : pending.total === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-6 py-8 text-center text-slate-600 font-medium">
-                    No pending Daily Consumables entries.
-                  </td>
-                </tr>
-              ) : (
-                groupedByFirm.flatMap((group) => [
-                  <tr key={`firm-${group.firmId}`} className="border-y border-black bg-slate-100">
-                    <td colSpan={3} className="px-4 py-2 text-sm font-black uppercase tracking-wide text-black">
-                      {group.firmName}
-                    </td>
-                  </tr>,
-                  ...group.rows.map((row) => (
-                    <tr key={`${row.firmId}:${row.date}`} className="divide-x divide-black hover:bg-slate-50">
-                      <td className="px-4 py-3 text-sm font-bold">{row.firmName}</td>
-                      <td className="px-4 py-3 text-sm font-bold">{formatDate(row.date) || row.date}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openNotApplicableModal(row.firmId, row.date)}
-                          disabled={markingDate === `${row.firmId}:${row.date}`}
-                          className="mr-2 bg-white text-black px-4 py-1.5 rounded border border-black text-xs font-bold hover:bg-slate-100 transition disabled:opacity-50"
-                        >
-                          {markingDate === `${row.firmId}:${row.date}` ? "Saving..." : "Not Applicable"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openForm(row.firmId, row.date)}
-                          className="bg-indigo-600 text-white px-4 py-1.5 rounded border border-black text-xs font-bold hover:bg-indigo-700 transition"
-                        >
-                          Create Issue
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ])
-              )}
-            </tbody>
-          </table>
-        </div>
-        {pending.total > 0 ? (
-          <ClientPagination
-            page={page}
-            pageSize={pageSize}
-            totalItems={pending.total}
-            onPageChange={setPage}
-            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
-            pageSizeOptions={[25, 50, 100, 250]}
-          />
-        ) : null}
+            ))}
+          </tbody>
+        </table>
       </div>
+
+      {/* Phone cards */}
+      {rows.length > 0 ? (
+        <div className="space-y-3 md:hidden">
+          {rows.map((row) => (
+            <div key={`${row.firmId}:${row.date}`} className="rounded-md border-2 border-black bg-white p-3">
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-base font-black">{formatDate(row.date) || row.date}</div>
+                  <div className="text-xs font-semibold text-slate-600">{weekday(row.date)} · {firmCode(row.firmId, row.firmName)}</div>
+                </div>
+                <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                  {daysPending(row.date)} day{daysPending(row.date) === 1 ? "" : "s"}
+                </span>
+              </div>
+              {renderActions(row, true)}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {pending.total > 0 ? (
+        <ClientPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={pending.total}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          pageSizeOptions={[25, 50, 100, 250]}
+        />
+      ) : null}
+
       {notApplicableDate ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded border-2 border-black bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+          <div className="w-full max-w-md rounded-t-xl border-2 border-black bg-white p-5 shadow-2xl sm:rounded-xl">
             <div className="mb-4 border-b border-black pb-3">
-              <h3 className="text-lg font-black uppercase tracking-tight text-black">Not Applicable Remarks</h3>
-              <p className="mt-1 text-sm font-bold text-slate-600">{(() => { const [firmId, date] = notApplicableDate.split(":"); return `${firms.find((firm) => firm.id === firmId)?.firmName || firmId} — ${formatDate(date) || date}`; })()}</p>
+              <h3 className="text-lg font-black uppercase tracking-tight text-black">Not Applicable</h3>
+              <p className="mt-1 text-sm font-bold text-slate-600">{(() => { const [firmId, date] = notApplicableDate.split(":"); return `${firmCode(firmId, firmId)} — ${formatDate(date) || date}`; })()}</p>
             </div>
 
-            <label className="mb-2 block text-xs font-black uppercase text-black">Remarks *</label>
+            <label className="mb-2 block text-xs font-black uppercase text-black">Remarks <span className="text-red-500">*</span></label>
             <textarea
               value={notApplicableRemarks}
               onChange={(e) => {
@@ -222,12 +268,12 @@ export function PendingNonJobMaterialIssue() {
             />
             {notApplicableError ? <div className="mt-2 text-xs font-bold text-red-600">{notApplicableError}</div> : null}
 
-            <div className="mt-5 flex justify-end gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:flex sm:justify-end">
               <button
                 type="button"
                 onClick={closeNotApplicableModal}
                 disabled={!!markingDate}
-                className="rounded border border-black bg-white px-4 py-2 text-sm font-bold uppercase text-black hover:bg-slate-50 disabled:opacity-50"
+                className="rounded border border-black bg-white px-4 py-2 text-sm font-bold text-black hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -235,14 +281,14 @@ export function PendingNonJobMaterialIssue() {
                 type="button"
                 onClick={() => void markNotApplicable()}
                 disabled={!!markingDate}
-                className="rounded border border-black bg-indigo-600 px-4 py-2 text-sm font-bold uppercase text-white hover:bg-indigo-700 disabled:opacity-50"
+                className="rounded border border-black bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
               >
                 {markingDate ? "Saving..." : "Save"}
               </button>
             </div>
           </div>
         </div>
-      ) : null}    </div>
+      ) : null}
+    </div>
   );
 }
-
