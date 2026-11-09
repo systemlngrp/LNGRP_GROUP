@@ -975,9 +975,11 @@ export function MaterialIssueForm() {
                 <input type="number" value={currentQty} onChange={(e) => setCurrentQty(e.target.value === "" ? "" : parseFloat(e.target.value))} className="w-full border-2 border-black rounded p-[6px]" />
               </div>
             ) : null}
-            <button type="button" onClick={handleAddLine} className="bg-black text-white p-[10px] rounded hover:bg-slate-800 transition">
-              <Plus size={20} />
-            </button>
+            <div className="flex w-full justify-center md:w-auto">
+              <button type="button" onClick={handleAddLine} title="Add line" aria-label="Add line" className="indent-line-action rounded bg-black p-[10px] text-white transition hover:bg-slate-800">
+                <Plus size={20} />
+              </button>
+            </div>
           </div>
 
           {lines.length === 0 ? null : (
@@ -1027,7 +1029,67 @@ export function MaterialIssueForm() {
                   })}
                 </div>
               ) : null}
-            <div className={`${issueType === "Job" ? "hidden md:block" : ""} overflow-x-auto`}>
+              {issueType !== "Job" ? (
+                <div className="space-y-3 md:hidden">
+                  {lines.map((line, index) => {
+                    const material = getMaterial(line.materialId);
+                    const availableQty = !line.isReel
+                      ? getNonReelAvailableQty(
+                          line.materialId,
+                          firmMaterialIn,
+                          firmMaterialIssueLines,
+                          firmMaterialReturnLines,
+                          getFirmOpening(line.materialId)?.openingQty
+                        )
+                      : null;
+                    const isConsumableNpdMaterial = isNpdConsumableOption(material);
+                    const availableReels = line.isReel ? getLineAvailableReels(line.id, line.materialId) : [];
+                    const selectedIds = selectedReels[line.id] || [];
+                    return (
+                      <div key={line.id} className="rounded-md border-2 border-black bg-white p-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-sm font-black"><span className="mr-1 text-slate-500">{index + 1}.</span>{material?.name || "Unknown Material"}</div>
+                            <div className="text-xs font-semibold text-slate-500">ERP: {material?.erpCode || "-"} · {line.uom}</div>
+                          </div>
+                          <button type="button" onClick={() => handleRemoveLine(line.id)} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-2 border-red-600 bg-white text-red-600" title="Remove Line" aria-label="Remove Line">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                        <div className="mt-2 flex items-baseline justify-between gap-2 rounded bg-slate-50 px-2 py-1.5">
+                          <span className="text-[11px] font-bold uppercase text-slate-500">Qty</span>
+                          <span className="text-right">
+                            <span className="text-sm font-black text-indigo-700">{line.isReel ? `${Number(line.qty || 0).toFixed(2)} KG` : `${line.qty} ${line.uom}`}</span>
+                            {!line.isReel && !isWithoutJobIssue(issueType) && !isConsumableNpdMaterial ? (
+                              <span className="ml-2 text-[11px] font-bold text-slate-500">Avail {availableQty}</span>
+                            ) : null}
+                          </span>
+                        </div>
+                        {showNonJobValuation ? (
+                          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                            <div className="text-slate-500">Last Purchase Rate</div><div className="text-right font-bold tabular-nums">{formatMoney(line.lastPurchaseRate)}</div>
+                            <div className="text-slate-500">Opening Rate</div><div className="text-right font-bold tabular-nums">{formatMoney(line.openingRate)}</div>
+                            <div className="text-slate-500">Rate</div><div className="text-right font-black tabular-nums text-indigo-700">{formatMoney(line.rate)}</div>
+                            <div className="font-bold text-slate-700">Amount</div><div className="text-right text-sm font-black tabular-nums text-emerald-700">{formatMoney(line.amount)}</div>
+                          </div>
+                        ) : null}
+                        {line.isReel ? (
+                          <div className="mt-2 max-h-56 overflow-y-auto rounded border border-slate-300">
+                            {availableReels.length === 0 ? <div className="px-2 py-3 text-center text-xs text-slate-400">No reels available</div> : availableReels.map((slip) => (
+                              <label key={slip.id} className="flex items-center gap-2 border-b border-slate-200 px-2 py-1.5 text-xs last:border-b-0">
+                                <input type="checkbox" checked={selectedIds.includes(slip.id)} onChange={(e) => updateSelectedReels(line.id, line.materialId, slip.id, e.target.checked)} className="h-4 w-4" />
+                                <span className="flex-1 font-bold">{slip.ourReelNo}</span>
+                                <span className="font-black tabular-nums">{Number(slip.weightKg || 0).toFixed(2)}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            <div className="hidden overflow-x-auto md:block">
               <table className="min-w-full border-collapse border border-black">
                 <thead className="sticky top-0 z-30 bg-slate-100">
                   <tr className="divide-x divide-black border-b border-black">
@@ -1145,15 +1207,15 @@ export function MaterialIssueForm() {
                   })}
                 </tbody>
               </table>
-              {showNonJobValuation ? (
-                <div className="mt-3 flex justify-end">
-                  <div className="min-w-[260px] rounded border-2 border-black bg-emerald-50 px-4 py-3 text-right">
-                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Total Amount</div>
-                    <div className="mt-1 text-lg font-black text-emerald-800">{formatMoney(issueLinesTotalAmount)}</div>
-                  </div>
-                </div>
-              ) : null}
             </div>
+            {showNonJobValuation ? (
+              <div className={`${issueType === "Job" ? "hidden md:flex" : "flex"} justify-end`}>
+                <div className="w-full rounded border-2 border-black bg-emerald-50 px-4 py-3 text-right md:w-auto md:min-w-[260px]">
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-600">Total Amount</div>
+                  <div className="mt-1 text-lg font-black text-emerald-800">{formatMoney(issueLinesTotalAmount)}</div>
+                </div>
+              </div>
+            ) : null}
             </>
           )}
         </div>

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { getDataAuthHeaders } from "../hooks/useData";
 import { Material, MaterialIn, Item, Supplier, MaterialInPackingSlip, GateEntry, Company, MaterialIssueReelLine, MaterialReturnReelLine } from "../types";
-import { Edit2, Check, X, Search, Package, Layers, Disc, ExternalLink } from "lucide-react";
+import { Edit2, Check, X, Search, Package, Layers, Disc, Pencil } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
@@ -199,6 +199,8 @@ export function MaterialInItemMaster() {
         if (mrrFilter && m.transactionNo !== mrrFilter) return null;
         return {
           ...line,
+          // Older lines were saved without a value: fall back to Qty × Rate.
+          value: Number(line.value || 0) > 0 ? Number(line.value) : Number(line.qty || 0) * Number(line.rate || 0),
           parentStatus: m.status,
           parentTransactionNo: m.transactionNo,
           parentDate: m.date,
@@ -439,7 +441,7 @@ export function MaterialInItemMaster() {
             <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">UOM</th>
             <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Rate</th>
             <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Value</th>
-            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Actions</th>
+            <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-black bg-white">
@@ -473,7 +475,7 @@ export function MaterialInItemMaster() {
                 <td className="px-4 py-3 text-black border border-black text-center uppercase">{line.uom}</td>
                 <td className="px-4 py-3 text-black border border-black text-right">{line.rate?.toLocaleString()}</td>
                 <td className="px-4 py-3 font-medium text-black border border-black text-right whitespace-nowrap">{line.value?.toLocaleString()}</td>
-                <td className="px-4 py-3 text-right border border-black whitespace-nowrap">
+                <td className="px-4 py-3 text-center border border-black whitespace-nowrap">
                   {isEditing ? (
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -492,26 +494,28 @@ export function MaterialInItemMaster() {
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-end gap-2">
-                       {canManage ? <button
-                          onClick={() => navigate(`/material-in/form?edit=${line.parentId}`)}
-                          className="inline-flex items-center text-blue-600 hover:text-blue-800 font-bold text-xs"
-                          title="Edit MRR Entry"
-                       >
-                         <ExternalLink size={14} className="mr-1" /> Edit MRR
-                       </button> : null}
-
-                       {canEditInline ? (
+                    <div className="flex items-center justify-center gap-2">
+                      {canManage ? (
                         <button
-                           onClick={() => handleEditClick(line.id, line.qty)}
-                           className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-bold text-xs"
-                           title="Edit Qty Inline"
+                          type="button"
+                          onClick={() => navigate(`/material-in/form?edit=${line.parentId}`)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md border-2 border-blue-600 bg-white text-blue-600 hover:bg-blue-50"
+                          title="Edit MRR"
+                          aria-label="Edit MRR"
                         >
-                          <Edit2 size={14} className="mr-1" /> Qty
+                          <Pencil size={15} />
                         </button>
-                       ) : (
-                         <span className="text-[9px] text-slate-400 italic font-medium uppercase">Locked</span>
-                       )}
+                      ) : null}
+                      {canEditInline ? (
+                        <button
+                          type="button"
+                          onClick={() => handleEditClick(line.id, line.qty)}
+                          className="inline-flex h-8 items-center justify-center gap-1 rounded-md border-2 border-indigo-600 bg-white px-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+                          title="Edit Qty"
+                        >
+                          <Edit2 size={13} /> Qty
+                        </button>
+                      ) : null}
                     </div>
                   )}
                 </td>
