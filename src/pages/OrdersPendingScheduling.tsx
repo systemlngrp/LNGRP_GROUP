@@ -232,6 +232,7 @@ export function OrdersPendingScheduling() {
       <div className="bg-white p-4 rounded border border-black">
         <div className="mb-4">
           <h3 className="font-bold mb-2">Pending Orders</h3>
+          <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-black border-collapse border border-black mb-3 text-sm">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr>
@@ -274,6 +275,7 @@ export function OrdersPendingScheduling() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
         {/* Modal scheduler */}
         {modalOpen && modalOrderId && (

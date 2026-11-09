@@ -338,7 +338,7 @@ export function MaterialReturnMaster() {
             </button>
           ) : null}
       </div>
-      <div className="flex border-b border-black mt-2">
+      <div className="flex overflow-x-auto overflow-y-hidden border-b border-black mt-2 [&>button]:shrink-0 [&>button]:whitespace-nowrap">
         <button
           onClick={() => setActiveTab("general")}
           className={`px-4 py-2 text-xs font-black uppercase tracking-widest border-t border-l border-r border-black -mb-[1px] flex items-center gap-2 transition-all ${

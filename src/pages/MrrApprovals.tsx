@@ -329,7 +329,7 @@ export function MrrApprovals() {
         <h1 className="text-3xl font-black text-indigo-700 uppercase tracking-tighter">Pending Approvals</h1>
       </div>
 
-      <div className="flex justify-center gap-4 my-6">
+      <div className="my-6 flex flex-wrap justify-center gap-2 px-2 sm:gap-4">
         {stages.map((s) => (
           <button
             key={s.value}
@@ -338,7 +338,7 @@ export function MrrApprovals() {
               setSelectedIds([]);
             }}
             className={cn(
-              "px-6 py-2 rounded font-bold text-sm uppercase transition-all border border-black",
+              "px-3 py-2 sm:px-6 rounded font-bold text-xs sm:text-sm uppercase transition-all border border-black",
               activeStage === s.value
                 ? "bg-indigo-600 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-0.5"
                 : "bg-white text-indigo-600 hover:bg-indigo-50"
@@ -349,11 +349,11 @@ export function MrrApprovals() {
         ))}
       </div>
 
-      <div className="flex-1 px-4 pb-20">
+      <div className="flex-1 px-0 pb-20 sm:px-4">
         <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-          <div className="bg-indigo-600 px-4 py-2 text-white font-black uppercase text-sm border-b border-black flex justify-between items-center">
+          <div className="bg-indigo-600 px-4 py-2 text-white font-black uppercase text-sm border-b border-black flex flex-wrap justify-between items-center gap-2">
             <span>{activeStage} ({filteredList.length})</span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
               <FirmSelect compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers" />
               <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded px-2 py-0.5 text-xs text-black" />

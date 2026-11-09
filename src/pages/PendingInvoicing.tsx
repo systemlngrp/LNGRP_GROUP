@@ -1188,8 +1188,8 @@ export function PendingInvoicing() {
           </div>
         ) : groupedData.map((group) => (
           <div key={group.groupKey} className="bg-white border border-black rounded shadow-sm overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 bg-slate-100 border-b border-black">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-100 border-b border-black">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
                 <Building2 size={20} className="text-indigo-600" />
                 <span className="font-bold text-lg">{group.companyName}</span>
                 <span className="text-xs font-black text-indigo-700">{group.firmName}</span>

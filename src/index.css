@@ -1384,6 +1384,14 @@ table td button:focus-visible {
     font-size: 0.625rem !important;
     line-height: 0.875rem !important;
   }
+  /* Big figures inside summary boxes shrink so they stay inside the box. */
+  [data-mobile-stats] .text-2xl,
+  [data-mobile-stats] .text-3xl,
+  [data-mobile-stats] .text-4xl {
+    font-size: 1.125rem !important;
+    line-height: 1.5rem !important;
+    overflow-wrap: anywhere;
+  }
   [data-mobile-stats] > * > :last-child:not(:first-child) {
     font-size: 1rem !important;
     line-height: 1.375rem !important;

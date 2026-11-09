@@ -209,7 +209,7 @@ export function PlantHeadUnified() {
     <div className="space-y-6">
       <div className={cn("flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4 transition-opacity", (isBulkApproving || submittingId) && "opacity-50 pointer-events-none")}>
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Plant Head Unified Approvals</h2>
-        <div className="flex bg-slate-100 p-1 rounded border border-black">
+        <div className="flex flex-wrap bg-slate-100 p-1 rounded border border-black">
           <TabButton
             active={activeTab === "all"}
             onClick={() => { setActiveTab("all"); setSelectedIds(new Set()); }}
@@ -546,7 +546,7 @@ function TabButton({ active, label, onClick, count, icon }: { active: boolean; l
     <button
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 px-6 py-2 text-xs font-bold uppercase tracking-widest rounded transition-all",
+        "flex items-center gap-2 px-3 py-2 sm:px-6 text-xs font-bold uppercase tracking-widest rounded transition-all",
         active 
           ? "bg-white text-black shadow-sm ring-1 ring-black/10 scale-105 z-10" 
           : "text-slate-500 hover:text-black hover:bg-white/50"
