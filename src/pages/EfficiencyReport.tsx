@@ -221,7 +221,6 @@ export function EfficiencyReport() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-black pb-3">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Efficiency Report</h2>
-          <p className="text-sm text-slate-600 font-medium">Shift based output against machine hourly target</p>
         </div>
       </div>
 

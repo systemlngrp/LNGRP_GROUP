@@ -114,7 +114,6 @@ export function QcScore() {
     <div className="space-y-4 pb-8 text-black">
       <div className="border-b border-black pb-3">
         <h2 className="text-xl font-bold uppercase tracking-tight">QC Score</h2>
-        <p className="mt-1 text-sm font-medium text-slate-600">Daily Boardline and Printing QC inspection score card</p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded border-2 border-black bg-white p-3">

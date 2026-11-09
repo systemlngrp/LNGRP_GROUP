@@ -659,7 +659,6 @@ export function ProductionMaster() {
               ))}
           </div>
           {columnSearch.trim() && !PRODUCTION_MASTER_COLUMN_LABELS.some((label) => label.toLowerCase().includes(columnSearch.trim().toLowerCase())) ? <p className="mt-2 text-sm font-semibold text-slate-600">No columns match your search.</p> : null}
-          <p className="mt-2 text-xs font-semibold text-slate-600">Actions always remains visible.</p>
         </div>
       ) : null}
       {hiddenTableColumnsCss ? <style>{hiddenTableColumnsCss + " { display: none; }"}</style> : null}

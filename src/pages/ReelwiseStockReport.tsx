@@ -421,7 +421,6 @@ export function ReelwiseStockReport() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-black pb-3">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Reelwise Stock Report</h2>
-          <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · all jobs and firms</p>
         </div>
       </div>
 

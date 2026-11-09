@@ -342,9 +342,6 @@ export function PurchaseOrderCreate() {
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <h2 className="text-xl font-bold text-black uppercase tracking-tight">Create Purchase Order</h2>
-            <p className="mt-1 text-sm font-medium text-slate-600">
-              Select suppliers line-wise. The system will create separate purchase orders supplier-wise in one click.
-            </p>
           </div>
         </div>
 

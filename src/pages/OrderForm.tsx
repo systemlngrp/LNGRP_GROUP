@@ -720,7 +720,6 @@ export function OrderForm() {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
               <div className="w-full max-w-md rounded-lg border-2 border-black bg-white p-6 shadow-2xl">
                 <h3 className="mb-2 text-lg font-bold uppercase">Select Firm for Bulk Upload</h3>
-                <p className="mb-4 text-sm text-slate-600">All orders and schedules in this file will be assigned to the selected firm.</p>
                 <Select
                   value={bulkUploadFirmId}
                   onChange={setBulkUploadFirmId}
@@ -760,7 +759,6 @@ export function OrderForm() {
           )}
         </div>
       </div>
-      <p className="text-xs text-slate-600">Fill in order details beside a firm name. Enter Order By in the sheet or select it on this form. ERP Code finds the system item.</p>
 
       {isFormOpen && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-lg border border-slate-200 space-y-6 max-w-4xl mx-auto">

@@ -268,7 +268,6 @@ export function MaterialReturnMaster() {
       <div className="flex justify-between items-center pb-4 border-b border-black">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Material Return Master</h2>
-          <div className="text-xs text-slate-500 font-medium">Track and analyze material returns and reel recoveries.</div>
         </div>
       </div>
 

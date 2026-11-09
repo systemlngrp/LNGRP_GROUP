@@ -505,12 +505,10 @@ export function PendingDispatchPlanning() {
           <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
             <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Pending Orders</div>
             <div className="text-3xl font-black">{metrics.pendingOrders}</div>
-            <div className="text-[10px] font-bold mt-1 opacity-90">Schedules to be planned</div>
           </div>
           <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
             <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Overdue</div>
             <div className="text-3xl font-black">{metrics.overdue}</div>
-            <div className="text-[10px] font-bold mt-1 opacity-90">Orders past delivery date</div>
           </div>
           <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
             <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Pending Qty</div>
@@ -571,9 +569,6 @@ export function PendingDispatchPlanning() {
           <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
           <div className="px-4 py-3 border-b border-black bg-slate-50">
             <div className="text-sm font-black uppercase text-black">Dispatch Planning Calculation</div>
-            <div className="text-[11px] font-bold text-slate-600">
-              Available = (Opening + Receipt + Production âˆ’ Loaded) + Pending Production (FG not filled) âˆ’ Pending Loading (not loaded)
-            </div>
           </div>
           <div className="table-frozen-scroll">
             <table className="min-w-full divide-y divide-black border-collapse border border-black">

@@ -17,7 +17,7 @@ import {
 import { Spinner } from "../components/Spinner";
 
 import { generateTransactionNo, getProductionJobPrefix } from "../lib/serial";
-import { CheckCircle2, CircleHelp, X } from "lucide-react";
+import { CheckCircle2, X } from "lucide-react";
 import { parseProductionFormVisibleColumns } from "../lib/productionFormColumns";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -1013,20 +1013,9 @@ function InfoTile({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function LabelWithHelp({ label, helpText, required = false }: { label: string; helpText: string; required?: boolean }) {
-  return (
-    <div className="inline-flex items-center gap-1">
-      <span>
-        {label} {required && <span className="text-red-500">*</span>}
-      </span>
-      <TooltipIcon helpText={helpText} />
-    </div>
-  );
-}
-
+// Field help text (helpText) is no longer shown on screen.
 function ProductionFieldRow({
   label,
-  helpText,
   required = false,
   children,
 }: {
@@ -1038,7 +1027,7 @@ function ProductionFieldRow({
   return (
     <div className="grid grid-cols-[minmax(150px,0.8fr)_minmax(0,2fr)] items-center gap-x-4 gap-y-1">
       <div className="text-[15px] font-black text-slate-600">
-        {helpText ? <LabelWithHelp label={label} helpText={helpText} required={required} /> : <span>{label} {required ? <span className="text-red-500">*</span> : null}</span>}
+        <span>{label} {required ? <span className="text-red-500">*</span> : null}</span>
       </div>
       <div className="min-w-0">{children}</div>
     </div>
@@ -1135,15 +1124,3 @@ function ReadOnlyTextField({
   );
 }
 
-function TooltipIcon({ helpText, size = 14 }: { helpText: string; size?: number }) {
-  return (
-    <span className="relative inline-flex items-center group">
-      <span className="inline-flex items-center text-slate-500 cursor-help">
-        <CircleHelp size={size} />
-      </span>
-      <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-64 -translate-x-1/2 rounded border border-black bg-white px-3 py-2 text-[11px] normal-case font-medium text-slate-700 shadow-lg group-hover:block">
-        {helpText}
-      </span>
-    </span>
-  );
-}

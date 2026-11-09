@@ -430,7 +430,7 @@ export function MaterialReturnForm() {
       <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
       <div className="bg-white p-6 rounded shadow-sm border border-black text-black">
-      <div className="mb-6 border-b border-black pb-2"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Material Return Form</h2><p className="mt-1 text-xs font-bold text-indigo-700">Reel returns are permanently owned by Unit-I · jobs from any firm</p></div>
+      <div className="mb-6 border-b border-black pb-2"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Material Return Form</h2></div>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Date" required>

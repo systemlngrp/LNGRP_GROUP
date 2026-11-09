@@ -261,7 +261,6 @@ export function MaterialIssueMaster() {
       <div className="flex justify-between items-center pb-4 border-b border-black">
         <div>
           <h2 className="text-xl font-bold text-black uppercase tracking-tight">Material Issue Master</h2>
-          <div className="text-xs text-slate-500 font-medium">Track and analyze material consumption and reel usage.</div>
         </div>
       </div>
 

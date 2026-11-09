@@ -1816,7 +1816,6 @@ export function Materials() {
                 <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h3 className="text-sm font-black uppercase text-indigo-700">Reel Opening Stock</h3>
-                    <p className="text-xs font-bold text-slate-600">Add individual opening reels with their own KG and rate.</p>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                     <div>
@@ -1935,7 +1934,6 @@ export function Materials() {
                     <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                       <div>
                         <h4 className="text-xs font-black uppercase text-slate-700">Existing Reels for this ERP</h4>
-                        <p className="text-[11px] font-bold text-slate-500">Receipt reels are shown for reference only. Edit opening reels above.</p>
                       </div>
                       <span className="text-[11px] font-black uppercase text-indigo-700">{connectedReelsForCurrentMaterial.length} Reel(s)</span>
                     </div>

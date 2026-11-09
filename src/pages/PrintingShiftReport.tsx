@@ -46,7 +46,7 @@ export function PrintingShiftReport() {
   }, [from, to]);
 
   return <div className="space-y-5 pb-8">
-    <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Printing Shift Report</h2><p className="text-sm text-slate-600">Day and Night output with WhatsApp delivery status</p></div>
+    <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Printing Shift Report</h2></div>
     <div className="flex flex-wrap gap-4 rounded border border-slate-300 bg-white p-4">
       <label className="text-sm font-semibold">From date <input className="ml-2 rounded border p-2" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
       <label className="text-sm font-semibold">To date <input className="ml-2 rounded border p-2" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>

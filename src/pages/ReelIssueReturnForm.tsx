@@ -390,7 +390,6 @@ export function ReelIssueReturnForm() {
             <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-lg font-black tracking-tight text-slate-950">Issue Reels</h3>
-                <p className="text-sm font-medium text-slate-500">Choose a material and issue from the currently available reels.</p>
               </div>
               <button type="button" onClick={addIssueLine} className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
                 <Plus size={16} /> Add

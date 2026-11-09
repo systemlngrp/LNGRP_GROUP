@@ -350,7 +350,6 @@ export function WhatsappMaster() {
           <div className="flex flex-wrap justify-between items-start gap-4 mb-8">
             <div>
               <h2 className="text-3xl font-black text-blue-700">{editingId ? "Edit WhatsApp Configuration" : "New WhatsApp Configuration"}</h2>
-              <p className="text-slate-500 mt-1">Save a message template for one application menu.</p>
             </div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={resetForm} className="px-8 py-3 rounded-2xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50">Cancel</button>
@@ -376,7 +375,6 @@ export function WhatsappMaster() {
                 <div className="rounded-2xl bg-indigo-700 p-3 text-white shadow-sm"><MessageCircle size={26} /></div>
                 <div>
                   <div className="flex flex-wrap items-center gap-3"><h2 className="text-3xl font-black tracking-tight text-slate-900">WhatsApp Master</h2><span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black uppercase tracking-wider text-indigo-700">Messaging</span></div>
-                  <p className="mt-1 max-w-2xl text-sm font-medium text-slate-500">Manage secure sender credentials, message templates, and menu-wise WhatsApp delivery.</p>
                 </div>
               </div>
               <button type="button" onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 py-3 font-black text-white shadow-sm transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"><Plus size={18} /> Add WhatsApp</button>

@@ -99,7 +99,6 @@ export function Home() {
         <h2 className="text-xl font-black uppercase tracking-tight text-slate-950 md:text-2xl">
           Welcome{user?.name ? `, ${user.name}` : ""}
         </h2>
-        <p className="text-xs font-bold text-slate-600">Choose an area to start.</p>
       </div>
 
       {quickAccess ? (

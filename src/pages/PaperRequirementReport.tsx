@@ -228,7 +228,6 @@ export function PaperRequirementReport() {
     <div className="space-y-4">
       <div className="flex flex-col gap-1 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Paper To Order View</h2>
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Scheduled Orders to Paper Requirement to Stock, Pending PO, MIL and Net Purchase Need</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-5">

@@ -58,7 +58,7 @@ export function CoaMaster() {
 
   return <div className="space-y-4 text-black">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black pb-3">
-      <div><h2 className="text-xl font-black uppercase">COA Master</h2><p className="text-sm font-semibold text-slate-600">Company-wise certificates and historical template versions</p></div>
+      <div><h2 className="text-xl font-black uppercase">COA Master</h2></div>
       <button type="button" onClick={() => navigate("/quality/coa/form")} className="inline-flex items-center gap-2 rounded bg-indigo-700 px-4 py-2 font-bold text-white"><FileText size={16} /> Create COA</button>
     </div>
     {message && <div className="rounded border-2 border-amber-700 bg-amber-50 p-3 font-bold">{message}</div>}

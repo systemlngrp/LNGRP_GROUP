@@ -2668,7 +2668,6 @@ export function MaterialInForm() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="flex items-center gap-2 text-lg font-black uppercase text-indigo-800"><Wand2 size={20} /> AI Fetch MRR</h3>
-                <div className="text-sm font-semibold text-slate-600">Upload invoice photo/PDF, review matches, then set data into this form.</div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <label className="inline-flex cursor-pointer items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">
@@ -2851,9 +2850,6 @@ export function MaterialInForm() {
                   <div className="space-y-3 rounded border border-blue-800 bg-blue-50/60 p-3">
                     <div>
                       <div className="text-sm font-black uppercase text-black">Update Existing PO Items</div>
-                      <div className="mt-1 text-xs font-bold text-blue-900">
-                        Select one approved PO Not Received item for each invoice item. A selected PO item is hidden from the other rows.
-                      </div>
                     </div>
                     <div className="overflow-x-auto rounded border border-slate-700 bg-white">
                       <table className="w-full min-w-[1120px] border-collapse bg-white text-xs">
@@ -2919,7 +2915,6 @@ export function MaterialInForm() {
                       </table>
                     </div>
                     <div className="flex items-center justify-end gap-3">
-                      <span className="text-xs font-bold text-blue-900">Updates selected rows only</span>
                       <button
                         type="button"
                         onClick={handleUpdateAllSelectedAiPoItems}
@@ -2979,7 +2974,6 @@ export function MaterialInForm() {
                 <option value="">Select Firm...</option>
                 {(mrrType === "Reel" ? firms.filter((firm) => firm.id === unitOneFirm?.id) : firms).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
               </select>
-              {mrrType === "Reel" ? <span className="mt-1 block text-xs font-semibold text-indigo-700">Reel receipts are permanently owned by Unit-I.</span> : null}
             </label>
             <label className="font-bold text-black">
               MRR Type <span className="text-red-500">*</span>
@@ -3134,9 +3128,6 @@ export function MaterialInForm() {
               />
             </div>
           ) : null}
-          <div className="md:col-span-2 text-xs text-slate-600">
-            Expense GST follows the selected party supply type. For intrastate, CGST and SGST stay equal. For interstate, only IGST is allowed.
-          </div>
           <div className="flex flex-col space-y-1 md:col-span-2">
             <label className="font-bold text-black">
               Supplier/Customer <span className="text-red-500">*</span>

@@ -128,7 +128,6 @@ export function GatePassMaster() {
       <div className="flex items-center justify-between gap-4 border-b border-black pb-4">
         <div>
           <h2 className="text-xl font-bold uppercase tracking-tight text-black">Gate Pass Master</h2>
-          <p className="text-sm text-slate-500">Both invoice-linked non-returnable and manual returnable gate passes are managed here.</p>
         </div>
         <button type="button" onClick={() => navigate("/gate-pass/form")} className="inline-flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 font-bold text-white transition hover:bg-indigo-700">
           <FilePlus2 size={16} />

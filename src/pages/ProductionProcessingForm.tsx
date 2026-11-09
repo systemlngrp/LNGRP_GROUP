@@ -253,7 +253,6 @@ function LockedReportForm() {
                   <option value="Part">Part</option>
                   <option value="Full">Full</option>
                 </select>
-                <div className="text-[11px] font-bold text-slate-600">Select Full to complete this machine step.</div>
               </div>
             ) : null}
 
@@ -581,7 +580,6 @@ function FullReportForm() {
                   <option value="Part">Part</option>
                   <option value="Full">Full</option>
                 </select>
-                <div className="text-[11px] font-bold text-slate-600">Select Full to complete this machine step.</div>
               </div>
             ) : null}
 

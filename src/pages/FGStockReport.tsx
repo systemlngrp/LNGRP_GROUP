@@ -93,7 +93,6 @@ export function FGStockReport() {
         <div>
           <h2 className="text-xl font-bold uppercase tracking-tight text-black">FG Stock</h2>
         </div>
-        <div className="text-xs font-bold text-slate-700">Balance greater than 0 from NPD Items</div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">

@@ -876,7 +876,6 @@ export function MaterialIssueForm() {
       <div className="bg-white p-3 md:p-6 rounded shadow-sm border border-black text-black">
       <div className="mb-4 border-b border-black pb-2 md:mb-6">
         <h2 className="text-lg md:text-xl font-bold uppercase tracking-tight text-black">Material Issue Form</h2>
-        <p className="mt-1 text-xs font-bold text-indigo-700">Unit-I Reel Inventory · jobs from any firm</p>
       </div>
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
