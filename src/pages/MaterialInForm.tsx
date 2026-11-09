@@ -2977,20 +2977,23 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               />
             </div>
           ) : null}
+          {/* Each field in its own cell so the two columns line up. */}
           <div className="flex flex-col space-y-1">
-            <label className="font-bold text-black">
+            <label className="flex flex-col space-y-1 font-bold text-black">
               {mrrType === "Reel" ? "Inventory Owner" : "Firm"} <span className="text-red-500">*</span>
               <select value={firmId} disabled={firmLocked || mrrType === "Reel"} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="mt-2 w-full rounded border-2 border-indigo-300 p-2 disabled:bg-slate-100">
                 <option value="">Select Firm...</option>
                 {(mrrType === "Reel" ? firms.filter((firm) => firm.id === unitOneFirm?.id) : firms).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
               </select>
             </label>
+          </div>
+          {/* The Direct Service form's title already says Direct Service. */}
+          {isDirectService ? null : (
+          <div className={`flex flex-col space-y-1 ${linkedGateEntry?.purpose === "Returnable Receipt" ? "" : "md:col-span-2"}`}>
             <label className="font-bold text-black">
               MRR Type <span className="text-red-500">*</span>
             </label>
-            {isDirectService ? (
-              <input value="Direct Service" disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
-            ) : linkedGateEntry?.purpose === "Returnable Receipt" ? (
+            {linkedGateEntry?.purpose === "Returnable Receipt" ? (
               <input value="Service Return" disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
             ) : (
               // Material type as buttons so the selected type is clear at a glance.
@@ -3013,9 +3016,11 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                 ))}
               </div>
             )}
-            {mrrType === "Others" ? (
-              <>
-                <label className="mt-3 font-bold text-black">
+          </div>
+          )}
+          {mrrType === "Others" ? (
+            <div className="flex flex-col space-y-1">
+                <label className="font-bold text-black">
                   Sub Type <span className="text-red-500">*</span>
                 </label>
                 <Select
@@ -3025,9 +3030,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                   placeholder="Select Sub Type..."
                   required
                 />
-              </>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           <div className="flex flex-col space-y-1">
             <label className="font-bold text-black">Invoice Currency</label>
             <Select
