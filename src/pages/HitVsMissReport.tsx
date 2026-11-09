@@ -8,6 +8,7 @@ import { useData } from "../hooks/useData";
 import { Company, DispatchPlan, Invoice, LoadingSlip, Order, OrderSchedule } from "../types";
 import { formatDate, getFinancialYear } from "../lib/serial";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 type DelayBucket = "0-3" | "4-7" | "8-10" | "11-15" | ">15" | "";
 type RowStatus = "Hit" | "Miss" | "Pending";
@@ -130,6 +131,8 @@ export function HitVsMissReport() {
       });
     });
 
+    const searchWordList = searchWords(searchTerm);
+
     return schedules
       .map((schedule) => {
         const scheduledDate = normalizeDate(schedule.scheduledDate);
@@ -205,12 +208,13 @@ export function HitVsMissReport() {
       })
       .filter((row): row is ScheduleReportRow => Boolean(row))
       .filter((row) => {
-        const normalizedSearch = searchTerm.trim().toLowerCase();
-        const matchesSearch =
-          !normalizedSearch ||
-          row.orderNo.toLowerCase().includes(normalizedSearch) ||
-          row.companyName.toLowerCase().includes(normalizedSearch) ||
-          row.itemName.toLowerCase().includes(normalizedSearch);
+        // Schedule Details table columns (S.No skipped).
+        const matchesSearch = matchesTableSearch([
+          row.fy, row.month, formatDate(row.scheduledDate), row.orderNo, row.companyName, row.itemName,
+          row.scheduledQty, row.canceledQty, row.targetQty, row.invoicedQty, row.pendingQty,
+          row.fullInvoiceDate ? formatDate(row.fullInvoiceDate) : "-", row.hitMissLabel,
+          row.delayDays != null ? row.delayDays : "-", row.delayBucket || "-",
+        ], searchWordList);
         const matchesCompany = !companyFilter || row.companyId === companyFilter;
         const matchesItem = !itemFilter || row.itemId === itemFilter;
         const matchesFy = !fyFilter || row.fy === fyFilter;
@@ -512,7 +516,7 @@ export function HitVsMissReport() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search order, company, item"
+                placeholder="Search"
                 className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
               />
             </div>

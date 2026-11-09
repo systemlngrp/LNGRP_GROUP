@@ -5,6 +5,7 @@ import { useData } from "../hooks/useData";
 import { Machine, ProductionProcessing, User } from "../types";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/serial";
+import { useTableSearch } from "../lib/tableSearch";
 
 type ViewMode = "detailed" | "machineDaily" | "operatorMachineDaily";
 type Shift = "Day" | "Night";
@@ -48,7 +49,7 @@ export function EfficiencyReport() {
   const [shift, setShift] = useState<"" | Shift>("");
   const shiftHoursFor = (_value: Shift) => 12;
 
-  const rows = useMemo<EfficiencyRow[]>(() => {
+  const viewRows = useMemo<EfficiencyRow[]>(() => {
     const machineMap = new Map(machines.map((machine) => [machine.id, machine]));
     const machineByNormalizedName = new Map(
       machines.map((machine) => [normalizeMachineName(machine.name).toLowerCase(), machine])
@@ -56,7 +57,6 @@ export function EfficiencyReport() {
     const operatorMap = new Map(users.map((user) => [user.id, user]));
     const operatorByNormalizedName = new Map(users.map((user) => [String(user.name || "").trim().toLowerCase(), user]));
 
-    const normalizedSearch = searchTerm.trim().toLowerCase();
     const fromMs = dateFrom ? new Date(dateFrom).getTime() : null;
     const toMs = dateTo ? new Date(dateTo).getTime() : null;
 
@@ -98,11 +98,7 @@ export function EfficiencyReport() {
         if (shift && String(entry.shift || "Day") !== shift) return false;
         if (fromMs != null && new Date(entry.date).getTime() < fromMs) return false;
         if (toMs != null && new Date(entry.date).getTime() > toMs) return false;
-        if (!normalizedSearch) return true;
-        const job = String(entry.jobNo || "").toLowerCase();
-        const machine = String(entry.machineName || "").toLowerCase();
-        const operator = String(entry.operatorName || "").toLowerCase();
-        return job.includes(normalizedSearch) || machine.includes(normalizedSearch) || operator.includes(normalizedSearch);
+        return true;
       });
 
     if (viewMode === "detailed") {
@@ -166,10 +162,23 @@ export function EfficiencyReport() {
     machines,
     operatorId,
     processing,
-    searchTerm,
     shift,
     users,
     viewMode,
+  ]);
+
+  // Table search: every typed word must be in the columns the table shows
+  // (as shown for the selected view, e.g. "3 jobs" on grouped rows).
+  const rows = useTableSearch(viewRows, searchTerm, (row) => [
+    formatDate(row.date),
+    row.jobNo || "-",
+    row.machineName,
+    row.shift,
+    row.operatorName,
+    row.qty,
+    row.maxOutputPerHour,
+    row.expectedQty,
+    row.efficiencyPercent == null ? "-" : [row.efficiencyPercent, `${formatQty(row.efficiencyPercent)}%`],
   ]);
 
   const summary = useMemo(() => {
@@ -252,7 +261,7 @@ export function EfficiencyReport() {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search job, machine, operator..."
+              placeholder="Search"
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>

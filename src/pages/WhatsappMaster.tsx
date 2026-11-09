@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Eye, FileText, Filter, LockKeyhole, MessageCircle, Plus, Search, Send, ShieldCheck, X, XCircle, Zap } from "lucide-react";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -196,13 +197,14 @@ export function WhatsappMaster() {
   const menuOptions = useMemo(() => collectMenuOptions(NAVIGATION), []);
 
   const filteredConfigs = useMemo(() => {
-    const term = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
+    const menuLabelOf = (value: string) => menuOptions.find((option) => option.value === value)?.label || value;
     return [...configs]
       .filter((config) => statusFilter === "all" || (statusFilter === "active" ? config.active !== "No" : config.active === "No"))
       .filter((config) => menuFilter === "all" || config.menu === menuFilter)
-      .filter((config) => !term || [config.loginId, config.groupId, config.menu, config.message].some((value) => String(value || "").toLowerCase().includes(term)))
+      .filter((config) => matchesTableSearch([config.loginId, config.groupId, menuLabelOf(config.menu), config.menu, config.message, config.active !== "No" ? "Active" : "Inactive"], words))
       .sort((a, b) => String(a.loginId).localeCompare(String(b.loginId)));
-  }, [configs, searchTerm, statusFilter, menuFilter]);
+  }, [configs, searchTerm, statusFilter, menuFilter, menuOptions]);
 
   const activeCount = configs.filter((config) => config.active !== "No").length;
   const inactiveCount = configs.length - activeCount;
@@ -387,7 +389,7 @@ export function WhatsappMaster() {
           </div>
 
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center">
-            <div className="relative min-w-0 flex-1 lg:max-w-md"><Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} /><input aria-label="Search WhatsApp configurations" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search login, group, menu, or message..." className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-sm font-medium outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></div>
+            <div className="relative min-w-0 flex-1 lg:max-w-md"><Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} /><input aria-label="Search WhatsApp configurations" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search" className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-sm font-medium outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></div>
             <div className="flex flex-col gap-3 sm:flex-row">
               <label className="flex items-center gap-2 text-sm font-bold text-slate-600"><Filter size={16} /><span className="sr-only">Status</span><select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-semibold text-slate-700 outline-none focus:border-indigo-500"><option value="all">All statuses</option><option value="active">Active only</option><option value="inactive">Inactive only</option></select></label>
               <select aria-label="Filter by menu" value={menuFilter} onChange={(e) => setMenuFilter(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500"><option value="all">All menus</option>{menuOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>

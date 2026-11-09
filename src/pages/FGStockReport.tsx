@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import type { Item } from "../types";
+import { useTableSearch } from "../lib/tableSearch";
 
 type FgStockRow = {
   id: string;
@@ -63,17 +64,28 @@ export function FGStockReport() {
   const { items, loading, error } = useNpdItemsWithStatus();
   const [searchTerm, setSearchTerm] = useState("");
 
-  const rows = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    return items
-      .map(toRow)
-      .filter((row) => row.balance > 0)
-      .filter((row) => {
-        if (!query) return true;
-        return [row.erp, row.itemName, row.customer, row.uom].some((value) => String(value || "").toLowerCase().includes(query));
-      })
-      .sort((a, b) => b.balance - a.balance || a.erp.localeCompare(b.erp, undefined, { numeric: true, sensitivity: "base" }));
-  }, [items, searchTerm]);
+  const baseRows = useMemo(
+    () =>
+      items
+        .map(toRow)
+        .filter((row) => row.balance > 0)
+        .sort((a, b) => b.balance - a.balance || a.erp.localeCompare(b.erp, undefined, { numeric: true, sensitivity: "base" })),
+    [items],
+  );
+
+  const rows = useTableSearch(baseRows, searchTerm, (row) => [
+    row.erp,
+    row.itemName,
+    row.customer,
+    row.uom,
+    row.opening,
+    row.receipt,
+    row.production,
+    row.invoiced,
+    row.balance,
+    row.rate,
+    row.stockValue,
+  ]);
 
   const totals = useMemo(
     () =>
@@ -118,7 +130,7 @@ export function FGStockReport() {
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search ERP / item / customer / UOM"
+              placeholder="Search"
               className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

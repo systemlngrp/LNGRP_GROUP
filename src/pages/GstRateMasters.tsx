@@ -3,6 +3,7 @@ import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { GstRateMaster } from "../types";
 
 export function GstRateMasters() {
@@ -20,10 +21,7 @@ export function GstRateMasters() {
   const filteredRates = useMemo(
     () =>
       [...rates]
-        .filter((entry) => {
-          const q = searchTerm.toLowerCase();
-          return entry.name.toLowerCase().includes(q) || String(entry.rate || "").includes(q);
-        })
+        .filter((entry) => matchesTableSearch([entry.name, `${Number(entry.rate || 0).toFixed(2)}%`, Number(entry.rate || 0).toFixed(2), entry.active || "Yes"], searchWords(searchTerm)))
         .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0) || a.name.localeCompare(b.name)),
     [rates, searchTerm]
   );
@@ -126,7 +124,7 @@ export function GstRateMasters() {
           <div className="flex flex-wrap justify-between items-center gap-4">
             <h2 className="text-3xl font-black text-blue-700">GST Rate Master</h2>
             <div className="flex flex-wrap items-center gap-3">
-              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search GST rate" className="w-[320px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search" className="w-[320px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               <button type="button" onClick={openCreate} className="px-7 py-3 rounded-2xl bg-indigo-700 text-white font-bold hover:bg-indigo-800 transition">
                 + GST Rate
               </button>

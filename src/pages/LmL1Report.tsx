@@ -8,6 +8,7 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { Order } from "../types";
 import { formatDate } from "../lib/serial";
+import { useTableSearch } from "../lib/tableSearch";
 
 type LmL1Row = {
   id: string;
@@ -153,6 +154,13 @@ function getRowExport(row: LmL1Row) {
   };
 }
 
+// Table cell texts of one row, formatted as the table shows them.
+function displayCells(row: LmL1Row) {
+  return Object.values(getRowExport(row)).map((value, index) =>
+    typeof value === "number" ? (index === 11 || index === 14 || index === 17 || index === 20 || index === 23 ? formatNumber(value, index === 17 ? 4 : 3) : formatNumber(value, 2).replace(/\.00$/, "")) : value
+  );
+}
+
 export function LmL1Report() {
   const [orders] = useData<Order>("orders", []);
   const { resolveOrderItem } = useOrderItemCatalog();
@@ -234,8 +242,7 @@ export function LmL1Report() {
 
   const yearOptions = useMemo(() => ["All", ...Array.from(new Set(rows.map((row) => String(row.year)))).sort((a, b) => Number(b) - Number(a))], [rows]);
 
-  const filteredRows = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+  const dateFilteredRows = useMemo(() => {
     const from = parseAppDate(dateFrom);
     const to = parseAppDate(dateTo);
     const fromTime = from ? normalizeDate(from).getTime() : null;
@@ -248,12 +255,12 @@ export function LmL1Report() {
       if (toTime != null && (orderTime == null || orderTime > toTime)) return false;
       if (yearFilter !== "All" && String(row.year) !== yearFilter) return false;
       if (monthFilter !== "All" && row.month !== monthFilter) return false;
-      if (!q) return true;
-      return [row.itemName, row.flute, row.rapc, row.rapcGroup, row.year, row.month].some((value) =>
-        String(value || "").toLowerCase().includes(q)
-      );
+      return true;
     });
-  }, [dateFrom, dateTo, monthFilter, rows, searchTerm, yearFilter]);
+  }, [dateFrom, dateTo, monthFilter, rows, yearFilter]);
+
+  // Search matches every table column as the cells display them.
+  const filteredRows = useTableSearch(dateFilteredRows, searchTerm, displayCells);
 
   const summary = useMemo(
     () => ({
@@ -359,7 +366,7 @@ export function LmL1Report() {
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search item, flute, RAPC..."
+              placeholder="Search"
               className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

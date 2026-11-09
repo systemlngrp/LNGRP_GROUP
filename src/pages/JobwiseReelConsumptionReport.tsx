@@ -17,6 +17,7 @@ import { useServerReport } from "../hooks/useServerReport";
 import { formatDate } from "../lib/serial";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { useTableSearch } from "../lib/tableSearch";
 
 const JOBWISE_REEL_TABLES = ["productions", "production_processing", "materials", "material_in", "material_in_packing_slips", "material_issue_reel_lines", "material_return_reel_lines"];
 
@@ -44,11 +45,24 @@ export function JobwiseReelConsumptionReport() {
   );
   const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
 
+  // Table search: every typed word must be in the columns the table shows.
+  const searchedRows = useTableSearch(baseRows, searchTerm, (row) => [
+    row.jobNo,
+    formatDate(row.corrugationDate),
+    row.jobFfg,
+    row.jobRate,
+    row.jobValue,
+    row.reelIssued,
+    row.reelReturned,
+    row.reelConsumed,
+    row.consumedValue,
+    row.gp,
+    row.gpPercent,
+  ]);
+
   const rows = useMemo<JobwiseReelConsumptionRow[]>(() => {
-    return baseRows
+    return searchedRows
       .filter((row) => {
-        const search = searchTerm.trim().toLowerCase();
-        if (search && !row.jobNo.toLowerCase().includes(search)) return false;
         if (dateFrom && (!row.corrugationDate || new Date(row.corrugationDate).getTime() < new Date(dateFrom).getTime())) return false;
         if (dateTo && (!row.corrugationDate || new Date(row.corrugationDate).getTime() > new Date(dateTo).getTime())) return false;
         if (minGpPercent && row.gpPercent < Number(minGpPercent || 0)) return false;
@@ -59,7 +73,7 @@ export function JobwiseReelConsumptionReport() {
         if (dateDiff !== 0) return dateDiff;
         return a.jobNo.localeCompare(b.jobNo);
       });
-  }, [baseRows, dateFrom, dateTo, minGpPercent, searchTerm]);
+  }, [searchedRows, dateFrom, dateTo, minGpPercent]);
 
   // Totals and Excel use every matching job; the table draws one page at a
   // time so thousands of rows do not freeze the screen.
@@ -154,7 +168,7 @@ export function JobwiseReelConsumptionReport() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search job no."
+              placeholder="Search"
               className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

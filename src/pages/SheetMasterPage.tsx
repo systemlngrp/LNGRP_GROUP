@@ -7,6 +7,7 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import type { SheetMasterColumn, SheetMasterFilter } from "../lib/sheetMasterConfigs";
+import { useTableSearch } from "../lib/tableSearch";
 
 export type SheetMasterRow = {
   id: string;
@@ -23,7 +24,6 @@ export function SheetMasterPage({
   title,
   entity,
   columns,
-  searchPlaceholder,
   filters = [],
   rowsOverride,
   editableColumns = [],
@@ -32,7 +32,8 @@ export function SheetMasterPage({
   title: string;
   entity: string;
   columns: SheetMasterColumn[];
-  searchPlaceholder: string;
+  /** Unused: the table search box always shows "Search". */
+  searchPlaceholder?: string;
   filters?: SheetMasterFilter[];
   rowsOverride?: SheetMasterRow[];
   editableColumns?: string[];
@@ -83,11 +84,18 @@ export function SheetMasterPage({
     });
   }, [effectiveRows, filters]);
 
+  const searchedRows = useTableSearch(
+    effectiveRows,
+    searchTerm,
+    (row) => columns.map((column) => {
+      const value = row[column.key];
+      return typeof value === "boolean" ? (value ? "Yes" : "No") : value;
+    }),
+    [columns],
+  );
+
   const filteredRows = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    return effectiveRows.filter((row) => {
-      const matchesSearch = !query || columns.some((column) => String(row[column.key] ?? "").toLowerCase().includes(query));
-      if (!matchesSearch) return false;
+    return searchedRows.filter((row) => {
       if (stockKey && stockFilter) {
         const balance = Number(row[stockKey] ?? 0) || 0;
         if (stockFilter === "positive" && !(balance > 0)) return false;
@@ -99,7 +107,7 @@ export function SheetMasterPage({
         return String(row[filter.key] ?? "").trim() === selectedValue;
       });
     });
-  }, [columns, effectiveRows, filterValues, filters, searchTerm, stockFilter, stockKey]);
+  }, [searchedRows, filterValues, filters, stockFilter, stockKey]);
 
   const {
     page,
@@ -207,7 +215,7 @@ export function SheetMasterPage({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
           <input
             type="text"
-            placeholder={searchPlaceholder}
+            placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"

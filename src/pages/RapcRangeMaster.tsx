@@ -9,6 +9,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { buildSeedRapcRanges } from "../lib/rapcRanges";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function RapcRangeMaster() {
   const { user } = useAuth();
@@ -82,13 +83,10 @@ export function RapcRangeMaster() {
   };
 
   const filteredRanges = useMemo(() => {
-    const normalized = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return ranges.filter((row) => {
-      if (!normalized && filterFrom === '' && filterTo === '') return true;
-      const matchesSearch =
-        String(row.from).includes(normalized) ||
-        String(row.to).includes(normalized) ||
-        String(row.rapcRange).includes(normalized);
+      if (!words.length && filterFrom === '' && filterTo === '') return true;
+      const matchesSearch = matchesTableSearch([row.from, row.to, row.rapcRange], words);
       const matchesFrom = filterFrom === '' || row.from >= Number(filterFrom);
       const matchesTo = filterTo === '' || row.to <= Number(filterTo);
       return matchesSearch && matchesFrom && matchesTo;
@@ -172,7 +170,7 @@ export function RapcRangeMaster() {
           <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Search ranges..."
+            placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600 font-medium"

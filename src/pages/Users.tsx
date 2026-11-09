@@ -9,6 +9,7 @@ import { NAVIGATION } from "../components/Sidebar";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { parseSystemRoles, SystemRole } from "../lib/userRoles";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function parseDesignations(setting?: Setting) {
   if (!setting?.designations) return [];
@@ -252,12 +253,9 @@ export function Users() {
     }
   };
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.userId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.designation || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.mobile.includes(searchTerm)
+  const userSearchWords = searchWords(searchTerm);
+  const filteredUsers = users.filter((u) =>
+    matchesTableSearch([u.userId, u.name, u.role || "Employee", u.status || "Active", u.designation, u.mobile, u.email], userSearchWords)
   );
   const sortedFilteredUsers = [...filteredUsers].sort((a, b) => {
     const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
@@ -613,7 +611,7 @@ export function Users() {
             <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search users..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600"

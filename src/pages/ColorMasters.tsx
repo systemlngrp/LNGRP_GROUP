@@ -5,6 +5,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { ColorMaster } from "../types";
 
 export function ColorMasters() {
@@ -66,7 +67,7 @@ export function ColorMasters() {
   };
 
   const filteredColors = colors
-    .filter((color) => color.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((color) => matchesTableSearch([color.name], searchWords(searchTerm)))
     .sort((a, b) => {
       const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
       const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
@@ -115,7 +116,7 @@ export function ColorMasters() {
         </div>
       ) : (
         <>
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search colors..." />
+          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
           <div className="bg-white rounded shadow-sm border border-black table-sticky-scroll">
             <div className="block md:hidden space-y-4 p-2">
               {filteredColors.map((color) => (

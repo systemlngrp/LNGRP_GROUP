@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Service } from "../types";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function Services() {
   const { user } = useAuth();
@@ -18,9 +19,12 @@ export function Services() {
 
   const filteredServices = useMemo(
     () =>
-      [...services]
-        .filter((service) => service.name.toLowerCase().includes(searchTerm.toLowerCase()))
-        .sort((a, b) => a.name.localeCompare(b.name)),
+      (() => {
+        const words = searchWords(searchTerm);
+        return [...services]
+          .filter((service) => matchesTableSearch([service.name, service.active || "Yes"], words))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      })(),
     [searchTerm, services]
   );
 
@@ -113,7 +117,7 @@ export function Services() {
           <div className="flex flex-wrap justify-between items-center gap-4">
             <h2 className="text-3xl font-black text-blue-700">Services Master</h2>
             <div className="flex flex-wrap items-center gap-3">
-              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search service" className="w-[320px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search" className="w-[320px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               <button type="button" onClick={openCreate} className="px-7 py-3 rounded-2xl bg-indigo-700 text-white font-bold hover:bg-indigo-800 transition">
                 + Service
               </button>

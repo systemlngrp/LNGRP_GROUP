@@ -11,6 +11,7 @@ import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { MandatoryLabel, MandatoryLegend } from "../components/Mandatory";
 import { isMandatoryField } from "../lib/mandatoryFields";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { useTableSearch } from "../lib/tableSearch";
 import * as XLSX from "xlsx";
 
 export function Companies() {
@@ -341,36 +342,40 @@ export function Companies() {
     setIsFormOpen(true);
   };
 
-  const sortedCompanies = [...companies].sort((a, b) => {
+  const sortedCompanies = useMemo(() => [...companies].sort((a, b) => {
     const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
     const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
     return timeB - timeA || (a.name || "").localeCompare(b.name || "");
-  });
+  }), [companies]);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filteredCompanies = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return sortedCompanies;
-    return sortedCompanies.filter((c) => {
-      return (
-        (c.name || "").toLowerCase().includes(q) ||
-        (c.contactPerson || "").toLowerCase().includes(q) ||
-        (c.contactNumber || "").toLowerCase().includes(q) ||
-        (c.email || "").toLowerCase().includes(q) ||
-        (c.district || "").toLowerCase().includes(q) ||
-        (c.state || "").toLowerCase().includes(q) ||
-        (c.salesPerson || "").toLowerCase().includes(q) ||
-        (c.panNo || "").toLowerCase().includes(q) ||
-        (c.paymentTerms || "").toLowerCase().includes(q) ||
-        (c.reffPerson || "").toLowerCase().includes(q) ||
-        (c.priority || "").toLowerCase().includes(q) ||
-        (c.followupFrequency || "").toLowerCase().includes(q) ||
-        (c.autoEmail || "").toLowerCase().includes(q) ||
-        (c.followupApproval || "").toLowerCase().includes(q) ||
-        (c.active === "No" ? "inactive no" : "active yes").includes(q)
-      );
-    });
-  }, [sortedCompanies, searchTerm]);
+  const filteredCompanies = useTableSearch(sortedCompanies, searchTerm, (c) => [
+    c.name,
+    c.contactPerson,
+    c.contactNumber,
+    c.email,
+    c.address,
+    c.district,
+    c.state,
+    c.pin,
+    c.gstNo,
+    c.gstType,
+    c.gstSupplyType || "INTRA_STATE",
+    c.panNo,
+    c.salesPerson,
+    c.paymentTerms,
+    c.openingBalance,
+    c.overdues,
+    c.target,
+    c.reffPerson,
+    c.priority,
+    c.followupFrequency,
+    c.autoEmail,
+    c.followupApproval,
+    c.deviationAllowed,
+    c.toleranceAllowed,
+    c.active === "No" ? "No" : "Yes",
+  ]);
 
   const {
     page,
@@ -563,7 +568,7 @@ export function Companies() {
         </form>
       )}
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search companies..." />
+      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
 
       <DataSummaryTiles
         totalRecords={companies.length}

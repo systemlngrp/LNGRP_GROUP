@@ -10,6 +10,7 @@ import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/utils";
 
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 export function Machines() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
@@ -143,8 +144,6 @@ export function Machines() {
     }
   };
 
-  const filtered = machines.filter(m => [normalizeMachineName(m.name), m.uom || ""].join(" ").toLowerCase().includes(searchTerm.toLowerCase()));
-
   const getAssignedOperatorNames = (machine: Machine) => {
     const savedNames = Array.isArray(machine.assignedOperatorNames) ? machine.assignedOperatorNames.filter(Boolean) : [];
     if (savedNames.length > 0) return savedNames;
@@ -152,6 +151,17 @@ export function Machines() {
       .map((operatorId) => operatorNameById.get(operatorId) || "")
       .filter(Boolean);
   };
+
+  const searchWordList = searchWords(searchTerm);
+  const filtered = machines.filter((m) =>
+    matchesTableSearch([
+      normalizeMachineName(m.name),
+      m.maxOutputPerHour || 0,
+      m.uom,
+      getAssignedOperatorNames(m),
+      m.updatedBy,
+      formatDate(m.updateTimestamp),
+    ], searchWordList));
 
   return (
     <div className="space-y-6">
@@ -256,7 +266,7 @@ export function Machines() {
         </div>
       )}
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search machines..." />
+      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
       
       <DataSummaryTiles
         totalRecords={machines.length}

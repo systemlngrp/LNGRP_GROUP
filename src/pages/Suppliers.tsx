@@ -10,6 +10,7 @@ import { Select } from "../components/Select";
 import { Edit, Trash2, Upload, Download } from "lucide-react";
 import { MandatoryLegend, MandatoryLabel } from "../components/Mandatory";
 import { isMandatoryField } from "../lib/mandatoryFields";
+import { useTableSearch } from "../lib/tableSearch";
 import * as XLSX from "xlsx";
 import { useClientPagination } from "../hooks/useClientPagination";
 
@@ -63,26 +64,29 @@ export function Suppliers() {
     [states]
   );
 
+  const stateNameById = useMemo(() => new Map(states.map((state) => [state.id, state.name])), [states]);
+  const searchedSuppliers = useTableSearch(
+    suppliers,
+    searchTerm,
+    (supplier) => [
+      supplier.name,
+      supplier.contactPerson,
+      supplier.contactNumber,
+      supplier.email,
+      supplier.gstNo,
+      supplier.gstSupplyType || "INTRA_STATE",
+      (supplier.stateId && stateNameById.get(supplier.stateId)) || "",
+      supplier.district,
+      supplier.pinCode,
+      supplier.active || "Yes",
+    ],
+    [stateNameById],
+  );
   const filteredSuppliers = useMemo(
     () =>
-      [...suppliers]
-        .filter((supplier) => {
-          const haystack = [
-            supplier.name,
-            supplier.contactPerson,
-            supplier.contactNumber,
-            supplier.email,
-            supplier.gstNo,
-            supplier.district,
-            supplier.pinCode,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(searchTerm.toLowerCase());
-        })
+      [...searchedSuppliers]
         .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })),
-    [searchTerm, suppliers]
+    [searchedSuppliers]
   );
   const {
     page,
@@ -465,7 +469,7 @@ export function Suppliers() {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search suppliers..."
+              placeholder="Search"
               className="w-full max-w-sm rounded-xl border-2 border-black px-4 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

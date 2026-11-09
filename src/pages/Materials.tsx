@@ -16,6 +16,7 @@ import { getNextPlainNumber } from "../lib/materialNumbering";
 import { useConfirm } from "../components/ConfirmDialog";
 import { OPENING_REEL_MATERIAL_IN_ID, isOpeningReelPackingSlip } from "../lib/materialMovement";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
+import { useTableSearch } from "../lib/tableSearch";
 
 type MaterialType = Material["type"];
 type ActiveValue = NonNullable<Material["active"]>;
@@ -388,7 +389,7 @@ export function Materials() {
 
     return [...materials, ...Array.from(virtualRows.values())];
   }, [materialIn, materials, npdItems]);
-  const filteredMaterials = useMemo(() => {
+  const filteredMaterialsBeforeSearch = useMemo(() => {
     const getSortNumber = (value: number | undefined | null) => {
       const numericValue = Number(value);
       return Number.isFinite(numericValue) ? numericValue : -Infinity;
@@ -396,7 +397,6 @@ export function Materials() {
 
     return [...materialDisplayRows]
       .filter((material) => {
-        const matchesSearch = !searchTerm || normalizeText(material.erpCode).includes(searchTerm.toLowerCase()) || normalizeText(material.name).includes(searchTerm.toLowerCase());
         const matchesType = typeFilter === "All" || material.type === typeFilter;
         const matchesSize = sizeFilter === "All" || formatOptionalNumber(material.size) === sizeFilter;
         const matchesGsm = gsmFilter === "All" || formatOptionalNumber(material.gsm) === gsmFilter;
@@ -404,7 +404,7 @@ export function Materials() {
         const matchesColor =
           colorFilter === "All" ||
           (colorFilter === "Blank" ? normalizedColor === "" : normalizedColor === colorFilter);
-        return matchesSearch && matchesType && matchesSize && matchesGsm && matchesColor;
+        return matchesType && matchesSize && matchesGsm && matchesColor;
       })
       .sort((a, b) => {
         let compare = 0;
@@ -426,7 +426,7 @@ export function Materials() {
 
         return sortDirection === "asc" ? compare : -compare;
       });
-  }, [colorFilter, gsmFilter, materialDisplayRows, searchTerm, sizeFilter, sortDirection, sortKey, typeFilter]);
+  }, [colorFilter, gsmFilter, materialDisplayRows, sizeFilter, sortDirection, sortKey, typeFilter]);
 
   const getMaterialStockValues = (material: MaterialDisplayRow, firmId?: string) => {
     const movement = movementSummaryMap.get(`${material.id}::${String(firmId || "")}`) || { openingQty: 0, openingRate: 0, openingValue: 0, receipts: 0, receiptValue: 0, issues: 0, issueValue: 0, returns: 0, returnValue: 0 };
@@ -474,6 +474,33 @@ export function Materials() {
         : getMaterialStockValues(material, String(firm.id)),
     }));
   };
+  // Table search: only the columns the table shows (SL and Actions skipped).
+  const filteredMaterials = useTableSearch(
+    filteredMaterialsBeforeSearch,
+    searchTerm,
+    (material) => {
+      const isVirtualReceiptItem = Boolean(material.isVirtualReceiptItem);
+      const showSpecs = typeFilter !== "Other";
+      const gstRate = Number(material.gstRate ?? 0);
+      const firmValues = getMaterialFirmStocks(material)
+        .filter(({ firm }) => displayFirms.some((displayFirm) => String(displayFirm.id) === String(firm.id)))
+        .flatMap(({ values }) => [values.openingQty, values.openingRate, values.receiptQty, values.issueQty, ...(showReturnsColumn ? [values.returnQty] : []), values.balance, values.closingValue]);
+      return [
+        isVirtualReceiptItem ? "FG" : material.type,
+        material.erpCode,
+        material.name,
+        showSpecs ? material.size : "",
+        showSpecs ? material.gsm : "",
+        showSpecs ? material.bf : "",
+        `${gstRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`,
+        gstRate,
+        showSpecs ? material.color : "",
+        ...firmValues,
+        material.uom,
+      ];
+    },
+    [typeFilter, displayFirms, showReturnsColumn, visibleFirms, movementSummaryMap, materialFirmOpenings, unitOneFirm],
+  );
 
   const metrics = useMemo(() => {
     let openingQtyTotal = 0;
@@ -2072,7 +2099,7 @@ export function Materials() {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                     <input
                       type="text"
-                      placeholder="Search by ERP Code or Item Name..."
+                      placeholder="Search"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full rounded border border-black pl-9 pr-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"

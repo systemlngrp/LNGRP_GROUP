@@ -8,6 +8,7 @@ import { Spinner } from "../components/Spinner";
 
 
 import { TableControls } from "../components/TableControls";
+import { useTableSearch } from "../lib/tableSearch";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 export function Trucks() {
   const { user } = useAuth();
@@ -73,20 +74,6 @@ export function Trucks() {
     setIsFormOpen(false);
   };
 
-  const filteredTrucks = useMemo(() => {
-    const needle = searchTerm.trim().toLowerCase();
-    return [...trucks]
-      .filter((truck) => {
-        if (!needle) return true;
-        return [truck.truckNo, truck.driverName, truck.mobileNo, truck.truckType || "External"].filter(Boolean).join(" ").toLowerCase().includes(needle);
-      })
-      .sort((a, b) => {
-        const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
-        const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
-        return timeB - timeA || a.truckNo.localeCompare(b.truckNo);
-      });
-  }, [searchTerm, trucks]);
-
   const loadingCountByTruckId = useMemo(() => {
     const counts = new Map<string, number>();
     loadingSlips.forEach((slip) => {
@@ -96,6 +83,23 @@ export function Trucks() {
     });
     return counts;
   }, [loadingSlips]);
+
+  const sortedTrucks = useMemo(
+    () =>
+      [...trucks].sort((a, b) => {
+        const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
+        const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
+        return timeB - timeA || a.truckNo.localeCompare(b.truckNo);
+      }),
+    [trucks],
+  );
+  const filteredTrucks = useTableSearch(
+    sortedTrucks,
+    searchTerm,
+    (truck) => [truck.truckNo, String(truck.driverName || "").toUpperCase(), truck.mobileNo, truck.truckType || "External", loadingCountByTruckId.get(truck.id) || 0],
+    [loadingCountByTruckId],
+  );
+
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
 

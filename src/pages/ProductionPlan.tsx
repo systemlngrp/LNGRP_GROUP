@@ -2,6 +2,7 @@ import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, SampleRequest, Setting } from "../types";
 import { formatDate } from "../lib/serial";
+import { useTableSearch } from "../lib/tableSearch";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
@@ -117,10 +118,7 @@ export function ProductionPlan() {
         if (companyFilter && resolvedCompany.companyId !== companyFilter && resolvedCompany.name !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${p.erpCode || ""}`;
         if (itemFilter && itemKey !== itemFilter) return false;
-        return p.transactionNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item?.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (order?.orderNo || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-        resolvedCompany.name.toLowerCase().includes(searchTerm.toLowerCase());
+        return true;
       })
       .map((production) => {
         const schedule = schedules.find(s => s.id === production.scheduleId);
@@ -133,18 +131,30 @@ export function ProductionPlan() {
           itemName: npdItems.find((item) => item.id === String(production.itemId || "").trim())?.name || "",
         };
       });
-  }, [productions, selectedDate, searchTerm, companyFilter, itemFilter, npdItems, schedules, orders, companies]);
+  }, [productions, selectedDate, companyFilter, itemFilter, npdItems, schedules, orders, companies]);
 
-  const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => [
+  const baseSortedList = useMemo(() => sortProductionPlanRows(filteredList), [filteredList]);
+  const baseStatusRows = useMemo(
+    () => deriveProductionPlanStatuses(baseSortedList, sampleJobNumbers, requiredRealization),
+    [baseSortedList, sampleJobNumbers, requiredRealization]
+  );
+  // Table search: matches the shown columns as displayed (Sr. No. and the
+  // editable Job Sequence skipped). Order of the sorted list is kept.
+  const statusRows = useTableSearch(baseStatusRows, searchTerm, (p) => [
+    p.transactionNo, p.productionPlanCompanyName, p.itemName || "-", p.erpCode || "-",
+    format2(p.ups), format2(p.qty), format2(p.reelAsPerCalc), format2(p.reelActualWithTrimming), format2(p.cuttingWithTrimming),
+    format2(p.ply), p.flute || "-", format2(p.l1), format2(p.f1), format2(p.l2), format2(p.f2), format2(p.l3), format2(p.gsm),
+    format2(p.totalPaperWeight), format2(p.plannedProductionInMeter), p.remarks || "-", format2(p.realizationPerKg),
+    format2(p.sheetWeight), format2(p.leastGsm), p.fluteBatches || "-", formatDate(p.date), format2(p.rate),
+    format2((Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0)), p.isSample ? "Yes" : "No",
+  ]);
+  const sortedList = statusRows;
+
+  const companyOptions = useMemo(() => Array.from(new Map(statusRows.map((row) => [
     row.productionPlanCompanyId || row.productionPlanCompanyName,
     { value: row.productionPlanCompanyId || row.productionPlanCompanyName, label: row.productionPlanCompanyName },
-  ])).values()).filter((option) => option.value && option.label && option.label !== "-").sort((a, b) => a.label.localeCompare(b.label)), [filteredList]);
-  const itemOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const item = npdItems.find((i) => i.id === String(row.itemId || "").trim()); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [filteredList, npdItems]);
-  const sortedList = useMemo(() => sortProductionPlanRows(filteredList), [filteredList]);
-  const statusRows = useMemo(
-    () => deriveProductionPlanStatuses(sortedList, sampleJobNumbers, requiredRealization),
-    [sortedList, sampleJobNumbers, requiredRealization]
-  );
+  ])).values()).filter((option) => option.value && option.label && option.label !== "-").sort((a, b) => a.label.localeCompare(b.label)), [statusRows]);
+  const itemOptions = useMemo(() => Array.from(new Map(statusRows.map((row) => { const item = npdItems.find((i) => i.id === String(row.itemId || "").trim()); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [statusRows, npdItems]);
   const {
     page,
     setPage,
@@ -269,7 +279,7 @@ export function ProductionPlan() {
         <TableControls
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          placeholder="Search jobs..."
+          placeholder="Search"
         />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />

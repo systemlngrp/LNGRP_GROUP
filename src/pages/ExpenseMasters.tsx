@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Edit, Plus, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -24,7 +25,7 @@ export function ExpenseMasters() {
   const filteredExpenses = useMemo(
     () =>
       [...expenses]
-        .filter((expense) => expense.name.toLowerCase().includes(searchTerm.trim().toLowerCase()))
+        .filter((expense) => matchesTableSearch([expense.name, expense.type || "Monthly"], searchWords(searchTerm)))
         .sort((a, b) => {
           const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
           const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
@@ -156,7 +157,7 @@ export function ExpenseMasters() {
         </div>
       ) : (
         <>
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search expenses..." />
+          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
           <div className="table-sticky-scroll rounded border border-black bg-white shadow-sm">
             <table className="min-w-full border-collapse divide-y divide-black border border-black">
               <thead className="sticky top-0 z-30 divide-x divide-black bg-slate-100">

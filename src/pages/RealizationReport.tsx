@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -10,6 +10,7 @@ import { formatDate, getFinancialYear } from "../lib/serial";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
+import { useTableSearch } from "../lib/tableSearch";
 
 type TargetRow = {
   dateFrom: string;
@@ -128,16 +129,6 @@ function resolveCurrentTarget(targets: TargetRow[]) {
 
 export function RealizationReport() {
   const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
 
   const [productions] = useData<Production>("productions", []);
   const [orders] = useData<Order>("orders", []);
@@ -303,6 +294,11 @@ export function RealizationReport() {
       .sort((a, b) => b.average - a.average || a.name.localeCompare(b.name));
   }, [sourceRows]);
 
+  // Table search (display only, as before): each table matches its own shown columns.
+  // Sales Person table is transposed, so each sales person column is matched by its header name and value.
+  const visibleSalesRows = useTableSearch(salesRows, searchTerm, (row) => [row.name, Number(row.average || 0).toFixed(2)]);
+  const visibleCompanyRows = useTableSearch(companyRows, searchTerm, (row) => [row.name, Number(row.average || 0).toFixed(2)]);
+
   const currentTarget = useMemo(() => resolveCurrentTarget(targets), [targets]);
   const currentTargetFy = useMemo(() => currentTarget ? `FY ${getFinancialYear(currentTarget.dateFrom)}` : "Not set", [currentTarget]);
 
@@ -437,7 +433,7 @@ export function RealizationReport() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search realization..."
+              placeholder="Search"
               className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>
@@ -503,7 +499,7 @@ export function RealizationReport() {
             <thead className="bg-indigo-700 text-white">
               <tr className="bg-indigo-700 text-white">
                 <th className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white">Metric</th>
-                {salesRows.map((row) => (
+                {visibleSalesRows.map((row) => (
                   <th key={row.id} className="min-w-[150px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-center text-xs font-black uppercase text-white">
                     {row.name}
                   </th>
@@ -513,7 +509,7 @@ export function RealizationReport() {
             <tbody>
               <tr className="text-black hover:bg-slate-50">
                 <td className="border-2 border-black px-3 py-3 font-bold">Realization (Rs/Kg)</td>
-                {salesRows.map((row) => (
+                {visibleSalesRows.map((row) => (
                   <td
                     key={row.id}
                     className={`border-2 border-black px-3 py-3 text-center font-black ${row.average >= (currentTarget?.value || overall.average || 0) ? "bg-emerald-50 text-emerald-900" : "bg-rose-50 text-rose-800"}`}
@@ -539,14 +535,14 @@ export function RealizationReport() {
               </tr>
             </thead>
             <tbody>
-              {companyRows.length === 0 ? (
+              {visibleCompanyRows.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="border-2 border-black px-6 py-10 text-center text-sm font-medium text-black">
                     No realization rows found for the selected filters.
                   </td>
                 </tr>
               ) : (
-                companyRows.map((row, index) => (
+                visibleCompanyRows.map((row, index) => (
                   <tr key={row.id} className="text-black hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3 font-bold">{index + 1}</td>
                     <td className="border-2 border-black px-3 py-3 font-semibold">{row.name}</td>

@@ -3,6 +3,7 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Spinner } from "../components/Spinner";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { UnitMaster } from "../types";
 
 export function Units() {
@@ -19,7 +20,7 @@ export function Units() {
   const filteredUnits = useMemo(
     () =>
       [...units]
-        .filter((unit) => unit.name.toLowerCase().includes(searchTerm.toLowerCase()))
+        .filter((unit) => matchesTableSearch([unit.name, unit.active || "Yes"], searchWords(searchTerm)))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [searchTerm, units]
   );
@@ -138,7 +139,7 @@ export function Units() {
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search unit"
+                placeholder="Search"
                 className="w-[320px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button

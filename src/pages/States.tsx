@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Spinner } from "../components/Spinner";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function States() {
   const { user } = useAuth();
@@ -19,7 +20,7 @@ export function States() {
   const filteredStates = useMemo(
     () =>
       [...states]
-        .filter((state) => state.name.toLowerCase().includes(searchTerm.toLowerCase()))
+        .filter((state) => matchesTableSearch([state.name, state.active || "Yes"], searchWords(searchTerm)))
         .sort((a, b) => a.name.localeCompare(b.name)),
     [searchTerm, states]
   );
@@ -138,7 +139,7 @@ export function States() {
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search state"
+                placeholder="Search"
                 className="w-[280px] max-w-full rounded-full border border-slate-300 px-6 py-3 text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <button
