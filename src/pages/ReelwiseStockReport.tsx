@@ -523,7 +523,7 @@ export function ReelwiseStockReport() {
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Age Min (days)</span><input type="number" min="0" value={minAge} onChange={(e) => setMinAge(e.target.value)} className="h-[34px] w-full min-w-0 rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Age Max (days)</span><input type="number" min="0" value={maxAge} onChange={(e) => setMaxAge(e.target.value)} className="h-[34px] w-full min-w-0 rounded border-2 border-black px-2 text-xs font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></label>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
+        <div data-mf-fold="true" data-mf-active={availabilityFilter !== "all" || stockYetToIssueOnly || excludeZeroAvailable ? "true" : "false"} className="flex flex-wrap items-end gap-2">
           <div className="min-w-0">
             <span className="mb-0.5 block text-[10px] font-black uppercase text-slate-600">Available Stock</span>
             <div className="inline-flex h-[34px] gap-1 rounded border-2 border-black bg-white p-0.5">

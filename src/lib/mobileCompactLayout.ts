@@ -86,6 +86,8 @@ function controlUnit(panel: HTMLElement, control: HTMLElement) {
 }
 
 function unitIsActive(unit: HTMLElement) {
+  // Opt-in extra filters (toggle buttons, checkboxes) report their own state.
+  if (unit.hasAttribute("data-mf-fold")) return unit.getAttribute("data-mf-active") === "true";
   if (unit.querySelector('[class*="singleValue"], [class*="multiValue"]')) return true;
   return visibleControls(unit).some((control) => {
     // A dropdown left on its first choice ("All", "Select…") is not a filter.
@@ -111,6 +113,8 @@ function markPanelUnits(panel: HTMLElement, controls: HTMLElement[]) {
     else units.add(unit);
   });
   if (searchUnit) units.delete(searchUnit);
+  // Pages can mark extra filter rows (buttons, checkboxes) to fold as well.
+  panel.querySelectorAll<HTMLElement>("[data-mf-fold]").forEach((unit) => units.add(unit));
   if (units.size < 2) return false;
   panel.querySelectorAll<HTMLElement>("[data-mf-unit]").forEach((unit) => {
     if (!units.has(unit)) unit.removeAttribute("data-mf-unit");

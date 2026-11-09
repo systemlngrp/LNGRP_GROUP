@@ -39,12 +39,15 @@ export function MobileCompactLayout() {
     // elements, so refresh the "(n active)" count on input too.
     content.addEventListener("input", schedule, true);
     content.addEventListener("change", schedule, true);
+    // Toggle-button filters change only classes, so refresh on clicks too.
+    content.addEventListener("click", schedule, true);
     media.addEventListener?.("change", enhance);
     enhance();
     return () => {
       observer.disconnect();
       content.removeEventListener("input", schedule, true);
       content.removeEventListener("change", schedule, true);
+      content.removeEventListener("click", schedule, true);
       media.removeEventListener?.("change", enhance);
       if (timer !== null) clearTimeout(timer);
     };
