@@ -11,6 +11,9 @@ type MaterialReceiptFiltersProps = {
   onMrrChange: (value: string) => void;
   firms: string[];
   suppliers: string[];
+  // Optional search box shown before the filters.
+  searchTerm?: string;
+  onSearchChange?: (value: string) => void;
 };
 
 export function MaterialReceiptFilters({
@@ -24,9 +27,25 @@ export function MaterialReceiptFilters({
   onMrrChange,
   firms,
   suppliers,
+  searchTerm,
+  onSearchChange,
 }: MaterialReceiptFiltersProps) {
   return (
     <div className="flex flex-wrap items-end gap-3 border-b border-black bg-slate-50 p-3">
+      {onSearchChange ? (
+        <label className="min-w-[220px] flex-[1.4] text-xs font-bold uppercase text-black">
+          Search
+          <div className="relative mt-1">
+            <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+            <input
+              value={searchTerm || ""}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search MRR, party, invoice, firm, item..."
+              className="w-full border-2 border-black bg-white py-2 pl-9 pr-3 text-sm font-medium normal-case focus:outline-none focus:ring-1 focus:ring-indigo-600"
+            />
+          </div>
+        </label>
+      ) : null}
       <label className="min-w-[150px] flex-1 text-xs font-bold uppercase text-black">
         Firm
         <select value={firmFilter} onChange={(event) => onFirmChange(event.target.value)} className="mt-1 w-full border-2 border-black bg-white px-2 py-2 text-sm font-medium normal-case">

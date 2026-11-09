@@ -38,6 +38,7 @@ export function PendingCreditNote() {
   const [itemFilter, setItemFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [mrrFilter, setMrrFilter] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostCreditNote = currentUserEmail === "pankaj@bizskilledu.com";
@@ -63,8 +64,15 @@ export function PendingCreditNote() {
         const searchStr = `${mrr.transactionNo} ${partyName} ${mrr.invoiceNo}`.toLowerCase();
         return (!firmFilter || getFirmName(mrr) === firmFilter) && (!itemFilter || getItemNames(mrr).toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || partyName === supplierFilter) && (!mrrFilter || searchStr.includes(mrrFilter.trim().toLowerCase()));
       })
+      .filter((mrr) => {
+        // Search box: any of MRR No, party, invoice, firm, items, date, remarks.
+        const q = searchTerm.trim().toLowerCase();
+        if (!q) return true;
+        const text = `${mrr.transactionNo || ""} ${getPartyName(mrr.supplierId)} ${mrr.invoiceNo || ""} ${getFirmName(mrr)} ${getItemNames(mrr)} ${mrr.date || ""}`.toLowerCase();
+        return text.includes(q);
+      })
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
-  }, [companies, firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter, suppliers]);
+  }, [companies, firmFilter, itemFilter, materialIn, mrrFilter, searchTerm, supplierFilter, suppliers]);
 
   const handleMarkPosted = async (mrrId: string) => {
     if (!await confirm("Are you sure you want to mark this Credit Note as Posted/Cleared?")) return;
@@ -99,7 +107,7 @@ export function PendingCreditNote() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Credit Notes</h2>
       </div>
 
-      <MaterialReceiptFilters firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={Array.from(new Set(materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).map(getFirmName))).sort()} suppliers={Array.from(new Set(materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).map((m) => getPartyName(m.supplierId)))).sort()} />
+      <MaterialReceiptFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={Array.from(new Set(materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).map(getFirmName))).sort()} suppliers={Array.from(new Set(materialIn.filter((m) => m.mrrType === "Rejection In" && !m.creditTallyTimestamp).map((m) => getPartyName(m.supplierId)))).sort()} />
 
       <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
         <div className="max-h-[calc(100vh-300px)] overflow-auto">

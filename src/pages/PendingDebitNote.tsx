@@ -28,6 +28,7 @@ export function PendingDebitNote() {
   const [itemFilter, setItemFilter] = useState("");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [mrrFilter, setMrrFilter] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostDebitNote = currentUserEmail === "pankaj@bizskilledu.com";
@@ -51,8 +52,15 @@ export function PendingDebitNote() {
         const searchStr = `${m.transactionNo} ${m.debitNote} ${supplierName} ${m.invoiceNo}`.toLowerCase();
         return (!firmFilter || getFirmName(m) === firmFilter) && (!itemFilter || getItemNames(m).toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || supplierName === supplierFilter) && (!mrrFilter || searchStr.includes(mrrFilter.trim().toLowerCase()));
       })
+      .filter((m) => {
+        // Search box: any of MRR No, party, invoice, firm, items, date, remarks.
+        const q = searchTerm.trim().toLowerCase();
+        if (!q) return true;
+        const text = `${m.transactionNo || ""} ${getSupplierName(m.supplierId)} ${m.invoiceNo || ""} ${getFirmName(m)} ${getItemNames(m)} ${m.date || ""} ${m.debitNote || ""}`.toLowerCase();
+        return text.includes(q);
+      })
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
-  }, [firmFilter, itemFilter, materialIn, mrrFilter, supplierFilter, suppliers]);
+  }, [firmFilter, itemFilter, materialIn, mrrFilter, searchTerm, supplierFilter, suppliers]);
 
   const handleMarkPosted = async (mrrId: string) => {
     if (!await confirm("Are you sure you want to mark this Debit Note as Posted/Cleared?")) return;
@@ -83,7 +91,7 @@ export function PendingDebitNote() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Debit Notes</h2>
       </div>
 
-      <MaterialReceiptFilters firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={firmOptions} suppliers={supplierOptions} />
+      <MaterialReceiptFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={firmOptions} suppliers={supplierOptions} />
 
       <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
         <div className="max-h-[calc(100vh-300px)] overflow-auto">
