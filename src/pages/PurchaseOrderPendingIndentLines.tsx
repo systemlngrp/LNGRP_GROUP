@@ -398,40 +398,48 @@ export function PurchaseOrderPendingIndentLines() {
   if (loading && rows.length === 0) return <CenteredLoader message="Loading data…" />;
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Pending Indent Lines for PO">
-        <div className="relative w-full max-w-sm">
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Indent Lines for PO</h2>
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded border border-black bg-white py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
-      </PageHeader>
-
-      <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
-        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Firm</label><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" /></div>
-        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Requested By</label><Select compact value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="Requested By" /></div>
-        <div className="min-w-[220px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Label</label><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Item Labels" /></div>
-        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Type</label><Select compact value={itemTypeFilter} onChange={setItemTypeFilter} options={itemTypeOptions} placeholder="Item Types" /></div>
-        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent No</label><Select compact value={indentNoFilter} onChange={setIndentNoFilter} options={indentNoOptions} placeholder="Indent Nos" /></div>
-        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date From</label><input type="date" value={indentFromDateFilter} onChange={(e) => setIndentFromDateFilter(e.target.value)} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
-        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date To</label><input type="date" value={indentToDateFilter} onChange={(e) => setIndentToDateFilter(e.target.value)} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
-        <div className="min-w-[200px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Supplier</label><Select compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers" /></div>
-        <button type="button" onClick={() => { setFirmFilter(""); setRequestedByFilter(""); setItemFilter(""); setItemTypeFilter(""); setIndentNoFilter(""); setIndentFromDateFilter(""); setIndentToDateFilter(""); setSupplierFilter(""); setSearchTerm(""); }} className="rounded border border-black px-3 py-2 text-xs font-black uppercase hover:bg-slate-100">Reset</button>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Requested By</span><Select compact value={requestedByFilter} onChange={setRequestedByFilter} options={requestedByOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item Label</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item Type</span><Select compact value={itemTypeFilter} onChange={setItemTypeFilter} options={itemTypeOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Indent No</span><Select compact value={indentNoFilter} onChange={setIndentNoFilter} options={indentNoOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Indent From Date</span><input type="date" value={indentFromDateFilter} onChange={(e) => setIndentFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Indent To Date</span><input type="date" value={indentToDateFilter} onChange={(e) => setIndentToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold" /></label>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Supplier</span><Select compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="All" /></div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {searchTerm.trim() || firmFilter || requestedByFilter || itemFilter || itemTypeFilter || indentNoFilter || indentFromDateFilter || indentToDateFilter || supplierFilter ? (
+            <button type="button" onClick={() => { setFirmFilter(""); setRequestedByFilter(""); setItemFilter(""); setItemTypeFilter(""); setIndentNoFilter(""); setIndentFromDateFilter(""); setIndentToDateFilter(""); setSupplierFilter(""); setSearchTerm(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
       {error ? (
         <div className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : null}
 
-      <div className="rounded border border-black bg-white shadow-sm overflow-hidden">
-        <div className="max-h-[600px] overflow-auto">
+      <div className="overflow-x-auto rounded border border-black bg-white">
+        <div>
           <table className="min-w-full border-collapse">
-            <thead className="bg-slate-100 sticky top-0 z-10">
+            <thead className="bg-slate-100">
               <tr>
                 <th className="border border-black bg-slate-100 px-3 py-3 text-center text-xs font-bold uppercase text-black whitespace-nowrap">
                   <input

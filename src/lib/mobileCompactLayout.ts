@@ -25,6 +25,9 @@ function visibleControls(root: Element) {
 }
 
 function isEntryPage(content: HTMLElement) {
+  // A page can mark its filter box with data-mf-panel to fold it even though
+  // the page also has a Save / Create button (e.g. Indents Not Ordered).
+  if (content.querySelector("[data-mf-panel]")) return false;
   if (content.querySelector("form, textarea")) return true;
   // Buttons inside table rows (a row's own Update / Save) don't make a list
   // page an entry form.
@@ -66,6 +69,8 @@ function isSearchControl(control: HTMLElement) {
 }
 
 function findFilterPanel(content: HTMLElement, start: HTMLElement) {
+  const marked = start.closest<HTMLElement>("[data-mf-panel]");
+  if (marked && content.contains(marked)) return marked;
   let panel: HTMLElement = start;
   for (let guard = 0; guard < 12; guard += 1) {
     const parent: HTMLElement | null = panel.parentElement;
@@ -232,7 +237,7 @@ function markFilterPanels(content: HTMLElement) {
     if (panelControls.length < 3) continue;
     // Fold only boxes that take real space on a phone; a one-line search bar
     // is left as it is.
-    if (!panel.hasAttribute("data-mobile-filters") && panel.getBoundingClientRect().height < 180) continue;
+    if (!panel.hasAttribute("data-mobile-filters") && !panel.hasAttribute("data-mf-panel") && panel.getBoundingClientRect().height < 180) continue;
     // Only a box that comes before a table (a list page's filters).
     if (!tables.some((table) => panel.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
     if (markPanelUnits(panel, panelControls)) found.push(panel);

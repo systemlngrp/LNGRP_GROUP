@@ -1125,65 +1125,43 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   };
 
   return (
-    <div className="space-y-6">
-      <PageHeader title={getTitle(mode)}>
-        <div className="flex w-full flex-wrap gap-3 items-center">
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
-            />
-          </div>
-          {isFlatItemMode ? (
-            <select
-              value={poNumberFilter}
-              onChange={(e) => setPoNumberFilter(e.target.value)}
-              className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black focus:outline-none focus:ring-1 focus:ring-black md:w-44"
-            >
-              <option value="">PO Numbers</option>
-              {poNumberOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.poNo}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <div className="w-full md:w-64">
-            <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
-          </div>
-          <div className="w-full md:w-64">
-            <Select<SelectOption, false>
-              options={supplierSelectOptions}
-              value={supplierSelectOptions.find((option) => option.value === supplierFilter) || null}
-              onChange={(option) => setSupplierFilter(option?.value || "")}
-              isClearable
-              placeholder="Suppliers"
-              menuPlacement="bottom"
-              menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-              menuPosition="fixed"
-              styles={{
-                control: (provided) => ({ ...provided, minHeight: 38, borderColor: "black", borderRadius: 4, fontSize: 14, fontWeight: 600 }),
-                menu: (provided) => ({ ...provided, zIndex: 9999 }),
-                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-              }}
-            />
-          </div>
-          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">PO From Date</span><input type="date" value={fromDateFilter} onChange={(e) => setFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date From" title="PO Date From" /></label>
-          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">PO To Date</span><input type="date" value={toDateFilter} onChange={(e) => setToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm font-semibold text-black md:w-40" aria-label="PO Date To" title="PO Date To" /></label>
-        </div>
-      </PageHeader>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">{getTitle(mode)}</h2>
+        <button type="button" onClick={handleExportPdf} title="Download PDF" className="rounded border border-rose-700 px-3 py-1.5 text-sm font-bold text-rose-700">PDF</button>
+      </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded border border-black bg-white p-3">
-        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Type</label><select value={itemTypeFilter} onChange={(e) => setItemTypeFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">Item Types</option>{itemTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-        <div className="min-w-[180px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent No</label><select value={indentNoFilter} onChange={(e) => setIndentNoFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm"><option value="">Indent Nos</option>{indentNoOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date From</label><input type="date" value={indentFromDateFilter} onChange={(e) => setIndentFromDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
-        <div className="min-w-[150px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Indent Date To</label><input type="date" value={indentToDateFilter} onChange={(e) => setIndentToDateFilter(e.target.value)} className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
-        <div className="min-w-[200px] flex-1"><label className="mb-1 block text-[10px] font-black uppercase">Item Label</label><input type="search" value={itemLabelFilter} onChange={(e) => setItemLabelFilter(e.target.value)} placeholder="Filter item label" className="w-full rounded border border-black bg-white px-3 py-2 text-sm" /></div>
-        <button type="button" onClick={() => { setSearchTerm(""); setSupplierFilter(""); setFirmFilter(""); setPoNumberFilter(""); setFromDateFilter(""); setToDateFilter(""); setItemTypeFilter(""); setIndentNoFilter(""); setIndentFromDateFilter(""); setIndentToDateFilter(""); setItemLabelFilter(""); }} className="rounded border border-black px-3 py-2 text-xs font-black uppercase hover:bg-slate-100">Reset</button>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-5">
+          {isFlatItemMode ? (
+            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">PO No</span><FirmSelect compact value={poNumberFilter} onChange={setPoNumberFilter} options={poNumberOptions.map((option) => ({ value: option.id, label: option.poNo }))} placeholder="All" /></div>
+          ) : null}
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Supplier</span><FirmSelect compact value={supplierFilter} onChange={setSupplierFilter} options={supplierSelectOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item Type</span><FirmSelect compact value={itemTypeFilter} onChange={setItemTypeFilter} options={itemTypeOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Indent No</span><FirmSelect compact value={indentNoFilter} onChange={setIndentNoFilter} options={indentNoOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">PO From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">PO To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Indent From Date</span><input type="date" value={indentFromDateFilter} onChange={(e) => setIndentFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Indent To Date</span><input type="date" value={indentToDateFilter} onChange={(e) => setIndentToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item Label</span><input type="text" value={itemLabelFilter} onChange={(e) => setItemLabelFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {searchTerm.trim() || supplierFilter || firmFilter || poNumberFilter || fromDateFilter || toDateFilter || itemTypeFilter || indentNoFilter || indentFromDateFilter || indentToDateFilter || itemLabelFilter ? (
+            <button type="button" onClick={() => { setSearchTerm(""); setSupplierFilter(""); setFirmFilter(""); setPoNumberFilter(""); setFromDateFilter(""); setToDateFilter(""); setItemTypeFilter(""); setIndentNoFilter(""); setIndentFromDateFilter(""); setIndentToDateFilter(""); setItemLabelFilter(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -1200,9 +1178,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         ))}
       </div>
       {isFlatItemMode ? (
-        <div className="w-full min-w-0 overflow-x-scroll rounded border border-black bg-white shadow-sm">
+        <div className="w-full min-w-0 overflow-x-auto rounded border border-black bg-white">
           <table className="min-w-max w-full border-collapse">
-            <thead className="sticky top-0 z-30 bg-slate-100">
+            <thead className="bg-slate-100">
               <tr className="divide-x divide-black border-b border-black">
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">PO Number</th>
                 <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">PO Date</th>
@@ -1303,9 +1281,9 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           </table>
         </div>
       ) : (
-      <div className="overflow-hidden rounded border border-black bg-white shadow-sm">
+      <div className="overflow-x-auto rounded border border-black bg-white">
         <table className="min-w-full border-collapse">
-          <thead className="sticky top-0 z-30 bg-slate-100">
+          <thead className="bg-slate-100">
             <tr className="divide-x divide-black border-b border-black">
               <th className="w-10 px-4 py-3"></th>
               <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">PO Number</th>
@@ -1733,16 +1711,6 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         onPageSizeChange={setPageSize}
       />
 
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleExportPdf}
-          className="inline-flex min-w-[96px] items-center justify-center gap-2 rounded border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100"
-        >
-          <FileText size={14} />
-          PDF
-        </button>
-      </div>
     </div>
   );
 }
