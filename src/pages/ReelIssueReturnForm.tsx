@@ -478,7 +478,7 @@ export function ReelIssueReturnForm() {
               disabled={isSubmitting || !productionId || !hasAnyIssue}
               className="inline-flex min-w-[220px] items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(99,102,241,1),rgba(168,85,247,0.95))] px-6 py-3.5 text-sm font-black uppercase tracking-[0.18em] text-white shadow-[0_18px_35px_-18px_rgba(79,70,229,0.85)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save Reel Issue"}
+              {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save"}
             </button>
           </div>
         </form>

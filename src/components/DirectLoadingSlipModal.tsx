@@ -443,7 +443,7 @@ export function DirectLoadingSlipModal({
               disabled={isSaving || !previewSlip}
               className="rounded border border-black bg-emerald-600 px-4 py-2 text-xs font-black uppercase text-white disabled:opacity-50"
             >
-              {isSaving ? "Saving..." : "Save Direct Loading Slip"}
+              {isSaving ? "Saving..." : "Save"}
             </button>
           </div>
         </div>

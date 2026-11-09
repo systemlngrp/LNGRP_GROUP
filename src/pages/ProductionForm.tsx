@@ -988,7 +988,7 @@ export function ProductionForm() {
               }
               className="flex items-center justify-center min-w-[120px] bg-emerald-600 text-white px-6 py-2 rounded text-[15px] font-bold hover:bg-emerald-700 transition disabled:opacity-50 border border-black shadow"
             >
-              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit Entry"}
+              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
             </button>
           </div>
         </form>

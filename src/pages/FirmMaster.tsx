@@ -187,7 +187,7 @@ export function FirmMaster() {
 
           <div className="flex items-center gap-3 pt-2">
             <button type="submit" disabled={isSubmitting} className="flex min-w-[100px] items-center justify-center rounded bg-emerald-600 px-6 py-2 font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50">
-              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit"}
+              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
             </button>
             <button type="button" onClick={closeForm} disabled={isSubmitting} className="rounded border-2 border-black bg-white px-6 py-2 font-bold text-black transition hover:bg-slate-100 disabled:opacity-50">
               Cancel

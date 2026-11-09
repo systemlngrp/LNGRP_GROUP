@@ -418,7 +418,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
                 onClick={() => void handleSave()}
                 className="rounded border border-black bg-emerald-600 px-4 py-2 text-sm font-bold uppercase text-white hover:bg-emerald-700"
               >
-                Save Schedule
+                Save
               </button>
               <button
                 type="button"

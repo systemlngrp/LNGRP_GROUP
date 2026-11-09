@@ -1021,7 +1021,7 @@ export function SettingsPage() {
             disabled={loading || saving}
             className="bg-indigo-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
           >
-            {saving ? <Spinner size={18} className="text-white" /> : "Save Roles"}
+            {saving ? <Spinner size={18} className="text-white" /> : "Save"}
           </button>
         </div>
       </div>
@@ -1476,7 +1476,7 @@ export function SettingsPage() {
                 disabled={loading || saving}
                 className="bg-emerald-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
               >
-                {saving ? <Spinner size={18} className="text-white" /> : "Save Realization Setup"}
+                {saving ? <Spinner size={18} className="text-white" /> : "Save"}
               </button>
             </div>
           </div>
@@ -1521,7 +1521,7 @@ export function SettingsPage() {
                 disabled={loading || saving}
                 className="bg-indigo-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
               >
-                {saving ? <Spinner size={18} className="text-white" /> : "Save PO Mandatory"}
+                {saving ? <Spinner size={18} className="text-white" /> : "Save"}
               </button>
             </div>
           </div>
@@ -1692,7 +1692,7 @@ export function SettingsPage() {
                 disabled={loading || saving}
                 className="bg-emerald-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all"
               >
-                {saving ? <Spinner size={18} className="text-white" /> : "Save Invoice Series"}
+                {saving ? <Spinner size={18} className="text-white" /> : "Save"}
               </button>
             </div>
           </div>
@@ -1793,7 +1793,7 @@ export function SettingsPage() {
               disabled={loading || saving}
               className="bg-indigo-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
             >
-              {saving ? <Spinner size={18} className="text-white" /> : "Save Designations"}
+              {saving ? <Spinner size={18} className="text-white" /> : "Save"}
             </button>
           </div>
         </div>
@@ -1949,7 +1949,7 @@ export function SettingsPage() {
               disabled={loading || saving}
               className="bg-indigo-600 text-white px-6 py-2 rounded font-bold border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-none transition-all disabled:opacity-50"
             >
-              {saving ? <Spinner size={18} className="text-white" /> : "Save Mandatory Machines"}
+              {saving ? <Spinner size={18} className="text-white" /> : "Save"}
             </button>
           </div>
         </div>
@@ -2009,7 +2009,7 @@ export function SettingsPage() {
                 disabled={loading || saving || uploadingLogo || !hasOrganizationChanges}
                 className="inline-flex items-center justify-center min-w-[170px] rounded bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50"
               >
-                {saving ? <Spinner size={16} className="text-white" /> : "Save Logo"}
+                {saving ? <Spinner size={16} className="text-white" /> : "Save"}
               </button>
             </div>
           </div>
@@ -2117,7 +2117,7 @@ export function SettingsPage() {
               disabled={loading || saving || user?.role !== "Admin"}
               className="rounded bg-indigo-600 px-5 py-2 font-bold text-white border-2 border-black disabled:opacity-50"
             >
-              Save Rate
+              Save
             </button>
           </div>
           <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
@@ -2125,8 +2125,8 @@ export function SettingsPage() {
           </div>
         </div>
 
-        <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">Sampling Plan Quantity</h3><p className="text-sm leading-6 text-black">Plan Quantity is divided by the configured divisor, rounded up, and clamped between the minimum and maximum.</p><div className="grid grid-cols-1 gap-3 md:grid-cols-3"><label>Divisor<input type="number" min="1" step="any" value={samplingPlanQtyDraft.divisor} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, divisor: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Minimum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.minimum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, minimum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Maximum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.maximum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, maximum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label></div>{samplingPlanQtyError && <div className="font-bold text-red-700">{samplingPlanQtyError}</div>}<button type="button" onClick={() => void saveSamplingPlanQty()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save Sampling Settings</button></div>
-        <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">QC BGSM Formula</h3><p className="text-sm leading-6 text-black">BGSM minimum and maximum are calculated around Required B.GSM using this tolerance percentage.</p><div className="max-w-xs"><label>Tolerance (%)<input type="number" min="0" step="any" value={qcBgsmToleranceDraft} onChange={(event) => setQcBgsmToleranceDraft(event.target.value)} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label></div>{qcBgsmToleranceError && <div className="font-bold text-red-700">{qcBgsmToleranceError}</div>}<button type="button" onClick={() => void saveQcBgsmTolerance()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save BGSM Formula</button></div>
+        <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">Sampling Plan Quantity</h3><p className="text-sm leading-6 text-black">Plan Quantity is divided by the configured divisor, rounded up, and clamped between the minimum and maximum.</p><div className="grid grid-cols-1 gap-3 md:grid-cols-3"><label>Divisor<input type="number" min="1" step="any" value={samplingPlanQtyDraft.divisor} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, divisor: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Minimum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.minimum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, minimum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Maximum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.maximum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, maximum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label></div>{samplingPlanQtyError && <div className="font-bold text-red-700">{samplingPlanQtyError}</div>}<button type="button" onClick={() => void saveSamplingPlanQty()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save</button></div>
+        <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">QC BGSM Formula</h3><p className="text-sm leading-6 text-black">BGSM minimum and maximum are calculated around Required B.GSM using this tolerance percentage.</p><div className="max-w-xs"><label>Tolerance (%)<input type="number" min="0" step="any" value={qcBgsmToleranceDraft} onChange={(event) => setQcBgsmToleranceDraft(event.target.value)} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label></div>{qcBgsmToleranceError && <div className="font-bold text-red-700">{qcBgsmToleranceError}</div>}<button type="button" onClick={() => void saveQcBgsmTolerance()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save</button></div>
 
         <div className="flex flex-col space-y-2">
           <label htmlFor="flapAsPerCalculation" className="text-xs font-black uppercase tracking-wide text-black">

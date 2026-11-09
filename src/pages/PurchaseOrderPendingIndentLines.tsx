@@ -623,7 +623,7 @@ export function PurchaseOrderPendingIndentLines() {
           disabled={!canCreate}
           className="min-w-36 border border-black bg-indigo-600 px-6 py-3 text-sm font-black uppercase text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {creating ? "Creating..." : "Create PO"}
+          {creating ? "Saving..." : "Save"}
         </button>
       </div>
     </div>

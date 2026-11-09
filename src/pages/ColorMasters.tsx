@@ -106,7 +106,7 @@ export function ColorMasters() {
             </div>
             <div className="flex space-x-3 pt-2 items-center">
               <button type="submit" disabled={isSubmitting} className="bg-emerald-600 text-white px-6 py-2 rounded font-bold hover:bg-emerald-700 transition border border-black min-w-[100px]">
-                {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit"}
+                {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
               </button>
               <button type="button" onClick={() => { setIsFormOpen(false); resetForm(); }} className="bg-white text-black border-2 border-black px-6 py-2 rounded font-bold hover:bg-slate-50 transition">
                 Cancel

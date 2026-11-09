@@ -561,7 +561,7 @@ export function Companies() {
 
           <div className="flex space-x-3 pt-2 items-center">
             <button type="submit" disabled={isSubmitting} className="flex items-center justify-center min-w-[100px] bg-emerald-600 text-white px-6 py-2 rounded font-bold hover:bg-emerald-700 transition disabled:opacity-50">
-              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Submit"}
+              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
             </button>
             <button type="button" onClick={() => { setIsFormOpen(false); resetForm(); }} disabled={isSubmitting} className="bg-white text-black border-2 border-black px-6 py-2 rounded font-bold hover:bg-slate-100 transition disabled:opacity-50">Cancel</button>
           </div>

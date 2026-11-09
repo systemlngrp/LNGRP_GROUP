@@ -2041,7 +2041,7 @@ export function Materials() {
                 disabled={isSubmitting}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-2 rounded transition disabled:opacity-50 border border-black shadow"
               >
-                {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save Item"}
+                {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
               </button>
             </div>
           </form>
@@ -2267,7 +2267,7 @@ export function Materials() {
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => { setShowGroupModal(false); setNewGroupName(""); }} className="px-5 py-2 border-2 border-black rounded font-bold text-black">Cancel</button>
                 <button type="submit" disabled={savingGroup} className="px-5 py-2 bg-indigo-600 text-white rounded font-bold border border-black disabled:opacity-50">
-                  {savingGroup ? <Spinner size={16} className="text-white" /> : "Save Group"}
+                  {savingGroup ? <Spinner size={16} className="text-white" /> : "Save"}
                 </button>
               </div>
             </form>
@@ -2300,7 +2300,7 @@ export function Materials() {
               <div className="flex justify-end gap-3">
                 <button type="button" onClick={() => { setShowUnitModal(false); setNewUnitName(""); }} className="px-5 py-2 border-2 border-black rounded font-bold text-black">Cancel</button>
                 <button type="submit" disabled={savingUnit} className="px-5 py-2 bg-indigo-600 text-white rounded font-bold border border-black disabled:opacity-50">
-                  {savingUnit ? <Spinner size={16} className="text-white" /> : "Save Unit"}
+                  {savingUnit ? <Spinner size={16} className="text-white" /> : "Save"}
                 </button>
               </div>
             </form>

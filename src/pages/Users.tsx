@@ -588,7 +588,7 @@ export function Users() {
                   disabled={isSubmitting}
                   className="flex items-center justify-center min-w-[120px] bg-indigo-600 text-white px-6 py-2 rounded font-bold hover:bg-indigo-700 transition disabled:opacity-50 border border-black shadow"
                 >
-                  {isSubmitting ? <Spinner size={20} className="text-white" /> : (editingId ? "Update User" : "Create User")}
+                  {isSubmitting ? <Spinner size={20} className="text-white" /> : (editingId ? "Update" : "Save")}
                 </button>
               ) : null}
               <button

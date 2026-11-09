@@ -177,7 +177,7 @@ export function StandaloneDispatchForm({ source }: StandaloneDispatchFormProps) 
             disabled={selectedIds.size === 0 || isSubmitting}
             className="rounded border border-black bg-black px-4 py-2 text-sm font-bold uppercase tracking-wide text-white disabled:opacity-50"
           >
-            {isSubmitting ? "Saving..." : "Save Dispatch Plan"}
+            {isSubmitting ? "Saving..." : "Save"}
           </button>
         </div>
       </div>

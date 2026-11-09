@@ -278,7 +278,7 @@ export function QualityComplaintCapa() {
 
         <footer className="flex flex-col-reverse items-stretch justify-between gap-3 rounded border-2 border-black bg-white p-4 shadow-sm sm:flex-row sm:items-center">
           <button type="button" onClick={clearForm} className="rounded border-2 border-black bg-white px-5 py-2.5 text-sm font-bold transition hover:bg-slate-100">Clear form</button>
-          <button type="submit" className="inline-flex items-center justify-center gap-2 rounded border-2 border-indigo-800 bg-indigo-700 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-800"><Save size={17} />Submit CAPA</button>
+          <button type="submit" className="inline-flex items-center justify-center gap-2 rounded border-2 border-indigo-800 bg-indigo-700 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-800"><Save size={17} />Save</button>
         </footer>
       </form>
     </div>

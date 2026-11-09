@@ -200,7 +200,7 @@ export function IndentDetail() {
                 disabled={isSubmitting}
                 className="inline-flex items-center justify-center min-w-[140px] rounded bg-indigo-600 px-5 py-2 font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50"
               >
-                {isSubmitting ? <Spinner size={18} className="text-white" /> : "Save Changes"}
+                {isSubmitting ? <Spinner size={18} className="text-white" /> : "Save"}
               </button>
             ) : null}
           </div>

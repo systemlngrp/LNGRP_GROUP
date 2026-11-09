@@ -323,7 +323,7 @@ export function Suppliers() {
                 disabled={isSubmitting}
                 className="px-7 py-3 rounded-2xl bg-indigo-700 text-white font-bold hover:bg-indigo-800 transition disabled:opacity-50"
               >
-                {isSubmitting ? <Spinner size={18} className="text-white" /> : "Save Supplier"}
+                {isSubmitting ? <Spinner size={18} className="text-white" /> : "Save"}
               </button>
             </div>
           </div>

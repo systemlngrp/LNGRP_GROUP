@@ -133,7 +133,7 @@ export function SampleForm() {
             disabled={isSubmitting || !itemId || plannedQuantity === "" || Number(plannedQuantity) <= 0}
             className="flex items-center justify-center min-w-[150px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={24} className="text-white" /> : "Save Sample"}
+            {isSubmitting ? <Spinner size={24} className="text-white" /> : "Save"}
           </button>
         </div>
       </form>

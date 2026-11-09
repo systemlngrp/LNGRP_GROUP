@@ -334,7 +334,7 @@ export function OrdersPendingScheduling() {
 
                 <button onClick={async () => { const saved = await handleSave(modalOrderId!); if (saved) { setModalOpen(false); setModalOrderId(null); } }} disabled={saving} className="bg-emerald-600 text-white px-3 py-1 rounded flex items-center gap-2">
                   {saving ? <Spinner size={16} /> : null}
-                  <span>Save Schedule</span>
+                  <span>Save</span>
                 </button>
               </div>
 

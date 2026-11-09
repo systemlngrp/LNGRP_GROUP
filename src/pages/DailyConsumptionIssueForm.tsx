@@ -192,7 +192,7 @@ export function DailyConsumptionIssueForm() {
             disabled={isSubmitting || !firmId || lines.length === 0 || existingCount > 0}
             className="min-w-[180px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save Daily Consumption"}
+            {isSubmitting ? <Spinner size={22} className="text-white" /> : "Save"}
           </button>
         </div>
       </form>

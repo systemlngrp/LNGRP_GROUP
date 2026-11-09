@@ -229,7 +229,7 @@ export function StandaloneLoadingForm({ source }: StandaloneLoadingFormProps) {
                       disabled={savingPlanId === row.plan.id}
                       className="rounded border border-black bg-black px-3 py-1 text-xs font-bold uppercase text-white disabled:opacity-50"
                     >
-                      {savingPlanId === row.plan.id ? "Saving..." : "Save Slip"}
+                      {savingPlanId === row.plan.id ? "Saving..." : "Save"}
                     </button>
                   </td>
                 </tr>

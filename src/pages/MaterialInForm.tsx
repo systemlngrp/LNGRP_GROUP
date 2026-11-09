@@ -3543,7 +3543,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             disabled={isSubmitting || lines.length === 0}
             className="flex items-center justify-center min-w-[150px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={24} className="text-white" /> : editingEntry ? "Update Form" : "Submit Form"}
+            {isSubmitting ? <Spinner size={24} className="text-white" /> : editingEntry ? "Update" : "Save"}
           </button>
         </div>
 

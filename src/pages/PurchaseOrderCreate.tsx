@@ -509,7 +509,7 @@ export function PurchaseOrderCreate() {
             disabled={isSubmitting}
             className="inline-flex items-center justify-center min-w-[160px] rounded bg-indigo-600 px-6 py-3 font-bold text-white hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={20} className="text-white" /> : "Create PO"}
+            {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
           </button>
         </div>
       </div>

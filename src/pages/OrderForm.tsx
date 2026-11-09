@@ -891,7 +891,7 @@ export function OrderForm() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={isSubmitting} className="bg-emerald-600 text-white px-6 py-2 rounded-md font-semibold shadow">{isSubmitting ? <Spinner /> : "Submit"}</button>
+            <button type="submit" disabled={isSubmitting} className="bg-emerald-600 text-white px-6 py-2 rounded-md font-semibold shadow">{isSubmitting ? <Spinner /> : "Save"}</button>
             <button type="button" onClick={() => { setIsFormOpen(false); resetForm(); navigate("/orders/master"); }} className="bg-white text-black border border-slate-300 px-6 py-2 rounded-md font-semibold">Cancel</button>
           </div>
         </form>

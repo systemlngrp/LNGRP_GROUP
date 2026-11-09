@@ -291,7 +291,7 @@ export function StandaloneProductionForm({ source }: StandaloneProductionFormPro
               disabled={!selectedItem || isSubmitting}
               className="inline-flex items-center gap-2 rounded border border-black bg-black px-4 py-2 text-sm font-bold uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "Saving..." : "Save Production"}
+              {isSubmitting ? "Saving..." : "Save"}
             </button>
           </div>
         </form>

@@ -715,7 +715,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
                           </div>
                           {mode === "Pending" ? (
                             <div className="mt-3 flex justify-end">
-                              <button type="button" onClick={() => void handleSaveChildLines(indent, lineRows)} className="rounded bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">Save Item Updates</button>
+                              <button type="button" onClick={() => void handleSaveChildLines(indent, lineRows)} className="rounded bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700">Save</button>
                             </div>
                           ) : null}
                         </div>

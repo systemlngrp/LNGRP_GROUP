@@ -560,7 +560,7 @@ export function PendingJobClosure() {
                               onClick={() => void saveProductionDate(p.id)}
                               className="font-bold inline-flex items-center justify-center p-2 border border-black text-xs bg-white hover:bg-slate-100"
                             >
-                              Save Date
+                              Save
                             </button>
                             <button
                               onClick={cancelEditingProductionDate}

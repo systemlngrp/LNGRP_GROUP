@@ -72,6 +72,6 @@ export function QcBlockRecordForm() {
         <label><b>Block No. *</b><input className={input} value={blockNo} onChange={event => changeBlockNo(event.target.value)}/></label>
       </div>
     </section>
-    <div className="flex justify-end"><button type="button" disabled={saving} onClick={() => void save()} className="rounded bg-cyan-700 px-5 py-3 font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Save Block Record"}</button></div>
+    <div className="flex justify-end"><button type="button" disabled={saving} onClick={() => void save()} className="rounded bg-cyan-700 px-5 py-3 font-bold text-white disabled:opacity-60">{saving ? "Saving..." : "Save"}</button></div>
   </div>;
 }

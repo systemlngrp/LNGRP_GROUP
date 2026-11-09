@@ -115,7 +115,7 @@ export function ReelTransferForm() {
         </tbody></table></div>
       </section>
 
-      <div className="flex flex-col justify-between gap-3 border-t border-black pt-4 md:flex-row md:items-center"><div className="text-sm"><span className="font-bold">Transfer Total:</span> <span className="font-bold tabular-nums">{totalWeight.toFixed(2)} KG</span><span className="ml-3 text-slate-600">{selectedSlips.length} Reel{selectedSlips.length === 1 ? "" : "s"} Selected</span></div><button disabled={saving || !isReadyToSave} className="inline-flex items-center justify-center gap-2 rounded bg-indigo-600 px-5 py-2.5 text-sm font-bold uppercase text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"><ArrowRightLeft size={17} />{saving ? "Saving Transfer..." : "Save Reel Transfer"}</button></div>
+      <div className="flex flex-col justify-between gap-3 border-t border-black pt-4 md:flex-row md:items-center"><div className="text-sm"><span className="font-bold">Transfer Total:</span> <span className="font-bold tabular-nums">{totalWeight.toFixed(2)} KG</span><span className="ml-3 text-slate-600">{selectedSlips.length} Reel{selectedSlips.length === 1 ? "" : "s"} Selected</span></div><button disabled={saving || !isReadyToSave} className="inline-flex items-center justify-center gap-2 rounded bg-indigo-600 px-5 py-2.5 text-sm font-bold uppercase text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400"><ArrowRightLeft size={17} />{saving ? "Saving Transfer..." : "Save"}</button></div>
     </form>
   </div>;
 }

@@ -729,7 +729,7 @@ export function PrintingQcForm() {
             disabled={isSubmitting || !canSubmit}
             className="flex min-w-[180px] items-center justify-center rounded bg-indigo-600 px-6 py-3 font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={24} className="text-white" /> : "Save Printing QC"}
+            {isSubmitting ? <Spinner size={24} className="text-white" /> : "Save"}
           </button>
         </div>
       </form>
@@ -1116,7 +1116,7 @@ export function PrintingQcMaster() {
             ))}
             <div className="mt-5 flex justify-end gap-2 border-t border-black pt-4">
               <button type="button" onClick={() => setEditingRow(null)} className="rounded border border-black px-4 py-2 font-bold">Cancel</button>
-              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.checkNo) || getChunkFilledFields(editForm as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]).length === 0} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save Changes"}</button>
+              <button type="button" onClick={saveEdit} disabled={isSaving || !hasFormValue(editForm.jobNo) || !hasFormValue(editForm.checkNo) || getChunkFilledFields(editForm as Record<string, unknown>, [...PRINTING_CHUNK_FIELD_KEYS]).length === 0} className="rounded bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">{isSaving ? "Saving..." : "Save"}</button>
             </div>
           </div>
         </div>
