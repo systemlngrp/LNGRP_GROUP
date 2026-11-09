@@ -1604,3 +1604,26 @@ table td button:focus-visible {
     display: none !important;
   }
 }
+
+/* Table headers in the page's menu-section colour, white text (Layout.tsx,
+   sectionColors.ts). Tables opened inside a row get a light tint instead. */
+.app-view-content[data-section-color] table.app-enhanced-table > thead th,
+.app-view-content[data-section-color] table.app-enhanced-table > thead td {
+  background-color: var(--section-head-bg) !important;
+  background-image: none !important;
+  color: #fff !important;
+}
+.app-view-content[data-section-color] table.app-enhanced-table > thead :is(th, td) :is(span, div, button, a, svg, label, p, strong) {
+  color: inherit !important;
+}
+.app-view-content[data-section-color] table.app-enhanced-table > thead input[type="checkbox"] {
+  accent-color: #fff;
+}
+.app-view-content[data-section-color] table.app-enhanced-table > thead .app-table-column-resizer {
+  border-color: rgba(255, 255, 255, 0.6) !important;
+}
+.app-view-content[data-section-color] table.app-enhanced-table table.app-enhanced-table > thead th,
+.app-view-content[data-section-color] table.app-enhanced-table table.app-enhanced-table > thead td {
+  background-color: color-mix(in srgb, var(--section-head-bg) 14%, #fff) !important;
+  color: #0f172a !important;
+}

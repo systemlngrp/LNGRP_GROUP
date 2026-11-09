@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { DataLoadingBoundary, RouteMountMarker } from "./DataLoadingBoundary";
@@ -15,6 +15,7 @@ import { MobileCompactLayout } from "./MobileCompactLayout";
 import { MobileAddButton, MobileExportButtons, MobilePageTitle, useMobilePageHeader } from "./MobileTopBar";
 import { UpdateNotice } from "./UpdateNotice";
 import { markExportButtons } from "../lib/exportButtons";
+import { sectionColorForPath } from "../lib/sectionColors";
 import { FullscreenViewControl } from "./FullscreenViewControl";
 import { BackNavigationControl } from "./BackNavigationControl";
 
@@ -29,6 +30,7 @@ export function Layout() {
   const [alertQueue, setAlertQueue] = useState<string[]>([]);
   const location = useLocation();
   const mobileHeader = useMobilePageHeader();
+  const sectionColor = sectionColorForPath(location.pathname);
   const [hideFullscreenOnPhone, setHideFullscreenOnPhone] = useState(false);
   const { user, activeFirm, setActiveFirm, hasAccess, logout } = useAuth();
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
@@ -282,7 +284,12 @@ export function Layout() {
              </div>
           </div>
         </header>
-        <div className="app-view-content flex-1 overflow-auto bg-white">
+        <div
+          className="app-view-content flex-1 overflow-auto bg-white"
+          // Table headers take the colour of this page's menu section.
+          data-section-color={sectionColor ? "true" : undefined}
+          style={sectionColor ? ({ "--section-head-bg": sectionColor } as React.CSSProperties) : undefined}
+        >
           <ResizableTables />
           <MobileCompactLayout />
           <UpdateNotice />
