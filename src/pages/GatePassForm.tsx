@@ -269,20 +269,16 @@ export function GatePassForm() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4 border-b border-black pb-4">
+      <div className="flex items-center justify-between gap-4 border-b border-black pb-3">
         <div>
           <h2 className="text-xl font-bold uppercase tracking-tight text-black">{editingGatePass ? "Edit Gate Pass" : isReturnable ? "Returnable Gate Pass Form" : "Gate Pass Form"}</h2>
-          <p className="text-sm text-slate-500">{isReturnable ? "Manual gate pass for items going out on returnable basis." : "Invoice-linked non-returnable gate pass."}</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className={`grid gap-6 ${isReturnable ? "" : "lg:grid-cols-[1.4fr_1fr]"}`}>
-          <div className="space-y-6 rounded border border-black bg-white p-6 shadow-sm">
+          <div className="space-y-6 rounded border border-black bg-white p-4 shadow-sm md:p-6">
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Gate Pass Type" required>
-                <input value={gatePassType} disabled className="w-full rounded border border-black px-3 py-2 text-sm bg-slate-50" />
-              </Field>
               <Field label="Date" required>
                 <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className="w-full rounded border border-black px-3 py-2 text-sm" />
               </Field>
@@ -328,27 +324,41 @@ export function GatePassForm() {
             </div>
 
             {isReturnable ? (
-              <div className="space-y-4 rounded border border-black p-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-sm font-bold uppercase text-slate-500">Items</div>
-                  <button type="button" onClick={addReturnableLine} className="inline-flex items-center gap-2 rounded border border-black px-3 py-2 text-sm font-semibold hover:bg-slate-50">
-                    <Plus size={15} />
-                    Add Line
-                  </button>
-                </div>
-                <div className="space-y-3">
-                  {returnableLines.map((line) => (
-                    <div key={line.id} className="grid gap-3 rounded border border-slate-200 p-3 md:grid-cols-[minmax(0,2fr)_100px_120px_48px]">
-                      <input value={line.itemDescription || ""} onChange={(e) => updateReturnableLine(line.id, { itemDescription: e.target.value, itemName: e.target.value })} placeholder="Item description" className="rounded border border-black px-3 py-2 text-sm" />
-                      <input type="number" min="0" step="0.01" value={line.qty || ""} onChange={(e) => updateReturnableLine(line.id, { qty: Number(e.target.value || 0) })} placeholder="Qty" className="rounded border border-black px-3 py-2 text-sm" />
-                      <div className="w-[120px]">
-                        <Select value={line.uom || "PCS"} onChange={(value) => updateReturnableLine(line.id, { uom: value || "PCS" })} options={unitOptions} placeholder="UOM" />
+              <div className="space-y-3">
+                <div className="text-sm font-bold uppercase text-slate-500">Items</div>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {returnableLines.map((line, index) => (
+                    <div key={line.id} className="space-y-2 rounded-md border-2 border-black bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-black uppercase text-slate-500">Item {index + 1}</span>
+                        <button type="button" onClick={() => removeReturnableLine(line.id)} title="Remove item" aria-label="Remove item" className="inline-flex h-8 w-8 items-center justify-center rounded-md border-2 border-red-600 bg-white text-red-600 hover:bg-red-50">
+                          <Trash2 size={15} />
+                        </button>
                       </div>
-                      <button type="button" onClick={() => removeReturnableLine(line.id)} className="rounded border border-red-300 text-red-700 hover:bg-red-50">
-                        <Trash2 size={16} className="mx-auto" />
-                      </button>
+                      <label className="block">
+                        <span className="mb-1 block text-xs font-bold">Item Description</span>
+                        <input value={line.itemDescription || ""} onChange={(e) => updateReturnableLine(line.id, { itemDescription: e.target.value, itemName: e.target.value })} className="w-full rounded border border-black px-3 py-2 text-sm" />
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-bold">Qty</span>
+                          <input type="number" min="0" step="0.01" value={line.qty || ""} onChange={(e) => updateReturnableLine(line.id, { qty: Number(e.target.value || 0) })} className="w-full rounded border border-black px-3 py-2 text-right text-sm" />
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-xs font-bold">Unit</span>
+                          <select value={line.uom || "PCS"} onChange={(e) => updateReturnableLine(line.id, { uom: e.target.value || "PCS" })} className="w-full rounded border border-black bg-white px-2 py-2 text-sm font-semibold">
+                            {!unitOptions.some((option) => option.value === (line.uom || "PCS")) ? <option value={line.uom || "PCS"}>{line.uom || "PCS"}</option> : null}
+                            {unitOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        </label>
+                      </div>
                     </div>
                   ))}
+                </div>
+                <div className="flex justify-center">
+                  <button type="button" onClick={addReturnableLine} title="Add item" aria-label="Add item" className="indent-line-action rounded bg-black p-[10px] text-white transition hover:bg-slate-800">
+                    <Plus size={20} />
+                  </button>
                 </div>
               </div>
             ) : (
@@ -388,14 +398,14 @@ export function GatePassForm() {
 
               <button type="submit" disabled={isSubmitting} className="inline-flex w-full items-center justify-center gap-2 rounded bg-indigo-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-indigo-800 disabled:opacity-50">
                 {isSubmitting ? <Spinner size={18} className="text-white" /> : <Save size={16} />}
-                {editingGatePass ? "Update Gate Pass" : "Save Gate Pass"}
+                {editingGatePass ? "Update" : "Save"}
               </button>
             </div>
           ) : (
             <div className="flex justify-end">
-              <button type="submit" disabled={isSubmitting} className="inline-flex items-center justify-center gap-2 rounded bg-indigo-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-indigo-800 disabled:opacity-50">
+              <button type="submit" disabled={isSubmitting} className="inline-flex w-full items-center justify-center gap-2 rounded bg-indigo-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-indigo-800 disabled:opacity-50 md:w-auto md:min-w-[150px]">
                 {isSubmitting ? <Spinner size={18} className="text-white" /> : <Save size={16} />}
-                {editingGatePass ? "Update Gate Pass" : "Save Gate Pass"}
+                {editingGatePass ? "Update" : "Save"}
               </button>
             </div>
           )}

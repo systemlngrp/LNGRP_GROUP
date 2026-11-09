@@ -70,10 +70,6 @@ export function PendingReturnableItems() {
         <div>
           <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Returnable Items</h2>
         </div>
-        <button type="button" onClick={() => navigate("/gate-pass/form")} className="inline-flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 font-bold text-white transition hover:bg-indigo-700">
-          <FilePlus2 size={16} />
-          New Returnable Gate Pass
-        </button>
       </div>
 
       <div className="rounded border border-black bg-white p-4 shadow-sm">
@@ -92,7 +88,7 @@ export function PendingReturnableItems() {
           <tbody className="divide-y divide-black bg-white">
             {pendingGatePasses.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-6 py-12 text-center text-sm text-slate-500">No pending returnable items found.</td>
+                <td colSpan={9} className="h-16" aria-label="No records" />
               </tr>
             ) : (
               pendingGatePasses.map((gatePass) => (
