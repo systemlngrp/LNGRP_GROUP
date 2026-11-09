@@ -11,6 +11,7 @@ import { ConfirmProvider } from "./ConfirmDialog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useRealtimeDataSync } from "../hooks/useRealtimeDataSync";
 import { ResizableTables } from "./ResizableTables";
+import { MobileCompactLayout } from "./MobileCompactLayout";
 import { UpdateNotice } from "./UpdateNotice";
 import { FullscreenViewControl } from "./FullscreenViewControl";
 import { BackNavigationControl } from "./BackNavigationControl";
@@ -266,6 +267,7 @@ export function Layout() {
         </header>
         <div className="app-view-content flex-1 overflow-auto bg-white">
           <ResizableTables />
+          <MobileCompactLayout />
           <UpdateNotice />
           <div className="w-full min-w-0 py-4 px-2 sm:px-3 lg:px-4">
             <DataLoadingBoundary key={location.pathname}>
