@@ -902,6 +902,39 @@ function installResizeHandles(
   });
 }
 
+// Header row stays visible while the page scrolls: the table's header cells
+// are moved down by the part of the table already scrolled past (inside the
+// table's own sideways-scroll box, which does not scroll up/down).
+function headerBackground(cell: HTMLElement) {
+  let element: HTMLElement | null = cell;
+  while (element && element.tagName !== "TABLE") {
+    const color = window.getComputedStyle(element).backgroundColor;
+    if (color && color !== "transparent" && !/rgba\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(color)) return color;
+    element = element.parentElement;
+  }
+  return "#f1f5f9";
+}
+
+function updateStickyHeaders(content: HTMLElement) {
+  const viewTop = content.getBoundingClientRect().top;
+  content.querySelectorAll<HTMLTableElement>("table.app-enhanced-table").forEach((table) => {
+    const head = table.tHead;
+    if (!head || head.rows.length === 0 || table.closest('[role="dialog"], .fixed')) return;
+    const tableRect = table.getBoundingClientRect();
+    const headHeight = head.getBoundingClientRect().height;
+    const offset = Math.round(Math.max(0, Math.min(viewTop - tableRect.top, tableRect.height - headHeight * 2)));
+    const next = offset > 0 ? `${offset}px` : "0px";
+    if (table.style.getPropertyValue("--app-thead-offset") === next) return;
+    if (offset > 0 && !table.dataset.stickyHead) {
+      const firstCell = head.querySelector<HTMLElement>("th, td");
+      if (firstCell) table.style.setProperty("--app-thead-bg", headerBackground(firstCell));
+      table.dataset.stickyHead = "true";
+    }
+    table.style.setProperty("--app-thead-offset", next);
+    table.toggleAttribute("data-sticky-head-active", offset > 0);
+  });
+}
+
 export function ResizableTables() {
   const location = useLocation();
   const { user } = useAuth();
@@ -936,6 +969,16 @@ export function ResizableTables() {
     };
 
     enhance();
+    let stickyFrame: number | null = null;
+    const onScroll = () => {
+      if (stickyFrame !== null) return;
+      stickyFrame = requestAnimationFrame(() => {
+        stickyFrame = null;
+        updateStickyHeaders(content);
+      });
+    };
+    content.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
     // Ignore DOM changes made by this enhancer itself. Otherwise pagination,
     // resize handles, and colgroups trigger enhance() again indefinitely.
     const isOwnNode = (node: Node | null) => {
@@ -978,6 +1021,9 @@ export function ResizableTables() {
     });
     return () => {
       observer.disconnect();
+      content.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      if (stickyFrame !== null) cancelAnimationFrame(stickyFrame);
       if (timer !== null) clearTimeout(timer);
       if (frame !== null) cancelAnimationFrame(frame);
     };
