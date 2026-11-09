@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { 
@@ -66,6 +66,8 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [scheduleNoSortDirection, setScheduleNoSortDirection] = useState<SortDirection>("desc");
+  const autoCancelTriedRef = useRef<Set<string>>(new Set());
+  const autoCancelStoppedRef = useRef(false);
   const [cancelInputs, setCancelInputs] = useState<Record<string, string>>({});
   const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({});
   const [savingCancelId, setSavingCancelId] = useState<string | null>(null);
@@ -190,13 +192,17 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   useEffect(() => {
     if (!pendingOnly || schedulesLoading || plansLoading || loadingSlipsLoading) return;
 
+    if (autoCancelStoppedRef.current) return;
     const candidates = scheduleDispatchDetails.filter((schedule) => {
       const scheduleQty = Number(schedule.qty || 0);
       const pendingDispatch = Number(schedule.pendingOrderQty || 0);
-      return scheduleQty > 0 && pendingDispatch > 0 && pendingDispatch <= scheduleQty * 0.1;
+      return scheduleQty > 0 && pendingDispatch > 0 && pendingDispatch <= scheduleQty * 0.1
+        && !autoCancelTriedRef.current.has(schedule.id);
     });
 
     if (candidates.length === 0) return;
+    // Try each schedule once per visit: a failed save (for example 403) must not retry in a loop.
+    candidates.forEach((schedule) => autoCancelTriedRef.current.add(schedule.id));
 
     const cancelQtyByScheduleId = new Map(candidates.map((schedule) => [schedule.id, Number(schedule.pendingOrderQty || 0)]));
     const timestamp = new Date().toISOString();
@@ -213,6 +219,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         };
       }),
     ).catch((error) => {
+      autoCancelStoppedRef.current = true;
       console.error("Failed to auto-cancel small pending dispatch quantities:", error);
     });
   }, [pendingOnly, scheduleDispatchDetails, schedulesLoading, plansLoading, loadingSlipsLoading, setSchedules]);
