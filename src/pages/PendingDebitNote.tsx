@@ -95,7 +95,7 @@ export function PendingDebitNote() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Party</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Debit Note Tally Sync Remarks</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Sync Remark</th>
                 {canPostDebitNote ? (
                   <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase">Action</th>
                 ) : null}

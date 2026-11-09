@@ -241,7 +241,7 @@ export function PendingTallyEntry() {
               <th className={`${th} text-right`}>Insurance</th>
               <th className={`${th} text-right`}>Other Charges</th>
               <th className={`${th} text-right`}>Round Off</th>
-              <th className={`${th} text-left`}>Tally Sync Remarks</th>
+              <th className={`${th} text-left`}>Sync Remark</th>
               <th className={`${th} text-center`}>Details</th>
               {canPostTally ? <th className={`${th} text-center`}>Actions</th> : null}
             </tr>

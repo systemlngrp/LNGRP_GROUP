@@ -111,7 +111,7 @@ export function PendingCreditNote() {
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Party</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Taxable Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Credit Note Tally Sync Remarks</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Sync Remark</th>
                 {canPostCreditNote ? (
                   <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase">Action</th>
                 ) : null}
