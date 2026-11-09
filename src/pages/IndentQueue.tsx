@@ -473,6 +473,16 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 border-b border-black pb-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{getQueueTitle(mode)}</h2>
+        {(mode === "Pending" || mode === "Approved" || mode === "Completed") ? (
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            className="inline-flex shrink-0 items-center gap-2 rounded border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100"
+          >
+            <FileText size={14} />
+            PDF
+          </button>
+        ) : null}
       </div>
 
 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-center">
@@ -725,18 +735,6 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         onPageSizeChange={setPageSize}
       />
 
-      {(mode === "Pending" || mode === "Approved" || mode === "Completed") ? (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={handleExportPdf}
-            className="inline-flex items-center gap-2 rounded border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700 hover:bg-rose-100"
-          >
-            <FileText size={14} />
-            PDF
-          </button>
-        </div>
-      ) : null}
     </div>
   );
 }
