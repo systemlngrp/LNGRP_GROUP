@@ -23,6 +23,9 @@ export function NonJobIssueMaster() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
@@ -31,7 +34,7 @@ export function NonJobIssueMaster() {
   const [linesById, setLinesById] = useState<Record<string, DailyConsumptionLine[]>>({});
   const [lineLoadingId, setLineLoadingId] = useState<string | null>(null);
 
-  const { rows, total, loading, error, httpStatus, loadLines, refresh, retry } = useDailyConsumptions({ page, pageSize, date: "", firmId: firmFilter, search: searchTerm });
+  const { rows, total, loading, error, httpStatus, loadLines, refresh, retry } = useDailyConsumptions({ page, pageSize, date: "", firmId: firmFilter, search: searchTerm, dateFrom, dateTo, status: statusFilter });
   const canCancelIssues = String(user?.email || "").trim().toLowerCase() === CANCEL_ALLOWED_EMAIL;
   const expandedLines = expandedIssueId ? linesById[expandedIssueId] || [] : [];
   const colSpan = canCancelIssues ? 10 : 9;
@@ -69,6 +72,8 @@ export function NonJobIssueMaster() {
     return firm ? getFirmDisplayName(firm) : (row.firmName || "Legacy / Unassigned");
   };
   const resetView = () => { setPage(1); setExpandedIssueId(null); };
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || dateFrom || dateTo || statusFilter);
+  const clearFilters = () => { setSearchTerm(""); setFirmFilter(""); setDateFrom(""); setDateTo(""); setStatusFilter(""); resetView(); };
 
   // Item lines and Tally details of one issue (table row and phone card).
   const renderDetailsBody = (row: DailyConsumptionRow) => {
@@ -156,20 +161,48 @@ export function NonJobIssueMaster() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 sm:grid-cols-[minmax(0,2fr)_minmax(160px,1fr)]">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
-            value={searchTerm}
-            onChange={(event) => { setSearchTerm(event.target.value); resetView(); }}
-            placeholder="Search issue no, consumption no, firm, date, item..."
-            className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          />
-        </div>
-        <select value={firmFilter} onChange={(event) => { setFirmFilter(event.target.value); resetView(); }} aria-label="Firm" className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold">
-          <option value="">Firms</option>
-          {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
-        </select>
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(130px,1fr))_auto] lg:items-end">
+        <label className="block sm:col-span-2 lg:col-span-1">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">Search</span>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              value={searchTerm}
+              onChange={(event) => { setSearchTerm(event.target.value); resetView(); }}
+              placeholder="Issue no, consumption no, item..."
+              className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+            />
+          </div>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">Firm</span>
+          <select value={firmFilter} onChange={(event) => { setFirmFilter(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold">
+            <option value="">All</option>
+            {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">From</span>
+          <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => { setDateFrom(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">To</span>
+          <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => { setDateTo(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">Tally Status</span>
+          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold">
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="failed">Failed</option>
+            <option value="posted">Posted</option>
+            <option value="na">Not Applicable</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
+        {filtersActive ? (
+          <button type="button" onClick={clearFilters} className="rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold hover:bg-slate-100">Clear</button>
+        ) : <span className="hidden lg:block" />}
       </div>
 
       {cancelError ? <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Unable to cancel: {cancelError}</div> : null}

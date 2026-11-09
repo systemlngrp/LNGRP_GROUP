@@ -989,6 +989,20 @@ const firmWiseNpdInflight = new Map();
 let firmWiseStockIndexCache = null;
 let firmWiseStockIndexInflight = null;
 let firmWiseStockIndexGeneration = 0;
+function dailyTallyStatusFilter(alias, status) {
+    const posted = `COALESCE(TRIM(${alias}.tallyTimestamp), '') <> ''`;
+    const st = `LOWER(TRIM(COALESCE(${alias}.tallyPostingStatus, '')))`;
+    const failed = `(COALESCE(TRIM(${alias}.tallyPostingError), '') <> '' OR ${st} LIKE '%fail%')`;
+    const open = `NOT (${posted}) AND ${st} NOT IN ('not applicable', 'cancelled')`;
+    switch (status) {
+        case "posted": return posted;
+        case "cancelled": return `${st} = 'cancelled'`;
+        case "na": return `${st} = 'not applicable'`;
+        case "failed": return `${open} AND ${failed}`;
+        case "pending": return `${open} AND NOT ${failed}`;
+        default: return "";
+    }
+}
 function pendingDailyTallyWhere(alias = "material_issues") {
     return `LOWER(TRIM(COALESCE(${alias}.issueType, ''))) IN ('general', 'without job', 'withoutjob', 'without_job')
     AND COALESCE(TRIM(${alias}.tallyTimestamp), '') = ''
@@ -16621,7 +16635,28 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
       )`
         : "";
     const searchParams = search ? [`%${search}%`, `%${search}%`, `%${search}%`] : [];
-    const where = `WHERE ${pendingDailyTallyWhere("dc")}${searchClause}`;
+    const extraFilters = [];
+    const extraParams = [];
+    const pendingFirmId = String(req.query.firmId || "").trim();
+    const pendingDateFrom = String(req.query.dateFrom || "").trim().slice(0, 10);
+    const pendingDateTo = String(req.query.dateTo || "").trim().slice(0, 10);
+    const pendingStatusClause = dailyTallyStatusFilter("dc", String(req.query.status || "").trim().toLowerCase());
+    if (pendingFirmId) {
+        extraFilters.push("dc.firmId = ?");
+        extraParams.push(pendingFirmId);
+    }
+    if (pendingDateFrom) {
+        extraFilters.push("LEFT(dc.date, 10) >= ?");
+        extraParams.push(pendingDateFrom);
+    }
+    if (pendingDateTo) {
+        extraFilters.push("LEFT(dc.date, 10) <= ?");
+        extraParams.push(pendingDateTo);
+    }
+    if (pendingStatusClause)
+        extraFilters.push(`(${pendingStatusClause})`);
+    searchParams.push(...extraParams);
+    const where = `WHERE ${pendingDailyTallyWhere("dc")}${searchClause}${extraFilters.map((filter) => ` AND ${filter}`).join("")}`;
     res.setHeader("Cache-Control", "no-store");
     try {
         const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM daily_consumptions dc ${where}`, searchParams);
@@ -16829,6 +16864,19 @@ app.get("/api/daily-consumptions", requireAuth, async (req, res) => {
         filters.push("dc.firmId = ?");
         params.push(firmId);
     }
+    const dateFrom = String(req.query.dateFrom || "").trim().slice(0, 10);
+    const dateTo = String(req.query.dateTo || "").trim().slice(0, 10);
+    const statusClause = dailyTallyStatusFilter("dc", String(req.query.status || "").trim().toLowerCase());
+    if (dateFrom) {
+        filters.push("LEFT(dc.date, 10) >= ?");
+        params.push(dateFrom);
+    }
+    if (dateTo) {
+        filters.push("LEFT(dc.date, 10) <= ?");
+        params.push(dateTo);
+    }
+    if (statusClause)
+        filters.push(`(${statusClause})`);
     if (search) {
         filters.push(`(
       LOWER(CONCAT_WS(' ', dc.issueNo, dc.consumptionTransactionNo, dc.date, dc.remarks, f.firmName)) LIKE ?

@@ -30,9 +30,9 @@ export type PendingTallyLine = {
   amount?: number;
 };
 
-type Options = { page: number; pageSize: number; search: string };
+type Options = { page: number; pageSize: number; search: string; firmId?: string; dateFrom?: string; dateTo?: string; status?: string };
 
-export function usePendingConsumptionTally({ page, pageSize, search }: Options) {
+export function usePendingConsumptionTally({ page, pageSize, search, firmId = "", dateFrom = "", dateTo = "", status = "" }: Options) {
   const [rows, setRows] = useState<PendingTallyRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -52,6 +52,10 @@ export function usePendingConsumptionTally({ page, pageSize, search }: Options) 
     setError(null);
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (search.trim()) params.set("search", search.trim());
+    if (firmId) params.set("firmId", firmId);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    if (status) params.set("status", status);
     try {
       const response = await fetch(`/api/material-issues/pending-tally?${params.toString()}`, {
         headers: getDataAuthHeaders(false),
@@ -70,7 +74,7 @@ export function usePendingConsumptionTally({ page, pageSize, search }: Options) 
     } finally {
       if (generation === generationRef.current && !background) setLoading(false);
     }
-  }, [page, pageSize, search]);
+  }, [page, pageSize, search, firmId, dateFrom, dateTo, status]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 300);

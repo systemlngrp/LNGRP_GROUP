@@ -15,6 +15,10 @@ function formatMoney(value?: number) {
 export function PendingConsumptionTallyPosting() {
   const confirm = useConfirm();
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
@@ -26,13 +30,17 @@ export function PendingConsumptionTallyPosting() {
     const firm = row.firmId ? firmById.get(row.firmId) : undefined;
     return firm ? getFirmDisplayName(firm) : (row.firmName || row.firmId || "-");
   };
-  const { rows, total, loading, error, linesByIssueId, lineLoadingId, loadLines, deletePending } = usePendingConsumptionTally({ page, pageSize, search: searchTerm });
+  const { rows, total, loading, error, linesByIssueId, lineLoadingId, loadLines, deletePending } = usePendingConsumptionTally({ page, pageSize, search: searchTerm, firmId: firmFilter, dateFrom, dateTo, status: statusFilter });
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
     setPage(1);
     setExpandedIssueId(null);
   };
+
+  const resetView = () => { setPage(1); setExpandedIssueId(null); };
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || dateFrom || dateTo || statusFilter);
+  const clearFilters = () => { setSearchTerm(""); setFirmFilter(""); setDateFrom(""); setDateTo(""); setStatusFilter(""); resetView(); };
 
   const handlePageSizeChange = (value: number) => {
     setPageSize(Math.min(250, Math.max(1, value)));
@@ -121,16 +129,45 @@ export function PendingConsumptionTallyPosting() {
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
-            value={searchTerm}
-            onChange={(event) => handleSearchChange(event.target.value)}
-            placeholder="Search issue no, consumption no, date, error, item..."
-            className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          />
-        </div>
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_repeat(4,minmax(130px,1fr))_auto] lg:items-end">
+        <label className="block sm:col-span-2 lg:col-span-1">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">Search</span>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              value={searchTerm}
+              onChange={(event) => handleSearchChange(event.target.value)}
+              placeholder="Issue no, consumption no, item..."
+              className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+            />
+          </div>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">Firm</span>
+          <select value={firmFilter} onChange={(event) => { setFirmFilter(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold">
+            <option value="">All</option>
+            {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">From</span>
+          <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => { setDateFrom(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">To</span>
+          <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => { setDateTo(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold" />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">Tally Status</span>
+          <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold">
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="failed">Failed</option>
+          </select>
+        </label>
+        {filtersActive ? (
+          <button type="button" onClick={clearFilters} className="rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold hover:bg-slate-100">Clear</button>
+        ) : <span className="hidden lg:block" />}
       </div>
 
       {error ? <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Unable to load: {error}</div> : null}

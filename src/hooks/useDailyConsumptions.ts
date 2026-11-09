@@ -32,9 +32,9 @@ export type DailyConsumptionLine = {
   amount?: number;
 };
 
-type Options = { page: number; pageSize: number; date: string; firmId: string; search: string };
+type Options = { page: number; pageSize: number; date: string; firmId: string; search: string; dateFrom?: string; dateTo?: string; status?: string };
 
-export function useDailyConsumptions({ page, pageSize, date, firmId, search }: Options) {
+export function useDailyConsumptions({ page, pageSize, date, firmId, search, dateFrom = "", dateTo = "", status = "" }: Options) {
   const [rows, setRows] = useState<DailyConsumptionRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -54,6 +54,9 @@ export function useDailyConsumptions({ page, pageSize, date, firmId, search }: O
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (date) params.set("date", date);
     if (firmId) params.set("firmId", firmId);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    if (status) params.set("status", status);
     if (search.trim()) params.set("search", search.trim());
     try {
       const response = await fetch(`/api/daily-consumptions?${params.toString()}`, { headers: getDataAuthHeaders(false), signal: controller.signal });
@@ -69,7 +72,7 @@ export function useDailyConsumptions({ page, pageSize, date, firmId, search }: O
     } finally {
       if (!background) setLoading(false);
     }
-  }, [date, firmId, page, pageSize, search]);
+  }, [date, firmId, page, pageSize, search, dateFrom, dateTo, status]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 250);
