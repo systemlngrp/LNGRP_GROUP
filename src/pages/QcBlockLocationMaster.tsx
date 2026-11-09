@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import type { QcBlockLocationMaster } from "../types";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 type LocationUsage = { count: number; details: { label: string; count: number }[] };
 
@@ -42,11 +43,15 @@ export function QcBlockLocationMaster() {
     return () => { cancelled = true; };
   }, [rows, loading, usageRetryKey]);
 
-  const filtered = useMemo(() => rows.filter(row => {
+  const filtered = useMemo(() => {
+    const words = searchWords(search);
+    return rows.filter(row => {
     const active = String(row.active).toLowerCase() === "yes";
-    return row.name.toLowerCase().includes(search.trim().toLowerCase()) &&
+    // Search the table columns: Location, Status.
+    return matchesTableSearch([row.name, active ? "Active" : "Inactive"], words) &&
       (status === "all" || (status === "active" ? active : !active));
-  }), [rows, search, status]);
+    });
+  }, [rows, search, status]);
 
   const save = async () => {
     const value = name.trim();
@@ -123,7 +128,7 @@ export function QcBlockLocationMaster() {
       {editingUsed && <span className="self-center text-sm">Used locations cannot be renamed.</span>}
     </div>
     <div className="flex flex-wrap gap-2 rounded border-2 border-black bg-white p-3">
-      <input className="min-w-56 flex-1 rounded border border-black px-3 py-2" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search locations" aria-label="Search locations"/>
+      <input className="min-w-56 flex-1 rounded border border-black px-3 py-2" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search" aria-label="Search locations"/>
       <select className="rounded border border-black px-3 py-2" value={status} onChange={event => setStatus(event.target.value)} aria-label="Filter by status">
         <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option>
       </select>

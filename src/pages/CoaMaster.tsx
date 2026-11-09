@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { printCoaRecord } from "../lib/coaPrint";
 import type { CoaRecord, Firm } from "../types";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -31,13 +32,12 @@ export function CoaMaster() {
   const companies = useMemo(() => Array.from(new Set(records.map((record) => text(record.companyName)).filter(Boolean))).sort(), [records]);
   const versions = useMemo(() => Array.from(new Set(records.map((record) => String(record.templateVersion || "")).filter(Boolean))).sort((a, b) => Number(b) - Number(a)), [records]);
   const visibleRecords = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const words = searchWords(search);
     return records.filter((record) => {
       if (company && record.companyName !== company) return false;
       if (status && record.status !== status) return false;
       if (templateVersion && String(record.templateVersion) !== templateVersion) return false;
-      if (!query) return true;
-      return [record.coaNo, record.jobNo, record.companyName, record.erpCode, record.itemName, record.invoiceNo, record.batchNo].some((value) => text(value).toLowerCase().includes(query));
+      return matchesTableSearch([record.coaNo, record.companyName, record.jobNo, record.erpCode, record.itemName, displayDate(record.coaDate), record.coaDate, `v${record.templateVersion}`, record.status, record.updatedBy || record.createdBy], words);
     });
   }, [company, records, search, status, templateVersion]);
 
@@ -63,7 +63,7 @@ export function CoaMaster() {
     </div>
     {message && <div className="rounded border-2 border-amber-700 bg-amber-50 p-3 font-bold">{message}</div>}
     <section className="grid gap-3 rounded border-2 border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-5">
-      <input className="rounded border-2 border-black px-3 py-2 text-sm" placeholder="Search COA, job, ERP, item..." value={search} onChange={(event) => setSearch(event.target.value)} />
+      <input className="rounded border-2 border-black px-3 py-2 text-sm" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} />
       <Select value={company} onChange={setCompany} options={companies.map((value) => ({ value, label: value }))} placeholder="All Companies" />
       <Select value={status} onChange={setStatus} options={[{ value: "Draft", label: "Draft" }, { value: "Final", label: "Final" }]} placeholder="All Statuses" />
       <Select value={templateVersion} onChange={setTemplateVersion} options={versions.map((value) => ({ value, label: `Template v${value}` }))} placeholder="All Template Versions" />

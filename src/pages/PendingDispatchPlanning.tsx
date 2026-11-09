@@ -8,6 +8,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { OrderSchedule, Order, Company, Item, DispatchPlan, LoadingSlip, Production, Firm } from "../types";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { cn } from "../lib/utils";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { ArrowUpDown, Save } from "lucide-react";
@@ -193,7 +194,7 @@ export function PendingDispatchPlanning() {
   }, [basePendingSchedules, orders, companies, lookup]);
 
   const filteredSchedules = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     const rows = basePendingSchedules.filter(s => {
       const order = lookup.orderById.get(s.orderId);
       return (!selectedCompanyId || order?.companyId === selectedCompanyId) &&
@@ -202,20 +203,20 @@ export function PendingDispatchPlanning() {
 
     return [...rows]
       .filter((schedule) => {
-        if (!normalizedSearch) return true;
+        if (!words.length) return true;
         const order = lookup.orderById.get(schedule.orderId);
         const company = lookup.companyById.get(order?.companyId as string);
         const item = resolveOrderItem(order);
-        const haystack = [
+        // Visible columns: Scheduled Date, Schedule No, Order No, Firm, Company, Item Name, Pending Qty.
+        return matchesTableSearch([
           formatDate(schedule.scheduledDate),
           schedule.scheduleNo,
           order?.orderNo,
-          company?.name,
           getFirmDisplayNameById(schedule.firmId || order?.firmId, firms),
+          company?.name,
           item?.name,
-          String(schedule.qty || ""),
-        ].join(" ").toLowerCase();
-        return haystack.includes(normalizedSearch);
+          getScheduleAvailableQty(schedule, lookup.plansBySchedule.get(String(schedule.id || "")) || []),
+        ], words);
       })
       .sort((a, b) => {
       const orderA = lookup.orderById.get(a.orderId);
@@ -526,7 +527,7 @@ export function PendingDispatchPlanning() {
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[240px] space-y-1">
               <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Search Orders</div>
-              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search by Job, Order, Item, Company, Firm..." />
+              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
             </div>
 
             <FirmFilter value={selectedFirmId} onChange={(firmId) => { setSelectedFirmId(firmId); setSelectedIds(new Set()); }} className="min-w-[180px]" />

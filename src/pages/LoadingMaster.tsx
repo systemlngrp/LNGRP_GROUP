@@ -24,6 +24,7 @@ import {
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildLinkedLoadingDetailsFromSlip } from "../lib/linkedLoading";
@@ -124,7 +125,10 @@ export function LoadingMaster() {
     });
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
   }, [loadingSlips, summaryBySlip]);
-  const processedSlips = useMemo(() => {
+  // Slip rows with their search text (visible columns: Slip No, Source, Status,
+  // Date, Truck, Firm, Company, Item, ERP, Job No / Load Qty, Total Qty), built
+  // once per data change.
+  const slipRows = useMemo(() => {
     const orderById = new Map(orders.map((order) => [order.id, order]));
     const planById = new Map(plans.map((plan) => [plan.id, plan]));
     return loadingSlips.map((slip) => {
@@ -143,10 +147,29 @@ export function LoadingMaster() {
         loadingSourceLabel: isDirectLoadingSlip(slip) ? "Direct" : "Dispatch Plan",
         truckNo: getTruckNo(slip),
       };
-    }).filter(slip => {
-      const q = searchTerm.toLowerCase().trim();
-      const firmName = getFirmDisplayNameById(slip.firmId, firms);
-      const matchesSearch = !q || slip.slipNo.toLowerCase().includes(q) || slip.truckNo.toLowerCase().includes(q) || slip.itemNames.toLowerCase().includes(q) || slip.companyNames.toLowerCase().includes(q) || slip.erpCodes.toLowerCase().includes(q) || firmName.toLowerCase().includes(q);
+    }).map((slip) => {
+      const jobAllocations = slip.lines.flatMap((line) => line.allocations || []).filter((allocation) => allocation.sourceType === "job");
+      const searchText = rowSearchText([
+        slip.slipNo,
+        slip.loadingSourceLabel,
+        slip.status === "Cancelled" ? "Cancelled" : slip.invoiceId ? "Invoiced" : "Not Invoiced",
+        formatDate(slip.date),
+        slip.truckNo || "-",
+        getFirmDisplayNameById(slip.firmId, firms),
+        slip.companyNames,
+        slip.itemNames,
+        slip.erpCodes,
+        isDirectLoadingSlip(slip) ? "Direct Loading" : jobAllocations.map((allocation) => [`Job No: ${allocation.jobNo || allocation.jobId || "-"}`, allocation.jobNo || allocation.jobId, Number(allocation.qty || 0)]),
+        slip.totalQty,
+      ]);
+      return { ...slip, searchText };
+    });
+  }, [loadingSlips, plans, orders, firms, summaryBySlip, trucks]);
+
+  const processedSlips = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return slipRows.filter(slip => {
+      const matchesSearch = matchesTableSearch(slip.searchText, words);
       const matchesCompany = !companyFilter || slip.companyNames.includes(companyFilter);
       const matchesErp = !erpFilter || slip.erpCodes.includes(erpFilter);
       const matchesItem = !itemFilter || slip.itemKeys.includes(itemFilter);
@@ -165,7 +188,7 @@ export function LoadingMaster() {
 
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
-  }, [loadingSlips, plans, orders, firms, summaryBySlip, searchTerm, companyFilter, erpFilter, itemFilter, firmFilter, trucks]);
+  }, [slipRows, searchTerm, companyFilter, erpFilter, itemFilter, firmFilter]);
 
   const {
     page,
@@ -541,7 +564,7 @@ export function LoadingMaster() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input 
               type="text"
-              placeholder="Search slip no..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"

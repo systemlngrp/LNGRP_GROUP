@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import type { StockTakerLog } from "../types";
 import { formatDate } from "../lib/utils";
+import { useTableSearch } from "../lib/tableSearch";
 
 function formatQty(value: number) {
   return Number(value || 0).toFixed(2);
@@ -16,8 +17,7 @@ export function PhysicalStockMaster() {
   const [scanDateFrom, setScanDateFrom] = useState("");
   const [scanDateTo, setScanDateTo] = useState("");
 
-  const filteredScanLogs = useMemo(() => {
-    const loweredSearch = scanSearchTerm.trim().toLowerCase();
+  const dateFilteredScanLogs = useMemo(() => {
     const fromMs = scanDateFrom ? new Date(scanDateFrom).getTime() : null;
     const toMs = scanDateTo ? new Date(scanDateTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
 
@@ -27,19 +27,24 @@ export function PhysicalStockMaster() {
 
         if (fromMs != null && timestamp < fromMs) return false;
         if (toMs != null && timestamp > toMs) return false;
-        if (
-          loweredSearch &&
-          ![entry.sessionNo, entry.sessionName, entry.reelNo, entry.mrrNo, entry.erp, entry.supplierName].some((value) =>
-            String(value || "").toLowerCase().includes(loweredSearch),
-          )
-        ) {
-          return false;
-        }
 
         return true;
       })
       .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
-  }, [scanDateFrom, scanDateTo, scanSearchTerm, stockTakerLogs]);
+  }, [scanDateFrom, scanDateTo, stockTakerLogs]);
+
+  // Table search: only the columns the table shows.
+  const filteredScanLogs = useTableSearch(dateFilteredScanLogs, scanSearchTerm, (entry) => [
+    entry.sessionNo,
+    formatDateTime(entry.timestamp),
+    entry.reelNo,
+    entry.mrrNo,
+    entry.erp,
+    entry.supplierName,
+    formatQty(Number(entry.systemAvailableWeight || 0)),
+    formatQty(Number(entry.physicalWeight || 0)),
+    formatQty(Number(entry.variance || 0)),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -56,7 +61,7 @@ export function PhysicalStockMaster() {
               type="text"
               value={scanSearchTerm}
               onChange={(e) => setScanSearchTerm(e.target.value)}
-              placeholder="Search session / reel / MRR / ERP / supplier"
+              placeholder="Search"
               className="h-[34px] w-full rounded border-2 border-black pl-8 pr-2 text-xs font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

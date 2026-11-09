@@ -5,6 +5,7 @@ import { useData } from "../hooks/useData";
 import { SampleRequest } from "../types";
 import { formatDate } from "../lib/serial";
 import { sortSampleRequestsDesc } from "../lib/sampleRequests";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useConfirm } from "../components/ConfirmDialog";
 
 export function PendingSamples() {
@@ -14,14 +15,12 @@ export function PendingSamples() {
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const filteredRows = useMemo(() => {
-    const search = searchTerm.trim().toLowerCase();
+    // Search: only the table columns (Date, Item Name, ERP, Planned Qty).
+    const words = searchWords(searchTerm);
     const rows = sampleRequests.filter((row) => !row.jobCardNo && !row.cancelTimestamp);
-    const searched = search
+    const searched = words.length
       ? rows.filter((row) =>
-          [row.itemName, String(row.erp || ""), formatDate(row.date)]
-            .join(" ")
-            .toLowerCase()
-            .includes(search)
+          matchesTableSearch([formatDate(row.date), row.itemName, row.erp || "-", Number(row.plannedQuantity || 0).toLocaleString()], words)
         )
       : rows;
 
@@ -62,7 +61,7 @@ export function PendingSamples() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Search item or ERP..."
+            placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"

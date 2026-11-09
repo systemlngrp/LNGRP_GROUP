@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import type { Company, DispatchPlan, LoadingSlip, Order, Truck, TruckStatusLog } from "../types";
 import { formatTruckDateTime, formatTruckDuration, normalizeTruckStatus, TRUCK_LIVE_STATUSES, TRUCK_STATUS_STYLES } from "../lib/truckStatus";
 import { Select } from "../components/Select";
+import { useTableSearch } from "../lib/tableSearch";
 
 function isInternalTruck(truck: Truck) {
   return String(truck.truckType || "").trim().toLowerCase() === "internal";
@@ -117,19 +118,24 @@ export function TruckStatusReport() {
     [baseRows]
   );
 
-  const rows = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+  const filteredRows = useMemo(() => {
     return baseRows.filter((row) => {
       if (vehicleNoFilter && row.truck.truckNo !== vehicleNoFilter) return false;
       if (partyFilter && row.party !== partyFilter) return false;
-      if (!q) return true;
-      return [row.truck.truckNo, row.liveStatus, row.party, row.truck.driverName, row.truck.mobileNo]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(q);
+      return true;
     });
-  }, [baseRows, partyFilter, searchTerm, vehicleNoFilter]);
+  }, [baseRows, partyFilter, vehicleNoFilter]);
+
+  // Table search: only the columns the table shows (Duration ticks with `now`).
+  const rows = useTableSearch(filteredRows, searchTerm, (row) => [
+    row.truck.truckNo,
+    row.liveStatus,
+    formatTruckDateTime(row.truck.statusUpdatedAt),
+    row.party,
+    formatTruckDuration(row.truck.statusUpdatedAt, now),
+    row.truck.driverName,
+    row.truck.mobileNo,
+  ], [now]);
 
   const handleCopyDriverFormLink = async () => {
     const url = new URL("/driver-status", window.location.origin).toString();
@@ -165,7 +171,7 @@ export function TruckStatusReport() {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search vehicle, status, party, driver..."
+              placeholder="Search"
               className="min-h-[46px] w-full rounded border-2 border-black bg-white py-2 pl-10 pr-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-600"
             />
           </div>

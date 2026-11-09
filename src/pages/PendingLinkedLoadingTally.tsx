@@ -3,6 +3,7 @@ import { TableControls } from "../components/TableControls";
 import { useData } from "../hooks/useData";
 import { LoadingSlip } from "../types";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -15,7 +16,7 @@ function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) 
   );
 
   const pendingRows = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return loadingSlips
       .filter((row) => String(source === "PHP" ? row.phpConsumptionTransactionNo || "" : row.plateConsumptionTransactionNo || "").trim() !== "")
       .filter((row) => String(row.tallyTimestamp || "").trim() === "")
@@ -33,24 +34,21 @@ function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) 
           totalQty: relevantLines.reduce((sum, line) => sum + Number(line.loadedQty || 0), 0),
         };
       })
-      .filter((entry) => {
-        if (!q) return true;
-        const haystack = [
-          entry.row.slipNo,
+      .filter((entry) =>
+        // Visible columns: Slip No, FG Slip, Cons. No, Date, Item, Company, Qty, Status, Remark, Error.
+        matchesTableSearch([
+          entry.row.slipNo || "-",
           entry.fgSlipNo,
-          entry.consumptionNo,
-          entry.row.date,
+          entry.consumptionNo || "-",
+          formatDate(entry.row.date),
           entry.itemName,
           entry.companyName,
-          entry.row.tallyPostingStatus,
-          entry.row.tallyPostingRemark,
-          entry.row.tallyPostingError,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(q);
-      })
+          entry.totalQty,
+          entry.row.tallyPostingStatus || "-",
+          entry.row.tallyPostingRemark || "-",
+          entry.row.tallyPostingError || "-",
+        ], words)
+      )
       .sort(
         (a, b) =>
           String(a.row.date || "").localeCompare(String(b.row.date || "")) ||
@@ -77,7 +75,7 @@ function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) 
       <TableControls
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
-        placeholder={`Search slip no, ${consumptionLabel.toLowerCase()}, item, company, error...`}
+        placeholder="Search"
       />
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">

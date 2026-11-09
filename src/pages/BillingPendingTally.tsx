@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { useAuth } from "../auth/AuthContext";
@@ -168,7 +169,9 @@ export function BillingPendingTally() {
     return Array.from(poNums);
   };
 
-  const processedInvoices = useMemo(() => {
+  // Invoice rows with their search text (visible columns: Invoice Details, Date,
+  // Company, PO Numbers, Total Amount, Tally Sync Remark), built once per data change.
+  const invoiceRows = useMemo(() => {
     return invoices
       .filter(inv => !inv.tallyTimestamp)
       .map(inv => {
@@ -199,6 +202,23 @@ export function BillingPendingTally() {
           slipCount: invoiceSlips.length
         };
       })
+      .map((inv) => ({
+        ...inv,
+        searchText: rowSearchText([
+          inv.invoiceNo,
+          formatDate(inv.date),
+          inv.companyName,
+          inv.poNumbers.length > 0 ? inv.poNumbers : "-",
+          inv.grandTotal,
+          formatInr.format(inv.grandTotal),
+          inv.tallySyncRemark || "-",
+        ]),
+      }));
+  }, [invoices, companies, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, lookup, resolveOrderItem]);
+
+  const processedInvoices = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return invoiceRows
       .filter(inv => {
         if (companyFilter && inv.companyId !== companyFilter) return false;
         if (itemFilter) {
@@ -208,11 +228,10 @@ export function BillingPendingTally() {
           });
           if (!hasItem) return false;
         }
-        const searchStr = `${inv.invoiceNo} ${inv.companyName} ${inv.poNumbers.join(" ")} ${inv.details.map((line: any) => `${line.itemName || ""} ${line.erp || ""}`).join(" ")}`.toLowerCase();
-        return searchStr.includes(searchTerm.toLowerCase());
+        return matchesTableSearch(inv.searchText, words);
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoices, companies, companyFilter, itemFilter, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, searchTerm, lookup, resolveOrderItem]);
+  }, [invoiceRows, companyFilter, itemFilter, searchTerm]);
 
   // The table draws 100 invoices per page; filters still cover every invoice.
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedInvoices } = useClientPagination(processedInvoices, 100);
@@ -259,7 +278,7 @@ export function BillingPendingTally() {
         <TableControls
           searchTerm={searchTerm}
           onSearchChange={setSearchTerm}
-          placeholder="Search invoice, company, PO number..."
+          placeholder="Search"
         />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />

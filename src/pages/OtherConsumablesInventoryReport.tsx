@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Search } from "lucide-react";
 import { Select } from "../components/Select";
+import { useTableSearch } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import type { Firm, Material, MaterialGroup, MaterialIn, MaterialIssue, MaterialIssueLine, MaterialReturn, MaterialReturnLine } from "../types";
 
@@ -148,16 +149,28 @@ export function OtherConsumablesInventoryReport() {
   const groupOptions = useMemo(() => makeOptions(allRows.map((row) => row.groupName === "-" ? "" : row.groupName)), [allRows]);
   const itemOptions = useMemo(() => makeOptions(allRows.map((row) => row.itemName)), [allRows]);
 
-  const rows = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+  const filteredRows = useMemo(() => {
     return allRows.filter((row) => {
       if (row.availableQty <= 0) return false;
       if (groupFilter && row.groupName !== groupFilter) return false;
       if (itemFilter && row.itemName !== itemFilter) return false;
-      if (!query) return true;
-      return [row.erp, row.itemName, row.uom, row.groupName].some((value) => String(value || "").toLowerCase().includes(query));
+      return true;
     });
-  }, [allRows, groupFilter, itemFilter, searchTerm]);
+  }, [allRows, groupFilter, itemFilter]);
+
+  // Table search: only the columns the table shows.
+  const rows = useTableSearch(filteredRows, searchTerm, (row) => [
+    row.erp,
+    row.itemName,
+    row.groupName,
+    row.uom,
+    formatQty(row.openingQty),
+    formatQty(row.receiptQty),
+    formatQty(row.issuedQty),
+    formatQty(row.availableQty),
+    formatQty(row.rate),
+    formatQty(row.valuation),
+  ]);
 
   const totals = useMemo(
     () => rows.reduce(
@@ -222,7 +235,7 @@ export function OtherConsumablesInventoryReport() {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search ERP / item / group"
+              placeholder="Search"
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>

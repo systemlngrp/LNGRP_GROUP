@@ -5,6 +5,7 @@ import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { DispatchPlan, Truck, Order, Company, OrderSchedule, LoadingSlip } from "../types";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { Pencil, Save, Trash2, X } from "lucide-react";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -175,21 +176,20 @@ export function DispatchPlansMaster() {
         pending,
         firmId: String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""),
         firmName: getFirmDisplayNameById(String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""), firms),
-        searchText: [
+        // Visible columns: Plan No, Plan Date, Firm, Company, Order / Item, Planned, Invoice Qty, Cancl, Pending, Status.
+        searchText: rowSearchText([
           plan.planNo,
           formatDate(plan.date),
-          companyName,
-          order?.orderNo,
-          order?.erpCode,
-          itemName,
-          itemErp,
-          String(plan.plannedQty || ""),
-          String(plan.loadedQty || ""),
-          String(plan.canceledQty || ""),
-          String(pending),
-          plan.status,
           getFirmDisplayNameById(String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""), firms),
-        ].join(" ").toLowerCase(),
+          company?.name,
+          order?.orderNo,
+          item?.name,
+          Number(plan.plannedQty || 0),
+          Number(plan.loadedQty || 0),
+          Number(plan.canceledQty || 0),
+          Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0),
+          plan.status,
+        ]),
       };
     });
   }, [plans, orders, companies, firms, schedules, resolveOrderItem]);
@@ -210,13 +210,13 @@ export function DispatchPlansMaster() {
   }, [dispatchFilterRows]);
 
   const filteredPlans = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return dispatchFilterRows
       .filter((row) => {
         if (companyFilter && row.companyName !== companyFilter) return false;
         if (itemFilter && row.itemKey !== itemFilter) return false;
         if (firmFilter && row.firmId !== firmFilter) return false;
-        return !normalizedSearch || row.searchText.includes(normalizedSearch);
+        return matchesTableSearch(row.searchText, words);
       })
       .map((row) => row.plan)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
@@ -237,7 +237,7 @@ export function DispatchPlansMaster() {
       </div>
 
       <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_minmax(180px,1fr)_auto] md:items-center">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search plan, firm, order, ERP, company, item..." />
+        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
         <FirmFilter value={firmFilter} onChange={setFirmFilter} />

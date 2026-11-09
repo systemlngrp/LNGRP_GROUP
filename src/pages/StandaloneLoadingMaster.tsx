@@ -6,6 +6,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -30,7 +31,7 @@ export function StandaloneLoadingMaster({ source }: StandaloneLoadingMasterProps
   const consumptionTxnLabel = source === "PHP" ? "PHP Cons. No" : "Plate Cons. No";
 
   const processedSlips = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return loadingSlips
       .map((slip) => {
         const relevantLines = slip.lines.filter((line) => Number(line.loadedQty || 0) > 0);
@@ -67,11 +68,23 @@ export function StandaloneLoadingMaster({ source }: StandaloneLoadingMasterProps
         };
       })
       .filter((row): row is NonNullable<typeof row> => Boolean(row))
-      .filter((row) => {
-        if (!normalizedSearch) return true;
-        const haystack = [row.slip.slipNo, row.itemName, row.companyName, row.jobNo, row.truckNo, row.fgSlipNo, row.consumptionTxnNo].join(" ").toLowerCase();
-        return haystack.includes(normalizedSearch);
-      })
+      .filter((row) =>
+        // Visible columns: Slip No, FG Slip, Cons. No, Date, Job No, Item, Company, Truck, Qty, Status, Tally Status, Source.
+        matchesTableSearch([
+          row.slip.slipNo || "-",
+          row.isFgLinked ? row.fgSlipNo : "-",
+          row.consumptionTxnNo || "-",
+          row.slip.date,
+          row.jobNo,
+          row.itemName,
+          row.companyName,
+          row.truckNo,
+          row.totalQty,
+          row.slip.status || "Active",
+          row.slip.tallyPostingStatus || (row.slip.tallyTimestamp ? "Posted" : "-"),
+          row.isFgLinked ? "Linked" : "Historical",
+        ], words)
+      )
       .sort((a, b) =>
         String(b.slip.slipNo || "").localeCompare(String(a.slip.slipNo || ""), undefined, {
           numeric: true,

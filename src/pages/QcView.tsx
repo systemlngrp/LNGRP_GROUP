@@ -18,6 +18,7 @@ import { QC_REPORT_COLUMN_COUNTS, QC_REPORT_COLUMN_SCHEMA_VERSIONS } from "../li
 import { useQcColumnLayout } from "../hooks/useQcColumnLayout";
 import { computeQcViewRows } from "../lib/reports/qcView";
 import { useServerReport } from "../hooks/useServerReport";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 
 const GROUPS = [
   { label: "PROGRAM", group: "bg-[#24165f] text-white", head: "bg-[#0b4773] text-white", columns: ["SL No.", "Job No.", "Date", "Party Name", "Item Name", "ERP Code", "Plan Quantity", "Item Status"] },
@@ -123,7 +124,12 @@ export function QcView() {
     [browserFallback, blockRecords, boardline, controlRecords, inspections, loadingSlips, materialIssueLines, materialIssueReelLines, materialIssues, materialReturnLines, materialReturnReelLines, materialReturns, materials, plans, printing, processing, productions, qcUpdates, settings, items.length]
   );
   const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
-  const rows = useMemo<Row[]>(() => baseRows.filter((r) => (!jobFilter || r["Job No."] === jobFilter) && (!erpFilter || r["ERP Code"] === erpFilter) && (!partyFilter || r["Party Name"] === partyFilter) && (!itemFilter || r["Item Name"] === itemFilter) && (!statusFilter || r["Item Status"] === statusFilter) && (!resultFilter || r["PDI RESULT"] === resultFilter) && (!search.trim() || COLUMNS.some((column) => key(r[column]).includes(key(search))))), [baseRows, erpFilter, itemFilter, jobFilter, partyFilter, resultFilter, search, statusFilter]);
+  // Search covers the columns currently shown (column picker), as the cells show them; SL No. and Open-link cells are skipped.
+  const searchIndex = useMemo(() => {
+    const columns = visibleColumnList.filter((column) => column !== "SL No.");
+    return new Map(baseRows.map((row) => [row, rowSearchText(columns.map((column) => (column === "Spec" || column === "Artwork") && isUrl(row[column]) ? "" : row[column]))]));
+  }, [baseRows, visibleColumnList]);
+  const rows = useMemo<Row[]>(() => { const words = searchWords(search); return baseRows.filter((r) => (!jobFilter || r["Job No."] === jobFilter) && (!erpFilter || r["ERP Code"] === erpFilter) && (!partyFilter || r["Party Name"] === partyFilter) && (!itemFilter || r["Item Name"] === itemFilter) && (!statusFilter || r["Item Status"] === statusFilter) && (!resultFilter || r["PDI RESULT"] === resultFilter) && matchesTableSearch(searchIndex.get(r) || "", words)); }, [baseRows, erpFilter, itemFilter, jobFilter, partyFilter, resultFilter, search, searchIndex, statusFilter]);
   const options = useMemo(() => {
     const values = (column: string) => [...new Set(rows.map((row) => s(row[column])).filter(Boolean))].sort().map((value) => ({ value, label: value, searchText: value }));
     return { jobs: values("Job No."), erps: values("ERP Code"), parties: values("Party Name"), items: values("Item Name"), statuses: values("Item Status"), results: values("PDI RESULT") };
@@ -139,7 +145,7 @@ export function QcView() {
     <h2 className="text-xl font-bold uppercase">QC View</h2>
     <div className="rounded border border-black bg-white p-3">
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5 2xl:grid-cols-9">
-        <div className="relative sm:col-span-2"><label htmlFor="qc-view-search" className="sr-only">Search QC records</label><Search className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-500" size={16}/><input id="qc-view-search" aria-label="Search job, ERP, party, item or QC values" className="h-[34px] w-full rounded border-2 border-black pl-9 pr-3 text-sm" placeholder="Search job, ERP, party, item or QC values" value={search} onChange={(e) => setSearch(e.target.value)}/></div>
+        <div className="relative sm:col-span-2"><label htmlFor="qc-view-search" className="sr-only">Search QC records</label><Search className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-500" size={16}/><input id="qc-view-search" aria-label="Search job, ERP, party, item or QC values" className="h-[34px] w-full rounded border-2 border-black pl-9 pr-3 text-sm" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)}/></div>
         <Select id="qc-job-filter" compact value={jobFilter} onChange={setJobFilter} options={options.jobs} placeholder="All Jobs" noOptionsMessage="No matching jobs"/>
         <Select id="qc-erp-filter" compact value={erpFilter} onChange={setErpFilter} options={options.erps} placeholder="All ERP Codes" noOptionsMessage="No matching ERP codes"/>
         <Select id="qc-party-filter" compact value={partyFilter} onChange={setPartyFilter} options={options.parties} placeholder="All Parties" noOptionsMessage="No matching parties"/>

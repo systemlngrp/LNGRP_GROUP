@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { useData } from "../hooks/useData";
 import type { QcFileNoMaster } from "../types";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -18,11 +19,11 @@ export function QcFileNoMaster() {
   const [busyId, setBusyId] = useState("");
   const displayName = text(user?.name || user?.userId || user?.email || "System User");
 
-  const filtered = useMemo(() => rows.filter(row => {
+  const filtered = useMemo(() => { const words = searchWords(search); return rows.filter(row => {
     const active = text(row.active).toLowerCase() === "yes";
-    return text(row.fileNo).toLowerCase().includes(search.trim().toLowerCase()) &&
+    return matchesTableSearch([row.fileNo, active ? "Active" : "Inactive", row.updatedBy], words) &&
       (status === "all" || (status === "active" ? active : !active));
-  }).sort((a, b) => text(a.fileNo).localeCompare(text(b.fileNo), undefined, { numeric: true, sensitivity: "base" })), [rows, search, status]);
+  }).sort((a, b) => text(a.fileNo).localeCompare(text(b.fileNo), undefined, { numeric: true, sensitivity: "base" })); }, [rows, search, status]);
 
   const save = async () => {
     const value = fileNo.trim();
@@ -78,7 +79,7 @@ export function QcFileNoMaster() {
       {editing && <button type="button" disabled={Boolean(busyId)} onClick={() => { setEditing(""); setFileNo(""); setMessage(""); }} className="rounded border-2 border-black px-4 py-2 font-bold disabled:opacity-50">Cancel</button>}
     </div>
     <div className="flex flex-wrap gap-2 rounded border-2 border-black bg-white p-3">
-      <input className="min-w-64 flex-1 rounded border border-black px-3 py-2" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search File Nos." aria-label="Search File Nos." />
+      <input className="min-w-64 flex-1 rounded border border-black px-3 py-2" value={search} onChange={event => setSearch(event.target.value)} placeholder="Search" aria-label="Search File Nos." />
       <select className="rounded border border-black px-3 py-2" value={status} onChange={event => setStatus(event.target.value)} aria-label="Filter by status">
         <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option>
       </select>

@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import { SampleRequest } from "../types";
 import { formatDate } from "../lib/serial";
 import { getSampleRequestStatus, sortSampleRequestsDesc } from "../lib/sampleRequests";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function getStatusClasses(status: string) {
   if (status === "Cancelled") return "bg-red-100 text-red-900 border-red-900";
@@ -16,13 +17,19 @@ export function SampleMaster() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const filteredRows = useMemo(() => {
-    const search = searchTerm.trim().toLowerCase();
-    const rows = search
+    // Search: only the table columns (Date, Item Name, ERP, Planned Qty, Job Card No., Status, Cancel Details).
+    const words = searchWords(searchTerm);
+    const rows = words.length
       ? sampleRequests.filter((row) =>
-          [row.itemName, String(row.erp || ""), String(row.jobCardNo || ""), formatDate(row.date)]
-            .join(" ")
-            .toLowerCase()
-            .includes(search)
+          matchesTableSearch([
+            formatDate(row.date),
+            row.itemName,
+            row.erp || "-",
+            Number(row.plannedQuantity || 0).toLocaleString(),
+            row.jobCardNo || "-",
+            getSampleRequestStatus(row),
+            row.cancelTimestamp ? `${formatDate(row.cancelTimestamp)} by ${row.cancelBy || "-"}` : "-",
+          ], words)
         )
       : sampleRequests;
 
@@ -37,7 +44,7 @@ export function SampleMaster() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Search item, ERP, job card..."
+            placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"

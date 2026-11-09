@@ -8,6 +8,7 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ColorMaster, PrintingQcCheck, Production, Setting, User } from "../types";
 import { formatDate, formatTime } from "../lib/utils";
+import { useTableSearch } from "../lib/tableSearch";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 import { createQcGroupKey, getChunkFilledFields, getChunkTimestamp, getQcGroupKey, nextQcChunkNo, type QcChunkStatus } from "../lib/qcChunks";
@@ -975,8 +976,7 @@ export function PrintingQcMaster() {
     [checks]
   );
 
-  const rows = useMemo(() => {
-    const search = searchTerm.trim().toLowerCase();
+  const filteredGroups = useMemo(() => {
     const filteredChunks = [...checks]
       .sort((a, b) => {
         const timeA = new Date(a.timestamp || "").getTime() || 0;
@@ -990,28 +990,18 @@ export function PrintingQcMaster() {
         if (qcPersonFilter && String(row.qcPerson) !== qcPersonFilter) return false;
         if (warningFilter === "With Warning" && !warning) return false;
         if (warningFilter === "No Warning" && warning) return false;
-        if (!search) return true;
-        return [
-          row.pqcNo,
-          row.jobNo,
-          row.partyName,
-          row.itemName,
-          row.erp,
-          row.checkNo,
-          row.samplingCheckNo,
-          row.qcPerson,
-          row.operatorName,
-          row.lotNoPrinted,
-          row.systemAutoCorrection1,
-          row.systemAutoCorrection2,
-          row.systemAutoCorrection3,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(search);
+        return true;
       });
     return groupPrintingChecks(filteredChunks);
-  }, [checks, jobFilter, partyFilter, qcPersonFilter, searchTerm, warningFilter]);
+  }, [checks, jobFilter, partyFilter, qcPersonFilter, warningFilter]);
+  // Search: only the table columns, as shown (Date, master columns, Chunks, Status, QC People).
+  const rows = useTableSearch(filteredGroups, searchTerm, (row) => [
+    formatDate(row.timestamp),
+    ...masterColumns.map((column) => (column.key === "timestamp" ? formatTime(row.timestamp) : displayValue(row[column.key]))),
+    row.chunkCount,
+    row.groupStatus,
+    row.qcPeople.join(", ") || "-",
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -1026,7 +1016,7 @@ export function PrintingQcMaster() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
             <input
               type="text"
-              placeholder="Search PQC, job, party, item, ERP..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
               className="w-full rounded border border-black py-2 pl-10 pr-4 text-sm text-black focus:outline-none focus:ring-1 focus:ring-black"

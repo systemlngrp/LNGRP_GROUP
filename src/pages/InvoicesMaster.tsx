@@ -27,6 +27,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { formatDate } from "../lib/serial";
+import { useTableSearch } from "../lib/tableSearch";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -322,7 +323,7 @@ export function InvoicesMaster() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoices, lookup]);
 
-  const processedInvoices = useMemo(() => {
+  const invoiceRows = useMemo(() => {
     return invoices
       .map((invoice) => {
         const company = lookup.companyById.get(invoice.companyId);
@@ -352,19 +353,9 @@ export function InvoicesMaster() {
         };
       })
       .filter((invoice) => {
-        const needle = searchTerm.trim().toLowerCase();
         if (companyFilter && invoice.companyName !== companyFilter) return false;
         if (itemFilter && !invoice.itemKeys.includes(itemFilter)) return false;
-        if (!needle) return true;
-        return (
-          invoice.invoiceNo.toLowerCase().includes(needle) ||
-          invoice.companyName.toLowerCase().includes(needle) ||
-          invoice.itemSummary.toLowerCase().includes(needle) ||
-          String(invoice.erpSummary || "").toLowerCase().includes(needle) ||
-          String(invoice.tallyInvNo || "").toLowerCase().includes(needle) ||
-          String(invoice.tallyInvId || "").toLowerCase().includes(needle) ||
-          String(invoice.tallySyncRemark || "").toLowerCase().includes(needle)
-        );
+        return true;
       })
       .sort((a, b) => {
         const aSort = getInvoiceSortValue(a.invoiceNo);
@@ -374,7 +365,24 @@ export function InvoicesMaster() {
         if (bSort.numeric !== aSort.numeric) return bSort.numeric - aSort.numeric;
         return bSort.raw.localeCompare(aSort.raw, undefined, { sensitivity: "base" });
       });
-  }, [invoices, companies, searchTerm, companyFilter, itemFilter, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, lookup, detailsByInvoice]);
+  }, [invoices, companies, companyFilter, itemFilter, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, lookup, detailsByInvoice]);
+
+  // Table search: only the columns the table shows.
+  const processedInvoices = useTableSearch(invoiceRows, searchTerm, (invoice) => [
+    invoice.invoiceNo,
+    invoice.companyName,
+    formatDate(invoice.date),
+    invoice.tallyInvNo,
+    invoice.tallyInvDate ? formatDate(invoice.tallyInvDate) : "",
+    invoice.tallyTimestamp ? formatDate(invoice.tallyTimestamp) : "",
+    invoice.tallyBy,
+    invoice.tallySyncRemark,
+    invoice.tallyInvId,
+    invoice.itemSummary,
+    Number(invoice.totalBeforeGst || 0),
+    getGstTotal(invoice),
+    getGrandTotal(invoice),
+  ]);
 
   const billingSummary = useMemo(
     () => ({
@@ -430,7 +438,7 @@ export function InvoicesMaster() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search invoice, ERP, company, item..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"

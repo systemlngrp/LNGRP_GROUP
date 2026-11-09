@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { cn } from "../lib/utils";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -182,11 +183,22 @@ export function PendingLoading() {
   );
 
   const groupedData = useMemo(() => {
+    const words = searchWords(searchTerm);
     const filtered = planProjections.filter((projection) => {
       if (firmFilter && projection.firmId.toLowerCase() !== firmFilter.trim().toLowerCase()) return false;
-      const firm = firms.find((row) => row.id.toLowerCase() === projection.firmId.toLowerCase());
-      const searchBlob = `${projection.item?.name || ""} ${projection.company?.name || ""} ${projection.order?.orderNo || ""} ${projection.plan.planNo || ""} ${getFirmDisplayNameById(projection.firmId, firms)} ${firm?.firmName || ""}`.toLowerCase();
-      return searchBlob.includes(searchTerm.trim().toLowerCase());
+      // Shown for each plan: company / item group headings (company, item, source)
+      // and the columns Order No, Firm, Plan No, Planned, Loaded, Pending.
+      return matchesTableSearch([
+        projection.company?.name || "Company unavailable",
+        projection.item?.name || "Item unavailable",
+        projection.itemSource,
+        projection.order?.orderNo || "N/A",
+        getFirmDisplayNameById(projection.firmId, firms),
+        projection.plan.planNo,
+        Number(projection.plan.plannedQty || 0),
+        Number(projection.plan.loadedQty || 0),
+        projection.pendingQty,
+      ], words);
     });
 
     const map = new Map<string, GroupedPlan>();
@@ -728,7 +740,7 @@ export function PendingLoading() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input
             type="text"
-            placeholder="Search firm, company, item, order, plan..."
+            placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="h-10 w-full rounded border-2 border-slate-300 bg-white pl-10 pr-4 text-sm font-medium focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100"

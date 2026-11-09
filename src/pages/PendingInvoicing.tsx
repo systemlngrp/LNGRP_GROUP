@@ -32,6 +32,7 @@ import {
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { cn } from "../lib/utils";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildGatePassFromInvoice } from "../lib/gatePasses";
@@ -507,6 +508,8 @@ export function PendingInvoicing() {
   };
 
   const groupedData = useMemo(() => {
+    const words = searchWords(searchTerm);
+    const truckNoById = new Map(trucks.map((truck) => [String(truck.id), truck.truckNo]));
     const pendingSlips = loadingSlips
       .map((slip) => getPendingSlip(slip))
       .filter(Boolean) as LoadingSlip[];
@@ -565,14 +568,26 @@ export function PendingInvoicing() {
       .filter((group) => group.slips.length > 0)
       .filter((group) => !companyFilter || group.companyId === companyFilter)
       .filter((group) => !firmFilter || group.firmId === firmFilter)
-      .filter((group) => {
-        const needle = searchTerm.trim().toLowerCase();
-        if (!needle) return true;
-        const slipText = group.slips.map((slip) => `${slip.slipNo || ""} ${slip.items.join(" ")}`).join(" ");
-        return `${group.firmName} ${group.companyName} ${slipText}`.toLowerCase().includes(needle);
+      // Each slip row is searched on what it shows: the group heading (company,
+      // firm) and its columns Loading Slip No, Date, Truck No, Item Name(s), Total Qty.
+      .map((group) => {
+        if (!words.length) return group;
+        return {
+          ...group,
+          slips: group.slips.filter((slip) => matchesTableSearch([
+            group.companyName,
+            group.firmName,
+            slip.slipNo,
+            formatDate(slip.date),
+            slip.truckNo || truckNoById.get(String(slip.truckId || "")) || "N/A",
+            slip.items,
+            slip.totalQty,
+          ], words)),
+        };
       })
+      .filter((group) => group.slips.length > 0)
       .sort((a, b) => a.companyName.localeCompare(b.companyName));
-  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, findItemAcrossSources, resolveOrderItem, lookup]);
+  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, findItemAcrossSources, resolveOrderItem, lookup, trucks]);
 
   const companyOptions = useMemo(() => Array.from(new Map(groupedData.map((group) => [group.companyId, { value: group.companyId, label: group.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); groupedData.forEach((group) => group.slips.forEach((slip) => slip.items.forEach((name, index) => { const key = slip.itemKeys[index] || name; if (!key || map.has(key)) return; map.set(key, { value: key, label: name, searchText: name }); }))); return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label)); }, [groupedData]);
@@ -1151,7 +1166,7 @@ export function PendingInvoicing() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search firm, company, slip, item..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"

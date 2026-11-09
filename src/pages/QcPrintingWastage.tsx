@@ -7,6 +7,7 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionWastageTotals } from "../lib/wastageCalculations";
 import type { Production, ProductionProcessing, QcPrintingWastage } from "../types";
+import { useTableSearch } from "../lib/tableSearch";
 
 const inputClass = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const derivedInputClass = `${inputClass} cursor-not-allowed bg-slate-100 text-slate-600`;
@@ -119,13 +120,10 @@ export function QcPrintingWastageMaster() {
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const jobOptions = useMemo(() => [...new Set(records.map((record) => record.jobNo).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map((value) => ({ value, label: value })), [records]);
-  const rows = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    return [...records].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).filter((record) => {
-      if (jobFilter && record.jobNo !== jobFilter) return false;
-      return !query || [record.jobNo, record.quantity, record.updatedBy, record.timestamp].join(" ").toLowerCase().includes(query);
-    });
-  }, [jobFilter, records, searchTerm]);
+  const sortedRecords = useMemo(() => [...records].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))), [records]);
+  // Search the table columns: Date, Time, Job No., Quantity, Updated By.
+  const searchedRecords = useTableSearch(sortedRecords, searchTerm, (record) => [formatDatePart(record.timestamp), formatTimePart(record.timestamp), record.jobNo, Number(record.quantity).toLocaleString(), record.quantity, record.updatedBy]);
+  const rows = useMemo(() => searchedRecords.filter((record) => !jobFilter || record.jobNo === jobFilter), [jobFilter, searchedRecords]);
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -134,7 +132,7 @@ export function QcPrintingWastageMaster() {
 
   return <div className="space-y-5 text-black">
     <div className="border-b border-black pb-4"><h2 className="text-xl font-bold uppercase">QC Printing Wastage Master</h2></div>
-    <div className="grid grid-cols-1 gap-3 rounded border-2 border-black bg-white p-3 md:grid-cols-[minmax(260px,1fr)_minmax(180px,0.6fr)_auto] md:items-end"><label className="relative"><span className="sr-only">Search Job No.</span><Search className="absolute left-3 top-3 text-slate-500" size={17} /><input className="w-full rounded border-2 border-black py-2 pl-9 pr-3" placeholder="Search Job No., quantity..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} /></label><Select compact value={jobFilter} onChange={setJobFilter} options={jobOptions} placeholder="All Job Nos." noOptionsMessage="No matching Job No." /><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded border-2 border-black p-2"><option value={10}>10 / page</option><option value={25}>25 / page</option><option value={50}>50 / page</option><option value={100}>100 / page</option></select></div>
+    <div className="grid grid-cols-1 gap-3 rounded border-2 border-black bg-white p-3 md:grid-cols-[minmax(260px,1fr)_minmax(180px,0.6fr)_auto] md:items-end"><label className="relative"><span className="sr-only">Search Job No.</span><Search className="absolute left-3 top-3 text-slate-500" size={17} /><input className="w-full rounded border-2 border-black py-2 pl-9 pr-3" placeholder="Search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} /></label><Select compact value={jobFilter} onChange={setJobFilter} options={jobOptions} placeholder="All Job Nos." noOptionsMessage="No matching Job No." /><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded border-2 border-black p-2"><option value={10}>10 / page</option><option value={25}>25 / page</option><option value={50}>50 / page</option><option value={100}>100 / page</option></select></div>
     <div className="overflow-x-auto rounded border-2 border-black bg-white"><table className="min-w-[800px] w-full border-collapse text-sm"><thead className="bg-slate-100"><tr>{["Date", "Time", "Job No.", "Quantity", "Updated By"].map((header) => <th key={header} className="border border-black px-3 py-2 text-left font-bold">{header}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((record) => <tr key={record.id} className="odd:bg-white even:bg-slate-50"><td className="border border-black p-2">{formatDatePart(record.timestamp)}</td><td className="border border-black p-2">{formatTimePart(record.timestamp)}</td><td className="border border-black p-2 font-bold">{record.jobNo}</td><td className="border border-black p-2 text-right">{Number(record.quantity).toLocaleString()}</td><td className="border border-black p-2">{record.updatedBy || "-"}</td></tr>) : <tr><td colSpan={5} className="p-8 text-center font-semibold">No QC Printing Wastage records found.</td></tr>}</tbody></table></div>
     <div className="flex flex-wrap items-center justify-end gap-3 text-sm"><span className="font-black" title="Total">{rows.length}</span><div className="flex items-center gap-2"><button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button><span>{currentPage} / {totalPages}</span><button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage >= totalPages} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button></div></div>
   </div>;

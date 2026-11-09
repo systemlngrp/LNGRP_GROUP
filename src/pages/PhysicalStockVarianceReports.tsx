@@ -19,6 +19,7 @@ import type {
   Supplier,
 } from "../types";
 import { formatDate } from "../lib/utils";
+import { useTableSearch } from "../lib/tableSearch";
 
 type ReportMode = "excess" | "shortage";
 
@@ -62,13 +63,18 @@ function PhysicalStockVarianceReport({ mode }: { mode: ReportMode }) {
     return buildPhysicalStockShortageRows({ sessions, logs, stockRows, selectedSessionId });
   }, [logs, mode, selectedSessionId, sessions, stockRows]);
 
-  const filteredRows = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return reportRows;
-    return reportRows.filter((row) =>
-      [row.sessionNo, row.reelNo, row.mrrNo, row.erp, row.supplierName].some((value) => String(value || "").toLowerCase().includes(q)),
-    );
-  }, [reportRows, searchTerm]);
+  const filteredRows = useTableSearch(reportRows, searchTerm, (row) => [
+    row.sessionNo,
+    formatDateTime(row.timestamp),
+    row.reelNo,
+    row.mrrNo,
+    row.erp,
+    row.supplierName,
+    formatPhysicalQty(row.systemAvailableWeight),
+    formatPhysicalQty(row.physicalWeight),
+    formatPhysicalQty(Math.abs(row.variance)),
+    row.source === "unscanned" ? "Not Scanned" : "Scanned",
+  ]);
 
   const totals = useMemo(
     () => filteredRows.reduce(
@@ -139,7 +145,7 @@ function PhysicalStockVarianceReport({ mode }: { mode: ReportMode }) {
               type="text"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search session / reel / MRR / ERP / supplier"
+              placeholder="Search"
               className="h-[34px] w-full rounded border-2 border-black pl-8 pr-2 text-xs font-semibold focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>
