@@ -56,6 +56,8 @@ export function ClientPagination({
       className="flex items-center justify-end border border-black bg-slate-50 px-3 py-2"
     >
       <div className="flex flex-wrap items-center gap-2">
+        {/* Total number of rows */}
+        <span className="mr-1 text-sm font-black text-black" title="Total">{totalItems}</span>
         <label className="flex items-center gap-2 text-sm font-medium text-black">
           <select
             aria-label="Rows per page"

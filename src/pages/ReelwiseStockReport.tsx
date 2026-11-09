@@ -639,8 +639,8 @@ export function ReelwiseStockReport() {
             </tbody>
           </table>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-black bg-slate-50 px-3 py-2 text-xs font-bold">
-          <span />
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t-2 border-black bg-slate-50 px-3 py-2 text-xs font-bold">
+          <span className="font-black" title="Total">{totalRows}</span>
           <div className="flex items-center gap-2">
             <label className="flex items-center gap-1">
               <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="rounded border border-black bg-white px-1 py-1">

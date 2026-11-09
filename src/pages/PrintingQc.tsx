@@ -1095,8 +1095,8 @@ export function PrintingQcMaster() {
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col gap-3 border-t border-black p-3 text-sm md:flex-row md:items-center md:justify-between">
-          <span />
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-black p-3 text-sm">
+          <span className="font-black" title="Total">{rows.length}</span>
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button>
             <span>{currentPage} / {totalPages}</span>

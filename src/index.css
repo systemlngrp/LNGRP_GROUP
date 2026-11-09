@@ -386,6 +386,10 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   justify-content: flex-end;
   padding: 0.5rem 0.75rem;
 }
+.app-table-pagination-total {
+  margin-right: 0.25rem;
+  font-weight: 900;
+}
 .app-table-pagination-controls button {
   font-size: 1.125rem;
   font-weight: 900;

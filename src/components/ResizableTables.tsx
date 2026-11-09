@@ -626,7 +626,12 @@ function enhanceTablePagination(table: HTMLTableElement, content: HTMLElement, p
         scrollTableToTop(table, content);
       });
 
-      controls.append(label, previous, pageLabel, next);
+      const total = document.createElement("span");
+      total.className = "app-table-pagination-total";
+      total.title = "Total";
+      total.textContent = String(dataRows.length);
+
+      controls.append(total, label, previous, pageLabel, next);
       host.append(controls);
     },
   };
