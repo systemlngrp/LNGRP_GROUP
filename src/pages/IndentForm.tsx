@@ -29,6 +29,15 @@ function getIndentLineUom(indentType: Indent["indentType"], material?: Material 
   return indentType === "Reel" ? "Kgs" : material?.uom || "";
 }
 
+// Some item names already start with their ERP code ("11105814 - Size: …");
+// the ERP shows separately, so it is left out of the name in the item list.
+function stripErpPrefix(name: string, erpCode?: string | number | null) {
+  const erp = String(erpCode ?? "").trim();
+  if (!erp) return name;
+  const pattern = new RegExp(`^\\s*${erp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*[-–:]\\s*`);
+  return name.replace(pattern, "") || name;
+}
+
 export function IndentForm() {
 
   const navigate = useNavigate();
@@ -77,7 +86,7 @@ export function IndentForm() {
     .map((material) => ({
       value: material.id,
       // Name only (the ERP shows in its own column); typing an ERP still finds it.
-      label: material.name,
+      label: stripErpPrefix(material.name, material.erpCode),
       searchText: `${material.erpCode || ""} ${material.name}`,
     }));
 
@@ -314,11 +323,11 @@ export function IndentForm() {
                       className="w-full min-w-0 rounded border border-slate-300 px-2 py-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                     />
                   </label>
-                  <div className="col-span-2 flex items-center justify-end gap-2 md:col-span-1">
+                  <div className="col-span-2 flex items-center justify-end gap-1.5 md:col-span-1">
                     <button
                       type="button"
                       onClick={() => handleRemoveRow(line.id)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-200 text-red-600 hover:bg-red-50 transition"
+                      className="indent-line-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-red-300 bg-white text-red-600 hover:bg-red-50 transition"
                       title="Remove row"
                       aria-label="Remove row"
                     >
@@ -327,7 +336,7 @@ export function IndentForm() {
                     <button
                       type="button"
                       onClick={() => handleAddRowAfter(line.id)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-indigo-300 text-indigo-700 hover:bg-indigo-50 transition"
+                      className="indent-line-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-indigo-600 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
                       title="Add row"
                       aria-label="Add row"
                     >

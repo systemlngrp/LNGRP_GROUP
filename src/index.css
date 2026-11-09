@@ -1537,3 +1537,13 @@ table td button:focus-visible {
     display: none !important;
   }
 }
+
+/* Indent Form line buttons: keep the remove/add pair together and the same size
+   (the app's general "add button" rule would push + to the far right). */
+.app-view-content .app-add-action.indent-line-action,
+.app-view-content .indent-line-action {
+  margin-inline-start: 0;
+  width: 2.25rem;
+  min-width: 2.25rem;
+  justify-self: auto;
+}
