@@ -1637,3 +1637,18 @@ table td button:focus-visible {
   background-color: color-mix(in srgb, var(--section-head-bg) 14%, #fff) !important;
   color: #0f172a !important;
 }
+
+/* Long names in a dropdown wrap onto more lines on phones (Order Form company/item). */
+@media (max-width: 767px) {
+  .app-select-wrap [class*="singleValue"],
+  .app-select-wrap [class*="placeholder"] {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    word-break: break-word;
+  }
+  .app-select-wrap [class*="ValueContainer"],
+  .app-select-wrap [class*="valueContainer"] {
+    overflow: visible !important;
+  }
+}

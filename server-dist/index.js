@@ -11675,6 +11675,22 @@ const createHandlers = (tableName) => {
                 // Material receipts: the invoice date cannot be in the future (India
                 // date). Only checked when the date is new or changed, so saving an
                 // existing record for approvals is never blocked.
+                // Orders: the order date cannot be in the future (same rule, only when
+                // the date is new or changed).
+                if (tableName === "orders" && data && !Array.isArray(data)) {
+                    const orderDate = String(data.orderDate || "").slice(0, 10);
+                    const todayIndia = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(orderDate) && orderDate > todayIndia) {
+                        const recordId = String(data.id || "").trim();
+                        const [existingRows] = recordId
+                            ? await db.query("SELECT orderDate FROM `orders` WHERE id = ? LIMIT 1", [recordId])
+                            : [[]];
+                        const storedOrderDate = String(existingRows[0]?.orderDate || "").slice(0, 10);
+                        if (storedOrderDate !== orderDate) {
+                            return res.status(400).json({ error: "Order Date cannot be a future date." });
+                        }
+                    }
+                }
                 if (tableName === "material_in" && data && !Array.isArray(data)) {
                     const invDate = String(data.invDate || "").slice(0, 10);
                     const todayIndia = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);

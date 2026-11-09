@@ -19,6 +19,11 @@ import {
   OrderCatalogItem,
 } from "../lib/orderItems";
 
+function todayIso() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
 export function OrderForm() {
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -565,6 +570,10 @@ export function OrderForm() {
       alert("Firm is mandatory.");
       return;
     }
+    if (orderDate && orderDate.slice(0, 10) > todayIso()) {
+      alert("Order Date cannot be a future date.");
+      return;
+    }
     if (!companyId || !itemId || !qty) return;
     if (!orderBy) {
       alert("Order By is mandatory.");
@@ -694,12 +703,6 @@ export function OrderForm() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Order Form</h2>
         <div className="flex max-w-full flex-wrap justify-start gap-2 sm:justify-end">
           <button
-            onClick={downloadTemplate}
-            className="bg-white text-black border-2 border-black px-3 py-2 rounded font-bold hover:bg-slate-100 transition flex items-center text-sm"
-          >
-            <Download size={18} className="mr-2" /> Template
-          </button>
-          <button
             onClick={() => {
               setBulkUploadFirmId("");
               setIsBulkFirmDialogOpen(true);
@@ -778,12 +781,12 @@ export function OrderForm() {
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Order Date</label>
-              <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} className="w-full border border-slate-300 rounded-md p-3 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <input type="date" value={orderDate} max={todayIso()} onChange={(e) => setOrderDate(e.target.value)} className="w-full border border-slate-300 rounded-md p-3 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Company Name</label>
-              <div className="w-full">
+              <div className="app-select-wrap w-full">
                 <Select
                   value={companyId}
                   onChange={handleCompanyChange}
@@ -807,39 +810,31 @@ export function OrderForm() {
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">Item Source</label>
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={isUniversal}
-                    onChange={(e) => setIsUniversal(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  Show All Items
-                </label>
-                {itemSourceOptions.map((option) => {
-                  const checked = itemSource === option.value;
-                  return (
-                    <label
-                      key={option.value}
-                      className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition ${checked ? "border-indigo-600 bg-indigo-50 text-indigo-900" : "border-slate-300 bg-white text-slate-700 hover:border-indigo-300"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => handleItemSourceChange(option.value)}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  );
-                })}
+              {/* ALL shows every item (not only the company's); FG / PHP / PLATE pick the item source. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsUniversal((current) => !current)}
+                  className={`rounded-md border-2 px-3 py-2 text-sm font-bold ${isUniversal ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black"}`}
+                >
+                  ALL
+                </button>
+                {itemSourceOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => handleItemSourceChange(option.value)}
+                    className={`rounded-md border-2 px-3 py-2 text-sm font-bold ${itemSource === option.value ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black"}`}
+                  >
+                    {option.value}
+                  </button>
+                ))}
               </div>
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Item Name (ERP)</label>
-              <div className="w-full">
+              <div className="app-select-wrap w-full">
                 <Select value={itemId} onChange={handleItemChange} options={itemOptions} placeholder="Select Item Name / ERP..." />
               </div>
             </div>
