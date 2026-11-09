@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, PurchaseOrder, PurchaseOrderLine, Supplier } from "../types";
@@ -347,7 +348,7 @@ export function PurchaseOrderCreate() {
             <label className="text-blue-700 font-bold">Purchase Firm</label>
             <select value={poFirmId} onChange={(e) => setPoFirmId(e.target.value)} className="w-full rounded border-2 border-black bg-white px-4 py-3 text-black">
               <option value="">Select firm...</option>
-              {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+              {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
             </select>
           </div>
           <div className="space-y-2">

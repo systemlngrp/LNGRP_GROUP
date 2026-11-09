@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
@@ -17,7 +18,7 @@ export function QualityComplaintForm() {
   const partyOptions = useMemo(() => [...new Set([...companies.map((c) => c.name), ...productions.map((p) => p.companyName || ""), ...items.map((i: any) => i.customer || "")].map((v) => String(v || "").trim()).filter(Boolean))].sort(), [companies, items, productions]);
   const partyItemOptions = useMemo(() => { const party = key(form.partyName); if (!party) return items; const companyIds = new Set(companies.filter((c) => key(c.name) === party).map((c) => c.id)); const partyErps = new Set(productions.filter((p) => key(p.companyName) === party).map((p) => key(p.erpCode))); const partyItemIds = new Set(orders.filter((o) => companyIds.has(o.companyId)).map((o) => key(o.itemId))); return items.filter((item: any) => key(item.customer) === party || partyItemIds.has(key(item.id)) || partyErps.has(key(item.erp))); }, [companies, form.partyName, items, orders, productions]);
   const itemOptions = useMemo(() => { const source = partyItemOptions.length ? partyItemOptions : items; return source.map((i: any) => ({ id: String(i.id || ""), name: String(i.name || ""), erp: String(i.erp || "") })).filter((i) => i.name).sort((a, b) => a.name.localeCompare(b.name)); }, [items, partyItemOptions]);
-  const firmOptions = firms.map((firm) => ({ value: firm.id, label: firm.firmName }));
+  const firmOptions = firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) }));
   const partySelectOptions = partyOptions.map((value) => ({ value, label: value }));
   const itemSelectOptions = itemOptions.map((item) => ({ value: item.name, label: item.name, searchText: `${item.name} ${item.erp}` }));
   const erpOptions = [...new Set(items.map((item: any) => String(item.erp || "").trim()).filter(Boolean))].map((value) => ({ value, label: value, searchText: `${value} ${items.find((item: any) => String(item.erp || "").trim() === value)?.name || ""}` }));

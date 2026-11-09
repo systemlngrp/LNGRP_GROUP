@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Firm, MaterialIssue } from "../types";
@@ -118,7 +119,7 @@ export function PendingNonJobMaterialIssue() {
         <TableControls searchTerm={searchTerm} onSearchChange={(value) => { setSearchTerm(value); setPage(1); }} placeholder="Search firm or date..." />
         <select value={firmFilter} onChange={(e) => { setFirmFilter(e.target.value); setPage(1); }} className="min-w-52 rounded border-2 border-black bg-white px-3 py-2 text-sm font-bold">
           <option value="">All firms</option>
-          {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+          {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
         </select>
       </div>
 

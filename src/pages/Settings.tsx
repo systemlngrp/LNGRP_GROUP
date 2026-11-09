@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useData } from "../hooks/useData";
 import { Firm, Machine, OrderItemSource, Setting, User } from "../types";
 import { PRODUCTION_FORM_COLUMN_OPTIONS, parseProductionFormVisibleColumns } from "../lib/productionFormColumns";
@@ -1565,7 +1566,7 @@ export function SettingsPage() {
                             className="w-full border border-black rounded px-2 py-1 text-sm font-semibold text-black outline-none bg-white"
                           >
                             <option value="">Global fallback</option>
-                            {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                            {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
                           </select>
                         </td>
                         <td className="px-4 py-2 border border-black">
@@ -2061,10 +2062,10 @@ export function SettingsPage() {
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
             <select value={pairFromFirmId} onChange={(e) => setPairFromFirmId(e.target.value)} className="rounded border-2 border-black bg-white p-2 text-black">
-              <option value="">From Unit</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+              <option value="">From Unit</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
             </select>
             <select value={pairToFirmId} onChange={(e) => setPairToFirmId(e.target.value)} className="rounded border-2 border-black bg-white p-2 text-black">
-              <option value="">To Unit</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+              <option value="">To Unit</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
             </select>
             <input type="number" min="0" max="100" step="0.01" value={pairRate} onChange={(e) => setPairRate(e.target.value)} className="rounded border-2 border-black bg-white p-2 text-black" />
             <button type="button" onClick={() => void saveInterFirmPairRate()} disabled={loading || saving || user?.role !== "Admin"} className="rounded border-2 border-black bg-indigo-600 px-4 py-2 font-bold text-white disabled:opacity-50">Add / Update Rate</button>

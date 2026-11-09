@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Plus, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
@@ -19,7 +20,7 @@ export function QcBlockRecord() {
   const [showForm, setShowForm] = useState(false);
   const [firmId, setFirmId] = useState(""); const [erp, setErp] = useState(""); const [location, setLocation] = useState(""); const [blockNo, setBlockNo] = useState(""); const [party, setParty] = useState(""); const [item, setItem] = useState(""); const [message, setMessage] = useState(""); const [filters, setFilters] = useState<Filters>(emptyFilters);
   const erpOptions = useMemo(() => (items as Item[]).filter(i => i.erp !== undefined).map(i => ({ value: String(i.erp), label: `${i.erp} — ${i.name}`, searchText: `${i.erp} ${i.name} ${i.customer || ""}` })), [items]);
-  const firmOptions = firms.map(f => ({ value: f.id, label: f.firmName }));
+  const firmOptions = firms.map(f => ({ value: f.id, label: getFirmDisplayName(f) }));
   const locationOptions = locations.filter(l => clean(l.active).toLowerCase() !== "no").map(l => ({ value: l.name, label: l.name }));
   const setFilter = (key: keyof Filters, value: string) => setFilters(current => ({ ...current, [key]: value }));
   const selectErp = (value: string) => { setErp(value); const found = (items as Item[]).find(i => String(i.erp) === value); setItem(found?.name || ""); setParty(found?.customer || ""); };

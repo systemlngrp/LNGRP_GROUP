@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useDailyConsumptions } from "../hooks/useDailyConsumptions";
@@ -56,7 +57,7 @@ export function DailyConsumptionMaster() {
           </div>
           <select value={firmFilter} onChange={(e) => { setFirmFilter(e.target.value); setPage(1); setSelectedIssueId(null); }} className="w-full md:w-52 px-3 py-2 border border-black rounded text-sm font-bold bg-white">
             <option value="">All firms</option>
-            {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+            {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
           </select>
           <div className="relative w-full md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />

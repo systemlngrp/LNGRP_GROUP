@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Disc, ArrowUpDown } from "lucide-react";
 import { useData } from "../hooks/useData";
@@ -1577,7 +1578,7 @@ export function Materials() {
                     className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
                   >
                     <option value="">No firm (material only)</option>
-                    {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                    {firms.slice().sort((a, b) => a.firmName.localeCompare(b.firmName)).map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
                   </select>
                 )}
                 <p className="text-xs font-semibold text-slate-500">{formData.type === "Reel" ? "Reel opening stock is always posted to Unit-I." : "Select a firm to add or edit opening stock for that firm."}</p>

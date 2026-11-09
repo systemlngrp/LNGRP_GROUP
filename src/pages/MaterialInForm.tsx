@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, FileText, Plus, Trash2, Upload, Download, Wand2, X } from "lucide-react";
 import { useConfirm } from "../components/ConfirmDialog";
@@ -2983,7 +2984,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               {mrrType === "Reel" ? "Inventory Owner" : "Firm"} <span className="text-red-500">*</span>
               <select value={firmId} disabled={firmLocked || mrrType === "Reel"} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="mt-2 w-full rounded border-2 border-indigo-300 p-2 disabled:bg-slate-100">
                 <option value="">Select Firm...</option>
-                {(mrrType === "Reel" ? firms.filter((firm) => firm.id === unitOneFirm?.id) : firms).map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+                {(mrrType === "Reel" ? firms.filter((firm) => firm.id === unitOneFirm?.id) : firms).map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
               </select>
             </label>
           </div>
@@ -3410,11 +3411,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                   })
                 : null}
             </div>
-          ) : (
-            <div className="p-4 bg-slate-50 text-black rounded border border-dashed border-black text-sm text-center">
-              No items added yet. Please add at least one line item.
-            </div>
-          )}
+          ) : null}
           {/* Charges and deductions: shown once at least one item line is added. */}
           {lines.length > 0 ? (
             <div className="mt-4 grid grid-cols-1 gap-4 rounded border border-black bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">

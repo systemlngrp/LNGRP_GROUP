@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
@@ -194,7 +195,7 @@ export function OtherConsumablesInventoryReport() {
           aria-label="Inventory firm"
         >
           <option value="">Select firm</option>
-          {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+          {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
         </select>
       </div>
 

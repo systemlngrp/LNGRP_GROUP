@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Select } from "../components/Select";
@@ -130,7 +131,7 @@ export function DailyConsumptionIssueForm() {
           <Field label="Firm" required>
             <select value={firmId} onChange={(e) => setFirmId(e.target.value)} required className="w-full border-2 border-black rounded p-2 bg-white">
               <option value="">Select firm...</option>
-              {firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}
+              {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
             </select>
             <div className="text-xs font-bold text-slate-600" aria-live="polite">
               Selected firm: {selectedFirm?.firmName || "None selected"}

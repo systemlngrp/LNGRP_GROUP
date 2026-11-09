@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Plus, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
@@ -10,7 +11,7 @@ const blank: QcSampleRequirement = { id: "", receivingDate: new Date().toISOStri
 export function QcSampleRequirement() {
   const [rows, , loading, api] = useData<QcSampleRequirement>("qc_sample_requirements", [], { firmScope: "all" }); const [firms] = useData<Firm>("firms", [], { firmScope: "all" }); const items = useNpdItemsWithoutStock();
   const [form, setForm] = useState<QcSampleRequirement>(blank); const [show, setShow] = useState(false); const [message, setMessage] = useState("");
-  const itemOptions = useMemo(() => (items as Item[]).map(i => ({ value: i.id, label: `${i.name}${i.erp ? ` (${i.erp})` : ""}`, searchText: `${i.name} ${i.erp || ""} ${i.customer || ""}` })), [items]); const firmOptions = firms.map(f => ({ value: f.id, label: f.firmName }));
+  const itemOptions = useMemo(() => (items as Item[]).map(i => ({ value: i.id, label: `${i.name}${i.erp ? ` (${i.erp})` : ""}`, searchText: `${i.name} ${i.erp || ""} ${i.customer || ""}` })), [items]); const firmOptions = firms.map(f => ({ value: f.id, label: getFirmDisplayName(f) }));
   const update = (key: keyof QcSampleRequirement, value: string) => setForm(f => ({ ...f, [key]: value })); const selectItem = (id: string) => { const i = (items as Item[]).find(x => x.id === id); setForm(f => ({ ...f, itemName: i?.name || "", partyName: i?.customer || "" })); };
   const save = async () => { setMessage(""); if (!form.receivingDate || !form.partyName || !form.itemName) return setMessage("Receiving Date, Party Name, and Item Name are required."); const firm = firms.find(f => f.id === form.firmId); const item: QcSampleRequirement = { ...form, id: `QCREQ-${Date.now()}-${Math.random().toString(36).slice(2,7)}`, firmName: firm?.firmName, updatedBy: "System User", updateTimestamp: new Date().toISOString() }; try { await api.addItem(item); setForm({ ...blank, receivingDate: new Date().toISOString().slice(0,10) }); setShow(false); setMessage("Sample Requirement saved successfully."); } catch (e) { setMessage(e instanceof Error ? e.message : "Unable to save Sample Requirement."); } };
   const file = async (event: React.ChangeEvent<HTMLInputElement>) => { const selected = event.target.files?.[0]; if (!selected) return; const reader = new FileReader(); reader.onload = async () => { const response = await fetch("/api/upload-artwork", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: selected.name, base64: reader.result }) }); const result = await response.json(); if (response.ok) update("boxPhotos", result.filename); }; reader.readAsDataURL(selected); };

@@ -4,7 +4,7 @@ import { Download, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Firm, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
 import { normalizeMachineName } from "../lib/productionMachineNames";
-import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { formatDate } from "../lib/serial";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -72,7 +72,7 @@ export function ManufacturingJournal() {
     <div className="border-b border-black pb-4"><h2 className="text-xl font-black uppercase">Manufacturing Journal</h2></div>
     <div className="grid grid-cols-1 gap-3 rounded border-2 border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-6">
       <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Search job, item, ERP, operator..." className="rounded border-2 border-black px-3 py-2 text-sm" />
-      <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm"><option value="">All Units</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{firm.firmName}</option>)}</select>
+      <select value={firmFilter} onChange={(e) => setFirmFilter(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm"><option value="">All Units</option>{firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}</select>
       <select value={stageFilter} onChange={(e) => setStageFilter(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm"><option value="">All Stages</option>{stageNames.map((stage) => <option key={stage}>{stage}</option>)}</select>
       <select value={tallyFilter} onChange={(e) => setTallyFilter(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm"><option value="">All Tally Status</option><option>Pending</option><option>Posted</option><option>Completed</option><option>Not Applicable</option></select>
       <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm" /><input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm" />
