@@ -618,7 +618,7 @@ export function MrrApprovals() {
       ) : null}
 
       {/* Desktop table */}
-      <div className="hidden overflow-x-auto rounded border border-black bg-white md:block">
+      <div className={cn("overflow-x-auto rounded border border-black bg-white", filteredList.length === 0 ? "block" : "hidden md:block")}>
         <table className="min-w-full border-collapse text-sm">
           <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
             <tr>
@@ -642,7 +642,7 @@ export function MrrApprovals() {
           <tbody>
             {filteredList.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-4 py-12 text-center font-bold text-slate-500">No MRRs pending in this stage.</td>
+                <td colSpan={13} className="h-16" aria-label="No records" />
               </tr>
             ) : (
               pagination.paginatedItems.map((m) => {
@@ -701,9 +701,7 @@ export function MrrApprovals() {
             <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-indigo-600" />
             Select all ({filteredList.length})
           </label>
-        ) : (
-          <div className="rounded border border-black bg-white px-4 py-10 text-center font-bold text-slate-500">No MRRs pending in this stage.</div>
-        )}
+        ) : null}
         {pagination.paginatedItems.map((m) => {
           const isExpanded = expandedIds.includes(m.id);
           const mrrQty = m.lines.reduce((sum, l) => sum + (l.actualQty || l.qty || 0), 0);

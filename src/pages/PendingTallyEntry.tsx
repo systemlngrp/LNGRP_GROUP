@@ -249,9 +249,7 @@ export function PendingTallyEntry() {
           <tbody className="bg-white text-black">
             {pendingList.length === 0 ? (
               <tr>
-                <td colSpan={tableColumnCount} className="px-4 py-12 text-center font-bold text-slate-500">
-                  No pending entries.
-                </td>
+                <td colSpan={tableColumnCount} className="h-16" aria-label="No records" />
               </tr>
             ) : (
               pendingPagination.paginatedItems.map((m) => {

@@ -229,7 +229,7 @@ export function PendingAccountsApproval() {
 
       <ApprovalFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} itemFilter={itemFilter} onItemChange={setItemFilter} fromDate={fromDate} onFromDateChange={handleFromDateChange} toDate={toDate} onToDateChange={handleToDateChange} firms={firmOptions} suppliers={supplierOptions} />
 
-      <div className="hidden md:block max-h-[calc(100vh-270px)] overflow-auto">
+      <div className={`${pendingRows.length === 0 ? "block" : "hidden md:block"} max-h-[calc(100vh-270px)] overflow-auto`}>
       <table className="min-w-[1100px] divide-y divide-black border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
@@ -253,7 +253,7 @@ export function PendingAccountsApproval() {
           <tbody className="divide-y divide-black bg-white">
             {pendingRows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-6 py-8 text-center text-black font-medium text-bold">No pending approvals.</td>
+                <td colSpan={8} className="h-16" aria-label="No records" />
               </tr>
             ) : pendingRows
               .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
