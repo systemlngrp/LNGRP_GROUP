@@ -6,7 +6,6 @@ import { Firm, Indent, IndentLine, Material, User } from "../types";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { summarizeIndentLines } from "../lib/indentTotals";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 
@@ -31,17 +30,6 @@ function getIndentLineUom(indentType: Indent["indentType"], material?: Material 
 }
 
 export function IndentForm() {
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
 
   const navigate = useNavigate();
   const [indents, setIndents] = useData<Indent>("indents", []);
@@ -196,7 +184,6 @@ export function IndentForm() {
 
   return (
     <>
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
       <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-6">
       <div className="flex items-start justify-between gap-4">

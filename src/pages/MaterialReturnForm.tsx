@@ -19,7 +19,6 @@ import { generateTransactionNo } from "../lib/serial";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { calculateMaterialIssueAmount, getReturnableReelLinesForJob, resolveMaterialIssueRate, round2 } from "../lib/materialMovement";
 import {
   buildProductionCorrugatedSheetUsageMap,
@@ -40,17 +39,6 @@ function isConsumableNpdItem(value: unknown) {
 }
 
 export function MaterialReturnForm() {
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
 
   const [materials] = useData<Material>("materials", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
@@ -427,7 +415,6 @@ export function MaterialReturnForm() {
 
   return (
     <>
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
       <div className="bg-white p-6 rounded shadow-sm border border-black text-black">
       <div className="mb-6 border-b border-black pb-2"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Material Return Form</h2></div>

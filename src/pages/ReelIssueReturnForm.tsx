@@ -21,7 +21,6 @@ import { generateTransactionNo } from "../lib/serial";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { getAvailableReelPackingSlips } from "../lib/materialMovement";
 import {
   buildProductionCorrugatedSheetUsageMap,
@@ -48,17 +47,6 @@ function normalizeText(value?: string | null) {
 }
 
 export function ReelIssueReturnForm() {
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
 
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -436,7 +424,6 @@ export function ReelIssueReturnForm() {
                       <div className="mt-4 hidden overflow-hidden rounded-[20px] border border-slate-200 md:block">
                         <div className="overflow-x-auto">
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
       <table className="min-w-full border-collapse">
                             <thead className="sticky top-0 z-30 bg-slate-800 text-white">

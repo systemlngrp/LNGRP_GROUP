@@ -22,7 +22,6 @@ import { formatDate } from "../lib/utils";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { calculateMaterialIssueAmount, getAvailableReelPackingSlips, getNonReelAvailableQty, resolveMaterialIssueRate, round2 } from "../lib/materialMovement";
 import {
   buildProductionCorrugatedSheetUsageMap,
@@ -130,17 +129,6 @@ function formatMoney(value?: number) {
 }
 
 export function MaterialIssueForm() {
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
   const stopScanner = () => {
     if (scanTimerRef.current !== null) {
       window.clearInterval(scanTimerRef.current);
@@ -870,7 +858,6 @@ export function MaterialIssueForm() {
   return (
     <>
       <div className={issueType === "Job" ? "hidden md:block" : ""}>
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
       </div>
 
       <div className="bg-white p-3 md:p-6 rounded shadow-sm border border-black text-black">

@@ -4,7 +4,6 @@ import { Firm, Machine, OrderItemSource, Setting, User } from "../types";
 import { PRODUCTION_FORM_COLUMN_OPTIONS, parseProductionFormVisibleColumns } from "../lib/productionFormColumns";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { getFinancialYear } from "../lib/serial";
@@ -316,17 +315,6 @@ function parseInvoiceNumberSeries(raw?: string): InvoiceSeriesRow[] {
 export function SettingsPage() {
   const confirm = useConfirm();
   const { user } = useAuth();
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
 
   const [settings, setSettings, loading] = useData<Setting>("settings", []);
   const [firms] = useData<Firm>("firms", []);
@@ -923,7 +911,6 @@ export function SettingsPage() {
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Settings</h2>
       </div>
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
       <div id="role-setup" className="space-y-4 border-b border-dashed border-black pb-5">
         <div>

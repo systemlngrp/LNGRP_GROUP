@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, PurchaseOrder, PurchaseOrderLine, Supplier } from "../types";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { formatDate, generateTransactionNo } from "../lib/serial";
 import { normalizeIndentLine, summarizeIndentLines, withIndentTotals } from "../lib/indentTotals";
@@ -20,17 +18,6 @@ type RowDraft = {
 };
 
 export function PurchaseOrderCreate() {
-  const [searchTerm, setSearchTerm] = useState('');
-
-  // Simple DOM-based table row filter bound to the search input
-  useEffect(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const rows = document.querySelectorAll('table tbody tr');
-    rows.forEach((row) => {
-      const txt = (row.textContent || '').toLowerCase();
-      (row as HTMLElement).style.display = q && !txt.includes(q) ? 'none' : '';
-    });
-  }, [searchTerm]);
 
   const navigate = useNavigate();
   const { indentId = "" } = useParams();
@@ -326,7 +313,6 @@ export function PurchaseOrderCreate() {
   if (!indent || !normalizedIndent) {
     return (
       <>
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
 
         <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Create Purchase Order</h2>
