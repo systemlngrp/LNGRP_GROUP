@@ -236,6 +236,36 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   position: relative;
 }
 
+/* Table content rules (ResizableTables.tsx): less side padding; header words
+   never break in the middle; codes, numbers and dates stay on one line; names
+   wrap between words. */
+.app-view-content table.app-enhanced-table th,
+.app-view-content table.app-enhanced-table td {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+.app-view-content table.app-enhanced-table th {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+.app-view-content table.app-enhanced-table td[data-cell-kind="code"] {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.app-view-content table.app-enhanced-table td[data-cell-kind="file"] {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.app-view-content table.app-enhanced-table td[data-cell-kind="text"] {
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
 .app-view-content table.qc-view-table tbody td {
   vertical-align: top;
 }

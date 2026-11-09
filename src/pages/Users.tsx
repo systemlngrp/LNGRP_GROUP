@@ -698,9 +698,11 @@ export function Users() {
                         <td className="px-6 py-4 text-right text-sm font-medium border border-black whitespace-nowrap">
                           <button
                             onClick={() => handleView(user)}
+                            title="View"
+                            aria-label="View"
                             className="text-slate-700 hover:text-black mr-4 font-bold inline-flex items-center"
                           >
-                            <Eye size={16} className="mr-1" /> View
+                            <Eye size={16} />
                           </button>
                           {canManage ? <button
                             onClick={() => handleEdit(user)}

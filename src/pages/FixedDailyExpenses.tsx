@@ -222,8 +222,8 @@ export function FixedDailyExpenses() {
                 <td className="border border-gray-900 p-2 text-right font-bold">{formatMoney(Number(record.totalAmount || 0))}</td>
                 <td className="border border-gray-900 p-2 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <button className="inline-flex items-center gap-2 rounded border border-gray-900 px-3 py-1.5 text-xs font-bold" type="button" onClick={() => setViewRecord(record)} title="View details">
-                      <Eye size={14} /> View
+                    <button className="inline-flex items-center gap-2 rounded border border-gray-900 px-3 py-1.5 text-xs font-bold" type="button" onClick={() => setViewRecord(record)} title="View details" aria-label="View details">
+                      <Eye size={14} />
                     </button>
                     <button className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white" type="button" onClick={() => loadRecord(record)}>
                       <Edit size={14} /> Edit

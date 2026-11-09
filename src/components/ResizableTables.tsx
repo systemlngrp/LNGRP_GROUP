@@ -242,6 +242,128 @@ function getColumnWidths(table: HTMLTableElement, headerRow: HTMLTableRowElement
   return widths.slice(0, count);
 }
 
+// ---- Column content rules -------------------------------------------------
+// Codes, numbers and dates (GE No, MRR No, Job No, invoice value, dates…) stay
+// on one line; names (party, item, company…) wrap to about two lines; header
+// words never break in the middle. Each column gets a minimum width from its
+// content so it can neither wrap a code nor split a header word, also when a
+// user drags it narrower.
+
+const TEXT_COLUMN_MAX_MIN_WIDTH = 300;
+const MAX_MEASURED_ROWS = 1500;
+const columnMinimums = new WeakMap<HTMLTableElement, number[]>();
+let measureContext: CanvasRenderingContext2D | null = null;
+
+function measureText(text: string, style: CSSStyleDeclaration) {
+  if (!measureContext) measureContext = document.createElement("canvas").getContext("2d");
+  if (!measureContext || !text) return 0;
+  measureContext.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const shown = style.textTransform === "uppercase" ? text.toUpperCase() : text;
+  const spacing = Number.parseFloat(style.letterSpacing) || 0;
+  return measureContext.measureText(shown).width + spacing * shown.length;
+}
+
+function cellText(cell: HTMLTableCellElement) {
+  return (cell.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+// A code, number or date: up to 4 words, has a digit, and every word either
+// has a digit or is short (KG, PCS, Rs, a firm code…).
+export function isCodeLikeText(text: string) {
+  const words = text.split(" ").filter(Boolean);
+  if (words.length === 0 || words.length > 4 || !/\d/.test(text)) return false;
+  return words.every((word) => /\d/.test(word) || word.length <= 4);
+}
+
+// Stored file names (e.g. c4565be1-530c-4bff-a70c-6fee7b3131a5.pdf) are shown
+// short: one line, cut with "…", full name on hover.
+const FILE_NAME_PATTERN = /^[\w\-. ()]{12,}\.(pdf|jpe?g|png|webp|gif|heic|xlsx?|docx?|csv)$/i;
+const FILE_COLUMN_WIDTH = 130;
+
+function isNeutralText(text: string) {
+  return !/[\p{L}\p{N}]/u.test(text);
+}
+
+function horizontalPadding(style: CSSStyleDeclaration) {
+  return (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0) +
+    (Number.parseFloat(style.borderLeftWidth) || 0) + (Number.parseFloat(style.borderRightWidth) || 0);
+}
+
+function applyColumnContentRules(table: HTMLTableElement, count: number, actionColumns: Set<number>) {
+  const headerRanges = getCellRanges(table.tHead ? Array.from(table.tHead.rows) : [], count);
+  const bodyRows = getDirectTableRows(table).filter((row) => !isSpanningTableRow(row, count)).slice(0, MAX_MEASURED_ROWS);
+  const bodyRanges = getCellRanges(bodyRows, count);
+  const byColumn: HTMLTableCellElement[][] = Array.from({ length: count }, () => []);
+  bodyRanges.forEach(({ cell, start, end }) => {
+    if (end - start === 1) byColumn[start].push(cell);
+  });
+  const headersByColumn: HTMLTableCellElement[][] = Array.from({ length: count }, () => []);
+  headerRanges.forEach(({ cell, start, end }) => {
+    if (end - start === 1) headersByColumn[start].push(cell);
+  });
+
+  const minimums: number[] = [];
+  for (let column = 0; column < count; column += 1) {
+    if (actionColumns.has(column)) {
+      minimums.push(0);
+      continue;
+    }
+    // Longest header word: the column is never narrower, so header words do not split.
+    let headerMin = 0;
+    headersByColumn[column].forEach((header) => {
+      const style = getComputedStyle(header);
+      const longestWord = cellText(header).split(" ").reduce((max, word) => Math.max(max, measureText(word, style)), 0);
+      headerMin = Math.max(headerMin, Math.ceil(longestWord + horizontalPadding(style) + 14));
+    });
+
+    const cells = byColumn[column].filter((cell) => !cell.querySelector("input, select, textarea"));
+    const texts = cells.map(cellText);
+    const counted = texts.filter((text) => text && !isNeutralText(text));
+    const fileCount = counted.filter((text) => FILE_NAME_PATTERN.test(text)).length;
+    const isFile = counted.length > 0 && fileCount >= counted.length * 0.8;
+    const codeCount = counted.filter(isCodeLikeText).length;
+    const isCode = !isFile && counted.length > 0 && codeCount >= counted.length * 0.8;
+    const kind = isFile ? "file" : isCode ? "code" : "text";
+    byColumn[column].forEach((cell) => {
+      if (cell.dataset.cellKind !== kind) cell.dataset.cellKind = kind;
+      if (isFile) {
+        const full = cellText(cell);
+        if (full && cell.title !== full) cell.title = full;
+      }
+    });
+    if (isFile) {
+      minimums.push(Math.max(MIN_COLUMN_WIDTH, headerMin, FILE_COLUMN_WIDTH));
+      continue;
+    }
+
+    let contentMin = 0;
+    if (cells.length) {
+      const style = getComputedStyle(cells[0]);
+      const padding = horizontalPadding(style) + 4;
+      let widest = 0;
+      let widestWord = 0;
+      texts.forEach((text) => {
+        if (!text) return;
+        widest = Math.max(widest, measureText(text, style));
+        if (!isCode) widestWord = Math.max(widestWord, text.split(" ").reduce((max, word) => Math.max(max, measureText(word, style)), 0));
+      });
+      contentMin = isCode
+        ? Math.ceil(widest + padding)
+        // Names: wide enough that the longest fits in about two lines.
+        : Math.ceil(Math.min(TEXT_COLUMN_MAX_MIN_WIDTH, Math.max(widest / 2 * 1.15, widestWord) + padding));
+    }
+    minimums.push(Math.max(MIN_COLUMN_WIDTH, headerMin, contentMin));
+  }
+  columnMinimums.set(table, minimums);
+  return minimums;
+}
+
+function withColumnMinimums(table: HTMLTableElement, widths: number[]) {
+  const minimums = columnMinimums.get(table);
+  if (!minimums) return widths;
+  return widths.map((width, index) => Math.max(width || 0, minimums[index] || 0));
+}
+
 function ensureColGroup(table: HTMLTableElement, count: number) {
   let colGroup = table.querySelector("colgroup[data-resizable-columns]") as HTMLElement | null;
   if (!colGroup) {
@@ -682,13 +804,14 @@ function addResizeHandles(
   if (table.dataset.tableResizeReady === "true") {
     const currentWidths = Array.from(table.querySelectorAll<HTMLTableColElement>("colgroup[data-resizable-columns] col"))
       .map((column) => Number.parseFloat(column.style.width) || MIN_COLUMN_WIDTH);
-    const widths = getActionColumnWidths(
+    applyColumnContentRules(table, columnCount, actionColumns);
+    const widths = withColumnMinimums(table, getActionColumnWidths(
       table,
       getColumnWidths(table, headerRow, columnCount, sharedWidths).length >= columnCount
         ? getColumnWidths(table, headerRow, columnCount, sharedWidths)
         : currentWidths.slice(0, columnCount),
       actionColumns,
-    );
+    ));
     if (widths.length >= columnCount) applyColumnWidths(table, widths, actionColumns);
     if (!canResize) removeResizeHandles(table);
     else if (!table.querySelector(".app-table-column-resizer")) {
@@ -699,7 +822,8 @@ function addResizeHandles(
 
   table.dataset.tableResizeReady = "true";
 
-  const widths = getActionColumnWidths(table, getColumnWidths(table, headerRow, columnCount, sharedWidths), actionColumns);
+  applyColumnContentRules(table, columnCount, actionColumns);
+  const widths = withColumnMinimums(table, getActionColumnWidths(table, getColumnWidths(table, headerRow, columnCount, sharedWidths), actionColumns));
   applyColumnWidths(table, widths, actionColumns);
   if (canResize) installResizeHandles(table, headerRow, widths, actionColumns, key, onResize);
 }
@@ -738,7 +862,9 @@ function installResizeHandles(
       const startWidth = activeWidths[currentColumn] || widths[currentColumn] || Math.round(cell.getBoundingClientRect().width);
       const activeColumn = currentColumn;
       const move = (moveEvent: PointerEvent) => {
-        activeWidths[activeColumn] = Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + moveEvent.clientX - startX));
+        // Not narrower than its content allows (one-line codes, whole header words).
+        const minimum = Math.max(MIN_COLUMN_WIDTH, columnMinimums.get(table)?.[activeColumn] || 0);
+        activeWidths[activeColumn] = Math.max(minimum, Math.round(startWidth + moveEvent.clientX - startX));
         applyColumnWidths(table, activeWidths, actionColumns);
       };
       const up = () => {

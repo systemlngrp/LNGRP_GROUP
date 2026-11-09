@@ -219,9 +219,11 @@ export function PendingMrr() {
                       <button
                         type="button"
                         onClick={() => setSelectedEntryId(entry.id)}
-                        className="inline-flex items-center gap-2 rounded border border-black px-3 py-2 text-sm font-semibold text-black transition hover:bg-slate-100"
+                        title="View"
+                        aria-label="View"
+                        className="inline-flex items-center gap-2 rounded border border-black px-2 py-2 text-sm font-semibold text-black transition hover:bg-slate-100"
                       >
-                        <Eye size={15} /> View
+                        <Eye size={15} />
                       </button>
                       <button
                         type="button"
