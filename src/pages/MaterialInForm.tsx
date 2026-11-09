@@ -3095,7 +3095,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
         <div className="mt-6 border-t border-black pt-4">
           <h3 className="text-lg font-bold text-black mb-4 uppercase">
-            {isDirectService ? "Direct Service Lines" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
+            {isDirectService ? "Add Service" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
           </h3>
           <div className="flex flex-wrap gap-4 items-end mb-4 bg-slate-50 p-4 rounded border border-black">
             <div className="flex flex-col space-y-1 w-full md:w-80">

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { ReelSpecs, formatReelSpecs } from "../components/ReelSpecs";
 import { useData } from "../hooks/useData";
 import { MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Material, Production, Setting, Firm } from "../types";
 import { Select } from "../components/Select";
@@ -9,7 +10,9 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { downloadReturnReelQrPdf } from "../lib/returnReelQrPdf";
 
 function formatNumber(value: number) {
-  return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rounded = Math.round(Number(value || 0) * 100) / 100;
+  const decimals = Number.isInteger(rounded) ? 0 : 2;
+  return rounded.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 function resolveLineRate(line: MaterialReturnLine | undefined, material: Material | undefined) {
@@ -150,7 +153,7 @@ export function MaterialReturnMaster() {
         const material = materialMap.get(reel.materialId);
         const line = returnLineMap.get(reel.materialReturnLineId);
         const rate = resolveLineRate(line, material);
-        const specs = material ? `${material.gsm || "-"} GSM / ${material.bf || "-"} BF / ${material.size || "-"} ${material.uom || ""}` : "Unknown";
+        const specs = material ? formatReelSpecs(material.gsm, material.bf, material.size, material.uom) : "Unknown";
         return {
           ...reel,
           returnNo: parent.returnNo,
@@ -426,7 +429,7 @@ export function MaterialReturnMaster() {
                       <td className="px-4 py-3 text-sm font-bold text-emerald-700">{row.returnNo}</td>
                       <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
                       <td className="px-4 py-3 text-sm font-medium">{row.jobNo || "-"}</td>
-                      <td className="px-4 py-3 text-sm">{row.specs}</td>
+                      <td className="px-4 py-3 text-sm"><ReelSpecs text={row.specs} /></td>
                       <td className="px-4 py-3 text-sm text-right font-black text-emerald-600">{formatNumber(row.totalWeight)}</td>
                       <td className="px-4 py-3 text-sm text-right font-black text-cyan-700">{formatNumber(row.totalValue)}</td>
                       <td className="px-4 py-3 text-sm text-center font-bold">{row.reelCount}</td>
@@ -462,7 +465,7 @@ export function MaterialReturnMaster() {
                       <td className="px-4 py-3 text-sm font-bold text-amber-700">{row.returnNo}</td>
                       <td className="px-4 py-3 text-sm">{formatDate(row.date)}</td>
                       <td className="px-4 py-3 text-sm font-medium">{row.jobNo || "-"}</td>
-                      <td className="px-4 py-3 text-sm">{row.specs}</td>
+                      <td className="px-4 py-3 text-sm"><ReelSpecs text={row.specs} /></td>
                       <td className="px-4 py-3 text-sm font-black text-slate-900">{row.ourReelNo}</td>
                       <td className="px-4 py-3 text-sm text-right font-bold text-amber-600">{formatNumber(row.weightKg)}</td>
                       <td className="px-4 py-3 text-sm text-right font-bold text-cyan-700">{formatNumber(row.value)}</td>

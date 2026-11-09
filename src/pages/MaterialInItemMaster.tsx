@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { ReelSpecs, formatReelSpecs } from "../components/ReelSpecs";
 import { useData } from "../hooks/useData";
 import { getDataAuthHeaders } from "../hooks/useData";
 import { Material, MaterialIn, Item, Supplier, MaterialInPackingSlip, GateEntry, Company, MaterialIssueReelLine, MaterialReturnReelLine } from "../types";
@@ -81,7 +82,7 @@ export function MaterialInItemMaster() {
         const response = await fetch(`/api/reports/reel-details?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal });
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(String(body?.error || response.statusText));
-        setRemoteReelDetails(Array.isArray(body.rows) ? body.rows.map((row: any) => ({ ...row, specs: `${row.gsm || "-"} GSM / ${row.bf || "-"} BF / ${row.size || "-"}`, weightKg: Number(row.weightKg || 0) })) : []);
+        setRemoteReelDetails(Array.isArray(body.rows) ? body.rows.map((row: any) => ({ ...row, specs: formatReelSpecs(row.gsm, row.bf, row.size), weightKg: Number(row.weightKg || 0) })) : []);
         setRemoteDetailsTotalRows(Number(body.totalRows) || 0);
         setRemoteDetailsTotalPages(Number(body.totalPages) || 1);
       } catch (error) {
@@ -228,7 +229,7 @@ export function MaterialInItemMaster() {
       if (mrrFilter && parent.transactionNo !== mrrFilter) return null;
       const gateEntry = parent.gateEntryId ? gateEntryMap.get(parent.gateEntryId) : null;
       const material = materialMap.get(slip.materialId);
-      const specs = material ? `${material.gsm || "-"} GSM / ${material.bf || "-"} BF / ${material.size || "-"} ${(material as any).sizeUom || ""}` : "Unknown";
+      const specs = material ? formatReelSpecs(material.gsm, material.bf, material.size, (material as any).sizeUom) : "Unknown";
 
       return {
         ...slip,
@@ -405,10 +406,10 @@ export function MaterialInItemMaster() {
                 <td className="px-4 py-3 border border-black">{formatDate(reel.parentDate)}</td>
                 <td className="px-4 py-3 border border-black font-medium">{reel.parentVehicleNo}</td>
                 <td className="px-4 py-3 border border-black">{getSupplierName(reel.parentSupplierId)}</td>
-                <td className="px-4 py-3 border border-black">{reel.specs}</td>
+                <td className="px-4 py-3 border border-black"><ReelSpecs text={reel.specs} /></td>
                 <td className="px-4 py-3 font-bold border border-black">{reel.ourReelNo}</td>
                 <td className="px-4 py-3 border border-black">{reel.supplierReelNo || "-"}</td>
-                <td className="px-4 py-3 text-right font-black text-amber-600 border border-black">{reel.weightKg.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                <td className="px-4 py-3 text-right font-black text-amber-600 border border-black">{reel.weightKg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
               </tr>
             ))}
           </tbody>
