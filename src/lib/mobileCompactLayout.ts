@@ -95,6 +95,11 @@ function unitIsActive(unit: HTMLElement) {
   });
 }
 
+const searchControls = new WeakMap<HTMLElement, HTMLElement | null>();
+const CLEAR_BUTTON_TEXT = /^\s*(clear|reset)(\s+all)?(\s+filters?)?\s*$/i;
+const FILTER_ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5L3 4z"/></svg>';
+
 // Marks the filters of one box to fold; false when it has too few.
 function markPanelUnits(panel: HTMLElement, controls: HTMLElement[]) {
   const searchControl = controls.find(isSearchControl) || null;
@@ -111,42 +116,99 @@ function markPanelUnits(panel: HTMLElement, controls: HTMLElement[]) {
     if (!units.has(unit)) unit.removeAttribute("data-mf-unit");
   });
   units.forEach((unit) => unit.setAttribute("data-mf-unit", "true"));
+  searchControls.set(panel, searchControl);
   return true;
 }
 
+// The box holding just the search input (and its magnifier icon), where the
+// filter button can sit to the right of the input. Null when there is none.
+function searchRowFor(panel: HTMLElement) {
+  const control = searchControls.get(panel);
+  const row = control?.parentElement;
+  if (!control || !row || row === panel || row.tagName === "LABEL") return null;
+  if (!panel.contains(row) || visibleControls(row).length !== 1) return null;
+  const text = Array.from(row.childNodes)
+    .filter((node) => !(node instanceof Element && node.classList.contains(OWN_CLASS)))
+    .map((node) => node.textContent || "")
+    .join("")
+    .trim();
+  return text ? null : row;
+}
+
 // The panels of the current page; the first one (leader) carries the single
-// Filters button, which folds and unfolds all of them together.
+// filter button, which folds and unfolds all of them together.
 let pagePanels: HTMLElement[] = [];
+
+function findButton(panel: HTMLElement) {
+  return panel.querySelector<HTMLButtonElement>(`.${OWN_CLASS}`);
+}
 
 function applyPanelState(leader: HTMLElement) {
   const open = Boolean(panelOpen.get(leader));
   pagePanels.forEach((panel) => panel.setAttribute("data-mobile-filters", open ? "open" : "collapsed"));
-  const button = Array.from(leader.children).find((child) => child.classList.contains(OWN_CLASS)) as HTMLButtonElement | undefined;
-  if (!button) return;
   const active = pagePanels
     .flatMap((panel) => Array.from(panel.querySelectorAll<HTMLElement>("[data-mf-unit]")))
     .filter(unitIsActive).length;
-  const text = `${open ? "Hide filters" : "Filters"}${active ? ` (${active} active)` : ""} ${open ? "\u25B2" : "\u25BC"}`;
-  if (button.textContent !== text) button.textContent = text;
+  const searched = pagePanels.some((panel) => {
+    const control = searchControls.get(panel) as HTMLInputElement | null | undefined;
+    return Boolean(control && String(control.value || "").trim());
+  });
+  // Clear / Reset buttons appear only once something is searched or filtered.
+  const anything = active > 0 || searched ? "true" : "false";
+  pagePanels.forEach((panel) => {
+    panel.setAttribute("data-mf-any", anything);
+    panel.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+      if (button.classList.contains(OWN_CLASS)) return;
+      if (CLEAR_BUTTON_TEXT.test(button.textContent || "")) button.setAttribute("data-mf-clear", "true");
+    });
+  });
+  const button = findButton(leader);
+  if (!button) return;
+  const iconOnly = button.hasAttribute("data-mf-icon");
+  const label = `${open ? "Hide filters" : "Show filters"}${active ? ` (${active} active)` : ""}`;
+  const key = `${iconOnly ? "i" : "b"}|${open ? 1 : 0}|${active}`;
+  if (button.dataset.mfKey !== key) {
+    button.dataset.mfKey = key;
+    const badge = active ? `<span class="app-mobile-filter-badge">${active}</span>` : "";
+    button.innerHTML = iconOnly
+      ? `${FILTER_ICON}${badge}`
+      : `${FILTER_ICON}<span>${open ? "Hide filters" : "Filters"}</span>${badge}`;
+  }
+  button.setAttribute("aria-label", label);
+  button.title = label;
   button.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function ensureButton(leader: HTMLElement) {
-  if (Array.from(leader.children).some((child) => child.classList.contains(OWN_CLASS))) return;
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = OWN_CLASS;
-  button.addEventListener("click", () => {
-    panelOpen.set(leader, !panelOpen.get(leader));
-    applyPanelState(leader);
+  const row = searchRowFor(leader);
+  let button = findButton(leader);
+  if (!button) {
+    button = document.createElement("button");
+    button.type = "button";
+    button.className = OWN_CLASS;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      panelOpen.set(leader, !panelOpen.get(leader));
+      applyPanelState(leader);
+    });
+  }
+  leader.querySelectorAll("[data-mf-search-row]").forEach((element) => {
+    if (element !== row) element.removeAttribute("data-mf-search-row");
   });
-  leader.insertBefore(button, leader.firstChild);
+  if (row) {
+    // Filter icon to the right of the search box.
+    row.setAttribute("data-mf-search-row", "true");
+    button.setAttribute("data-mf-icon", "true");
+    if (button.parentElement !== row || button.nextSibling) row.appendChild(button);
+  } else {
+    // No plain search box: a Filters bar at the top of the box.
+    button.removeAttribute("data-mf-icon");
+    if (button.parentElement !== leader || leader.firstChild !== button) leader.insertBefore(button, leader.firstChild);
+  }
 }
 
 function removeButton(panel: HTMLElement) {
-  Array.from(panel.children).forEach((child) => {
-    if (child.classList.contains(OWN_CLASS)) child.remove();
-  });
+  panel.querySelectorAll(`.${OWN_CLASS}`).forEach((button) => button.remove());
 }
 
 function markFilterPanels(content: HTMLElement) {
@@ -179,6 +241,7 @@ function markFilterPanels(content: HTMLElement) {
   followers.forEach((panel) => {
     panel.setAttribute("data-mf-follower", "true");
     removeButton(panel);
+    panel.querySelectorAll("[data-mf-search-row]").forEach((element) => element.removeAttribute("data-mf-search-row"));
   });
   ensureButton(leader);
   applyPanelState(leader);
@@ -187,7 +250,10 @@ function markFilterPanels(content: HTMLElement) {
 function clearPanel(panel: HTMLElement) {
   panel.removeAttribute("data-mobile-filters");
   panel.removeAttribute("data-mf-follower");
+  panel.removeAttribute("data-mf-any");
   panel.querySelectorAll("[data-mf-unit]").forEach((unit) => unit.removeAttribute("data-mf-unit"));
+  panel.querySelectorAll("[data-mf-search-row]").forEach((element) => element.removeAttribute("data-mf-search-row"));
+  panel.querySelectorAll("[data-mf-clear]").forEach((element) => element.removeAttribute("data-mf-clear"));
   removeButton(panel);
 }
 
