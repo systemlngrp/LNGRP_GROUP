@@ -305,7 +305,7 @@ export function GateEntryForm() {
 
             <Field label="Firm" required>
               <select value={firmId} disabled={purposeLocked} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="w-full rounded-2xl border border-slate-300 px-5 py-4 text-lg disabled:bg-slate-50">
-                <option value="">Select Firm...</option>
+                <option value=""></option>
                 {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
               </select>
             </Field>
@@ -318,11 +318,7 @@ export function GateEntryForm() {
                   setSupplierLabel(supplierOptions.find((option) => option.value === value)?.label || "");
                 }}
                 options={supplierOptions}
-                placeholder={
-                  purpose === "Returnable Receipt"
-                    ? "Select party with pending returnable gate pass..."
-                    : "Search or Select Party..."
-                }
+                placeholder=""
                 required
               />
             </Field>
@@ -341,47 +337,41 @@ export function GateEntryForm() {
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <h3 className="text-xl font-black text-blue-700">Photos / Documents</h3>
-              <div className="text-sm text-slate-500">Up to {PHOTO_SLOTS} files</div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {photoSlots.map((slot, index) => (
-                <div key={index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="text-sm font-bold text-slate-700">Pic {index + 1}</span>
+            <h3 className="text-xl font-black text-blue-700">Upload</h3>
+            {/* Phones: one column of file boxes; the next box opens once the previous one has a file. */}
+            <div className="grid gap-3 md:gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {photoSlots.map((slot, index) => {
+                const openOnPhone = index === 0 || Boolean(slot.filename) || Boolean(photoSlots[index - 1]?.filename) || slot.uploading;
+                return (
+                <div key={index} className={`${openOnPhone ? "" : "hidden md:block "}md:rounded-2xl md:border md:border-slate-200 md:bg-slate-50 md:p-4`}>
+                  <div className="mb-2 flex items-center justify-between md:mb-3">
+                    <span className="font-bold text-blue-700 md:text-sm md:text-slate-700">Pic {index + 1}</span>
                     {slot.filename ? (
                       <button type="button" onClick={() => updateSlot(index, { filename: "" })} className="rounded-full border border-slate-300 p-2 text-slate-600 hover:bg-white">
                         <Trash2 size={15} />
                       </button>
                     ) : null}
                   </div>
-                  <label className="flex min-h-[180px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center transition hover:border-indigo-400 hover:bg-indigo-50/40">
+                  <label className="flex min-h-[56px] cursor-pointer items-center gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-left transition hover:border-indigo-400 hover:bg-indigo-50/40 md:min-h-[180px] md:flex-col md:justify-center md:border-dashed md:px-4 md:py-6 md:text-center">
                     {slot.uploading ? (
-                      <div className="flex flex-col items-center gap-3 text-indigo-700">
-                        <Loader2 className="animate-spin" size={22} />
-                      </div>
-                    ) : slot.filename ? (
-                      <div className="flex flex-col items-center gap-3 text-slate-700">
-                        <Camera size={22} />
-                        <span className="line-clamp-3 text-sm font-semibold">{slot.filename}</span>
-                      </div>
+                      <Loader2 className="animate-spin text-indigo-700" size={22} />
                     ) : (
-                      <div className="flex flex-col items-center gap-3 text-slate-500">
-                        <Camera size={22} />
-                        <span className="text-sm font-semibold">Upload File</span>
-                      </div>
+                      <Camera size={22} className="shrink-0 text-slate-500" />
                     )}
+                    {slot.filename ? (
+                      <span className="min-w-0 truncate text-sm font-semibold text-slate-700 md:line-clamp-3 md:whitespace-normal">{slot.filename}</span>
+                    ) : null}
                     <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => handlePhotoUpload(index, e.target.files?.[0])} />
                   </label>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
           <div className="flex justify-end">
             <button type="submit" disabled={isSubmitting || hasUploadingPhoto} className="rounded-2xl bg-indigo-700 px-8 py-3 font-bold text-white transition hover:bg-indigo-800 disabled:opacity-50">
-              {isSubmitting ? (isEditing ? "Updating..." : "Saving...") : (isEditing ? "Update Gate Entry" : "Save Gate Entry")}
+              {isSubmitting ? (isEditing ? "Updating..." : "Saving...") : (isEditing ? "Update" : "Save")}
             </button>
           </div>
         </form>
