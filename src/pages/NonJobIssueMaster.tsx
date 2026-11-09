@@ -151,7 +151,7 @@ export function NonJobIssueMaster() {
   return (
     <div className="space-y-4">
       <div className="border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Daily Consumption Master</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Daily Consumables Master</h2>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

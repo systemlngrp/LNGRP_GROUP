@@ -64,7 +64,7 @@ export function TruckLogs() {
     <div className="space-y-5">
       <div className="flex items-center gap-3 border-b border-black pb-4 text-indigo-700">
         <TruckIcon size={26} />
-        <h2 className="text-xl font-black uppercase tracking-tight text-black">Truck Status Log Master</h2>
+        <h2 className="text-xl font-black uppercase tracking-tight text-black">Truck Logs</h2>
       </div>
 
       <div className="overflow-hidden rounded border-2 border-black bg-white shadow-sm">

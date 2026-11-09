@@ -137,7 +137,7 @@ export function JobwiseReelConsumptionReport() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 border-b border-black pb-3">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Jobwise Reel Consumption Report</h2>
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Jobwise Reel Consumption</h2>
         
       </div>
 

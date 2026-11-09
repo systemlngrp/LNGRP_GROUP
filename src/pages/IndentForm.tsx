@@ -204,7 +204,7 @@ export function IndentForm() {
 
       <div className="bg-white rounded-xl border border-black p-6 shadow-sm space-y-6">
       <div className="flex items-start justify-between gap-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">New Indent</h2>
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Indent Form</h2>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

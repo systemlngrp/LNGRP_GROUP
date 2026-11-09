@@ -188,7 +188,7 @@ export function PendingTallyEntry() {
   return (
     <div className="space-y-4">
       <div className="border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Tally Posting</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending MRR Tally Posting</h2>
       </div>
 
       <MaterialReceiptFilters firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={firmOptions} suppliers={supplierOptions} />

@@ -54,7 +54,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<{ filename: string; slotNo: number } | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const pageTitle = cancelledOnly ? "Cancelled Gate Entry" : "Gate Entry Master";
+  const pageTitle = cancelledOnly ? "Cancelled Gate Entry Master" : "Gate Entry Master";
 
   const baseEntries = useMemo(
     () => gateEntries.filter((entry) => (cancelledOnly ? isGateEntryCancelled(entry) : !isGateEntryCancelled(entry))),

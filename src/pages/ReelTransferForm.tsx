@@ -77,7 +77,7 @@ export function ReelTransferForm() {
   return <div className="mx-auto max-w-7xl text-black">
     <form onSubmit={submit} className="space-y-4 rounded border border-black bg-white p-4 shadow-sm md:p-6">
       <div className="flex flex-col justify-between gap-3 border-b border-black pb-3 md:flex-row md:items-center">
-        <h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight">Reel Transfer Form</h2>
         {returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="rounded border border-blue-700 bg-blue-600 px-3 py-1.5 text-[10px] font-bold uppercase text-white hover:bg-blue-700">Back to Job Transfer</button> : null}
       </div>
 

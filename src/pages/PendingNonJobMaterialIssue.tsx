@@ -154,7 +154,7 @@ export function PendingNonJobMaterialIssue() {
   return (
     <div className="space-y-4">
       <div className="border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Non-Job Material Issue</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Daily Consumables Entry</h2>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -168,7 +168,7 @@ export function ItemwiseLeastCost() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-black">
         <div className="flex w-full items-center justify-between gap-4">
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Itemwise Least GSM</h2>
+          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Itemwise Least Cost</h2>
           <div className="flex w-full justify-end">
             <input ref={uploadRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => void upload(event.target.files?.[0])} />
             <button type="button" onClick={() => uploadRef.current?.click()} className="inline-flex shrink-0 items-center gap-1.5 rounded border-2 border-black bg-indigo-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"><Upload size={14} />Upload Least GSM</button>

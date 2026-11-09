@@ -163,7 +163,7 @@ export function TruckStatusReport() {
       <div className="flex flex-col gap-4 border-b border-black pb-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="flex items-center gap-3 text-indigo-700">
           <TruckIcon size={26} />
-          <h2 className="text-xl font-black uppercase tracking-tight text-black">Company Vehicle Status [Live]</h2>
+          <h2 className="text-xl font-black uppercase tracking-tight text-black">Truck Status</h2>
         </div>
         <div className="grid w-full gap-2 xl:max-w-5xl xl:grid-cols-[minmax(220px,1fr)_minmax(180px,0.75fr)_minmax(220px,0.9fr)_auto] xl:items-start">
           <div className="relative w-full">

@@ -88,7 +88,7 @@ export function PendingDebitNote() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Debit Notes</h2>
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Debit Note Tally Posting</h2>
       </div>
 
       <MaterialReceiptFilters searchTerm={searchTerm} onSearchChange={setSearchTerm} firmFilter={firmFilter} onFirmChange={setFirmFilter} itemFilter={itemFilter} onItemChange={setItemFilter} supplierFilter={supplierFilter} onSupplierChange={setSupplierFilter} mrrFilter={mrrFilter} onMrrChange={setMrrFilter} firms={firmOptions} suppliers={supplierOptions} />

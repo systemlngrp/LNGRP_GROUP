@@ -400,7 +400,7 @@ export function PurchaseOrderPendingIndentLines() {
   return (
     <div className="space-y-4">
       <div className="border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Indent Lines for PO</h2>
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Indents Not Ordered</h2>
       </div>
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">

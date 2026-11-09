@@ -2643,7 +2643,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   return (
     <div className="bg-white p-6 rounded shadow-sm border border-black text-black">
       <h2 className="text-xl font-bold text-black mb-6 uppercase tracking-tight border-b border-black pb-2">
-        {isDirectService ? (editingEntry ? "Edit Direct Service MRR" : "Direct Service MRR") : editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
+        {isDirectService ? (editingEntry ? "Edit Direct Service MRR" : "Direct Service Form") : editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
       </h2>
       <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
         {linkedGateEntry ? (

@@ -276,7 +276,7 @@ export function GateEntryForm() {
       <div className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-3xl font-black text-blue-700">{isEditing ? "Edit Gate Entry" : "Add Gate Entry"}</h2>
+            <h2 className="text-3xl font-black text-blue-700">{isEditing ? "Edit Gate Entry" : "GE Form"}</h2>
           </div>
         </div>
 

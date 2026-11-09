@@ -21,12 +21,12 @@ type QueueMode = "Pending" | "Approved" | "Completed" | "Rejected";
 
 function getQueueTitle(mode: QueueMode) {
   return mode === "Pending"
-    ? "Indent: Pending"
+    ? "Pending Approval"
     : mode === "Approved"
-      ? "Indent: Approved"
+      ? "Approved Indents"
       : mode === "Completed"
-        ? "Indent: Completed"
-        : "Indent: Rejected";
+        ? "Indents Ordered"
+        : "Rejected Indents";
 }
 
 function getLineSummary(lines: IndentLine[], materials: Material[]) {

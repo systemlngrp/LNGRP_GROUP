@@ -792,7 +792,7 @@ export function ProductionPendingConsumption() {
 export function ProductionPendingReelIssueScan() {
   return (
     <ProductionStageQueue
-      title="Pending Reel Issue"
+      title="QR Reel Issue"
       emptyMessage="No jobs pending reel issue."
       predicate={isProductionPendingConsumption}
       enableIssueAction

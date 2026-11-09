@@ -889,17 +889,17 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   const getTitle = (m: Mode) => {
     switch (m) {
       case "pending-approval":
-        return "Pending PO Approvals";
+        return "Pending PO Approval";
       case "approved":
-        return "Approved Purchase Orders";
+        return "Approved PO";
       case "rejected":
-        return "Rejected Purchase Orders";
+        return "Rejected PO";
       case "item-not-received":
         return "PO Item Not Received";
       case "item-cancelled":
         return "PO Item Cancelled";
       default:
-        return "Purchase Orders Master";
+        return "Purchase Order Master";
     }
   };
 

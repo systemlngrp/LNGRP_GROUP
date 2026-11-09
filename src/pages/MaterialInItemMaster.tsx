@@ -564,7 +564,7 @@ export function MaterialInItemMaster() {
   return (
     <div data-disable-table-pagination="true" className="space-y-6">
       <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Material Receipt Item Master</h2>
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Material Receipt (Itemized)</h2>
       </div>
 
       {/* Tiles follow the selected tab: General Materials or Reels, never combined. */}

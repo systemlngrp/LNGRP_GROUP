@@ -227,7 +227,7 @@ export function PaperRequirementReport() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-1 border-b border-black pb-3">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Paper To Order View</h2>
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Paper Requirement</h2>
       </div>
 
       <div className="grid gap-3 md:grid-cols-5">

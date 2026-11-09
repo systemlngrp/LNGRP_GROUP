@@ -336,7 +336,7 @@ export function LmL1Report() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 border-b border-black pb-3">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">LM-L1 Report</h2>
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">LM-L1</h2>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
