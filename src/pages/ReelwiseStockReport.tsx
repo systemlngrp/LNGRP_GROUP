@@ -640,16 +640,16 @@ export function ReelwiseStockReport() {
           </table>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-black bg-slate-50 px-3 py-2 text-xs font-bold">
-          <span>Showing {rows.length ? (page - 1) * pageSize + 1 : 0}-{Math.min(page * pageSize, totalRows)} of {totalRows} rows</span>
+          <span />
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1">Rows
+            <label className="flex items-center gap-1">
               <select value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }} className="rounded border border-black bg-white px-1 py-1">
                 {[50, 100].map((size) => <option key={size} value={size}>{size}</option>)}
               </select>
             </label>
-            <button type="button" disabled={page <= 1 || reportLoading} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50">Previous</button>
-            <span>Page {page} of {totalPages}</span>
-            <button type="button" disabled={page >= totalPages || reportLoading} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50">Next</button>
+            <button type="button" disabled={page <= 1 || reportLoading} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button>
+            <span>{page} / {totalPages}</span>
+            <button type="button" disabled={page >= totalPages || reportLoading} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} className="rounded border border-black bg-white px-3 py-1 disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button>
           </div>
         </div>
       </div>

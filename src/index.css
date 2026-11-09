@@ -358,6 +358,27 @@ table td:has(button[title*="approve" i], button[title*="edit" i], button[title*=
   font: inherit;
 }
 
+/* Table boxes: no up/down scroll of their own (the page scrolls); sideways scroll stays. */
+.app-view-content [data-table-free-height="true"] {
+  max-height: none !important;
+  height: auto !important;
+  overflow-y: visible !important;
+}
+.app-view-content [data-table-scroll-x="true"] {
+  overflow-x: auto !important;
+}
+
+/* < and > page buttons */
+.app-table-pagination {
+  justify-content: flex-end;
+  padding: 0.5rem 0.75rem;
+}
+.app-table-pagination-controls button {
+  font-size: 1.125rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
 .app-table-pagination-controls button:disabled {
   cursor: not-allowed;
   opacity: 0.5;

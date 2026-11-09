@@ -377,11 +377,11 @@ export function MaterialInItemMaster() {
       return (
         <>
         <div className="flex items-center justify-between border border-black bg-white px-3 py-2 text-xs font-bold">
-          <span>Showing {remoteReelDetails.length ? ((remoteDetailsPage - 1) * 100 + 1) : 0}-{Math.min(remoteDetailsPage * 100, remoteDetailsTotalRows)} of {remoteDetailsTotalRows}</span>
+          <span />
           <div className="flex items-center gap-2">
-            <button type="button" disabled={remoteDetailsPage <= 1} onClick={() => setRemoteDetailsPage((p) => Math.max(1, p - 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40">Prev</button>
-            <span>Page {remoteDetailsPage} / {remoteDetailsTotalPages}</span>
-            <button type="button" disabled={remoteDetailsPage >= remoteDetailsTotalPages} onClick={() => setRemoteDetailsPage((p) => Math.min(remoteDetailsTotalPages, p + 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40">Next</button>
+            <button type="button" disabled={remoteDetailsPage <= 1} onClick={() => setRemoteDetailsPage((p) => Math.max(1, p - 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40" aria-label="Previous page" title="Previous page">&#8249;</button>
+            <span>{remoteDetailsPage} / {remoteDetailsTotalPages}</span>
+            <button type="button" disabled={remoteDetailsPage >= remoteDetailsTotalPages} onClick={() => setRemoteDetailsPage((p) => Math.min(remoteDetailsTotalPages, p + 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40" aria-label="Next page" title="Next page">&#8250;</button>
           </div>
         </div>
         <table data-table-pagination="true" className="min-w-full divide-y divide-black border-collapse border border-black">
@@ -422,11 +422,11 @@ export function MaterialInItemMaster() {
       <>
       {activeTab === "reel-summary" ? (
         <div className="flex items-center justify-between border border-black bg-white px-3 py-2 text-xs font-bold">
-          <span>Showing {remoteReelSummary.length ? ((remoteSummaryPage - 1) * 100 + 1) : 0}-{Math.min(remoteSummaryPage * 100, remoteSummaryTotalRows)} of {remoteSummaryTotalRows}</span>
+          <span />
           <div className="flex items-center gap-2">
-            <button type="button" disabled={remoteSummaryPage <= 1} onClick={() => setRemoteSummaryPage((p) => Math.max(1, p - 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40">Prev</button>
-            <span>Page {remoteSummaryPage} / {remoteSummaryTotalPages}</span>
-            <button type="button" disabled={remoteSummaryPage >= remoteSummaryTotalPages} onClick={() => setRemoteSummaryPage((p) => Math.min(remoteSummaryTotalPages, p + 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40">Next</button>
+            <button type="button" disabled={remoteSummaryPage <= 1} onClick={() => setRemoteSummaryPage((p) => Math.max(1, p - 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40" aria-label="Previous page" title="Previous page">&#8249;</button>
+            <span>{remoteSummaryPage} / {remoteSummaryTotalPages}</span>
+            <button type="button" disabled={remoteSummaryPage >= remoteSummaryTotalPages} onClick={() => setRemoteSummaryPage((p) => Math.min(remoteSummaryTotalPages, p + 1))} className="rounded border border-black px-3 py-1 disabled:opacity-40" aria-label="Next page" title="Next page">&#8250;</button>
           </div>
         </div>
       ) : null}

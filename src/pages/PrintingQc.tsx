@@ -1096,11 +1096,11 @@ export function PrintingQcMaster() {
           </table>
         </div>
         <div className="flex flex-col gap-3 border-t border-black p-3 text-sm md:flex-row md:items-center md:justify-between">
-          <span>Showing {rows.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, rows.length)} of {rows.length}</span>
+          <span />
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50">Previous</button>
-            <span>Page {currentPage} / {totalPages}</span>
-            <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage >= totalPages} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50">Next</button>
+            <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button>
+            <span>{currentPage} / {totalPages}</span>
+            <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage >= totalPages} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button>
           </div>
         </div>
       </div>

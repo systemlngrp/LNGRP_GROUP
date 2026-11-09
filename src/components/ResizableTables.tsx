@@ -578,16 +578,12 @@ function enhanceTablePagination(table: HTMLTableElement, content: HTMLElement, p
       host.dataset.renderKey = renderKey;
       host.replaceChildren();
 
-      const summary = document.createElement("div");
-      summary.className = "app-table-pagination-summary";
-      summary.textContent = `Showing ${range.start}-${range.end} of ${dataRows.length}`;
-
       const controls = document.createElement("div");
       controls.className = "app-table-pagination-controls";
 
       const label = document.createElement("label");
       label.className = "app-table-pagination-rows";
-      label.textContent = "Rows ";
+      // Rows-per-page selector only (no "Rows" caption).
       const select = document.createElement("select");
       select.setAttribute("aria-label", "Rows per page");
       TABLE_PAGE_SIZE_OPTIONS.forEach((option) => {
@@ -606,7 +602,7 @@ function enhanceTablePagination(table: HTMLTableElement, content: HTMLElement, p
 
       const previous = document.createElement("button");
       previous.type = "button";
-      previous.textContent = "Prev";
+      previous.textContent = "\u2039";
       previous.setAttribute("aria-label", "Previous table page");
       previous.disabled = page <= 1;
       previous.addEventListener("click", () => {
@@ -617,11 +613,11 @@ function enhanceTablePagination(table: HTMLTableElement, content: HTMLElement, p
 
       const pageLabel = document.createElement("span");
       pageLabel.className = "app-table-pagination-page";
-      pageLabel.textContent = `Page ${page} / ${range.totalPages}`;
+      pageLabel.textContent = `${page} / ${range.totalPages}`;
 
       const next = document.createElement("button");
       next.type = "button";
-      next.textContent = "Next";
+      next.textContent = "\u203A";
       next.setAttribute("aria-label", "Next table page");
       next.disabled = page >= range.totalPages;
       next.addEventListener("click", () => {
@@ -631,7 +627,7 @@ function enhanceTablePagination(table: HTMLTableElement, content: HTMLElement, p
       });
 
       controls.append(label, previous, pageLabel, next);
-      host.append(summary, controls);
+      host.append(controls);
     },
   };
 
@@ -661,6 +657,28 @@ function findScrollableAncestor(table: HTMLTableElement, content: HTMLElement) {
     element = element.parentElement;
   }
   return content;
+}
+
+// Tables have no up/down scroll box of their own: boxes around a table that
+// limit its height are freed so the page scrolls instead, and the table's box
+// scrolls sideways. Tables inside pop-ups keep their own scrolling.
+function freeTableHeight(table: HTMLTableElement, content: HTMLElement) {
+  if (table.closest('[role="dialog"], .fixed')) return;
+  let element = table.parentElement;
+  let nearest = true;
+  while (element && element !== content) {
+    const style = window.getComputedStyle(element);
+    const canScrollX = ["auto", "scroll", "overlay"].includes(style.overflowX);
+    const canScrollY = ["auto", "scroll", "overlay"].includes(style.overflowY);
+    if (canScrollY && (style.maxHeight !== "none" || element.scrollHeight > element.clientHeight + 2)) {
+      if (element.dataset.tableFreeHeight !== "true") element.dataset.tableFreeHeight = "true";
+    }
+    if (nearest && (canScrollX || canScrollY)) {
+      if (element.dataset.tableScrollX !== "true") element.dataset.tableScrollX = "true";
+      nearest = false;
+    }
+    element = element.parentElement;
+  }
 }
 
 function canScrollInDirection(container: HTMLElement, direction: ScrollDirection) {
@@ -769,6 +787,7 @@ function addResizeHandles(
   table.classList.add("app-enhanced-table");
 
   const content = table.closest<HTMLElement>(".app-view-content");
+  if (content) freeTableHeight(table, content);
   if (content) enhanceScrollContainer(findScrollableAncestor(table, content));
   if (content) enhanceTablePagination(table, content, pathname, index);
 
