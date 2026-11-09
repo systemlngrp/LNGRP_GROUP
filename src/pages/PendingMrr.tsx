@@ -7,6 +7,7 @@ import { canCreateMrrForGateEntry, hasGateEntryMrr } from "../lib/gateEntryState
 import { useAuth } from "../auth/AuthContext";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { Select } from "../components/Select";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function PendingMrr() {
   const navigate = useNavigate();
@@ -46,20 +47,26 @@ export function PendingMrr() {
     [eligibleEntries, suppliers, companies]
   );
 
-  const pendingEntries = useMemo(
-    () =>
+  const pendingEntries = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return (
       [...eligibleEntries]
         .filter((entry) => {
           const s = suppliers.find((supplier) => supplier.id === entry.supplierId);
           const c = companies.find((company) => company.id === entry.supplierId);
           const supplierName = s ? s.name : (c ? c.name : "");
-          const firmName = getFirmName(entry);
-          const haystack = [entry.gateEntryNo, firmName, supplierName, entry.invoiceNo, entry.truckNo]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
           const firmId = String(entry.firmId || entry.destinationFirmId || "");
-          return haystack.includes(searchTerm.toLowerCase())
+          const matchesSearch = !words.length || matchesTableSearch([
+            entry.gateEntryNo || "Syncing...",
+            getFirmName(entry),
+            entry.date,
+            supplierName,
+            entry.invoiceNo,
+            Number(entry.invoiceValue || 0).toFixed(2),
+            entry.truckNo,
+            `${gateEntryPhotos.filter((photo) => photo.gateEntryId === entry.id).length} Photos`,
+          ], words);
+          return matchesSearch
             && (!firmFilter || firmId === firmFilter)
             && (!supplierFilter || supplierName === supplierFilter)
             && (!fromDate || entry.date >= fromDate)
@@ -69,9 +76,9 @@ export function PendingMrr() {
           const timeA = new Date(a.updateTimestamp || a.date || 0).getTime();
           const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
           return timeB - timeA;
-        }),
-    [eligibleEntries, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, fromDate, toDate]
-  );
+        })
+    );
+  }, [eligibleEntries, gateEntryPhotos, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, fromDate, toDate]);
 
   const hasActiveFilters = Boolean(searchTerm || firmFilter || supplierFilter || fromDate || toDate);
   const clearFilters = () => {
@@ -150,7 +157,7 @@ export function PendingMrr() {
           <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search gate entry, supplier, invoice, truck..."
+            placeholder="Search"
             className="h-[42px] w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           />
         </div>

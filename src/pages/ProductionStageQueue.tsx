@@ -4,6 +4,7 @@ import { ArrowUpDown, CheckCircle, ChevronDown, ChevronUp, RotateCcw } from "luc
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction } from "../lib/productionType";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import {
   Company,
   Material,
@@ -159,7 +160,7 @@ export function ProductionStageQueue({
   };
 
   const rows = useMemo(() => {
-    const lowered = searchTerm.toLowerCase();
+    const words = searchWords(searchTerm);
     const mandatoryMap = parseMandatoryMachinesByType(settings[0]);
     const prereqMachine = issuePrereqMachineName ? normalizeMachineName(issuePrereqMachineName) : "";
     return productions
@@ -191,16 +192,26 @@ export function ProductionStageQueue({
           prereqQty,
         };
       })
-      .filter(({ production, order, item, company }) => {        if (companyFilter && order?.companyId !== companyFilter) return false;
+      .filter(({ production, order, item, company, actualPaperUsed, totalIssuedQty, prereqQty }) => {        if (companyFilter && order?.companyId !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${production.erpCode || item?.erp || ""}`;
         if (itemFilter && itemKey !== itemFilter) return false;
-        if (!lowered) return true;
-        return (
-          production.transactionNo.toLowerCase().includes(lowered) ||
-          String(production.erpCode || "").toLowerCase().includes(lowered) ||
-          (order?.orderNo || "").toLowerCase().includes(lowered) ||
-          (item?.name || "").toLowerCase().includes(lowered) ||
-          (company?.name || "").toLowerCase().includes(lowered)
+        if (!words.length) return true;
+        return matchesTableSearch(
+          [
+            production.transactionNo,
+            formatDate(production.date),
+            order?.orderNo,
+            production.erpCode,
+            company?.name,
+            item?.name || "Unknown",
+            issuePrereqMachineName && prereqQty > 0 ? prereqQty.toFixed(2) : "",
+            production.qty,
+            showTotalIssuedQty && totalIssuedQty > 0 ? totalIssuedQty.toFixed(2) : "",
+            !hideActualPaperUsedColumn && actualPaperUsed > 0 ? actualPaperUsed : "",
+            !hideProdFfgColumn ? production.prodFromFFG : "",
+            !hideStatusColumn ? production.status : "",
+          ],
+          words
         );
       })
       .sort((a, b) => {
@@ -288,6 +299,10 @@ export function ProductionStageQueue({
     sortKey,
     usageMap,
     corrugatedSheetUsageMap,
+    showTotalIssuedQty,
+    hideActualPaperUsedColumn,
+    hideProdFfgColumn,
+    hideStatusColumn,
   ]);
 
   const companyOptions = useMemo(() => Array.from(new Map(rows.map((row) => [row.order?.companyId || "", { value: row.order?.companyId || "", label: row.company?.name || "" }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
@@ -414,7 +429,7 @@ export function ProductionStageQueue({
 
       <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 shadow-sm">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.2fr)_minmax(220px,1fr)_minmax(240px,1fr)_auto] xl:items-end">
-          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Search</div><TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search jobs..." /></div>
+          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Search</div><TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" /></div>
           <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Company</div><Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All companies" /></div>
           <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Item</div><Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All items" /></div>
           <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} disabled={!searchTerm && !companyFilter && !itemFilter} className="inline-flex h-[42px] items-center justify-center gap-2 rounded border border-black bg-white px-4 text-sm font-bold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"><RotateCcw size={15} /> Clear</button>

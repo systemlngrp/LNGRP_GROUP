@@ -137,7 +137,7 @@ export function PendingConsumptionTallyPosting() {
             <input
               value={searchTerm}
               onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder="Issue no, consumption no, item..."
+              placeholder="Search"
               className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

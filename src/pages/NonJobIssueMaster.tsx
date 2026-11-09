@@ -169,7 +169,7 @@ export function NonJobIssueMaster() {
             <input
               value={searchTerm}
               onChange={(event) => { setSearchTerm(event.target.value); resetView(); }}
-              placeholder="Issue no, consumption no, item..."
+              placeholder="Search"
               className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

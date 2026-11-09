@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { buildReelStockRows } from "../lib/reelStock";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -266,7 +267,21 @@ export function MaterialInItemMaster() {
       );
     };
 
-    const others = allLineItems.filter(l => l.mrrType !== "Reel").filter(filterFn);
+    // General tab: every word must be in the table's visible columns.
+    const words = searchWords(searchTerm);
+    const others = allLineItems.filter(l => l.mrrType !== "Reel").filter((line: any) => matchesTableSearch([
+      line.parentGateEntryNo,
+      line.parentTransactionNo,
+      line.parentDate,
+      line.parentVehicleNo,
+      getSupplierName(line.parentSupplierId),
+      itemNameOf(line.itemId) || "Unknown",
+      line.parentInvoiceNo || "-",
+      line.qty,
+      line.uom,
+      line.rate,
+      line.value,
+    ], words));
     const reelSummary = allLineItems.filter(l => l.mrrType === "Reel").filter(filterFn);
     const filteredReelDetails = reelDetails.filter(filterFn);
     const reelStockRows = buildReelStockRows({
@@ -600,7 +615,7 @@ export function MaterialInItemMaster() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             <input 
               type="text"
-              placeholder="Search MRR No, Supplier, Reel No..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full border border-black rounded pl-8 pr-2 py-1.5 text-xs font-bold bg-white focus:ring-2 focus:ring-indigo-500 outline-none"

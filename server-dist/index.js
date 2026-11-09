@@ -11330,16 +11330,20 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
         const pageSize = exportAll ? 1000000 : Math.min(100, Math.max(1, Number(query.pageSize) || 100));
         const requestedPage = Math.max(1, Number(query.page) || 1);
         const text = String(query.search || "").trim().toLowerCase();
+        const textWords = text.split(/\s+/).filter(Boolean);
         const equals = (name, value) => !String(query[name] || "").trim() || String(value ?? "") === String(query[name]).trim();
         const from = String(query.dateFrom || "").trim();
         const to = String(query.dateTo || "").trim();
         const minAge = query.minAge === undefined || query.minAge === "" ? null : Number(query.minAge);
         const maxAge = query.maxAge === undefined || query.maxAge === "" ? null : Number(query.maxAge);
         const filteredRows = reportRows.filter((row) => {
-            // Universal search: every value of the row (MRR, ERP, reel, specs, supplier, dates…).
-            const haystack = text ? Object.values(row).map((value) => (value === null || value === undefined ? "" : String(value))).join(" ").toLowerCase() : "";
-            if (text && !haystack.includes(text))
-                return false;
+            // Search: the table's columns; every word must match one of them.
+            if (textWords.length) {
+                const haystack = [row.mrrNo, row.ourReelNo, row.erp, row.firmName, row.supplierName, row.gsm, row.size, row.bf, row.openingQty, row.mrrQty, row.issuedWeight, row.returnedWeight, row.netIssuedWeight, row.availableWeight, row.rate, row.valuation, row.ageDays]
+                    .map((value) => (value === null || value === undefined ? "" : String(value))).join(" ").toLowerCase();
+                if (!textWords.every((word) => haystack.includes(word)))
+                    return false;
+            }
             if (!equals("mrr", row.mrrNo) || !equals("erp", row.erp) || !equals("gsm", row.gsm) || !equals("size", row.size) || !equals("bf", row.bf))
                 return false;
             if (from && String(row.mrrDate || "") < from)
@@ -16648,23 +16652,18 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
     const page = Math.max(1, Number(req.query.page || 1) || 1);
     const pageSize = Math.min(250, Math.max(1, Number(req.query.pageSize || 50) || 50));
     const search = String(req.query.search || "").trim().toLowerCase();
-    const searchClause = search
-        ? ` AND (
-        LOWER(CONCAT_WS(' ', dc.issueNo, dc.consumptionTransactionNo, dc.date, dc.remarks, dc.tallyPostingStatus, dc.tallyPostingRemark, dc.tallyPostingError)) LIKE ?
+    // Search: the table's columns (Issue No, Firm, Consumption No, Date, Status,
+    // Remark, Error); every word must match one of them.
+    const searchWordsList = search.split(/\s+/).filter(Boolean);
+    const searchClause = searchWordsList.map(() => ` AND (
+        LOWER(CONCAT_WS(' ', dc.issueNo, dc.consumptionTransactionNo, dc.date, DATE_FORMAT(LEFT(dc.date, 10), '%d-%m-%Y'), dc.remarks, dc.tallyPostingStatus, dc.tallyPostingRemark, dc.tallyPostingError)) LIKE ?
         OR EXISTS (
           SELECT 1 FROM firms searchFirm
           WHERE searchFirm.id = dc.firmId
-            AND LOWER(COALESCE(searchFirm.firmName, '')) LIKE ?
+            AND LOWER(CONCAT_WS(' ', searchFirm.firmName, searchFirm.shortName)) LIKE ?
         )
-        OR EXISTS (
-          SELECT 1 FROM daily_consumption_items searchMil
-          LEFT JOIN materials searchMaterial ON searchMaterial.id = searchMil.materialId
-          WHERE searchMil.dailyConsumptionId = dc.id
-            AND LOWER(COALESCE(searchMaterial.name, '')) LIKE ?
-        )
-      )`
-        : "";
-    const searchParams = search ? [`%${search}%`, `%${search}%`, `%${search}%`] : [];
+      )`).join("");
+    const searchParams = searchWordsList.flatMap((word) => [`%${word}%`, `%${word}%`]);
     const extraFilters = [];
     const extraParams = [];
     const pendingFirmId = String(req.query.firmId || "").trim();
@@ -16907,12 +16906,14 @@ app.get("/api/daily-consumptions", requireAuth, async (req, res) => {
     }
     if (statusClause)
         filters.push(`(${statusClause})`);
-    if (search) {
+    // Search: the table's columns (Issue No, Firm, Consumption No, Date, Tally Status,
+    // Items, Remarks); every word must match one of them.
+    for (const word of search.split(/\s+/).filter(Boolean)) {
         filters.push(`(
-      LOWER(CONCAT_WS(' ', dc.issueNo, dc.consumptionTransactionNo, dc.date, dc.remarks, f.firmName)) LIKE ?
+      LOWER(CONCAT_WS(' ', dc.issueNo, dc.consumptionTransactionNo, dc.date, DATE_FORMAT(LEFT(dc.date, 10), '%d-%m-%Y'), dc.remarks, dc.tallyPostingStatus, f.firmName, f.shortName)) LIKE ?
       OR EXISTS (SELECT 1 FROM daily_consumption_items dci JOIN materials sm ON sm.id = dci.materialId WHERE dci.dailyConsumptionId = dc.id AND LOWER(COALESCE(sm.name, '')) LIKE ?)
     )`);
-        params.push(`%${search}%`, `%${search}%`);
+        params.push(`%${word}%`, `%${word}%`);
     }
     const where = `WHERE ${filters.join(" AND ")}`;
     res.setHeader("Cache-Control", "no-store");

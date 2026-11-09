@@ -16,6 +16,7 @@ import { useAutoRefreshEffect, useAutoRefreshPause } from "../hooks/useAutoRefre
 import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
 import { canIndentBeUnapproved, revertIndentToPending } from "../lib/indentTotals";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 type PendingIndentLineRow = {
   indentLineId: string;
@@ -118,7 +119,7 @@ export function PurchaseOrderPendingIndentLines() {
   }, [activeFirmId, firmFilter]);
 
   const filteredRows = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     const indentFirm = (r: PendingIndentLineRow) => indents.find((i) => i.id === r.indentId);
     return rows.filter((r) => {
       const indent = indentFirm(r);
@@ -132,12 +133,24 @@ export function PurchaseOrderPendingIndentLines() {
       if (indentFromDateFilter && String(r.requisitionDate || "") < indentFromDateFilter) return false;
       if (indentToDateFilter && String(r.requisitionDate || "") > indentToDateFilter) return false;
       if (supplierFilter && rowInputs[r.indentLineId]?.supplierId !== supplierFilter) return false;
-      return (
-        String(r.indentNo || "").toLowerCase().includes(q) ||
-        String(r.materialName || "").toLowerCase().includes(q) ||
-        String(r.materialErpCode || "").toLowerCase().includes(q) ||
-        String(r.requestedBy || "").toLowerCase().includes(q) || firmName.toLowerCase().includes(q)
-      );
+      // Visible read-only columns (editable Supplier / Qty / Rate / GST inputs are controls, not searched).
+      return matchesTableSearch([
+        r.indentNo || `IND-${r.indentId.slice(0, 8)}`,
+        r.requisitionDate,
+        firmName,
+        r.requestedBy,
+        r.materialErpCode,
+        r.materialName,
+        r.materialItemType || materialById.get(String(r.materialId))?.type || "Others",
+        r.uom,
+        r.lastPoRate ? Number(r.lastPoRate).toFixed(2) : "",
+        r.lastPoDate,
+        Number(r.qty || 0),
+        Number(r.cancelledQty || 0),
+        Number(r.poQtyCreated || 0),
+        Number(r.pendingQty || 0),
+        r.targetDeliveryDate,
+      ], words);
     });
   }, [firms, firmFilter, indentFromDateFilter, indentNoFilter, indentToDateFilter, indents, itemFilter, itemTypeFilter, materialById, requestedByFilter, rowInputs, rows, searchTerm, supplierFilter]);
 
@@ -391,7 +404,7 @@ export function PurchaseOrderPendingIndentLines() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search indent no, item, ERP, requested by..."
+            placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded border border-black bg-white py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"

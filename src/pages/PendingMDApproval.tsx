@@ -9,6 +9,7 @@ import { CheckCircle } from "lucide-react";
 import { useNpdItemNames } from "../hooks/useNpdItems";
 import { ApprovalFilters } from "../components/ApprovalFilters";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function PendingMDApproval() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -124,14 +125,16 @@ export function PendingMDApproval() {
     const firm = firms.find((entry) => entry.id === mrr.firmId);
     return getFirmDisplayName(firm || (storedFirmName ? { firmName: storedFirmName } : null));
   };
+  const words = searchWords(searchTerm);
   const pendingRows = materialIn.filter((m) => {
     if (m.status !== "Pending MD") return false;
     const firmName = getFirmName(m);
     const supplierName = getSupplierName(m.supplierId);
     const itemNames = m.lines.map((line) => materials.find((item) => item.id === line.itemId)?.name || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown").join(" ");
     const mrrDate = String(m.date || "").slice(0, 10);
-    const searchText = `${firmName} ${supplierName} ${itemNames} ${m.transactionNo}`.toLowerCase();
-    return (!searchTerm.trim() || searchText.includes(searchTerm.trim().toLowerCase())) && (!firmFilter || firmName === firmFilter) && (!supplierFilter || supplierName === supplierFilter) && (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!fromDate || mrrDate >= fromDate) && (!toDate || mrrDate <= toDate);
+    // Search box: the table columns (Firm Name, Transaction No, Date, Supplier, Items, Amount).
+    const itemCells = (m.lines || []).map((l) => [materials.find((item) => item.id === l.itemId)?.name || npdItems.find((item) => item.id === l.itemId)?.name || "Unknown", `[${l.qty ?? ""} ${l.uom ?? ""} @ ${l.rate ?? ""}]`, l.qty, l.uom, l.rate]);
+    return matchesTableSearch([firmName, m.transactionNo, m.date, supplierName, itemCells, m.totalAmount], words) && (!firmFilter || firmName === firmFilter) && (!supplierFilter || supplierName === supplierFilter) && (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!fromDate || mrrDate >= fromDate) && (!toDate || mrrDate <= toDate);
   });
   const firmOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending MD").map(getFirmName))).sort();
   const supplierOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending MD").map((m) => getSupplierName(m.supplierId)))).sort();

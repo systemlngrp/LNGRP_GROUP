@@ -40,7 +40,7 @@ export function MaterialReceiptFilters({
             <input
               value={searchTerm || ""}
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search MRR, party, invoice, firm, item..."
+              placeholder="Search"
               className="w-full border-2 border-black bg-white py-2 pl-9 pr-3 text-sm font-medium normal-case focus:outline-none focus:ring-1 focus:ring-indigo-600"
             />
           </div>

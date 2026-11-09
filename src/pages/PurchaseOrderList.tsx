@@ -23,6 +23,7 @@ import { computePurchaseOrderTaxes, summarizePurchaseOrderLines } from "../lib/p
 import { renderOrganizationHeader } from "../lib/pdfOrganizationHeader";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import type {
   Indent,
   IndentLine,
@@ -157,6 +158,13 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     if (firm) return getFirmDisplayName(firm);
     return storedFirmName ? getFirmDisplayName({ firmName: storedFirmName }) : "-";
   }, [firms]);
+  // Firm short code as the Firm column shows it (also used by the table search).
+  const getFirmShortName = useCallback((order: PurchaseOrder) => {
+    const firmId = String(order.firmId || "");
+    const firm = firms.find((item) => String(item.id) === firmId);
+    return firm ? getFirmDisplayName(firm) : (firmId ? "Unknown firm" : "Unassigned");
+  }, [firms]);
+
   const renderFirm = useCallback((order: PurchaseOrder) => {
     const firmId = String(order.firmId || "");
     const firm = firms.find((item) => String(item.id) === firmId);
@@ -281,6 +289,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   }, [getLineCancelledQty, getLinePendingQty, mode]);
 
   const filteredOrders = useMemo(() => {
+    const words = searchWords(searchTerm);
     return purchaseOrders
       .filter((po) => {
         if (mode === "pending-approval") return po.status === "Pending Approval";
@@ -298,21 +307,31 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
         if (isLineMode && modeLines.length === 0) return false;
         if (!modeLines.some((line) => lineMatchesDetailFilters(po, line))) return false;
 
-        const supplierName = (supplierNameMap.get(po.supplierId) || "").toLowerCase();
-        const poNo = (po.poNo || "").toLowerCase();
-        const itemText = modeLines
-          .map((line) => [line.erpCode, materialMap.get(line.materialId)?.erpCode, materialMap.get(line.materialId)?.name].filter(Boolean).join(" "))
-          .join(" ")
-          .toLowerCase();
-        const search = searchTerm.toLowerCase();
-        return supplierName.includes(search) || poNo.includes(search) || itemText.includes(search);
+        if (!words.length) return true;
+        // Visible columns of the PO table (line items sit in the expandable row, not searched).
+        const qtySummary = getOrderQtySummary(modeLines);
+        const totals = summarizePurchaseOrderLines(getLinesForTotals(po, modeLines));
+        const grandTotal = Number((totals.grandTotal + Number(po.roundOff || 0)).toFixed(2));
+        return matchesTableSearch([
+          po.poNo || "DRAFT",
+          po.poDate,
+          getFirmShortName(po),
+          po.requiredDate,
+          supplierNameMap.get(po.supplierId) || "Unknown",
+          qtySummary.totalQty,
+          qtySummary.totalReceived,
+          qtySummary.totalCancel,
+          qtySummary.totalYetToReceive,
+          grandTotal,
+          mode === "rejected" ? po.rejectedRemarks : "",
+        ], words);
       })
       .sort(
         (a, b) =>
           new Date(b.updateTimestamp || b.poDate || 0).getTime() -
           new Date(a.updateTimestamp || a.poDate || 0).getTime(),
       );
-  }, [firmFilter, fromDateFilter, getModeLines, isLineMode, lineMatchesDetailFilters, materialMap, mode, orderLines, purchaseOrders, searchTerm, supplierFilter, supplierNameMap, toDateFilter]);
+  }, [firmFilter, fromDateFilter, getFirmShortName, getLinesForTotals, getModeLines, getOrderQtySummary, isLineMode, lineMatchesDetailFilters, mode, orderLines, purchaseOrders, searchTerm, supplierFilter, supplierNameMap, toDateFilter]);
   const filteredQtySummary = useMemo(() => {
     return filteredOrders.reduce(
       (summary, order) => {
@@ -344,7 +363,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
   );
 
   const baseFlatItemRows = useMemo<NotReceivedItemRow[]>(() => {
-    const search = searchTerm.trim().toLowerCase();
+    const words = searchWords(searchTerm);
     return purchaseOrders
       .filter((order) => !supplierFilter || order.supplierId === supplierFilter)
       .filter((order) => !firmFilter || String(order.firmId || "") === firmFilter)
@@ -377,18 +396,25 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
       .filter((row) => (mode === "item-cancelled" ? row.cancelledQty > 0 : row.pendingQty > 0))
       .filter((row) => lineMatchesDetailFilters(row.order, row.line))
       .filter((row) => {
-        if (!search) return true;
-        const haystack = [
-          row.order.poNo,
-          row.supplierName,
-          row.itemLabel,
-          row.erpCode,
+        if (!words.length) return true;
+        // Visible columns of the PO item table (Cancel Qty input / Action skipped).
+        return matchesTableSearch([
+          row.order.poNo || "DRAFT",
+          row.order.poDate,
+          getFirmShortName(row.order),
           row.indentReference.indentNo,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return haystack.includes(search);
+          row.indentReference.indentDate,
+          row.supplierName,
+          row.erpCode,
+          row.itemLabel,
+          row.itemType,
+          Number(row.line.qty || 0),
+          row.receivedQty,
+          row.cancelledQty,
+          ...(mode === "item-cancelled" ? [row.line.cancelledBy || "-", row.line.cancelReason || "-"] : []),
+          row.pendingQty,
+          row.line.targetDeliveryDate,
+        ], words);
       })
       .sort(
         (a, b) =>
@@ -397,7 +423,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           String(a.order.poNo || "").localeCompare(String(b.order.poNo || "")) ||
           String(a.itemLabel || "").localeCompare(String(b.itemLabel || "")),
       );
-  }, [firmFilter, fromDateFilter, getItemType, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, lineMatchesDetailFilters, materialMap, orderLines, purchaseOrders, resolveIndentReference, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
+  }, [firmFilter, fromDateFilter, getFirmShortName, getItemType, getLineCancelledQty, getLinePendingQty, getLineReceivedQty, lineMatchesDetailFilters, materialMap, orderLines, purchaseOrders, resolveIndentReference, searchTerm, mode, supplierFilter, supplierNameMap, toDateFilter]);
 
   const itemTypeOptions = useMemo<SelectOption[]>(() => Array.from(new Set(
     orderLines.map((line) => getItemType(line)).filter(Boolean),
@@ -1106,7 +1132,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
-              placeholder="Search PO, supplier, item..."
+              placeholder="Search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"

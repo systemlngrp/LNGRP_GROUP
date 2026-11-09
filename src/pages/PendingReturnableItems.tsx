@@ -5,6 +5,7 @@ import { useData } from "../hooks/useData";
 import { deriveGatePassState, getGatePassLinesWithReturns, getGatePassPrimaryPartyName, getPendingQtyForGatePass, hasSavedReturnableReceiptGateEntry, isReturnableGatePass } from "../lib/gatePassState";
 import { GateEntry, GatePass, MaterialIn } from "../types";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function PendingReturnableItems() {
   const navigate = useNavigate();
@@ -14,9 +15,10 @@ export function PendingReturnableItems() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedGatePassId, setSelectedGatePassId] = useState<string | null>(null);
 
-  const pendingGatePasses = useMemo(
-    () =>
-      gatePasses
+  const pendingGatePasses = useMemo(() => {
+    // Search: only the columns the table shows.
+    const words = searchWords(searchTerm);
+    return gatePasses
         .filter((gatePass) => isReturnableGatePass(gatePass))
         .filter((gatePass) => !hasSavedReturnableReceiptGateEntry(gatePass, gateEntries))
         .filter((gatePass) => {
@@ -24,19 +26,26 @@ export function PendingReturnableItems() {
           return state === "Open" || state === "Partially Returned";
         })
         .filter((gatePass) => {
+          if (!words.length) return true;
           const itemNames = (gatePass.lines || [])
-            .map((line) => line.itemDescription || line.itemName)
-            .filter(Boolean)
-            .join(" ");
-          const haystack = [gatePass.gatePassNo, getGatePassPrimaryPartyName(gatePass), gatePass.truckNo, itemNames]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(searchTerm.toLowerCase());
+            .map((line) => String(line.itemDescription || line.itemName || "").trim())
+            .filter(Boolean);
+          return matchesTableSearch(
+            [
+              gatePass.gatePassNo,
+              formatDate(gatePass.date),
+              getGatePassPrimaryPartyName(gatePass),
+              itemNames,
+              gatePass.truckNo,
+              Number(gatePass.totalQty || 0),
+              getPendingQtyForGatePass(gatePass, materialIn),
+              deriveGatePassState(gatePass, materialIn),
+            ],
+            words
+          );
         })
-        .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime()),
-    [gateEntries, gatePasses, materialIn, searchTerm]
-  );
+        .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
+  }, [gateEntries, gatePasses, materialIn, searchTerm]);
 
   const selectedGatePass = pendingGatePasses.find((gatePass) => gatePass.id === selectedGatePassId) || null;
   const getGatePassItemNames = (gatePass: GatePass) => {
@@ -73,7 +82,7 @@ export function PendingReturnableItems() {
       </div>
 
       <div className="rounded border border-black bg-white p-4 shadow-sm">
-        <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search gate pass no, recipient, item name, truck..." className="w-full max-w-xl rounded border border-black px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black" />
+        <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search" className="w-full max-w-xl rounded border border-black px-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-black" />
       </div>
 
       <div className="overflow-hidden rounded border border-black bg-white shadow-sm">

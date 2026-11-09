@@ -11,6 +11,7 @@ import { downloadGatePassPdf } from "../lib/gatePassPdf";
 import { deriveGatePassState, getGatePassLinesWithReturns, getGatePassPrimaryPartyName, isReturnableGatePass } from "../lib/gatePassState";
 import { GatePass, Invoice, MaterialIn, Setting } from "../types";
 import { formatDate } from "../lib/serial";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -64,30 +65,30 @@ export function GatePassMaster() {
   const recipientOptions = useMemo(() => makeOptions(filterRows.map((row) => row.recipient)), [filterRows]);
   const truckOptions = useMemo(() => makeOptions(filterRows.map((row) => row.truck === "-" ? "" : row.truck)), [filterRows]);
 
-  const filteredGatePasses = useMemo(
-    () =>
-      filterRows
+  const filteredGatePasses = useMemo(() => {
+    // Search: only the columns the table shows.
+    const words = searchWords(searchTerm);
+    return filterRows
         .filter(({ gatePass, type, recipient, truck }) => {
           if (typeFilter && type !== typeFilter) return false;
           if (recipientFilter && recipient !== recipientFilter) return false;
           if (truckFilter && truck !== truckFilter) return false;
-          const haystack = [
-            gatePass.gatePassNo,
-            gatePass.invoiceNo,
-            getLinkedInvoice(gatePass)?.tallyInvNo,
-            recipient,
-            gatePass.truckNo,
-            type,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(searchTerm.toLowerCase());
+          return matchesTableSearch(
+            [
+              gatePass.gatePassNo || "Pending",
+              type,
+              formatDate(gatePass.date),
+              recipient,
+              gatePass.truckNo,
+              Number(gatePass.totalQty || 0),
+              Number(gatePass.totalAmount || 0),
+            ],
+            words
+          );
         })
         .map((row) => row.gatePass)
-        .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime()),
-    [filterRows, invoices, searchTerm, typeFilter, recipientFilter, truckFilter]
-  );
+        .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
+  }, [filterRows, invoices, searchTerm, typeFilter, recipientFilter, truckFilter]);
 
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredGatePasses, 25);
 
@@ -141,7 +142,7 @@ export function GatePassMaster() {
           <input
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search gate pass, invoice, recipient, truck..."
+            placeholder="Search"
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>

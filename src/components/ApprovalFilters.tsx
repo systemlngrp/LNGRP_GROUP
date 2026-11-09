@@ -40,7 +40,7 @@ export function ApprovalFilters({
         <Search className="absolute left-3 top-8 text-slate-400" size={16} />
         <input
           type="text"
-          placeholder="Search all columns"
+          placeholder="Search"
           value={searchTerm}
           onChange={(event) => onSearchChange(event.target.value)}
           className="mt-1 w-full border-2 border-black bg-white py-2 pl-9 pr-3 text-sm font-medium normal-case focus:outline-none focus:ring-1 focus:ring-indigo-600"

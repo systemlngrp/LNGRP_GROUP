@@ -170,7 +170,7 @@ export function PendingNonJobMaterialIssue() {
           <input
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
-            placeholder="Search firm or date..."
+            placeholder="Search"
             className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           />
         </div>

@@ -9,6 +9,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useNpdItemNames } from "../hooks/useNpdItems";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function PendingDebitNote() {
   const confirm = useConfirm();
@@ -45,6 +46,7 @@ export function PendingDebitNote() {
   }
 
   const debitNoteList = useMemo(() => {
+    const words = searchWords(searchTerm);
     return materialIn
       .filter(m => m.debitNote && !m.debitTallySync)
       .filter(m => {
@@ -53,11 +55,9 @@ export function PendingDebitNote() {
         return (!firmFilter || getFirmName(m) === firmFilter) && (!itemFilter || getItemNames(m).toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || supplierName === supplierFilter) && (!mrrFilter || searchStr.includes(mrrFilter.trim().toLowerCase()));
       })
       .filter((m) => {
-        // Search box: any of MRR No, party, invoice, firm, items, date, remarks.
-        const q = searchTerm.trim().toLowerCase();
-        if (!q) return true;
-        const text = `${m.transactionNo || ""} ${getSupplierName(m.supplierId)} ${m.invoiceNo || ""} ${getFirmName(m)} ${getItemNames(m)} ${m.date || ""} ${m.debitNote || ""}`.toLowerCase();
-        return text.includes(q);
+        // Search box: the table columns (MRR Details, Firm, Party, Date, Amount, Sync Remark).
+        if (!words.length) return true;
+        return matchesTableSearch([m.transactionNo, m.invoiceNo ? `INV: ${m.invoiceNo}` : "INV:", m.invoiceNo, getFirmName(m), getSupplierName(m.supplierId), m.debitNoteDate || "-", Number(m.debitNoteAmount || 0).toFixed(2), m.debitRemarkTally || "-"], words);
       })
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
   }, [firmFilter, itemFilter, materialIn, mrrFilter, searchTerm, supplierFilter, suppliers]);

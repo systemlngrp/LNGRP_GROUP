@@ -504,7 +504,7 @@ export function ReelwiseStockReport() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search anything: MRR, ERP, reel, GSM, size, BF, supplier..."
+            placeholder="Search"
             className="h-[36px] w-full rounded border-2 border-black pl-8 pr-2 text-sm font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>

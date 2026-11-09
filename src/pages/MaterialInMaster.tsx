@@ -14,6 +14,7 @@ import { downloadMrrReelLabelsPdf } from "../lib/mrrReelLabelsPdf";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -194,43 +195,54 @@ export function MaterialInMaster() {
 
   // Totals recalculated once per data change, not on every keystroke.
   const normalizedMaterialIn = useMemo(() => materialIn.map((entry) => normalizeMaterialInRecord(entry)), [materialIn]);
+  // Search text of each row from the table's visible columns, built once per data change.
   const searchTextById = useMemo(() => {
     const map = new Map<string, string>();
     normalizedMaterialIn.forEach((entry) => {
-      const supplierName = getSupplierName(entry.supplierId);
-      const safeLines = Array.isArray(entry.lines) ? entry.lines : [];
-      const itemNames = safeLines
-        .map((line) => {
-          if (!line) return "";
-          return getItemName(line.itemId) || "";
-        })
-        .join(" ");
-      map.set(entry.id, [
+      map.set(entry.id, rowSearchText([
         entry.transactionNo,
-        entry.mrrType,
-        entry.gateEntryNo,
-        entry.invoiceNo,
+        formatText(entry.mrrType),
+        entry.date,
+        getFirmName(entry),
+        formatText(entry.gateEntryNo),
+        getSupplierName(entry.supplierId),
+        formatText(entry.invoiceNo),
         entry.invDate,
         entry.status,
-        entry.debitNote,
+        getApprovalText(entry.phTimestamp, entry.phEmailId),
+        getApprovalText(entry.accTimestamp, entry.accEmailId),
+        formatText(entry.accounts_remark),
+        getApprovalText(entry.mdTimestamp, entry.mdEmailId),
+        formatText(entry.md_approval_remark),
+        entry.tallyTimestamp,
+        formatText(entry.tallySyncRemark),
+        formatMoney(entry.totalInvoiceValue),
+        formatMoney(getGstTotal(entry)),
+        formatMoney(entry.totalInvoiceValueAfterGst),
+        formatMoney(entry.totalActualValue || entry.totalAmount),
+        formatMoney(entry.insurance),
+        formatMoney(entry.otherCharges),
+        formatMoney(getExpenseGstTotal(entry)),
+        formatMoney(entry.roundOff),
+        formatMoney(entry.totalAmount),
+        formatMoney(entry.tdsAmount),
+        formatMoney(entry.netSupplierPayable ?? (Number(entry.totalAmount || 0) - Number(entry.tdsAmount || 0))),
+        formatText(entry.debitNote),
         entry.debitNoteDate,
-        entry.debitTallySync,
-        entry.debitRemarkTally,
-        entry.creditTallySync,
-        entry.creditRemarkTally,
-        entry.tallySyncRemark,
-        entry.updatedBy,
-        supplierName,
-        itemNames,
-      ].join(" ").toLowerCase());
+        formatMoney(entry.debitNoteAmount),
+        formatText(entry.updatedBy),
+        entry.updateTimestamp,
+      ]));
     });
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedMaterialIn, materialNameById, npdNameById, supplierNameById, companyNameById]);
+  }, [normalizedMaterialIn, supplierNameById, companyNameById, firms]);
 
-  const filteredMaterialIn = useMemo(() => normalizedMaterialIn
+  const filteredMaterialIn = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return normalizedMaterialIn
     .filter((entry) => {
-      const matchesSearch = (searchTextById.get(entry.id) || "").includes(searchTerm.toLowerCase());
+      const matchesSearch = matchesTableSearch(searchTextById.get(entry.id) || "", words);
 
       const matchesMrr = !mrrFilter || entry.transactionNo === mrrFilter;
       const matchesFirm = !firmFilter || String(entry.firmId || entry.destinationFirmId || "") === firmFilter;
@@ -245,7 +257,8 @@ export function MaterialInMaster() {
       const timeA = new Date(a.updateTimestamp || a.timestamp || 0).getTime();
       const timeB = new Date(b.updateTimestamp || b.timestamp || 0).getTime();
       return timeB - timeA;
-    }), [
+    });
+  }, [
       firmFilter,
       fromDate,
       mrrFilter,
@@ -357,7 +370,7 @@ export function MaterialInMaster() {
             <label className="text-[10px] font-black uppercase text-slate-500">Search</label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-              <input type="text" placeholder="Search transaction, supplier..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-1.5 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-xs font-bold" />
+              <input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-1.5 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-xs font-bold" />
             </div>
           </div>
           <div className="mt-4 flex items-center gap-2">

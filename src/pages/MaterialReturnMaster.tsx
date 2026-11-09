@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ReelSpecs, formatReelSpecs } from "../components/ReelSpecs";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Material, Production, Setting, Firm } from "../types";
 import { Select } from "../components/Select";
@@ -89,7 +90,8 @@ export function MaterialReturnMaster() {
   }, [reelLines]);
 
   const processedData = useMemo(() => {
-    const q = searchTerm.toLowerCase().trim();
+    // Search: only the columns each tab's table shows.
+    const words = searchWords(searchTerm);
 
     const filteredReturns = materialReturns.filter((returnEntry) => {
       const returnDate = returnEntry.date?.split("T")[0] || "";
@@ -106,15 +108,10 @@ export function MaterialReturnMaster() {
     const returnIds = new Set(filteredReturns.map((returnEntry) => returnEntry.id));
     const returnMap = new Map(filteredReturns.map((returnEntry) => [returnEntry.id, returnEntry]));
 
-    const matchesText = (item: any) => {
-      if (!q) return true;
-      return Object.values(item).some((val) => String(val).toLowerCase().includes(q));
-    };
-
     const matchesCommonFilters = (item: any) => {
       if (materialFilter && item.materialId !== materialFilter) return false;
       if (jobFilter && item.jobNo !== jobFilter) return false;
-      return matchesText(item);
+      return true;
     };
 
     const general = returnLines
@@ -143,7 +140,8 @@ export function MaterialReturnMaster() {
       .filter(Boolean)
       .filter((line: any) => {
         if (reelFilter && !String(line.reelNos || "").split(" ").includes(reelFilter)) return false;
-        return matchesCommonFilters(line);
+        return matchesCommonFilters(line)
+          && matchesTableSearch([line.returnNo, formatDate(line.date), line.jobNo, line.materialName, line.qty, line.uom, line.value, line.remarks], words);
       }) as any[];
 
     const reelDetails = reelLines
@@ -174,6 +172,8 @@ export function MaterialReturnMaster() {
         if (reelFilter && reel.ourReelNo !== reelFilter) return false;
         return matchesCommonFilters(reel);
       }) as any[];
+    const searchedReelDetails = reelDetails.filter((reel) =>
+      matchesTableSearch([reel.returnNo, formatDate(reel.date), reel.jobNo, reel.specs, reel.ourReelNo, reel.weightKg, reel.value], words));
 
     const summaryMap = new Map<string, any>();
     reelDetails.forEach((reel) => {
@@ -193,8 +193,10 @@ export function MaterialReturnMaster() {
     });
 
     const finalGeneral = general.sort((a, b) => b.date.localeCompare(a.date));
-    const finalReelSummary = Array.from(summaryMap.values()).sort((a, b) => b.date.localeCompare(a.date));
-    const finalReelDetails = reelDetails.sort((a, b) => b.date.localeCompare(a.date));
+    const finalReelSummary = Array.from(summaryMap.values())
+      .filter((row) => matchesTableSearch([row.returnNo, formatDate(row.date), row.jobNo, row.specs, row.totalWeight, row.totalValue, row.reelCount], words))
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const finalReelDetails = searchedReelDetails.sort((a, b) => b.date.localeCompare(a.date));
     const visibleReturnIds = new Set([...finalGeneral, ...finalReelDetails].map((row) => row.materialReturnId));
     const visibleReturns = filteredReturns.filter((returnEntry) => visibleReturnIds.has(returnEntry.id));
 
@@ -315,7 +317,7 @@ export function MaterialReturnMaster() {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search return no, job no, reel no, material..."
+              placeholder="Search"
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>

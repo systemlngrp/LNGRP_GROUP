@@ -3,6 +3,7 @@ import { useData } from "../hooks/useData";
 import { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Service, Supplier, Setting } from "../types";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { Search, ChevronRight, ChevronDown, Download, QrCode, ArrowUp, ArrowDown, Check, MessageSquareText, X } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -109,16 +110,18 @@ export function MrrApprovals() {
   }, [materialIn]);
 
   const filteredList = useMemo(() => {
+    const words = searchWords(searchTerm);
     return materialIn
       .filter(m => activeStage === "All Approval" ? approvalStatuses.includes(m.status as Stage) : m.status === activeStage)
       .filter(m => !firmFilter || String(m.firmId || m.destinationFirmId || "") === firmFilter)
       .filter(m => !supplierFilter || getSupplierName(m.supplierId) === supplierFilter)
       .filter(m => (!fromDate || m.date >= fromDate) && (!toDate || m.date <= toDate))
       .filter(m => {
-        const supplierName = getSupplierName(m.supplierId);
-        const firmName = getFirmName(m);
-        const searchStr = `${m.transactionNo} ${m.gateEntryNo || ""} ${firmName} ${supplierName} ${m.invoiceNo} ${m.mrrType || ""}`.toLowerCase();
-        return searchStr.includes(searchTerm.toLowerCase());
+        if (!words.length) return true;
+        // Search box: the table columns (MRR No, GE No, Date, Firm, Party, Type, Status, MRR Qty, Inv Qty, Item Value).
+        const mrrQty = m.lines.reduce((sum, l) => sum + (l.actualQty || l.qty || 0), 0);
+        const invQty = m.lines.reduce((sum, l) => sum + (l.invoiceQty || 0), 0);
+        return matchesTableSearch([m.transactionNo, m.gateEntryNo || "-", m.date, getFirmName(m), getSupplierName(m.supplierId), m.mrrType || "-", statusLabel(m.status), mrrQty.toFixed(2), invQty.toFixed(2), getItemValue(m).toFixed(2)], words);
       })
       .sort((a, b) => {
         let comparison = 0;
@@ -578,7 +581,7 @@ export function MrrApprovals() {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search MRR, GE, firm, party, invoice..."
+            placeholder="Search"
             className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
           />
         </div>
@@ -762,8 +765,12 @@ const STATUS_STYLES: Record<string, string> = {
   "Pending MD": "bg-violet-100 text-violet-900 border-violet-300",
 };
 
+function statusLabel(status?: string) {
+  return status === "Pending PH" ? "Plant Head" : status === "Pending Accounts" ? "Accounts" : status === "Pending MD" ? "MD" : status || "-";
+}
+
 function StatusBadge({ status }: { status?: string }) {
-  const label = status === "Pending PH" ? "Plant Head" : status === "Pending Accounts" ? "Accounts" : status === "Pending MD" ? "MD" : status || "-";
+  const label = statusLabel(status);
   return (
     <span className={cn("inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold", STATUS_STYLES[status || ""] || "border-slate-300 bg-slate-100 text-slate-700")}>
       {label}

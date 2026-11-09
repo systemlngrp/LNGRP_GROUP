@@ -7,6 +7,7 @@ import { Trash2, Package, Layers, Disc, Search } from "lucide-react";
 import { formatDate } from "../lib/serial";
 import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
 import { ClientPagination } from "../components/ClientPagination";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function isWithoutJobIssue(issueType?: string) {
   const t = String(issueType || "").trim().toLowerCase();
@@ -108,7 +109,8 @@ export function MaterialIssueMaster() {
   }, [reelLines]);
 
   const processedData = useMemo(() => {
-    const q = searchTerm.toLowerCase().trim();
+    // Search: only the columns each tab's table shows.
+    const words = searchWords(searchTerm);
 
     const filteredIssues = materialIssues.filter((issue) => {
       const issueDate = issue.date?.split("T")[0] || "";
@@ -125,15 +127,10 @@ export function MaterialIssueMaster() {
     const issueIds = new Set(filteredIssues.map((issue) => issue.id));
     const issueMap = new Map(filteredIssues.map((issue) => [issue.id, issue]));
 
-    const matchesText = (item: any) => {
-      if (!q) return true;
-      return Object.values(item).some((val) => String(val).toLowerCase().includes(q));
-    };
-
     const matchesCommonFilters = (item: any) => {
       if (materialFilter && item.materialId !== materialFilter) return false;
       if (jobFilter && item.jobNo !== jobFilter) return false;
-      return matchesText(item);
+      return true;
     };
 
     const general = issueLines
@@ -163,7 +160,8 @@ export function MaterialIssueMaster() {
       .filter(Boolean)
       .filter((line: any) => {
         if (reelFilter && !String(line.reelNos || "").split(" ").includes(reelFilter)) return false;
-        return matchesCommonFilters(line);
+        return matchesCommonFilters(line)
+          && matchesTableSearch([line.issueNo, formatDate(line.date), line.jobNo, line.materialName, line.qty, line.uom, line.remarks], words);
       }) as any[];
 
     const reelDetails = reelLines
@@ -196,6 +194,9 @@ export function MaterialIssueMaster() {
         return matchesCommonFilters(reel);
       }) as any[];
 
+    const searchDetails = (rows: any[]) => rows.filter((reel) =>
+      matchesTableSearch([reel.issueNo, formatDate(reel.date), reel.jobNo, reel.specs, reel.ourReelNo, formatNumber(reel.weightKg), formatNumber(reel.value)], words));
+
     const summarize = (rows: any[]) => {
       const summaryMap = new Map<string, any>();
       rows.forEach((reel) => {
@@ -206,13 +207,17 @@ export function MaterialIssueMaster() {
         existing.totalValue += Number(reel.value || 0);
         existing.reelCount += 1;
       });
-      return Array.from(summaryMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+      return Array.from(summaryMap.values())
+        .filter((row) => matchesTableSearch([row.issueNo, formatDate(row.date), row.jobNo, row.specs, formatNumber(row.totalWeight), formatNumber(row.totalValue), row.reelCount], words))
+        .sort((a, b) => b.date.localeCompare(a.date));
     };
 
     const finalGeneral = general.sort((a, b) => b.date.localeCompare(a.date));
     const finalReelDetails = reelDetails.sort((a, b) => b.date.localeCompare(a.date));
-    const manualDetails = finalReelDetails.filter((row) => row.method === "MANUAL");
-    const qrDetails = finalReelDetails.filter((row) => row.method === "QR");
+    const allManualDetails = finalReelDetails.filter((row) => row.method === "MANUAL");
+    const allQrDetails = finalReelDetails.filter((row) => row.method === "QR");
+    const manualDetails = searchDetails(allManualDetails);
+    const qrDetails = searchDetails(allQrDetails);
 
     // Tiles per tab, from that tab's rows only (so they always match the table).
     const reelMetrics = (rows: any[]) => ({
@@ -239,9 +244,9 @@ export function MaterialIssueMaster() {
     return {
       general: finalGeneral,
       manualDetails,
-      manualSummary: summarize(manualDetails),
+      manualSummary: summarize(allManualDetails),
       qrDetails,
-      qrSummary: summarize(qrDetails),
+      qrSummary: summarize(allQrDetails),
       metrics,
     };
   }, [materialIssues, operationalIssueIds, issueLines, reelLines, reelLineIdsByIssueLineId, materialMap, issueLineMap, searchTerm, fromDate, toDate, typeFilter, materialFilter, jobFilter, reelFilter]);
@@ -308,7 +313,7 @@ export function MaterialIssueMaster() {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search issue no, job no, reel no, material..."
+              placeholder="Search"
               className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
             />
           </div>

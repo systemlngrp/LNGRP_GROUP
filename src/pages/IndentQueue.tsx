@@ -15,6 +15,7 @@ import { renderOrganizationHeader } from "../lib/pdfOrganizationHeader";
 import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { canIndentBeUnapproved, revertIndentToPending, withIndentTotals } from "../lib/indentTotals";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 type QueueMode = "Pending" | "Approved" | "Completed" | "Rejected";
 
@@ -148,8 +149,9 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
     );
   }, [indentLines, materialById, statusIndents]);
 
-  const visibleIndents = useMemo(
-    () =>
+  const visibleIndents = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return (
       statusIndents
         .filter((indent) => {
           const indentDate = toDateOnly(indent.requisitionDate);
@@ -162,25 +164,26 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
           const indentLinesForThis = indentLines.filter((line) => line.indentId === indent.id);
           if (itemFilter && !indentLinesForThis.some((line) => getIndentLineItemName(line, materialById) === itemFilter)) return false;
 
-          const q = searchTerm.toLowerCase().trim();
-          if (!q) return true;
-          const itemSummary = getLineSummary(indentLinesForThis, materials).toLowerCase();
-
-          return (
-            (indent.indentNo || "").toLowerCase().includes(q) ||
-            resolveFirmName(indent).toLowerCase().includes(q) ||
-            (indent.requestedBy || "").toLowerCase().includes(q) ||
-            (indent.indentType || "").toLowerCase().includes(q) ||
-            itemSummary.includes(q)
-          );
+          if (!words.length) return true;
+          return matchesTableSearch([
+            indent.indentNo || indent.id,
+            resolveFirmName(indent),
+            indent.requestedBy,
+            indent.requisitionDate,
+            indent.requiredDate,
+            ...(mode === "Pending"
+              ? [indentLinesForThis.length, Number(withIndentTotals(indent, indentLinesForThis).totalIndentQty || 0)]
+              : [indent.indentType]),
+            mode === "Rejected" ? indent.rejectedRemarks : "",
+          ], words);
         })
         .sort((a, b) => {
           const timeA = new Date(a.updateTimestamp || a.requisitionDate || 0).getTime();
           const timeB = new Date(b.updateTimestamp || b.requisitionDate || 0).getTime();
           return timeB - timeA;
-        }),
-    [dateFrom, dateTo, firmFilter, firms, indentLines, indentTypeFilter, itemFilter, materialById, materials, requestedByFilter, searchTerm, statusIndents]
-  );
+        })
+    );
+  }, [dateFrom, dateTo, firmFilter, firms, indentLines, indentTypeFilter, itemFilter, materialById, mode, requestedByFilter, searchTerm, statusIndents]);
 
   const displayRows = useMemo(
     () =>
@@ -492,7 +495,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search requisition, requested by, type, item..."
+            placeholder="Search"
             className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>

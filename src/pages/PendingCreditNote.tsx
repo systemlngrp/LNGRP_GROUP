@@ -9,6 +9,7 @@ import { Company, Firm, Material, MaterialIn, Supplier } from "../types";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useNpdItemNames } from "../hooks/useNpdItems";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 function getCreditNoteTaxableAmount(mrr: MaterialIn) {
   return (mrr.lines || []).reduce((sum, line) => {
@@ -57,6 +58,7 @@ export function PendingCreditNote() {
     id;
 
   const creditNoteList = useMemo(() => {
+    const words = searchWords(searchTerm);
     return materialIn
       .filter((mrr) => mrr.mrrType === "Rejection In" && !mrr.creditTallyTimestamp)
       .filter((mrr) => {
@@ -65,11 +67,9 @@ export function PendingCreditNote() {
         return (!firmFilter || getFirmName(mrr) === firmFilter) && (!itemFilter || getItemNames(mrr).toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!supplierFilter || partyName === supplierFilter) && (!mrrFilter || searchStr.includes(mrrFilter.trim().toLowerCase()));
       })
       .filter((mrr) => {
-        // Search box: any of MRR No, party, invoice, firm, items, date, remarks.
-        const q = searchTerm.trim().toLowerCase();
-        if (!q) return true;
-        const text = `${mrr.transactionNo || ""} ${getPartyName(mrr.supplierId)} ${mrr.invoiceNo || ""} ${getFirmName(mrr)} ${getItemNames(mrr)} ${mrr.date || ""}`.toLowerCase();
-        return text.includes(q);
+        // Search box: the table columns (MRR Details, Firm, Party, Date, Taxable Amount, Sync Remark).
+        if (!words.length) return true;
+        return matchesTableSearch([mrr.transactionNo, mrr.invoiceNo ? `INV: ${mrr.invoiceNo}` : "INV:", mrr.invoiceNo, getFirmName(mrr), getPartyName(mrr.supplierId), mrr.date || "-", getCreditNoteTaxableAmount(mrr).toFixed(2), mrr.creditRemarkTally || "-"], words);
       })
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
   }, [companies, firmFilter, itemFilter, materialIn, mrrFilter, searchTerm, supplierFilter, suppliers]);
