@@ -1,9 +1,11 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Service, Supplier, Setting } from "../types";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
-import { Search, ChevronRight, ChevronDown, Download, QrCode, ArrowUp, ArrowDown, ThumbsUp, ThumbsDown, MessageSquareText, X } from "lucide-react";
+import { Search, ChevronRight, ChevronDown, Download, QrCode, ArrowUp, ArrowDown, Check, MessageSquareText, X } from "lucide-react";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { Spinner } from "../components/Spinner";
 import { useNpdItemNames } from "../hooks/useNpdItems";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
@@ -14,7 +16,7 @@ import { Select as FirmSelect } from "../components/Select";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type Stage = "All Approval" | "Pending PH" | "Pending Accounts" | "Pending MD";
-type SortField = "timestamp" | "gateEntryNo" | "transactionNo";
+type SortField = "timestamp" | "gateEntryNo" | "transactionNo" | "date" | "value";
 type SortDirection = "asc" | "desc";
 
 export function MrrApprovals() {
@@ -62,7 +64,7 @@ export function MrrApprovals() {
       return;
     }
     setSortField(field);
-    setSortDirection(field === "timestamp" ? "desc" : "asc");
+    setSortDirection(field === "timestamp" || field === "date" || field === "value" ? "desc" : "asc");
   };
 
   const renderSortIcon = (field: SortField) =>
@@ -79,6 +81,9 @@ export function MrrApprovals() {
     if (company) return company.name;
     return id;
   };
+
+  // Item value of an MRR (sum of its lines), as shown in the Item Value column.
+  const getItemValue = (mrr: MaterialIn) => (mrr.lines || []).reduce((sum, line) => sum + (line.actualValue || line.value || 0), 0);
 
   const getFirmName = (mrr: MaterialIn) => {
     return getFirmDisplayNameById(mrr.firmId || mrr.destinationFirmId, firms, mrr.firmName);
@@ -122,6 +127,10 @@ export function MrrApprovals() {
           comparison = getSeriesNumber(a.gateEntryNo) - getSeriesNumber(b.gateEntryNo);
         } else if (sortField === "transactionNo") {
           comparison = getSeriesNumber(a.transactionNo) - getSeriesNumber(b.transactionNo);
+        } else if (sortField === "date") {
+          comparison = String(a.date || "").localeCompare(String(b.date || ""));
+        } else if (sortField === "value") {
+          comparison = getItemValue(a) - getItemValue(b);
         } else {
           comparison = new Date(a.updateTimestamp || a.timestamp).getTime() - new Date(b.updateTimestamp || b.timestamp).getTime();
         }
@@ -323,367 +332,443 @@ export function MrrApprovals() {
     return line.itemName?.trim() || line.itemId;
   };
 
+  const isActionable = (mrr: MaterialIn) => ACTIONABLE_STATUSES.includes(mrr.status || "");
+  const filtersActive = Boolean(searchTerm || firmFilter || supplierFilter || fromDate || toDate);
+  const pagination = useClientPagination(filteredList, 25);
+  const { setPage } = pagination;
+  // Any stage, search or filter change starts again from page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [activeStage, searchTerm, firmFilter, supplierFilter, fromDate, toDate, sortField, sortDirection, setPage]);
+  const allSelected = filteredList.length > 0 && selectedIds.length === filteredList.length;
+
+  const sortHeader = (label: string, field: SortField, align: "left" | "right" = "left") => (
+    <button
+      type="button"
+      onClick={() => toggleSort(field)}
+      className={cn("inline-flex items-center gap-1 uppercase", align === "right" && "justify-end")}
+    >
+      {label}
+      {renderSortIcon(field)}
+    </button>
+  );
+
+  // Approval buttons shared by the table row and the phone card.
+  const renderActions = (m: MaterialIn, size: "sm" | "lg") => {
+    const button = size === "lg" ? "h-10 w-10" : "h-8 w-8";
+    const icon = size === "lg" ? 16 : 14;
+    const actionable = isActionable(m);
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => downloadPdf(m)}
+          className={cn(button, "inline-flex items-center justify-center rounded-md border-2 border-red-600 bg-red-50 text-red-600 hover:bg-red-100")}
+          title="Download PDF"
+          aria-label="Download PDF"
+        >
+          <Download size={icon} />
+        </button>
+        {m.mrrType === "Reel" ? (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setReelLabelMenuId((current) => (current === m.id ? null : m.id))}
+              className={cn(button, "inline-flex items-center justify-center rounded-md border-2 border-slate-700 bg-white text-slate-800 hover:bg-slate-100")}
+              title="Reel Labels PDF"
+              aria-label="Reel Labels PDF"
+            >
+              <QrCode size={icon} />
+            </button>
+            {reelLabelMenuId === m.id ? (
+              <div className="absolute right-0 top-full z-40 mt-1 w-24 overflow-hidden rounded-md border-2 border-black bg-white shadow-lg">
+                {(["A4", "A3"] as const).map((paper) => (
+                  <button
+                    key={paper}
+                    type="button"
+                    onClick={async () => {
+                      setReelLabelMenuId(null);
+                      await downloadReelLabelsPdf(m, paper);
+                    }}
+                    className="block w-full border-b border-slate-200 px-3 py-2 text-left text-xs font-bold last:border-b-0 hover:bg-slate-100"
+                  >
+                    {paper}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {actionable ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setOpenRemarkId((current) => (current === m.id ? null : m.id))}
+              className={cn(
+                button,
+                "relative inline-flex items-center justify-center rounded-md border-2 border-indigo-600 hover:bg-indigo-50",
+                remarks[m.id]?.trim() ? "bg-indigo-100 text-indigo-700" : "bg-white text-indigo-700"
+              )}
+              title="Remark (needed to reject)"
+              aria-label="Remark"
+            >
+              <MessageSquareText size={icon} />
+              {remarks[m.id]?.trim() ? <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-white bg-indigo-600" /> : null}
+            </button>
+            <button
+              type="button"
+              disabled={!!isSubmitting}
+              onClick={() => handleAction(m.id, "Reject")}
+              className={cn(button, "inline-flex items-center justify-center rounded-md border-2 border-red-600 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50")}
+              title="Reject"
+              aria-label="Reject"
+            >
+              <X size={icon} />
+            </button>
+            <button
+              type="button"
+              disabled={!!isSubmitting}
+              onClick={() => handleAction(m.id, "Approve")}
+              className={cn(button, "inline-flex items-center justify-center rounded-md border-2 border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50")}
+              title="Approve"
+              aria-label="Approve"
+            >
+              {isSubmitting === m.id ? <Spinner size={12} className="text-white" /> : <Check size={icon} />}
+            </button>
+          </>
+        ) : (
+          <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500">No action</span>
+        )}
+      </div>
+    );
+  };
+
+  const renderRemarkBox = (m: MaterialIn) =>
+    openRemarkId === m.id && isActionable(m) ? (
+      <div className="rounded-md border-2 border-indigo-600 bg-indigo-50 p-2">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <span className="text-[11px] font-black uppercase text-indigo-800">Remark</span>
+          <button type="button" onClick={() => setOpenRemarkId(null)} className="rounded p-0.5 text-slate-600 hover:bg-white" aria-label="Close remark">
+            <X size={14} />
+          </button>
+        </div>
+        <textarea
+          value={remarks[m.id] || ""}
+          onChange={(e) => setRemarks((prev) => ({ ...prev, [m.id]: e.target.value }))}
+          rows={2}
+          className="w-full rounded border border-black bg-white p-2 text-sm outline-none focus:ring-1 focus:ring-indigo-600"
+        />
+      </div>
+    ) : null;
+
+  // Line details (and reel labels for Reel MRRs), opened with the arrow.
+  const renderDetails = (m: MaterialIn) => {
+    const reelLabels = m.mrrType === "Reel"
+      ? buildMrrReelLabelData({ mrr: m, packingSlips, materials, suppliers, companies }).labels
+      : [];
+    return (
+      <div className="space-y-3">
+        <div className="overflow-x-auto rounded-md border border-slate-300 bg-white">
+          <table className="min-w-[640px] w-full border-collapse text-xs">
+            <thead className="bg-slate-100 text-[11px] uppercase text-slate-700">
+              <tr>
+                <th className="px-2 py-2 text-left">Item</th>
+                <th className="px-2 py-2 text-right">MRR Qty</th>
+                <th className="px-2 py-2 text-right">Inv Qty</th>
+                <th className="px-2 py-2 text-right">PO Rate</th>
+                <th className="px-2 py-2 text-right">Inv Rate</th>
+                <th className="px-2 py-2 text-right">GST%</th>
+                <th className="px-2 py-2 text-right">Item Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {m.lines.map((l, i) => (
+                <tr key={i} className="border-t border-slate-200">
+                  <td className="px-2 py-2 font-semibold">{getItemSpecs(l, m.mrrType)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{Number(l.actualQty || l.qty || 0).toFixed(2)} {l.uom || ""}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{Number(l.invoiceQty || 0).toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{Number(l.poRate || 0).toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{Number(l.invoiceRate || 0).toFixed(2)}</td>
+                  <td className="px-2 py-2 text-right tabular-nums">{Number(l.gstRate || 0)}%</td>
+                  <td className="px-2 py-2 text-right font-bold tabular-nums">{Number(l.actualValue || l.value || 0).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {m.mrrType === "Reel" ? (
+          <div className="overflow-hidden rounded-md border border-indigo-200 bg-white">
+            <div className="border-b border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-black uppercase text-indigo-800">Reel label details</div>
+            {reelLabels.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs font-semibold text-slate-500">No reel details saved for this MRR.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-[720px] w-full border-collapse text-xs">
+                  <thead className="bg-indigo-700 text-[11px] uppercase text-white">
+                    <tr>
+                      <th className="px-2 py-2 text-center">SL</th>
+                      <th className="px-2 py-2 text-left">Our Reel No.</th>
+                      <th className="px-2 py-2 text-left">Supplier Reel No.</th>
+                      <th className="px-2 py-2 text-left">ERP Code</th>
+                      <th className="px-2 py-2 text-right">Size</th>
+                      <th className="px-2 py-2 text-right">GSM</th>
+                      <th className="px-2 py-2 text-right">BF</th>
+                      <th className="px-2 py-2 text-right">Weight (KG)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reelLabels.map((label, index) => (
+                      <tr key={label.packingSlipId} className="border-t border-slate-200 odd:bg-slate-50">
+                        <td className="px-2 py-2 text-center">{index + 1}</td>
+                        <td className="px-2 py-2 font-black text-indigo-800">{label.reelNo}</td>
+                        <td className="px-2 py-2">{label.suppReel || "-"}</td>
+                        <td className="px-2 py-2">{label.code || "-"}</td>
+                        <td className="px-2 py-2 text-right">{label.sizeCm || "-"}</td>
+                        <td className="px-2 py-2 text-right">{label.gsm || "-"}</td>
+                        <td className="px-2 py-2 text-right">{label.bf || "-"}</td>
+                        <td className="px-2 py-2 text-right font-bold">{Number(label.weightKg || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50">
-      <div className="p-4 bg-white border-b border-black">
-        <h1 className="text-3xl font-black text-indigo-700 uppercase tracking-tighter">Pending Approvals</h1>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending MRR Approvals</h2>
       </div>
 
-      <div className="my-6 flex flex-wrap justify-center gap-2 px-2 sm:gap-4">
+      {/* Stage tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Approval stage">
         {stages.map((s) => (
           <button
             key={s.value}
+            type="button"
+            role="tab"
+            aria-selected={activeStage === s.value}
             onClick={() => {
               setActiveStage(s.value);
               setSelectedIds([]);
             }}
             className={cn(
-              "px-3 py-2 sm:px-6 rounded font-bold text-xs sm:text-sm uppercase transition-all border border-black",
-              activeStage === s.value
-                ? "bg-indigo-600 text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-0.5"
-                : "bg-white text-indigo-600 hover:bg-indigo-50"
+              "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md border-2 px-3 py-2 text-sm font-bold transition",
+              activeStage === s.value ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black hover:bg-slate-50"
             )}
           >
-            {s.label} ({counts[s.value] || 0})
+            {s.label}
+            <span className={cn("rounded-full px-2 text-xs font-black", activeStage === s.value ? "bg-white text-indigo-700" : "bg-slate-100 text-slate-700")}>
+              {counts[s.value] || 0}
+            </span>
           </button>
         ))}
       </div>
 
-      <div className="flex-1 px-0 pb-20 sm:px-4">
-        <div className="bg-white border border-black rounded shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
-          <div className="bg-indigo-600 px-4 py-2 text-white font-black uppercase text-sm border-b border-black flex flex-wrap justify-between items-center gap-2">
-            <span>{activeStage} ({filteredList.length})</span>
-            <div className="flex flex-wrap items-center gap-2">
-              <FirmSelect compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
-              <FirmSelect compact value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Suppliers" />
-              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="rounded px-2 py-0.5 text-xs text-black" />
-              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="rounded px-2 py-0.5 text-xs text-black" />
-              {(firmFilter || supplierFilter || fromDate || toDate) ? <button type="button" onClick={() => { setFirmFilter(""); setSupplierFilter(""); setFromDate(""); setToDate(""); }} className="text-xs underline">Reset</button> : null}
-              <Search size={14} />
-              <input 
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Search..."
-                className="bg-white/10 border border-white/20 rounded px-2 py-0.5 text-xs text-white placeholder:text-white/50 focus:outline-none focus:bg-white/20"
-              />
-            </div>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-black border-collapse">
-              <thead className="sticky top-0 z-30 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest">
-                <tr className="divide-x divide-white/20">
-                  <th className="px-2 py-3 text-center"></th>
-                  <th className="px-2 py-3 text-center">
-                    <input 
-                      type="checkbox" 
-                      checked={selectedIds.length === filteredList.length && filteredList.length > 0}
-                      onChange={toggleSelectAll}
-                      className="accent-white h-4 w-4"
-                    />
-                  </th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Firm Name</th>
-                  <th className="px-4 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("gateEntryNo")}
-                      className="inline-flex items-center gap-1 uppercase"
-                    >
-                      GE No
-                      {renderSortIcon("gateEntryNo")}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort("transactionNo")}
-                      className="inline-flex items-center gap-1 uppercase"
-                    >
-                      MRR No
-                      {renderSortIcon("transactionNo")}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3 text-left">Party</th>
-                  <th className="px-4 py-3 text-left">Status</th>
-                  <th className="px-4 py-3 text-left">MRR Type</th>
-                  <th className="px-4 py-3 text-left whitespace-nowrap">Items</th>
-                  <th className="px-4 py-3 text-right">MRR Qty</th>
-                  <th className="px-4 py-3 text-right">Inv Qty</th>
-                  <th className="px-4 py-3 text-right">PO Rate</th>
-                  <th className="px-4 py-3 text-right">Inv Rate</th>
-                  <th className="px-4 py-3 text-right">GST%</th>
-                  <th className="px-4 py-3 text-right">Basic Val</th>
-                  <th className="px-4 py-3 text-center min-w-[220px]">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-black bg-white">
-                {filteredList.length === 0 ? (
-                  <tr>
-                    <td colSpan={16} className="px-4 py-20 text-center font-bold text-slate-400 uppercase tracking-widest text-sm">
-                      No records found in this stage
-                    </td>
-                  </tr>
-                ) : (
-                  filteredList.map((m) => {
-                    const linesToDisplay = m.lines;
-                    const isExpanded = expandedIds.includes(m.id);
-                    
-                    const mrrWeight = linesToDisplay.reduce((s, l) => s + (l.actualQty || l.qty || 0), 0);
-                    const invWeight = linesToDisplay.reduce((s, l) => s + (l.invoiceQty || 0), 0);
-                    const firstLine: Partial<MaterialIn["lines"][0]> = linesToDisplay[0] || {};
-                    const basicValue = linesToDisplay.reduce((s, l) => s + (l.actualValue || l.value || 0), 0);
-                    const reelLabels = m.mrrType === "Reel"
-                      ? buildMrrReelLabelData({ mrr: m, packingSlips, materials, suppliers, companies }).labels
-                      : [];
-
-                    return (
-                      <Fragment key={m.id}>
-                        <tr className="divide-x divide-black hover:bg-slate-50 transition-colors text-[11px] text-black font-medium uppercase">
-                          <td className="px-2 py-4 text-center">
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(m.id)}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded border border-black/20 bg-white hover:bg-slate-100"
-                              aria-label={isExpanded ? "Collapse item details" : "Expand item details"}
-                            >
-                              {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                            </button>
-                          </td>
-                          <td className="px-2 py-4 text-center">
-                            <input 
-                              type="checkbox" 
-                              checked={selectedIds.includes(m.id)}
-                              onChange={() => toggleSelect(m.id)}
-                              className="accent-indigo-600 h-4 w-4"
-                            />
-                          </td>
-                          <td className="px-4 py-4 w-[170px] max-w-[170px] whitespace-normal break-words leading-snug font-bold">{getFirmName(m)}</td>
-                          <td className="px-4 py-4">{m.gateEntryNo || "-"}</td>
-                          <td className="px-4 py-4">{m.transactionNo}</td>
-                          <td className="px-4 py-4 w-[170px] max-w-[170px] whitespace-normal break-words leading-snug">{getSupplierName(m.supplierId)}</td>
-                          <td className="px-4 py-4 whitespace-nowrap font-bold">{m.status || "-"}</td>
-                          <td className="px-4 py-4 whitespace-nowrap font-bold">{m.mrrType || "-"}</td>
-                          <td className="px-4 py-4 whitespace-nowrap font-bold">{linesToDisplay.length} {linesToDisplay.length === 1 ? "item" : "items"}</td>
-                          <td className="px-4 py-4 text-right font-bold">{Number(mrrWeight || 0).toFixed(2)}</td>
-                          <td className="px-4 py-4 text-right font-bold">{Number(invWeight || 0).toFixed(2)}</td>
-                          <td className="px-4 py-4 text-right">{Number(firstLine.poRate || 0).toFixed(2)}</td>
-                          <td className="px-4 py-4 text-right">{Number(firstLine.invoiceRate || 0).toFixed(2)}</td>
-                          <td className="px-4 py-4 text-right">{Number(firstLine.gstRate || 0)}%</td>
-                          <td className="px-4 py-4 text-right font-black">{Number(basicValue || 0).toFixed(2)}</td>
-                          <td className="px-4 py-4">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => downloadPdf(m)}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-black text-black hover:bg-slate-100"
-                                title="Download PDF"
-                                aria-label="Download PDF"
-                              >
-                                <Download size={14} />
-                              </button>
-                              <div className="relative">
-                                <button
-                                  type="button"
-                                  onClick={() => setReelLabelMenuId((current) => (current === m.id ? null : m.id))}
-                                  disabled={m.mrrType !== "Reel"}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded border border-black text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                  title={m.mrrType === "Reel" ? "Reel Labels PDF" : "Reel Labels PDF (Reel MRR only)"}
-                                  aria-label="Reel Labels PDF"
-                                >
-                                  <QrCode size={14} />
-                                </button>
-                                {reelLabelMenuId === m.id ? (
-                                  <div className="absolute right-0 top-9 z-40 w-28 rounded border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        setReelLabelMenuId(null);
-                                        await downloadReelLabelsPdf(m, "A4");
-                                      }}
-                                      className="block w-full border-b border-black px-3 py-2 text-left text-xs font-bold uppercase hover:bg-slate-100"
-                                    >
-                                      A4
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={async () => {
-                                        setReelLabelMenuId(null);
-                                        await downloadReelLabelsPdf(m, "A3");
-                                      }}
-                                      className="block w-full px-3 py-2 text-left text-xs font-bold uppercase hover:bg-slate-100"
-                                    >
-                                      A3
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
-                              <button
-                                type="button"
-                                disabled={!!isSubmitting || !["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status || "")}
-                                onClick={() => handleAction(m.id, "Approve")}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-emerald-700 text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
-                                title="Approve"
-                                aria-label="Approve"
-                              >
-                                {isSubmitting === m.id ? <Spinner size={12} /> : <ThumbsUp size={14} />}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!!isSubmitting || !["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status || "")}
-                                onClick={() => handleAction(m.id, "Reject")}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded border border-red-700 text-red-700 hover:bg-red-50 disabled:opacity-50"
-                                title="Reject"
-                                aria-label="Reject"
-                              >
-                                <ThumbsDown size={14} />
-                              </button>
-                              {["Pending PH", "Pending Accounts", "Pending MD"].includes(m.status || "") ? (
-                                <div className="relative inline-flex">
-                                  <button
-                                    type="button"
-                                    onClick={() => setOpenRemarkId((current) => current === m.id ? null : m.id)}
-                                    className={cn(
-                                      "relative inline-flex h-8 w-8 items-center justify-center rounded border border-black text-black hover:bg-indigo-50",
-                                      remarks[m.id]?.trim() ? "bg-indigo-100 text-indigo-700" : "bg-white"
-                                    )}
-                                    title="Remark"
-                                    aria-label="Open remark box"
-                                  >
-                                    <MessageSquareText size={14} />
-                                    {remarks[m.id]?.trim() ? (
-                                      <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-white bg-indigo-600" />
-                                    ) : null}
-                                  </button>
-                                  {openRemarkId === m.id ? (
-                                    <div className="absolute right-0 top-9 z-40 w-56 rounded border border-black bg-white p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                                      <div className="mb-1 flex items-center justify-between gap-2">
-                                        <span className="text-[9px] font-black uppercase text-slate-600">Remark required for reject</span>
-                                        <button
-                                          type="button"
-                                          onClick={() => setOpenRemarkId(null)}
-                                          className="inline-flex h-5 w-5 items-center justify-center rounded border border-black text-black hover:bg-slate-100"
-                                          title="Close"
-                                          aria-label="Close remark box"
-                                        >
-                                          <X size={12} />
-                                        </button>
-                                      </div>
-                                      <textarea
-                                        value={remarks[m.id] || ""}
-                                        onChange={e => setRemarks(prev => ({ ...prev, [m.id]: e.target.value }))}
-                                        className="h-20 w-full border border-black rounded p-1 text-[9px] uppercase outline-none focus:ring-1 focus:ring-indigo-600"
-                                      />
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <div className="rounded border border-black bg-slate-50 px-2 py-2 text-center text-[9px] font-black uppercase text-slate-500">
-                                  No approval action
-                                </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                        {isExpanded && (
-                          <tr className="bg-slate-50 text-[11px] text-black uppercase">
-                            <td colSpan={16} className="px-6 py-4">
-                              <div className="space-y-2">
-                                {linesToDisplay.map((l, i) => (
-                                  <div key={i} className="rounded border border-black/10 bg-white px-3 py-2">
-                                    <div className="font-bold">{getItemSpecs(l, m.mrrType)}</div>
-                                    <div className="mt-1 text-[10px] font-medium text-slate-600">
-                                      MRR Qty: {Number(l.actualQty || l.qty || 0).toFixed(2)} {l.uom || "-"} | Inv Qty: {Number(l.invoiceQty || 0).toFixed(2)} | PO Rate: {Number(l.poRate || 0).toFixed(2)} | Inv Rate: {Number(l.invoiceRate || 0).toFixed(2)} | GST: {Number(l.gstRate || 0)}%
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                              {m.mrrType === "Reel" ? (
-                                <div className="mt-4 overflow-hidden rounded border border-indigo-200 bg-white">
-                                  <div className="border-b border-indigo-200 bg-indigo-50 px-3 py-2">
-                                    <div className="text-xs font-black text-indigo-800">REEL LABEL DETAILS</div>
-                                    <div className="mt-0.5 text-[10px] font-medium text-slate-600">
-                                      MRR: {m.transactionNo} | Date: {formatDate(m.date)} | Supplier: {getSupplierName(m.supplierId)}
-                                    </div>
-                                  </div>
-                                  {reelLabels.length === 0 ? (
-                                    <div className="px-3 py-4 text-center text-[11px] font-semibold text-slate-500">
-                                      No reel details saved for this MRR.
-                                    </div>
-                                  ) : (
-                                    <div className="overflow-x-auto">
-                                      <table className="min-w-[900px] w-full border-collapse text-[10px]">
-                                        <thead className="bg-indigo-700 text-white">
-                                          <tr className="divide-x divide-indigo-500">
-                                            <th className="px-3 py-2 text-center font-black">SL</th>
-                                            <th className="px-3 py-2 text-left font-black">OUR REEL NO.</th>
-                                            <th className="px-3 py-2 text-left font-black">SUPPLIER REEL NO.</th>
-                                            <th className="px-3 py-2 text-left font-black">ERP CODE</th>
-                                            <th className="px-3 py-2 text-right font-black">SIZE</th>
-                                            <th className="px-3 py-2 text-right font-black">GSM</th>
-                                            <th className="px-3 py-2 text-right font-black">BF</th>
-                                            <th className="px-3 py-2 text-right font-black">WEIGHT (KG)</th>
-                                          </tr>
-                                        </thead>
-                                        <tbody>
-                                          {reelLabels.map((label, index) => (
-                                            <tr key={label.packingSlipId} className="divide-x divide-slate-200 border-b border-slate-200 last:border-b-0 odd:bg-slate-50">
-                                              <td className="px-3 py-2 text-center font-semibold">{index + 1}</td>
-                                              <td className="px-3 py-2 font-black text-indigo-800">{label.reelNo}</td>
-                                              <td className="px-3 py-2">{label.suppReel || "-"}</td>
-                                              <td className="px-3 py-2">{label.code || "-"}</td>
-                                              <td className="px-3 py-2 text-right">{label.sizeCm || "-"}</td>
-                                              <td className="px-3 py-2 text-right">{label.gsm || "-"}</td>
-                                              <td className="px-3 py-2 text-right">{label.bf || "-"}</td>
-                                              <td className="px-3 py-2 text-right font-bold">{Number(label.weightKg || 0).toFixed(2)}</td>
-                                            </tr>
-                                          ))}
-                                        </tbody>
-                                      </table>
-                                    </div>
-                                  )}
-                                </div>
-                              ) : null}
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+      {/* Filters */}
+      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-4 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1.5fr)_repeat(4,minmax(140px,1fr))_auto] lg:items-center">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Search MRR, GE, firm, party, invoice..."
+            className="w-full rounded border-2 border-black py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
+          />
         </div>
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 h-16 bg-white border-t-2 border-black flex items-center justify-end px-8 shadow-[0_-4px_10px_rgba(0,0,0,0.1)] z-40">
-
-        <div className="flex items-center gap-8">
-          <label className="flex items-center gap-2 font-bold text-xs uppercase cursor-pointer">
-            <input 
-              type="checkbox" 
-              checked={selectedIds.length === filteredList.length && filteredList.length > 0}
-              onChange={toggleSelectAll}
-              className="accent-indigo-600 h-4 w-4"
-            />
-            Select All
-          </label>
-
+        <FirmSelect value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
+        <FirmSelect value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Parties" />
+        <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} aria-label="From date" className="w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none" />
+        <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} aria-label="To date" className="w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none" />
+        {filtersActive ? (
           <button
-            disabled={selectedIds.length === 0 || !!isSubmitting}
-            onClick={handleBulkApprove}
-            className={cn(
-              "px-8 py-2 bg-indigo-600 text-white rounded font-black text-xs uppercase tracking-widest transition-all border border-black",
-              selectedIds.length > 0 ? "shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5" : "opacity-50"
-            )}
+            type="button"
+            onClick={() => { setSearchTerm(""); setFirmFilter(""); setSupplierFilter(""); setFromDate(""); setToDate(""); }}
+            className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
           >
-            {isSubmitting ? <Spinner size={16} className="text-white" /> : `Approve Selected (${selectedIds.length})`}
+            Clear Filters
           </button>
-        </div>
+        ) : null}
       </div>
+
+      {/* Bulk approval: shown once something is selected */}
+      {selectedIds.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border-2 border-indigo-700 bg-indigo-50 px-3 py-2">
+          <span className="text-sm font-black text-indigo-900">{selectedIds.length} selected</span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setSelectedIds([])} className="rounded border border-black bg-white px-3 py-1.5 text-sm font-bold hover:bg-slate-50">
+              Clear
+            </button>
+            <button
+              type="button"
+              disabled={!!isSubmitting}
+              onClick={handleBulkApprove}
+              className="inline-flex items-center gap-1.5 rounded border-2 border-emerald-800 bg-emerald-600 px-4 py-1.5 text-sm font-black text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {isSubmitting ? <Spinner size={14} className="text-white" /> : <Check size={16} />} Approve Selected
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Desktop table */}
+      <div className="hidden overflow-x-auto rounded border border-black bg-white md:block">
+        <table className="min-w-full border-collapse text-sm">
+          <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
+            <tr>
+              <th className="w-10 border border-black px-2 py-3" aria-label="Details" />
+              <th className="w-10 border border-black px-2 py-3">
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-indigo-600" aria-label="Select all" />
+              </th>
+              <th className="border border-black px-3 py-3 text-left">{sortHeader("MRR No", "transactionNo")}</th>
+              <th className="border border-black px-3 py-3 text-left">{sortHeader("GE No", "gateEntryNo")}</th>
+              <th className="border border-black px-3 py-3 text-left">{sortHeader("Date", "date")}</th>
+              <th className="border border-black px-3 py-3 text-left">Firm</th>
+              <th className="border border-black px-3 py-3 text-left">Party</th>
+              <th className="border border-black px-3 py-3 text-left">Type</th>
+              <th className="border border-black px-3 py-3 text-left">Status</th>
+              <th className="border border-black px-3 py-3 text-right">MRR Qty</th>
+              <th className="border border-black px-3 py-3 text-right">Inv Qty</th>
+              <th className="border border-black px-3 py-3 text-right">{sortHeader("Item Value", "value", "right")}</th>
+              <th className="border border-black px-3 py-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredList.length === 0 ? (
+              <tr>
+                <td colSpan={13} className="px-4 py-12 text-center font-bold text-slate-500">No MRRs pending in this stage.</td>
+              </tr>
+            ) : (
+              pagination.paginatedItems.map((m) => {
+                const isExpanded = expandedIds.includes(m.id);
+                const mrrQty = m.lines.reduce((sum, l) => sum + (l.actualQty || l.qty || 0), 0);
+                const invQty = m.lines.reduce((sum, l) => sum + (l.invoiceQty || 0), 0);
+                return (
+                  <Fragment key={m.id}>
+                    <tr className={cn("align-middle hover:bg-slate-50", selectedIds.includes(m.id) && "bg-indigo-50/60")}>
+                      <td className="border border-black px-2 py-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(m.id)}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded border border-slate-300 bg-white hover:bg-slate-100"
+                          aria-label={isExpanded ? "Hide items" : "Show items"}
+                          title={isExpanded ? "Hide items" : "Show items"}
+                        >
+                          {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      </td>
+                      <td className="border border-black px-2 py-2 text-center">
+                        <input type="checkbox" checked={selectedIds.includes(m.id)} onChange={() => toggleSelect(m.id)} className="h-4 w-4 accent-indigo-600" aria-label={`Select ${m.transactionNo}`} />
+                      </td>
+                      <td className="border border-black px-3 py-2 font-bold">{m.transactionNo}</td>
+                      <td className="border border-black px-3 py-2">{m.gateEntryNo || "-"}</td>
+                      <td className="border border-black px-3 py-2">{formatDate(m.date)}</td>
+                      <td className="border border-black px-3 py-2 font-semibold">{getFirmName(m)}</td>
+                      <td className="border border-black px-3 py-2">{getSupplierName(m.supplierId)}</td>
+                      <td className="border border-black px-3 py-2">{m.mrrType || "-"}</td>
+                      <td className="border border-black px-3 py-2"><StatusBadge status={m.status} /></td>
+                      <td className="border border-black px-3 py-2 text-right tabular-nums">{mrrQty.toFixed(2)}</td>
+                      <td className="border border-black px-3 py-2 text-right tabular-nums">{invQty.toFixed(2)}</td>
+                      <td className="border border-black px-3 py-2 text-right font-black tabular-nums">{getItemValue(m).toFixed(2)}</td>
+                      <td className="border border-black px-3 py-2">
+                        {renderActions(m, "sm")}
+                        {openRemarkId === m.id ? <div className="mt-2 min-w-[220px]">{renderRemarkBox(m)}</div> : null}
+                      </td>
+                    </tr>
+                    {isExpanded ? (
+                      <tr className="bg-slate-50">
+                        <td colSpan={13} className="border border-black px-4 py-3">{renderDetails(m)}</td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Phone cards */}
+      <div className="space-y-3 md:hidden">
+        {filteredList.length > 0 ? (
+          <label className="flex items-center gap-2 px-1 text-sm font-bold">
+            <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-indigo-600" />
+            Select all ({filteredList.length})
+          </label>
+        ) : (
+          <div className="rounded border border-black bg-white px-4 py-10 text-center font-bold text-slate-500">No MRRs pending in this stage.</div>
+        )}
+        {pagination.paginatedItems.map((m) => {
+          const isExpanded = expandedIds.includes(m.id);
+          const mrrQty = m.lines.reduce((sum, l) => sum + (l.actualQty || l.qty || 0), 0);
+          const invQty = m.lines.reduce((sum, l) => sum + (l.invoiceQty || 0), 0);
+          return (
+            <div key={m.id} className={cn("rounded-md border-2 border-black bg-white p-3", selectedIds.includes(m.id) && "border-indigo-700 bg-indigo-50/50")}>
+              <div className="flex items-start gap-2">
+                <input type="checkbox" checked={selectedIds.includes(m.id)} onChange={() => toggleSelect(m.id)} className="mt-1 h-4 w-4 shrink-0 accent-indigo-600" aria-label={`Select ${m.transactionNo}`} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-black">{m.transactionNo}</span>
+                    <StatusBadge status={m.status} />
+                  </div>
+                  <div className="mt-0.5 text-xs font-semibold text-slate-600">
+                    {formatDate(m.date)} · {getFirmName(m)} · {m.mrrType || "-"}{m.gateEntryNo ? ` · ${m.gateEntryNo}` : ""}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold">{getSupplierName(m.supplierId)}</div>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-2 rounded bg-slate-50 px-2 py-1.5 text-xs">
+                <div><div className="font-bold text-slate-500">MRR Qty</div><div className="font-bold tabular-nums">{mrrQty.toFixed(2)}</div></div>
+                <div><div className="font-bold text-slate-500">Inv Qty</div><div className="font-bold tabular-nums">{invQty.toFixed(2)}</div></div>
+                <div className="text-right"><div className="font-bold text-slate-500">Item Value</div><div className="text-sm font-black tabular-nums">{getItemValue(m).toFixed(2)}</div></div>
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(m.id)}
+                  className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1.5 text-xs font-bold"
+                >
+                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />} {m.lines.length} {m.lines.length === 1 ? "item" : "items"}
+                </button>
+                {renderActions(m, "lg")}
+              </div>
+              {openRemarkId === m.id ? <div className="mt-2">{renderRemarkBox(m)}</div> : null}
+              {isExpanded ? <div className="mt-2">{renderDetails(m)}</div> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <ClientPagination
+        page={pagination.page}
+        pageSize={pagination.pageSize}
+        totalItems={pagination.totalItems}
+        onPageChange={pagination.setPage}
+        onPageSizeChange={pagination.setPageSize}
+      />
     </div>
   );
 }
 
+const ACTIONABLE_STATUSES = ["Pending PH", "Pending Accounts", "Pending MD"];
 
+const STATUS_STYLES: Record<string, string> = {
+  "Pending PH": "bg-amber-100 text-amber-900 border-amber-300",
+  "Pending Accounts": "bg-sky-100 text-sky-900 border-sky-300",
+  "Pending MD": "bg-violet-100 text-violet-900 border-violet-300",
+};
 
+function StatusBadge({ status }: { status?: string }) {
+  const label = status === "Pending PH" ? "Plant Head" : status === "Pending Accounts" ? "Accounts" : status === "Pending MD" ? "MD" : status || "-";
+  return (
+    <span className={cn("inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold", STATUS_STYLES[status || ""] || "border-slate-300 bg-slate-100 text-slate-700")}>
+      {label}
+    </span>
+  );
+}
