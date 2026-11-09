@@ -26,8 +26,10 @@ function visibleControls(root: Element) {
 
 function isEntryPage(content: HTMLElement) {
   if (content.querySelector("form, textarea")) return true;
+  // Buttons inside table rows (a row's own Update / Save) don't make a list
+  // page an entry form.
   return Array.from(content.querySelectorAll("button")).some((button) =>
-    /^\s*(save|submit|update|post|create)\b/i.test(button.textContent || ""),
+    !button.closest("table") && /^\s*(save|submit|update|post|create)\b/i.test(button.textContent || ""),
   );
 }
 
