@@ -5,9 +5,9 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2, Upload, Download } from "lucide-react";
 import { Company } from "../types";
 import { Spinner } from "../components/Spinner";
-import { TableControls } from "../components/TableControls";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox, SelectFilter, toFilterOptions } from "../components/ReportFilterBox";
 import { ClientPagination } from "../components/ClientPagination";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { MandatoryLabel, MandatoryLegend } from "../components/Mandatory";
 import { isMandatoryField } from "../lib/mandatoryFields";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -349,8 +349,26 @@ export function Companies() {
     return timeB - timeA || (a.name || "").localeCompare(b.name || "");
   }), [companies]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [salesFilter, setSalesFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [supplyFilter, setSupplyFilter] = useState("");
+  const [activeFilter, setActiveFilter] = useState("");
+  const companyFilterOptions = useMemo(() => ({
+    sales: toFilterOptions(companies.map((c) => c.salesPerson)),
+    states: toFilterOptions(companies.map((c) => c.state)),
+    supply: toFilterOptions(companies.map((c) => c.gstSupplyType || "INTRA_STATE")),
+  }), [companies]);
+  const narrowedCompanies = useMemo(() => sortedCompanies.filter((c) =>
+    (!salesFilter || String(c.salesPerson || "").trim() === salesFilter) &&
+    (!stateFilter || String(c.state || "").trim() === stateFilter) &&
+    (!supplyFilter || (c.gstSupplyType || "INTRA_STATE") === supplyFilter) &&
+    (!activeFilter || (c.active === "No" ? "No" : "Yes") === activeFilter)
+  ), [sortedCompanies, salesFilter, stateFilter, supplyFilter, activeFilter]);
+  const hasCompanyFilters = Boolean(searchTerm.trim() || salesFilter || stateFilter || supplyFilter || activeFilter);
+  const clearCompanyFilters = () => { setSearchTerm(""); setSalesFilter(""); setStateFilter(""); setSupplyFilter(""); setActiveFilter(""); };
+  const openCreateCompany = () => { resetForm(); setEditingId(null); setIsFormOpen(true); };
 
-  const filteredCompanies = useTableSearch(sortedCompanies, searchTerm, (c) => [
+  const filteredCompanies = useTableSearch(narrowedCompanies, searchTerm, (c) => [
     c.name,
     c.contactPerson,
     c.contactNumber,
@@ -395,13 +413,15 @@ export function Companies() {
   } = useClientPagination(sortedFilteredCompanies, 25);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-black pb-4 gap-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Companies Master</h2>
-      </div>
+    <div className="space-y-4">
+      {isFormOpen ? (
+        <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Company" : "New Company"}</h2>
+      ) : (
+        <MasterHeader title="Companies Master" addLabel="Add Company" onAdd={openCreateCompany} />
+      )}
 
       {isFormOpen && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-black space-y-4 max-w-2xl">
+        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-2xl space-y-4 rounded-lg border-2 border-black bg-white p-4">
           <MandatoryLegend />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col space-y-1">
@@ -567,7 +587,7 @@ export function Companies() {
             </div>
           </div>
 
-          <div className="flex space-x-3 pt-2 items-center">
+          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
             <button type="submit" disabled={isSubmitting} className="flex items-center justify-center min-w-[100px] bg-emerald-600 text-white px-6 py-2 rounded font-bold hover:bg-emerald-700 transition disabled:opacity-50">
               {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
             </button>
@@ -576,14 +596,15 @@ export function Companies() {
         </form>
       )}
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
+      {!isFormOpen ? (<>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={hasCompanyFilters} onClear={clearCompanyFilters}>
+        <SelectFilter label="Sales Person" value={salesFilter} onChange={setSalesFilter} options={companyFilterOptions.sales} />
+        <SelectFilter label="State" value={stateFilter} onChange={setStateFilter} options={companyFilterOptions.states} />
+        <SelectFilter label="GST Supply Type" value={supplyFilter} onChange={setSupplyFilter} options={companyFilterOptions.supply} />
+        <SelectFilter label="Active" value={activeFilter} onChange={setActiveFilter} options={[{ value: "Yes", label: "Yes" }, { value: "No", label: "No" }]} />
+      </ReportFilterBox>
 
-      <DataSummaryTiles
-        totalRecords={companies.length}
-        filteredRecords={filteredCompanies.length}
-        showingRecords={paginatedCompanies.length}
-        pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`}
-      />
+      <div className="text-xs font-bold text-slate-700">{filteredCompanies.length.toLocaleString()} {filteredCompanies.length === 1 ? "company" : "companies"}</div>
 
       <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-black">
         <div className="block md:hidden space-y-4 p-4">
@@ -732,6 +753,7 @@ export function Companies() {
           onPageSizeChange={setPageSize}
         />
       </div>
+      </>) : null}
     </div>
   );
 }

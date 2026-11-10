@@ -6,7 +6,8 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { RapcRange } from "../types";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
+import { MasterHeader } from "../components/MasterHeader";
+import { FILTER_DATE_INPUT, FILTER_LABEL, ReportFilterBox } from "../components/ReportFilterBox";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { buildSeedRapcRanges } from "../lib/rapcRanges";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -105,22 +106,15 @@ export function RapcRangeMaster() {
   } = useClientPagination(sortedRanges, 25);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">RAPC Range Master</h2>
-        {!isFormOpen && (
-          <button
-            onClick={() => setIsFormOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition shadow"
-          >
-            <Plus size={18} /> Add RAPC Range
-          </button>
-        )}
-      </div>
+    <div className="space-y-4">
+      {isFormOpen ? (
+        <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit RAPC Range" : "New RAPC Range"}</h2>
+      ) : (
+        <MasterHeader title="RAPC Range Master" addLabel="Add RAPC Range" onAdd={() => setIsFormOpen(true)} />
+      )}
 
       {isFormOpen && (
-        <div className="bg-white p-6 rounded shadow-sm border border-black max-w-2xl">
-          <h3 className="text-lg font-bold text-black mb-6 uppercase">{editingId ? "Edit RAPC Range" : "Create RAPC Range"}</h3>
+        <div className="mx-auto w-full max-w-2xl rounded-lg border-2 border-black bg-white p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="flex flex-col space-y-1">
@@ -167,64 +161,24 @@ export function RapcRangeMaster() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600 font-medium"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="number"
-          placeholder="From"
-          value={filterFrom}
-          onChange={(e) => setFilterFrom(e.target.value === "" ? "" : Number(e.target.value))}
-          className="border-2 border-black rounded px-3 py-2 text-sm w-24"
-        />
-        <input
-          type="number"
-          placeholder="To"
-          value={filterTo}
-          onChange={(e) => setFilterTo(e.target.value === "" ? "" : Number(e.target.value))}
-          className="border-2 border-black rounded px-3 py-2 text-sm w-24"
-        />
-        {(filterFrom !== "" || filterTo !== "") && (
-          <button
-            type="button"
-            onClick={() => {
-              setFilterFrom("");
-              setFilterTo("");
-            }}
-            className="text-xs bg-gray-200 text-gray-800 px-3 py-2 rounded hover:bg-gray-300"
-          >
-            Clear Filter
-          </button>
-        )}
-        </div>
-      </div>
+      {!isFormOpen ? (<>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || filterFrom !== "" || filterTo !== "")} onClear={() => { setSearchTerm(""); setFilterFrom(""); setFilterTo(""); }}>
+        <label className="min-w-0"><span className={FILTER_LABEL}>From (min)</span><input type="number" inputMode="numeric" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Any" className={FILTER_DATE_INPUT} /></label>
+        <label className="min-w-0"><span className={FILTER_LABEL}>To (max)</span><input type="number" inputMode="numeric" value={filterTo} onChange={(e) => setFilterTo(e.target.value === "" ? "" : Number(e.target.value))} placeholder="Any" className={FILTER_DATE_INPUT} /></label>
+      </ReportFilterBox>
 
-      <DataSummaryTiles
-        totalRecords={ranges.length}
-        filteredRecords={filteredRanges.length}
-        showingRecords={paginatedRanges.length}
-        pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`}
-      />
+      <div className="text-xs font-bold text-slate-700">{filteredRanges.length.toLocaleString()} {filteredRanges.length === 1 ? "range" : "ranges"}</div>
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         <div className="table-sticky-scroll">
-          <table className="min-w-max divide-y divide-black border-collapse border border-black">
+          <table className="w-full divide-y divide-black border-collapse border border-black">
             <thead className="bg-slate-100 sticky top-0 z-10">
               <tr className="divide-x divide-black">
-                <th className="border border-black px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">SL No</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="From" sortKey="from" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="To" sortKey="to" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="RAPC Range" sortKey="rapcRange" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="border border-black px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">Actions</th>
+                <th className="border border-black px-3 py-2 text-right text-xs font-bold text-black uppercase tracking-wider">SL No</th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="From" sortKey="from" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="To" sortKey="to" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="RAPC Range" sortKey="rapcRange" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-2 text-right text-xs font-bold text-black uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-black">
@@ -245,11 +199,11 @@ export function RapcRangeMaster() {
               ) : (
                 paginatedRanges.map((row, index) => (
                   <tr key={row.id} className="divide-x divide-black hover:bg-slate-50">
-                    <td className="border border-black px-6 py-4 whitespace-nowrap text-sm font-bold text-black text-right">{(page - 1) * pageSize + index + 1}</td>
-                    <td className="border border-black px-6 py-4 whitespace-nowrap text-sm font-bold text-black">{row.from}</td>
-                    <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{row.to}</td>
-                    <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{row.rapcRange}</td>
-                    <td className="border border-black px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                    <td className="border border-black px-3 py-2 whitespace-nowrap text-sm font-bold text-black text-right">{(page - 1) * pageSize + index + 1}</td>
+                    <td className="border border-black px-3 py-2 whitespace-nowrap text-sm font-bold text-black">{row.from}</td>
+                    <td className="border border-black px-3 py-2 whitespace-nowrap text-sm text-black">{row.to}</td>
+                    <td className="border border-black px-3 py-2 whitespace-nowrap text-sm text-black">{row.rapcRange}</td>
+                    <td className="border border-black px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
                       {canManage ? <button
                         onClick={() => {
                           setFromValue(row.from);
@@ -284,6 +238,7 @@ export function RapcRangeMaster() {
         onPageChange={setPage}
         onPageSizeChange={setPageSize}
       />
+      </>) : null}
     </div>
   );
 }

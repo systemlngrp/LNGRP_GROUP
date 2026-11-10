@@ -10,6 +10,8 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { parseSystemRoles, SystemRole } from "../lib/userRoles";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox, SelectFilter, toFilterOptions } from "../components/ReportFilterBox";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function parseDesignations(setting?: Setting) {
@@ -70,6 +72,9 @@ export function Users() {
   const isViewMode = modalMode === "view";
   
   const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [designationFilter, setDesignationFilter] = useState("");
   const designationOptions = useMemo(() => [...new Set([...parseDesignations(settings[0]), "QC Person"])].sort((a, b) => a.localeCompare(b)), [settings]);
   const configuredRoleOptions = useMemo(() => parseSystemRoles(settings[0]?.roles), [settings]);
   const roleOptions = useMemo(() => {
@@ -256,6 +261,9 @@ export function Users() {
 
   const userSearchWords = searchWords(searchTerm);
   const filteredUsers = users.filter((u) =>
+    (!roleFilter || (u.role || "Employee") === roleFilter) &&
+    (!statusFilter || (u.status || "Active") === statusFilter) &&
+    (!designationFilter || String(u.designation || "").trim() === designationFilter) &&
     matchesTableSearch([u.userId, u.name, u.role || "Employee", u.status || "Active", u.designation, u.mobile, u.email], userSearchWords)
   );
   const sortedFilteredUsers = [...filteredUsers].sort((a, b) => {
@@ -328,19 +336,8 @@ export function Users() {
   }, [isFormOpen, isSubmitting]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Users Master</h2>
-        {!isFormOpen && (
-          <button
-            onClick={handleCreateNew}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition shadow"
-          >
-            <Plus size={18} />
-            Add New User
-          </button>
-        )}
-      </div>
+    <div className="space-y-4">
+      <MasterHeader title="Users Master" addLabel="Add User" onAdd={isFormOpen ? undefined : handleCreateNew} />
 
       {isFormOpen ? (
         <div
@@ -615,16 +612,12 @@ export function Users() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            />
-          </div>
+          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || roleFilter || statusFilter || designationFilter)} onClear={() => { setSearchTerm(""); setRoleFilter(""); setStatusFilter(""); setDesignationFilter(""); }}>
+            <SelectFilter label="Role" value={roleFilter} onChange={setRoleFilter} options={toFilterOptions(users.map((u) => u.role || "Employee"))} />
+            <SelectFilter label="Status" value={statusFilter} onChange={setStatusFilter} options={toFilterOptions(users.map((u) => u.status || "Active"))} />
+            <SelectFilter label="Designation" value={designationFilter} onChange={setDesignationFilter} options={toFilterOptions(users.map((u) => u.designation))} wide />
+          </ReportFilterBox>
+          <div className="text-xs font-bold text-slate-700">{filteredUsers.length.toLocaleString()} {filteredUsers.length === 1 ? "user" : "users"}</div>
 
           <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
             {/* Mobile View - Cards */}

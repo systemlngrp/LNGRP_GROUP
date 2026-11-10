@@ -1,4 +1,7 @@
 import { useMemo, useState } from "react";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox } from "../components/ReportFilterBox";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { Plus } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
@@ -37,7 +40,12 @@ export function FirmMaster() {
         }),
     [firms]
   );
-  const { sorted: sortedFirmRows, sort, toggle: toggleSort } = useTableSort(sortedFirms, (firm, key) => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const searchedFirms = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return sortedFirms.filter((firm) => matchesTableSearch([firm.firmName, firm.shortName || generateFirmShortName(firm.firmName), firm.address, firm.gstDetails, firm.tallyPortNo], words));
+  }, [sortedFirms, searchTerm]);
+  const { sorted: sortedFirmRows, sort, toggle: toggleSort } = useTableSort(searchedFirms, (firm, key) => {
     if (key === "shortName") return firm.shortName || generateFirmShortName(firm.firmName);
     return (firm as any)[key];
   });
@@ -134,19 +142,15 @@ export function FirmMaster() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-black pb-4">
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Firm Master</h2>
-          <div className="text-sm font-bold text-slate-700">{firms.length} {firms.length === 1 ? "firm" : "firms"}</div>
-        </div>
-        <button type="button" onClick={openCreate} className="flex w-auto items-center justify-self-end gap-2 whitespace-nowrap rounded bg-indigo-700 px-4 py-2 font-bold text-white transition hover:bg-indigo-800">
-          <Plus size={18} /> Firm
-        </button>
-      </div>
+    <div className="space-y-4">
+      {isFormOpen ? (
+        <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Firm" : "New Firm"}</h2>
+      ) : (
+        <MasterHeader title="Firm Master" addLabel="Add Firm" onAdd={openCreate} />
+      )}
 
       {isFormOpen && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-black space-y-4 max-w-3xl">
+        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-3xl space-y-4 rounded-lg border-2 border-black bg-white p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col space-y-1">
               <label className="font-bold text-black">Firm Name <span className="text-red-600">*</span></label>
@@ -201,7 +205,27 @@ export function FirmMaster() {
         </form>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-black">
+      {!isFormOpen ? (<>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim())} onClear={() => setSearchTerm("")} />
+      <div className="text-xs font-bold text-slate-700">{searchedFirms.length} {searchedFirms.length === 1 ? "firm" : "firms"}</div>
+
+      {/* Phones: one card per firm; tap to edit. */}
+      <div className="space-y-2 md:hidden">
+        {searchedFirms.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">{isLoading ? "Loading…" : "No firms found."}</div>
+        ) : sortedFirmRows.map((firm) => (
+          <button key={firm.id} type="button" disabled={!canManage} onClick={() => openEdit(firm)} className="block w-full rounded-lg border-2 border-black bg-white p-3 text-left text-black disabled:cursor-default">
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0 break-words text-sm font-black">{firm.firmName}</span>
+              <span className="shrink-0 rounded border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-black text-indigo-700">{firm.shortName || generateFirmShortName(firm.firmName)}</span>
+            </div>
+            {firm.address ? <div className="mt-1 break-words text-xs text-slate-700">{firm.address}</div> : null}
+            <div className="mt-1 text-[11px] font-semibold text-slate-700">GST {firm.gstDetails || "-"} · Tally port {firm.tallyPortNo || "-"}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="hidden bg-white rounded-lg shadow-sm overflow-hidden border border-black md:block">
         <div className="table-sticky-scroll">
           <table className="min-w-full border-collapse border border-black">
             <thead className="sticky top-0 z-10 bg-slate-100">
@@ -215,7 +239,7 @@ export function FirmMaster() {
               </tr>
             </thead>
             <tbody className="bg-white">
-              {sortedFirms.length === 0 ? (
+              {searchedFirms.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center font-medium text-black border border-black">
                     {isLoading ? "Loading…" : "No firms found."}
@@ -237,6 +261,7 @@ export function FirmMaster() {
           </table>
         </div>
       </div>
+      </>) : null}
     </div>
   );
 }

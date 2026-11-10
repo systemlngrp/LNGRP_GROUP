@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Eye, FileText, Filter, LockKeyhole, MessageCircle, Plus, Search, Send, ShieldCheck, X, XCircle, Zap } from "lucide-react";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -359,7 +361,7 @@ export function WhatsappMaster() {
         <div className="bg-white p-6 rounded-[24px] shadow-sm border border-slate-200">
           <div className="flex flex-wrap justify-between items-start gap-4 mb-8">
             <div>
-              <h2 className="text-3xl font-black text-blue-700">{editingId ? "Edit WhatsApp Configuration" : "New WhatsApp Configuration"}</h2>
+              <h2 className="text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit WhatsApp Configuration" : "New WhatsApp Configuration"}</h2>
             </div>
             <div className="flex items-center gap-3">
               <button type="button" onClick={resetForm} className="px-8 py-3 rounded-2xl border border-slate-300 text-indigo-700 font-bold hover:bg-slate-50">Cancel</button>
@@ -379,31 +381,15 @@ export function WhatsappMaster() {
         </div>
       ) : (
         <>
-          <div className="rounded-[26px] border border-slate-200 bg-gradient-to-br from-white via-white to-indigo-50/60 p-5 shadow-sm sm:p-7">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-4">
-                <div className="rounded-2xl bg-indigo-700 p-3 text-white shadow-sm"><MessageCircle size={26} /></div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-3"><h2 className="text-3xl font-black tracking-tight text-slate-900">WhatsApp Master</h2><span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-black uppercase tracking-wider text-indigo-700">Messaging</span></div>
-                </div>
-              </div>
-              <button type="button" onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-700 px-5 py-3 font-black text-white shadow-sm transition hover:bg-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"><Plus size={18} /> Add WhatsApp</button>
-            </div>
-            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3"><div className="text-xs font-bold uppercase tracking-wider text-slate-500">Total configurations</div><div className="mt-1 text-2xl font-black text-slate-900">{configs.length}</div></div>
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-3"><div className="text-xs font-bold uppercase tracking-wider text-emerald-700">Active</div><div className="mt-1 text-2xl font-black text-emerald-800">{activeCount}</div></div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><div className="text-xs font-bold uppercase tracking-wider text-slate-500">Inactive</div><div className="mt-1 text-2xl font-black text-slate-700">{inactiveCount}</div></div>
-            </div>
-          </div>
+          <MasterHeader title="WhatsApp Master" addLabel="Add WhatsApp" onAdd={openCreate} />
 
-          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center">
-            <div className="relative min-w-0 flex-1 lg:max-w-md"><Search className="pointer-events-none absolute left-3 top-3 text-slate-400" size={18} /><input aria-label="Search WhatsApp configurations" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search" className="w-full rounded-xl border border-slate-300 py-2.5 pl-10 pr-4 text-sm font-medium outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100" /></div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <label className="flex items-center gap-2 text-sm font-bold text-slate-600"><Filter size={16} /><span className="sr-only">Status</span><select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 font-semibold text-slate-700 outline-none focus:border-indigo-500"><option value="all">All statuses</option><option value="active">Active only</option><option value="inactive">Inactive only</option></select></label>
-              <select aria-label="Filter by menu" value={menuFilter} onChange={(e) => setMenuFilter(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500"><option value="all">All menus</option>{menuOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-              {(searchTerm || statusFilter !== "all" || menuFilter !== "all") ? <button type="button" onClick={clearFilters} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-50"><X size={16} /> Clear</button> : null}
-            </div>
-          </div>
+          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm || statusFilter !== "all" || menuFilter !== "all")} onClear={clearFilters}>
+            <SelectFilter label="Status" value={statusFilter === "all" ? "" : statusFilter} onChange={(value) => setStatusFilter((value || "all") as StatusFilter)} options={[{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]} />
+            <SelectFilter label="Menu" value={menuFilter === "all" ? "" : menuFilter} onChange={(value) => setMenuFilter(value || "all")} options={menuOptions.map((option) => ({ value: option.value, label: option.label }))} wide />
+          </ReportFilterBox>
+
+          <div className="flex flex-wrap gap-x-4 text-xs font-bold text-slate-700"><span>{filteredConfigs.length} of {configs.length} configurations</span><span className="text-emerald-700">{activeCount} active</span><span>{inactiveCount} inactive</span></div>
+
           {sendResult ? <div role={sendResult.kind === "failure" ? "alert" : "status"} className={`flex items-center justify-between gap-4 rounded-2xl border px-5 py-3 font-semibold ${sendResult.kind === "success" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : sendResult.kind === "failure" ? "border-red-300 bg-red-50 text-red-800" : sendResult.kind === "sending" ? "border-blue-300 bg-blue-50 text-blue-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}>
             <span className="flex items-center gap-2">{sendResult.kind === "success" ? <CheckCircle2 size={18} /> : sendResult.kind === "failure" ? <XCircle size={18} /> : sendResult.kind === "sending" ? <Zap size={18} /> : <ShieldCheck size={18} />}<span>{sendResult.kind === "sending" ? `Sending current ${sendResult.menuLabel} message...` : `${sendResult.menuLabel}: ${sendResult.message}`}</span></span>
             {sendResult.kind !== "sending" ? <button type="button" onClick={() => setSendResult(null)} aria-label="Dismiss send result" className="shrink-0 rounded-lg px-2 text-lg leading-none hover:bg-black/10">×</button> : null}

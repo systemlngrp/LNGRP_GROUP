@@ -7,9 +7,9 @@ import { LoadingSlip, Truck } from "../types";
 import { Spinner } from "../components/Spinner";
 
 
-import { TableControls } from "../components/TableControls";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox, SelectFilter, toFilterOptions } from "../components/ReportFilterBox";
 import { useTableSearch } from "../lib/tableSearch";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 export function Trucks() {
   const { user } = useAuth();
@@ -94,8 +94,14 @@ export function Trucks() {
       }),
     [trucks],
   );
+  const [typeFilter, setTypeFilter] = useState("");
+  const [driverFilter, setDriverFilter] = useState("");
+  const narrowedTrucks = useMemo(() => sortedTrucks.filter((truck) =>
+    (!typeFilter || (truck.truckType || "External") === typeFilter) &&
+    (!driverFilter || String(truck.driverName || "").trim().toUpperCase() === driverFilter)
+  ), [sortedTrucks, typeFilter, driverFilter]);
   const filteredTrucks = useTableSearch(
-    sortedTrucks,
+    narrowedTrucks,
     searchTerm,
     (truck) => [truck.truckNo, String(truck.driverName || "").toUpperCase(), truck.mobileNo, truck.truckType || "External", loadingCountByTruckId.get(truck.id) || 0],
     [loadingCountByTruckId],
@@ -142,25 +148,15 @@ export function Trucks() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center border-b border-black pb-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Trucks Master</h2>
-        <button
-          onClick={() => {
-            if (isFormOpen) {
-              resetForm();
-            } else {
-              setIsFormOpen(true);
-            }
-          }}
-          className="bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition flex items-center"
-        >
-          {isFormOpen ? "Close Form" : <><Plus size={20} className="mr-2" /> Add New Truck</>}
-        </button>
-      </div>
+    <div className="space-y-4">
+      {isFormOpen ? (
+        <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Truck" : "New Truck"}</h2>
+      ) : (
+        <MasterHeader title="Trucks Master" addLabel="Add Truck" onAdd={() => setIsFormOpen(true)} />
+      )}
 
       {isFormOpen && (
-        <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-sm border border-black space-y-4 max-w-xl">
+        <form onSubmit={handleSubmit} className="mx-auto w-full max-w-xl space-y-4 rounded-lg border-2 border-black bg-white p-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col space-y-1">
               <label htmlFor="truckNo" className="font-bold text-black text-sm uppercase">
@@ -239,7 +235,11 @@ export function Trucks() {
         </form>
       )}
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+      {!isFormOpen ? (<>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || typeFilter || driverFilter)} onClear={() => { setSearchTerm(""); setTypeFilter(""); setDriverFilter(""); }}>
+        <SelectFilter label="Truck Type" value={typeFilter} onChange={setTypeFilter} options={[{ value: "Internal", label: "Internal" }, { value: "External", label: "External" }]} />
+        <SelectFilter label="Driver" value={driverFilter} onChange={setDriverFilter} options={toFilterOptions(trucks.map((truck) => String(truck.driverName || "").trim().toUpperCase()))} />
+      </ReportFilterBox>
 
       {deleteError ? (
         <div className="rounded border border-red-600 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
@@ -247,12 +247,7 @@ export function Trucks() {
         </div>
       ) : null}
 
-      <DataSummaryTiles
-        totalRecords={trucks.length}
-        filteredRecords={filteredTrucks.length}
-        showingRecords={filteredTrucks.length}
-        pageLabel="1 / 1"
-      />
+      <div className="text-xs font-bold text-slate-700">{filteredTrucks.length.toLocaleString()} {filteredTrucks.length === 1 ? "truck" : "trucks"}</div>
 
       <div className="bg-white rounded-lg shadow-sm border border-black table-sticky-scroll">
         {/* Mobile View - Cards */}
@@ -350,6 +345,7 @@ export function Trucks() {
           </tbody>
         </table>
       </div>
+      </>) : null}
     </div>
   );
 }

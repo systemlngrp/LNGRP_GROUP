@@ -1,4 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
+import { MasterHeader } from "../components/MasterHeader";
+import { DateRangeFilter, ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Disc } from "lucide-react";
@@ -2076,113 +2078,54 @@ export function Materials() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <h2 className="text-2xl font-black text-black tracking-tight uppercase">Material Master</h2>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="button" onClick={() => setShowTemplateModal(true)} className="inline-flex items-center justify-center gap-2 rounded border border-black bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-slate-50 whitespace-nowrap shadow">
-                  <Download size={14} /> Template
-                </button>
-                <button
-                  type="button"
-                  onClick={handleOpenNew}
-                  className="inline-flex items-center justify-center gap-2 rounded bg-indigo-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-indigo-700 whitespace-nowrap border border-black shadow"
-                >
-                  <Plus size={14} /> New Item
-                </button>
-              </div>
-            </div>
+          <MasterHeader title="Material Master" addLabel="Add Item" onAdd={handleOpenNew}>
+            <button type="button" onClick={downloadMaterialMasterExcel} className="inline-flex items-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-3 py-1.5 text-xs font-bold uppercase text-emerald-800 hover:bg-emerald-100">
+              <Download size={14} /> Excel
+            </button>
+            <button type="button" onClick={() => setShowTemplateModal(true)} className="hidden items-center gap-2 rounded border border-black bg-white px-3 py-1.5 text-xs font-bold text-black hover:bg-slate-50 md:inline-flex">
+              <Download size={14} /> Template
+            </button>
+          </MasterHeader>
 
             {/* Colorful Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
-              <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-4">
+              <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl border-2 border-black p-3 text-white md:p-4">
                 <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Opening</div>
-                <div className="text-3xl font-black">{metrics.openingQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                <div className="text-xl font-black md:text-3xl">{metrics.openingQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                 <div className="text-xs font-bold mt-1 opacity-95">Value {metrics.openingValueTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
               </div>
-              <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl border-2 border-black p-3 text-white md:p-4">
                 <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Receipts</div>
-                <div className="text-3xl font-black">{metrics.receiptQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                <div className="text-xl font-black md:text-3xl">{metrics.receiptQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                 <div className="text-xs font-bold mt-1 opacity-95">Value {metrics.receiptValueTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
               </div>
-              <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
+              <div className="bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl border-2 border-black p-3 text-white md:p-4">
                 <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Issues</div>
-                <div className="text-3xl font-black">{metrics.issueQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                <div className="text-xl font-black md:text-3xl">{metrics.issueQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                 <div className="text-xs font-bold mt-1 opacity-95">Value {metrics.issueValueTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
               </div>
-              <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
+              <div className="bg-gradient-to-br from-rose-500 to-rose-700 rounded-xl border-2 border-black p-3 text-white md:p-4">
                 <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Closing</div>
-                <div className="text-3xl font-black">{metrics.closingQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                <div className="text-xl font-black md:text-3xl">{metrics.closingQtyTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                 <div className="text-xs font-bold mt-1 opacity-95">Value {metrics.closingValueTotal.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
               </div>
             </div>
 
-            <div className="bg-white border-2 border-black rounded-xl p-4 shadow-sm space-y-4 mt-6">
-              <div className="flex flex-wrap items-end gap-4">
-                <div className="flex-1 min-w-[240px] space-y-1">
-                  <div className="text-blue-700 font-bold text-[10px] uppercase tracking-wider">Search</div>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                    <input
-                      type="text"
-                      placeholder="Search"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full rounded border border-black pl-9 pr-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
 
-                <div className="space-y-1">
-                  <div className="text-blue-700 font-bold text-[10px] uppercase tracking-wider">From Date</div>
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="border border-black rounded px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+          <ReportFilterBox
+            search={searchTerm}
+            onSearch={setSearchTerm}
+            hasFilters={Boolean(searchTerm.trim() || typeFilter !== "Reel" || sizeFilter !== "All" || gsmFilter !== "All" || colorFilter !== "All" || fromDate || toDate)}
+            onClear={clearFilters}
+          >
+            <SelectFilter label="Material Type" value={typeFilter === "All" ? "" : typeFilter} onChange={(value) => setTypeFilter(value || "All")} options={TYPE_OPTIONS.map((option) => ({ value: option.value, label: option.label || option.value }))} />
+            {typeFilter !== "Other" ? <SelectFilter label="Size" value={sizeFilter === "All" ? "" : sizeFilter} onChange={(value) => setSizeFilter(value || "All")} options={sizeOptions.map((value) => ({ value: String(value), label: String(value) }))} /> : null}
+            {typeFilter !== "Other" ? <SelectFilter label="GSM" value={gsmFilter === "All" ? "" : gsmFilter} onChange={(value) => setGsmFilter(value || "All")} options={gsmOptions.map((value) => ({ value: String(value), label: String(value) }))} /> : null}
+            {typeFilter !== "Other" ? <SelectFilter label="Color" value={colorFilter === "All" ? "" : colorFilter} onChange={(value) => setColorFilter(value || "All")} options={colorFilterOptions.map((value) => ({ value: String(value), label: String(value) }))} /> : null}
+            <DateRangeFilter from={fromDate} to={toDate} onFrom={setFromDate} onTo={setToDate} />
+          </ReportFilterBox>
 
-                <div className="space-y-1">
-                  <div className="text-blue-700 font-bold text-[10px] uppercase tracking-wider">To Date</div>
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="border border-black rounded px-3 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-4 pt-2 border-t border-slate-100">
-                <FilterSelect compact label="Material Type" value={typeFilter} onChange={setTypeFilter} options={["All", ...TYPE_OPTIONS.map((option) => option.value)]} />
-                {typeFilter !== "Other" && <FilterSelect compact label="Size Filter" value={sizeFilter} onChange={setSizeFilter} options={["All", ...sizeOptions]} />}
-                {typeFilter !== "Other" && <FilterSelect compact label="GSM Filter" value={gsmFilter} onChange={setGsmFilter} options={["All", ...gsmOptions]} />}
-                {typeFilter !== "Other" && <FilterSelect compact label="Color Filter" value={colorFilter} onChange={setColorFilter} options={["All", ...colorFilterOptions]} />}
-
-                <div className="flex items-center gap-2 ml-auto">
-                  <button
-                    type="button"
-                    onClick={downloadMaterialMasterExcel}
-                    className="inline-flex items-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-4 py-2 text-xs font-bold uppercase text-emerald-800 transition hover:bg-emerald-100"
-                  >
-                    <Download size={14} /> Excel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 rounded transition uppercase"
-                  >
-                    Reset All
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded shadow-sm border border-black overflow-hidden mt-6">
+          <div className="bg-white rounded shadow-sm border border-black overflow-hidden">
             <div className="table-sticky-scroll">
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-20">

@@ -5,8 +5,8 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Machine, UnitMaster, User } from "../types";
 import { Spinner } from "../components/Spinner";
-import { TableControls } from "../components/TableControls";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox, SelectFilter, toFilterOptions } from "../components/ReportFilterBox";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/utils";
 
@@ -26,6 +26,8 @@ export function Machines() {
   const [uom, setUom] = useState("");
   const [selectedOperatorIds, setSelectedOperatorIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [uomFilter, setUomFilter] = useState("");
+  const [operatorFilter, setOperatorFilter] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [statusType, setStatusType] = useState<"success" | "error">("error");
@@ -153,8 +155,11 @@ export function Machines() {
       .filter(Boolean);
   };
 
+  const openEditMachine = (machine: (typeof machines)[number]) => { setName(normalizeMachineName(machine.name)); setMaxOutputPerHour(machine.maxOutputPerHour || ""); setUom(machine.uom || ""); setSelectedOperatorIds(Array.isArray(machine.assignedOperatorIds) ? machine.assignedOperatorIds : []); setEditingId(machine.id); setIsFormOpen(true); };
   const searchWordList = searchWords(searchTerm);
   const filtered = machines.filter((m) =>
+    (!uomFilter || String(m.uom || "").trim().toUpperCase() === uomFilter) &&
+    (!operatorFilter || getAssignedOperatorNames(m).includes(operatorFilter)) &&
     matchesTableSearch([
       normalizeMachineName(m.name),
       m.maxOutputPerHour || 0,
@@ -173,15 +178,12 @@ export function Machines() {
   }, [operatorNameById]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Machines Master</h2>
-        {!isFormOpen && (
-          <button onClick={() => { setSelectedOperatorIds([]); setIsFormOpen(true); }} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition shadow">
-            <Plus size={18} /> Add Machine
-          </button>
-        )}
-      </div>
+    <div className="space-y-4">
+      {isFormOpen ? (
+        <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Machine" : "New Machine"}</h2>
+      ) : (
+        <MasterHeader title="Machines Master" addLabel="Add Machine" onAdd={() => { setSelectedOperatorIds([]); setIsFormOpen(true); }} />
+      )}
 
       {statusMessage && (
         <div
@@ -193,8 +195,7 @@ export function Machines() {
       )}
 
       {isFormOpen && (
-        <div className="bg-white p-6 rounded shadow-sm border border-black max-w-2xl">
-          <h3 className="text-lg font-bold text-black mb-6 uppercase">{editingId ? "Edit Machine" : "Create Machine"}</h3>
+        <div className="mx-auto w-full max-w-2xl rounded-lg border-2 border-black bg-white p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="flex flex-col space-y-1">
               <label className="font-bold text-black text-sm">Machine Name *</label>
@@ -275,16 +276,37 @@ export function Machines() {
         </div>
       )}
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
-      
-      <DataSummaryTiles
-        totalRecords={machines.length}
-        filteredRecords={filtered.length}
-        showingRecords={filtered.length}
-        pageLabel="1 / 1"
-      />
-      
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+      {!isFormOpen ? (<>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || uomFilter || operatorFilter)} onClear={() => { setSearchTerm(""); setUomFilter(""); setOperatorFilter(""); }}>
+        <SelectFilter label="UOM" value={uomFilter} onChange={setUomFilter} options={toFilterOptions(machines.map((m) => String(m.uom || "").trim().toUpperCase()))} />
+        <SelectFilter label="Operator" value={operatorFilter} onChange={setOperatorFilter} options={toFilterOptions(machines.flatMap((m) => getAssignedOperatorNames(m)))} wide />
+      </ReportFilterBox>
+
+      <div className="text-xs font-bold text-slate-700">{filtered.length.toLocaleString()} {filtered.length === 1 ? "machine" : "machines"}</div>
+
+      {/* Phones: one card per machine. */}
+      <div className="space-y-2 md:hidden">
+        {filtered.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">{machinesLoading ? "Loading…" : "No machines found."}</div>
+        ) : sortedMachines.map((machine) => (
+          <div key={machine.id} className="rounded-lg border-2 border-black bg-white p-3 text-black">
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0 break-words text-sm font-black">{normalizeMachineName(machine.name)}</span>
+              <span className="shrink-0 text-xs font-bold text-slate-600">{machine.maxOutputPerHour || 0} <span className="uppercase">{machine.uom || ""}</span>/hr</span>
+            </div>
+            <div className="mt-1 break-words text-xs text-slate-700">Operators: <span className="font-semibold text-black">{getAssignedOperatorNames(machine).join(", ") || "-"}</span></div>
+            <div className="text-[11px] text-slate-500">{machine.updatedBy || "-"} · {formatDate(machine.updateTimestamp)}</div>
+            {canManage ? (
+              <div className="mt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => openEditMachine(machine)} className="flex items-center gap-1 rounded border border-indigo-600 bg-indigo-50 px-2 py-1 text-[11px] font-bold uppercase text-indigo-700"><Edit size={14} /> Edit</button>
+                <button type="button" onClick={() => handleDelete(machine.id)} className={`flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-bold uppercase ${deletingId === machine.id ? "animate-pulse border-amber-600 bg-amber-50 text-amber-700" : "border-red-600 bg-red-50 text-red-700"}`}><Trash2 size={14} /> {deletingId === machine.id ? "Confirm?" : "Delete"}</button>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden bg-white rounded shadow-sm overflow-hidden border border-black md:block">
         <div className="table-sticky-scroll">
           <table className="min-w-max divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">
@@ -325,7 +347,7 @@ export function Machines() {
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{machine.updatedBy || "-"}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm text-black">{formatDate(machine.updateTimestamp)}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      {canManage ? <button onClick={() => { setName(normalizeMachineName(machine.name)); setMaxOutputPerHour(machine.maxOutputPerHour || ""); setUom(machine.uom || ""); setSelectedOperatorIds(Array.isArray(machine.assignedOperatorIds) ? machine.assignedOperatorIds : []); setEditingId(machine.id); setIsFormOpen(true); }} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
+                      {canManage ? <button onClick={() => openEditMachine(machine)} className="text-indigo-600 hover:text-indigo-900 mr-4 font-bold inline-flex items-center">
                         <Edit size={16} className="mr-1" /> Edit
                       </button> : null}
                       {canManage ? <button
@@ -342,6 +364,7 @@ export function Machines() {
           </table>
         </div>
       </div>
+      </>) : null}
     </div>
   );
 }
