@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useData } from "../hooks/useData";
 import { Firm, Order, OrderSchedule } from "../types";
-import { Trash2, ChevronUp, ChevronDown, Search } from "lucide-react";
+import { Trash2, ChevronUp, ChevronDown, Search, Plus, X } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 
 import { Select } from "../components/Select";
@@ -361,77 +361,86 @@ export function OrdersPendingScheduling() {
           onPageSizeChange={setPageSize}
         />
         {/* Modal scheduler */}
-        {modalOpen && modalOrderId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-            <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded border border-black bg-white shadow-lg">
-              <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3">
-                <h3 className="font-bold">Schedule Order {orders.find(o=>o.id===modalOrderId)?.orderNo}</h3>
-                <div className="flex gap-2">
-                  <button onClick={() => { setModalOpen(false); setModalOrderId(null); }} className="bg-white border border-black px-3 py-1 rounded">Close</button>
+        {modalOpen && modalOrderId && (() => {
+          const modalOrder = orders.find((o) => o.id === modalOrderId);
+          const totalOrderQty = Number(modalOrder?.qty ?? 0);
+          const scheduledQty = displayedTotalScheduled(modalOrderId);
+          const yetTo = totalOrderQty - scheduledQty;
+          const closeModal = () => { setModalOpen(false); setModalOrderId(null); };
+          return (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+            <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-t-xl border-2 border-black bg-white shadow-2xl sm:rounded-xl">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b-2 border-black px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-black uppercase tracking-wide text-slate-500">Schedule Order</div>
+                  <div className="truncate text-base font-black text-black">{modalOrder?.orderNo || "-"}</div>
                 </div>
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pt-3">
-              <div className="grid grid-cols-3 gap-4 mb-3">
-                <div className="bg-slate-50 p-2 border border-black rounded">
-                  <div className="text-xs text-slate-600">Total Order Qty</div>
-                  <div className="font-bold text-lg">{formatQty(orders.find(o=>o.id===modalOrderId)?.qty ?? 0)}</div>
-                </div>
-                <div className="bg-slate-50 p-2 border border-black rounded">
-                  <div className="text-xs text-slate-600">Total Scheduled Qty</div>
-                  <div className="font-bold text-lg">{formatQty(displayedTotalScheduled(modalOrderId))}</div>
-                </div>
-                <div className="bg-slate-50 p-2 border border-black rounded">
-                  <div className="text-xs text-slate-600">Yet To Schedule</div>
-                  <div className="font-bold text-lg">{formatQty((orders.find(o=>o.id===modalOrderId)?.qty ?? 0) - displayedTotalScheduled(modalOrderId))}</div>
-                </div>
-              </div>
-
-              <div className="mb-3 overflow-x-auto">
-              <table className="min-w-[520px] w-full divide-y divide-black border-collapse border border-black">
-                <thead className="sticky top-0 z-30 bg-slate-100">
-                  <tr>
-                    <th className="px-3 py-2 border border-black">S.No</th>
-                    <th className="px-3 py-2 border border-black">Scheduled Date</th>
-                    <th className="px-3 py-2 border border-black">Scheduled Quantity</th>
-                    <th className="px-3 py-2 border border-black">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modalRows.map((r, idx) => (
-                    <tr key={r.id} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 border border-black">{idx + 1}</td>
-                      <td className="px-3 py-2 border border-black"><input type="date" min={today} value={r.scheduledDate} onChange={(e)=>handleChangeRow(r.id, 'scheduledDate', e.target.value)} className="border-2 border-black rounded p-1" /></td>
-                      <td className="px-3 py-2 border border-black"><input type="number" min={0} step="any" value={(r as any).qty ?? ''} onChange={(e)=>handleChangeRow(r.id, 'qty', e.target.value)} className="border-2 border-black rounded p-1 w-40" /></td>
-                      <td className="px-3 py-2 border border-black text-center"><button onClick={()=>handleDeleteRow(r.id)} aria-label="Delete schedule" className="text-red-600"><Trash2 size={18} /></button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-              </div>
-
-              <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
-              <div className="flex gap-2">
-                {(() => {
-                  const order = orders.find(o => o.id === modalOrderId);
-                  const yetTo = (order ? Number(order.qty || 0) - displayedTotalScheduled(modalOrderId) : 0);
-                  return (
-                    <button onClick={() => modalOrderId && handleAddRow(modalOrderId)} disabled={yetTo <= 0} className={`bg-indigo-600 text-white px-3 py-1 rounded ${yetTo <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>Add Row</button>
-                  );
-                })()}
-
-                <button onClick={async () => { const saved = await handleSave(modalOrderId!); if (saved) { setModalOpen(false); setModalOrderId(null); } }} disabled={saving} className="bg-emerald-600 text-white px-3 py-1 rounded flex items-center gap-2">
-                  {saving ? <Spinner size={16} /> : null}
-                  <span>Save</span>
+                <button type="button" onClick={closeModal} aria-label="Close" title="Close" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-black bg-white text-black hover:bg-slate-100">
+                  <X size={18} />
                 </button>
               </div>
 
-              {modalError && <div className="text-sm text-red-600 mt-2">{modalError}</div>}
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg border-2 border-black bg-indigo-50 p-2 text-indigo-900">
+                    <div className="text-[10px] font-black uppercase leading-tight">Order Qty</div>
+                    <div className="text-lg font-black tabular-nums">{formatQty(totalOrderQty)}</div>
+                  </div>
+                  <div className="rounded-lg border-2 border-black bg-emerald-50 p-2 text-emerald-900">
+                    <div className="text-[10px] font-black uppercase leading-tight">Scheduled</div>
+                    <div className="text-lg font-black tabular-nums">{formatQty(scheduledQty)}</div>
+                  </div>
+                  <div className={`rounded-lg border-2 border-black p-2 ${yetTo < 0 ? "bg-red-100 text-red-800" : "bg-amber-50 text-amber-900"}`}>
+                    <div className="text-[10px] font-black uppercase leading-tight">Yet To Schedule</div>
+                    <div className="text-lg font-black tabular-nums">{formatQty(yetTo)}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_36px] items-center gap-2 border-b border-black pb-1 text-[10px] font-black uppercase text-slate-600">
+                  <span>#</span><span>Date</span><span>Quantity</span><span />
+                </div>
+                <div className="space-y-2">
+                  {modalRows.map((r, idx) => (
+                    <div key={r.id} className="grid grid-cols-[28px_minmax(0,1fr)_minmax(0,1fr)_36px] items-center gap-2">
+                      <span className="text-sm font-black text-slate-500">{idx + 1}</span>
+                      <input type="date" min={today} value={r.scheduledDate} onChange={(e) => handleChangeRow(r.id, 'scheduledDate', e.target.value)} aria-label="Scheduled date" className="h-10 w-full min-w-0 rounded border-2 border-black px-2 text-sm font-semibold" />
+                      <input type="number" min={0} step="any" inputMode="decimal" value={(r as any).qty ?? ''} onChange={(e) => handleChangeRow(r.id, 'qty', e.target.value)} aria-label="Scheduled quantity" className="h-10 w-full min-w-0 rounded border-2 border-black px-2 text-right text-sm font-bold tabular-nums" />
+                      <button type="button" onClick={() => handleDeleteRow(r.id)} aria-label="Delete schedule" title="Delete" className="inline-flex h-9 w-9 items-center justify-center rounded-md border-2 border-red-600 bg-white text-red-600 hover:bg-red-50">
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => modalOrderId && handleAddRow(modalOrderId)}
+                    disabled={yetTo <= 0}
+                    title="Add schedule row"
+                    aria-label="Add schedule row"
+                    className="indent-line-action inline-flex h-10 w-10 items-center justify-center rounded-md bg-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    <Plus size={18} />
+                  </button>
+                </div>
+                {modalError && <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{modalError}</div>}
+              </div>
+
+              <div className="shrink-0 border-t-2 border-black bg-white px-4 py-3">
+                <button
+                  type="button"
+                  onClick={async () => { const saved = await handleSave(modalOrderId!); if (saved) closeModal(); }}
+                  disabled={saving}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded bg-black px-6 py-3 text-sm font-black uppercase tracking-widest text-white hover:bg-slate-800 disabled:opacity-40"
+                >
+                  {saving ? <Spinner size={16} className="text-white" /> : null}
+                  <span>Save</span>
+                </button>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );
