@@ -293,8 +293,10 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
       <div className="flex flex-wrap gap-3">
         <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
         <div className="min-w-[180px]"><Select options={firmOptions} value={firmFilter} onChange={(value) => { setFirmFilter(value); resetScheduler(); }} placeholder="Firms" /></div>
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
         <label className="text-xs font-bold uppercase">From Date<input type="date" aria-label="From Date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); resetScheduler(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
         <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => { setToDate(e.target.value); resetScheduler(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
+        </div>
         {(searchTerm || firmFilter || fromDate || toDate || (source === "ALL" && sourceFilter !== "ALL")) && <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); setSourceFilter("ALL"); resetScheduler(); }} className="rounded border border-black px-3 py-2 text-sm font-bold">Clear Filters</button>}
       </div>
 

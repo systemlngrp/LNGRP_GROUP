@@ -181,8 +181,10 @@ export function PendingMrr() {
         </div>
         <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
         <Select value={supplierFilter} onChange={setSupplierFilter} options={supplierOptions} placeholder="Parties" />
-        <input type="date" aria-label="From date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
-        <input type="date" aria-label="To date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" />
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" aria-label="From date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></label>
+          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" aria-label="To date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="h-[42px] w-full rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></label>
+        </div>
         <button
           type="button"
           onClick={clearFilters}

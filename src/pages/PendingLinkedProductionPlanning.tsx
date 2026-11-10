@@ -547,8 +547,10 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 placeholder="Items"
               />
             </div>
+            <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
             <div className="min-w-[150px] space-y-1"><div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">From Date</div><input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setSelectedIds(new Set()); }} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
             <div className="min-w-[150px] space-y-1"><div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">To Date</div><input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setSelectedIds(new Set()); }} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
+            </div>
             {(selectedCompanyId || selectedFirmId || selectedItemId || searchTerm || fromDate || toDate) && (
               <button
                 onClick={() => {

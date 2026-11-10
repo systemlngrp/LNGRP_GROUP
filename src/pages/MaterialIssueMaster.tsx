@@ -324,7 +324,8 @@ export function MaterialIssueMaster() {
           <Select options={materialOptions} value={materialFilter} onChange={setMaterialFilter} placeholder="Materials" />
           <Select options={jobOptions} value={jobFilter} onChange={setJobFilter} placeholder="Jobs" />
           <Select options={reelOptions} value={reelFilter} onChange={setReelFilter} placeholder="Reels" />
-          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
+            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
@@ -336,6 +337,7 @@ export function MaterialIssueMaster() {
             onChange={(e) => setToDate(e.target.value)}
             className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           /></label>
+          </div>
           {(fromDate || toDate || typeFilter !== "all" || searchTerm || materialFilter || jobFilter || reelFilter) ? (
             <button
               type="button"

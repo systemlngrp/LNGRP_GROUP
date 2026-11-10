@@ -48,8 +48,10 @@ export function PrintingShiftReport() {
   return <div className="space-y-5 pb-8">
     <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Printing Shift Report</h2></div>
     <div className="flex flex-wrap gap-4 rounded border border-slate-300 bg-white p-4">
+      <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
       <label className="text-sm font-semibold">From date <input className="ml-2 rounded border p-2" type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
       <label className="text-sm font-semibold">To date <input className="ml-2 rounded border p-2" type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+      </div>
     </div>
     {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-700">{error}</p>}
     {loading && !rows.length && <p>Loading Printing shift reports...</p>}

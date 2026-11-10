@@ -107,6 +107,7 @@ export function ConversionCostDetailsReport() {
 
       <div className="border border-gray-900 bg-white p-3">
         <div className="grid gap-3 md:grid-cols-2 xl:max-w-xl">
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
           <label className="text-xs font-black uppercase text-slate-700">
             From Date
             <input className="mt-1 h-9 w-full border border-gray-900 px-2 text-sm font-bold" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
@@ -115,6 +116,7 @@ export function ConversionCostDetailsReport() {
             To Date
             <input className="mt-1 h-9 w-full border border-gray-900 px-2 text-sm font-bold" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
           </label>
+          </div>
         </div>
       </div>
 

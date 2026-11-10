@@ -117,7 +117,8 @@ export function QcScore() {
       </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded border-2 border-black bg-white p-3">
-        <label className="space-y-1">
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
+          <label className="space-y-1">
           <span className="block text-xs font-black uppercase">From Date</span>
           <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm" />
         </label>
@@ -125,6 +126,7 @@ export function QcScore() {
           <span className="block text-xs font-black uppercase">To Date</span>
           <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm" />
         </label>
+        </div>
         <button type="button" onClick={resetRange} className="rounded border-2 border-black bg-white px-4 py-2 text-sm font-bold hover:bg-slate-50">
           Current Month
         </button>

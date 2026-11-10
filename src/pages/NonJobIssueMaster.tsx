@@ -184,7 +184,8 @@ export function NonJobIssueMaster() {
             {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
           </select>
         </label>
-        <label className="block">
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
+          <label className="block">
           <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">From</span>
           <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => { setDateFrom(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold" />
         </label>
@@ -192,6 +193,7 @@ export function NonJobIssueMaster() {
           <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">To</span>
           <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => { setDateTo(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold" />
         </label>
+        </div>
         <label className="block">
           <span className="mb-1 block text-[11px] font-black uppercase text-slate-600">Tally Status</span>
           <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); resetView(); }} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold">

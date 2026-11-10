@@ -646,6 +646,7 @@ export function MaterialInItemMaster() {
 
       {/* Filters Bar */}
       <div className="flex flex-wrap items-end gap-4 bg-slate-50 p-4 border border-black rounded shadow-sm">
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-black uppercase text-slate-500">From Date</label>
           <input 
@@ -664,6 +665,7 @@ export function MaterialInItemMaster() {
             onChange={(e) => setToDate(e.target.value)}
             className="border border-black rounded px-2 py-1.5 text-xs font-bold bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
           />
+        </div>
         </div>
 
         <div className="w-[180px] flex flex-col gap-1">

@@ -387,6 +387,7 @@ export function MaterialInMaster() {
 
       <div className="bg-slate-50 p-4 border border-black rounded shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-black uppercase text-slate-500">From Date</label>
             <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="px-3 py-1.5 border border-black rounded text-xs font-bold bg-white focus:outline-none focus:ring-1 focus:ring-black" />
@@ -394,6 +395,7 @@ export function MaterialInMaster() {
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-black uppercase text-slate-500">To Date</label>
             <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="px-3 py-1.5 border border-black rounded text-xs font-bold bg-white focus:outline-none focus:ring-1 focus:ring-black" />
+          </div>
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-black uppercase text-slate-500">Status</label>

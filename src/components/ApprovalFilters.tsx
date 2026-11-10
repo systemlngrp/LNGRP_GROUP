@@ -70,6 +70,7 @@ export function ApprovalFilters({
           className="mt-1 w-full border-2 border-black bg-white px-3 py-2 text-sm font-medium normal-case focus:outline-none focus:ring-1 focus:ring-indigo-600"
         />
       </label>
+      <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
       <label className="min-w-[145px] text-xs font-bold uppercase text-black">
         From Date
         <input
@@ -88,6 +89,7 @@ export function ApprovalFilters({
           className="mt-1 w-full border-2 border-black bg-white px-2 py-2 text-sm font-medium normal-case"
         />
       </label>
+      </div>
     </div>
   );
 }

@@ -221,8 +221,10 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
         <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
         <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
         <label className="text-xs font-bold uppercase">From Date<input type="date" aria-label="From Date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
         <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
+        </div>
         {(searchTerm || companyFilter || itemFilter || firmFilter || fromDate || toDate) ? (
           <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setFirmFilter(""); setFromDate(""); setToDate(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
         ) : null}

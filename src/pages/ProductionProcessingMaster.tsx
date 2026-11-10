@@ -248,6 +248,7 @@ export function ProductionProcessingMaster() {
           <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
         </div>
         <FirmFilter value={firmFilter} onChange={setFirmFilter} compact={false} className="min-w-0" />
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
         <label className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-600">
           From
           <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="mt-1 h-[42px] w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
@@ -256,6 +257,7 @@ export function ProductionProcessingMaster() {
           To
           <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="mt-1 h-[42px] w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
         </label>
+        </div>
         <button
           type="button"
           onClick={() => {
