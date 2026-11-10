@@ -11,13 +11,14 @@ import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { cn } from "../lib/utils";
 import { normalizeOrderItemSource } from "../lib/orderItems";
-import { ArrowUpDown, Save } from "lucide-react";
+import { Save } from "lucide-react";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useAuth } from "../auth/AuthContext";
 import { getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty } from "../lib/dispatchPlanBalances";
 
-type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "companyName" | "itemName" | "pendingQty";
+type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "firmName" | "companyName" | "itemName" | "pendingQty";
 
 export function PendingDispatchPlanning() {
   const { setActiveFirm } = useAuth();
@@ -241,6 +242,9 @@ export function PendingDispatchPlanning() {
         case "scheduleNo":
           compare = (a.scheduleNo || "").localeCompare(b.scheduleNo || "", undefined, { numeric: true, sensitivity: "base" });
           break;
+        case "firmName":
+          compare = getFirmDisplayNameById(a.firmId || orderA?.firmId, firms).localeCompare(getFirmDisplayNameById(b.firmId || orderB?.firmId, firms), undefined, { numeric: true, sensitivity: "base" });
+          break;
         case "companyName":
           compare = companyA.localeCompare(companyB, undefined, { sensitivity: "base" });
           break;
@@ -275,17 +279,7 @@ export function PendingDispatchPlanning() {
   };
 
   const renderSortHeader = (label: string, key: SortKey, align: "left" | "right" = "left") => (
-    <button
-      type="button"
-      onClick={() => handleSort(key)}
-      className={cn(
-        "inline-flex items-center gap-1 font-bold uppercase",
-        align === "right" ? "ml-auto justify-end" : "justify-start"
-      )}
-    >
-      <span>{label}</span>
-      <ArrowUpDown size={12} className={cn(sortKey === key ? "text-indigo-700" : "text-slate-400")} />
-    </button>
+    <SortHeader label={<span className="font-bold">{label}</span>} sortKey={key} sort={{ key: sortKey, direction: sortDirection }} onToggle={(nextKey) => handleSort(nextKey as SortKey)} align={align} />
   );
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -393,6 +387,8 @@ export function PendingDispatchPlanning() {
     plannedNowByItemId,
     reservedDispatchPlanQtyByItemId,
   ]);
+
+  const { sorted: sortedCalculationRows, sort: calcSort, toggle: toggleCalcSort } = useTableSort(calculationRows, (row, key) => (key === "exceededBy" ? (row.exceededBy > 0 ? row.exceededBy : null) : (row as Record<string, unknown>)[key]));
 
   const metrics = useMemo(() => {
     let totalPendingQty = 0;
@@ -575,21 +571,21 @@ export function PendingDispatchPlanning() {
             <table className="min-w-full divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">
-                  <th className="px-3 py-2 text-left text-[11px] font-black uppercase border border-black">Item</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Opening</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Receipt</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Production</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Invoice Qty</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">FG Balance</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Pending Production</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Pending Loading</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Available</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Planned Now</th>
-                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black">Exceeded</th>
+                  <th className="px-3 py-2 text-left text-[11px] font-black uppercase border border-black"><SortHeader label={"Item"} sortKey="itemName" sort={calcSort} onToggle={toggleCalcSort} align="left" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Opening"} sortKey="opening" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Receipt"} sortKey="receipt" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Production"} sortKey="production" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Invoice Qty"} sortKey="loaded" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"FG Balance"} sortKey="dispatchBalance" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Pending Production"} sortKey="pendingProduction" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Pending Loading"} sortKey="reserved" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Available"} sortKey="available" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Planned Now"} sortKey="plannedNow" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
+                  <th className="px-3 py-2 text-right text-[11px] font-black uppercase border border-black"><SortHeader label={"Exceeded"} sortKey="exceededBy" sort={calcSort} onToggle={toggleCalcSort} align="right" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-black bg-white">
-                {calculationRows.map((row) => (
+                {sortedCalculationRows.map((row) => (
                   <tr key={row.itemId} className={cn("divide-x divide-black", row.exceededBy > 0 && "bg-rose-50")}>
                     <td className="px-3 py-2 text-[11px] font-bold text-black border border-black min-w-[260px]">{row.itemName}</td>
                     <td className="px-3 py-2 text-right text-[11px] text-black border border-black">{row.opening.toLocaleString()}</td>
@@ -629,7 +625,7 @@ export function PendingDispatchPlanning() {
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Order No", "orderNo")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Firm</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Item Name", "itemName")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>

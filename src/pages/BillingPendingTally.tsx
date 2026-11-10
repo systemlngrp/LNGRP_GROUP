@@ -34,6 +34,7 @@ import { getInvoiceGrandTotal } from "../lib/gatePasses";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const formatInr = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 2,
@@ -234,7 +235,18 @@ export function BillingPendingTally() {
   }, [invoiceRows, companyFilter, itemFilter, searchTerm]);
 
   // The table draws 100 invoices per page; filters still cover every invoice.
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedInvoices } = useClientPagination(processedInvoices, 100);
+  const { sorted: sortedInvoices, sort, toggle: toggleSort } = useTableSort(processedInvoices, (inv, key) => {
+    switch (key) {
+      case "invoiceNo": return inv.invoiceNo || "";
+      case "date": return inv.date || "";
+      case "companyName": return inv.companyName;
+      case "poNumbers": return inv.poNumbers.join(", ");
+      case "grandTotal": return inv.grandTotal;
+      case "tallySyncRemark": return inv.tallySyncRemark || "";
+      default: return "";
+    }
+  });
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedInvoices } = useClientPagination(sortedInvoices, 100);
   useEffect(() => { setPage(1); }, [companyFilter, itemFilter, searchTerm, setPage]);
 
   const companyOptions = useMemo(() => Array.from(new Map(processedInvoices.map((inv) => [inv.companyId, { value: inv.companyId, label: inv.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [processedInvoices]);
@@ -292,12 +304,12 @@ export function BillingPendingTally() {
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr className="divide-x divide-black">
               <th className="w-10 px-4 py-3 text-center"></th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Invoice Details</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Company</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">PO Numbers</th>
-              <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Total Amount</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Tally Sync Remark</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"Invoice Details"} sortKey="invoiceNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"PO Numbers"} sortKey="poNumbers" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase"><SortHeader label={"Total Amount"} sortKey="grandTotal" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label={"Tally Sync Remark"} sortKey="tallySyncRemark" sort={sort} onToggle={toggleSort} align="left" /></th>
               {canPostTally ? (
                 <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase">Action</th>
               ) : null}

@@ -5,6 +5,7 @@ import type { Company, DispatchPlan, LoadingSlip, Order, Truck, TruckStatusLog }
 import { formatTruckDateTime, formatTruckDuration, normalizeTruckStatus, TRUCK_LIVE_STATUSES, TRUCK_STATUS_STYLES } from "../lib/truckStatus";
 import { Select } from "../components/Select";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function isInternalTruck(truck: Truck) {
   return String(truck.truckType || "").trim().toLowerCase() === "internal";
@@ -137,6 +138,22 @@ export function TruckStatusReport() {
     row.truck.mobileNo,
   ], [now]);
 
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
+    switch (key) {
+      case "truckNo": return row.truck.truckNo;
+      case "liveStatus": return row.liveStatus;
+      case "statusUpdatedAt": return row.truck.statusUpdatedAt || "";
+      case "party": return row.party;
+      case "duration": {
+        const time = row.truck.statusUpdatedAt ? new Date(row.truck.statusUpdatedAt).getTime() : NaN;
+        return Number.isFinite(time) ? now - time : null;
+      }
+      case "driverName": return row.truck.driverName || "";
+      case "mobileNo": return row.truck.mobileNo || "";
+      default: return "";
+    }
+  }, [now]);
+
   const handleCopyDriverFormLink = async () => {
     const url = new URL("/driver-status", window.location.origin).toString();
     try {
@@ -222,13 +239,13 @@ export function TruckStatusReport() {
           <table className="min-w-full border-collapse">
             <thead className="sticky top-0 z-30 bg-teal-950 text-white">
               <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black">Vehicle No.</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black">Live Status</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black">Date & Time</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black">Party</th>
-                <th className="px-4 py-3 text-right text-xs font-black uppercase border border-black">Duration</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black">Driver Name</th>
-                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black">Driver Number</th>
+                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black"><SortHeader label={"Vehicle No."} sortKey="truckNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black"><SortHeader label={"Live Status"} sortKey="liveStatus" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black"><SortHeader label={"Date & Time"} sortKey="statusUpdatedAt" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black"><SortHeader label={"Party"} sortKey="party" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-black uppercase border border-black"><SortHeader label={"Duration"} sortKey="duration" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black"><SortHeader label={"Driver Name"} sortKey="driverName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-black uppercase border border-black"><SortHeader label={"Driver Number"} sortKey="mobileNo" sort={sort} onToggle={toggleSort} align="left" /></th>
               </tr>
             </thead>
             <tbody>
@@ -236,7 +253,7 @@ export function TruckStatusReport() {
                 <tr>
                   <td colSpan={7} className="px-6 py-10 text-center text-sm font-bold text-slate-500">No trucks found.</td>
                 </tr>
-              ) : rows.map(({ truck, liveStatus, party }, index) => {
+              ) : sortedRows.map(({ truck, liveStatus, party }, index) => {
                 const style = TRUCK_STATUS_STYLES[liveStatus];
                 const duration = formatTruckDuration(truck.statusUpdatedAt, now);
                 const longDuration = duration !== "-" && Number(duration.split(":")[0]) >= 24;

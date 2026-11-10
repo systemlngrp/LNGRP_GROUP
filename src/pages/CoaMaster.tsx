@@ -8,6 +8,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { printCoaRecord } from "../lib/coaPrint";
 import type { CoaRecord, Firm } from "../types";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -40,6 +41,16 @@ export function CoaMaster() {
       return matchesTableSearch([record.coaNo, record.companyName, record.jobNo, record.erpCode, record.itemName, displayDate(record.coaDate), record.coaDate, `v${record.templateVersion}`, record.status, record.updatedBy || record.createdBy], words);
     });
   }, [company, records, search, status, templateVersion]);
+  const { sorted: sortedRecords, sort, toggle: toggleSort } = useTableSort(visibleRecords, (record: CoaRecord, key) => {
+    if (key === "companyName") return record.companyName || "-";
+    if (key === "jobNo") return record.jobNo || "-";
+    if (key === "erpCode") return record.erpCode || "-";
+    if (key === "itemName") return record.itemName || "-";
+    if (key === "coaDate") return record.coaDate;
+    if (key === "templateVersion") return Number(record.templateVersion);
+    if (key === "updatedBy") return record.updatedBy || record.createdBy || "-";
+    return (record as any)[key];
+  });
 
   const issuer = (record: CoaRecord) => {
     const firm = firms.find((value) => value.id === record.firmId);
@@ -71,11 +82,11 @@ export function CoaMaster() {
     </section>
     <div className="overflow-auto rounded border-2 border-black bg-white">
       <table className="min-w-[1250px] w-full border-collapse text-sm">
-        <thead><tr className="bg-slate-800 text-white"><th className="border border-black p-2">COA No.</th><th className="border border-black p-2">Company</th><th className="border border-black p-2">Job No.</th><th className="border border-black p-2">ERP</th><th className="border border-black p-2">Item</th><th className="border border-black p-2">COA Date</th><th className="border border-black p-2">Template</th><th className="border border-black p-2">Status</th><th className="border border-black p-2">Updated By</th><th className="border border-black p-2">Actions</th></tr></thead>
+        <thead><tr className="bg-slate-800 text-white"><th className="border border-black p-2"><SortHeader label="COA No." sortKey="coaNo" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="Company" sortKey="companyName" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="Job No." sortKey="jobNo" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="ERP" sortKey="erpCode" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="Item" sortKey="itemName" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="COA Date" sortKey="coaDate" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="Template" sortKey="templateVersion" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2"><SortHeader label="Updated By" sortKey="updatedBy" sort={sort} onToggle={toggleSort} align="center" /></th><th className="border border-black p-2">Actions</th></tr></thead>
         <tbody>
           {loading && <tr><td colSpan={10} className="p-6 text-center font-bold">Loading COAs...</td></tr>}
           {!loading && visibleRecords.length === 0 && <tr><td colSpan={10} className="p-6 text-center font-bold">No COA records found.</td></tr>}
-          {visibleRecords.map((record) => {
+          {sortedRecords.map((record) => {
             const editable = record.status === "Draft" || canManage;
             return <tr key={record.id} className="align-middle">
               <td className="border border-black p-2 font-bold">{record.coaNo}</td>

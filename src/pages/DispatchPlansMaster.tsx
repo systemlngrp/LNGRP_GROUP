@@ -11,6 +11,7 @@ import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { useAuth } from "../auth/AuthContext";
@@ -221,6 +222,23 @@ export function DispatchPlansMaster() {
       .map((row) => row.plan)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [companyFilter, dispatchFilterRows, firmFilter, itemFilter, searchTerm]);
+  const filterRowByPlanId = useMemo(() => new Map(dispatchFilterRows.map((row) => [row.plan.id, row])), [dispatchFilterRows]);
+  const { sorted: sortedPlans, sort, toggle: toggleSort } = useTableSort(filteredPlans, (plan, key) => {
+    const row = filterRowByPlanId.get(plan.id);
+    switch (key) {
+      case "planNo": return plan.planNo || "";
+      case "date": return plan.date || "";
+      case "firmName": return row?.firmName || "";
+      case "companyName": return row?.companyName || "";
+      case "orderNo": return orders.find((o) => o.id === plan.orderId)?.orderNo || "";
+      case "plannedQty": return Number(plan.plannedQty || 0);
+      case "loadedQty": return Number(plan.loadedQty || 0);
+      case "canceledQty": return Number(plan.canceledQty || 0);
+      case "pending": return Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
+      case "status": return plan.status || "";
+      default: return "";
+    }
+  }, [filterRowByPlanId, orders]);
   const {
     page,
     setPage,
@@ -228,7 +246,7 @@ export function DispatchPlansMaster() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedPlans,
-  } = useClientPagination(filteredPlans, 25);
+  } = useClientPagination(sortedPlans, 25);
 
   return (
     <div className="space-y-6">
@@ -251,16 +269,16 @@ export function DispatchPlansMaster() {
           <table className="min-w-full divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Plan No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Plan Date</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Company</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Order / Item</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Planned</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-emerald-700">Invoice Qty</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-red-700">Cancl</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-indigo-700">Pending</th>
-                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Plan No"} sortKey="planNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Plan Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Firm"} sortKey="firmName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Order / Item"} sortKey="orderNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Planned"} sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-emerald-700"><SortHeader label={"Invoice Qty"} sortKey="loadedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-red-700"><SortHeader label={"Cancl"} sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-indigo-700"><SortHeader label={"Pending"} sortKey="pending" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Status"} sortKey="status" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black">Actions</th>
               </tr>
             </thead>

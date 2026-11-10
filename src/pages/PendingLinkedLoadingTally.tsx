@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import { LoadingSlip } from "../types";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -57,6 +58,22 @@ function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) 
       );
   }, [fgSlipMap, loadingSlips, searchTerm, source]);
 
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(pendingRows, (entry, key) => {
+    switch (key) {
+      case "slipNo": return entry.row.slipNo || "";
+      case "fgSlipNo": return entry.fgSlipNo;
+      case "consumptionNo": return entry.consumptionNo;
+      case "date": return entry.row.date || "";
+      case "itemName": return entry.itemName;
+      case "companyName": return entry.companyName;
+      case "totalQty": return entry.totalQty;
+      case "status": return entry.row.tallyPostingStatus || "";
+      case "remark": return entry.row.tallyPostingRemark || "";
+      case "error": return entry.row.tallyPostingError || "";
+      default: return "";
+    }
+  });
+
   const heading = source === "PHP" ? "Pending PHP Tally" : "Pending Plate Tally";
   const consumptionLabel = source === "PHP" ? "PHP Cons. No" : "Plate Cons. No";
 
@@ -83,16 +100,16 @@ function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) 
           <table className="min-w-full divide-y divide-black border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Slip No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">FG Slip</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">{consumptionLabel}</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Item</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Company</th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase">Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Remark</th>
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase">Error</th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"Slip No"} sortKey="slipNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"FG Slip"} sortKey="fgSlipNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={consumptionLabel} sortKey="consumptionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"Item"} sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase"><SortHeader label={"Qty"} sortKey="totalQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"Status"} sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"Remark"} sortKey="remark" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label={"Error"} sortKey="error" sort={sort} onToggle={toggleSort} align="left" /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black">
@@ -103,7 +120,7 @@ function PendingLinkedLoadingTallyPage({ source }: { source: "PHP" | "PLATE" }) 
                   </td>
                 </tr>
               ) : (
-                pendingRows.map(({ row, fgSlipNo, consumptionNo, itemName, companyName, totalQty }) => (
+                sortedRows.map(({ row, fgSlipNo, consumptionNo, itemName, companyName, totalQty }) => (
                   <tr key={row.id} className="divide-x divide-black hover:bg-slate-50">
                     <td className="px-4 py-3 text-sm font-bold">{row.slipNo || "-"}</td>
                     <td className="px-4 py-3 text-sm">{fgSlipNo}</td>

@@ -33,6 +33,7 @@ import { downloadLoadingSlipPdf } from "../lib/loadingSlipPdf";
 import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -190,6 +191,25 @@ export function LoadingMaster() {
     });
   }, [slipRows, searchTerm, companyFilter, erpFilter, itemFilter, firmFilter]);
 
+  const { sorted: sortedSlips, sort, toggle: toggleSort } = useTableSort(processedSlips, (slip, key) => {
+    switch (key) {
+      case "slipNo": return slip.slipNo || "";
+      case "source": return slip.loadingSourceLabel;
+      case "status": return slip.status === "Cancelled" ? "Cancelled" : slip.invoiceId ? "Invoiced" : "Not Invoiced";
+      case "date": return slip.date || "";
+      case "truckNo": return slip.truckNo || "";
+      case "firmName": return getFirmDisplayNameById(slip.firmId, firms) || "";
+      case "companyNames": return slip.companyNames;
+      case "itemNames": return slip.itemNames;
+      case "erpCodes": return slip.erpCodes;
+      case "jobNos": return isDirectLoadingSlip(slip)
+        ? "Direct Loading"
+        : slip.lines.flatMap((line) => line.allocations || []).filter((allocation) => allocation.sourceType === "job").map((allocation) => allocation.jobNo || allocation.jobId || "").join(", ");
+      case "totalQty": return slip.totalQty;
+      default: return "";
+    }
+  }, [firms]);
+
   const {
     page,
     setPage,
@@ -197,7 +217,7 @@ export function LoadingMaster() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedSlips,
-  } = useClientPagination(processedSlips, 25);
+  } = useClientPagination(sortedSlips, 25);
 
   const handleDownloadPdf = async (slip: LoadingSlip) => {
     setIsDownloading(slip.id);
@@ -602,17 +622,17 @@ export function LoadingMaster() {
         <table className="min-w-full border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr className="divide-x divide-black">
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Slip No</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Source</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Date</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Truck</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Firm</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Company</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Item</th>
-              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">ERP</th>
-              <th className="min-w-[180px] px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black">Job No / Load Qty</th>
-              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border-b border-black">Total Qty</th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Slip No"} sortKey="slipNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Source"} sortKey="source" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Status"} sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Truck"} sortKey="truckNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Firm"} sortKey="firmName" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Company"} sortKey="companyNames" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Item"} sortKey="itemNames" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"ERP"} sortKey="erpCodes" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="min-w-[180px] px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Job No / Load Qty"} sortKey="jobNos" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border-b border-black"><SortHeader label={"Total Qty"} sortKey="totalQty" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border-b border-black">Actions</th>
             </tr>
           </thead>

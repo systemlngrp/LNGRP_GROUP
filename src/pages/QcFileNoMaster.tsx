@@ -4,6 +4,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { useData } from "../hooks/useData";
 import type { QcFileNoMaster } from "../types";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -24,6 +25,7 @@ export function QcFileNoMaster() {
     return matchesTableSearch([row.fileNo, active ? "Active" : "Inactive", row.updatedBy], words) &&
       (status === "all" || (status === "active" ? active : !active));
   }).sort((a, b) => text(a.fileNo).localeCompare(text(b.fileNo), undefined, { numeric: true, sensitivity: "base" })); }, [rows, search, status]);
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filtered, (row, key) => key === "status" ? (text(row.active).toLowerCase() === "yes" ? "Active" : "Inactive") : (row as any)[key]);
 
   const save = async () => {
     const value = fileNo.trim();
@@ -87,8 +89,8 @@ export function QcFileNoMaster() {
     </div>
     <div className="overflow-auto rounded border-2 border-black bg-white">
       <table className="min-w-[650px] w-full text-sm">
-        <thead className="bg-cyan-800 text-white"><tr><th className="p-2 text-left">File No.</th><th className="p-2 text-left">Status</th><th className="p-2 text-left">Updated By</th><th className="p-2 text-left">Actions</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={4} className="p-5 text-center">Loading...</td></tr> : filtered.length ? filtered.map(row => {
+        <thead className="bg-cyan-800 text-white"><tr><th className="p-2 text-left"><SortHeader label="File No." sortKey="fileNo" sort={sort} onToggle={toggleSort} /></th><th className="p-2 text-left"><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} /></th><th className="p-2 text-left"><SortHeader label="Updated By" sortKey="updatedBy" sort={sort} onToggle={toggleSort} /></th><th className="p-2 text-left">Actions</th></tr></thead>
+        <tbody>{loading ? <tr><td colSpan={4} className="p-5 text-center">Loading...</td></tr> : sortedRows.length ? sortedRows.map(row => {
           const active = text(row.active).toLowerCase() === "yes";
           return <tr key={row.id} className="border-t border-black">
             <td className="p-2 font-bold">{row.fileNo}</td><td className="p-2">{active ? "Active" : "Inactive"}</td><td className="p-2">{row.updatedBy || "-"}</td>

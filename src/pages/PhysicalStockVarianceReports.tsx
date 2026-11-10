@@ -20,6 +20,7 @@ import type {
 } from "../types";
 import { formatDate } from "../lib/utils";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type ReportMode = "excess" | "shortage";
 
@@ -75,6 +76,22 @@ function PhysicalStockVarianceReport({ mode }: { mode: ReportMode }) {
     formatPhysicalQty(Math.abs(row.variance)),
     row.source === "unscanned" ? "Not Scanned" : "Scanned",
   ]);
+
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) => {
+    switch (key) {
+      case "sessionNo": return row.sessionNo;
+      case "timestamp": return row.timestamp || "";
+      case "reelNo": return row.reelNo;
+      case "mrrNo": return row.mrrNo || "";
+      case "erp": return row.erp || "";
+      case "supplierName": return row.supplierName || "";
+      case "systemAvailableWeight": return Number(row.systemAvailableWeight || 0);
+      case "physicalWeight": return Number(row.physicalWeight || 0);
+      case "variance": return Math.abs(Number(row.variance || 0));
+      case "source": return row.source === "unscanned" ? "Not Scanned" : "Scanned";
+      default: return "";
+    }
+  });
 
   const totals = useMemo(
     () => filteredRows.reduce(
@@ -162,8 +179,8 @@ function PhysicalStockVarianceReport({ mode }: { mode: ReportMode }) {
           <table className="w-full min-w-max border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-indigo-700 text-white">
-                {["Session No", "Time", "Reel No", "MRR No", "ERP", "Supplier", "Book Stock", "Physical Stock", isShortage ? "Shortage" : "Excess", "Source"].map((heading) => (
-                  <th key={heading} className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">{heading}</th>
+                {([["Session No", "sessionNo"], ["Time", "timestamp"], ["Reel No", "reelNo"], ["MRR No", "mrrNo"], ["ERP", "erp"], ["Supplier", "supplierName"], ["Book Stock", "systemAvailableWeight"], ["Physical Stock", "physicalWeight"], [isShortage ? "Shortage" : "Excess", "variance"], ["Source", "source"]] as const).map(([heading, key]) => (
+                  <th key={heading} className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase"><SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /></th>
                 ))}
               </tr>
             </thead>
@@ -173,7 +190,7 @@ function PhysicalStockVarianceReport({ mode }: { mode: ReportMode }) {
                   <td colSpan={10} className="border-2 border-black px-6 py-10 text-center font-medium text-black">No {isShortage ? "shortage" : "excess"} stock found for this session.</td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
+                sortedRows.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3 text-sm font-black text-black">{row.sessionNo}</td>
                     <td className="whitespace-nowrap border-2 border-black px-3 py-3 text-sm text-black">{formatDateTime(row.timestamp)}</td>

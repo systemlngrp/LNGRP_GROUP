@@ -7,6 +7,7 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -93,7 +94,24 @@ export function StandaloneLoadingMaster({ source }: StandaloneLoadingMasterProps
       );
   }, [fgSlipMap, items, loadingSlips, productionMap, searchTerm, trucks]);
 
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(processedSlips, 25);
+  const { sorted: sortedSlips, sort, toggle: toggleSort } = useTableSort(processedSlips, (row, key) => {
+    switch (key) {
+      case "slipNo": return row.slip.slipNo || "";
+      case "fgSlipNo": return row.isFgLinked ? row.fgSlipNo : "";
+      case "consumptionTxnNo": return row.consumptionTxnNo;
+      case "date": return row.slip.date || "";
+      case "jobNo": return row.jobNo;
+      case "itemName": return row.itemName;
+      case "companyName": return row.companyName;
+      case "truckNo": return row.truckNo;
+      case "totalQty": return row.totalQty;
+      case "status": return row.slip.status || "Active";
+      case "tallyStatus": return row.slip.tallyPostingStatus || (row.slip.tallyTimestamp ? "Posted" : "");
+      case "source": return row.isFgLinked ? "Linked" : "Historical";
+      default: return "";
+    }
+  });
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedSlips, 25);
   const sourceLabel = getOrderItemSourceLabel(source);
 
   return (
@@ -108,18 +126,18 @@ export function StandaloneLoadingMaster({ source }: StandaloneLoadingMasterProps
         <table className="min-w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Slip No</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">FG Slip</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">{consumptionTxnLabel}</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Date</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Item</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Company</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Truck</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Qty</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Status</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Tally Status</th>
-              <th className="px-3 py-2 text-center text-xs font-black uppercase">Source</th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Slip No"} sortKey="slipNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"FG Slip"} sortKey="fgSlipNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={consumptionTxnLabel} sortKey="consumptionTxnNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Job No"} sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Item"} sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Truck"} sortKey="truckNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label={"Qty"} sortKey="totalQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Status"} sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label={"Tally Status"} sortKey="tallyStatus" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-center text-xs font-black uppercase"><SortHeader label={"Source"} sortKey="source" sort={sort} onToggle={toggleSort} align="center" /></th>
             </tr>
           </thead>
           <tbody>

@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import { SampleRequest } from "../types";
 import { formatDate } from "../lib/serial";
 import { sortSampleRequestsDesc } from "../lib/sampleRequests";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
 export function SamplesProduced() {
@@ -22,6 +23,11 @@ export function SamplesProduced() {
 
     return sortSampleRequestsDesc(searched);
   }, [sampleRequests, searchTerm]);
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row: SampleRequest, key) => {
+    if (key === "plannedQuantity") return Number(row.plannedQuantity || 0);
+    if (key === "erp") return row.erp || "-";
+    return (row as any)[key];
+  });
 
   return (
     <div className="space-y-6">
@@ -44,11 +50,11 @@ export function SamplesProduced() {
           <table className="min-w-full divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Item Name</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">ERP</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Planned Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Job Card No.</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Item Name" sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Planned Qty" sortKey="plannedQuantity" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job Card No." sortKey="jobCardNo" sort={sort} onToggle={toggleSort} align="left" /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
@@ -59,7 +65,7 @@ export function SamplesProduced() {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
+                sortedRows.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50 divide-x divide-black transition-colors">
                     <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{formatDate(row.date)}</td>
                     <td className="px-4 py-3 text-sm text-black border border-black">{row.itemName}</td>

@@ -9,6 +9,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { BoardLineQcCheck, Production, Setting, User } from "../types";
 import { formatDate, formatTime } from "../lib/utils";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 import { boardlineWhatsappSaveMessage } from "../lib/boardlineWhatsappFeedback";
@@ -764,6 +765,7 @@ const masterColumns: FieldConfig[] = [
       ].includes(String(field.key))
   ),
 ];
+const unsortedMasterColumnKeys = new Set<keyof BoardLineQcCheck>(["photo", "printingArtwork"]);
 const compactMasterColumnKeys = new Set<keyof BoardLineQcCheck>([
   "timestamp",
   "bqcNo",
@@ -787,6 +789,11 @@ const wideMasterColumnKeys = new Set<keyof BoardLineQcCheck>([
   "photo",
   "printingArtwork",
 ]);
+
+function parseSortTime(value: unknown) {
+  const date = new Date(String(value ?? ""));
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
 
 function masterHeaderClass(key: keyof BoardLineQcCheck) {
   const base = "border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top";
@@ -964,9 +971,18 @@ export function BoardLineQcMaster() {
     row.qcPeople.join(", ") || "-",
   ]);
 
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
+    if (key === "__date") return row.timestamp;
+    if (key === "timestamp") return parseSortTime(row.timestamp);
+    if (key === "__chunks") return row.chunkCount;
+    if (key === "__status") return row.groupStatus;
+    if (key === "__qcPeople") return row.qcPeople.join(", ") || "-";
+    return displayValue((row as any)[key]);
+  });
+
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const pagedRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const pagedRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="space-y-6 text-black">
@@ -1004,15 +1020,15 @@ export function BoardLineQcMaster() {
           <table data-table-pagination-external="true" className="min-w-full border-collapse divide-y divide-black border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr>
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[110px] whitespace-nowrap">Date</th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[110px] whitespace-nowrap"><SortHeader label="Date" sortKey="__date" sort={sort} onToggle={toggleSort} align="left" /></th>
                 {masterColumns.map((column) => (
                   <th key={String(column.key)} className={masterHeaderClass(column.key)}>
-                    {column.label}
+                    {unsortedMasterColumnKeys.has(column.key) ? column.label : <SortHeader label={column.label} sortKey={String(column.key)} sort={sort} onToggle={toggleSort} align="left" />}
                   </th>
                 ))}
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap">Chunks</th>
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap">Status</th>
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[160px]">QC People</th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap"><SortHeader label="Chunks" sortKey="__chunks" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap"><SortHeader label="Status" sortKey="__status" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[160px]"><SortHeader label="QC People" sortKey="__qcPeople" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top">Actions</th>
               </tr>
             </thead>

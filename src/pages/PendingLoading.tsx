@@ -32,6 +32,7 @@ import {
 import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, sortRows, useTableSort } from "../lib/tableSort";
 import { cn } from "../lib/utils";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -255,6 +256,27 @@ export function PendingLoading() {
 
     return final;
   }, [firms, firmFilter, planProjections, searchTerm]);
+
+  // One sort for every plan table: each item's plans are sorted inside their own table.
+  const { sort: planSort, toggle: togglePlanSort } = useTableSort<never>([], () => null);
+  const sortedGroupedData = useMemo(() => {
+    if (!planSort) return groupedData;
+    const getPlanValue = (plan: GroupedPlan["plans"][number]) => {
+      switch (planSort.key) {
+        case "orderNo": return plan.orderNo;
+        case "firmName": return plan.firmName;
+        case "planNo": return plan.planNo || "";
+        case "plannedQty": return Number(plan.plannedQty || 0);
+        case "loadedQty": return Number(plan.loadedQty || 0);
+        case "pendingQty": return plan.pendingQty;
+        default: return "";
+      }
+    };
+    return groupedData.map((company) => ({
+      ...company,
+      items: company.items.map((itemGroup) => ({ ...itemGroup, plans: sortRows(itemGroup.plans, getPlanValue, planSort.direction) })),
+    }));
+  }, [groupedData, planSort]);
 
   useEffect(() => {
     if (didInitExpand.current) return;
@@ -760,7 +782,7 @@ export function PendingLoading() {
         </div>
       ) : (
         <div className="space-y-4">
-          {groupedData.map((company) => (
+          {sortedGroupedData.map((company) => (
             <div key={company.groupKey} className="overflow-hidden rounded-lg border-2 border-slate-300 bg-white shadow-sm">
               <button
                 onClick={() => {
@@ -809,12 +831,12 @@ export function PendingLoading() {
                         <table className="w-full min-w-[760px] divide-y divide-slate-300 border-collapse">
                           <thead className="sticky top-0 z-30 bg-slate-50">
                             <tr className="divide-x divide-black">
-                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Order No</th>
-                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Firm</th>
-                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600">Plan No</th>
-                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600">Planned</th>
-                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600">Loaded</th>
-                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-indigo-700">Pending</th>
+                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Order No"} sortKey="orderNo" sort={planSort} onToggle={togglePlanSort} align="left" /></th>
+                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Firm"} sortKey="firmName" sort={planSort} onToggle={togglePlanSort} align="left" /></th>
+                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Plan No"} sortKey="planNo" sort={planSort} onToggle={togglePlanSort} align="left" /></th>
+                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Planned"} sortKey="plannedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Loaded"} sortKey="loadedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-indigo-700"><SortHeader label={"Pending"} sortKey="pendingQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
                               <th className="px-3 py-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-600">Actions</th>
                             </tr>
                           </thead>

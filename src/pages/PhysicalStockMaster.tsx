@@ -4,6 +4,7 @@ import { useData } from "../hooks/useData";
 import type { StockTakerLog } from "../types";
 import { formatDate } from "../lib/utils";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function formatQty(value: number) {
   return Number(value || 0).toFixed(2);
@@ -46,6 +47,16 @@ export function PhysicalStockMaster() {
     formatQty(Number(entry.variance || 0)),
   ]);
 
+  const { sorted: sortedScanLogs, sort, toggle: toggleSort } = useTableSort(filteredScanLogs, (entry: StockTakerLog, key) => {
+    switch (key) {
+      case "time": return entry.timestamp || "";
+      case "systemAvailableWeight": return Number(entry.systemAvailableWeight || 0);
+      case "physicalWeight": return Number(entry.physicalWeight || 0);
+      case "variance": return Number(entry.variance || 0);
+      default: return (entry as any)[key];
+    }
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-2 border-b border-black pb-3 md:flex-row md:items-center md:justify-between">
@@ -80,8 +91,8 @@ export function PhysicalStockMaster() {
           <table className="w-full min-w-max border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-indigo-700 text-white">
-                {["Session No", "Time", "Reel No", "MRR No", "ERP", "Supplier", "Book Stock", "Physical Weight", "Variance"].map((heading) => (
-                  <th key={heading} className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">{heading}</th>
+                {([["Session No", "sessionNo"], ["Time", "time"], ["Reel No", "reelNo"], ["MRR No", "mrrNo"], ["ERP", "erp"], ["Supplier", "supplierName"], ["Book Stock", "systemAvailableWeight"], ["Physical Weight", "physicalWeight"], ["Variance", "variance"]] as const).map(([heading, key]) => (
+                  <th key={heading} className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase"><SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /></th>
                 ))}
               </tr>
             </thead>
@@ -91,7 +102,7 @@ export function PhysicalStockMaster() {
                   <td colSpan={9} className="border-2 border-black px-6 py-10 text-center font-medium text-black">No physical stock scans found.</td>
                 </tr>
               ) : (
-                filteredScanLogs.map((entry) => (
+                sortedScanLogs.map((entry) => (
                   <tr key={entry.id} className="hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3 text-sm font-black text-black">{entry.sessionNo || "-"}</td>
                     <td className="whitespace-nowrap border-2 border-black px-3 py-3 text-sm text-black">{formatDateTime(entry.timestamp)}</td>

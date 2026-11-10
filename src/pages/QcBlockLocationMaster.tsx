@@ -5,6 +5,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import type { QcBlockLocationMaster } from "../types";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type LocationUsage = { count: number; details: { label: string; count: number }[] };
 
@@ -52,6 +53,7 @@ export function QcBlockLocationMaster() {
       (status === "all" || (status === "active" ? active : !active));
     });
   }, [rows, search, status]);
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filtered, (row, key) => key === "status" ? (String(row.active).toLowerCase() === "yes" ? "Active" : "Inactive") : (row as any)[key]);
 
   const save = async () => {
     const value = name.trim();
@@ -136,8 +138,8 @@ export function QcBlockLocationMaster() {
     </div>
     <div className="overflow-auto rounded border-2 border-black bg-white">
       <table className="min-w-[600px] w-full text-sm">
-        <thead className="bg-cyan-800 text-white"><tr><th className="p-2 text-left">Location</th><th className="p-2 text-left">Status</th><th className="p-2 text-left">Actions</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={3} className="p-5 text-center">Loading...</td></tr> : filtered.length ? filtered.map(row => {
+        <thead className="bg-cyan-800 text-white"><tr><th className="p-2 text-left"><SortHeader label="Location" sortKey="name" sort={sort} onToggle={toggleSort} /></th><th className="p-2 text-left"><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} /></th><th className="p-2 text-left">Actions</th></tr></thead>
+        <tbody>{loading ? <tr><td colSpan={3} className="p-5 text-center">Loading...</td></tr> : sortedRows.length ? sortedRows.map(row => {
           const active = String(row.active).toLowerCase() === "yes";
           const references = usage[row.id];
           const reason = references?.details.map(detail => `${detail.label} (${detail.count})`).join(", ") || "";

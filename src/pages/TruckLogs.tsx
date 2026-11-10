@@ -3,6 +3,7 @@ import { Search, Truck as TruckIcon } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import type { Truck, TruckLiveStatus, TruckStatusLog } from "../types";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { formatTruckDateTime, normalizeTruckStatus, TRUCK_LIVE_STATUSES, TRUCK_STATUS_STYLES } from "../lib/truckStatus";
 
 const SOURCE_OPTIONS = [
@@ -57,6 +58,20 @@ export function TruckLogs() {
   useEffect(() => {
     void fetchLogs();
   }, []);
+
+  const { sorted: sortedLogs, sort, toggle: toggleSort } = useTableSort(logs, (log, key) => {
+    switch (key) {
+      case "truckNo": return log.truckNo;
+      case "status": return normalizeTruckStatus(log.liveStatus) || "EMPTY";
+      case "statusUpdatedAt": return log.statusUpdatedAt || "";
+      case "source": return sourceLabel(log.updateSource);
+      case "updatedBy": return log.statusUpdatedBy || "";
+      case "invoiceNo": return log.invoiceNo || "";
+      case "partyName": return log.partyName || "";
+      case "driverName": return log.driverName || "";
+      default: return "";
+    }
+  });
 
   useTrackPageLoading(loading && logs.length === 0, logs.length === 0 ? error || null : null, () => void fetchLogs(), logs.length);
 
@@ -138,14 +153,14 @@ export function TruckLogs() {
           <table className="min-w-full border-collapse">
             <thead className="bg-teal-950 text-white">
               <tr className="divide-x divide-black">
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Vehicle No.</th>
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Status</th>
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Date & Time</th>
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Source</th>
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Updated By</th>
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Invoice No.</th>
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Party</th>
-                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase">Driver Name</th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Vehicle No."} sortKey="truckNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Status"} sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Date & Time"} sortKey="statusUpdatedAt" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Source"} sortKey="source" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Updated By"} sortKey="updatedBy" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Invoice No."} sortKey="invoiceNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Party"} sortKey="partyName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-4 py-3 text-left text-xs font-black uppercase"><SortHeader label={"Driver Name"} sortKey="driverName" sort={sort} onToggle={toggleSort} align="left" /></th>
               </tr>
             </thead>
             <tbody>
@@ -155,7 +170,7 @@ export function TruckLogs() {
                     No status logs found.
                   </td>
                 </tr>
-              ) : logs.map((log, index) => {
+              ) : sortedLogs.map((log, index) => {
                 const liveStatus = normalizeTruckStatus(log.liveStatus) || "EMPTY";
                 const style = TRUCK_STATUS_STYLES[liveStatus];
                 return (

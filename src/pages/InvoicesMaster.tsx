@@ -31,6 +31,7 @@ import { useTableSearch } from "../lib/tableSearch";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type InvoiceDetailRow = {
   id: string;
@@ -413,6 +414,25 @@ export function InvoicesMaster() {
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
   }, [invoices, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, detailsByInvoice]);
 
+  const { sorted: sortedInvoices, sort, toggle: toggleSort } = useTableSort(processedInvoices, (invoice, key) => {
+    switch (key) {
+      case "invoiceNo": return invoice.invoiceNo || "";
+      case "companyName": return invoice.companyName;
+      case "date": return invoice.date || "";
+      case "tallyInvNo": return invoice.tallyInvNo || "";
+      case "tallyInvDate": return invoice.tallyInvDate || "";
+      case "tallyTimestamp": return invoice.tallyTimestamp || "";
+      case "tallyBy": return invoice.tallyBy || "";
+      case "tallySyncRemark": return invoice.tallySyncRemark || "";
+      case "tallyInvId": return invoice.tallyInvId || "";
+      case "itemSummary": return invoice.itemSummary;
+      case "totalBeforeGst": return Number(invoice.totalBeforeGst || 0);
+      case "gst": return getGstTotal(invoice);
+      case "grandTotal": return getGrandTotal(invoice);
+      default: return "";
+    }
+  });
+
   const {
     page,
     setPage,
@@ -420,7 +440,7 @@ export function InvoicesMaster() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedInvoices,
-  } = useClientPagination(processedInvoices, 25);
+  } = useClientPagination(sortedInvoices, 25);
 
   const invoiceDetails = useMemo(() => {
     if (!selectedInvoice) return [];
@@ -478,19 +498,19 @@ export function InvoicesMaster() {
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr className="divide-x divide-black">
               <th className="w-10 px-4 py-3"></th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Invoice</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Company</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Inv Date</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Tally No</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Tally Date</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Posted At</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Posted By</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Remark</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Tally Id</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Item Summary</th>
-              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">Amount Before GST</th>
-              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">GST</th>
-              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">Total Amount</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Invoice"} sortKey="invoiceNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Inv Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Tally No"} sortKey="tallyInvNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Tally Date"} sortKey="tallyInvDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Posted At"} sortKey="tallyTimestamp" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Posted By"} sortKey="tallyBy" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Remark"} sortKey="tallySyncRemark" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Tally Id"} sortKey="tallyInvId" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Item Summary"} sortKey="itemSummary" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Amount Before GST"} sortKey="totalBeforeGst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"GST"} sortKey="gst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider"><SortHeader label={"Total Amount"} sortKey="grandTotal" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-6 py-3 text-center text-xs font-bold text-black uppercase tracking-wider">Action</th>
             </tr>
           </thead>

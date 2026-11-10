@@ -33,6 +33,7 @@ import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, sortRows, useTableSort } from "../lib/tableSort";
 import { cn } from "../lib/utils";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildGatePassFromInvoice } from "../lib/gatePasses";
@@ -591,6 +592,38 @@ export function PendingInvoicing() {
 
   const companyOptions = useMemo(() => Array.from(new Map(groupedData.map((group) => [group.companyId, { value: group.companyId, label: group.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); groupedData.forEach((group) => group.slips.forEach((slip) => slip.items.forEach((name, index) => { const key = slip.itemKeys[index] || name; if (!key || map.has(key)) return; map.set(key, { value: key, label: name, searchText: name }); }))); return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label)); }, [groupedData]);
+
+  // Inter-firm pending table sort.
+  const pendingInterFirmRows = useMemo(() => interFirmPending.filter((row) => row.status === "Pending"), [interFirmPending]);
+  const { sorted: sortedInterFirmRows, sort: interFirmSort, toggle: toggleInterFirmSort } = useTableSort(pendingInterFirmRows, (row, key) => {
+    switch (key) {
+      case "source": return firms.find((f) => f.id === row.sourceFirmId)?.firmName || row.sourceFirmId;
+      case "destination": return firms.find((f) => f.id === row.destinationFirmId)?.firmName || row.destinationFirmId;
+      case "jobNo": return row.jobNo || row.sourceTransactionId;
+      case "item": return getInterFirmLines(row).map((line) => getInterFirmLineLabel(line)).join(", ");
+      case "qty": return getInterFirmLines(row).reduce((sum, line) => sum + Number(line.qty || 0), 0);
+      case "rate": return Number(getInterFirmLines(row)[0]?.rate || 0);
+      case "mrr": return row.linkedMrrId ? (mrrNumberById.get(String(row.linkedMrrId)) || "Pending") : "Pending";
+      default: return "";
+    }
+  }, [firms, mrrNumberById]);
+
+  // One sort for every company's slip table: each company's slips are sorted inside their own table.
+  const { sort: slipSort, toggle: toggleSlipSort } = useTableSort<never>([], () => null);
+  const sortedGroupedData = useMemo(() => {
+    if (!slipSort) return groupedData;
+    const getSlipValue = (slip: (typeof groupedData)[number]["slips"][number]) => {
+      switch (slipSort.key) {
+        case "slipNo": return slip.slipNo || "";
+        case "date": return slip.date || "";
+        case "truckNo": return slip.truckNo || trucks.find((t) => t.id === slip.truckId)?.truckNo || "N/A";
+        case "items": return slip.items.join(", ");
+        case "totalQty": return slip.totalQty;
+        default: return "";
+      }
+    };
+    return groupedData.map((group) => ({ ...group, slips: sortRows(group.slips, getSlipValue, slipSort.direction) }));
+  }, [groupedData, slipSort, trucks]);
 
   useEffect(() => {
     if (didInitExpand.current) return;
@@ -1188,9 +1221,9 @@ export function PendingInvoicing() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse">
                 <thead className="bg-slate-50 border-b border-black"><tr className="divide-x divide-black">
-                  <th className="px-3 py-2 text-left text-[10px] uppercase">Source</th><th className="px-3 py-2 text-left text-[10px] uppercase">Destination</th><th className="px-3 py-2 text-left text-[10px] uppercase">Job / Source</th><th className="px-3 py-2 text-left text-[10px] uppercase">Item</th><th className="px-3 py-2 text-right text-[10px] uppercase">Qty</th><th className="px-3 py-2 text-right text-[10px] uppercase">Rate</th><th className="px-3 py-2 text-left text-[10px] uppercase">MRR</th><th className="px-3 py-2 text-right text-[10px] uppercase">Action</th>
+                  <th className="px-3 py-2 text-left text-[10px] uppercase"><SortHeader label={"Source"} sortKey="source" sort={interFirmSort} onToggle={toggleInterFirmSort} align="left" /></th><th className="px-3 py-2 text-left text-[10px] uppercase"><SortHeader label={"Destination"} sortKey="destination" sort={interFirmSort} onToggle={toggleInterFirmSort} align="left" /></th><th className="px-3 py-2 text-left text-[10px] uppercase"><SortHeader label={"Job / Source"} sortKey="jobNo" sort={interFirmSort} onToggle={toggleInterFirmSort} align="left" /></th><th className="px-3 py-2 text-left text-[10px] uppercase"><SortHeader label={"Item"} sortKey="item" sort={interFirmSort} onToggle={toggleInterFirmSort} align="left" /></th><th className="px-3 py-2 text-right text-[10px] uppercase"><SortHeader label={"Qty"} sortKey="qty" sort={interFirmSort} onToggle={toggleInterFirmSort} align="right" /></th><th className="px-3 py-2 text-right text-[10px] uppercase"><SortHeader label={"Rate"} sortKey="rate" sort={interFirmSort} onToggle={toggleInterFirmSort} align="right" /></th><th className="px-3 py-2 text-left text-[10px] uppercase"><SortHeader label={"MRR"} sortKey="mrr" sort={interFirmSort} onToggle={toggleInterFirmSort} align="left" /></th><th className="px-3 py-2 text-right text-[10px] uppercase">Action</th>
                 </tr></thead>
-                <tbody className="divide-y divide-black">{interFirmPending.filter((row) => row.status === "Pending").map((row) => (
+                <tbody className="divide-y divide-black">{sortedInterFirmRows.map((row) => (
                   <tr key={row.id} className="divide-x divide-black"><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.sourceFirmId)?.firmName || row.sourceFirmId}</td><td className="px-3 py-2 text-xs font-bold">{firms.find((f) => f.id === row.destinationFirmId)?.firmName || row.destinationFirmId}</td><td className="px-3 py-2 text-xs">{row.jobNo || row.sourceTransactionId}</td><td className="px-3 py-2 text-xs">{getInterFirmLines(row).map((line) => <div key={`${line.itemSource}-${line.itemId}`}>{getInterFirmLineLabel(line)}</div>)}</td><td className="px-3 py-2 text-xs text-right">{getInterFirmLines(row).map((line) => <div key={`${line.itemSource}-${line.itemId}`}>{Number(line.qty || 0).toLocaleString()}</div>)}</td><td className="px-3 py-2 text-xs text-right">{getInterFirmLines(row).map((line) => <div key={`${line.itemSource}-${line.itemId}`}>{format2(Number(line.rate || 0))}</div>)}</td><td className="px-3 py-2 text-xs font-bold">{row.linkedMrrId ? (mrrNumberById.get(String(row.linkedMrrId)) || "Pending") : "Pending"}</td><td className="px-3 py-2 text-right"><button type="button" onClick={() => submitInterFirmInvoice(row)} disabled={interFirmSubmittingId === row.id} className="bg-emerald-600 text-white px-3 py-1.5 rounded text-[10px] font-black uppercase disabled:opacity-50">{interFirmSubmittingId === row.id ? "Saving..." : "Generate Invoice"}</button></td></tr>
                 ))}</tbody>
               </table>
@@ -1201,7 +1234,7 @@ export function PendingInvoicing() {
           <div className="bg-white border-2 border-dashed border-slate-300 rounded-lg p-12 text-center">
             <p className="text-slate-500 font-medium">No pending loading slips for invoicing.</p>
           </div>
-        ) : groupedData.map((group) => (
+        ) : sortedGroupedData.map((group) => (
           <div key={group.groupKey} className="bg-white border border-black rounded shadow-sm overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-100 border-b border-black">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -1246,11 +1279,11 @@ export function PendingInvoicing() {
                       <thead className="sticky top-0 z-30 bg-slate-50">
                     <tr className="divide-x divide-black border-b border-black">
                       {billingMode === group.groupKey && <th className="w-10 px-2 py-2"></th>}
-                      <th className="w-[150px] px-3 py-2 text-left text-[10px] font-bold uppercase">Loading Slip No</th>
-                      <th className="w-[110px] px-3 py-2 text-left text-[10px] font-bold uppercase">Date</th>
-                      <th className="w-[130px] px-3 py-2 text-left text-[10px] font-bold uppercase">Truck No</th>
-                      <th className="min-w-[360px] px-3 py-2 text-left text-[10px] font-bold uppercase">Item Name(s)</th>
-                      <th className="w-[120px] px-3 py-2 text-right text-[10px] font-bold uppercase">Total Qty</th>
+                      <th className="w-[150px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Loading Slip No"} sortKey="slipNo" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
+                      <th className="w-[110px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Date"} sortKey="date" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
+                      <th className="w-[130px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Truck No"} sortKey="truckNo" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
+                      <th className="min-w-[360px] px-3 py-2 text-left text-[10px] font-bold uppercase"><SortHeader label={"Item Name(s)"} sortKey="items" sort={slipSort} onToggle={toggleSlipSort} align="left" /></th>
+                      <th className="w-[120px] px-3 py-2 text-right text-[10px] font-bold uppercase"><SortHeader label={"Total Qty"} sortKey="totalQty" sort={slipSort} onToggle={toggleSlipSort} align="right" /></th>
                     </tr>
                   </thead>
                       <tbody className="divide-y divide-black">

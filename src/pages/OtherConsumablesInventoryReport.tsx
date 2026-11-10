@@ -3,6 +3,7 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { useData } from "../hooks/useData";
 import type { Firm, Material, MaterialGroup, MaterialIn, MaterialIssue, MaterialIssueLine, MaterialReturn, MaterialReturnLine } from "../types";
 
@@ -172,6 +173,8 @@ export function OtherConsumablesInventoryReport() {
     formatQty(row.valuation),
   ]);
 
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => (row as Record<string, unknown>)[key]);
+
   const totals = useMemo(
     () => rows.reduce(
       (acc, row) => ({
@@ -258,9 +261,9 @@ export function OtherConsumablesInventoryReport() {
           <table className="w-full min-w-max border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-indigo-700 text-white">
-                  {["ERP", "Item Name", "Group", "UOM", "Opening", "Receipt", "Issue", "Available Qty", "Rate", "Valuation"].map((heading) => (
+                  {([["ERP", "erp"], ["Item Name", "itemName"], ["Group", "groupName"], ["UOM", "uom"], ["Opening", "openingQty"], ["Receipt", "receiptQty"], ["Issue", "issuedQty"], ["Available Qty", "availableQty"], ["Rate", "rate"], ["Valuation", "valuation"]] as const).map(([heading, key]) => (
                   <th key={heading} className="bg-indigo-700 px-3 py-3 text-left text-xs font-black border-2 border-black whitespace-nowrap uppercase">
-                    {heading}
+                    <SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" />
                   </th>
                 ))}
               </tr>
@@ -284,7 +287,7 @@ export function OtherConsumablesInventoryReport() {
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                sortedRows.map((row) => (
                   <tr key={row.materialId} className={row.availableQty <= 0 ? "bg-red-50/60 hover:bg-red-50" : "hover:bg-slate-50"}>
                     <td className="px-3 py-3 text-black text-sm border-2 border-black">{row.erp}</td>
                     <td className="px-3 py-3 text-black text-sm border-2 border-black min-w-[240px]">{row.itemName || "-"}</td>
