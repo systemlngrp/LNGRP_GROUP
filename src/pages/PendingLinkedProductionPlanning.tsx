@@ -1,6 +1,5 @@
-import React, { useMemo, useState } from "react";
-import { Save } from "lucide-react";
-import { TableControls } from "../components/TableControls";
+import React, { useEffect, useMemo, useState } from "react";
+import { Save, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -10,7 +9,7 @@ import { getProductionMatchingFields } from "../lib/productionMatching";
 import { generateTransactionNo, getProductionJobPrefix, formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
-import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { SortHeader } from "../lib/tableSort";
 import type { Company, Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import type { OrderCatalogItem } from "../lib/orderItems";
@@ -290,7 +289,13 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   }, [companies, rows]);
 
   const companyOptions = useMemo(() => availableCompanies.map((company) => ({ value: company.id, label: company.name })), [availableCompanies]);
-  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
+  const firmOptions = useMemo(() => {
+    const ids = new Set(rows.map((row) => String(row.schedule.firmId || row.order?.firmId || "")).filter(Boolean));
+    return firms
+      .filter((firm) => ids.has(String(firm.id)))
+      .map((firm) => ({ value: String(firm.id), label: getFirmDisplayName(firm), searchText: `${getFirmDisplayName(firm)} ${String(firm.firmName || "")}`.trim() }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [firms, rows]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((row) => { const item = row.linkedItem || row.fgItem; const erp = String(item?.erp || row.order?.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
 
   const filteredRows = useMemo(() => {
@@ -370,6 +375,21 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   }, [rows, searchTerm, selectedCompanyId, selectedFirmId, selectedItemId, fromDate, toDate, firms, sortDirection, sortKey]);
 
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredRows, 25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, selectedCompanyId, selectedFirmId, selectedItemId, fromDate, toDate, setPage]);
+
+  const filtersActive = Boolean(searchTerm.trim() || selectedCompanyId || selectedFirmId || selectedItemId || fromDate || toDate);
+  const clearFilters = () => {
+    setSelectedCompanyId("");
+    setSelectedFirmId("");
+    setSelectedItemId("");
+    setSearchTerm("");
+    setFromDate("");
+    setToDate("");
+    setSelectedIds(new Set());
+  };
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -492,89 +512,57 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
     : "Create Plate jobs from direct Plate orders or scheduled FG orders using ERP matching and Sets/Pcs per box.";
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-black pb-4">
-          <div>
-            <h2 className="text-2xl font-black text-black tracking-tight uppercase">{title}</h2>
-            <p className="text-sm font-medium text-slate-600 uppercase">{description}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            {selectedIds.size > 0 && (
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1"
-              >
-                <Save size={18} className="mr-2" />
-                {isSubmitting ? "Saving..." : `Create Jobs (${selectedIds.size})`}
-              </button>
-            )}
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-black tracking-tight uppercase">{title}</h2>
+          <p className="text-sm font-medium text-slate-600 uppercase">{description}</p>
         </div>
-
-        <div className="bg-white border-2 border-black rounded-xl p-4 shadow-sm space-y-4">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex-1 min-w-[240px] space-y-1">
-              <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Search Orders</div>
-              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
-            </div>
-            <div className="min-w-[220px] flex-1 space-y-1">
-              <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Company</div>
-              <Select
-                value={selectedCompanyId}
-                onChange={(value) => {
-                  setSelectedCompanyId(value);
-                  setSelectedIds(new Set());
-                }}
-                options={companyOptions}
-                placeholder="Companies"
-              />
-            </div>
-            <div className="min-w-[180px] flex-1 space-y-1">
-              <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Firm</div>
-              <Select value={selectedFirmId} onChange={(value) => { setSelectedFirmId(value); setSelectedIds(new Set()); }} options={firmOptions} placeholder="Firms" />
-            </div>
-            <div className="min-w-[260px] flex-1 space-y-1">
-              <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Item</div>
-              <Select
-                value={selectedItemId}
-                onChange={(value) => {
-                  setSelectedItemId(value);
-                  setSelectedIds(new Set());
-                }}
-                options={itemOptions}
-                placeholder="Items"
-              />
-            </div>
-            <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
-            <div className="min-w-[150px] space-y-1"><div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">From Date</div><input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setSelectedIds(new Set()); }} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
-            <div className="min-w-[150px] space-y-1"><div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">To Date</div><input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setSelectedIds(new Set()); }} className="w-full rounded border border-black px-3 py-2 text-sm" /></div>
-            </div>
-            {(selectedCompanyId || selectedFirmId || selectedItemId || searchTerm || fromDate || toDate) && (
-              <button
-                onClick={() => {
-                  setSelectedCompanyId("");
-                  setSelectedFirmId("");
-                  setSelectedItemId("");
-                  setSearchTerm("");
-                  setFromDate("");
-                  setToDate("");
-                  setSelectedIds(new Set());
-                }}
-                className="text-[10px] font-black uppercase text-red-600 hover:text-red-800 underline pb-2"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+        <div className="flex items-center gap-3">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1"
+            >
+              <Save size={18} className="mr-2" />
+              {isSubmitting ? "Saving..." : `Create Jobs (${selectedIds.size})`}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
-        <div className="overflow-x-auto">
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={selectedFirmId} onChange={(value) => { setSelectedFirmId(value); setSelectedIds(new Set()); }} options={firmOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={selectedCompanyId} onChange={(value) => { setSelectedCompanyId(value); setSelectedIds(new Set()); }} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={selectedItemId} onChange={(value) => { setSelectedItemId(value); setSelectedIds(new Set()); }} options={itemOptions} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2">
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => { setFromDate(e.target.value); setSelectedIds(new Set()); }} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => { setToDate(e.target.value); setSelectedIds(new Set()); }} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          </div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {filtersActive ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded border border-black bg-white">
           <table className="min-w-full divide-y divide-black border-collapse border border-black">
-            <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
+            <thead className="bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-center border border-black w-10">
                   <input
@@ -589,9 +577,9 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Firm", "firm")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Order No", "orderNo")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("FG Item", "fgItemName")}</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{renderSortHeader("FG Item", "fgItemName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Main ERP", "mainErp")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader(`${source} Item`, "linkedItemName")}</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{renderSortHeader(`${source} Item`, "linkedItemName")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Qty", "scheduledQty", "right")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Sets/Pcs", "setsPerBox", "right")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Required Qty", "requiredQty", "right")}</th>
@@ -603,9 +591,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {paginatedItems.length === 0 ? (
-                <tr>
-                  <td colSpan={16} className="px-6 py-8 text-center text-black font-medium">No pending {source} planning rows found.</td>
-                </tr>
+                <tr><td colSpan={16} className="h-16" aria-label="No records" /></tr>
               ) : (
                 paginatedItems.map((row) => {
                   const scheduleId = row.schedule.id;
@@ -626,9 +612,9 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                       <td className="px-4 py-4 text-xs border border-black whitespace-nowrap">{getFirmDisplayNameById(String(row.schedule.firmId || row.order?.firmId || ""), firms)}</td>
                       <td className="px-4 py-4 text-xs border border-black whitespace-nowrap">{row.order?.orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs border border-black">{row.company?.name || "-"}</td>
-                      <td className="px-4 py-4 text-xs border border-black">{row.isDirectSourceOrder ? "Direct Order" : row.fgItem?.name || "-"}</td>
+                      <td className="px-4 py-4 text-xs border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{row.isDirectSourceOrder ? "Direct Order" : row.fgItem?.name || "-"}</td>
                       <td className="px-4 py-4 text-xs border border-black whitespace-nowrap">{String(row.order?.erpCode || row.fgItem?.erp || "-")}</td>
-                      <td className="px-4 py-4 text-xs border border-black">{row.linkedItem?.name || "-"}</td>
+                      <td className="px-4 py-4 text-xs border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{row.linkedItem?.name || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap">{row.scheduledQty.toLocaleString()}</td>
                       <td className="px-4 py-4 text-right text-xs border border-black whitespace-nowrap">{row.isDirectSourceOrder ? "Direct" : row.setsPerBox?.toLocaleString() || "-"}</td>
                       <td className="px-4 py-4 text-right text-xs border border-black whitespace-nowrap">{row.requiredQty.toLocaleString()}</td>
@@ -660,7 +646,6 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
               </tfoot>
             )}
           </table>
-        </div>
       </div>
 
       <ClientPagination

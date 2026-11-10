@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { ClientPagination } from "../components/ClientPagination";
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { resolvePhpPlateFgLink } from "../lib/phpPlateFgLink";
-import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { resolvePhpPlateFirmId } from "../lib/phpPlateFirm";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -82,6 +82,8 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
   const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [methodologyFilter, setMethodologyFilter] = useState("");
 
   const productionFilterRows = useMemo(() => {
     return productions.map((production) => {
@@ -164,7 +166,16 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
     });
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
   }, [productionFilterRows]);
-  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
+  const firmOptions = useMemo(() => {
+    const ids = new Set(productionFilterRows.map((row) => String(row.firmId || "")).filter(Boolean));
+    return firms
+      .filter((firm) => ids.has(String(firm.id)))
+      .map((firm) => ({ value: String(firm.id), label: getFirmDisplayName(firm), searchText: `${getFirmDisplayName(firm)} ${String(firm.firmName || "")}`.trim() }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [firms, productionFilterRows]);
+  const toOptions = (values: string[]) => Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+  const statusOptions = useMemo(() => toOptions(productionFilterRows.map((row) => String(row.production.status || "").trim())), [productionFilterRows]);
+  const methodologyOptions = useMemo(() => toOptions(productionFilterRows.map((row) => String(row.production.methodology || "").trim())), [productionFilterRows]);
 
   const filteredList = useMemo(() => {
     const words = searchWords(searchTerm);
@@ -173,6 +184,8 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         if (companyFilter && row.companyName !== companyFilter) return false;
         if (itemFilter && row.itemKey !== itemFilter) return false;
         if (firmFilter && row.firmId !== firmFilter) return false;
+        if (statusFilter && String(row.production.status || "").trim() !== statusFilter) return false;
+        if (methodologyFilter && String(row.production.methodology || "").trim() !== methodologyFilter) return false;
         const date = String(row.production.date || "").slice(0, 10);
         if (fromDate && date < fromDate) return false;
         if (toDate && date > toDate) return false;
@@ -182,11 +195,20 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
       })
       .map((row) => row.production)
       .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
-  }, [companyFilter, firmFilter, fromDate, itemFilter, productionFilterRows, searchTerm, searchTextByRow, toDate]);
+  }, [companyFilter, firmFilter, fromDate, itemFilter, methodologyFilter, productionFilterRows, searchTerm, searchTextByRow, statusFilter, toDate]);
   const cellsByProduction = useMemo(() => new Map(productionFilterRows.map((row) => [row.production, row.cells] as const)), [productionFilterRows]);
   // Sort keys are the column index in MASTER_COLUMNS (cells hold the shown values).
   const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (row: Production, key) => cellsByProduction.get(row)?.[Number(key)], [cellsByProduction]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedList, 25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, firmFilter, companyFilter, itemFilter, statusFilter, methodologyFilter, fromDate, toDate, setPage]);
+
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || statusFilter || methodologyFilter || fromDate || toDate);
+  const clearFilters = () => {
+    setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); setStatusFilter(""); setMethodologyFilter(""); setFromDate(""); setToDate("");
+  };
 
   const handleCancel = async (id: string) => {
     const remarks = window.prompt("Enter cancel reason");
@@ -212,22 +234,9 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
   const sourceLabel = getOrderItemSourceLabel(source);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
+    <div className="space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{sourceLabel} Production Master</h2>
-      </div>
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,1fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_150px_150px_auto_auto] md:items-center">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
-        <Select value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="Firms" />
-        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
-        <label className="text-xs font-bold uppercase">From Date<input type="date" aria-label="From Date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
-        <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
-        </div>
-        {(searchTerm || companyFilter || itemFilter || firmFilter || fromDate || toDate) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setFirmFilter(""); setFromDate(""); setToDate(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
         <details className="relative">
           <summary className="cursor-pointer select-none rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black">Columns ({MASTER_COLUMNS.length - hiddenColumns.length}/{MASTER_COLUMNS.length})</summary>
           <div className="absolute right-0 z-40 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">
@@ -244,10 +253,39 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
           </div>
         </details>
       </div>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Methodology</span><Select compact value={methodologyFilter} onChange={setMethodologyFilter} options={methodologyOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Status</span><Select compact value={statusFilter} onChange={setStatusFilter} options={statusOptions} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2">
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" aria-label="From Date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" aria-label="To Date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          </div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {filtersActive ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
       {hiddenColumnsCss ? <style>{hiddenColumnsCss}</style> : null}
-      <div className="bg-white border border-black rounded shadow-sm overflow-auto">
+      <div className="overflow-x-auto rounded border border-black bg-white">
         <table className="pp-master-table w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-slate-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_td]:align-middle">
-          <thead className="sticky top-0 z-30 bg-slate-100">
+          <thead className="bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="0" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Date" sortKey="1" sort={sort} onToggle={toggleSort} align="left" /></th>
@@ -256,7 +294,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Category" sortKey="4" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Master ERP" sortKey="5" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="ERP" sortKey="6" sort={sort} onToggle={toggleSort} align="left" /></th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Item" sortKey="7" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase !whitespace-normal break-words min-w-[200px] max-w-[300px]"><SortHeader label="Item" sortKey="7" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Sets/Pcs per Box" sortKey="8" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Length" sortKey="9" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Breadth" sortKey="10" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -292,9 +330,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
-              <tr>
-                <td colSpan={39} className="px-6 py-8 text-center text-black font-medium">No productions found.</td>
-              </tr>
+              <tr><td colSpan={39} className="h-16" aria-label="No records" /></tr>
             ) : (
               paginatedItems.map((row) => {
                 const item = items.find((entry) => entry.id === String(row.itemId || "").trim());
@@ -308,7 +344,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
                     <td className="px-3 py-2 text-sm">{formatCell(row.category)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.masterErp)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(row.erpCode || item?.erp)}</td>
-                    <td className="px-3 py-2 text-sm">{formatCell(item?.name || row.itemId)}</td>
+                    <td className="px-3 py-2 text-sm !whitespace-normal break-words min-w-[200px] max-w-[300px]">{formatCell(item?.name || row.itemId)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.setsPerBox)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.length)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(row.breadth)}</td>

@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { ClientPagination } from "../components/ClientPagination";
-import { TableControls } from "../components/TableControls";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
@@ -9,7 +9,7 @@ import { generateTransactionNo, getProductionJobPrefix } from "../lib/serial";
 import { getProductionMatchingFields } from "../lib/productionMatching";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { Select } from "../components/Select";
-import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -35,7 +35,6 @@ const METHODOLOGY_OPTIONS = [
 ];
 
 const SOURCE_OPTIONS = [
-  { value: "ALL", label: "All" },
   { value: "PHP", label: "PHP" },
   { value: "PLATE", label: "Plate" },
 ];
@@ -101,6 +100,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
   const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
   const [selectedJobKey, setSelectedJobKey] = useState("");
   const [scheduleDate, setScheduleDate] = useState("");
   const [shift, setShift] = useState("");
@@ -116,7 +116,20 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
   }, [phpJobs, plateJobs, source]);
 
   const activeSourceFilter = source === "ALL" ? sourceFilter : source;
-  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
+  const getJobItemName = (job: JobRow) =>
+    String((itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim())?.name || job.itemId || "");
+  const firmOptions = useMemo(() => {
+    const ids = new Set(jobs.map((job) => String(resolvePhpPlateFirmId(job, schedules, orders) || "")).filter(Boolean));
+    return firms
+      .filter((firm) => ids.has(String(firm.id)))
+      .map((firm) => ({ value: String(firm.id), label: getFirmDisplayName(firm), searchText: `${getFirmDisplayName(firm)} ${String(firm.firmName || "")}`.trim() }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [firms, jobs, orders, schedules]);
+  const itemOptions = useMemo(() => {
+    const names = new Set(jobs.map((job) => getJobItemName(job)).filter(Boolean));
+    return Array.from(names).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsBySource, jobs]);
 
   const filteredJobs = useMemo(() => {
     const words = searchWords(searchTerm);
@@ -124,6 +137,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
       .filter((job) => job.status !== "Cancelled")
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
       .filter((job) => !firmFilter || resolvePhpPlateFirmId(job, schedules, orders) === firmFilter)
+      .filter((job) => !itemFilter || getJobItemName(job) === itemFilter)
       .filter((job) => { const date = workflowDate(job); return (!fromDate || date >= fromDate) && (!toDate || date <= toDate); })
       .filter((job) => !String(job.scheduledDate || "").trim() || !String(job.shift || "").trim() || !String(job.methodology || "").trim() || !(Number(job.plannedQty || 0) > 0))
       .filter((job) => {
@@ -144,7 +158,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
         ], words);
       })
       .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
-  }, [activeSourceFilter, firmFilter, firms, fromDate, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
+  }, [activeSourceFilter, firmFilter, firms, fromDate, itemFilter, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
 
   const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(filteredJobs, (job: JobRow, key) => {
     if (key === "firm") return getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms);
@@ -154,6 +168,10 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
     return (job as any)[key];
   }, [firms, schedules, orders, itemsBySource]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedJobs, 25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, sourceFilter, firmFilter, itemFilter, fromDate, toDate, setPage]);
 
   const selectedJob = jobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey);
   const selectedItem = selectedJob
@@ -277,37 +295,57 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
     resetScheduler();
   };
 
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || itemFilter || fromDate || toDate || (source === "ALL" && sourceFilter !== "ALL"));
+  const clearFilters = () => {
+    setSearchTerm(""); setFirmFilter(""); setItemFilter(""); setFromDate(""); setToDate(""); setSourceFilter("ALL"); resetScheduler();
+  };
+
   const pageTitle = source === "ALL" ? "PHP / Plate Job Scheduling" : `${getOrderItemSourceLabel(source)} Job Scheduling`;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
+    <div className="space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{pageTitle}</h2>
-        {source === "ALL" ? (
-          <div className="w-full md:w-52">
-            <Select options={SOURCE_OPTIONS} value={sourceFilter} onChange={(value) => setSourceFilter(value as WorkflowSource)} placeholder="Select source..." />
-          </div>
-        ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
-        <div className="min-w-[180px]"><Select options={firmOptions} value={firmFilter} onChange={(value) => { setFirmFilter(value); resetScheduler(); }} placeholder="Firms" /></div>
-        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
-        <label className="text-xs font-bold uppercase">From Date<input type="date" aria-label="From Date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); resetScheduler(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
-        <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => { setToDate(e.target.value); resetScheduler(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
         </div>
-        {(searchTerm || firmFilter || fromDate || toDate || (source === "ALL" && sourceFilter !== "ALL")) && <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); setSourceFilter("ALL"); resetScheduler(); }} className="rounded border border-black px-3 py-2 text-sm font-bold">Clear Filters</button>}
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          {source === "ALL" ? (
+            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Source</span><Select compact options={SOURCE_OPTIONS} value={sourceFilter === "ALL" ? "" : sourceFilter} onChange={(value) => { setSourceFilter((value || "ALL") as WorkflowSource); resetScheduler(); }} placeholder="All" /></div>
+          ) : null}
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact options={firmOptions} value={firmFilter} onChange={(value) => { setFirmFilter(value); resetScheduler(); }} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact options={itemOptions} value={itemFilter} onChange={(value) => { setItemFilter(value); resetScheduler(); }} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2">
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" aria-label="From Date" value={fromDate} max={toDate || undefined} onChange={(e) => { setFromDate(e.target.value); resetScheduler(); }} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" aria-label="To Date" value={toDate} min={fromDate || undefined} onChange={(e) => { setToDate(e.target.value); resetScheduler(); }} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          </div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {filtersActive ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
-      <div className="bg-white border border-black rounded shadow-sm overflow-auto">
+      <div className="overflow-x-auto rounded border border-black bg-white">
         <table className="min-w-[1500px] w-full divide-y divide-black border-collapse">
-          <thead className="sticky top-0 z-30 bg-slate-100">
+          <thead className="bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase whitespace-normal break-words min-w-[200px] max-w-[300px]"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Master ERP" sortKey="masterErp" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="ERP" sortKey="erpCode" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Required Qty" sortKey="requiredQty" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -320,9 +358,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
-              <tr>
-                <td colSpan={12} className="px-6 py-8 text-center text-black font-medium">No jobs available for scheduling.</td>
-              </tr>
+              <tr><td colSpan={12} className="h-16" aria-label="No records" /></tr>
             ) : (
               paginatedItems.map((job) => {
                 const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
@@ -332,7 +368,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
                     <td className="px-3 py-2 text-sm font-bold">{job.jobSource}</td>
                     <td className="px-3 py-2 text-sm">{getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms)}</td>
                     <td className="px-3 py-2 text-sm font-semibold">{formatCell(job.transactionNo)}</td>
-                    <td className="px-3 py-2 text-sm">{formatCell(item?.name || job.itemId)}</td>
+                    <td className="px-3 py-2 text-sm whitespace-normal break-words min-w-[200px] max-w-[300px]">{formatCell(item?.name || job.itemId)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(job.masterErp)}</td>
                     <td className="px-3 py-2 text-sm">{formatCell(job.erpCode)}</td>
                     <td className="px-3 py-2 text-sm text-right">{formatNumber(job.requiredQty || job.qty)}</td>

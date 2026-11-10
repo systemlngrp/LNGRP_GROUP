@@ -1,15 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { ClientPagination } from "../components/ClientPagination";
-import { TableControls } from "../components/TableControls";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { resolvePhpPlateFgLink } from "../lib/phpPlateFgLink";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { Select } from "../components/Select";
-import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
+import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
@@ -21,7 +22,6 @@ type JobRow = Production & { jobSource: Extract<OrderItemSource, "PHP" | "PLATE"
 type Props = { source: WorkflowSource };
 
 const SOURCE_OPTIONS = [
-  { value: "ALL", label: "All" },
   { value: "PHP", label: "PHP" },
   { value: "PLATE", label: "Plate" },
 ];
@@ -55,6 +55,9 @@ export function StandaloneProductionExecution({ source }: Props) {
   const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [shiftFilter, setShiftFilter] = useState("");
+  const [methodologyFilter, setMethodologyFilter] = useState("");
   const [selectedJobKey, setSelectedJobKey] = useState("");
   const [completionTime, setCompletionTime] = useState("");
   const [outputQty, setOutputQty] = useState("");
@@ -95,7 +98,24 @@ export function StandaloneProductionExecution({ source }: Props) {
   }, [fgProductions, phpJobs, plateJobs, source]);
 
   const activeSourceFilter = source === "ALL" ? sourceFilter : source;
-  const firmOptions = useMemo(() => getFirmOptions(firms), [firms]);
+  const getJobItemName = (job: JobRow) =>
+    String((itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim())?.name || job.itemId || "");
+  const queueJobs = useMemo(() => jobs
+    .filter((job) => job.status !== "Cancelled" && job.status !== "Completed")
+    .filter((job) => String(job.scheduledDate || "").trim() && String(job.shift || "").trim() && String(job.sequence || "").trim())
+    .filter((job) => !String(job.jobCompletionTimeOutput || "").trim() || !(Number(job.productionOutputQty || 0) > 0)), [jobs]);
+  const firmOptions = useMemo(() => {
+    const ids = new Set(queueJobs.map((job) => String(resolvePhpPlateFirmId(job, schedules, orders) || "")).filter(Boolean));
+    return firms
+      .filter((firm) => ids.has(String(firm.id)))
+      .map((firm) => ({ value: String(firm.id), label: getFirmDisplayName(firm), searchText: `${getFirmDisplayName(firm)} ${String(firm.firmName || "")}`.trim() }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [firms, orders, queueJobs, schedules]);
+  const toOptions = (values: string[]) => Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const itemOptions = useMemo(() => toOptions(queueJobs.map((job) => getJobItemName(job))), [itemsBySource, queueJobs]);
+  const shiftOptions = useMemo(() => toOptions(queueJobs.map((job) => String(job.shift || "").trim())), [queueJobs]);
+  const methodologyOptions = useMemo(() => toOptions(queueJobs.map((job) => String(job.methodology || "").trim())), [queueJobs]);
 
   const unsequencedJobs = useMemo(() => jobs.filter((job) =>
     job.status !== "Cancelled" && job.status !== "Completed" &&
@@ -109,22 +129,31 @@ export function StandaloneProductionExecution({ source }: Props) {
   ), [activeSourceFilter, firmFilter, fromDate, jobs, orders, schedules, searchTerm, toDate]);
 
   const pendingJobs = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    return jobs
-      .filter((job) => job.status !== "Cancelled" && job.status !== "Completed")
+    const words = searchWords(searchTerm);
+    return queueJobs
       .filter((job) => activeSourceFilter === "ALL" || job.jobSource === activeSourceFilter)
       .filter((job) => !firmFilter || resolvePhpPlateFirmId(job, schedules, orders) === firmFilter)
+      .filter((job) => !itemFilter || getJobItemName(job) === itemFilter)
+      .filter((job) => !shiftFilter || String(job.shift || "").trim() === shiftFilter)
+      .filter((job) => !methodologyFilter || String(job.methodology || "").trim() === methodologyFilter)
       .filter((job) => { const date = workflowDate(job); return (!fromDate || date >= fromDate) && (!toDate || date <= toDate); })
-      .filter((job) => String(job.scheduledDate || "").trim() && String(job.shift || "").trim() && String(job.sequence || "").trim())
-      .filter((job) => !String(job.jobCompletionTimeOutput || "").trim() || !(Number(job.productionOutputQty || 0) > 0))
       .filter((job) => {
-        const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
-        if (!query) return true;
-        const haystack = [job.jobSource, job.transactionNo, job.erpCode, job.sequence, job.shift, job.scheduledDate, job.methodology, item?.name].join(" ").toLowerCase();
-        return haystack.includes(query);
+        if (!words.length) return true;
+        return matchesTableSearch([
+          job.jobSource,
+          getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms),
+          job.transactionNo,
+          job.sequence,
+          job.shift,
+          getJobItemName(job),
+          job.scheduledDate,
+          job.methodology,
+          resolvePhpPlateFgLink(job, fgProductions, job.jobSource).fgValue,
+        ], words);
       })
       .sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.sequence || 0) - Number(b.sequence || 0));
-  }, [activeSourceFilter, firmFilter, fromDate, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSourceFilter, fgProductions, firmFilter, firms, fromDate, itemFilter, itemsBySource, methodologyFilter, orders, queueJobs, schedules, searchTerm, shiftFilter, toDate]);
 
   const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(pendingJobs, (job: JobRow, key) => {
     if (key === "firm") return getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms);
@@ -133,6 +162,10 @@ export function StandaloneProductionExecution({ source }: Props) {
     return (job as any)[key];
   }, [firms, schedules, orders, itemsBySource, fgProductions]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedJobs, 25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, sourceFilter, firmFilter, itemFilter, shiftFilter, methodologyFilter, fromDate, toDate, setPage]);
   const selectedJob = pendingJobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey) || jobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey);
   const selectedItem = selectedJob
     ? (itemsBySource[selectedJob.jobSource] || []).find((entry) => entry.id === String(selectedJob.itemId || "").trim())
@@ -188,38 +221,60 @@ export function StandaloneProductionExecution({ source }: Props) {
     closeModal();
   };
 
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || itemFilter || shiftFilter || methodologyFilter || fromDate || toDate || (source === "ALL" && sourceFilter !== "ALL"));
+  const clearFilters = () => {
+    setSearchTerm(""); setSourceFilter("ALL"); setFirmFilter(""); setItemFilter(""); setShiftFilter(""); setMethodologyFilter(""); setFromDate(""); setToDate(""); closeModal();
+  };
+
   const pageTitle = source === "ALL" ? "Pending Production - PHP / Plate" : `Pending Production - ${getOrderItemSourceLabel(source)}`;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
+    <div className="space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">{pageTitle}</h2>
-        {source === "ALL" ? (
-          <div className="w-full md:w-52">
-            <Select options={SOURCE_OPTIONS} value={sourceFilter} onChange={(value) => setSourceFilter(value as WorkflowSource)} placeholder="Select source..." />
-          </div>
-        ) : null}
       </div>
-      <div className="flex flex-wrap gap-3">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search job no, sequence, item..." />
-        <div className="min-w-[180px]"><Select options={firmOptions} value={firmFilter} onChange={(value) => { setFirmFilter(value); closeModal(); }} placeholder="Firms" /></div>
-        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
-        <label className="text-xs font-bold uppercase">From Date<input type="date" aria-label="From Date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); closeModal(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
-        <label className="text-xs font-bold uppercase">To Date<input type="date" aria-label="To Date" value={toDate} onChange={(e) => { setToDate(e.target.value); closeModal(); }} className="mt-1 block rounded border border-black px-3 py-2 text-sm" /></label>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
         </div>
-        {(searchTerm || firmFilter || fromDate || toDate || (source === "ALL" && sourceFilter !== "ALL")) && <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); setSourceFilter("ALL"); closeModal(); }} className="rounded border border-black px-3 py-2 text-sm font-bold">Clear Filters</button>}
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          {source === "ALL" ? (
+            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Source</span><Select compact options={SOURCE_OPTIONS} value={sourceFilter === "ALL" ? "" : sourceFilter} onChange={(value) => { setSourceFilter((value || "ALL") as WorkflowSource); closeModal(); }} placeholder="All" /></div>
+          ) : null}
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact options={firmOptions} value={firmFilter} onChange={(value) => { setFirmFilter(value); closeModal(); }} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact options={itemOptions} value={itemFilter} onChange={(value) => { setItemFilter(value); closeModal(); }} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Shift</span><Select compact options={shiftOptions} value={shiftFilter} onChange={(value) => { setShiftFilter(value); closeModal(); }} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Methodology</span><Select compact options={methodologyOptions} value={methodologyFilter} onChange={(value) => { setMethodologyFilter(value); closeModal(); }} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2">
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" aria-label="From Date" value={fromDate} max={toDate || undefined} onChange={(e) => { setFromDate(e.target.value); closeModal(); }} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+            <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" aria-label="To Date" value={toDate} min={fromDate || undefined} onChange={(e) => { setToDate(e.target.value); closeModal(); }} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          </div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {filtersActive ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
       {unsequencedJobs.length > 0 && <div className="rounded border border-amber-600 bg-amber-50 px-4 py-3 text-sm text-black" role="status">{unsequencedJobs.length} scheduled {unsequencedJobs.length === 1 ? "job is" : "jobs are"} waiting for a sequence and excluded from Pending Production. <Link to="/production/php-plate/sequencing" className="font-bold text-amber-800 underline">Set sequence</Link></div>}
-      <div className="bg-white border border-black rounded shadow-sm overflow-auto">
+      <div className="overflow-x-auto rounded border border-black bg-white">
         <table className="min-w-[1560px] w-full divide-y divide-black border-collapse">
-          <thead className="sticky top-0 z-30 bg-slate-100">
+          <thead className="bg-slate-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Sequence" sortKey="sequence" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase whitespace-normal break-words min-w-[200px] max-w-[300px]"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Scheduled Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Methodology" sortKey="methodology" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="FG Value" sortKey="fgValue" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -228,7 +283,7 @@ export function StandaloneProductionExecution({ source }: Props) {
           </thead>
           <tbody>
             {paginatedItems.length === 0 ? (
-              <tr><td colSpan={10} className="px-6 py-8 text-center text-black font-medium">No jobs pending production.</td></tr>
+              <tr><td colSpan={10} className="h-16" aria-label="No records" /></tr>
             ) : paginatedItems.map((job) => {
               const item = (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim());
               const fgState = resolvePhpPlateFgLink(job, fgProductions, job.jobSource);
@@ -239,7 +294,7 @@ export function StandaloneProductionExecution({ source }: Props) {
                   <td className="px-3 py-2 text-sm font-semibold">{formatCell(job.transactionNo)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.sequence)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.shift)}</td>
-                  <td className="px-3 py-2 text-sm">{formatCell(item?.name || job.itemId)}</td>
+                  <td className="px-3 py-2 text-sm whitespace-normal break-words min-w-[200px] max-w-[300px]">{formatCell(item?.name || job.itemId)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.scheduledDate)}</td>
                   <td className="px-3 py-2 text-sm">{formatCell(job.methodology)}</td>
                   <td className={`px-3 py-2 text-sm text-right ${getFgCellClasses(fgState.isBlocked, fgState.requiresFgGate)}`}>{formatNumber(fgState.fgValue)}</td>
