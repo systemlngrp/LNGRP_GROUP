@@ -1,11 +1,11 @@
 # API Transition Test Results
 
-Generated: 2026-11-06T17:44:38.481Z
-Concrete API routes tested: 329
+Generated: 2026-11-10T08:42:43.298Z
+Concrete API routes tested: 337
 Transitions per route: 5
-Total HTTP transitions: 1645
+Total HTTP transitions: 1685
 Transport failures: 0
-Completed responses: 1645
+Completed responses: 1685
 
 A `SERVER_ERROR` row means the route responded with HTTP 5xx; it is retained for investigation and is not treated as a transport failure. The long-lived `/api/realtime/updates` SSE route is excluded from this finite-response matrix.
 
@@ -162,9 +162,12 @@ A `SERVER_ERROR` row means the route responded with HTTP 5xx; it is retained for
 | DELETE | `/api/npd-firm-wise/:id` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | GET | `/api/npd-firm-wise` | generic | missing-auth: 200; malformed-auth: 200; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/npd-firm-wise` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| GET | `/api/npd-stock-compare` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| POST | `/api/npd-stock-compare` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 202; valid-auth-firm-scope: 202; valid-auth-query-variation: 202 | PASS |
 | GET | `/api/npd-sync/rates` | explicit | missing-auth: 200; malformed-auth: 200; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/npd-sync` | explicit | missing-auth: 400; malformed-auth: 400; valid-auth: 400; valid-auth-firm-scope: 400; valid-auth-query-variation: 400 | PASS |
 | DELETE | `/api/npd/:id` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| GET | `/api/npd/catalog/item/:id` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 404; valid-auth-firm-scope: 404; valid-auth-query-variation: 404 | PASS |
 | GET | `/api/npd/catalog` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | GET | `/api/npd` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/npd` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
@@ -176,6 +179,7 @@ A `SERVER_ERROR` row means the route responded with HTTP 5xx; it is retained for
 | POST | `/api/orders/bulk-upload` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 400; valid-auth-firm-scope: 400; valid-auth-query-variation: 400 | PASS |
 | GET | `/api/orders` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/orders` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 400; valid-auth-firm-scope: 400; valid-auth-query-variation: 400 | PASS |
+| GET | `/api/pending-job-closure/count` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | DELETE | `/api/php-item-master/:id` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | GET | `/api/php-item-master` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/php-item-master` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
@@ -267,6 +271,9 @@ A `SERVER_ERROR` row means the route responded with HTTP 5xx; it is retained for
 | DELETE | `/api/quality-complaints/:id` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | GET | `/api/quality-complaints` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/quality-complaints` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| DELETE | `/api/rapc-ranges/:id` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| GET | `/api/rapc-ranges` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| POST | `/api/rapc-ranges` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | DELETE | `/api/realization-rate-chart/:id` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | GET | `/api/realization-rate-chart` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/realization-rate-chart` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
@@ -280,6 +287,8 @@ A `SERVER_ERROR` row means the route responded with HTTP 5xx; it is retained for
 | POST | `/api/reel-transfers/execute` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 400; valid-auth-firm-scope: 400; valid-auth-query-variation: 400 | PASS |
 | GET | `/api/reel-transfers` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/reel-transfers` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| GET | `/api/reports-timings` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
+| POST | `/api/reports/:name` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 404; valid-auth-firm-scope: 404; valid-auth-query-variation: 404 | PASS |
 | GET | `/api/reports/erp-wise-reel-stock` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 500; valid-auth-firm-scope: 500; valid-auth-query-variation: 500 | SERVER_ERROR |
 | GET | `/api/reports/printing-shift` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 400; valid-auth-firm-scope: 400; valid-auth-query-variation: 400 | PASS |
 | GET | `/api/reports/qc-score/whatsapp-config` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
@@ -301,7 +310,6 @@ A `SERVER_ERROR` row means the route responded with HTTP 5xx; it is retained for
 | POST | `/api/settings/item-transfer/preview` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 403; valid-auth-firm-scope: 403; valid-auth-query-variation: 403 | PASS |
 | GET | `/api/settings` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/settings` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
-| GET | `/api/sidebar/pending-counts` | explicit | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | DELETE | `/api/special-remark-records/:id` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | GET | `/api/special-remark-records` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |
 | POST | `/api/special-remark-records` | generic | missing-auth: 401; malformed-auth: 401; valid-auth: 200; valid-auth-firm-scope: 200; valid-auth-query-variation: 200 | PASS |

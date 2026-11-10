@@ -4422,28 +4422,41 @@ async function migrateFirmDispatchDocumentNos(db) {
         conn.release();
     }
 }
+const TRUCK_STATUS_LOGS_CREATE_SQL = [
+    "CREATE TABLE IF NOT EXISTS `truck_status_logs` (",
+    "`id` VARCHAR(36) PRIMARY KEY,",
+    "`truckId` VARCHAR(36) NOT NULL,",
+    "`truckNo` VARCHAR(100),",
+    "`liveStatus` VARCHAR(50) NOT NULL,",
+    "`statusUpdatedAt` VARCHAR(255) NOT NULL,",
+    "`statusUpdatedBy` VARCHAR(255),",
+    "`updateSource` VARCHAR(50),",
+    "`sourceRefType` VARCHAR(50),",
+    "`sourceRefId` VARCHAR(100),",
+    "`invoiceNo` VARCHAR(100),",
+    "`partyName` VARCHAR(255),",
+    "`driverName` VARCHAR(255),",
+    "`updatedBy` VARCHAR(255),",
+    "`updateTimestamp` VARCHAR(255),",
+    "INDEX `idx_truck_status_logs_truckId` (`truckId`),",
+    "INDEX `idx_truck_status_logs_truckNo` (`truckNo`),",
+    "INDEX `idx_truck_status_logs_statusUpdatedAt` (`statusUpdatedAt`)",
+    ")",
+].join(" ");
+// Created at startup and, if that step was skipped or failed, on first use.
+let truckStatusLogTableReady = null;
+function ensureTruckStatusLogTable(db) {
+    if (!truckStatusLogTableReady) {
+        truckStatusLogTableReady = db.query(TRUCK_STATUS_LOGS_CREATE_SQL).then(() => undefined).catch((error) => {
+            truckStatusLogTableReady = null;
+            throw error;
+        });
+    }
+    return truckStatusLogTableReady;
+}
 async function ensureTruckStatusLogSchema(db, database) {
-    await db.query([
-        "CREATE TABLE IF NOT EXISTS `truck_status_logs` (",
-        "`id` VARCHAR(36) PRIMARY KEY,",
-        "`truckId` VARCHAR(36) NOT NULL,",
-        "`truckNo` VARCHAR(100),",
-        "`liveStatus` VARCHAR(50) NOT NULL,",
-        "`statusUpdatedAt` VARCHAR(255) NOT NULL,",
-        "`statusUpdatedBy` VARCHAR(255),",
-        "`updateSource` VARCHAR(50),",
-        "`sourceRefType` VARCHAR(50),",
-        "`sourceRefId` VARCHAR(100),",
-        "`invoiceNo` VARCHAR(100),",
-        "`partyName` VARCHAR(255),",
-        "`driverName` VARCHAR(255),",
-        "`updatedBy` VARCHAR(255),",
-        "`updateTimestamp` VARCHAR(255),",
-        "INDEX `idx_truck_status_logs_truckId` (`truckId`),",
-        "INDEX `idx_truck_status_logs_truckNo` (`truckNo`),",
-        "INDEX `idx_truck_status_logs_statusUpdatedAt` (`statusUpdatedAt`)",
-        ")",
-    ].join(" "));
+    await db.query(TRUCK_STATUS_LOGS_CREATE_SQL);
+    truckStatusLogTableReady = Promise.resolve();
     const columns = [
         { column: "truckId", type: "VARCHAR(36) NOT NULL" },
         { column: "truckNo", type: "VARCHAR(100)" },
@@ -4954,6 +4967,7 @@ async function applyTruckStatusUpdate(db, input) {
     const driverName = String(input.driverName || "").trim() || null;
     await db.query("UPDATE `trucks` SET `liveStatus` = ?, `statusUpdatedAt` = ?, `statusUpdatedBy` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?", [liveStatus, now, actor, actor, now, truckId]);
     const logId = crypto.randomUUID();
+    await ensureTruckStatusLogTable(db);
     await db.query("INSERT INTO `truck_status_logs` (`id`, `truckId`, `truckNo`, `liveStatus`, `statusUpdatedAt`, `statusUpdatedBy`, `updateSource`, `sourceRefType`, `sourceRefId`, `invoiceNo`, `partyName`, `driverName`, `updatedBy`, `updateTimestamp`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [logId, truckId, truckNo, liveStatus, now, actor, input.updateSource, sourceRefType, sourceRefId, invoiceNo, partyName, driverName, actor, now]);
     return { id: logId, truckId, truckNo, liveStatus, statusUpdatedAt: now };
 }
@@ -10015,13 +10029,19 @@ async function initDb(retries = 5) {
                     console.warn("[DB] Could not backfill loading slip firms:", err.message);
                 }
                 await ensureMaterialInCurrencySchemaColumns(db, database);
-                await ensureTruckStatusLogSchema(db, database);
                 await ensureReelMovementOwnershipSchema(db, database);
                 await ensureAuditColumnsForAllTables(db, database);
                 await backfillMaterialInSubTypes(db);
             }
             catch (err) {
                 console.warn("[DB] Could not ensure companies schema columns:", err.message);
+            }
+            try {
+                // Own step: a failure above must not leave the truck log table missing.
+                await ensureTruckStatusLogSchema(db, database);
+            }
+            catch (err) {
+                console.warn("[DB] Could not ensure truck_status_logs table:", err.message);
             }
             try {
                 await migrateLegacyDispatchPlanNos(db);
@@ -13764,6 +13784,7 @@ app.get("/api/truck-status-logs", async (req, res) => {
     if (!db)
         return res.status(500).json({ error: "DB connection not available" });
     try {
+        await ensureTruckStatusLogTable(db);
         const where = [];
         const params = [];
         if (truckNo) {

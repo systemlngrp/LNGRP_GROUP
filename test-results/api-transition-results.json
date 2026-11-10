@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-06T17:44:38.481Z",
-  "routeCount": 329,
+  "generatedAt": "2026-11-10T08:42:43.298Z",
+  "routeCount": 337,
   "transitionCount": 5,
   "results": [
     {
@@ -6053,6 +6053,86 @@
     },
     {
       "method": "GET",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "valid-auth",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "valid-auth-firm-scope",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "valid-auth-query-variation",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "valid-auth",
+      "status": 202,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "valid-auth-firm-scope",
+      "status": 202,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/npd-stock-compare",
+      "source": "explicit",
+      "transition": "valid-auth-query-variation",
+      "status": 202,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
       "path": "/api/npd-sync/rates",
       "source": "explicit",
       "transition": "missing-auth",
@@ -6169,6 +6249,46 @@
       "source": "generic",
       "transition": "valid-auth-query-variation",
       "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd/catalog/item/:id",
+      "source": "explicit",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd/catalog/item/:id",
+      "source": "explicit",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd/catalog/item/:id",
+      "source": "explicit",
+      "transition": "valid-auth",
+      "status": 404,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd/catalog/item/:id",
+      "source": "explicit",
+      "transition": "valid-auth-firm-scope",
+      "status": 404,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/npd/catalog/item/:id",
+      "source": "explicit",
+      "transition": "valid-auth-query-variation",
+      "status": 404,
       "result": "PASS"
     },
     {
@@ -6609,6 +6729,46 @@
       "source": "generic",
       "transition": "valid-auth-query-variation",
       "status": 400,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pending-job-closure/count",
+      "source": "explicit",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pending-job-closure/count",
+      "source": "explicit",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pending-job-closure/count",
+      "source": "explicit",
+      "transition": "valid-auth",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pending-job-closure/count",
+      "source": "explicit",
+      "transition": "valid-auth-firm-scope",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pending-job-closure/count",
+      "source": "explicit",
+      "transition": "valid-auth-query-variation",
+      "status": 200,
       "result": "PASS"
     },
     {
@@ -10253,6 +10413,126 @@
     },
     {
       "method": "DELETE",
+      "path": "/api/rapc-ranges/:id",
+      "source": "generic",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/rapc-ranges/:id",
+      "source": "generic",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/rapc-ranges/:id",
+      "source": "generic",
+      "transition": "valid-auth",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/rapc-ranges/:id",
+      "source": "generic",
+      "transition": "valid-auth-firm-scope",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/rapc-ranges/:id",
+      "source": "generic",
+      "transition": "valid-auth-query-variation",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "valid-auth",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "valid-auth-firm-scope",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "valid-auth-query-variation",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "valid-auth",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "valid-auth-firm-scope",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/rapc-ranges",
+      "source": "generic",
+      "transition": "valid-auth-query-variation",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "DELETE",
       "path": "/api/realization-rate-chart/:id",
       "source": "generic",
       "transition": "missing-auth",
@@ -10769,6 +11049,86 @@
       "source": "generic",
       "transition": "valid-auth-query-variation",
       "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports-timings",
+      "source": "explicit",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports-timings",
+      "source": "explicit",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports-timings",
+      "source": "explicit",
+      "transition": "valid-auth",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports-timings",
+      "source": "explicit",
+      "transition": "valid-auth-firm-scope",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "GET",
+      "path": "/api/reports-timings",
+      "source": "explicit",
+      "transition": "valid-auth-query-variation",
+      "status": 200,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/:name",
+      "source": "explicit",
+      "transition": "missing-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/:name",
+      "source": "explicit",
+      "transition": "malformed-auth",
+      "status": 401,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/:name",
+      "source": "explicit",
+      "transition": "valid-auth",
+      "status": 404,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/:name",
+      "source": "explicit",
+      "transition": "valid-auth-firm-scope",
+      "status": 404,
+      "result": "PASS"
+    },
+    {
+      "method": "POST",
+      "path": "/api/reports/:name",
+      "source": "explicit",
+      "transition": "valid-auth-query-variation",
+      "status": 404,
       "result": "PASS"
     },
     {
@@ -11619,46 +11979,6 @@
       "method": "POST",
       "path": "/api/settings",
       "source": "generic",
-      "transition": "valid-auth-query-variation",
-      "status": 200,
-      "result": "PASS"
-    },
-    {
-      "method": "GET",
-      "path": "/api/sidebar/pending-counts",
-      "source": "explicit",
-      "transition": "missing-auth",
-      "status": 401,
-      "result": "PASS"
-    },
-    {
-      "method": "GET",
-      "path": "/api/sidebar/pending-counts",
-      "source": "explicit",
-      "transition": "malformed-auth",
-      "status": 401,
-      "result": "PASS"
-    },
-    {
-      "method": "GET",
-      "path": "/api/sidebar/pending-counts",
-      "source": "explicit",
-      "transition": "valid-auth",
-      "status": 200,
-      "result": "PASS"
-    },
-    {
-      "method": "GET",
-      "path": "/api/sidebar/pending-counts",
-      "source": "explicit",
-      "transition": "valid-auth-firm-scope",
-      "status": 200,
-      "result": "PASS"
-    },
-    {
-      "method": "GET",
-      "path": "/api/sidebar/pending-counts",
-      "source": "explicit",
       "transition": "valid-auth-query-variation",
       "status": 200,
       "result": "PASS"
