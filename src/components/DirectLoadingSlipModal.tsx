@@ -18,11 +18,13 @@ type Props = {
   plateItems: OrderCatalogItem[];
   resolveOrderItem: (order?: Partial<Order> | null) => OrderCatalogItem | undefined;
   onClose: () => void;
+  /** "page": shown inline as a form page (no overlay, Clear instead of Cancel). */
+  variant?: "modal" | "page";
   onSave: (payload: {
     slip: LoadingSlip;
     phpDetails: NonNullable<LoadingSlip["phpDetails"]>;
     plateDetails: NonNullable<LoadingSlip["plateDetails"]>;
-  }) => Promise<void> | void;
+  }) => Promise<void | boolean> | void | boolean;
 };
 
 type Draft = {
@@ -65,7 +67,9 @@ export function DirectLoadingSlipModal({
   resolveOrderItem,
   onClose,
   onSave,
+  variant = "modal",
 }: Props) {
+  const isPage = variant === "page";
   const [draft, setDraft] = useState<Draft>(makeDraft());
   const [isSaving, setIsSaving] = useState(false);
   const company = useMemo(() => companies.find((row) => row.id === draft.companyId), [companies, draft.companyId]);
@@ -210,8 +214,9 @@ export function DirectLoadingSlipModal({
     }
     setIsSaving(true);
     try {
-      await onSave({ slip: previewSlip, phpDetails, plateDetails });
-      setDraft(makeDraft());
+      // onSave returns false when nothing was saved (e.g. a stock alert): keep the entries.
+      const saved = await onSave({ slip: previewSlip, phpDetails, plateDetails });
+      if (saved !== false) setDraft(makeDraft());
     } finally {
       setIsSaving(false);
     }
@@ -220,9 +225,9 @@ export function DirectLoadingSlipModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded border-2 border-black bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
-        <div className="flex items-center justify-between border-b-2 border-black bg-slate-900 px-6 py-4 text-white">
+    <div className={isPage ? "w-full" : "fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"}>
+      <div className={isPage ? "flex w-full flex-col overflow-hidden rounded border-2 border-black bg-white" : "flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded border-2 border-black bg-white shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]"}>
+        <div className={isPage ? "hidden" : "flex items-center justify-between border-b-2 border-black bg-slate-900 px-6 py-4 text-white"}>
           <div>
             <h3 className="text-lg font-black uppercase">Direct Loading Slip</h3>
           </div>
@@ -231,9 +236,9 @@ export function DirectLoadingSlipModal({
           </button>
         </div>
 
-        <div className="space-y-6 overflow-y-auto p-6">
-          <div className="space-y-4 rounded border border-black p-4">
-            <table className="w-full border-collapse border border-black">
+        <div className={isPage ? "space-y-6 p-3 sm:p-6" : "space-y-6 overflow-y-auto p-6"}>
+          <div className="space-y-4 rounded border border-black p-2 sm:p-4">
+            <table data-form-grid="true" className="w-full border-collapse border border-black">
               <tbody>
                 <tr className="border-b border-black">
                   <td colSpan={2} className="p-3 align-top">
@@ -432,10 +437,10 @@ export function DirectLoadingSlipModal({
           </div>
         </div>
 
-        <div className="flex items-center justify-end border-t-2 border-black bg-slate-50 px-6 py-4">
-          <div className="flex gap-3">
-            <button type="button" onClick={onClose} className="rounded border border-black bg-white px-4 py-2 text-xs font-black uppercase">
-              Cancel
+        <div className="flex items-center justify-end border-t-2 border-black bg-slate-50 px-3 py-3 sm:px-6 sm:py-4">
+          <div className={isPage ? "flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:gap-3" : "flex gap-3"}>
+            <button type="button" onClick={isPage ? () => setDraft(makeDraft()) : onClose} disabled={isSaving} className="rounded border border-black bg-white px-4 py-2 text-xs font-black uppercase disabled:opacity-50">
+              {isPage ? "Clear" : "Cancel"}
             </button>
             <button
               type="button"

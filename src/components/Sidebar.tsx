@@ -5,6 +5,7 @@ import {
   ClipboardList,
   Layers,
   FileText,
+  FilePlus,
   UserCheck,
   UserCog,
   CheckCircle,
@@ -267,6 +268,7 @@ const dispatchItems: NavItem[] = [
 ];
 
 const loadingItems: NavItem[] = [
+  { name: "Direct Loading Slip", href: "/loading/direct", icon: FilePlus },
   { name: "Pending Loading", href: "/loading/pending", icon: Truck, countKey: "/loading/pending" },
   { name: "Loading Master", href: "/loading/master", icon: FileText },
 ];

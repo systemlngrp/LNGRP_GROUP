@@ -146,6 +146,7 @@ const PendingPhpPlanning = lazy(() => import("./pages/PendingLinkedProductionPla
 const PendingPlatePlanning = lazy(() => import("./pages/PendingLinkedProductionPlanning").then((module) => ({ default: module.PendingPlatePlanning })));
 const DispatchPlansMaster = lazy(() => import("./pages/DispatchPlansMaster").then((module) => ({ default: module.DispatchPlansMaster })));
 const PendingLoading = lazy(() => import("./pages/PendingLoading").then((module) => ({ default: module.PendingLoading })));
+const DirectLoadingSlip = lazy(() => import("./pages/DirectLoadingSlip").then((module) => ({ default: module.DirectLoadingSlip })));
 const LoadingMaster = lazy(() => import("./pages/LoadingMaster").then((module) => ({ default: module.LoadingMaster })));
 const PhpLoadingMaster = lazy(() => import("./pages/PhpLoadingMaster").then((module) => ({ default: module.PhpLoadingMaster })));
 const PlateLoadingMaster = lazy(() => import("./pages/PlateLoadingMaster").then((module) => ({ default: module.PlateLoadingMaster })));
@@ -448,6 +449,7 @@ export default function App() {
           {/* Loading */}
           <Route path="loading/pending" element={<PendingLoading />} />
           <Route path="loading/master" element={<LoadingMaster />} />
+          <Route path="loading/direct" element={<DirectLoadingSlip />} />
           <Route path="loading/php/master" element={<PhpLoadingMaster />} />
           <Route path="loading/php/pending-tally" element={<PendingPhpLoadingTallyPosting />} />
           <Route path="loading/plate/master" element={<PlateLoadingMaster />} />

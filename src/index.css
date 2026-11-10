@@ -1663,3 +1663,10 @@ table td button:focus-visible {
   justify-content: center;
   text-align: center;
 }
+
+/* Form laid out as a two-column table (Direct Loading Slip): one column on phones. */
+@media (max-width: 639px) {
+  table[data-form-grid] > tbody > tr { display: flex; flex-direction: column; }
+  table[data-form-grid] > tbody > tr > td { width: 100% !important; border-left-width: 0 !important; }
+  table[data-form-grid] > tbody > tr > td + td { border-top: 1px solid #000; }
+}
