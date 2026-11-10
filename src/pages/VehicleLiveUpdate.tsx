@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CheckCircle, ChevronDown, RotateCcw, Truck as TruckIcon } from "lucide-react";
+import { CheckCircle, ChevronDown, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import type { Company, Truck, TruckLiveStatus } from "../types";
 import { TRUCK_LIVE_STATUSES } from "../lib/truckStatus";
@@ -161,20 +161,16 @@ export function VehicleLiveUpdate() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3 border-b border-black pb-4 text-indigo-700">
-        <TruckIcon size={26} />
-        <h2 className="text-xl font-black uppercase tracking-tight text-black">Vehicle Live Update</h2>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Vehicle Live Update</h2>
       </div>
 
-      <div className="mx-auto w-full max-w-md overflow-visible rounded border-2 border-black bg-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-        <div className="rounded-t-sm border-b-2 border-black bg-indigo-700 px-5 py-5 text-white">
-          <div className="flex items-center gap-3">
-            <TruckIcon size={30} />
-            <h3 className="text-2xl font-black uppercase leading-tight">Office Vehicle Update</h3>
-          </div>
+      <div className="mx-auto w-full max-w-md overflow-visible rounded border-2 border-black bg-white sm:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+        <div className="rounded-t-sm border-b-2 border-black bg-indigo-700 px-4 py-4 text-white">
+          <h3 className="text-center text-xl font-black uppercase leading-tight sm:text-2xl">Office Vehicle Update</h3>
         </div>
 
-        <div className="space-y-5 p-5">
+        <div className="space-y-4 p-4 sm:space-y-5 sm:p-5">
           {error ? <div className="rounded border border-red-700 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{error}</div> : null}
           {message ? <div className="rounded border border-emerald-700 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700">{message}</div> : null}
           {internalTrucks.length === 0 ? <div className="rounded border border-amber-700 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800">No internal vehicles found in Truck Master.</div> : null}
