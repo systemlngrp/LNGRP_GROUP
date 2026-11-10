@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpDown, CheckCircle, ChevronDown, ChevronUp, RotateCcw } from "lucide-react";
+import { CheckCircle, RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction } from "../lib/productionType";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, type SortState } from "../lib/tableSort";
 import {
   Company,
   Material,
@@ -41,7 +42,7 @@ import { isCorrugationLinerComplete, isMachineStepFull, usesPartFullProgress } f
 
 type QueueMode = "consumption" | "ffg";
 
-type SortKey = "jobNo" | "date" | "orderNo" | "erpCode" | "company" | "item" | "qty" | "actualPaperUsed" | "prodFfg" | "status";
+type SortKey = "jobNo" | "date" | "orderNo" | "erpCode" | "company" | "item" | "prereqQty" | "qty" | "totalIssuedQty" | "actualPaperUsed" | "prodFfg" | "status";
 type SortDir = "asc" | "desc";
 
 const parseJobNo = (value: string) => {
@@ -250,6 +251,12 @@ export function ProductionStageQueue({
           case "item":
             cmp = getString(a.item?.name).localeCompare(getString(b.item?.name));
             break;
+          case "prereqQty":
+            cmp = (getNumber(a.prereqQty) ?? 0) - (getNumber(b.prereqQty) ?? 0);
+            break;
+          case "totalIssuedQty":
+            cmp = (getNumber(a.totalIssuedQty) ?? 0) - (getNumber(b.totalIssuedQty) ?? 0);
+            break;
           case "qty": {
             const qA = getNumber(a.production.qty) ?? 0;
             const qB = getNumber(b.production.qty) ?? 0;
@@ -317,10 +324,9 @@ export function ProductionStageQueue({
     paginatedItems: paginatedRows,
   } = useClientPagination(rows, 25);
 
-  const SortIcon = ({ column }: { column: SortKey }) => {
-    if (column !== sortKey) return <ArrowUpDown size={12} className="opacity-60" />;
-    return sortDir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
-  };
+  // Existing two-state sort (default Job No ascending), shown with the shared header arrows.
+  const headerSort: SortState = { key: sortKey, direction: sortDir };
+  const onHeaderSort = (key: string) => toggleSort(key as SortKey);
 
   const handleSaveFfg = async (productionId: string) => {
     const rawValue = ffgValues[productionId];
@@ -451,71 +457,31 @@ export function ProductionStageQueue({
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">SL No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("jobNo")} className="inline-flex items-center gap-1">
-                    Job No. <SortIcon column="jobNo" />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("date")} className="inline-flex items-center gap-1">
-                    Date <SortIcon column="date" />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("orderNo")} className="inline-flex items-center gap-1">
-                    Order No. <SortIcon column="orderNo" />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("erpCode")} className="inline-flex items-center gap-1">
-                    ERP Code <SortIcon column="erpCode" />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("company")} className="inline-flex items-center gap-1">
-                    Company <SortIcon column="company" />
-                  </button>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("item")} className="inline-flex items-center gap-1">
-                    Item <SortIcon column="item" />
-                  </button>
-                </th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job No." sortKey="jobNo" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Date" sortKey="date" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Order No." sortKey="orderNo" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="ERP Code" sortKey="erpCode" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Company" sortKey="company" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Item" sortKey="item" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
                 {issuePrereqMachineName ? (
                   <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                    {normalizeMachineName(issuePrereqMachineName)}
+                    <SortHeader label={normalizeMachineName(issuePrereqMachineName)} sortKey="prereqQty" sort={headerSort} onToggle={onHeaderSort} align="right" />
                   </th>
                 ) : null}
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                  <button type="button" onClick={() => toggleSort("qty")} className="inline-flex items-center gap-1">
-                    Qty (Kgs) <SortIcon column="qty" />
-                  </button>
-                </th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Qty (Kgs)" sortKey="qty" sort={headerSort} onToggle={onHeaderSort} align="right" /></th>
                 {showTotalIssuedQty ? (
                   <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                    Total Issued Qty
+                    <SortHeader label="Total Issued Qty" sortKey="totalIssuedQty" sort={headerSort} onToggle={onHeaderSort} align="right" />
                   </th>
                 ) : null}
                 {!hideActualPaperUsedColumn ? (
-                  <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                    <button type="button" onClick={() => toggleSort("actualPaperUsed")} className="inline-flex items-center gap-1">
-                      Actual Paper Used <SortIcon column="actualPaperUsed" />
-                    </button>
-                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Actual Paper Used" sortKey="actualPaperUsed" sort={headerSort} onToggle={onHeaderSort} align="right" /></th>
                 ) : null}
                 {!hideProdFfgColumn ? (
-                  <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                    <button type="button" onClick={() => toggleSort("prodFfg")} className="inline-flex items-center gap-1">
-                      Prod (FG) <SortIcon column="prodFfg" />
-                    </button>
-                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Prod (FG)" sortKey="prodFfg" sort={headerSort} onToggle={onHeaderSort} align="right" /></th>
                 ) : null}
                 {!hideStatusColumn ? (
-                  <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">
-                    <button type="button" onClick={() => toggleSort("status")} className="inline-flex items-center gap-1">
-                      Status <SortIcon column="status" />
-                    </button>
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Status" sortKey="status" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
                 ) : null}
                 {enableCloseAction ? (
                   <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Close</th>

@@ -13,6 +13,7 @@ import { useNpdItemNames } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 import { useConfirm } from "../components/ConfirmDialog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function PendingTallyEntry() {
   const confirm = useConfirm();
@@ -76,7 +77,32 @@ export function PendingTallyEntry() {
 
   // 25 rows per page: most receipts wait here, and drawing all of them froze
   // the screen. Select-all and bulk posting still cover every pending record.
-  const pendingPagination = useClientPagination(pendingList, 25);
+  const { sorted: sortedPendingList, sort, toggle: toggleSort } = useTableSort(pendingList, (m: MaterialIn, key) => {
+    switch (key) {
+      case "trn": return m.transactionNo;
+      case "firm": return getFirmName(m);
+      case "mrrType": return m.mrrType || "";
+      case "date": return m.date;
+      case "party": return getSupplierName(m.supplierId);
+      case "items": return m.lines?.length || 0;
+      case "gross": return Number(m.totalAmount || 0);
+      case "tds": return Number(m.tdsAmount || 0);
+      case "net": return Number(m.netSupplierPayable ?? (Number(m.totalAmount || 0) - Number(m.tdsAmount || 0))) || 0;
+      case "itemValue": return (m.lines || []).reduce((sum, line) => sum + (Number(line.actualValue ?? line.value ?? (Number(line.qty || 0) * Number(line.rate || 0)) ?? 0) || 0), 0); // same as getItemValue (declared below)
+      case "preGst": return Number(m.totalInvoiceValue || 0);
+      case "actual": return Number(m.totalActualValue || 0);
+      case "cgst": return Number(m.totalCgst || 0);
+      case "sgst": return Number(m.totalSgst || 0);
+      case "igst": return Number(m.totalIgst || 0);
+      case "postGst": return Number(m.totalInvoiceValueAfterGst || 0);
+      case "insurance": return Number(m.insurance || 0);
+      case "other": return Number(m.otherCharges || 0);
+      case "roundOff": return Number(m.roundOff || 0);
+      case "remark": return m.tallySyncRemark || "";
+      default: return "";
+    }
+  }, [materialNameById, npdNameById, supplierNameById, firmIndexById]);
+  const pendingPagination = useClientPagination(sortedPendingList, 25);
   const { setPage: setPendingPage } = pendingPagination;
   useEffect(() => { setPendingPage(1); }, [firmFilter, itemFilter, supplierFilter, mrrFilter, setPendingPage]);
 
@@ -222,26 +248,26 @@ export function PendingTallyEntry() {
                   <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-indigo-600" aria-label="Select all" />
                 </th>
               ) : null}
-              <th className={`${th} text-left`}>Trn No</th>
-              <th className={`${th} text-left`}>Firm</th>
-              <th className={`${th} text-left`}>MRR Type</th>
-              <th className={`${th} text-left`}>Date</th>
-              <th className={`${th} text-left`}>Party</th>
-              <th className={`${th} text-left`}>Items</th>
-              <th className={`${th} text-right`}>Gross Amount</th>
-              <th className={`${th} text-right`}>TDS</th>
-              <th className={`${th} text-right`}>Net Payable</th>
-              <th className={`${th} text-right`}>Item Value</th>
-              <th className={`${th} text-right`}>Pre-GST Invoice Value</th>
-              <th className={`${th} text-right`}>Actual Value</th>
-              <th className={`${th} text-right`}>CGST</th>
-              <th className={`${th} text-right`}>SGST</th>
-              <th className={`${th} text-right`}>IGST</th>
-              <th className={`${th} text-right`}>Post-GST Invoice Value</th>
-              <th className={`${th} text-right`}>Insurance</th>
-              <th className={`${th} text-right`}>Other Charges</th>
-              <th className={`${th} text-right`}>Round Off</th>
-              <th className={`${th} text-left`}>Sync Remark</th>
+              <th className={`${th} text-left`}><SortHeader label="Trn No" sortKey="trn" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className={`${th} text-left`}><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className={`${th} text-left`}><SortHeader label="MRR Type" sortKey="mrrType" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className={`${th} text-left`}><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className={`${th} text-left`}><SortHeader label="Party" sortKey="party" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className={`${th} text-left`}><SortHeader label="Items" sortKey="items" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Gross Amount" sortKey="gross" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="TDS" sortKey="tds" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Net Payable" sortKey="net" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Item Value" sortKey="itemValue" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Pre-GST Invoice Value" sortKey="preGst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Actual Value" sortKey="actual" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="CGST" sortKey="cgst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="SGST" sortKey="sgst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="IGST" sortKey="igst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Post-GST Invoice Value" sortKey="postGst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Insurance" sortKey="insurance" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Other Charges" sortKey="other" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-right`}><SortHeader label="Round Off" sortKey="roundOff" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className={`${th} text-left`}><SortHeader label="Sync Remark" sortKey="remark" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className={`${th} text-center`}>Details</th>
               {canPostTally ? <th className={`${th} text-center`}>Actions</th> : null}
             </tr>

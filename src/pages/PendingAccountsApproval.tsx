@@ -10,6 +10,7 @@ import { useNpdItemNames } from "../hooks/useNpdItems";
 import { ApprovalFilters } from "../components/ApprovalFilters";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { applySupplyTypeTaxRates, normalizeMaterialInRecord, recalculateMaterialLine } from "../lib/materialInTaxes";
 
 export function PendingAccountsApproval() {
@@ -205,6 +206,19 @@ export function PendingAccountsApproval() {
     const itemCells = (m.lines || []).map((l) => [materials.find((item) => item.id === l.itemId)?.name || npdItems.find((item) => item.id === l.itemId)?.name || "Unknown", `[${l.qty ?? ""} ${l.uom ?? ""} @ ${l.rate ?? ""}]`, l.qty, l.uom, l.rate, l.gstRate !== undefined ? [`GST ${l.gstRate}%`, `CGST ${Number(l.cgst || 0).toFixed(2)}`, `SGST ${Number(l.sgst || 0).toFixed(2)}`, `IGST ${Number(l.igst || 0).toFixed(2)}`, l.gstRate, Number(l.cgst || 0).toFixed(2), Number(l.sgst || 0).toFixed(2), Number(l.igst || 0).toFixed(2)] : []]);
     return matchesTableSearch([firmName, m.transactionNo, m.date, supplierName, itemCells, m.totalAmount], words) && (!firmFilter || firmName === firmFilter) && (!supplierFilter || supplierName === supplierFilter) && (!itemFilter || itemNames.toLowerCase().includes(itemFilter.trim().toLowerCase())) && (!fromDate || mrrDate >= fromDate) && (!toDate || mrrDate <= toDate);
   });
+  // Newest first when no column is sorted.
+  const orderedRows = [...pendingRows].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(orderedRows, (m: MaterialIn, key) => {
+    switch (key) {
+      case "firm": return getFirmName(m);
+      case "trx": return m.transactionNo;
+      case "date": return m.date;
+      case "supplier": return getSupplierName(m.supplierId);
+      case "items": return (m.lines || []).map((l) => materials.find((i) => i.id === l.itemId)?.name || npdItems.find((i) => i.id === l.itemId)?.name || "Unknown").join(", ");
+      case "amount": return Number(m.totalAmount || 0);
+      default: return "";
+    }
+  });
   const firmOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Accounts").map(getFirmName))).sort();
   const supplierOptions = Array.from(new Set(materialIn.filter((m) => m.status === "Pending Accounts").map((m) => getSupplierName(m.supplierId)))).sort();
 
@@ -244,12 +258,12 @@ export function PendingAccountsApproval() {
                   onChange={() => toggleSelectAll(pendingRows.map(m => m.id))}
                 />
               </th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Firm Name</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Transaction No</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Date</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Supplier</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Items</th>
-              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Amount</th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Firm Name" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Transaction No" sortKey="trx" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Supplier" sortKey="supplier" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Items" sortKey="items" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="Amount" sortKey="amount" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
             </tr>
           </thead>
@@ -258,8 +272,7 @@ export function PendingAccountsApproval() {
               <tr>
                 <td colSpan={8} className="h-16" aria-label="No records" />
               </tr>
-            ) : pendingRows
-              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            ) : sortedRows
               .map((m) => {
                 const isEditing = editingId === m.id;
                 return (

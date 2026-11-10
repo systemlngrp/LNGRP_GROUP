@@ -15,6 +15,7 @@ import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -272,8 +273,47 @@ export function MaterialInMaster() {
       toDate,
     ]);
 
+  const { sorted: sortedMaterialIn, sort, toggle: toggleSort } = useTableSort(
+    filteredMaterialIn,
+    (entry, key) => {
+      switch (key) {
+        case "transactionNo": return entry.transactionNo;
+        case "mrrType": return entry.mrrType;
+        case "date": return entry.date;
+        case "firm": return getFirmName(entry);
+        case "gateEntryNo": return entry.gateEntryNo;
+        case "supplier": return getSupplierName(entry.supplierId);
+        case "invoiceNo": return entry.invoiceNo;
+        case "invDate": return entry.invDate;
+        case "status": return entry.status;
+        case "ph": return getApprovalText(entry.phTimestamp, entry.phEmailId);
+        case "accounts": return getApprovalText(entry.accTimestamp, entry.accEmailId);
+        case "md": return getApprovalText(entry.mdTimestamp, entry.mdEmailId);
+        case "tally": return entry.tallyTimestamp;
+        case "preGst": return Number(entry.totalInvoiceValue || 0);
+        case "gst": return getGstTotal(entry);
+        case "postGst": return Number(entry.totalInvoiceValueAfterGst || 0);
+        case "itemValue": return Number(entry.totalActualValue || entry.totalAmount || 0);
+        case "insurance": return Number(entry.insurance || 0);
+        case "otherCharges": return Number(entry.otherCharges || 0);
+        case "expenseGst": return getExpenseGstTotal(entry);
+        case "roundOff": return Number(entry.roundOff || 0);
+        case "grossTotal": return Number(entry.totalAmount || 0);
+        case "tds": return Number(entry.tdsAmount || 0);
+        case "netPayable": return Number(entry.netSupplierPayable ?? (Number(entry.totalAmount || 0) - Number(entry.tdsAmount || 0)));
+        case "debitNote": return entry.debitNote;
+        case "debitNoteDate": return entry.debitNoteDate;
+        case "debitNoteAmount": return Number(entry.debitNoteAmount || 0);
+        case "updatedBy": return entry.updatedBy;
+        case "updatedAt": return entry.updateTimestamp;
+        default: return "";
+      }
+    },
+    [firms, supplierNameById, companyNameById]
+  );
+
   // 25 rows per page (the table showed 25 per page already, but built every row).
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedMaterialIn } = useClientPagination(filteredMaterialIn, 25);
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedMaterialIn } = useClientPagination(sortedMaterialIn, 25);
   useEffect(() => { setPage(1); }, [firmFilter, fromDate, mrrFilter, searchTerm, statusFilter, toDate, setPage]);
 
   const metrics = useMemo(
@@ -473,35 +513,35 @@ export function MaterialInMaster() {
           <table className="hidden md:table min-w-[3200px] divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MRR No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MRR Type</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Gate Entry No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Supplier</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Invoice No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Invoice Date</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">PH</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Accounts</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MD</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Tally</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Pre-GST Invoice Value</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">GST</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Post-GST Invoice Value</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Item Value</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Insurance</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Other Charges</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Expense GST</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Round Off</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Gross Total</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">TDS</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Net Payable</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Debit Note No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Debit Note Date</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Debit Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Updated By</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Updated At</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="MRR No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="MRR Type" sortKey="mrrType" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Gate Entry No" sortKey="gateEntryNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Supplier" sortKey="supplier" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Invoice No" sortKey="invoiceNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Invoice Date" sortKey="invDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="PH" sortKey="ph" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Accounts" sortKey="accounts" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="MD" sortKey="md" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Tally" sortKey="tally" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Pre-GST Invoice Value" sortKey="preGst" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="GST" sortKey="gst" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Post-GST Invoice Value" sortKey="postGst" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Item Value" sortKey="itemValue" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Insurance" sortKey="insurance" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Other Charges" sortKey="otherCharges" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Expense GST" sortKey="expenseGst" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Round Off" sortKey="roundOff" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Gross Total" sortKey="grossTotal" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="TDS" sortKey="tds" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Net Payable" sortKey="netPayable" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Debit Note No" sortKey="debitNote" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Debit Note Date" sortKey="debitNoteDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Debit Amount" sortKey="debitNoteAmount" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Updated By" sortKey="updatedBy" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Updated At" sortKey="updatedAt" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Actions</th>
               </tr>
             </thead>

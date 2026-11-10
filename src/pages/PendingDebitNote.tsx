@@ -10,6 +10,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { useNpdItemNames } from "../hooks/useNpdItems";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function PendingDebitNote() {
   const confirm = useConfirm();
@@ -62,6 +63,18 @@ export function PendingDebitNote() {
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
   }, [firmFilter, itemFilter, materialIn, mrrFilter, searchTerm, supplierFilter, suppliers]);
 
+  const { sorted: sortedDebitNotes, sort, toggle: toggleSort } = useTableSort(debitNoteList, (m: MaterialIn, key) => {
+    switch (key) {
+      case "mrr": return m.transactionNo;
+      case "firm": return getFirmName(m);
+      case "party": return getSupplierName(m.supplierId);
+      case "date": return m.debitNoteDate || "";
+      case "amount": return Number(m.debitNoteAmount || 0);
+      case "remark": return m.debitRemarkTally || "";
+      default: return "";
+    }
+  }, [firms, suppliers]);
+
   const handleMarkPosted = async (mrrId: string) => {
     if (!await confirm("Are you sure you want to mark this Debit Note as Posted/Cleared?")) return;
     
@@ -98,12 +111,12 @@ export function PendingDebitNote() {
           <table className="min-w-[950px] divide-y divide-black border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">MRR Details</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Party</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Sync Remark</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="MRR Details" sortKey="mrr" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Party" sortKey="party" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase"><SortHeader label="Amount" sortKey="amount" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Sync Remark" sortKey="remark" sort={sort} onToggle={toggleSort} align="left" /></th>
                 {canPostDebitNote ? (
                   <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase">Action</th>
                 ) : null}
@@ -117,7 +130,7 @@ export function PendingDebitNote() {
                   </td>
                 </tr>
               ) : (
-                debitNoteList.map((m) => (
+                sortedDebitNotes.map((m) => (
                   <tr key={m.id} className="divide-x divide-black hover:bg-slate-50 transition-colors text-sm text-black">
                     <td className="px-4 py-4">
                       <div className="font-bold">{m.transactionNo}</div>

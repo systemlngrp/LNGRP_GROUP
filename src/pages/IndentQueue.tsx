@@ -16,6 +16,7 @@ import { Firm, Indent, IndentLine, Material, Setting } from "../types";
 import { canIndentBeUnapproved, revertIndentToPending, withIndentTotals } from "../lib/indentTotals";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type QueueMode = "Pending" | "Approved" | "Completed" | "Rejected";
 
@@ -190,6 +191,23 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
       visibleIndents.map((indent) => ({ indent, line: null as IndentLine | null })),
     [visibleIndents]
   );
+  const { sorted: sortedDisplayRows, sort, toggle: toggleSort, setSort } = useTableSort(
+    displayRows,
+    ({ indent }, key) => {
+      if (key === "indentNo") return indent.indentNo || indent.id;
+      if (key === "firm") return resolveFirmName(indent);
+      if (key === "requestedBy") return indent.requestedBy;
+      if (key === "requisitionDate") return indent.requisitionDate;
+      if (key === "requiredDate") return indent.requiredDate;
+      if (key === "erp") return indentLines.filter((row) => row.indentId === indent.id).length;
+      if (key === "qty") return Number(withIndentTotals(indent, indentLines.filter((row) => row.indentId === indent.id)).totalIndentQty || 0);
+      if (key === "indentType") return indent.indentType;
+      if (key === "remarks") return indent.rejectedRemarks;
+      return "";
+    },
+    [indentLines, firms]
+  );
+  useEffect(() => { setSort(null); }, [mode, setSort]);
   const {
     page,
     setPage,
@@ -197,7 +215,7 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
     setPageSize,
     totalItems,
     paginatedItems: paginatedDisplayRows,
-  } = useClientPagination(displayRows, 25);
+  } = useClientPagination(sortedDisplayRows, 25);
 
   // Any search or filter change starts again from page 1.
   useEffect(() => {
@@ -528,23 +546,23 @@ function IndentQueue({ mode }: { mode: QueueMode }) {
         <table className="min-w-full border-collapse">
           <thead className="sticky top-0 z-30">
             <tr className="bg-slate-100">
-              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black whitespace-nowrap">Indent No</th>
-              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Firm</th>
-              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Requested By</th>
-              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Requisition Date</th>
-              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Required Date</th>
+              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Indent No" sortKey="indentNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Requested By" sortKey="requestedBy" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Requisition Date" sortKey="requisitionDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Required Date" sortKey="requiredDate" sort={sort} onToggle={toggleSort} align="left" /></th>
               {mode === "Pending" ? (
                 <>
-                  <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">ERP</th>
-                  <th className="border border-black px-4 py-3 text-right text-sm font-bold uppercase text-black">Qty</th>
+                  <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="border border-black px-4 py-3 text-right text-sm font-bold uppercase text-black"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
                 </>
               ) : (
                 <>
-                  <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Indent Type</th>
+                  <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Indent Type" sortKey="indentType" sort={sort} onToggle={toggleSort} align="left" /></th>
                 </>
               )}
               {mode === "Rejected" ? (
-                <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">Remarks</th>
+                <th className="border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Remarks" sortKey="remarks" sort={sort} onToggle={toggleSort} align="left" /></th>
               ) : null}
               {(mode === "Pending" || mode === "Approved" || mode === "Completed" || mode === "Rejected") ? (
                 <th className="border border-black px-4 py-3 text-right text-sm font-bold uppercase text-black">Actions</th>

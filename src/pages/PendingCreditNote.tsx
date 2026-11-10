@@ -10,6 +10,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { useNpdItemNames } from "../hooks/useNpdItems";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function getCreditNoteTaxableAmount(mrr: MaterialIn) {
   return (mrr.lines || []).reduce((sum, line) => {
@@ -74,6 +75,18 @@ export function PendingCreditNote() {
       .sort((a, b) => new Date(b.updateTimestamp || b.timestamp).getTime() - new Date(a.updateTimestamp || a.timestamp).getTime());
   }, [companies, firmFilter, itemFilter, materialIn, mrrFilter, searchTerm, supplierFilter, suppliers]);
 
+  const { sorted: sortedCreditNotes, sort, toggle: toggleSort } = useTableSort(creditNoteList, (mrr: MaterialIn, key) => {
+    switch (key) {
+      case "mrr": return mrr.transactionNo;
+      case "firm": return getFirmName(mrr);
+      case "party": return getPartyName(mrr.supplierId);
+      case "date": return mrr.date || "";
+      case "amount": return getCreditNoteTaxableAmount(mrr);
+      case "remark": return mrr.creditRemarkTally || "";
+      default: return "";
+    }
+  }, [firms, suppliers, companies]);
+
   const handleMarkPosted = async (mrrId: string) => {
     if (!await confirm("Are you sure you want to mark this Credit Note as Posted/Cleared?")) return;
 
@@ -114,12 +127,12 @@ export function PendingCreditNote() {
           <table className="min-w-[950px] divide-y divide-black border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">MRR Details</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Party</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Date</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase">Taxable Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase">Sync Remark</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="MRR Details" sortKey="mrr" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Party" sortKey="party" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase"><SortHeader label="Taxable Amount" sortKey="amount" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase"><SortHeader label="Sync Remark" sortKey="remark" sort={sort} onToggle={toggleSort} align="left" /></th>
                 {canPostCreditNote ? (
                   <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase">Action</th>
                 ) : null}
@@ -133,7 +146,7 @@ export function PendingCreditNote() {
                   </td>
                 </tr>
               ) : (
-                creditNoteList.map((mrr) => (
+                sortedCreditNotes.map((mrr) => (
                   <tr key={mrr.id} className="divide-x divide-black hover:bg-slate-50 transition-colors text-sm text-black">
                     <td className="px-4 py-4">
                       <div className="font-bold">{mrr.transactionNo}</div>

@@ -17,6 +17,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { buildReelStockRows } from "../lib/reelStock";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -347,7 +348,27 @@ export function MaterialInItemMaster() {
 
 
   // "Others" tab: 25 rows per page (it drew every receipt line at once).
-  const othersPagination = useClientPagination(processedData.others, 25);
+  const { sorted: sortedOthers, sort: othersSort, toggle: toggleOthersSort } = useTableSort(
+    processedData.others as any[],
+    (line: any, key) => {
+      switch (key) {
+        case "geNo": return line.parentGateEntryNo;
+        case "mrrNo": return line.parentTransactionNo;
+        case "date": return line.parentDate;
+        case "vehicleNo": return line.parentVehicleNo;
+        case "party": return getSupplierName(line.parentSupplierId);
+        case "itemName": return itemNameOf(line.itemId) || "Unknown";
+        case "invoiceNo": return line.parentInvoiceNo;
+        case "qty": return Number(line.qty || 0);
+        case "uom": return line.uom;
+        case "rate": return line.rate;
+        case "value": return line.value;
+        default: return "";
+      }
+    },
+    [supplierById, companyById, materialById, npdById]
+  );
+  const othersPagination = useClientPagination(sortedOthers, 25);
   const { setPage: setOthersPage } = othersPagination;
   useEffect(() => { setOthersPage(1); }, [searchTerm, fromDate, toDate, mrrFilter, activeTab, setOthersPage]);
 
@@ -453,17 +474,17 @@ export function MaterialInItemMaster() {
       <table data-table-pagination={activeTab === "reel-summary" ? "true" : undefined} className="min-w-full divide-y divide-black border-collapse border border-black">
         <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
           <tr className="divide-x divide-black">
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GE No</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MRR No</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Date</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Vehicle No</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[240px]">Party</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[320px]">Item Name</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Invoice No</th>
-            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Qty</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">UOM</th>
-            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Rate</th>
-            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Value</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="GE No" sortKey="geNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "GE No"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="MRR No" sortKey="mrrNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "MRR No"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Date" sortKey="date" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Date"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Vehicle No" sortKey="vehicleNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Vehicle No"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[240px]">{activeTab === "others" ? <SortHeader label="Party" sortKey="party" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Party"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[320px]">{activeTab === "others" ? <SortHeader label="Item Name" sortKey="itemName" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Item Name"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">{activeTab === "others" ? <SortHeader label="Invoice No" sortKey="invoiceNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Invoice No"}</th>
+            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Qty" sortKey="qty" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : "Qty"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="UOM" sortKey="uom" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "UOM"}</th>
+            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Rate" sortKey="rate" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : "Rate"}</th>
+            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Value" sortKey="value" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : "Value"}</th>
             <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Actions</th>
           </tr>
         </thead>

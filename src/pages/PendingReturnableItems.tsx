@@ -6,6 +6,7 @@ import { deriveGatePassState, getGatePassLinesWithReturns, getGatePassPrimaryPar
 import { GateEntry, GatePass, MaterialIn } from "../types";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function PendingReturnableItems() {
   const navigate = useNavigate();
@@ -59,6 +60,29 @@ export function PendingReturnableItems() {
     return labels.length ? labels.join(", ") : "-";
   };
   const selectedLines = selectedGatePass ? getGatePassLinesWithReturns(selectedGatePass, materialIn) : [];
+  const { sorted: sortedGatePasses, sort, toggle: toggleSort } = useTableSort(pendingGatePasses, (gatePass, key) => {
+    switch (key) {
+      case "gatePassNo": return gatePass.gatePassNo;
+      case "date": return gatePass.date;
+      case "recipient": return getGatePassPrimaryPartyName(gatePass);
+      case "itemName": return getGatePassItemNames(gatePass);
+      case "truck": return gatePass.truckNo;
+      case "totalQty": return Number(gatePass.totalQty || 0);
+      case "pendingQty": return getPendingQtyForGatePass(gatePass, materialIn);
+      case "state": return deriveGatePassState(gatePass, materialIn);
+      default: return "";
+    }
+  }, [materialIn]);
+  const { sorted: sortedLines, sort: lineSort, toggle: toggleLineSort } = useTableSort(selectedLines, (line, key) => {
+    switch (key) {
+      case "item": return line.itemDescription || line.itemName;
+      case "qty": return line.qty;
+      case "returnedQty": return line.returnedQty;
+      case "pendingQty": return line.pendingQty;
+      case "uom": return line.uom;
+      default: return "";
+    }
+  });
 
   const handleClearOff = async (gatePass: GatePass) => {
     const reason = window.prompt("Enter clear-off reason for this returnable gate pass:");
@@ -89,8 +113,8 @@ export function PendingReturnableItems() {
         <table className="min-w-full border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr className="divide-x divide-black">
-              {["Gate Pass No", "Date", "Recipient", "Item Name", "Truck", "Total Qty", "Pending Qty", "Derived State", "Actions"].map((heading) => (
-                <th key={heading} className="border-b border-black px-4 py-3 text-left text-xs font-black uppercase text-black">{heading}</th>
+              {[["Gate Pass No", "gatePassNo"], ["Date", "date"], ["Recipient", "recipient"], ["Item Name", "itemName"], ["Truck", "truck"], ["Total Qty", "totalQty"], ["Pending Qty", "pendingQty"], ["Derived State", "state"], ["Actions", ""]].map(([heading, key]) => (
+                <th key={heading} className="border-b border-black px-4 py-3 text-left text-xs font-black uppercase text-black">{key ? <SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /> : heading}</th>
               ))}
             </tr>
           </thead>
@@ -100,7 +124,7 @@ export function PendingReturnableItems() {
                 <td colSpan={9} className="h-16" aria-label="No records" />
               </tr>
             ) : (
-              pendingGatePasses.map((gatePass) => (
+              sortedGatePasses.map((gatePass) => (
                 <tr key={gatePass.id} className="divide-x divide-black hover:bg-slate-50">
                   <td className="px-4 py-3 text-sm font-bold text-black">{gatePass.gatePassNo}</td>
                   <td className="px-4 py-3 text-sm text-black">{formatDate(gatePass.date)}</td>
@@ -148,13 +172,13 @@ export function PendingReturnableItems() {
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-30 bg-slate-100">
                   <tr className="divide-x divide-black">
-                    {["Item", "Sent Qty", "Returned Qty", "Pending Qty", "UOM"].map((heading) => (
-                      <th key={heading} className="border-b border-black px-3 py-2 text-left text-[10px] font-black uppercase">{heading}</th>
+                    {[["Item", "item"], ["Sent Qty", "qty"], ["Returned Qty", "returnedQty"], ["Pending Qty", "pendingQty"], ["UOM", "uom"]].map(([heading, key]) => (
+                      <th key={heading} className="border-b border-black px-3 py-2 text-left text-[10px] font-black uppercase"><SortHeader label={heading} sortKey={key} sort={lineSort} onToggle={toggleLineSort} align="left" /></th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black bg-white">
-                  {selectedLines.map((line) => (
+                  {sortedLines.map((line) => (
                     <tr key={line.id} className="divide-x divide-black">
                       <td className="px-3 py-2 text-xs font-bold">{line.itemDescription || line.itemName}</td>
                       <td className="px-3 py-2 text-right text-xs">{line.qty.toLocaleString()}</td>

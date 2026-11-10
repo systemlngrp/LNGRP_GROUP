@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import Select from "react-select";
@@ -24,6 +24,7 @@ import { renderOrganizationHeader } from "../lib/pdfOrganizationHeader";
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import type {
   Indent,
   IndentLine,
@@ -466,6 +467,56 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
 
   const displayQtySummary = isFlatItemMode ? filteredNotReceivedQtySummary : filteredQtySummary;
 
+  const { sorted: sortedOrders, sort: orderSort, toggle: toggleOrderSort, setSort: setOrderSort } = useTableSort(
+    filteredOrders,
+    (order, key) => {
+      if (key === "poNo") return order.poNo || "DRAFT";
+      if (key === "poDate") return order.poDate;
+      if (key === "firm") return getFirmShortName(order);
+      if (key === "requiredDate") return order.requiredDate;
+      if (key === "supplier") return supplierNameMap.get(order.supplierId) || "Unknown";
+      if (key === "rejectedRemarks") return order.rejectedRemarks;
+      const modeLines = getModeLines(orderLines.filter((line) => line.purchaseOrderId === order.id));
+      if (key === "totalAmount") {
+        const totals = summarizePurchaseOrderLines(getLinesForTotals(order, modeLines));
+        return Number((totals.grandTotal + Number(order.roundOff || 0)).toFixed(2));
+      }
+      const qtySummary = getOrderQtySummary(modeLines);
+      if (key === "totalQty" || key === "totalReceived" || key === "totalCancel" || key === "totalYetToReceive") return qtySummary[key];
+      return "";
+    },
+    [getFirmShortName, supplierNameMap, getModeLines, orderLines, getLinesForTotals, getOrderQtySummary],
+  );
+
+  const { sorted: sortedFlatItemRows, sort: itemSort, toggle: toggleItemSort, setSort: setItemSort } = useTableSort(
+    filteredFlatItemRows,
+    (row, key) => {
+      if (key === "poNo") return row.order.poNo || "DRAFT";
+      if (key === "poDate") return row.order.poDate;
+      if (key === "firm") return getFirmShortName(row.order);
+      if (key === "indentNo") return row.indentReference.indentNo;
+      if (key === "indentDate") return row.indentReference.indentDate;
+      if (key === "supplier") return row.supplierName;
+      if (key === "erp") return row.erpCode;
+      if (key === "itemLabel") return row.itemLabel;
+      if (key === "itemType") return row.itemType;
+      if (key === "orderedQty") return Number(row.line.qty || 0);
+      if (key === "received") return row.receivedQty;
+      if (key === "cancelled") return row.cancelledQty;
+      if (key === "cancelBy") return row.line.cancelledBy;
+      if (key === "cancelReason") return row.line.cancelReason;
+      if (key === "notReceived") return row.pendingQty;
+      if (key === "targetDelivery") return row.line.targetDeliveryDate;
+      return "";
+    },
+    [getFirmShortName],
+  );
+
+  useEffect(() => {
+    setOrderSort(null);
+    setItemSort(null);
+  }, [mode, setOrderSort, setItemSort]);
+
   const {
     page: orderPage,
     setPage: setOrderPage,
@@ -473,7 +524,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     setPageSize: setOrderPageSize,
     totalItems: totalOrderItems,
     paginatedItems: paginatedOrders,
-  } = useClientPagination(filteredOrders, 25);
+  } = useClientPagination(sortedOrders, 25);
 
   const {
     page: itemPage,
@@ -482,7 +533,7 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
     setPageSize: setItemPageSize,
     totalItems: totalNotReceivedItems,
     paginatedItems: paginatedFlatItemRows,
-  } = useClientPagination(filteredFlatItemRows, 25);
+  } = useClientPagination(sortedFlatItemRows, 25);
 
   const page = isFlatItemMode ? itemPage : orderPage;
   const setPage = isFlatItemMode ? setItemPage : setOrderPage;
@@ -1182,26 +1233,26 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           <table className="min-w-max w-full border-collapse">
             <thead className="bg-slate-100">
               <tr className="divide-x divide-black border-b border-black">
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">PO Number</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">PO Date</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Firm</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Indent Number</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Indent Date</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Supplier</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">ERP</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Item Label</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Item Type</th>
-                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Ordered Qty</th>
-                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Received</th>
-                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Cancelled</th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="PO Number" sortKey="poNo" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="PO Date" sortKey="poDate" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Firm" sortKey="firm" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Indent Number" sortKey="indentNo" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Indent Date" sortKey="indentDate" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Supplier" sortKey="supplier" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="ERP" sortKey="erp" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Item Label" sortKey="itemLabel" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Item Type" sortKey="itemType" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Ordered Qty" sortKey="orderedQty" sort={itemSort} onToggle={toggleItemSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Received" sortKey="received" sort={itemSort} onToggle={toggleItemSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Cancelled" sortKey="cancelled" sort={itemSort} onToggle={toggleItemSort} align="right" /></th>
                 {mode === "item-cancelled" ? (
                   <>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Cancel By</th>
-                    <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Cancel Reason</th>
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Cancel By" sortKey="cancelBy" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
+                    <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Cancel Reason" sortKey="cancelReason" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
                   </>
                 ) : null}
-                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Not Received</th>
-                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black">Target Delivery</th>
+                <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Not Received" sortKey="notReceived" sort={itemSort} onToggle={toggleItemSort} align="right" /></th>
+                <th className="px-3 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Target Delivery" sortKey="targetDelivery" sort={itemSort} onToggle={toggleItemSort} align="left" /></th>
                 {mode === "item-not-received" ? (
                   <>
                     <th className="px-3 py-3 text-right text-xs font-bold uppercase text-black">Cancel Qty</th>
@@ -1286,18 +1337,18 @@ export function PurchaseOrderList({ mode = "all" }: PurchaseOrderListProps) {
           <thead className="bg-slate-100">
             <tr className="divide-x divide-black border-b border-black">
               <th className="w-10 px-4 py-3"></th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">PO Number</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">PO Date</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">Firm</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">Required Date</th>
-              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">Supplier</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black">Total Qty</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black">Total Received</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black">Total Cancel</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black">Total Yet To Receive</th>
-              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black">Total Amount</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="PO Number" sortKey="poNo" sort={orderSort} onToggle={toggleOrderSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="PO Date" sortKey="poDate" sort={orderSort} onToggle={toggleOrderSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Firm" sortKey="firm" sort={orderSort} onToggle={toggleOrderSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Required Date" sortKey="requiredDate" sort={orderSort} onToggle={toggleOrderSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Supplier" sortKey="supplier" sort={orderSort} onToggle={toggleOrderSort} align="left" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Total Qty" sortKey="totalQty" sort={orderSort} onToggle={toggleOrderSort} align="right" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Total Received" sortKey="totalReceived" sort={orderSort} onToggle={toggleOrderSort} align="right" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Total Cancel" sortKey="totalCancel" sort={orderSort} onToggle={toggleOrderSort} align="right" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Total Yet To Receive" sortKey="totalYetToReceive" sort={orderSort} onToggle={toggleOrderSort} align="right" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black"><SortHeader label="Total Amount" sortKey="totalAmount" sort={orderSort} onToggle={toggleOrderSort} align="right" /></th>
               {mode === "rejected" ? (
-                <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black">Rejection Reason</th>
+                <th className="px-4 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Rejection Reason" sortKey="rejectedRemarks" sort={orderSort} onToggle={toggleOrderSort} align="left" /></th>
               ) : null}
               <th className="px-4 py-3 text-right text-xs font-bold uppercase text-black">Actions</th>
             </tr>

@@ -4,9 +4,10 @@ import { Company, Firm, Material, MaterialIn, MaterialInPackingSlip, Service, Su
 import { formatDate } from "../lib/serial";
 import { cn } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
-import { Search, ChevronRight, ChevronDown, Download, QrCode, ArrowUp, ArrowDown, Check, MessageSquareText, X } from "lucide-react";
+import { Search, ChevronRight, ChevronDown, Download, QrCode, Check, MessageSquareText, X } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader } from "../lib/tableSort";
 import { Spinner } from "../components/Spinner";
 import { useNpdItemNames } from "../hooks/useNpdItems";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
@@ -17,7 +18,7 @@ import { Select as FirmSelect } from "../components/Select";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 
 type Stage = "All Approval" | "Pending PH" | "Pending Accounts" | "Pending MD";
-type SortField = "timestamp" | "gateEntryNo" | "transactionNo" | "date" | "value";
+type SortField = "timestamp" | "gateEntryNo" | "transactionNo" | "date" | "value" | "firm" | "party" | "type" | "status" | "mrrQty" | "invQty";
 type SortDirection = "asc" | "desc";
 
 export function MrrApprovals() {
@@ -65,15 +66,8 @@ export function MrrApprovals() {
       return;
     }
     setSortField(field);
-    setSortDirection(field === "timestamp" || field === "date" || field === "value" ? "desc" : "asc");
+    setSortDirection(field === "timestamp" || field === "date" || field === "value" || field === "mrrQty" || field === "invQty" ? "desc" : "asc");
   };
-
-  const renderSortIcon = (field: SortField) =>
-    sortField === field ? (
-      sortDirection === "asc" ? <ArrowUp size={12} /> : <ArrowDown size={12} />
-    ) : (
-      <ArrowDown size={12} className="opacity-40" />
-    );
 
   const getSupplierName = (id: string) => {
     const supplier = suppliers.find(s => s.id === id);
@@ -134,6 +128,18 @@ export function MrrApprovals() {
           comparison = String(a.date || "").localeCompare(String(b.date || ""));
         } else if (sortField === "value") {
           comparison = getItemValue(a) - getItemValue(b);
+        } else if (sortField === "firm") {
+          comparison = getFirmName(a).localeCompare(getFirmName(b), undefined, { numeric: true, sensitivity: "base" });
+        } else if (sortField === "party") {
+          comparison = getSupplierName(a.supplierId).localeCompare(getSupplierName(b.supplierId), undefined, { numeric: true, sensitivity: "base" });
+        } else if (sortField === "type") {
+          comparison = String(a.mrrType || "").localeCompare(String(b.mrrType || ""), undefined, { numeric: true, sensitivity: "base" });
+        } else if (sortField === "status") {
+          comparison = statusLabel(a.status).localeCompare(statusLabel(b.status), undefined, { numeric: true, sensitivity: "base" });
+        } else if (sortField === "mrrQty") {
+          comparison = a.lines.reduce((sum, l) => sum + (l.actualQty || l.qty || 0), 0) - b.lines.reduce((sum, l) => sum + (l.actualQty || l.qty || 0), 0);
+        } else if (sortField === "invQty") {
+          comparison = a.lines.reduce((sum, l) => sum + (l.invoiceQty || 0), 0) - b.lines.reduce((sum, l) => sum + (l.invoiceQty || 0), 0);
         } else {
           comparison = new Date(a.updateTimestamp || a.timestamp).getTime() - new Date(b.updateTimestamp || b.timestamp).getTime();
         }
@@ -345,15 +351,9 @@ export function MrrApprovals() {
   }, [activeStage, searchTerm, firmFilter, supplierFilter, fromDate, toDate, sortField, sortDirection, setPage]);
   const allSelected = filteredList.length > 0 && selectedIds.length === filteredList.length;
 
+  // The page keeps its own sort (always on, MRR No first); SortHeader only draws the header arrows.
   const sortHeader = (label: string, field: SortField, align: "left" | "right" = "left") => (
-    <button
-      type="button"
-      onClick={() => toggleSort(field)}
-      className={cn("inline-flex items-center gap-1 uppercase", align === "right" && "justify-end")}
-    >
-      {label}
-      {renderSortIcon(field)}
-    </button>
+    <SortHeader label={label} sortKey={field} sort={{ key: sortField, direction: sortDirection }} onToggle={(key) => toggleSort(key as SortField)} align={align} />
   );
 
   // Approval buttons shared by the table row and the phone card.
@@ -632,12 +632,12 @@ export function MrrApprovals() {
               <th className="border border-black px-3 py-3 text-left">{sortHeader("MRR No", "transactionNo")}</th>
               <th className="border border-black px-3 py-3 text-left">{sortHeader("GE No", "gateEntryNo")}</th>
               <th className="border border-black px-3 py-3 text-left">{sortHeader("Date", "date")}</th>
-              <th className="border border-black px-3 py-3 text-left">Firm</th>
-              <th className="border border-black px-3 py-3 text-left">Party</th>
-              <th className="border border-black px-3 py-3 text-left">Type</th>
-              <th className="border border-black px-3 py-3 text-left">Status</th>
-              <th className="border border-black px-3 py-3 text-right">MRR Qty</th>
-              <th className="border border-black px-3 py-3 text-right">Inv Qty</th>
+              <th className="border border-black px-3 py-3 text-left">{sortHeader("Firm", "firm")}</th>
+              <th className="border border-black px-3 py-3 text-left">{sortHeader("Party", "party")}</th>
+              <th className="border border-black px-3 py-3 text-left">{sortHeader("Type", "type")}</th>
+              <th className="border border-black px-3 py-3 text-left">{sortHeader("Status", "status")}</th>
+              <th className="border border-black px-3 py-3 text-right">{sortHeader("MRR Qty", "mrrQty", "right")}</th>
+              <th className="border border-black px-3 py-3 text-right">{sortHeader("Inv Qty", "invQty", "right")}</th>
               <th className="border border-black px-3 py-3 text-right">{sortHeader("Item Value", "value", "right")}</th>
               <th className="border border-black px-3 py-3 text-center">Actions</th>
             </tr>

@@ -17,6 +17,7 @@ import { computePurchaseOrderTaxes } from "../lib/purchaseOrderTaxes";
 import { canIndentBeUnapproved, revertIndentToPending } from "../lib/indentTotals";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type PendingIndentLineRow = {
   indentLineId: string;
@@ -191,6 +192,28 @@ export function PurchaseOrderPendingIndentLines() {
     [filteredRows]
   );
 
+  const { sorted: columnSortedRows, sort, toggle: toggleSort } = useTableSort(
+    sortedFilteredRows,
+    (row, key) => {
+      if (key === "indentNo") return row.indentNo || `IND-${row.indentId.slice(0, 8)}`;
+      if (key === "firm") {
+        const indent = indents.find((item) => item.id === row.indentId);
+        return getFirmDisplayNameById(String(row.firmId || indent?.firmId || ""), firms);
+      }
+      if (key === "itemType") return row.materialItemType || materialById.get(String(row.materialId))?.type || "Others";
+      if (key === "cgst" || key === "sgst" || key === "igst") {
+        const input = rowInputs[row.indentLineId];
+        const supplier = suppliers.find((s) => s.id === input?.supplierId);
+        const taxes = computePurchaseOrderTaxes(Number(input?.qty || 0), Number(input?.rate || 0), Number(input?.gstRate || 0), supplier?.gstSupplyType);
+        return taxes[key] || null;
+      }
+      if (key === "lastPoRate") return row.lastPoRate ? Number(row.lastPoRate) : null;
+      if (["qty", "cancelledQty", "poQtyCreated", "pendingQty"].includes(key)) return Number((row as any)[key] || 0);
+      return (row as any)[key];
+    },
+    [indents, firms, materialById, rowInputs, suppliers]
+  );
+
   const {
     page,
     setPage,
@@ -198,7 +221,7 @@ export function PurchaseOrderPendingIndentLines() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedRows,
-  } = useClientPagination(sortedFilteredRows, 25);
+  } = useClientPagination(columnSortedRows, 25);
 
   useEffect(() => {
     setPage(1);
@@ -448,28 +471,28 @@ export function PurchaseOrderPendingIndentLines() {
                     onChange={() => toggleSelectAllVisible()}
                   />
                 </th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Indent No</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Indent Date</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Firm</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black">Requested By</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">ERP</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black min-w-[320px]">Item Label</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Item Type</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">UOM</th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Indent No" sortKey="indentNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Indent Date" sortKey="requisitionDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black"><SortHeader label="Requested By" sortKey="requestedBy" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="ERP" sortKey="materialErpCode" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black min-w-[320px]"><SortHeader label="Item Label" sortKey="materialName" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Item Type" sortKey="itemType" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="UOM" sortKey="uom" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Supplier <span className="text-red-500">*</span></th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Last PO Rate</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Last PO Date</th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Last PO Rate" sortKey="lastPoRate" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Last PO Date" sortKey="lastPoDate" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Indent Qty <span className="text-red-500">*</span></th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Rate <span className="text-red-500">*</span></th>
               <th className="min-w-[140px] border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">GST Rate</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">CGST</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">SGST</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">IGST</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Qty</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Cancelled</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">PO Created</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Pending Indent Qty</th>
-              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap">Target Delivery</th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="CGST" sortKey="cgst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="SGST" sortKey="sgst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="IGST" sortKey="igst" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Cancelled" sortKey="cancelledQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="PO Created" sortKey="poQtyCreated" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Pending Indent Qty" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black bg-slate-100 px-4 py-3 text-left text-xs font-bold uppercase text-black whitespace-nowrap"><SortHeader label="Target Delivery" sortKey="targetDeliveryDate" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="border border-black bg-slate-100 px-4 py-3 text-right text-xs font-bold uppercase text-black whitespace-nowrap">Actions</th>
             </tr>
           </thead>

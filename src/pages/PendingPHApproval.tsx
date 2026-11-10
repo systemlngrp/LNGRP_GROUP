@@ -10,6 +10,7 @@ import { useNpdItemNames } from "../hooks/useNpdItems";
 import { ApprovalFilters } from "../components/ApprovalFilters";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function PendingPHApproval() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -149,6 +150,23 @@ export function PendingPHApproval() {
       (!fromDate || mrrDate >= fromDate) &&
       (!toDate || mrrDate <= toDate);
   });
+  // Newest first when no column is sorted.
+  const orderedRows = [...pendingRows].sort((a, b) => {
+    const timeA = new Date(a.updateTimestamp || a.timestamp || a.date || 0).getTime();
+    const timeB = new Date(b.updateTimestamp || b.timestamp || b.date || 0).getTime();
+    return timeB - timeA;
+  });
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(orderedRows, (m: MaterialIn, key) => {
+    switch (key) {
+      case "firm": return getFirmName(m);
+      case "trx": return m.transactionNo;
+      case "date": return m.date;
+      case "supplier": return getSupplierName(m.supplierId);
+      case "items": return (m.lines || []).map((l) => materials.find((i) => i.id === l.itemId)?.name || npdItems.find((i) => i.id === l.itemId)?.name || "Unknown").join(", ");
+      case "amount": return Number(m.totalAmount || 0);
+      default: return "";
+    }
+  });
   const firmOptions = Array.from(new Set(materialIn.filter((m) => isPendingPH(m.status)).map(getFirmName))).sort();
   const supplierOptions = Array.from(new Set(materialIn.filter((m) => isPendingPH(m.status)).map((m) => getSupplierName(m.supplierId)))).sort();
 
@@ -178,12 +196,7 @@ export function PendingPHApproval() {
         <div className={`${pendingRows.length === 0 ? "hidden" : "block md:hidden"} p-4 space-y-4`}>
           {pendingRows.length === 0 ? (
             null
-            ) : pendingRows
-              .sort((a, b) => {
-                const timeA = new Date(a.updateTimestamp || a.timestamp || a.date || 0).getTime();
-                const timeB = new Date(b.updateTimestamp || b.timestamp || b.date || 0).getTime();
-                return timeB - timeA;
-              })
+            ) : sortedRows
               .map((m) => (
                 <div key={m.id} className={cn("bg-white border-2 border-black p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]", selectedIds.has(m.id) && "bg-sky-50")}>
                   <div className="flex justify-between items-start gap-2">
@@ -254,12 +267,12 @@ export function PendingPHApproval() {
                   onChange={() => toggleSelectAll(pendingRows.map(m => m.id))}
                 />
               </th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Firm Name</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Transaction No</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Date</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Supplier</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Items</th>
-              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Amount</th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Firm Name" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Transaction No" sortKey="trx" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Supplier" sortKey="supplier" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Items" sortKey="items" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="Amount" sortKey="amount" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
             </tr>
           </thead>
@@ -268,12 +281,7 @@ export function PendingPHApproval() {
               <tr>
                 <td colSpan={8} className="h-16" aria-label="No records" />
               </tr>
-            ) : pendingRows
-              .sort((a, b) => {
-                const timeA = new Date(a.updateTimestamp || a.timestamp || a.date || 0).getTime();
-                const timeB = new Date(b.updateTimestamp || b.timestamp || b.date || 0).getTime();
-                return timeB - timeA;
-              })
+            ) : sortedRows
               .map((m) => (
                 <tr key={m.id} className={cn("hover:bg-slate-50 divide-x divide-black transition-colors", selectedIds.has(m.id) && "bg-sky-50/50")}>
                   <td className="px-6 py-4 w-10 text-center border border-black">

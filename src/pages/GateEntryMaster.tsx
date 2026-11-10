@@ -12,6 +12,7 @@ import { hasGateEntryMrr, isGateEntryCancelled } from "../lib/gateEntryState";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { formatDate } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type GateEntryMasterProps = { cancelledOnly?: boolean };
 
@@ -123,7 +124,28 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
     );
   }, [baseEntries, gateEntryPhotos, cancelledOnly, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, truckFilter, dateFrom, dateTo, mrrStatusFilter, processingById, productionById]);
 
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredEntries, 25);
+  const { sorted: sortedEntries, sort, toggle: toggleSort } = useTableSort(
+    filteredEntries,
+    (entry, key) => {
+      switch (key) {
+        case "Gate Entry No": return entry.gateEntryNo || "Syncing...";
+        case "Firm": return getFirmNameById(entry.firmId || entry.destinationFirmId, firms) || "Unassigned";
+        case "Job No": return getJobNo(entry);
+        case "Date": return entry.date;
+        case "Supplier": return getSupplierNameById(entry.supplierId, suppliers, companies, firms);
+        case "Invoice No.": return entry.invoiceNo;
+        case "Invoice Value": return Number(entry.invoiceValue || 0);
+        case "Truck No": return entry.truckNo;
+        case "MRR No": return entry.mrrNo;
+        case "Cancel Remarks": return isGateEntryCancelled(entry) ? entry.cancelReason || "No reason" : "";
+        default: return "";
+      }
+    },
+    [firms, suppliers, companies, processingById, productionById]
+  );
+  const unsortableHeadings = new Set(["Photos", "Action"]);
+
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedEntries, 25);
 
   const selectedEntry = filteredEntries.find((entry) => entry.id === selectedEntryId) || null;
   const selectedPhotos = selectedEntry
@@ -249,7 +271,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
               <tr>
                 {tableHeadings.map((heading) => (
                   <th key={heading} className="whitespace-nowrap border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">
-                    {heading}
+                    {unsortableHeadings.has(heading) ? heading : <SortHeader label={heading} sortKey={heading} sort={sort} onToggle={toggleSort} align="left" />}
                   </th>
                 ))}
               </tr>

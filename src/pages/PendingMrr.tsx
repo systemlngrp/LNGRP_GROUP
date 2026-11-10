@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { Select } from "../components/Select";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function PendingMrr() {
   const navigate = useNavigate();
@@ -79,6 +80,23 @@ export function PendingMrr() {
         })
     );
   }, [eligibleEntries, gateEntryPhotos, searchTerm, suppliers, companies, firms, firmFilter, supplierFilter, fromDate, toDate]);
+
+  const { sorted: sortedPendingEntries, sort, toggle: toggleSort } = useTableSort(
+    pendingEntries,
+    (entry, key) => {
+      switch (key) {
+        case "Gate Entry No": return entry.gateEntryNo || "Syncing...";
+        case "Firm": return getFirmName(entry);
+        case "Date": return entry.date;
+        case "Party": return getSupplierName(entry.supplierId);
+        case "Invoice No": return entry.invoiceNo;
+        case "Invoice Value": return Number(entry.invoiceValue || 0);
+        case "Truck No": return entry.truckNo;
+        default: return "";
+      }
+    },
+    [firms, suppliers, companies]
+  );
 
   const hasActiveFilters = Boolean(searchTerm || firmFilter || supplierFilter || fromDate || toDate);
   const clearFilters = () => {
@@ -181,7 +199,7 @@ export function PendingMrr() {
             <tr>
               {["Gate Entry No", "Firm", "Date", "Party", "Invoice No", "Invoice Value", "Truck No", "Photos", "Action"].map((heading) => (
                 <th key={heading} className="whitespace-nowrap border border-black px-4 py-3 text-left text-sm font-bold uppercase text-black">
-                  {heading}
+                  {heading === "Photos" || heading === "Action" ? heading : <SortHeader label={heading} sortKey={heading} sort={sort} onToggle={toggleSort} align="left" />}
                 </th>
               ))}
             </tr>
@@ -194,7 +212,7 @@ export function PendingMrr() {
                 </td>
               </tr>
             ) : (
-              pendingEntries.map((entry) => (
+              sortedPendingEntries.map((entry) => (
                 <tr key={entry.id} className="hover:bg-slate-50">
                   <td className="border border-black px-4 py-3 text-sm font-semibold text-black">{entry.gateEntryNo || "Syncing..."}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{getFirmName(entry)}</td>

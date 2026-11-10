@@ -8,6 +8,7 @@ import { formatDate } from "../lib/serial";
 import { isAutoProductionInterFirmIssue } from "../lib/materialIssueClassification";
 import { ClientPagination } from "../components/ClientPagination";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function isWithoutJobIssue(issueType?: string) {
   const t = String(issueType || "").trim().toLowerCase();
@@ -256,10 +257,12 @@ export function MaterialIssueMaster() {
     : activeTab === "manual"
       ? (reelView === "summary" ? processedData.manualSummary : processedData.manualDetails)
       : (reelView === "summary" ? processedData.qrSummary : processedData.qrDetails);
+  const { sorted: sortedRows, sort, toggle: toggleSort, setSort } = useTableSort(activeRows as any[], (row: any, key) => row[key]);
+  useEffect(() => { setSort(null); }, [activeTab, reelView, setSort]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
   const totalPages = Math.max(1, Math.ceil(activeRows.length / pageSize));
-  const paginatedRows = activeRows.slice((page - 1) * pageSize, page * pageSize);
+  const paginatedRows = sortedRows.slice((page - 1) * pageSize, page * pageSize);
 
   useEffect(() => {
     setPage(1);
@@ -397,13 +400,13 @@ export function MaterialIssueMaster() {
             <table className="min-w-full divide-y divide-black border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr className="divide-x divide-black">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Issue No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Job No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Material</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Qty</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">UOM</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Remarks</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Issue No" sortKey="issueNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Material" sortKey="materialName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="UOM" sortKey="uom" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Remarks" sortKey="remarks" sort={sort} onToggle={toggleSort} align="left" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-black">
@@ -432,13 +435,13 @@ export function MaterialIssueMaster() {
             <table className="min-w-full divide-y divide-black border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr className="divide-x divide-black">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Issue No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Job No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Material Specs</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Total Weight (KG)</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Total Value</th>
-                  <th className="px-4 py-3 text-center text-xs font-bold uppercase">Reel Count</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Issue No" sortKey="issueNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Material Specs" sortKey="specs" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase"><SortHeader label="Total Weight (KG)" sortKey="totalWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase"><SortHeader label="Total Value" sortKey="totalValue" sort={sort} onToggle={toggleSort} align="right" /></th>
+                  <th className="px-4 py-3 text-center text-xs font-bold uppercase"><SortHeader label="Reel Count" sortKey="reelCount" sort={sort} onToggle={toggleSort} align="center" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-black">
@@ -467,13 +470,13 @@ export function MaterialIssueMaster() {
             <table className="min-w-full divide-y divide-black border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr className="divide-x divide-black">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Issue No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Date</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Job No</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Material Specs</th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase">Our Reel No</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Weight (KG)</th>
-                  <th className="px-4 py-3 text-right text-xs font-bold uppercase">Value</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Issue No" sortKey="issueNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Material Specs" sortKey="specs" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-left text-xs font-bold uppercase"><SortHeader label="Our Reel No" sortKey="ourReelNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase"><SortHeader label="Weight (KG)" sortKey="weightKg" sort={sort} onToggle={toggleSort} align="right" /></th>
+                  <th className="px-4 py-3 text-right text-xs font-bold uppercase"><SortHeader label="Value" sortKey="value" sort={sort} onToggle={toggleSort} align="right" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-black">

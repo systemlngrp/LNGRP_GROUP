@@ -12,6 +12,7 @@ import { deriveGatePassState, getGatePassLinesWithReturns, getGatePassPrimaryPar
 import { GatePass, Invoice, MaterialIn, Setting } from "../types";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -90,9 +91,36 @@ export function GatePassMaster() {
         .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
   }, [filterRows, invoices, searchTerm, typeFilter, recipientFilter, truckFilter]);
 
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredGatePasses, 25);
+  const { sorted: sortedGatePasses, sort, toggle: toggleSort } = useTableSort(filteredGatePasses, (gatePass, key) => {
+    switch (key) {
+      case "gatePassNo": return gatePass.gatePassNo || "Pending";
+      case "type": return gatePass.gatePassType || "Non-Returnable";
+      case "date": return gatePass.date;
+      case "recipient": return getGatePassInvoiceDisplayNo(gatePass);
+      case "truck": return gatePass.truckNo;
+      case "totalQty": return Number(gatePass.totalQty || 0);
+      case "totalAmount": return Number(gatePass.totalAmount || 0);
+      default: return "";
+    }
+  }, [invoices]);
+
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedGatePasses, 25);
 
   const selectedGatePass = filteredGatePasses.find((gatePass) => gatePass.id === selectedGatePassId) || null;
+  const selectedLines: any[] = selectedGatePass ? (isReturnableGatePass(selectedGatePass) ? getGatePassLinesWithReturns(selectedGatePass, materialIn) : selectedGatePass.lines || []) : [];
+  const { sorted: sortedLines, sort: lineSort, toggle: toggleLineSort } = useTableSort(selectedLines, (line: any, key) => {
+    switch (key) {
+      case "item": return line.itemDescription || line.itemName;
+      case "qty": return Number(line.qty || 0);
+      case "returnedQty": return Number(line.returnedQty || 0);
+      case "pendingQty": return Number(line.pendingQty || 0);
+      case "uom": return line.uom;
+      case "rate": return Number(line.rate || 0);
+      case "amount": return Number(line.amount || 0);
+      case "loadingSlipNos": return (line.loadingSlipNos || []).join(", ");
+      default: return "";
+    }
+  });
 
   const hasActiveFilters = Boolean(searchTerm || typeFilter || recipientFilter || truckFilter);
   const clearFilters = () => {
@@ -161,8 +189,8 @@ export function GatePassMaster() {
           <table className="w-full min-w-max border-collapse">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
-                {["Gate Pass No", "Type", "Date", "Invoice / Recipient", "Truck", "Total Qty", "Total Amount", "Actions"].map((heading) => (
-                  <th key={heading} className="border-b border-black px-4 py-3 text-left text-xs font-black uppercase text-black">{heading}</th>
+                {[["Gate Pass No", "gatePassNo"], ["Type", "type"], ["Date", "date"], ["Invoice / Recipient", "recipient"], ["Truck", "truck"], ["Total Qty", "totalQty"], ["Total Amount", "totalAmount"], ["Actions", ""]].map(([heading, key]) => (
+                  <th key={heading} className="border-b border-black px-4 py-3 text-left text-xs font-black uppercase text-black">{key ? <SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /> : heading}</th>
                 ))}
               </tr>
             </thead>
@@ -240,15 +268,15 @@ export function GatePassMaster() {
                   <thead className="sticky top-0 z-30 bg-slate-100">
                     <tr className="divide-x divide-black">
                       {(isReturnableGatePass(selectedGatePass)
-                        ? ["Item", "Qty", "Returned Qty", "Pending Qty", "UOM"]
-                        : ["Item", "Qty", "Rate", "Amount", "Loading Slip Nos"]
-                      ).map((heading) => (
-                        <th key={heading} className="border-b border-black px-3 py-2 text-left text-[10px] font-black uppercase">{heading}</th>
+                        ? [["Item", "item"], ["Qty", "qty"], ["Returned Qty", "returnedQty"], ["Pending Qty", "pendingQty"], ["UOM", "uom"]]
+                        : [["Item", "item"], ["Qty", "qty"], ["Rate", "rate"], ["Amount", "amount"], ["Loading Slip Nos", "loadingSlipNos"]]
+                      ).map(([heading, key]) => (
+                        <th key={heading} className="border-b border-black px-3 py-2 text-left text-[10px] font-black uppercase"><SortHeader label={heading} sortKey={key} sort={lineSort} onToggle={toggleLineSort} align="left" /></th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-black bg-white">
-                    {(isReturnableGatePass(selectedGatePass) ? getGatePassLinesWithReturns(selectedGatePass, materialIn) : selectedGatePass.lines).map((line: any) => (
+                    {sortedLines.map((line: any) => (
                       <tr key={line.id} className="divide-x divide-black">
                         <td className="px-3 py-2 text-xs font-bold">{line.itemDescription || line.itemName}</td>
                         <td className="px-3 py-2 text-right text-xs">{Number(line.qty || 0).toLocaleString()}</td>

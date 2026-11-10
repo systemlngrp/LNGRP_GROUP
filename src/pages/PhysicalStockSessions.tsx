@@ -3,6 +3,7 @@ import { Play, Square, RefreshCw, RotateCcw, Trash2, AlertTriangle, XCircle } fr
 import { useData } from "../hooks/useData";
 import type { PhysicalStockSession, StockTakerLog } from "../types";
 import { formatDate } from "../lib/utils";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type SessionModalAction = "close" | "restart" | "delete" | "message";
 
@@ -58,6 +59,19 @@ export function PhysicalStockSessions() {
     () => [...sessions].sort((a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime()),
     [sessions],
   );
+
+  const { sorted: tableSessions, sort, toggle: toggleSort } = useTableSort(sortedSessions, (session, key) => {
+    switch (key) {
+      case "sessionNo": return session.sessionNo;
+      case "status": return String(session.status || "").toLowerCase() === "open" ? "In Progress" : "Closed";
+      case "startedAt": return session.startedAt;
+      case "closedAt": return session.closedAt;
+      case "scannedReels": return scanCounts.get(session.id) || 0;
+      case "startedBy": return session.startedBy;
+      case "closedBy": return session.closedBy;
+      default: return "";
+    }
+  }, [scanCounts]);
 
   const refreshAll = async () => {
     await Promise.all([sessionsApi.refresh({ force: true }), logsApi.refresh({ force: true })]);
@@ -240,8 +254,8 @@ export function PhysicalStockSessions() {
           <table className="w-full min-w-max border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-indigo-700 text-white">
-                {["Session No", "Status", "Started", "Closed", "Scanned Reels", "Started By", "Closed By", "Actions"].map((heading) => (
-                  <th key={heading} className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">{heading}</th>
+                {[["Session No", "sessionNo"], ["Status", "status"], ["Started", "startedAt"], ["Closed", "closedAt"], ["Scanned Reels", "scannedReels"], ["Started By", "startedBy"], ["Closed By", "closedBy"], ["Actions", ""]].map(([heading, key]) => (
+                  <th key={heading} className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">{key ? <SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /> : heading}</th>
                 ))}
               </tr>
             </thead>
@@ -251,7 +265,7 @@ export function PhysicalStockSessions() {
                   <td colSpan={8} className="border-2 border-black px-6 py-10 text-center font-medium text-black">No physical stock sessions found.</td>
                 </tr>
               ) : (
-                sortedSessions.map((session) => {
+                tableSessions.map((session) => {
                   const isOpen = String(session.status || "").toLowerCase() === "open";
                   const isBusy = Boolean(busySessionId) && busySessionId === session.id;
                   return (

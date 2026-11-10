@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ReelSpecs, formatReelSpecs } from "../components/ReelSpecs";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { useData } from "../hooks/useData";
 import { MaterialReturn, MaterialReturnLine, MaterialReturnReelLine, Material, Production, Setting, Firm } from "../types";
 import { Select } from "../components/Select";
@@ -277,11 +278,14 @@ export function MaterialReturnMaster() {
     </button>
   );
 
-  const activeRows = activeTab === "general"
+  const tabRows = activeTab === "general"
     ? processedData.general
     : activeTab === "reel-summary"
       ? processedData.reelSummary
       : processedData.reelDetails;
+  // Column sorting on the whole filtered list (keys are the row fields each column shows).
+  const { sorted: activeRows, sort, toggle: toggleSort, setSort } = useTableSort(tabRows as any[], (row: any, key) => row[key]);
+  useEffect(() => { setSort(null); }, [activeTab, setSort]);
 
   const {
     page,
@@ -379,14 +383,14 @@ export function MaterialReturnMaster() {
           <table className="min-w-full border-collapse text-sm">
             <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
               <tr>
-                <th className="border border-black px-3 py-3 text-left">Return No</th>
-                <th className="border border-black px-3 py-3 text-left">Date</th>
-                <th className="border border-black px-3 py-3 text-left">Job No</th>
-                <th className="border border-black px-3 py-3 text-left">Material</th>
-                <th className="border border-black px-3 py-3 text-right">Qty</th>
-                <th className="border border-black px-3 py-3 text-left">UOM</th>
-                <th className="border border-black px-3 py-3 text-right">Value</th>
-                <th className="border border-black px-3 py-3 text-left">Remarks</th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Return No" sortKey="returnNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Material" sortKey="materialName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-right"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="UOM" sortKey="uom" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-right"><SortHeader label="Value" sortKey="value" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Remarks" sortKey="remarks" sort={sort} onToggle={toggleSort} align="left" /></th>
               </tr>
             </thead>
             <tbody>
@@ -412,13 +416,13 @@ export function MaterialReturnMaster() {
           <table className="min-w-full border-collapse text-sm">
             <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
               <tr>
-                <th className="border border-black px-3 py-3 text-left">Return No</th>
-                <th className="border border-black px-3 py-3 text-left">Date</th>
-                <th className="border border-black px-3 py-3 text-left">Job No</th>
-                <th className="border border-black px-3 py-3 text-left">Material Specs</th>
-                <th className="border border-black px-3 py-3 text-right">Weight (KG)</th>
-                <th className="border border-black px-3 py-3 text-right">Value</th>
-                <th className="border border-black px-3 py-3 text-center">Reels</th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Return No" sortKey="returnNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Material Specs" sortKey="specs" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-right"><SortHeader label="Weight (KG)" sortKey="totalWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-right"><SortHeader label="Value" sortKey="totalValue" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-center"><SortHeader label="Reels" sortKey="reelCount" sort={sort} onToggle={toggleSort} align="center" /></th>
               </tr>
             </thead>
             <tbody>
@@ -443,13 +447,13 @@ export function MaterialReturnMaster() {
           <table className="min-w-full border-collapse text-sm">
             <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
               <tr>
-                <th className="border border-black px-3 py-3 text-left">Return No</th>
-                <th className="border border-black px-3 py-3 text-left">Date</th>
-                <th className="border border-black px-3 py-3 text-left">Job No</th>
-                <th className="border border-black px-3 py-3 text-left">Material Specs</th>
-                <th className="border border-black px-3 py-3 text-left">Our Reel No</th>
-                <th className="border border-black px-3 py-3 text-right">Weight (KG)</th>
-                <th className="border border-black px-3 py-3 text-right">Value</th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Return No" sortKey="returnNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Material Specs" sortKey="specs" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-left"><SortHeader label="Our Reel No" sortKey="ourReelNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-3 py-3 text-right"><SortHeader label="Weight (KG)" sortKey="weightKg" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-right"><SortHeader label="Value" sortKey="value" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="border border-black px-3 py-3 text-center">QR PDF</th>
               </tr>
             </thead>
