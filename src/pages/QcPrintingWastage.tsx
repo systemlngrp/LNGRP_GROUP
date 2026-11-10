@@ -6,7 +6,8 @@ import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionWastageTotals } from "../lib/wastageCalculations";
-import type { Production, ProductionProcessing, QcPrintingWastage } from "../types";
+import type { Firm, Production, ProductionProcessing, QcPrintingWastage } from "../types";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
@@ -26,6 +27,9 @@ const parseTimestamp = (value: unknown) => {
 };
 const formatDatePart = (value: unknown) => parseTimestamp(value)?.toLocaleDateString() || "-";
 const formatTimePart = (value: unknown) => parseTimestamp(value)?.toLocaleTimeString() || "-";
+const localDay = (value: unknown) => { const date = parseTimestamp(value); return date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}` : ""; };
+const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+const DATE_INPUT = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
 
 function useOpenQcJobs() {
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
@@ -118,24 +122,56 @@ export function QcPrintingWastageMaster() {
   const jobs = useOpenQcJobs();
   const [searchTerm, setSearchTerm] = useState("");
   const [jobFilter, setJobFilter] = useState("");
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [firmFilter, setFirmFilter] = useState("");
+  const [updatedByFilter, setUpdatedByFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const jobOptions = useMemo(() => [...new Set(records.map((record) => record.jobNo).filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map((value) => ({ value, label: value })), [records]);
+  const firmKey = (record: QcPrintingWastage) => clean(record.firmId) || clean(record.firmName);
+  const firmLabel = (record: QcPrintingWastage) => clean(record.firmId) && firms.some((firm) => String(firm.id) === clean(record.firmId)) ? getFirmDisplayNameById(clean(record.firmId), firms) : getFirmDisplayName({ firmName: clean(record.firmName) });
+  const firmOptions = useMemo(() => { const map = new Map<string, string>(); records.forEach((record) => { const key = firmKey(record); if (key && !map.has(key)) map.set(key, firmLabel(record)); }); return [...map.entries()].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)); }, [firms, records]); // eslint-disable-line react-hooks/exhaustive-deps
+  const updatedByOptions = useMemo(() => [...new Set(records.map((record) => clean(record.updatedBy)).filter(Boolean))].sort().map((value) => ({ value, label: value })), [records]);
+  const hasFilters = Boolean(searchTerm.trim() || jobFilter || firmFilter || updatedByFilter || fromDate || toDate);
+  const clearFilters = () => { setSearchTerm(""); setJobFilter(""); setFirmFilter(""); setUpdatedByFilter(""); setFromDate(""); setToDate(""); };
   const sortedRecords = useMemo(() => [...records].sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))), [records]);
   // Search the table columns: Date, Time, Job No., Quantity, Updated By.
   const searchedRecords = useTableSearch(sortedRecords, searchTerm, (record) => [formatDatePart(record.timestamp), formatTimePart(record.timestamp), record.jobNo, Number(record.quantity).toLocaleString(), record.quantity, record.updatedBy]);
-  const rows = useMemo(() => searchedRecords.filter((record) => !jobFilter || record.jobNo === jobFilter), [jobFilter, searchedRecords]);
+  const rows = useMemo(() => searchedRecords.filter((record) => {
+    if (jobFilter && record.jobNo !== jobFilter) return false;
+    if (firmFilter && firmKey(record) !== firmFilter) return false;
+    if (updatedByFilter && clean(record.updatedBy) !== updatedByFilter) return false;
+    if (fromDate || toDate) { const day = localDay(record.timestamp); if (!day || (fromDate && day < fromDate) || (toDate && day > toDate)) return false; }
+    return true;
+  }), [firmFilter, fromDate, jobFilter, searchedRecords, toDate, updatedByFilter]);
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (record, key) => { const at = parseTimestamp(record.timestamp); if (key === "date") return at ? String(record.timestamp) : ""; if (key === "time") return at ? at.getHours() * 3600 + at.getMinutes() * 60 + at.getSeconds() : ""; if (key === "quantity") return Number(record.quantity); return (record as any)[key]; });
   const pagedRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  useEffect(() => setPage(1), [jobFilter, pageSize, searchTerm]);
+  useEffect(() => setPage(1), [jobFilter, firmFilter, updatedByFilter, fromDate, toDate, pageSize, searchTerm]);
 
   return <div className="space-y-5 text-black">
-    <div className="border-b border-black pb-4"><h2 className="text-xl font-bold uppercase">Printing Wastage Master</h2></div>
-    <div className="grid grid-cols-1 gap-3 rounded border-2 border-black bg-white p-3 md:grid-cols-[minmax(260px,1fr)_minmax(180px,0.6fr)_auto] md:items-end"><label className="relative"><span className="sr-only">Search Job No.</span><Search className="absolute left-3 top-3 text-slate-500" size={17} /><input className="w-full rounded border-2 border-black py-2 pl-9 pr-3" placeholder="Search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} /></label><Select compact value={jobFilter} onChange={setJobFilter} options={jobOptions} placeholder="All Job Nos." noOptionsMessage="No matching Job No." /><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded border-2 border-black p-2"><option value={10}>10 / page</option><option value={25}>25 / page</option><option value={50}>50 / page</option><option value={100}>100 / page</option></select></div>
-    <div className="overflow-x-auto rounded border-2 border-black bg-white"><table className="min-w-[800px] w-full border-collapse text-sm"><thead className="bg-slate-100"><tr>{([["Date", "date"], ["Time", "time"], ["Job No.", "jobNo"], ["Quantity", "quantity"], ["Updated By", "updatedBy"]] as const).map(([header, key]) => <th key={header} className="border border-black px-3 py-2 text-left font-bold"><SortHeader label={header} sortKey={key} sort={sort} onToggle={toggleSort} /></th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((record) => <tr key={record.id} className="odd:bg-white even:bg-slate-50"><td className="border border-black p-2">{formatDatePart(record.timestamp)}</td><td className="border border-black p-2">{formatTimePart(record.timestamp)}</td><td className="border border-black p-2 font-bold">{record.jobNo}</td><td className="border border-black p-2 text-right">{Number(record.quantity).toLocaleString()}</td><td className="border border-black p-2">{record.updatedBy || "-"}</td></tr>) : <tr><td colSpan={5} className="p-8 text-center font-semibold">No QC Printing Wastage records found.</td></tr>}</tbody></table></div>
-    <div className="flex flex-wrap items-center justify-end gap-3 text-sm"><span className="font-black" title="Total">{rows.length}</span><div className="flex items-center gap-2"><button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button><span>{currentPage} / {totalPages}</span><button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage >= totalPages} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button></div></div>
+    <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Printing Wastage Master</h2></div>
+    <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+      <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></div>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+        <div className="min-w-0"><span className={LABEL}>Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+        <div className="min-w-0"><span className={LABEL}>Job No</span><Select compact value={jobFilter} onChange={setJobFilter} options={jobOptions} placeholder="All" noOptionsMessage="No matching Job No." /></div>
+        <div className="min-w-0"><span className={LABEL}>Updated By</span><Select compact value={updatedByFilter} onChange={setUpdatedByFilter} options={updatedByOptions} placeholder="All" /></div>
+        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2">
+          <label className="min-w-0"><span className={LABEL}>From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} className={DATE_INPUT} /></label>
+          <label className="min-w-0"><span className={LABEL}>To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} className={DATE_INPUT} /></label>
+        </div>
+      </div>
+      <div data-mf-actions="true" className="flex justify-end gap-2">
+        {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+        <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+      </div>
+    </div>
+    <div className="overflow-x-auto rounded border border-black bg-white"><table className="min-w-[800px] w-full border-collapse text-sm"><thead className="bg-slate-100"><tr>{([["Date", "date"], ["Time", "time"], ["Job No.", "jobNo"], ["Quantity", "quantity"], ["Updated By", "updatedBy"]] as const).map(([header, key]) => <th key={header} className="border border-black px-3 py-2 text-left font-bold"><SortHeader label={header} sortKey={key} sort={sort} onToggle={toggleSort} /></th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((record) => <tr key={record.id} className="odd:bg-white even:bg-slate-50"><td className="border border-black p-2">{formatDatePart(record.timestamp)}</td><td className="border border-black p-2">{formatTimePart(record.timestamp)}</td><td className="border border-black p-2 font-bold">{record.jobNo}</td><td className="border border-black p-2 text-right">{Number(record.quantity).toLocaleString()}</td><td className="border border-black p-2">{record.updatedBy || "-"}</td></tr>) : <tr><td colSpan={5} className="h-16" aria-label="No records" /></tr>}</tbody></table></div>
+    <div className="flex flex-wrap items-center justify-end gap-3 text-sm"><span className="font-black" title="Total">{rows.length}</span><div className="flex items-center gap-2"><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded border border-black p-1" aria-label="Rows per page"><option value={10}>10 / page</option><option value={25}>25 / page</option><option value={50}>50 / page</option><option value={100}>100 / page</option></select><button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button><span>{currentPage} / {totalPages}</span><button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage >= totalPages} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button></div></div>
   </div>;
 }

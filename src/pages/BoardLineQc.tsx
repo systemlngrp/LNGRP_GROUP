@@ -214,6 +214,12 @@ function hasAnyWarning(values: Array<unknown>) {
   return values.some((value) => String(value ?? "").trim() !== "");
 }
 
+function qcLocalDateKey(value: unknown) {
+  const date = new Date(String(value || ""));
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function uniqueOptions(values: Array<unknown>) {
   return [...new Set(values.map((value) => String(value ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
@@ -822,6 +828,11 @@ export function BoardLineQcMaster() {
   const [partyFilter, setPartyFilter] = useState("");
   const [qcPersonFilter, setQcPersonFilter] = useState("");
   const [warningFilter, setWarningFilter] = useState("All");
+  const [itemFilter, setItemFilter] = useState("");
+  const [erpFilter, setErpFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
   const [editingRow, setEditingRow] = useState<BoardLineQcCheck | null>(null);
@@ -927,13 +938,15 @@ export function BoardLineQcMaster() {
 
   useEffect(() => {
     setPage(1);
-  }, [searchTerm, jobFilter, partyFilter, qcPersonFilter, warningFilter, pageSize]);
+  }, [searchTerm, jobFilter, partyFilter, qcPersonFilter, warningFilter, itemFilter, erpFilter, statusFilter, fromDateFilter, toDateFilter, pageSize]);
 
   const filterOptions = useMemo(
     () => ({
       jobs: uniqueOptions(checks.map((row) => row.jobNo)),
       parties: uniqueOptions(checks.map((row) => row.partyName)),
       qcPeople: uniqueOptions(checks.map((row) => row.qcPerson)),
+      items: uniqueOptions(checks.map((row) => row.itemName)),
+      erps: uniqueOptions(checks.map((row) => row.erp)),
     }),
     [checks]
   );
@@ -956,12 +969,21 @@ export function BoardLineQcMaster() {
         if (jobFilter && String(row.jobNo) !== jobFilter) return false;
         if (partyFilter && String(row.partyName) !== partyFilter) return false;
         if (qcPersonFilter && String(row.qcPerson) !== qcPersonFilter) return false;
+        if (itemFilter && String(row.itemName) !== itemFilter) return false;
+        if (erpFilter && String(row.erp) !== erpFilter) return false;
+        if (fromDateFilter || toDateFilter) {
+          const day = qcLocalDateKey(row.timestamp);
+          if (!day) return false;
+          if (fromDateFilter && day < fromDateFilter) return false;
+          if (toDateFilter && day > toDateFilter) return false;
+        }
         if (warningFilter === "With Warning" && !warning) return false;
         if (warningFilter === "No Warning" && warning) return false;
         return true;
       });
-    return groupBoardLineChecks(filteredChunks);
-  }, [checks, jobFilter, partyFilter, qcPersonFilter, warningFilter]);
+    const groups = groupBoardLineChecks(filteredChunks);
+    return statusFilter ? groups.filter((group) => group.groupStatus === statusFilter) : groups;
+  }, [checks, jobFilter, partyFilter, qcPersonFilter, warningFilter, itemFilter, erpFilter, statusFilter, fromDateFilter, toDateFilter]);
   // Search: only the table columns, as shown (Date, master columns, Chunks, Status, QC People).
   const rows = useTableSearch(filteredGroups, searchTerm, (row) => [
     formatDate(row.timestamp),
@@ -986,89 +1008,80 @@ export function BoardLineQcMaster() {
 
   return (
     <div className="space-y-6 text-black">
-      <div className="space-y-4 border-b border-black pb-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <h2 className="text-xl font-bold uppercase tracking-tight text-black">Board Line QC Master</h2>
-          <div className="relative w-full md:w-96">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              className="w-full rounded border border-black py-2 pl-10 pr-4 text-sm text-black focus:outline-none focus:ring-1 focus:ring-black"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-          <Select compact value={jobFilter} onChange={setJobFilter} options={filterOptions.jobs.map((value) => ({ value, label: value }))} placeholder="Job No." noOptionsMessage="No matching job no."/>
-          <Select compact value={partyFilter} onChange={setPartyFilter} options={filterOptions.parties.map((value) => ({ value, label: value }))} placeholder="Party Name" noOptionsMessage="No matching party name"/>
-          <Select compact value={qcPersonFilter} onChange={setQcPersonFilter} options={filterOptions.qcPeople.map((value) => ({ value, label: value }))} placeholder="QC Person" noOptionsMessage="No matching qc person"/>
-          <select value={warningFilter} onChange={(event) => setWarningFilter(event.target.value)} className="rounded border border-black p-2 text-sm">
-            <option>All</option>
-            <option>With Warning</option>
-            <option>No Warning</option>
-          </select>
-          <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} className="rounded border border-black p-2 text-sm">
-            {[10, 25, 50, 100].map((value) => <option key={value} value={value}>{value} / page</option>)}
-          </select>
-        </div>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Board Line QC Master</h2>
       </div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
-        <div className="overflow-x-auto">
-          <table data-table-pagination-external="true" className="min-w-full border-collapse divide-y divide-black border border-black">
-            <thead className="sticky top-0 z-30 bg-slate-100">
-              <tr>
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[110px] whitespace-nowrap"><SortHeader label="Date" sortKey="__date" sort={sort} onToggle={toggleSort} align="left" /></th>
-                {masterColumns.map((column) => (
-                  <th key={String(column.key)} className={masterHeaderClass(column.key)}>
-                    {unsortedMasterColumnKeys.has(column.key) ? column.label : <SortHeader label={column.label} sortKey={String(column.key)} sort={sort} onToggle={toggleSort} align="left" />}
-                  </th>
-                ))}
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap"><SortHeader label="Chunks" sortKey="__chunks" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap"><SortHeader label="Status" sortKey="__status" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[160px]"><SortHeader label="QC People" sortKey="__qcPeople" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-black bg-white">
-              {loading ? (
-                <tr><td colSpan={masterColumns.length + 5} className="px-6 py-8 text-center text-black">Loading QC checks...</td></tr>
-              ) : pagedRows.length === 0 ? (
-                <tr><td colSpan={masterColumns.length + 5} className="px-6 py-8 text-center font-medium italic text-black">No Board Line QC checks found.</td></tr>
-              ) : (
-                pagedRows.map((row) => (
-                  <tr key={row.id} className="divide-x divide-black transition-colors hover:bg-slate-50">
-                    <td className="border border-black px-3 py-2 text-sm text-black align-top min-w-[110px] whitespace-nowrap">{formatDate(row.timestamp)}</td>
-                    {masterColumns.map((column) => (
-                      <td key={String(column.key)} className={masterCellClass(column.key)}>
-                        {column.key === "timestamp" ? formatTime(row.timestamp) : displayValue(row[column.key])}
-                      </td>
-                    ))}
-                    <td className="border border-black px-3 py-2 text-sm text-black align-top">{row.chunkCount}</td>
-                    <td className="border border-black px-3 py-2 text-sm font-bold text-black align-top">{row.groupStatus}</td>
-                    <td className="border border-black px-3 py-2 text-sm text-black align-top">{row.qcPeople.join(", ") || "-"}</td>
-                    <td className="border border-black px-3 py-2 text-sm text-black align-top whitespace-nowrap">
-                      <div className="flex flex-wrap gap-1">
-                        <button type="button" onClick={() => setHistoryGroup(row)} className="rounded border border-black px-2 py-1 font-bold">History</button>
-                        {canManage ? <button type="button" onClick={() => openEdit(row.chunks[row.chunks.length - 1])} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button> : null}
-                        {canManage ? <button type="button" onClick={() => void toggleGroupStatus(row)} className="rounded bg-emerald-700 px-2 py-1 font-bold text-white">{row.groupStatus === "Complete" ? "Reopen" : "Complete"}</button> : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job No</span><Select compact value={jobFilter} onChange={setJobFilter} options={filterOptions.jobs.map((value) => ({ value, label: value }))} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Party</span><Select compact value={partyFilter} onChange={setPartyFilter} options={filterOptions.parties.map((value) => ({ value, label: value }))} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={filterOptions.items.map((value) => ({ value, label: value }))} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">ERP</span><Select compact value={erpFilter} onChange={setErpFilter} options={filterOptions.erps.map((value) => ({ value, label: value }))} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">QC Person</span><Select compact value={qcPersonFilter} onChange={setQcPersonFilter} options={filterOptions.qcPeople.map((value) => ({ value, label: value }))} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Warning</span><Select compact value={warningFilter === "All" ? "" : warningFilter} onChange={(value) => setWarningFilter(value || "All")} options={[{ value: "With Warning", label: "With Warning" }, { value: "No Warning", label: "No Warning" }]} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Status</span><Select compact value={statusFilter} onChange={setStatusFilter} options={[{ value: "Draft", label: "Draft" }, { value: "Complete", label: "Complete" }]} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2"><label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label><label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label></div>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-black p-3 text-sm">
-          <span className="font-black" title="Total">{rows.length}</span>
-          <div className="flex items-center gap-2">
-            <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button>
-            <span>{currentPage} / {totalPages}</span>
-            <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage >= totalPages} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button>
-          </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">{(searchTerm.trim() || jobFilter || partyFilter || qcPersonFilter || warningFilter !== "All" || itemFilter || erpFilter || statusFilter || fromDateFilter || toDateFilter) ? <button type="button" onClick={() => { setSearchTerm(""); setJobFilter(""); setPartyFilter(""); setQcPersonFilter(""); setWarningFilter("All"); setItemFilter(""); setErpFilter(""); setStatusFilter(""); setFromDateFilter(""); setToDateFilter(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}<button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button></div>
+      </div>
+
+      <div className="overflow-x-auto rounded border border-black bg-white">
+        <table data-table-pagination-external="true" className="min-w-full border-collapse divide-y divide-black border border-black">
+          <thead className="bg-slate-100">
+            <tr>
+              <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[110px] whitespace-nowrap"><SortHeader label="Date" sortKey="__date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              {masterColumns.map((column) => (
+                <th key={String(column.key)} className={masterHeaderClass(column.key)}>
+                  {unsortedMasterColumnKeys.has(column.key) ? column.label : <SortHeader label={column.label} sortKey={String(column.key)} sort={sort} onToggle={toggleSort} align="left" />}
+                </th>
+              ))}
+              <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap"><SortHeader label="Chunks" sortKey="__chunks" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top whitespace-nowrap"><SortHeader label="Status" sortKey="__status" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top min-w-[160px]"><SortHeader label="QC People" sortKey="__qcPeople" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-2 text-left text-xs font-bold uppercase text-black align-top">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-black bg-white">
+            {loading ? (
+              <tr><td colSpan={masterColumns.length + 5} className="px-6 py-8 text-center text-black">Loading QC checks...</td></tr>
+            ) : pagedRows.length === 0 ? (
+              <tr><td colSpan={masterColumns.length + 5} className="h-16" aria-label="No records" /></tr>
+            ) : (
+              pagedRows.map((row) => (
+                <tr key={row.id} className="divide-x divide-black transition-colors hover:bg-slate-50">
+                  <td className="border border-black px-3 py-2 text-sm text-black align-top min-w-[110px] whitespace-nowrap">{formatDate(row.timestamp)}</td>
+                  {masterColumns.map((column) => (
+                    <td key={String(column.key)} className={masterCellClass(column.key)}>
+                      {column.key === "timestamp" ? formatTime(row.timestamp) : displayValue(row[column.key])}
+                    </td>
+                  ))}
+                  <td className="border border-black px-3 py-2 text-sm text-black align-top">{row.chunkCount}</td>
+                  <td className="border border-black px-3 py-2 text-sm font-bold text-black align-top">{row.groupStatus}</td>
+                  <td className="border border-black px-3 py-2 text-sm text-black align-top">{row.qcPeople.join(", ") || "-"}</td>
+                  <td className="border border-black px-3 py-2 text-sm text-black align-top whitespace-nowrap">
+                    <div className="flex flex-wrap gap-1">
+                      <button type="button" onClick={() => setHistoryGroup(row)} className="rounded border border-black px-2 py-1 font-bold">History</button>
+                      {canManage ? <button type="button" onClick={() => openEdit(row.chunks[row.chunks.length - 1])} className="inline-flex items-center gap-1 rounded bg-indigo-600 px-2 py-1 font-bold text-white"><Edit size={14} />Edit</button> : null}
+                      {canManage ? <button type="button" onClick={() => void toggleGroupStatus(row)} className="rounded bg-emerald-700 px-2 py-1 font-bold text-white">{row.groupStatus === "Complete" ? "Reopen" : "Complete"}</button> : null}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-3 p-1 text-sm">
+        <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))} aria-label="Rows per page" className="rounded border border-black p-1 text-sm">
+          {[10, 25, 50, 100].map((value) => <option key={value} value={value}>{value} / page</option>)}
+        </select>
+        <span className="font-black" title="Total">{rows.length}</span>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={currentPage <= 1} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Previous page" title="Previous page">&#8249;</button>
+          <span>{currentPage} / {totalPages}</span>
+          <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={currentPage >= totalPages} className="rounded border border-black px-3 py-1 font-bold disabled:opacity-50" aria-label="Next page" title="Next page">&#8250;</button>
         </div>
       </div>
       {editingRow ? (

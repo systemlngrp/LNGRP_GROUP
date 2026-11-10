@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Search } from "lucide-react";
+import { Select } from "../components/Select";
+import { useTableSearch } from "../lib/tableSearch";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
 import type { BoardLineQcCheck, PrintingQcCheck, ProductionProcessing } from "../types";
 import {
@@ -37,6 +39,9 @@ export function QcScore() {
   const initialRange = useMemo(() => currentMonthRange(), []);
   const [fromDate, setFromDate] = useState(initialRange.from);
   const [toDate, setToDate] = useState(initialRange.to);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [boardlinePerson, setBoardlinePerson] = useState("");
+  const [printingPerson, setPrintingPerson] = useState("");
   const [whatsappConfig, setWhatsappConfig] = useState<"checking" | "configured" | "missing" | "error">("checking");
   const [sendingDate, setSendingDate] = useState<string | null>(null);
   const [shareNotice, setShareNotice] = useState("");
@@ -47,10 +52,22 @@ export function QcScore() {
   const invalidRange = Boolean(fromDate && toDate && fromDate > toDate);
   const loading = processingLoading || boardlineLoading || printingLoading;
 
-  const rows = useMemo(
+  const allRows = useMemo(
     () => invalidRange ? [] : buildQcScoreRows({ fromDate, toDate, processing, boardlineChecks, printingChecks }),
     [boardlineChecks, fromDate, invalidRange, printingChecks, processing, toDate]
   );
+  const boardlinePersonOptions = useMemo(() => [...new Set(allRows.flatMap((row) => row.boardlineQcPeople).filter(Boolean))].sort().map((value) => ({ value, label: value })), [allRows]);
+  const printingPersonOptions = useMemo(() => [...new Set(allRows.flatMap((row) => row.printingQcPeople).filter(Boolean))].sort().map((value) => ({ value, label: value })), [allRows]);
+  const filteredRows = useMemo(
+    () => allRows.filter((row) => (!boardlinePerson || row.boardlineQcPeople.includes(boardlinePerson)) && (!printingPerson || row.printingQcPeople.includes(printingPerson))),
+    [allRows, boardlinePerson, printingPerson]
+  );
+  // Search: only the columns the table shows, as the cells display them.
+  const rows = useTableSearch(filteredRows, searchTerm, (row) => [
+    displayDate(row.date), row.date, row.totalChecksRequired, row.boardlineChecksRequired, row.boardlineChecksPerformed,
+    row.boardlineQcPeople.join(", ") || "-", formatQcScorePercent(row.boardlineScore), row.printingChecksRequired, row.printingChecksPerformed,
+    row.printingQcPeople.join(", ") || "-", formatQcScorePercent(row.printingScore), formatQcScorePercent(row.totalScore),
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +90,13 @@ export function QcScore() {
     const range = currentMonthRange();
     setFromDate(range.from);
     setToDate(range.to);
+  };
+  const filtersSet = Boolean(searchTerm.trim() || boardlinePerson || printingPerson || fromDate !== initialRange.from || toDate !== initialRange.to);
+  const clearFilters = () => {
+    setSearchTerm("");
+    setBoardlinePerson("");
+    setPrintingPerson("");
+    resetRange();
   };
 
   const shareOnWhatsApp = async (row: (typeof rows)[number]) => {
@@ -112,37 +136,19 @@ export function QcScore() {
 
   return (
     <div className="space-y-4 pb-8 text-black">
-      <div className="border-b border-black pb-3">
-        <h2 className="text-xl font-bold uppercase tracking-tight">QC Score</h2>
-      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">QC Score</h2><div className="text-sm font-bold text-slate-600">{rows.length} day{rows.length === 1 ? "" : "s"}</div></div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded border-2 border-black bg-white p-3">
-        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
-          <label className="space-y-1">
-          <span className="block text-xs font-black uppercase">From Date</span>
-          <input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm" />
-        </label>
-        <label className="space-y-1">
-          <span className="block text-xs font-black uppercase">To Date</span>
-          <input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="rounded border-2 border-black px-3 py-2 text-sm" />
-        </label>
-        </div>
-        <button type="button" onClick={resetRange} className="rounded border-2 border-black bg-white px-4 py-2 text-sm font-bold hover:bg-slate-50">
-          Current Month
-        </button>
-        <div className="ml-auto text-sm font-bold text-slate-600">{rows.length} day{rows.length === 1 ? "" : "s"}</div>
-      </div>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3"><div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" /></div><div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6"><div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2"><label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label><label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label></div><div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Boardline QC Person</span><Select compact value={boardlinePerson} onChange={setBoardlinePerson} options={boardlinePersonOptions} placeholder="All" /></div><div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Printing QC Person</span><Select compact value={printingPerson} onChange={setPrintingPerson} options={printingPersonOptions} placeholder="All" /></div></div><div data-mf-actions="true" className="flex justify-end gap-2">{filtersSet ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}<button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button></div></div>
 
       {invalidRange ? <div role="alert" className="rounded border-2 border-red-700 bg-red-50 p-3 font-bold text-red-800">From Date cannot be after To Date.</div> : null}
       {shareNotice ? <div role="status" className="rounded border border-slate-300 bg-white p-3 font-semibold">{shareNotice}{manualShareUrl ? <a href={manualShareUrl} target="_blank" rel="noreferrer" className="ml-2 text-blue-700 underline">Open WhatsApp</a> : null}</div> : null}
 
-      <div className="overflow-hidden rounded border-2 border-black bg-white">
+      <div className="overflow-x-auto rounded border border-black bg-white">
         <div className="border-b-2 border-black bg-[#fff2cc] px-4 py-3 text-center text-sm font-black uppercase tracking-wide">
           QC Online Checking Score Card Report
         </div>
-        <div className="max-h-[calc(100vh-260px)] overflow-auto">
           <table className="min-w-[2050px] w-full border-collapse">
-            <thead className="sticky top-0 z-10">
+            <thead>
               <tr>
                 <th className={`${headerClass} min-w-[115px]`}>Date</th>
                 <th className={`${headerClass} min-w-[150px]`}>Total Checks Required with 0</th>
@@ -181,11 +187,10 @@ export function QcScore() {
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={12} className="p-8 text-center font-semibold">Select a valid date range to view the QC score.</td></tr>
+                <tr><td colSpan={12} className="h-16" aria-label="No records" /></tr>
               )}
             </tbody>
           </table>
-        </div>
       </div>
     </div>
   );
