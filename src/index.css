@@ -1652,3 +1652,9 @@ table td button:focus-visible {
     overflow: visible !important;
   }
 }
+
+/* Sort arrows sit with the header text, centred like the rest of the table. */
+.app-view-content table.app-enhanced-table th .app-sort-header {
+  justify-content: center;
+  text-align: center;
+}

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useData } from "../hooks/useData";
 import { Firm, Machine, Production, ProductionProcessing } from "../types";
-import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { TableControls } from "../components/TableControls";
 import { useNavigate } from "react-router-dom";
 import { formatDate } from "../lib/serial";
@@ -16,7 +17,7 @@ import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, wastage
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, printingWastageDraftFromEntry, type PrintingWastageDraft } from "../lib/printingWastage";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
-import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
@@ -53,6 +54,7 @@ export function ProductionProcessingMaster() {
   const [plateJobs, setPlateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const [machines] = useData<Machine>("machines", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const firmSelectOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)), [firms]);
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
@@ -231,8 +233,8 @@ export function ProductionProcessingMaster() {
   useEffect(() => { setPage(1); }, [firmFilter, fromDate, searchTerm, toDate, setPage]);
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-3 border-b border-black pb-4">
+    <div className="space-y-4">
+      <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-3 border-b border-black pb-3">
         <h2 className="min-w-0 text-xl font-bold text-black uppercase tracking-tight">Production Reporting Master</h2>
         <button 
           onClick={() => navigate("/production-processing/form")} 
@@ -243,37 +245,33 @@ export function ProductionProcessingMaster() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 rounded border border-black bg-white p-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.5fr)_minmax(180px,0.9fr)_minmax(150px,0.8fr)_minmax(150px,0.8fr)_auto] xl:items-end">
-        <div className="min-w-0">
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
         </div>
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} compact={false} className="min-w-0" />
-        <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
-        <label className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-600">
-          From
-          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="mt-1 h-[42px] w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
-        </label>
-        <label className="min-w-0 text-[10px] font-black uppercase tracking-widest text-slate-600">
-          To
-          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="mt-1 h-[42px] w-full rounded border-2 border-black bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
-        </label>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmSelectOptions} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2">
+            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold" /></label>
+            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold" /></label>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setSearchTerm("");
-            setFirmFilter("");
-            setFromDate("");
-            setToDate("");
-          }}
-          disabled={!searchTerm && !firmFilter && !fromDate && !toDate}
-          className="h-[42px] whitespace-nowrap rounded border-2 border-black bg-white px-3 text-xs font-black uppercase text-black hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400"
-        >
-          Clear Filters
-        </button>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {searchTerm.trim() || firmFilter || fromDate || toDate ? (
+            <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+      <div className="rounded border border-black bg-white">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
