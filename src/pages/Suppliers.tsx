@@ -5,7 +5,8 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Spinner } from "../components/Spinner";
 import { ClientPagination } from "../components/ClientPagination";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox, SelectFilter, toFilterOptions } from "../components/ReportFilterBox";
 import { Select } from "../components/Select";
 import { Edit, Trash2, Upload, Download } from "lucide-react";
 import { MandatoryLegend, MandatoryLabel } from "../components/Mandatory";
@@ -51,6 +52,9 @@ export function Suppliers() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
+  const [supplyFilter, setSupplyFilter] = useState("");
+  const [activeFilter, setActiveFilter] = useState("");
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,8 +90,13 @@ export function Suppliers() {
   const filteredSuppliers = useMemo(
     () =>
       [...searchedSuppliers]
+        .filter((supplier) =>
+          (!stateFilter || supplier.stateId === stateFilter) &&
+          (!supplyFilter || (supplier.gstSupplyType || "INTRA_STATE") === supplyFilter) &&
+          (!activeFilter || (supplier.active || "Yes") === activeFilter)
+        )
         .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })),
-    [searchedSuppliers]
+    [searchedSuppliers, stateFilter, supplyFilter, activeFilter]
   );
   const SUPPLIER_SORT_KEYS: Record<string, string> = {
     "Supplier Name": "name",
@@ -451,59 +460,42 @@ export function Suppliers() {
         </div>
       ) : (
         <div className="space-y-5">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-black pb-4 gap-4">
-            <h2 className="text-xl font-bold text-black uppercase tracking-tight">Suppliers Master</h2>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={downloadTemplate}
-                className="bg-white text-black border-2 border-black px-3 py-2 rounded font-bold hover:bg-slate-100 transition flex items-center text-sm"
-                title="Download Excel Template"
-              >
-                <Download size={18} className="mr-2" /> Template
-              </button>
-              
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="bg-white text-black border-2 border-black px-3 py-2 rounded font-bold hover:bg-slate-100 transition flex items-center text-sm"
-                title="Upload Bulk Data"
-              >
-                <Upload size={18} className="mr-2" /> Bulk Upload
-              </button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleBulkUpload}
-                accept=".xlsx, .xls"
-                className="hidden"
-              />
+          <MasterHeader title="Suppliers Master" addLabel="Add Supplier" onAdd={openCreate} />
 
-              <button
-                onClick={openCreate}
-                className="bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition flex items-center text-sm"
-              >
-                Add New Supplier
-              </button>
-            </div>
+          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || stateFilter || supplyFilter || activeFilter)} onClear={() => { setSearchTerm(""); setStateFilter(""); setSupplyFilter(""); setActiveFilter(""); }}>
+            <SelectFilter label="State" value={stateFilter} onChange={setStateFilter} options={stateOptions} wide />
+            <SelectFilter label="GST Supply Type" value={supplyFilter} onChange={setSupplyFilter} options={toFilterOptions(suppliers.map((supplier) => supplier.gstSupplyType || "INTRA_STATE"))} />
+            <SelectFilter label="Active" value={activeFilter} onChange={setActiveFilter} options={[{ value: "Yes", label: "Yes" }, { value: "No", label: "No" }]} />
+          </ReportFilterBox>
+
+          <div className="text-xs font-bold text-slate-700">{filteredSuppliers.length.toLocaleString()} {filteredSuppliers.length === 1 ? "supplier" : "suppliers"}</div>
+
+          {/* Phones: one card per supplier. */}
+          <div className="space-y-2 md:hidden">
+            {paginatedSuppliers.length === 0 ? (
+              <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">{suppliersLoading || isSubmitting ? "Loading…" : "No suppliers found."}</div>
+            ) : paginatedSuppliers.map((supplier) => (
+              <div key={supplier.id} className="rounded-lg border-2 border-black bg-white p-3 text-black">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 break-words text-sm font-black">{supplier.name}</span>
+                  <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-black uppercase ${(supplier.active || "Yes") === "Yes" ? "border-emerald-700 bg-emerald-50 text-emerald-800" : "border-slate-400 bg-slate-100 text-slate-600"}`}>{(supplier.active || "Yes") === "Yes" ? "Active" : "Inactive"}</span>
+                </div>
+                <div className="mt-1 text-[11px] font-semibold text-slate-700">{[supplier.contactPerson, supplier.contactNumber].filter(Boolean).join(" · ") || "-"}</div>
+                {supplier.email ? <div className="break-all text-[11px] text-slate-700">{supplier.email}</div> : null}
+                <div className="mt-1 text-[11px] font-semibold text-slate-700">GST {supplier.gstNo || "-"} · {supplier.gstSupplyType || "INTRA_STATE"}</div>
+                <div className="text-[11px] text-slate-700">{[getStateName(supplier.stateId), supplier.district, supplier.pinCode].filter(Boolean).join(", ")}</div>
+                {canManage ? (
+                  <div className="mt-2 flex justify-end gap-2">
+                    <button type="button" onClick={() => openEdit(supplier)} className="flex items-center gap-1 rounded border border-indigo-600 bg-indigo-50 px-2 py-1 text-[11px] font-bold uppercase text-indigo-700"><Edit size={14} /> Edit</button>
+                    <button type="button" onClick={() => handleDelete(supplier.id)} className="flex items-center gap-1 rounded border border-red-600 bg-red-50 px-2 py-1 text-[11px] font-bold uppercase text-red-700"><Trash2 size={14} /> Delete</button>
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
-
-<div className="max-w-sm">
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search"
-              className="w-full max-w-sm rounded-xl border-2 border-black px-4 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            />
-          </div>
-
-          <DataSummaryTiles
-            totalRecords={suppliers.length}
-            filteredRecords={filteredSuppliers.length}
-            showingRecords={paginatedSuppliers.length}
-            pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`}
-          />
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-black">
-            <div className="table-sticky-scroll">
+            <div className="table-sticky-scroll hidden md:block">
             <table className="min-w-max divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">

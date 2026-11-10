@@ -4,7 +4,8 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
-import { TableControls } from "../components/TableControls";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox } from "../components/ReportFilterBox";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { ColorMaster } from "../types";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -77,24 +78,15 @@ export function ColorMasters() {
   const { sorted: sortedColors, sort, toggle: toggleSort } = useTableSort(filteredColors, (row) => row.name);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Color Master</h2>
-        {!isFormOpen && (
-          <button
-            onClick={() => setIsFormOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded font-bold hover:bg-indigo-700 transition shadow"
-          >
-            <Plus size={18} /> Add New Color
-          </button>
-        )}
-      </div>
+    <div className="space-y-4">
+      {isFormOpen ? (
+        <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Color" : "New Color"}</h2>
+      ) : (
+        <MasterHeader title="Color Master" addLabel="Add Color" onAdd={() => setIsFormOpen(true)} />
+      )}
 
       {isFormOpen ? (
-        <div className="bg-white p-6 rounded shadow-sm border border-black max-w-xl">
-          <h3 className="text-lg font-bold text-black mb-6 uppercase">
-            {editingId ? "Edit Color" : "Create Color"}
-          </h3>
+        <div className="mx-auto w-full max-w-xl rounded-lg border-2 border-black bg-white p-4">
           <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
             <div className="flex flex-col space-y-1">
               <label htmlFor="name" className="font-bold text-black">Color Name *</label>
@@ -106,7 +98,7 @@ export function ColorMasters() {
                 className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
               />
             </div>
-            <div className="flex space-x-3 pt-2 items-center">
+            <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:justify-end">
               <button type="submit" disabled={isSubmitting} className="bg-emerald-600 text-white px-6 py-2 rounded font-bold hover:bg-emerald-700 transition border border-black min-w-[100px]">
                 {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
               </button>
@@ -118,7 +110,8 @@ export function ColorMasters() {
         </div>
       ) : (
         <>
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
+          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim())} onClear={() => setSearchTerm("")} />
+          <div className="text-xs font-bold text-slate-700">{filteredColors.length.toLocaleString()} {filteredColors.length === 1 ? "color" : "colors"}</div>
           <div className="bg-white rounded shadow-sm border border-black table-sticky-scroll">
             <div className="block md:hidden space-y-4 p-2">
               {sortedColors.map((color) => (
