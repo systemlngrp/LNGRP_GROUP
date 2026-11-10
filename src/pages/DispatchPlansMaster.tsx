@@ -1,22 +1,19 @@
 import React, { useMemo, useState } from "react";
 
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { DispatchPlan, Truck, Order, Company, OrderSchedule, LoadingSlip } from "../types";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
-import { Pencil, Save, Trash2, X } from "lucide-react";
+import { Pencil, Save, Search, Trash2, X } from "lucide-react";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { SortHeader, useTableSort } from "../lib/tableSort";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
-import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
-import { getDispatchPlanPendingQty } from "../lib/dispatchPlanBalances";
 
 export function DispatchPlansMaster() {
   const { user, setActiveFirm } = useAuth();
@@ -36,6 +33,10 @@ export function DispatchPlansMaster() {
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [firms] = useData<any>("firms", [], { firmScope: "all", storageKey: "firms-all" });
   const [firmFilter, setFirmFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [balanceFilter, setBalanceFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -159,37 +160,30 @@ export function DispatchPlansMaster() {
   };
 
   const dispatchFilterRows = useMemo(() => {
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const companyById = new Map(companies.map((c) => [c.id, c]));
+    const scheduleFirm = new Map(schedules.map((row) => [row.id, row.firmId]));
     return plans.map((plan) => {
-      const order = orders.find((o) => o.id === plan.orderId);
-      const company = companies.find((c) => c.id === order?.companyId);
+      const order = orderById.get(plan.orderId);
+      const company = companyById.get(order?.companyId as string);
       const item = resolveOrderItem(order);
       const companyName = String(company?.name || "").trim();
       const itemName = String(item?.name || "").trim();
       const itemErp = String(order?.erpCode || item?.erp || "").trim();
       const itemKey = itemName || itemErp ? `${itemName}::${itemErp}` : "";
-      const pending = getDispatchPlanPendingQty(plan, plan.loadedQty || 0);
+      const pending = Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0);
+      const firmId = String(order?.firmId || plan.orderFirmId || plan.firmId || scheduleFirm.get(plan.scheduleId) || "");
+      const firmName = getFirmDisplayNameById(firmId, firms);
+      const date = new Date(String(plan.date || ""));
+      const day = isNaN(date.getTime()) ? "" : `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
       return {
-        plan,
-        companyName,
-        itemName,
-        itemErp,
-        itemKey,
-        pending,
-        firmId: String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""),
-        firmName: getFirmDisplayNameById(String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""), firms),
-        // Visible columns: Plan No, Plan Date, Firm, Company, Order / Item, Planned, Invoice Qty, Cancl, Pending, Status.
+        plan, companyName, itemName, itemErp, itemKey,
+        orderNo: String(order?.orderNo || ""),
+        pending, day, firmId, firmName,
+        // Visible columns: Plan No, Plan Date, Firm, Company, Order No, Item, Planned, Invoice Qty, Cancl, Pending, Status.
         searchText: rowSearchText([
-          plan.planNo,
-          formatDate(plan.date),
-          getFirmDisplayNameById(String(order?.firmId || plan.orderFirmId || plan.firmId || schedules.find((row) => row.id === plan.scheduleId)?.firmId || ""), firms),
-          company?.name,
-          order?.orderNo,
-          item?.name,
-          Number(plan.plannedQty || 0),
-          Number(plan.loadedQty || 0),
-          Number(plan.canceledQty || 0),
-          Number(plan.plannedQty || 0) - Number(plan.loadedQty || 0) - Number(plan.canceledQty || 0),
-          plan.status,
+          plan.planNo, formatDate(plan.date), firmName, company?.name, order?.orderNo, item?.name,
+          Number(plan.plannedQty || 0), Number(plan.loadedQty || 0), Number(plan.canceledQty || 0), pending, plan.status,
         ]),
       };
     });
@@ -217,11 +211,25 @@ export function DispatchPlansMaster() {
         if (companyFilter && row.companyName !== companyFilter) return false;
         if (itemFilter && row.itemKey !== itemFilter) return false;
         if (firmFilter && row.firmId !== firmFilter) return false;
+        if (statusFilter && row.plan.status !== statusFilter) return false;
+        if (balanceFilter === "pending" && !(row.pending > 0)) return false;
+        if (balanceFilter === "done" && row.pending > 0) return false;
+        if (fromDate && (!row.day || row.day < fromDate)) return false;
+        if (toDate && (!row.day || row.day > toDate)) return false;
         return matchesTableSearch(row.searchText, words);
       })
       .map((row) => row.plan)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [companyFilter, dispatchFilterRows, firmFilter, itemFilter, searchTerm]);
+  }, [companyFilter, dispatchFilterRows, firmFilter, itemFilter, searchTerm, statusFilter, balanceFilter, fromDate, toDate]);
+  const filterOptions = useMemo(() => {
+    const firmIds = new Set(dispatchFilterRows.map((row) => row.firmId).filter(Boolean));
+    const statuses = Array.from(new Set(dispatchFilterRows.map((row) => String(row.plan.status || "")).filter(Boolean))).sort();
+    return {
+      firms: getFirmOptions(firms.filter((firm: { id: string }) => firmIds.has(String(firm.id)))),
+      statuses: statuses.map((value) => ({ value, label: value })),
+      balances: [{ value: "pending", label: "Pending Qty > 0" }, { value: "done", label: "Fully Invoiced / Closed" }],
+    };
+  }, [dispatchFilterRows, firms]);
   const filterRowByPlanId = useMemo(() => new Map(dispatchFilterRows.map((row) => [row.plan.id, row])), [dispatchFilterRows]);
   const { sorted: sortedPlans, sort, toggle: toggleSort } = useTableSort(filteredPlans, (plan, key) => {
     const row = filterRowByPlanId.get(plan.id);
@@ -230,7 +238,8 @@ export function DispatchPlansMaster() {
       case "date": return plan.date || "";
       case "firmName": return row?.firmName || "";
       case "companyName": return row?.companyName || "";
-      case "orderNo": return orders.find((o) => o.id === plan.orderId)?.orderNo || "";
+      case "orderNo": return row?.orderNo || "";
+      case "itemName": return row?.itemName || "";
       case "plannedQty": return Number(plan.plannedQty || 0);
       case "loadedQty": return Number(plan.loadedQty || 0);
       case "canceledQty": return Number(plan.canceledQty || 0);
@@ -238,7 +247,7 @@ export function DispatchPlansMaster() {
       case "status": return plan.status || "";
       default: return "";
     }
-  }, [filterRowByPlanId, orders]);
+  }, [filterRowByPlanId]);
   const {
     page,
     setPage,
@@ -248,100 +257,135 @@ export function DispatchPlansMaster() {
     paginatedItems: paginatedPlans,
   } = useClientPagination(sortedPlans, 25);
 
+  const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+  const DATE_INPUT = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
+  const hasFilters = Boolean(searchTerm.trim() || companyFilter || itemFilter || firmFilter || statusFilter || balanceFilter || fromDate || toDate);
+  const clearFilters = () => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setFirmFilter(""); setStatusFilter(""); setBalanceFilter(""); setFromDate(""); setToDate(""); };
+  const statusBadge = (status: string) => (
+    <span className={`inline-block whitespace-nowrap rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${status === "Dispatched" ? "border-emerald-900 bg-emerald-100 text-emerald-900" : "border-amber-900 bg-amber-100 text-amber-900"}`}>{status || "-"}</span>
+  );
+  const qty = (value: unknown) => Number(value || 0).toLocaleString();
+  const actionButtons = (p: DispatchPlan, hasLoadingSlip: boolean) => (
+    <>
+      {canManage ? <button
+        type="button"
+        onClick={() => openEditModal(p)}
+        disabled={hasLoadingSlip}
+        title={hasLoadingSlip ? "Loading slip already created. Editing is locked." : "Edit dispatch plan"}
+        aria-label="Edit dispatch plan"
+        className={`mr-2 p-1 transition ${hasLoadingSlip ? "cursor-not-allowed text-slate-300" : "text-indigo-600 hover:text-indigo-900"}`}
+      >
+        <Pencil size={16} />
+      </button> : null}
+      {canManage ? <button
+        type="button"
+        onClick={() => handleDelete(p.id)}
+        title={deletingId === p.id ? "Tap again to delete" : "Delete dispatch plan"}
+        aria-label={deletingId === p.id ? "Confirm delete" : "Delete dispatch plan"}
+        className={`${deletingId === p.id ? "scale-110 animate-pulse text-amber-600" : "text-red-600"} p-1 transition-all hover:text-red-900`}
+      >
+        <Trash2 size={16} />
+      </button> : null}
+    </>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Dispatch Plans Master</h2>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Dispatch Plans Master</h2>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_minmax(180px,1fr)_auto] md:items-center">
-        <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
-        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
-        {(searchTerm || companyFilter || itemFilter || firmFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setFirmFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className={LABEL}>Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={filterOptions.firms} placeholder="All" /></div>
+          <div className="min-w-0"><span className={LABEL}>Status</span><Select compact value={statusFilter} onChange={setStatusFilter} options={filterOptions.statuses} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Pending</span><Select compact value={balanceFilter} onChange={setBalanceFilter} options={filterOptions.balances} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
+            <label className="min-w-0"><span className={LABEL}>Plan From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className={DATE_INPUT} /></label>
+            <label className="min-w-0"><span className={LABEL}>Plan To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className={DATE_INPUT} /></label>
+          </div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+      {/* Phones: one card per plan. */}
+      <div className="space-y-2 md:hidden">
+        {paginatedPlans.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">No dispatch plans found.</div>
+        ) : paginatedPlans.map((p) => {
+          const row = filterRowByPlanId.get(p.id);
+          const hasLoadingSlip = loadingSlipPlanIds.has(p.id);
+          return (
+            <div key={p.id} className="rounded-lg border-2 border-black bg-white p-3 text-black">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-black">{p.planNo || "-"}</span>
+                {statusBadge(p.status)}
+              </div>
+              <div className="mt-0.5 text-[11px] font-semibold text-slate-700">{formatDate(p.date)} · {row?.firmName || "-"} · {row?.orderNo || "-"}</div>
+              <div className="mt-1 break-words text-xs font-bold">{row?.companyName || "-"}</div>
+              <div className="break-words text-xs">{row?.itemName || "-"}</div>
+              <div className="mt-2 grid grid-cols-4 gap-1 text-center">
+                {([["Planned", p.plannedQty], ["Invoice", p.loadedQty], ["Cancl", p.canceledQty], ["Pending", row?.pending]] as const).map(([label, value]) => (
+                  <div key={label} className="rounded border border-slate-300 bg-slate-50 px-1 py-1">
+                    <div className="text-[9px] font-black uppercase text-slate-500">{label}</div>
+                    <div className="text-xs font-black">{qty(value)}</div>
+                  </div>
+                ))}
+              </div>
+              {canManage ? <div className="mt-2 flex justify-end">{actionButtons(p, hasLoadingSlip)}</div> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-hidden rounded border border-black bg-white shadow-sm md:block">
         <div className="table-frozen-scroll">
-          <table className="min-w-full divide-y divide-black border-collapse border border-black">
-            <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
-              <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Plan No"} sortKey="planNo" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Plan Date"} sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Firm"} sortKey="firmName" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Order / Item"} sortKey="orderNo" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Planned"} sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-emerald-700"><SortHeader label={"Invoice Qty"} sortKey="loadedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-red-700"><SortHeader label={"Cancl"} sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black text-indigo-700"><SortHeader label={"Pending"} sortKey="pending" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black"><SortHeader label={"Status"} sortKey="status" sort={sort} onToggle={toggleSort} align="center" /></th>
-                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black">Actions</th>
+          <table className="min-w-full border-collapse border border-black">
+            <thead className="sticky top-0 z-30 bg-slate-100">
+              <tr>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Plan No"} sortKey="planNo" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Plan Date"} sortKey="date" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Firm"} sortKey="firmName" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Order No"} sortKey="orderNo" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Item"} sortKey="itemName" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Planned"} sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Invoice Qty"} sortKey="loadedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Cancl"} sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Pending"} sortKey="pending" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Status"} sortKey="status" sort={sort} onToggle={toggleSort} align="center" /></th>
+                {canManage ? <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black">Actions</th> : null}
               </tr>
             </thead>
-            <tbody className="divide-y divide-black bg-white">
+            <tbody className="bg-white text-black">
               {paginatedPlans.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-8 text-center text-black font-medium">No dispatch plans found.</td>
+                  <td colSpan={canManage ? 12 : 11} className="px-6 py-8 text-center font-medium text-black">No dispatch plans found.</td>
                 </tr>
               ) : (
                 paginatedPlans.map((p) => {
-                  const order = orders.find(o => o.id === p.orderId);
-                  const company = companies.find(c => c.id === order?.companyId);
-                  const item = resolveOrderItem(order);
-                  const pending = Number(p.plannedQty || 0) - Number(p.loadedQty || 0) - Number(p.canceledQty || 0);
+                  const row = filterRowByPlanId.get(p.id);
                   const hasLoadingSlip = loadingSlipPlanIds.has(p.id);
-
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50 divide-x divide-black">
-                      <td className="px-4 py-4 text-xs font-bold text-slate-500 border border-black">{p.planNo || "-"}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black">{getFirmDisplayNameById(String(order?.firmId || p.orderFirmId || p.firmId || schedules.find((row) => row.id === p.scheduleId)?.firmId || ""), firms)}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black">{company?.name || "-"}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black">
-                        <div className="font-bold">{order?.orderNo || "-"}</div>
-                        <div className="text-[10px] text-slate-500 uppercase">{item?.name || "-"}</div>
-                      </td>
-                      <td className="px-4 py-4 text-right text-xs font-medium text-black border border-black whitespace-nowrap">
-                        {Number(p.plannedQty || 0).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-right text-xs font-bold text-emerald-700 border border-black whitespace-nowrap">
-                        {Number(p.loadedQty || 0).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-right text-xs font-medium text-red-600 border border-black whitespace-nowrap">
-                        {Number(p.canceledQty || 0).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap">
-                        {pending.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-center text-xs border border-black">
-                        <span className={`px-2 py-1 rounded text-[10px] font-bold border uppercase tracking-wider ${
-                          p.status === 'Dispatched' ? 'bg-emerald-100 text-emerald-900 border-emerald-900' : 
-                          'bg-amber-100 text-amber-900 border-amber-900'
-                        }`}>
-                          {p.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-center text-xs font-medium border border-black whitespace-nowrap">
-                        {canManage ? <button
-                          type="button"
-                          onClick={() => openEditModal(p)}
-                          disabled={hasLoadingSlip}
-                          title={hasLoadingSlip ? "Loading slip already created. Editing is locked." : "Edit dispatch plan"}
-                          className={`mr-2 p-1 transition ${hasLoadingSlip ? "text-slate-300 cursor-not-allowed" : "text-indigo-600 hover:text-indigo-900"}`}
-                        >
-                          <Pencil size={16} />
-                        </button> : null}
-                        {canManage ? <button
-                          onClick={() => handleDelete(p.id)} 
-                          className={`${deletingId === p.id ? "text-amber-600 animate-pulse scale-110" : "text-red-600"} hover:text-red-900 transition-all p-1`}
-                        >
-                          <Trash2 size={16} />
-                        </button> : null}
-                      </td>
+                    <tr key={p.id} className="hover:bg-slate-50">
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-xs font-bold text-black">{p.planNo || "-"}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{formatDate(p.date)}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{row?.firmName || "-"}</td>
+                      <td className="border border-black px-3 py-2 text-xs text-black">{row?.companyName || "-"}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-xs font-bold text-black">{row?.orderNo || "-"}</td>
+                      <td className="border border-black px-3 py-2 text-xs text-black">{row?.itemName || "-"}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-black">{qty(p.plannedQty)}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-black">{qty(p.loadedQty)}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-black">{qty(p.canceledQty)}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-black text-black">{qty(row?.pending)}</td>
+                      <td className="border border-black px-3 py-2 text-center text-xs">{statusBadge(p.status)}</td>
+                      {canManage ? <td className="whitespace-nowrap border border-black px-3 py-2 text-center text-xs">{actionButtons(p, hasLoadingSlip)}</td> : null}
                     </tr>
                   );
                 })
