@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Check, Plus, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
@@ -131,9 +131,9 @@ export function QcBlockLocationMaster() {
     <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Block Location Master</h2></div>
     {message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}
     {usageError && <div className="rounded border border-red-700 bg-red-100 p-3">{usageError} Delete is unavailable until usage can be checked.</div>}
-    <div className="flex flex-wrap gap-2">
-      <input className="rounded border-2 border-black px-3 py-2" value={name} onChange={event => setName(event.target.value)} readOnly={editingUsed}/>
-      <button type="button" disabled={Boolean(busyId)} onClick={() => void save()} className="rounded bg-cyan-700 px-4 py-2 font-bold text-white disabled:opacity-50">{editing ? "Update" : "Add"}</button>
+    <div className="flex flex-wrap items-center gap-2">
+      <input placeholder="New location" className="min-w-0 flex-1 rounded border-2 border-black px-3 py-2 sm:max-w-sm" value={name} onChange={event => setName(event.target.value)} readOnly={editingUsed}/>
+      <button type="button" disabled={Boolean(busyId)} onClick={() => void save()} title={editing ? "Update" : "Add"} aria-label={editing ? "Update" : "Add"} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-700 font-bold text-white hover:bg-cyan-800 disabled:opacity-50">{editing ? <Check size={20} strokeWidth={3}/> : <Plus size={22} strokeWidth={3}/>}</button>
       {editing && <button type="button" onClick={() => { setEditing(""); setName(""); }} className="rounded border-2 border-black px-4 py-2 font-bold">Cancel</button>}
       {editingUsed && <span className="self-center text-sm">Used locations cannot be renamed.</span>}
     </div>

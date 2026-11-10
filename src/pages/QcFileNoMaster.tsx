@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Check, Plus, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -82,9 +82,9 @@ export function QcFileNoMaster() {
   return <div className="space-y-4 pb-8">
     <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">File No. Master</h2></div>
     {message && <div className="rounded border border-black bg-amber-100 p-3 font-bold">{message}</div>}
-    <div className="flex flex-wrap gap-2 rounded border-2 border-black bg-white p-3">
-      <input className="min-w-64 flex-1 rounded border-2 border-black px-3 py-2" value={fileNo} onChange={event => setFileNo(event.target.value)} disabled={Boolean(busyId)} />
-      <button type="button" disabled={Boolean(busyId)} onClick={() => void save()} className="rounded bg-cyan-700 px-4 py-2 font-bold text-white disabled:opacity-50">{editing ? "Update" : "Add"}</button>
+    <div className="flex flex-wrap items-center gap-2 rounded border-2 border-black bg-white p-3">
+      <input placeholder="New file no" className="min-w-0 flex-1 rounded border-2 border-black px-3 py-2 sm:max-w-sm" value={fileNo} onChange={event => setFileNo(event.target.value)} disabled={Boolean(busyId)} />
+      <button type="button" disabled={Boolean(busyId)} onClick={() => void save()} title={editing ? "Update" : "Add"} aria-label={editing ? "Update" : "Add"} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-cyan-700 font-bold text-white hover:bg-cyan-800 disabled:opacity-50">{editing ? <Check size={20} strokeWidth={3}/> : <Plus size={22} strokeWidth={3}/>}</button>
       {editing && <button type="button" disabled={Boolean(busyId)} onClick={() => { setEditing(""); setFileNo(""); setMessage(""); }} className="rounded border-2 border-black px-4 py-2 font-bold disabled:opacity-50">Cancel</button>}
     </div>
     <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
