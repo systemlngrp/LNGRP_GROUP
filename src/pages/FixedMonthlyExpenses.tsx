@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Edit, Eye, RotateCcw, Save, Search } from "lucide-react";
 import { Select } from "../components/Select";
+import { ExpenseLinesEditor } from "../components/ExpenseLinesEditor";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -61,8 +62,14 @@ export function FixedMonthlyExpenses({ view = "form" }: { view?: "form" | "maste
         if (!names.has(key)) names.set(key, name);
       });
 
+    // Expenses added on this form earlier come back on every month / date too.
+    records.forEach((record) => normalizeLines(record.lines).forEach((line) => {
+      const name = String(line.expenseName || "").trim();
+      if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
+    }));
+
     return Array.from(names.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-  }, [expenseMasters]);
+  }, [expenseMasters, records]);
 
   const totalAmount = useMemo(
     () => lines.reduce((sum, line) => sum + Number(line.amount || 0), 0),
@@ -116,13 +123,26 @@ export function FixedMonthlyExpenses({ view = "form" }: { view?: "form" | "maste
   const viewTotalAmount = viewLines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
   const buildMonthlyLines = (sourceLines: FixedMonthlyExpenseLine[] = []) => {
     const amountByExpense = new Map(sourceLines.map((line) => [line.expenseName.trim().toLowerCase(), Number(line.amount || 0)]));
-    return expenseOptions.map((expenseName) => newLine(expenseName, amountByExpense.get(expenseName.toLowerCase()) || 0));
+    const known = new Set(expenseOptions.map((expenseName) => expenseName.toLowerCase()));
+    // Rows typed on the form that are not in the list yet (including a new, still blank row) stay.
+    const extra = sourceLines.filter((line) => !known.has(line.expenseName.trim().toLowerCase()));
+    return [...expenseOptions.map((expenseName) => newLine(expenseName, amountByExpense.get(expenseName.toLowerCase()) || 0)), ...extra];
   };
 
+  // Load the saved amounts when the month changes (or its record first arrives);
+  // a background data refresh only adds new expenses and keeps what is being typed.
+  const loadedKeyRef = useRef("");
   useEffect(() => {
+    const key = `${fy}|${month}`;
     const existing = normalizedRecords.find((record) => record.fy === fy && Number(record.month) === Number(month));
-    setLines((current) => buildMonthlyLines(existing ? normalizeLines(existing.lines) : current));
-  }, [expenseOptions, fy, month, normalizedRecords]);
+    const loadKey = `${key}|${existing ? existing.id : ""}`;
+    if (loadedKeyRef.current !== loadKey) {
+      loadedKeyRef.current = loadKey;
+      setLines((current) => buildMonthlyLines(existing ? normalizeLines(existing.lines) : current));
+    } else {
+      setLines((current) => buildMonthlyLines(current));
+    }
+  }, [expenseOptions, normalizedRecords, fy, month]);
 
   const resetForm = () => {
     setFy(getCurrentFinancialYear());
@@ -149,6 +169,16 @@ export function FixedMonthlyExpenses({ view = "form" }: { view?: "form" | "maste
         amount: Number(line.amount || 0),
       }))
       .filter((line) => line.expenseName || line.amount > 0);
+
+    if (cleanLines.some((line) => !line.expenseName && line.amount > 0)) {
+      alert("Please enter the expense name for every amount.");
+      return;
+    }
+    const namesSeen = new Set<string>();
+    if (cleanLines.some((line) => { const key = line.expenseName.toLowerCase(); if (namesSeen.has(key)) return true; namesSeen.add(key); return false; })) {
+      alert("The same expense is entered twice. Please keep one row per expense.");
+      return;
+    }
 
     if (!fy || !monthNumber) {
       alert("Please select FY and Month.");
@@ -179,90 +209,46 @@ export function FixedMonthlyExpenses({ view = "form" }: { view?: "form" | "maste
   };
 
   if (view === "form") {
+    const FORM_LABEL = "mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-600";
+    const FORM_INPUT = "h-10 w-full rounded border-2 border-black bg-white px-3 text-sm font-bold text-black focus:border-indigo-600 focus:outline-none";
+    const savedAlready = normalizedRecords.some((record) => record.fy === fy && Number(record.month) === Number(month));
     return (
-      <div className="mx-auto max-w-3xl space-y-4 pb-6">
-        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-gray-900 pb-3">
-          <h1 className="text-xl font-bold uppercase tracking-tight text-black">Fixed Monthly Expenses Form</h1>
-          <div className="text-right">
-            <p className="text-[10px] font-bold uppercase text-slate-500">Total Amount</p>
-            <p className="text-xl font-black text-blue-700">{formatMoney(totalAmount)}</p>
+      <div className="mx-auto w-full max-w-3xl space-y-4 pb-6">
+        <h1 className="text-center text-xl font-bold uppercase tracking-tight text-black">Fixed Monthly Expenses Form</h1>
+
+        <section className="space-y-4 rounded-lg border-2 border-black bg-white p-3 sm:p-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block min-w-0">
+              <span className={FORM_LABEL}>FY *</span>
+              <select className={FORM_INPUT} value={fy} onChange={(event) => setFy(event.target.value)}>
+                {fyOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className={FORM_LABEL}>Month *</span>
+              <select className={FORM_INPUT} value={month} onChange={(event) => setMonth(event.target.value)}>
+                {FY_MONTHS.map((entry) => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+              </select>
+            </label>
           </div>
-        </div>
+          {savedAlready ? <div className="rounded border border-amber-600 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">Already saved — saving again updates it.</div> : null}
 
-      <div className="rounded-lg border border-gray-900 bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <label className="text-sm font-bold">
-            FY
-            <select className="mt-1 w-full rounded border border-gray-900 p-2" value={fy} onChange={(event) => setFy(event.target.value)}>
-              {fyOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm font-bold">
-            Month
-            <select className="mt-1 w-full rounded border border-gray-900 p-2" value={month} onChange={(event) => setMonth(event.target.value)}>
-              {FY_MONTHS.map((entry) => (
-                <option key={entry.value} value={entry.value}>
-                  {entry.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+          <ExpenseLinesEditor
+            lines={lines}
+            onChange={setLines}
+            suggestions={expenseOptions}
+            emptyText="No expenses yet. Tap Add Expense to enter one, or set them up in Expense Master."
+          />
+        </section>
 
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="bg-slate-100">
-                <th className="border border-gray-900 p-2 text-left">Expenses</th>
-                <th className="border border-gray-900 p-2 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line) => (
-                <tr key={line.id}>
-                  <td className="border border-gray-900 p-2 font-bold text-black">{line.expenseName || "-"}</td>
-                  <td className="border border-gray-900 p-2">
-                    <input
-                      className="w-full rounded border border-slate-300 p-2 text-right"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={Number(line.amount || 0) > 0 ? line.amount : ""}
-                      onChange={(event) => updateLine(line.id, { amount: Number(event.target.value || 0) })}
-                    />
-                  </td>
-                </tr>
-              ))}
-              {!lines.length && (
-                <tr>
-                  <td className="border border-gray-900 p-4 text-center text-slate-500" colSpan={2}>
-                    No monthly expenses found in Expense Master.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-50 font-black">
-                <td className="border border-gray-900 p-2 text-right">Total</td>
-                <td className="border border-gray-900 p-2 text-right">{formatMoney(totalAmount)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <button className="inline-flex items-center justify-center gap-2 rounded bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white" type="button" onClick={handleSave}>
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-emerald-600 px-8 py-2.5 text-sm font-black uppercase text-white hover:bg-emerald-700" type="button" onClick={handleSave}>
             <Save size={16} /> Save
           </button>
-          <button className="inline-flex items-center justify-center gap-2 rounded border border-gray-900 px-6 py-2.5 text-sm font-bold" type="button" onClick={resetForm}>
+          <button className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-white px-8 py-2.5 text-sm font-black uppercase text-black hover:bg-slate-50" type="button" onClick={resetForm}>
             <RotateCcw size={16} /> Clear
           </button>
         </div>
-      </div>
       </div>
     );
   }
