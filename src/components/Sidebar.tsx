@@ -303,10 +303,15 @@ const reportStockItems: NavItem[] = [
   { name: "Jobwise Reel Consumption", href: "/reports/jobwise-reel-consumption", icon: BarChart3 },
 ];
 
+const fixedExpenseItems: NavItem[] = [
+  { name: "Fixed Monthly Expenses Form", href: "/fixed-expenses/monthly-form", icon: FilePlus },
+  { name: "Fixed Monthly Expenses Master", href: "/fixed-expenses/monthly-master", icon: Database },
+  { name: "Fixed Daily Expenses Form", href: "/fixed-expenses/daily-form", icon: FilePlus },
+  { name: "Fixed Daily Expenses Master", href: "/fixed-expenses/daily-master", icon: Database },
+];
+
 const reportProductionItems: NavItem[] = [
   { name: "Jobs in Progress", href: "/reports/jobs-in-progress", icon: BarChart3 },
-  { name: "Fixed Monthly Expenses", href: "/reports/fixed-monthly-expenses", icon: Database },
-  { name: "Fixed Daily Expenses", href: "/reports/fixed-daily-expenses", icon: Database },
   { name: "Conversion Cost Month Wise", href: "/reports/conversion-cost-month-wise", icon: BarChart3 },
   { name: "Conversion Cost Details", href: "/reports/conversion-cost-details", icon: BarChart3 },
   { name: "Efficiency Report", href: "/reports/efficiency", icon: BarChart3 },
@@ -436,6 +441,11 @@ export const NAVIGATION: NavGroup[] = [
       { section: "Truck", items: truckItems },
       { section: "Billing", items: billingItems },
     ],
+  },
+  {
+    section: "Fixed Expenses",
+    color: "bg-fuchsia-800",
+    items: fixedExpenseItems,
   },
   {
     section: "Report",

@@ -1,15 +1,13 @@
-import React, { useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
+import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
-import { Production, Item } from "../types";
-import { Spinner } from "../components/Spinner";
-import { Upload } from "lucide-react";
+import { Production } from "../types";
+import { Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 
 interface LeastCostRecord {
   date: string;
@@ -37,22 +35,19 @@ interface LeastCostRecord {
 export function ItemwiseLeastCost() {
   const [productions, , prodsLoading] = useData<Production>("productions", []);
   const npdItems = useNpdItemsWithoutStock();
-  // Only used to save Least GSM uploads; the item list itself is not shown,
-  // so it is not downloaded (that read took about 20 s).
-  const [, , , itemActions] = useData<Item>("items", [], { enabled: false, cacheToLocalStorage: false });
   const itemsLoading = false;
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [jobFilter, setJobFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
-  const [message, setMessage] = useState("");
-  const uploadRef = useRef<HTMLInputElement>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const isLoading = prodsLoading || itemsLoading;
 
   const leastCostData = useMemo(() => {
       const erpMap = new Map<string, LeastCostRecord>();
 
+    const npdById = new Map(npdItems.map((item) => [item.id, item]));
     productions.forEach((prod) => {
       // Skip canceled jobs
       if (prod.status === "Cancelled" || prod.cancelTimestamp) return;
@@ -62,7 +57,7 @@ export function ItemwiseLeastCost() {
       
       if (!erp || isNaN(gsm) || gsm <= 0) return;
 
-      const item = npdItems.find(i => i.id === prod.itemId);
+      const item = npdById.get(prod.itemId);
       const itemName = item?.name || String(prod.itemId || "Unknown Item");
 
       if (!erpMap.has(erp) || gsm < erpMap.get(erp)!.gsm) {
@@ -115,43 +110,21 @@ export function ItemwiseLeastCost() {
     return Array.from(erpMap.values()).sort((a, b) => a.erp.localeCompare(b.erp));
   }, [productions, npdItems]);
   const filteredData = useMemo(() => {
+    const words = searchWords(searchTerm);
     return leastCostData.filter((row) => {
       const itemValue = itemFilter.split("::")[0];
       return (!companyFilter || row.company === companyFilter) &&
         (!itemFilter || row.itemName === itemValue) &&
         (!jobFilter || row.jobCardNo === jobFilter) &&
-        (!erpFilter || row.erp === erpFilter);
+        (!erpFilter || row.erp === erpFilter) &&
+        (!words.length || matchesTableSearch(rowSearchText([row.jobCardNo, row.itemName, row.erp, row.company, row.length, row.breadth, row.height, row.reelAsPerCalc, row.reelActual, row.cutting, row.l1, row.f1, row.l2, row.f2, row.l3, row.gsm, row.sheetWeight]), words));
     });
-  }, [companyFilter, erpFilter, itemFilter, jobFilter, leastCostData]);
+  }, [companyFilter, erpFilter, itemFilter, jobFilter, leastCostData, searchTerm]);
 
   const companyOptions = useMemo(() => Array.from(new Set(leastCostData.map((row) => row.company).filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name })), [leastCostData]);
   const itemOptions = useMemo(() => Array.from(new Map(leastCostData.map((row) => [`${row.itemName}::${row.erp}`, { value: `${row.itemName}::${row.erp}`, label: row.erp && row.itemName && !row.itemName.toLowerCase().includes(row.erp.toLowerCase()) ? `${row.itemName} - ${row.erp}` : row.itemName || row.erp, searchText: `${row.itemName} ${row.erp}` }])).values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)), [leastCostData]);
   const jobOptions = useMemo(() => Array.from(new Set(leastCostData.map((row) => row.jobCardNo).filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value })), [leastCostData]);
   const erpOptions = useMemo(() => Array.from(new Set(leastCostData.map((row) => row.erp).filter(Boolean))).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value })), [leastCostData]);
-
-  const upload = async (file?: File) => {
-    if (!file) return;
-    setMessage("");
-    try {
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
-      const byErp = new Map<string, Record<string, unknown>>();
-      rows.forEach((row, index) => {
-        const erp = String(row["ERP CODE"] ?? "").trim();
-        const gsm = Number(row.GSM);
-        if (!erp) throw new Error(`Row ${index + 2}: ERP CODE is required.`);
-        if (!Number.isFinite(gsm) || gsm <= 0) throw new Error(`Row ${index + 2}: GSM must be greater than zero.`);
-        byErp.set(erp, row);
-      });
-      for (const [erp, row] of byErp) {
-        const existing = npdItems.find((item) => String(item.erp || "").trim() === erp);
-        if (!existing) throw new Error(`ERP CODE ${erp} was not found in the Item master.`);
-        await itemActions.saveItem({ ...existing, gsmLeastCost: Number(row.GSM), updatedBy: "System User", updateTimestamp: new Date().toISOString() });
-      }
-      setMessage(`${byErp.size} Least GSM record(s) uploaded successfully.`);
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to upload Least GSM file."); }
-    finally { if (uploadRef.current) uploadRef.current.value = ""; }
-  };
 
   // Column sort over every filtered row before paging; no sort keeps ERP order.
   const { sorted: sortedData, sort, toggle: toggleSort } = useTableSort(filteredData, (row, key) => (key === "jobCardNo" ? row.jobCardNo || "" : row[key as keyof LeastCostRecord]));
@@ -168,97 +141,115 @@ export function ItemwiseLeastCost() {
   // The centred loading card comes from the page loading boundary.
   if (isLoading) return null;
 
+  const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+  const hasFilters = Boolean(searchTerm.trim() || companyFilter || itemFilter || jobFilter || erpFilter);
+  const clearFilters = () => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setJobFilter(""); setErpFilter(""); };
+  const TH = "border border-black px-2 py-2 text-[10px] font-black uppercase";
+  const TD = "border border-black px-2 py-1.5 text-xs text-black";
+  const NUM = `${TD} whitespace-nowrap text-right`;
+  const sortHead = (label: string, key: string, align: "left" | "right" = "right") => <SortHeader label={label} sortKey={key} sort={sort} onToggle={toggleSort} align={align} />;
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-black">
-        <div className="flex w-full items-center justify-between gap-4">
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Itemwise Least Cost</h2>
-          <div className="flex w-full justify-end">
-            <input ref={uploadRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => void upload(event.target.files?.[0])} />
-            <button type="button" onClick={() => uploadRef.current?.click()} className="inline-flex shrink-0 items-center gap-1.5 rounded border-2 border-black bg-indigo-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-indigo-700"><Upload size={14} />Upload Least GSM</button>
-          </div>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Itemwise Least Cost</h2>
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className={LABEL}>Job No</span><Select compact value={jobFilter} onChange={setJobFilter} options={jobOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className={LABEL}>ERP Code</span><Select compact value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 bg-white border-2 border-black rounded p-3">
-        <div className="min-w-[220px] flex-1"><Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" /></div>
-        <div className="min-w-[260px] flex-1"><Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" /></div>
-        <div className="min-w-[220px] flex-1"><Select value={jobFilter} onChange={setJobFilter} options={jobOptions} placeholder="Job No" /></div>
-        <div className="min-w-[220px] flex-1"><Select value={erpFilter} onChange={setErpFilter} options={erpOptions} placeholder="ERP Code" /></div>
-        {message && <div className="w-full rounded border border-black bg-amber-100 px-3 py-2 text-sm font-bold">{message}</div>}
-        {(companyFilter || itemFilter || jobFilter || erpFilter) ? (
-          <button type="button" onClick={() => { setCompanyFilter(""); setItemFilter(""); setJobFilter(""); setErpFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
+      <div className="text-xs font-bold text-slate-700">{filteredData.length.toLocaleString()} {filteredData.length === 1 ? "item" : "items"}{hasFilters ? <span className="font-semibold text-slate-500"> of {leastCostData.length.toLocaleString()}</span> : null}</div>
+
+      {/* Phones: one card per ERP. */}
+      <div className="space-y-2 md:hidden">
+        {paginatedData.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm font-bold text-slate-500">No data found.</div>
+        ) : paginatedData.map((row, idx) => (
+          <div key={`${row.erp}-${idx}`} className="rounded-lg border-2 border-black bg-white p-3 text-black">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-black">{row.erp}</span>
+              <span className="text-[11px] font-bold text-slate-600">{row.jobCardNo || "-"}</span>
+            </div>
+            <div className="mt-1 break-words text-xs font-bold">{row.itemName}</div>
+            <div className="break-words text-xs text-slate-700">{row.company || "-"}</div>
+            <div className="mt-2 grid grid-cols-4 gap-1 text-center">
+              {([["L×B×H", `${row.length}×${row.breadth}×${row.height}`], ["GSM", row.gsm], ["Sheet Wt", row.sheetWeight], ["Cut", row.cutting], ["Reel Calc", row.reelAsPerCalc], ["Reel Act", row.reelActual], ["L1/F1", `${row.l1}/${row.f1}`], ["L2/F2/L3", `${row.l2}/${row.f2}/${row.l3}`]] as const).map(([label, value]) => (
+                <div key={label} className={`rounded border border-slate-300 px-1 py-1 ${label === "GSM" ? "bg-emerald-50" : "bg-slate-50"}`}>
+                  <div className="text-[9px] font-black uppercase text-slate-500">{label}</div>
+                  <div className={`break-all text-[11px] font-black ${label === "GSM" ? "text-emerald-700" : ""}`}>{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
-      <DataSummaryTiles totalRecords={leastCostData.length} filteredRecords={filteredData.length} showingRecords={paginatedData.length} pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`} />
-
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+      <div className="hidden overflow-hidden rounded border border-black bg-white md:block">
         <div className="table-sticky-scroll">
-          <table className="min-w-[1600px] w-full divide-y divide-black border-collapse border border-black text-sm">
-            <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black whitespace-nowrap">
-              <tr className="divide-x divide-black">
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">SL No</th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Job No" sortKey="jobCardNo" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Item Name" sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="ERP CODE" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L" sortKey="length" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="B" sortKey="breadth" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="H" sortKey="height" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Reel Calc" sortKey="reelAsPerCalc" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Reel Act" sortKey="reelActual" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Cut" sortKey="cutting" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L1" sortKey="l1" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="F1" sortKey="f1" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L2" sortKey="l2" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="F2" sortKey="f2" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L3" sortKey="l3" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="GSM" sortKey="gsm" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Sheet Wt" sortKey="sheetWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
+          <table className="w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-30 bg-slate-100">
+              <tr>
+                <th className={TH}>SL No</th>
+                <th className={TH}>{sortHead("Job No", "jobCardNo", "left")}</th>
+                <th className={TH}>{sortHead("Item Name", "itemName", "left")}</th>
+                <th className={TH}>{sortHead("ERP Code", "erp", "left")}</th>
+                <th className={TH}>{sortHead("Company", "company", "left")}</th>
+                <th className={TH}>{sortHead("L", "length")}</th>
+                <th className={TH}>{sortHead("B", "breadth")}</th>
+                <th className={TH}>{sortHead("H", "height")}</th>
+                <th className={TH}>{sortHead("Reel Calc", "reelAsPerCalc")}</th>
+                <th className={TH}>{sortHead("Reel Act", "reelActual")}</th>
+                <th className={TH}>{sortHead("Cut", "cutting")}</th>
+                <th className={TH}>{sortHead("L1", "l1")}</th>
+                <th className={TH}>{sortHead("F1", "f1")}</th>
+                <th className={TH}>{sortHead("L2", "l2")}</th>
+                <th className={TH}>{sortHead("F2", "f2")}</th>
+                <th className={TH}>{sortHead("L3", "l3")}</th>
+                <th className={TH}>{sortHead("GSM", "gsm")}</th>
+                <th className={TH}>{sortHead("Sheet Wt", "sheetWeight")}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-black bg-white">
+            <tbody className="bg-white">
               {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={18} className="px-6 py-12 text-center text-slate-500 font-bold italic uppercase tracking-widest bg-slate-50/50">
-                    No data found matching your criteria
-                  </td>
+                  <td colSpan={18} className="px-6 py-12 text-center font-bold text-slate-500">No data found.</td>
                 </tr>
               ) : (
                 paginatedData.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50 transition-colors divide-x divide-black text-xs whitespace-nowrap">
-                    <td className="px-3 py-2 font-bold text-black">{(page - 1) * pageSize + idx + 1}</td>
-                    <td className="px-3 py-2 font-bold text-black">{row.jobCardNo || "-"}</td>
-                    <td className="px-3 py-2 text-black min-w-[260px] max-w-[320px] truncate" title={row.itemName}>{row.itemName}</td>
-                    <td className="px-3 py-2 font-bold text-black">{row.erp}</td>
-                    <td className="px-3 py-2 text-black min-w-[180px] max-w-[240px] truncate" title={row.company}>{row.company}</td>
-                    <td className="px-3 py-2 text-right text-slate-600">{row.length}</td>
-                    <td className="px-3 py-2 text-right text-slate-600">{row.breadth}</td>
-                    <td className="px-3 py-2 text-right text-slate-600">{row.height}</td>
-                    <td className="px-3 py-2 text-right text-indigo-600">{row.reelAsPerCalc}</td>
-                    <td className="px-3 py-2 text-right text-indigo-600 font-medium">{row.reelActual}</td>
-                    <td className="px-3 py-2 text-right text-indigo-600">{row.cutting}</td>
-                    <td className="px-3 py-2 text-right text-slate-500">{row.l1}</td>
-                    <td className="px-3 py-2 text-right text-slate-500">{row.f1}</td>
-                    <td className="px-3 py-2 text-right text-slate-500">{row.l2}</td>
-                    <td className="px-3 py-2 text-right text-slate-500">{row.f2}</td>
-                    <td className="px-3 py-2 text-right text-slate-500">{row.l3}</td>
-                    <td className="px-3 py-2 text-right font-black text-emerald-700">{row.gsm}</td>
-                    <td className="px-3 py-2 text-right text-black font-medium">{row.sheetWeight}</td>
+                  <tr key={`${row.erp}-${idx}`} className="hover:bg-slate-50">
+                    <td className={`${TD} text-center font-bold`}>{(page - 1) * pageSize + idx + 1}</td>
+                    <td className={`${TD} whitespace-nowrap font-bold`}>{row.jobCardNo || "-"}</td>
+                    <td className={TD}>{row.itemName}</td>
+                    <td className={`${TD} whitespace-nowrap font-bold`}>{row.erp}</td>
+                    <td className={TD}>{row.company}</td>
+                    <td className={NUM}>{row.length}</td>
+                    <td className={NUM}>{row.breadth}</td>
+                    <td className={NUM}>{row.height}</td>
+                    <td className={NUM}>{row.reelAsPerCalc}</td>
+                    <td className={NUM}>{row.reelActual}</td>
+                    <td className={NUM}>{row.cutting}</td>
+                    <td className={NUM}>{row.l1}</td>
+                    <td className={NUM}>{row.f1}</td>
+                    <td className={NUM}>{row.l2}</td>
+                    <td className={NUM}>{row.f2}</td>
+                    <td className={NUM}>{row.l3}</td>
+                    <td className={`${NUM} font-black text-emerald-700`}>{row.gsm}</td>
+                    <td className={`${NUM} font-bold`}>{row.sheetWeight}</td>
                   </tr>
                 ))
               )}
             </tbody>
-            {filteredData.length > 0 && (
-            <tfoot className="bg-slate-100 border-t border-black divide-y divide-black">
-                    <tr>
-                        <td colSpan={18} className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase">
-                            Total Unique ERPs: {filteredData.length}
-                        </td>
-                    </tr>
-                </tfoot>
-            )}
           </table>
         </div>
       </div>

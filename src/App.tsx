@@ -485,8 +485,12 @@ export default function App() {
           <Route path="reports/realization" element={<RealizationReport />} />
           <Route path="reports/lm-l1" element={<LmL1Report />} />
           <Route path="reports/paper-requirement" element={<PaperRequirementReport />} />
-          <Route path="reports/fixed-monthly-expenses" element={<FixedMonthlyExpenses />} />
-          <Route path="reports/fixed-daily-expenses" element={<FixedDailyExpenses />} />
+          <Route path="fixed-expenses/monthly-form" element={<FixedMonthlyExpenses view="form" />} />
+          <Route path="fixed-expenses/monthly-master" element={<FixedMonthlyExpenses view="master" />} />
+          <Route path="fixed-expenses/daily-form" element={<FixedDailyExpenses view="form" />} />
+          <Route path="fixed-expenses/daily-master" element={<FixedDailyExpenses view="master" />} />
+          <Route path="reports/fixed-monthly-expenses" element={<Navigate to="/fixed-expenses/monthly-master" replace />} />
+          <Route path="reports/fixed-daily-expenses" element={<Navigate to="/fixed-expenses/daily-master" replace />} />
           <Route path="reports/conversion-cost-month-wise" element={<ConversionCostMonthWiseReport />} />
           <Route path="reports/conversion-cost-details" element={<ConversionCostDetailsReport />} />
           <Route path="reports/truck-status" element={<TruckStatusReport />} />

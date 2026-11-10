@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Edit, Eye, RotateCcw, Save } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Edit, Eye, RotateCcw, Save, Search } from "lucide-react";
+import { Select } from "../components/Select";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import type { ExpenseMaster, FixedMonthlyExpense, FixedMonthlyExpenseLine } from "../types";
@@ -26,7 +29,10 @@ function formatMoney(value: number) {
   return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export function FixedMonthlyExpenses() {
+export function FixedMonthlyExpenses({ view = "form" }: { view?: "form" | "master" }) {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState("");
   const [records, setRecords] = useData<FixedMonthlyExpense>("fixed_monthly_expenses", []);
   const [expenseMasters] = useData<ExpenseMaster>("expense_masters", []);
   const [fy, setFy] = useState(getCurrentFinancialYear());
@@ -70,9 +76,36 @@ export function FixedMonthlyExpenses() {
       .sort((a, b) => b.fy.localeCompare(a.fy) || (monthOrder.get(Number(a.month)) || 0) - (monthOrder.get(Number(b.month)) || 0));
   }, [normalizedRecords]);
 
+  const [fyFilter, setFyFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const filteredRows = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return savedRows.filter((record) =>
+      (!fyFilter || record.fy === fyFilter) &&
+      (!monthFilter || Number(record.month) === Number(monthFilter)) &&
+      matchesTableSearch(rowSearchText([record.fy, record.monthName || getMonthName(Number(record.month)), normalizeLines(record.lines).map((line) => line.expenseName).join(", "), formatMoney(Number(record.totalAmount || 0))]), words)
+    );
+  }, [savedRows, searchTerm, fyFilter, monthFilter]);
+  const hasFilters = Boolean(searchTerm.trim() || fyFilter || monthFilter);
+  const clearFilters = () => { setSearchTerm(""); setFyFilter(""); setMonthFilter(""); };
+  const filteredTotal = filteredRows.reduce((sum, record) => sum + Number(record.totalAmount || 0), 0);
+
+  // Opened from the Master's Edit: load that FY / month.
+  useEffect(() => {
+    if (view !== "form") return;
+    const qFy = searchParams.get("fy");
+    const qMonth = searchParams.get("month");
+    if (qFy) setFy(qFy);
+    if (qMonth) setMonth(qMonth);
+  }, [view, searchParams]);
+  const handleEdit = (record: FixedMonthlyExpense) => {
+    if (view === "master") navigate(`/fixed-expenses/monthly-form?fy=${encodeURIComponent(record.fy)}&month=${encodeURIComponent(String(record.month))}`);
+    else loadRecord(record);
+  };
+
   const viewLines = viewRecord ? normalizeLines(viewRecord.lines) : [];
   // Column sorts: saved records table and the View popup's expense lines.
-  const { sorted: sortedSavedRows, sort: savedSort, toggle: toggleSavedSort } = useTableSort(savedRows, (record, key) => {
+  const { sorted: sortedSavedRows, sort: savedSort, toggle: toggleSavedSort } = useTableSort(filteredRows, (record, key) => {
     if (key === "month") return FY_MONTHS.findIndex((entry) => entry.value === Number(record.month));
     if (key === "expenses") return normalizeLines(record.lines).map((line) => line.expenseName).join(", ");
     if (key === "totalAmount") return Number(record.totalAmount || 0);
@@ -145,15 +178,16 @@ export function FixedMonthlyExpenses() {
     alert("Fixed monthly expenses saved.");
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between border-b border-gray-900 pb-3">
-        <h1 className="text-2xl font-black uppercase tracking-tight">Fixed Monthly Expenses</h1>
-        <div className="text-right">
-          <p className="text-xs font-bold uppercase text-slate-500">Total Amount</p>
-          <p className="text-2xl font-black text-blue-700">{formatMoney(totalAmount)}</p>
+  if (view === "form") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 pb-8">
+        <div className="flex flex-wrap items-end justify-between gap-2 border-b border-gray-900 pb-3">
+          <h1 className="text-xl font-bold uppercase tracking-tight text-black">Fixed Monthly Expenses Form</h1>
+          <div className="text-right">
+            <p className="text-[10px] font-bold uppercase text-slate-500">Total Amount</p>
+            <p className="text-xl font-black text-blue-700">{formatMoney(totalAmount)}</p>
+          </div>
         </div>
-      </div>
 
       <div className="rounded-lg border border-gray-900 bg-white p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -180,7 +214,7 @@ export function FixedMonthlyExpenses() {
         </div>
 
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[560px] border-collapse text-sm">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="bg-slate-100">
                 <th className="border border-gray-900 p-2 text-left">Expenses</th>
@@ -213,17 +247,62 @@ export function FixedMonthlyExpenses() {
           </table>
         </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white" type="button" onClick={handleSave}>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <button className="inline-flex items-center justify-center gap-2 rounded bg-emerald-600 px-6 py-2.5 text-sm font-bold text-white" type="button" onClick={handleSave}>
             <Save size={16} /> Save
           </button>
-          <button className="inline-flex items-center gap-2 rounded border border-gray-900 px-4 py-2 text-sm font-bold" type="button" onClick={resetForm}>
+          <button className="inline-flex items-center justify-center gap-2 rounded border border-gray-900 px-6 py-2.5 text-sm font-bold" type="button" onClick={resetForm}>
             <RotateCcw size={16} /> Clear
           </button>
         </div>
       </div>
+      </div>
+    );
+  }
 
-      <div className="overflow-x-auto rounded-lg border border-gray-900 bg-white">
+  return (
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h1 className="text-xl font-bold uppercase tracking-tight text-black">Fixed Monthly Expenses Master</h1>
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">FY</span><Select compact value={fyFilter} onChange={setFyFilter} options={fyOptions.map((option) => ({ value: option, label: option }))} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Month</span><Select compact value={monthFilter} onChange={setMonthFilter} options={FY_MONTHS.map((entry) => ({ value: String(entry.value), label: entry.label }))} placeholder="All" /></div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
+        <span>{filteredRows.length.toLocaleString()} {filteredRows.length === 1 ? "record" : "records"}</span>
+        <span>Total <span className="text-blue-700">{formatMoney(filteredTotal)}</span></span>
+      </div>
+
+      {/* Phones: one card per record. */}
+      <div className="space-y-2 md:hidden">
+        {sortedSavedRows.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm text-slate-500">No records found.</div>
+        ) : sortedSavedRows.map((record) => (
+          <div key={record.id} className="rounded-lg border-2 border-black bg-white p-3 text-black">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-black">{record.monthName || getMonthName(Number(record.month))} · {record.fy}</span>
+              <span className="text-sm font-black text-blue-700">{formatMoney(Number(record.totalAmount || 0))}</span>
+            </div>
+            <div className="mt-1 break-words text-xs text-slate-700">{normalizeLines(record.lines).filter((line) => Number(line.amount || 0) > 0).map((line) => line.expenseName).join(", ") || "-"}</div>
+            <div className="mt-2 flex justify-end gap-2">
+              <button className="inline-flex items-center gap-1 rounded border border-gray-900 px-3 py-1.5 text-xs font-bold" type="button" onClick={() => setViewRecord(record)}><Eye size={14} /> View</button>
+              <button className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white" type="button" onClick={() => handleEdit(record)}><Edit size={14} /> Edit</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border border-gray-900 bg-white md:block">
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100">
@@ -246,14 +325,14 @@ export function FixedMonthlyExpenses() {
                     <button className="inline-flex items-center gap-2 rounded border border-gray-900 px-3 py-1.5 text-xs font-bold" type="button" onClick={() => setViewRecord(record)} title="View details" aria-label="View details">
                       <Eye size={14} />
                     </button>
-                    <button className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white" type="button" onClick={() => loadRecord(record)}>
+                    <button className="inline-flex items-center gap-2 rounded bg-blue-600 px-3 py-1.5 text-xs font-bold text-white" type="button" onClick={() => handleEdit(record)}>
                       <Edit size={14} /> Edit
                     </button>
                   </div>
                 </td>
               </tr>
             ))}
-            {!savedRows.length && (
+            {!sortedSavedRows.length && (
               <tr>
                 <td className="border border-gray-900 p-4 text-center text-slate-500" colSpan={5}>
                   No fixed monthly expenses saved.

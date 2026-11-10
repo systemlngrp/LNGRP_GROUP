@@ -19196,7 +19196,12 @@ entities.forEach(entity => {
       }
 
       const required = entityPermissionKey(entity);
-      if (entity === "php_plate_in_out_records") {
+      if (entity === "fixed_monthly_expenses" || entity === "fixed_daily_expenses") {
+        // Fixed Expenses menu (new) or the Report section that used to hold these pages.
+        if (!hasPermission(user, "/fixed-expenses") && !hasPermission(user, "/reports")) return res.status(403).json({ error: "Forbidden" });
+        return next();
+      }
+            if (entity === "php_plate_in_out_records") {
         if (!hasPermission(user, "/production/php-plate/in-out") && !hasPermission(user, "/quality/php-plate/in-out")) return res.status(403).json({ error: "Forbidden" });
         return next();
       }
