@@ -39,15 +39,21 @@ export function MobileCompactLayout() {
     // elements, so refresh the "(n active)" count on input too.
     content.addEventListener("input", schedule, true);
     content.addEventListener("change", schedule, true);
-    // Toggle-button filters change only classes, so refresh on clicks too.
-    content.addEventListener("click", schedule, true);
+    // Toggle-button filters change only classes, so refresh on clicks too —
+    // but only clicks inside a filter box (a rescan reads the page layout,
+    // which is slow next to a big table).
+    const onClick = (event: Event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-mobile-filters], [data-mf-panel], [data-mf-fold]")) schedule();
+    };
+    content.addEventListener("click", onClick, true);
     media.addEventListener?.("change", enhance);
     enhance();
     return () => {
       observer.disconnect();
       content.removeEventListener("input", schedule, true);
       content.removeEventListener("change", schedule, true);
-      content.removeEventListener("click", schedule, true);
+      content.removeEventListener("click", onClick, true);
       media.removeEventListener?.("change", enhance);
       if (timer !== null) clearTimeout(timer);
     };

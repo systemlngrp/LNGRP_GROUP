@@ -85,8 +85,18 @@ export function NpdMaster() {
   const [rowSaveStates, setRowSaveStates] = useState<Record<string, RowSaveState>>({});
   const [allFirms] = useData<Firm>("firms", [], { firmScope: "all" });
   const firms = useMemo(() => allFirms.filter((firm) => String((firm as any).active || "Yes").toLowerCase() !== "no"), [allFirms]);
-  const [phpRows] = useData<any>("php_item_master", []);
-  const [plateRows] = useData<any>("plate_item_master", []);
+  // PHP / Plate masters are only needed for the NPD card PDF, so they load
+  // on the first "Download Card" click instead of with the page.
+  const [cardDataWanted, setCardDataWanted] = useState(false);
+  const [pendingCardRow, setPendingCardRow] = useState<NpdRecord | null>(null);
+  const [phpRows, , phpLoading] = useData<any>("php_item_master", [], { enabled: cardDataWanted });
+  const [plateRows, , plateLoading] = useData<any>("plate_item_master", [], { enabled: cardDataWanted });
+  // Ready once both lists have loaded after being asked for (the loading flags
+  // only turn on a moment after enabling, so remember that they did).
+  const cardLoadSeenRef = React.useRef(false);
+  if (cardDataWanted && (phpLoading || plateLoading)) cardLoadSeenRef.current = true;
+  const cardDataReady = cardDataWanted && !phpLoading && !plateLoading
+    && (cardLoadSeenRef.current || phpRows.length > 0 || plateRows.length > 0);
   const [settings] = useData<Setting>("settings", []);
 
   const tableColumns = useMemo(() => [...NPD_COLUMNS.filter((column) => !["opening", "receipt", "production", "invoiced", "balance", "tallyStock", "tallyTimestamp", "stockValue"].includes(column.key)), { key: "consumable", label: "Consumable" }], []);
@@ -114,11 +124,6 @@ export function NpdMaster() {
     ];
   }, [firms, rows]);
   const firmColumnCount = useMemo(() => displayFirms.reduce((sum, firm) => sum + firmColumnsFor(firm).length, 0), [displayFirms, firmColumnsFor]);
-  const exportRows = useMemo(() => rows.map((row, index) => Object.fromEntries([
-    ["SL No", (page - 1) * pageSize + index + 1],
-    ...tableColumns.map((column) => [column.label, row[column.key] ?? ""]),
-    ...displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => [`${firm.firmName} ${column.label}`, row.firmStocks?.[firm.id]?.[column.key] ?? ""])),
-  ])), [displayFirms, firmColumnsFor, page, pageSize, rows, tableColumns]);
 
   const phpItems = useMemo(
     () => phpRows.map((row) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean),
@@ -254,6 +259,11 @@ export function NpdMaster() {
 
   const handleDownloadCard = async (row: NpdRecord) => {
     setDownloadingId(row.id);
+    if (!cardDataReady) {
+      setCardDataWanted(true);
+      setPendingCardRow(row);
+      return;
+    }
     try {
       const normalizedNpd = normalizeOrderCatalogItem(row, "FG");
       const erpCode = normalizedNpd?.erp || String(row.erp || "").trim();
@@ -272,6 +282,15 @@ export function NpdMaster() {
       setDownloadingId(null);
     }
   };
+
+  // Finish a card download that was waiting for the PHP / Plate masters.
+  useEffect(() => {
+    if (!pendingCardRow || !cardDataReady) return;
+    const row = pendingCardRow;
+    setPendingCardRow(null);
+    void handleDownloadCard(row);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCardRow, cardDataReady]);
 
   const setConsumableDraft = (id: string, value: boolean) => {
     setConsumableDrafts((prev) => ({ ...prev, [id]: value }));

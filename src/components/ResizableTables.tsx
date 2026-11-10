@@ -929,14 +929,18 @@ function updateStickyHeaders(content: HTMLElement) {
     const headHeight = head.getBoundingClientRect().height;
     const offset = Math.round(Math.max(0, Math.min(viewTop - tableRect.top, tableRect.height - headHeight * 2)));
     const next = offset > 0 ? `${offset}px` : "0px";
-    if (table.style.getPropertyValue("--app-thead-offset") === next) return;
+    // The offset lives on <thead>, not <table>: a custom property on the table
+    // makes the browser restyle every body cell on each scroll frame, which
+    // made long or wide tables (NPD, Production) stutter.
+    if (head.style.getPropertyValue("--app-thead-offset") === next) return;
     if (offset > 0 && !table.dataset.stickyHead) {
       const firstCell = head.querySelector<HTMLElement>("th, td");
-      if (firstCell) table.style.setProperty("--app-thead-bg", headerBackground(firstCell));
+      if (firstCell) head.style.setProperty("--app-thead-bg", headerBackground(firstCell));
       table.dataset.stickyHead = "true";
     }
-    table.style.setProperty("--app-thead-offset", next);
-    table.toggleAttribute("data-sticky-head-active", offset > 0);
+    head.style.setProperty("--app-thead-offset", next);
+    const active = offset > 0;
+    if (table.hasAttribute("data-sticky-head-active") !== active) table.toggleAttribute("data-sticky-head-active", active);
   });
 }
 
