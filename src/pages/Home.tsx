@@ -11,6 +11,8 @@ import { useAuth } from "../auth/AuthContext";
 
 const QUICK_ACCESS_SECTION = "Quick Access";
 const HIDDEN_SECTIONS = new Set(["Documentation"]);
+// Quick Access tiles, one colour each (cycles if more are added).
+const QUICK_TILE_COLORS = ["bg-indigo-700", "bg-rose-600", "bg-emerald-700", "bg-amber-600", "bg-sky-700", "bg-fuchsia-700"];
 
 type FlatLink = NavItem & { subSection?: string };
 
@@ -102,17 +104,25 @@ export function Home() {
       </div>
 
       {quickAccess ? (
-        <div className="flex flex-wrap gap-2">
-          {quickAccess.links.map((link) => (
-            <Link
-              key={link.href}
-              to={link.href}
-              className="inline-flex items-center gap-2 rounded-lg border-2 border-slate-900 bg-indigo-900 px-4 py-2.5 text-xs font-black uppercase text-white shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] hover:bg-indigo-800"
-            >
-              <LayoutDashboard size={16} />
-              {link.name}
-            </Link>
-          ))}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {quickAccess.links.map((link, index) => {
+            const Icon = link.icon || LayoutDashboard;
+            return (
+              <Link
+                key={link.href}
+                to={link.href}
+                className={`${QUICK_TILE_COLORS[index % QUICK_TILE_COLORS.length]} group flex min-h-[84px] flex-col justify-between rounded-xl border-2 border-slate-900 p-3 text-white shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_0px_rgba(15,23,42,1)]`}
+              >
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/20">
+                  <Icon size={18} />
+                </span>
+                <span className="flex items-end justify-between gap-2">
+                  <span className="text-sm font-black uppercase leading-tight tracking-tight">{link.name}</span>
+                  <ChevronRight size={16} className="shrink-0 text-white/80" />
+                </span>
+              </Link>
+            );
+          })}
         </div>
       ) : null}
 
