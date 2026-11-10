@@ -11,6 +11,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { Firm } from "../types";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function CanceledOrders() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,6 +57,20 @@ export function CanceledOrders() {
       ], words);
     });
   }, [baseRows, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, searchTerm]);
+
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(canceledRows, ({ order, company, item }, key) => {
+    switch (key) {
+      case "orderNo": return order.orderNo;
+      case "orderDate": return order.orderDate;
+      case "firm": return getFirmDisplayNameById(order.firmId, firms, order.firmName);
+      case "company": return company?.name;
+      case "item": return item?.name;
+      case "erp": return item?.erp;
+      case "qty": return Number(order.qty);
+      case "remarks": return order.remarks;
+      default: return "";
+    }
+  }, [firms]);
 
   const firmOptions = useMemo(() => {
     const ids = new Set(baseRows.map(({ order }) => String(order.firmId || "")).filter(Boolean));
@@ -109,7 +124,7 @@ export function CanceledOrders() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedRows,
-  } = useClientPagination(canceledRows, 25);
+  } = useClientPagination(sortedRows, 25);
 
   useEffect(() => {
     setPage(1);
@@ -151,14 +166,14 @@ export function CanceledOrders() {
         <table className="min-w-full border-collapse border border-black text-sm">
           <thead className="bg-slate-100">
             <tr>
-              <th className="px-2 py-1.5 border border-black">Order No</th>
-              <th className="px-2 py-1.5 border border-black">Order Date</th>
-              <th className="px-2 py-1.5 border border-black">Firm</th>
-              <th className="px-2 py-1.5 border border-black">Company</th>
-              <th className="px-2 py-1.5 border border-black">Item</th>
-              <th className="px-2 py-1.5 border border-black">Item ERP</th>
-              <th className="px-2 py-1.5 border border-black text-right">Qty</th>
-              <th className="px-2 py-1.5 border border-black">Remarks</th>
+              <th className="px-2 py-1.5 border border-black"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-2 py-1.5 border border-black"><SortHeader label="Order Date" sortKey="orderDate" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-2 py-1.5 border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-2 py-1.5 border border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-2 py-1.5 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-2 py-1.5 border border-black"><SortHeader label="Item ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-2 py-1.5 border border-black"><SortHeader label="Remarks" sortKey="remarks" sort={sort} onToggle={toggleSort} align="center" /></th>
             </tr>
           </thead>
           <tbody>

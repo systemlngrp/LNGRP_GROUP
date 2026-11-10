@@ -18,6 +18,7 @@ import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, printingWasta
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type EditDraft = {
   date: string;
@@ -219,7 +220,14 @@ export function ProductionProcessingMaster() {
   }, [firmFilter, fromDate, jobById, processing, searchTerm, searchTextById, toDate]);
 
   // The table draws 100 reports per page; filters cover every report.
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedReports } = useClientPagination(filtered, 100);
+  const { sorted: sortedReports, sort, toggle: toggleSort } = useTableSort(filtered, (p: ProductionProcessing, key) => {
+    if (key === "firm") { const production = jobById.get(p.productionId); return getFirmDisplayNameById(String(production?.firmId || production?.orderFirmId || ""), firms); }
+    if (key === "shift") return p.shift || "Day";
+    if (key === "completionStatus") return p.completionStatus || "Full";
+    if (key === "qty") return Number(p.qty || 0);
+    return (p as any)[key];
+  }, [jobById, firms]);
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedReports } = useClientPagination(sortedReports, 100);
   useEffect(() => { setPage(1); }, [firmFilter, fromDate, searchTerm, toDate, setPage]);
 
   return (
@@ -268,16 +276,16 @@ export function ProductionProcessingMaster() {
           <table className="min-w-full divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Job No</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Firm</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Item Name</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">ERP</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Box Type</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Machine</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black">Shift</th>
-                <th className="px-6 py-3 text-center text-xs font-bold text-black uppercase tracking-wider border border-black">Part / Full</th>
-                <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black">Quantity</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Item Name" sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Box Type" sortKey="boxType" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Machine" sortKey="machineName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-center text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Part / Full" sortKey="completionStatus" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Quantity" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black">Actions</th>
               </tr>
             </thead>

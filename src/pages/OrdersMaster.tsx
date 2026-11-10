@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, Plus, Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import Select from "react-select";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
@@ -9,9 +9,8 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/utils";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { Company, DispatchPlan, Firm, LoadingSlip, Order, OrderSchedule, User, Supplier } from "../types";
-
-type SortDirection = "asc" | "desc";
 
 type OrderMasterRow = {
   order: Order;
@@ -69,7 +68,6 @@ export function OrdersMaster() {
   const [orderByFilter, setOrderByFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const [orderNoSort, setOrderNoSort] = useState<SortDirection>("desc");
 
   const companyMap = useMemo(
     () => {
@@ -195,13 +193,34 @@ export function OrdersMaster() {
       .sort((left, right) => {
         const serialDiff = parseOrderSerial(left.order.orderNo) - parseOrderSerial(right.order.orderNo);
         if (serialDiff !== 0) {
-          return orderNoSort === "asc" ? serialDiff : -serialDiff;
+          return -serialDiff;
         }
 
         const orderNoCompare = String(left.order.orderNo || "").localeCompare(String(right.order.orderNo || ""));
-        return orderNoSort === "asc" ? orderNoCompare : -orderNoCompare;
+        return -orderNoCompare;
       });
-  }, [companyFilter, dateFrom, dateTo, firmFilter, itemFilter, orderByFilter, orderNoSort, rows, searchTextByRow, searchWordsList]);
+  }, [companyFilter, dateFrom, dateTo, firmFilter, itemFilter, orderByFilter, rows, searchTextByRow, searchWordsList]);
+
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) => {
+    switch (key) {
+      // Order No keeps its serial-number ordering.
+      case "orderNo": return parseOrderSerial(row.order.orderNo);
+      case "orderDate": return row.order.orderDate;
+      case "firm": return row.firmName;
+      case "company": return row.companyName;
+      case "erp": return row.order.erpCode;
+      case "item": return row.itemName;
+      case "poNumber": return row.order.poNumber;
+      case "qty": return toNumber(row.order.qty);
+      case "rate": return toNumber(row.order.rate);
+      case "orderAmount": return row.orderAmount;
+      case "invoicedQty": return row.invoicedQty;
+      case "canceledQty": return row.canceledQty;
+      case "pendingQty": return row.pendingQty;
+      case "orderBy": return row.orderByName;
+      default: return "";
+    }
+  });
 
   const firmOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)), [firms]);
 
@@ -254,7 +273,7 @@ export function OrdersMaster() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedRows,
-  } = useClientPagination(filteredRows, 25);
+  } = useClientPagination(sortedRows, 25);
 
   const summary = useMemo(() => {
     return {
@@ -264,10 +283,6 @@ export function OrdersMaster() {
       pendingValue: filteredRows.reduce((sum, row) => sum + toNumber(row.pendingQty) * toNumber(row.order.rate), 0),
     };
   }, [filteredRows]);
-
-  const toggleOrderNoSort = () => {
-    setOrderNoSort((current) => (current === "asc" ? "desc" : "asc"));
-  };
 
   const hasActiveFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || orderByFilter || dateFrom || dateTo);
   const clearAllFilters = () => {
@@ -395,29 +410,20 @@ export function OrdersMaster() {
         <table className="min-w-full border-collapse border border-black text-sm">
           <thead className="bg-slate-100">
             <tr>
-              <th className="border border-black px-3 py-2">
-                <button
-                  type="button"
-                  onClick={toggleOrderNoSort}
-                  className="flex items-center gap-2 font-bold text-black"
-                >
-                  <span>Order No</span>
-                  {orderNoSort === "asc" ? <ArrowUp size={16} /> : <ArrowDown size={16} />}
-                </button>
-              </th>
-              <th className="border border-black px-3 py-2">Order Date</th>
-              <th className="border border-black px-3 py-2">Firm Name</th>
-              <th className="border border-black px-3 py-2">Company</th>
-              <th className="border border-black px-3 py-2">ERP</th>
-              <th className="border border-black px-3 py-2">Item</th>
-              <th className="border border-black px-3 py-2">PO Number</th>
-              <th className="border border-black px-3 py-2">Qty</th>
-              <th className="border border-black px-3 py-2">Rate</th>
-              <th className="border border-black px-3 py-2">Order Amount</th>
-              <th className="border border-black px-3 py-2">Invoiced Qty</th>
-              <th className="border border-black px-3 py-2">Canceled Qty</th>
-              <th className="border border-black px-3 py-2">Pending Order Qty</th>
-              <th className="border border-black px-3 py-2">Order By</th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Order Date" sortKey="orderDate" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Firm Name" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="PO Number" sortKey="poNumber" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Rate" sortKey="rate" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Order Amount" sortKey="orderAmount" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Invoiced Qty" sortKey="invoicedQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Canceled Qty" sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Pending Order Qty" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="border border-black px-3 py-2"><SortHeader label="Order By" sortKey="orderBy" sort={sort} onToggle={toggleSort} align="center" /></th>
             </tr>
           </thead>
           <tbody>

@@ -17,6 +17,7 @@ import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { resolveProductionErp, resolveProductionItem } from "../lib/productionErp";
 import { getProductionOriginSource } from "../lib/productionOrigin";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 interface PendingMachineJob {
   production: Production;
@@ -250,6 +251,36 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       });
   }, [productions, phpJobs, plateJobs, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, firmFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
 
+  // One sort for every machine table: all jobs are sorted together, then each
+  // machine's table shows its own jobs in that order.
+  const allGroupJobs = useMemo(
+    () => machineGroups.flatMap((group) => group.jobs.map((job) => ({ machineId: group.machineId, job }))),
+    [machineGroups]
+  );
+  const { sorted: sortedGroupJobs, sort, toggle: toggleSort } = useTableSort(allGroupJobs, ({ job }, key) => {
+    if (key === "jobNo") return job.production.transactionNo;
+    if (key === "source") return job.source;
+    if (key === "date") return job.production.date;
+    if (key === "erp") return job.erpCode || "";
+    if (key === "firm") return job.firmName;
+    if (key === "company") return job.companyName || "";
+    if (key === "item") return job.itemName || "";
+    if (key === "requiredQty") return job.requiredQty;
+    if (key === "ffgQty") return job.ffgQty;
+    if (key === "reportedQty") return job.reportedQty;
+    if (key === "pendingQty") return job.pendingQty;
+    return "";
+  });
+  const sortedJobsByMachine = useMemo(() => {
+    const map = new Map<string, PendingMachineJob[]>();
+    sortedGroupJobs.forEach(({ machineId, job }) => {
+      const list = map.get(machineId);
+      if (list) list.push(job);
+      else map.set(machineId, [job]);
+    });
+    return map;
+  }, [sortedGroupJobs]);
+
   const companyOptions = useMemo(() => {
     const names = new Set<string>();
     machineGroups.forEach((group) => group.jobs.forEach((job) => { if (job.companyName) names.add(job.companyName); }));
@@ -382,22 +413,22 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                     <table className="min-w-full divide-y divide-black border-collapse">
                       <thead className="sticky top-0 z-30 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
                         <tr className="divide-x divide-black">
-                          <th className="px-3 py-2 text-left">Job No</th>
-                          <th className="px-3 py-2 text-left">Source</th>
-                          <th className="px-3 py-2 text-left">Date</th>
-                          <th className="px-3 py-2 text-left">ERP</th>
-                          <th className="px-3 py-2 text-left">Firm</th>
-                          <th className="px-3 py-2 text-left">Company</th>
-                          <th className="px-3 py-2 text-left">Item</th>
-                          <th className="px-3 py-2 text-right">Plan Qty</th>
-                          <th className="px-3 py-2 text-right">FFG</th>
-                          <th className="px-3 py-2 text-right">Reported</th>
-                          <th className="px-3 py-2 text-right text-indigo-700">Pending</th>
+                          <th className="px-3 py-2 text-left"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                          <th className="px-3 py-2 text-left"><SortHeader label="Source" sortKey="source" sort={sort} onToggle={toggleSort} align="left" /></th>
+                          <th className="px-3 py-2 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                          <th className="px-3 py-2 text-left"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
+                          <th className="px-3 py-2 text-left"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                          <th className="px-3 py-2 text-left"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
+                          <th className="px-3 py-2 text-left"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+                          <th className="px-3 py-2 text-right"><SortHeader label="Plan Qty" sortKey="requiredQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                          <th className="px-3 py-2 text-right"><SortHeader label="FFG" sortKey="ffgQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                          <th className="px-3 py-2 text-right"><SortHeader label="Reported" sortKey="reportedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                          <th className="px-3 py-2 text-right text-indigo-700"><SortHeader label="Pending" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="right" /></th>
                           <th className="px-3 py-2 text-center">Action</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-black text-[11px] font-bold">
-                        {group.jobs.map((job, idx) => {
+                        {(sortedJobsByMachine.get(group.machineId) || group.jobs).map((job, idx) => {
                           const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Printing";
                           const materialIssueBlocked = requiresMaterialIssue &&
                             (materialUsageLoading || !hasProductionMaterialUsage(job.production, materialUsageMap));

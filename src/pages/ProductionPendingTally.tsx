@@ -19,6 +19,7 @@ import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { cn } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import {
   buildProductionCorrugatedSheetUsageMap,
   buildProductionMaterialUsageMap,
@@ -125,6 +126,18 @@ export function ProductionPendingTally() {
     )
     .sort((a, b) => new Date(b.updateTimestamp).getTime() - new Date(a.updateTimestamp).getTime());
 
+  const { sorted: sortedPendingList, sort, toggle: toggleSort } = useTableSort(pendingList, (p, key) => {
+    if (key === "transactionNo") return p.transactionNo;
+    if (key === "date") return p.date;
+    if (key === "item") return resolveProductionTallyItem(p, npdItems)?.name || "Unknown";
+    if (key === "ffg") return Number(p.prodFromFFG || 0);
+    if (key === "uom") return p.uom;
+    if (key === "tallyPostingStatus") return p.tallyPostingStatus || "";
+    if (key === "tallyPostingRemark") return p.tallyPostingRemark || "";
+    if (key === "tallyPostingError") return p.tallyPostingError || "";
+    return "";
+  }, [npdItems]);
+
   const {
     page,
     setPage,
@@ -132,7 +145,7 @@ export function ProductionPendingTally() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedPendingList,
-  } = useClientPagination(pendingList, 25);
+  } = useClientPagination(sortedPendingList, 25);
 
   return (
     <div className="space-y-6">
@@ -185,14 +198,14 @@ export function ProductionPendingTally() {
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">SL No</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Job No.</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Date</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Item Name</th>
-              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">FFG Qty</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">UOM</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Tally Posting Status</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Tally Posting Remark</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Tally Posting Error</th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Job No." sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Item Name" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="FFG Qty" sortKey="ffg" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="UOM" sortKey="uom" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Tally Posting Status" sortKey="tallyPostingStatus" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Tally Posting Remark" sortKey="tallyPostingRemark" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Tally Posting Error" sortKey="tallyPostingError" sort={sort} onToggle={toggleSort} align="left" /></th>
               {canPostTally ? (
                 <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
               ) : null}

@@ -7,6 +7,7 @@ import { getAllReturnableReelLines } from "../lib/materialMovement";
 import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import type { MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
 
 export function PendingMaterialReturn() {
@@ -59,7 +60,16 @@ export function PendingMaterialReturn() {
   }, [findItemAcrossSources, issueReels, processing, productions, returnReels]);
 
   // Tiles count every pending job; the table draws 100 rows per page.
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(rows, 100);
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
+    if (key === "jobNo") return row.production.transactionNo;
+    if (key === "date") return String(row.production.date || "").slice(0, 10);
+    if (key === "company") return row.company;
+    if (key === "item") return row.item;
+    if (key === "reelCount") return row.reelCount;
+    if (key === "weight") return row.weight;
+    return "";
+  });
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(sortedRows, 100);
 
   const openReturn = (production: Production, mode: "manual" | "qr") => {
     const params = new URLSearchParams({
@@ -96,8 +106,8 @@ export function PendingMaterialReturn() {
         <table className="min-w-full border-collapse">
           <thead className="bg-slate-800 text-white">
             <tr>
-              {["Job No.", "Date", "Company", "Item", "Reels", "Returnable KG", "Actions"].map((heading) => (
-                <th key={heading} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase">{heading}</th>
+              {[["Job No.", "jobNo"], ["Date", "date"], ["Company", "company"], ["Item", "item"], ["Reels", "reelCount"], ["Returnable KG", "weight"], ["Actions", ""]].map(([heading, key]) => (
+                <th key={heading} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase">{key ? <SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /> : heading}</th>
               ))}
             </tr>
           </thead>

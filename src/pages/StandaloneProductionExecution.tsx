@@ -11,6 +11,7 @@ import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../type
 import { Select } from "../components/Select";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -125,7 +126,13 @@ export function StandaloneProductionExecution({ source }: Props) {
       .sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.sequence || 0) - Number(b.sequence || 0));
   }, [activeSourceFilter, firmFilter, fromDate, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
 
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(pendingJobs, 25);
+  const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(pendingJobs, (job: JobRow, key) => {
+    if (key === "firm") return getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms);
+    if (key === "item") return (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim())?.name || job.itemId;
+    if (key === "fgValue") { const parsed = Number(resolvePhpPlateFgLink(job, fgProductions, job.jobSource).fgValue); return Number.isFinite(parsed) ? parsed : 0; }
+    return (job as any)[key];
+  }, [firms, schedules, orders, itemsBySource, fgProductions]);
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedJobs, 25);
   const selectedJob = pendingJobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey) || jobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey);
   const selectedItem = selectedJob
     ? (itemsBySource[selectedJob.jobSource] || []).find((entry) => entry.id === String(selectedJob.itemId || "").trim())
@@ -205,15 +212,15 @@ export function StandaloneProductionExecution({ source }: Props) {
         <table className="min-w-[1560px] w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Source</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Firm</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Sequence</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Shift</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Item</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Scheduled Date</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Methodology</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">FG Value</th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Sequence" sortKey="sequence" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Scheduled Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Methodology" sortKey="methodology" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="FG Value" sortKey="fgValue" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="px-3 py-2 text-center text-xs font-black uppercase">Action</th>
             </tr>
           </thead>

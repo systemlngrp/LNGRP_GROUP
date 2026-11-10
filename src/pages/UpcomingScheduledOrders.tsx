@@ -12,6 +12,7 @@ import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQ
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function getPendingProductionQty(schedule: OrderSchedule, consumedQty: number) {
   return Math.max(
@@ -118,6 +119,23 @@ export function UpcomingScheduledOrders() {
         });
   }, [companies, consumptionByScheduleId, cutoffDate, firmFilter, firms, orders, resolveOrderItem, schedules, searchTerm]);
 
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(upcomingRows, (row, key) => {
+    switch (key) {
+      case "orderNo": return row.order?.orderNo;
+      case "scheduleNo": return row.schedule.scheduleNo;
+      case "scheduledDate": return row.schedule.scheduledDate;
+      case "firm": return row.firmName;
+      case "company": return row.company?.name;
+      case "item": return row.item?.name;
+      case "qty": return Number(row.schedule.qty || 0);
+      case "plannedQty": return row.plannedQty;
+      case "actualProducedQty": return row.actualProducedQty;
+      case "canceledQty": return Number(row.schedule.canceledQty || 0);
+      case "pendingQty": return row.pendingQty;
+      default: return "";
+    }
+  });
+
   const handleCancelQty = async (schedule: OrderSchedule) => {
     const rawValue = cancelValues[schedule.id];
     const qtyToCancel = Number(rawValue || 0);
@@ -185,17 +203,17 @@ export function UpcomingScheduledOrders() {
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-3 py-2 border border-black">SL No</th>
-              <th className="px-3 py-2 border border-black">Order No</th>
-              <th className="px-3 py-2 border border-black">Schedule No</th>
-              <th className="px-3 py-2 border border-black">Schedule Date</th>
-              <th className="px-3 py-2 border border-black">Firm</th>
-              <th className="px-3 py-2 border border-black">Company</th>
-              <th className="px-3 py-2 border border-black">Item</th>
-              <th className="px-3 py-2 border border-black">Scheduled Qty</th>
-              <th className="px-3 py-2 border border-black">Planned Qty</th>
-              <th className="px-3 py-2 border border-black">Actual FFG</th>
-              <th className="px-3 py-2 border border-black">Canceled Qty</th>
-              <th className="px-3 py-2 border border-black text-indigo-700">Pending Qty</th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Schedule No" sortKey="scheduleNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Schedule Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Scheduled Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Planned Qty" sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Actual FFG" sortKey="actualProducedQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Canceled Qty" sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black text-indigo-700"><SortHeader label="Pending Qty" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-3 py-2 border border-black w-40">Cancel Qty</th>
               <th className="px-3 py-2 border border-black">Actions</th>
             </tr>
@@ -208,7 +226,7 @@ export function UpcomingScheduledOrders() {
                 </td>
               </tr>
             ) : (
-              upcomingRows.map(({ schedule, order, item, company, firmName, pendingQty, plannedQty, actualProducedQty }, index) => (
+              sortedRows.map(({ schedule, order, item, company, firmName, pendingQty, plannedQty, actualProducedQty }, index) => (
                 <tr key={schedule.id} className="hover:bg-slate-50">
                   <td className="px-3 py-2 border border-black font-bold">{index + 1}</td>
                   <td className="px-3 py-2 border border-black font-medium">{order?.orderNo || "-"}</td>

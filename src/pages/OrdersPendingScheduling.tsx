@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useData } from "../hooks/useData";
 import { Firm, Order, OrderSchedule } from "../types";
-import { Trash2, ChevronUp, ChevronDown, Search, Plus, X } from "lucide-react";
+import { Trash2, Search, Plus, X } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 
 import { Select } from "../components/Select";
@@ -10,10 +10,10 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function OrdersPendingScheduling() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [firmFilter, setFirmFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
   const [itemFilter, setItemFilter] = useState('');
@@ -81,9 +81,23 @@ export function OrdersPendingScheduling() {
         const aNo = a.order.orderNo || "";
         const bNo = b.order.orderNo || "";
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
-        return sortOrder === "asc" ? cmp : -cmp;
+        return -cmp;
       });
-  }, [companyFilter, firmFilter, itemFilter, pendingBase, searchTerm, sortOrder]);
+  }, [companyFilter, firmFilter, itemFilter, pendingBase, searchTerm]);
+
+  const { sorted: sortedPending, sort, toggle: toggleSort } = useTableSort(pending, (row, key) => {
+    switch (key) {
+      case "orderNo": return row.order.orderNo;
+      case "firm": return row.firmName;
+      case "company": return row.companyName;
+      case "item": return row.item?.name;
+      case "qty": return Number(row.order.qty || 0);
+      case "scheduled": return row.scheduledQty;
+      case "pending": return row.pendingQty;
+      case "uom": return row.item?.uom;
+      default: return "";
+    }
+  });
 
   const firmOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -123,15 +137,11 @@ export function OrdersPendingScheduling() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedPending,
-  } = useClientPagination(pending, 25);
+  } = useClientPagination(sortedPending, 25);
 
   useEffect(() => {
     setPage(1);
   }, [searchTerm, firmFilter, companyFilter, itemFilter, setPage]);
-
-  const toggleSort = () => {
-    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-  };
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalOrderId, setModalOrderId] = useState<string | null>(null);
@@ -311,22 +321,14 @@ export function OrdersPendingScheduling() {
             <thead className="bg-slate-100">
               <tr>
                 <th className="px-2 py-1.5 border border-black text-right">S.No</th>
-                <th
-                  className="px-2 py-1.5 border border-black cursor-pointer hover:bg-slate-200 select-none"
-                  onClick={toggleSort}
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Order No
-                    {sortOrder === "asc" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </div>
-                </th>
-                <th className="px-2 py-1.5 border border-black">Firm</th>
-                <th className="px-2 py-1.5 border border-black">Company</th>
-                <th className="px-2 py-1.5 border border-black">Item</th>
-                <th className="px-2 py-1.5 border border-black text-right">Order Quantity</th>
-                <th className="px-2 py-1.5 border border-black text-right">Scheduled Qty</th>
-                <th className="px-2 py-1.5 border border-black text-right">Pending Scheduling</th>
-                <th className="px-2 py-1.5 border border-black">Unit</th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Order Quantity" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Scheduled Qty" sortKey="scheduled" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Pending Scheduling" sortKey="pending" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-2 py-1.5 border border-black"><SortHeader label="Unit" sortKey="uom" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black">Actions</th>
               </tr>
             </thead>

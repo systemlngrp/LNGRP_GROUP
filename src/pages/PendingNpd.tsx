@@ -11,6 +11,7 @@ import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function PendingNpd() {
   // Load every firm's orders/schedules; the page's own Firm filter narrows them.
@@ -76,7 +77,22 @@ export function PendingNpd() {
     ], words));
   }, [companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
   // The table draws 100 rows per page; the count tile covers every row.
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(pendingRows, 100);
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(pendingRows, (row, key) => {
+    switch (key) {
+      case "orderNo": return row.order.orderNo;
+      case "orderDate": return row.order.orderDate;
+      case "scheduleNo": return row.schedule.scheduleNo;
+      case "scheduledDate": return row.schedule.scheduledDate;
+      case "firm": return row.firmName;
+      case "company": return row.company?.name;
+      case "erp": return row.order.erpCode;
+      case "item": return row.item?.name;
+      case "boxType": return row.boxType || "Missing";
+      case "rapc": return row.rapcValue || "Missing";
+      default: return "";
+    }
+  });
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(sortedRows, 100);
   useEffect(() => { setPage(1); }, [firmFilter, searchTerm, setPage]);
 
   return (
@@ -121,8 +137,8 @@ export function PendingNpd() {
         <table className="w-full min-w-[1180px] table-fixed text-sm">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              {['SL No', 'Order No', 'Order Date', 'Schedule No', 'Schedule Date', 'Firm', 'Company', 'ERP', 'Item', 'Box Type', 'RAPC'].map((heading) => (
-                <th key={heading} className="border border-black px-3 py-2 text-left align-middle whitespace-nowrap">{heading}</th>
+              {([['SL No', ''], ['Order No', 'orderNo'], ['Order Date', 'orderDate'], ['Schedule No', 'scheduleNo'], ['Schedule Date', 'scheduledDate'], ['Firm', 'firm'], ['Company', 'company'], ['ERP', 'erp'], ['Item', 'item'], ['Box Type', 'boxType'], ['RAPC', 'rapc']] as const).map(([heading, key]) => (
+                <th key={heading} className="border border-black px-3 py-2 text-left align-middle whitespace-nowrap">{key ? <SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /> : heading}</th>
               ))}
             </tr>
           </thead>

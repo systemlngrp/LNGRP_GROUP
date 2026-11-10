@@ -14,6 +14,7 @@ import { resolvePhpPlateFgLink } from "../lib/phpPlateFgLink";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { resolvePhpPlateFirmId } from "../lib/phpPlateFirm";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -182,7 +183,10 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
       .map((row) => row.production)
       .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
   }, [companyFilter, firmFilter, fromDate, itemFilter, productionFilterRows, searchTerm, searchTextByRow, toDate]);
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredList, 25);
+  const cellsByProduction = useMemo(() => new Map(productionFilterRows.map((row) => [row.production, row.cells] as const)), [productionFilterRows]);
+  // Sort keys are the column index in MASTER_COLUMNS (cells hold the shown values).
+  const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (row: Production, key) => cellsByProduction.get(row)?.[Number(key)], [cellsByProduction]);
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedList, 25);
 
   const handleCancel = async (id: string) => {
     const remarks = window.prompt("Enter cancel reason");
@@ -243,44 +247,44 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         <table className="pp-master-table w-full border-collapse [&_th]:border [&_th]:border-black [&_td]:border [&_td]:border-slate-400 [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap [&_td]:align-middle">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Date</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Firm</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Shift</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Category</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Master ERP</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">ERP</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Item</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Sets/Pcs per Box</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Length</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Breadth</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Height</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Ply</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">No of Holes in PHP</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Flute Type</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">L1</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">F1</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">L2</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">F2</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">L3</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Board GSM (Req)</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Brusting Strength (Req)</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Weight/Pc Set (Req)</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Printing Colour</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Required Qnt</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Planning ID</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Scheduled Date</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Planned Qnt</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Methodology</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">FG Value</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Job Type</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Sequence</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Job Completion Time</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Output</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Qty</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">UOM</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Status</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Remarks</th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="0" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Date" sortKey="1" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="2" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="3" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Category" sortKey="4" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Master ERP" sortKey="5" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="ERP" sortKey="6" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Item" sortKey="7" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Sets/Pcs per Box" sortKey="8" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Length" sortKey="9" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Breadth" sortKey="10" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Height" sortKey="11" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Ply" sortKey="12" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="No of Holes in PHP" sortKey="13" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Flute Type" sortKey="14" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="L1" sortKey="15" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="F1" sortKey="16" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="L2" sortKey="17" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="F2" sortKey="18" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="L3" sortKey="19" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Board GSM (Req)" sortKey="20" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Brusting Strength (Req)" sortKey="21" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Weight/Pc Set (Req)" sortKey="22" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Printing Colour" sortKey="23" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Required Qnt" sortKey="24" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Planning ID" sortKey="25" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Scheduled Date" sortKey="26" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Planned Qnt" sortKey="27" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Methodology" sortKey="28" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="FG Value" sortKey="29" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job Type" sortKey="30" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Sequence" sortKey="31" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job Completion Time" sortKey="32" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Output" sortKey="33" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Qty" sortKey="34" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="UOM" sortKey="35" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Status" sortKey="36" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Remarks" sortKey="37" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-center text-xs font-black uppercase">Action</th>
             </tr>
           </thead>

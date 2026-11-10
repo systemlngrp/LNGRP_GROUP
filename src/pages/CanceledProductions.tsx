@@ -11,6 +11,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function CanceledProductions() {
   const confirm = useConfirm();
@@ -90,6 +91,19 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
       .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: "base" }));
   }, [canceledProductions, companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
 
+  const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (p, key) => {
+    const schedule = schedules.find((s) => s.id === p.scheduleId);
+    const order = orders.find((o) => o.id === schedule?.orderId);
+    if (key === "transactionNo") return p.transactionNo;
+    if (key === "orderNo") return order?.orderNo || "";
+    if (key === "firm") return getFirmDisplayNameById(String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || ""), firms);
+    if (key === "item") return npdItems.find((i) => i.id === p.itemId)?.name || "Unknown";
+    if (key === "qty") return Number(p.qty || 0);
+    if (key === "cancelDate") return p.cancelTimestamp || "";
+    if (key === "cancelRemarks") return p.cancelRemarks || "";
+    return "";
+  }, [schedules, orders, firms, npdItems]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center pb-4 border-b border-black">
@@ -110,13 +124,13 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">SL No</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Job No.</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Order No.</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Item Name</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Qty</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Cancel Date</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Cancel Reason</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job No." sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Order No." sortKey="orderNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Item Name" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Cancel Date" sortKey="cancelDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Cancel Reason" sortKey="cancelRemarks" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Actions</th>
               </tr>
             </thead>
@@ -126,7 +140,7 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
                   <td colSpan={9} className="px-6 py-8 text-center text-black font-medium">No canceled jobs found.</td>
                 </tr>
               ) : (
-                filteredList.map((p, index) => {
+                sortedList.map((p, index) => {
                   const schedule = schedules.find(s => s.id === p.scheduleId);
                   const order = orders.find(o => o.id === schedule?.orderId);
                   const firmId = String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "");

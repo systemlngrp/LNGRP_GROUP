@@ -16,6 +16,7 @@ import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function getPendingProductionQty(schedule: OrderSchedule, consumedQty: number) {
   return Math.max(
@@ -180,6 +181,28 @@ export function PendingProduction() {
 
   const companyOptions = useMemo(() => Array.from(new Map(pendingRows.map((row) => [row.order?.companyId || "", { value: row.order?.companyId || "", label: row.company?.name || "" }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingRows]);
   const itemOptions = useMemo(() => Array.from(new Map(pendingRows.map((row) => { const erp = getPendingProductionErp(row.item, row.order); const key = row.item?.id || `${row.item?.name || ""}::${erp}`; const name = row.item?.name || ""; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingRows]);
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(pendingRows, (row, key) => {
+    switch (key) {
+      case "orderNo": return row.order?.orderNo;
+      case "scheduleNo": return row.schedule.scheduleNo;
+      case "scheduledDate": return row.schedule.scheduledDate;
+      case "company": return row.company?.name;
+      case "firm": return row.firm;
+      case "erp": return getPendingProductionErp(row.item, row.order);
+      case "item": return row.item?.name;
+      case "boxType": {
+        const canPlanFgJob = normalizeOrderItemSource(row.order?.itemSource) === "FG";
+        const boxType = canPlanFgJob ? String((row.item as any)?.boxType || "").trim() : "";
+        return boxType || "Missing";
+      }
+      case "qty": return Number(row.schedule.qty || 0);
+      case "plannedQty": return row.plannedQty;
+      case "actualProducedQty": return row.actualProducedQty;
+      case "canceledQty": return Number(row.schedule.canceledQty || 0);
+      case "pendingQty": return row.pendingQty;
+      default: return "";
+    }
+  });
   const {
     page,
     setPage,
@@ -187,7 +210,7 @@ export function PendingProduction() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedRows,
-  } = useClientPagination(pendingRows, 25);
+  } = useClientPagination(sortedRows, 25);
 
   const handleCancelQty = async (schedule: OrderSchedule) => {
     const rawValue = cancelValues[schedule.id];
@@ -267,19 +290,19 @@ export function PendingProduction() {
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               <th className="px-3 py-2 border border-black">SL No</th>
-              <th className="px-3 py-2 border border-black">Order No</th>
-              <th className="px-3 py-2 border border-black">Schedule No</th>
-              <th className="px-3 py-2 border border-black">Schedule Date</th>
-              <th className="px-3 py-2 border border-black">Company</th>
-              <th className="px-3 py-2 border border-black">Firm</th>
-              <th className="px-3 py-2 border border-black">ERP</th>
-              <th className="px-3 py-2 border border-black">Item</th>
-              <th className="px-3 py-2 border border-black">Box Type</th>
-              <th className="px-3 py-2 border border-black">Scheduled Qty</th>
-              <th className="px-3 py-2 border border-black">Planned Qty</th>
-              <th className="px-3 py-2 border border-black">Actual FFG</th>
-              <th className="px-3 py-2 border border-black">Canceled Qty</th>
-              <th className="px-3 py-2 border border-black">Pending Qty</th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Schedule No" sortKey="scheduleNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Schedule Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Box Type" sortKey="boxType" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Scheduled Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Planned Qty" sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Actual FFG" sortKey="actualProducedQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Canceled Qty" sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black"><SortHeader label="Pending Qty" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-3 py-2 border border-black">Cancel Qty</th>
               <th className="px-3 py-2 border border-black">Actions</th>
             </tr>

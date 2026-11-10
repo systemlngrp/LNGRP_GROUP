@@ -7,6 +7,7 @@ import { TableControls } from "../components/TableControls";
 import { buildReelIssueHistoryChecker, buildReelTransferContexts, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
 import { formatDate } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import type { MaterialIssueLine, MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing, Setting } from "../types";
 
 export function PendingJobTransfer() {
@@ -62,6 +63,16 @@ export function PendingJobTransfer() {
     );
   }, [rows, searchTerm]);
 
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) => {
+    if (key === "jobNo") return row.production.transactionNo;
+    if (key === "date") return row.production.date;
+    if (key === "company") return row.company;
+    if (key === "item") return row.item;
+    if (key === "reels") return row.transferableReels.length;
+    if (key === "weight") return Number(row.transferableReels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0).toFixed(2));
+    return "";
+  });
+
   const openTransfer = (productionId: string) => {
     const params = new URLSearchParams({
       sourceProductionId: productionId,
@@ -86,15 +97,15 @@ export function PendingJobTransfer() {
         <table className="min-w-full border-collapse">
           <thead className="bg-slate-800 text-white">
             <tr>
-              {["Source Job", "Date", "Company", "Item", "Reels", "Transferable KG", "Action"].map((heading) => (
-                <th key={heading} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase">{heading}</th>
+              {[["Source Job", "jobNo"], ["Date", "date"], ["Company", "company"], ["Item", "item"], ["Reels", "reels"], ["Transferable KG", "weight"], ["Action", ""]].map(([heading, key]) => (
+                <th key={heading} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase">{key ? <SortHeader label={heading} sortKey={key} sort={sort} onToggle={toggleSort} align="left" /> : heading}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr><td colSpan={7} className="px-6 py-10 text-center font-medium text-slate-500">{rows.length ? "No jobs match the current search." : "No jobs are currently eligible for reel balance transfer."}</td></tr>
-            ) : filteredRows.map(({ production, context, company, item, transferableReels }, index) => (
+            ) : sortedRows.map(({ production, context, company, item, transferableReels }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
                 <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>
                 <td className="border border-black px-3 py-3 text-sm whitespace-nowrap">{formatDate(production.date)}</td>

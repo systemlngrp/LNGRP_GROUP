@@ -11,20 +11,19 @@ import {
   Firm,
 } from "../types";
 import { formatDate } from "../lib/serial";
-import { Search, ArrowUpDown } from "lucide-react";
+import { Search } from "lucide-react";
 import Select from "react-select";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type SelectOption = {
   value: string;
   label: string;
   searchText?: string;
 };
-
-type SortDirection = "asc" | "desc";
 
 const formatItemOptionLabel = (item: { name?: string; erp?: string | number }) => {
   const name = String(item.name || "").trim();
@@ -66,7 +65,6 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
   const [firmFilter, setFirmFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [scheduleNoSortDirection, setScheduleNoSortDirection] = useState<SortDirection>("desc");
   const autoCancelTriedRef = useRef<Set<string>>(new Set());
   const autoCancelStoppedRef = useRef(false);
   const [cancelInputs, setCancelInputs] = useState<Record<string, string>>({});
@@ -267,10 +265,31 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         const aScheduleNo = a.scheduleNo === "-" ? "" : a.scheduleNo;
         const bScheduleNo = b.scheduleNo === "-" ? "" : b.scheduleNo;
         const comparison = aScheduleNo.localeCompare(bScheduleNo, undefined, { numeric: true, sensitivity: "base" });
-        if (comparison !== 0) return scheduleNoSortDirection === "asc" ? comparison : -comparison;
+        if (comparison !== 0) return -comparison;
         return b.scheduledDate.localeCompare(a.scheduledDate);
       });
-  }, [scheduleDispatchDetails, searchTextById, pendingOnly, searchTerm, firmFilter, companyFilter, itemFilter, fromDate, toDate, scheduleNoSortDirection]);
+  }, [scheduleDispatchDetails, searchTextById, pendingOnly, searchTerm, firmFilter, companyFilter, itemFilter, fromDate, toDate]);
+  const { sorted: sortedSchedules, sort, toggle } = useTableSort(detailedSchedules, (s, key) => {
+    switch (key) {
+      case "scheduledDate": return s.scheduledDate;
+      case "scheduleNo": return s.scheduleNo;
+      case "orderNo": return s.orderNo;
+      case "firm": return s.firmName;
+      case "company": return s.companyName;
+      case "item": return s.itemName;
+      case "erp": return s.itemErp;
+      case "qty": return Number(s.qty) || 0;
+      case "canceledQty": return Number(s.canceledQty) || 0;
+      case "plannedQty": return s.plannedQty;
+      case "producedFgQty": return s.producedFgQty;
+      case "pendingPlanning": return s.pendingPlanning;
+      case "loaded": return s.loaded;
+      case "invoiced": return s.invoiced;
+      case "pendingInvoice": return s.pendingInvoice;
+      case "pendingOrderQty": return s.pendingOrderQty;
+      default: return "";
+    }
+  });
   const {
     page,
     setPage,
@@ -278,7 +297,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
     setPageSize,
     totalItems,
     paginatedItems: paginatedSchedules,
-  } = useClientPagination(detailedSchedules, 25);
+  } = useClientPagination(sortedSchedules, 25);
 
   const clearFilters = () => {
     setSearchTerm("");
@@ -289,8 +308,8 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
     setToDate("");
   };
 
-  const toggleScheduleNoSort = () => {
-    setScheduleNoSortDirection((current) => current === "asc" ? "desc" : "asc");
+  const toggleSort = (key: string) => {
+    toggle(key);
     setPage(1);
   };
 
@@ -446,66 +465,46 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
               <tr className="divide-x divide-black">
                 <th className="px-2 py-2 border border-black text-left leading-tight">S.No</th>
                 <th className="px-2 py-2 border border-black text-left leading-tight">
-                  <span className="block">Sch.</span>
-                  <span className="block">Date</span>
+                  <SortHeader label={<><span className="block">Sch.</span><span className="block">Date</span></>} sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" />
                 </th>
                 <th className="px-2 py-2 border border-black text-left leading-tight">
-                  <button
-                    type="button"
-                    onClick={toggleScheduleNoSort}
-                    className="flex items-center gap-1 text-left font-bold hover:text-indigo-700"
-                    title={`Sort Schedule No ${scheduleNoSortDirection === "asc" ? "descending" : "ascending"}`}
-                  >
-                    <span>
-                      <span className="block">Schedule</span>
-                      <span className="block">No</span>
-                    </span>
-                    <ArrowUpDown size={13} className={scheduleNoSortDirection === "desc" ? "rotate-180" : ""} />
-                  </button>
+                  <SortHeader label={<><span className="block">Schedule</span><span className="block">No</span></>} sortKey="scheduleNo" sort={sort} onToggle={toggleSort} align="left" />
                 </th>
                 <th className="px-2 py-2 border border-black text-left leading-tight">
-                  <span className="block">Order</span>
-                  <span className="block">No</span>
+                  <SortHeader label={<><span className="block">Order</span><span className="block">No</span></>} sortKey="orderNo" sort={sort} onToggle={toggleSort} align="left" />
                 </th>
-                <th className="px-2 py-2 border border-black text-left leading-tight">Firm</th>
-                <th className="px-2 py-2 border border-black text-left leading-tight">Company</th>
+                <th className="px-2 py-2 border border-black text-left leading-tight"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-2 py-2 border border-black text-left leading-tight"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-2 py-2 border border-black text-left leading-tight">
-                  <span className="block">Item</span>
-                  <span className="block">Name</span>
+                  <SortHeader label={<><span className="block">Item</span><span className="block">Name</span></>} sortKey="item" sort={sort} onToggle={toggleSort} align="left" />
                 </th>
-                <th className="px-2 py-2 border border-black text-left leading-tight">ERP</th>
+                <th className="px-2 py-2 border border-black text-left leading-tight"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-2 py-2 border border-black text-right bg-indigo-50 leading-tight">
-                  <span className="block">Sch.</span>
-                  <span className="block">Qty</span>
+                  <SortHeader label={<><span className="block">Sch.</span><span className="block">Qty</span></>} sortKey="qty" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right bg-red-50 text-red-700 leading-tight">
-                  <span className="block">Canceled</span>
+                  <SortHeader label="Canceled" sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right bg-emerald-50 leading-tight">
-                  <span className="block">Planned</span>
-                  <span className="block">Qty</span>
+                  <SortHeader label={<><span className="block">Planned</span><span className="block">Qty</span></>} sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right bg-lime-50 text-lime-800 leading-tight">
-                  <span className="block">Production</span>
-                  <span className="block">FFG Qty</span>
+                  <SortHeader label={<><span className="block">Production</span><span className="block">FFG Qty</span></>} sortKey="producedFgQty" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right bg-cyan-50 text-cyan-800 leading-tight">
-                  <span className="block">Pending</span>
-                  <span className="block">FFG</span>
+                  <SortHeader label={<><span className="block">Pending</span><span className="block">FFG</span></>} sortKey="pendingPlanning" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right bg-amber-50 leading-tight">
-                  <span className="block">Loaded</span>
+                  <SortHeader label="Loaded" sortKey="loaded" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right bg-purple-50 leading-tight">
-                  <span className="block">Invoiced</span>
+                  <SortHeader label="Invoiced" sortKey="invoiced" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right font-bold text-orange-700 leading-tight">
-                  <span className="block">Pend.</span>
-                  <span className="block">Inv</span>
+                  <SortHeader label={<><span className="block">Pend.</span><span className="block">Inv</span></>} sortKey="pendingInvoice" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 <th className="px-2 py-2 border border-black text-right bg-sky-50 text-sky-800 leading-tight">
-                  <span className="block">Pend</span>
-                  <span className="block">Dispatch</span>
+                  <SortHeader label={<><span className="block">Pend</span><span className="block">Dispatch</span></>} sortKey="pendingOrderQty" sort={sort} onToggle={toggleSort} align="right" />
                 </th>
                 {pendingOnly ? (
                   <th className="px-2 py-2 border border-black text-left bg-red-50 text-red-800 leading-tight">

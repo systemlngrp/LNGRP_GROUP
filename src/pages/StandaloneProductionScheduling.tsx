@@ -12,6 +12,7 @@ import { Select } from "../components/Select";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -145,7 +146,14 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
       .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
   }, [activeSourceFilter, firmFilter, firms, fromDate, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
 
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(filteredJobs, 25);
+  const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(filteredJobs, (job: JobRow, key) => {
+    if (key === "firm") return getFirmDisplayNameById(resolvePhpPlateFirmId(job, schedules, orders), firms);
+    if (key === "item") return (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim())?.name || job.itemId;
+    if (key === "requiredQty") { const parsed = Number(job.requiredQty || job.qty); return Number.isFinite(parsed) ? parsed : undefined; }
+    if (key === "plannedQty") { const parsed = Number(job.plannedQty); return Number.isFinite(parsed) ? parsed : undefined; }
+    return (job as any)[key];
+  }, [firms, schedules, orders, itemsBySource]);
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedJobs, 25);
 
   const selectedJob = jobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey);
   const selectedItem = selectedJob
@@ -294,17 +302,17 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
         <table className="min-w-[1500px] w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Source</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Firm</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Item</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Master ERP</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">ERP</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Required Qty</th>
-              <th className="px-3 py-2 text-right text-xs font-black uppercase">Planned Qty</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Scheduled Date</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Shift</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Methodology</th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Master ERP" sortKey="masterErp" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="ERP" sortKey="erpCode" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Required Qty" sortKey="requiredQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-right text-xs font-black uppercase"><SortHeader label="Planned Qty" sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Scheduled Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Methodology" sortKey="methodology" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-center text-xs font-black uppercase">Action</th>
             </tr>
           </thead>

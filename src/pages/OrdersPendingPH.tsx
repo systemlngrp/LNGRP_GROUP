@@ -9,11 +9,12 @@ import { Order } from "../types";
 import { formatDate } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { ChevronUp, ChevronDown, CheckCircle, XCircle, Edit, Search } from "lucide-react";
+import { CheckCircle, XCircle, Edit, Search } from "lucide-react";
 import { Firm } from "../types";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { TableActionCell } from "../components/TableActionCell";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function OrdersPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,7 +24,6 @@ export function OrdersPendingPH() {
   const [itemFilter, setItemFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [orders, setOrders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData("companies", []);
@@ -149,9 +149,27 @@ export function OrdersPendingPH() {
         const aNo = a.order.orderNo || "";
         const bNo = b.order.orderNo || "";
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
-        return sortOrder === "asc" ? cmp : -cmp;
+        return -cmp;
       });
-  }, [commercialHistoryByItem, companies, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, orderByFilter, pending, resolveOrderItem, searchTerm, sortOrder]);
+  }, [commercialHistoryByItem, companies, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, orderByFilter, pending, resolveOrderItem, searchTerm]);
+
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filtered, (row, key) => {
+    switch (key) {
+      case "orderNo": return row.order.orderNo;
+      case "orderDate": return row.order.orderDate;
+      case "firm": return row.firmName;
+      case "company": return row.companyName;
+      case "item": return row.item?.name;
+      case "erp": return row.item?.erp;
+      case "orderBy": return row.orderByLabel;
+      case "qty": return Number(row.order.qty);
+      case "billing1": return row.commercialHistory.billing1;
+      case "billing2": return row.commercialHistory.billing2;
+      case "rapc1": return row.commercialHistory.rapc1;
+      case "rapc2": return row.commercialHistory.rapc2;
+      default: return "";
+    }
+  });
 
   const firmFilterOptions = useMemo(() => {
     const ids = new Set(pending.map((order) => String(order.firmId || "")).filter(Boolean));
@@ -183,7 +201,7 @@ export function OrdersPendingPH() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedRows,
-  } = useClientPagination(filtered, 25);
+  } = useClientPagination(sortedRows, 25);
 
   useEffect(() => {
     setPage(1);
@@ -193,10 +211,6 @@ export function OrdersPendingPH() {
   const unmappedOrderBys = presentOrderByValues.filter(v => !resolveOrderByUser(v));
   const params = new URLSearchParams(window.location.search);
   const showDebug = params.get("debug") === "1";
-
-  const toggleSort = () => {
-    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
-  };
 
   const handleApprove = (id: string) => {
     const now = new Date().toISOString();
@@ -281,26 +295,18 @@ export function OrdersPendingPH() {
         <table className="min-w-full divide-y divide-black border-collapse border border-black text-sm">
           <thead className="bg-slate-100">
             <tr>
-              <th 
-                className="px-4 py-2 border border-black cursor-pointer hover:bg-slate-200 select-none"
-                onClick={toggleSort}
-              >
-                <div className="flex items-center justify-center gap-1">
-                  Order No
-                  {sortOrder === "asc" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </div>
-              </th>
-              <th className="px-4 py-2 border border-black">Order Date</th>
-              <th className="px-4 py-2 border border-black">Firm</th>
-              <th className="px-4 py-2 border border-black">Company</th>
-              <th className="px-4 py-2 border border-black">Item</th>
-              <th className="px-4 py-2 border border-black">Item ERP</th>
-              <th className="px-4 py-2 border border-black">Order By</th>
-              <th className="px-4 py-2 border border-black">Qty</th>
-              <th className="px-4 py-2 border border-black whitespace-nowrap">Billing 1</th>
-              <th className="px-4 py-2 border border-black whitespace-nowrap">Billing 2</th>
-              <th className="px-4 py-2 border border-black whitespace-nowrap">Realization 1</th>
-              <th className="px-4 py-2 border border-black whitespace-nowrap">Realization 2</th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Order Date" sortKey="orderDate" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Item ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Order By" sortKey="orderBy" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Billing 1" sortKey="billing1" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Billing 2" sortKey="billing2" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Realization 1" sortKey="rapc1" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Realization 2" sortKey="rapc2" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black">Actions</th>
             </tr>
           </thead>

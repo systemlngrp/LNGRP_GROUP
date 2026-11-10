@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ArrowUpDown, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
@@ -11,11 +11,13 @@ import { generateTransactionNo, getProductionJobPrefix, formatDate } from "../li
 import { cn } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
+import { SortHeader } from "../lib/tableSort";
 import type { Company, Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import type { OrderCatalogItem } from "../lib/orderItems";
 
 type PlanningSource = Extract<OrderItemSource, "PHP" | "PLATE">;
-type SortKey = "scheduledDate" | "orderNo" | "companyName" | "fgItemName" | "linkedItemName" | "remainingQty";
+type SortKey = "scheduledDate" | "orderNo" | "companyName" | "fgItemName" | "linkedItemName" | "remainingQty"
+  | "scheduleNo" | "firm" | "mainErp" | "scheduledQty" | "setsPerBox" | "requiredQty" | "alreadyPlannedQty" | "matchStatus";
 
 type PendingLinkedProductionPlanningProps = {
   source: PlanningSource;
@@ -343,6 +345,25 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
         case "remainingQty":
           compare = a.remainingQty - b.remainingQty;
           break;
+        case "scheduledQty":
+        case "requiredQty":
+        case "alreadyPlannedQty":
+          compare = a[sortKey] - b[sortKey];
+          break;
+        case "setsPerBox": {
+          const value = (row: PlanningRow) => (row.isDirectSourceOrder ? -1 : row.setsPerBox ?? -2);
+          compare = value(a) - value(b);
+          break;
+        }
+        default: {
+          const value = (row: PlanningRow) => {
+            if (sortKey === "scheduleNo") return String(row.schedule.scheduleNo || "");
+            if (sortKey === "firm") return getFirmDisplayNameById(String(row.schedule.firmId || row.order?.firmId || ""), firms);
+            if (sortKey === "mainErp") return String(row.order?.erpCode || row.fgItem?.erp || "");
+            return row.matchStatus;
+          };
+          compare = value(a).localeCompare(value(b), undefined, { numeric: true, sensitivity: "base" });
+        }
       }
       return sortDirection === "asc" ? compare : -compare;
     });
@@ -360,14 +381,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   };
 
   const renderSortHeader = (label: string, key: SortKey, align: "left" | "right" = "left") => (
-    <button
-      type="button"
-      onClick={() => handleSort(key)}
-      className={cn("inline-flex items-center gap-1 font-bold uppercase", align === "right" ? "ml-auto justify-end" : "justify-start")}
-    >
-      <span>{label}</span>
-      <ArrowUpDown size={12} className={cn(sortKey === key ? "text-indigo-700" : "text-slate-400")} />
-    </button>
+    <SortHeader label={label} sortKey={key} sort={{ key: sortKey, direction: sortDirection }} onToggle={(next) => handleSort(next as SortKey)} align={align} />
   );
 
   const selectableIds = useMemo(
@@ -569,19 +583,19 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
                   />
                 </th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Schedule No</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Firm</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Firm", "firm")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Order No", "orderNo")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("FG Item", "fgItemName")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Main ERP</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Main ERP", "mainErp")}</th>
                 <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader(`${source} Item`, "linkedItemName")}</th>
-                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">Scheduled Qty</th>
-                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">Sets/Pcs</th>
-                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">Required Qty</th>
-                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">Already Planned</th>
+                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Qty", "scheduledQty", "right")}</th>
+                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Sets/Pcs", "setsPerBox", "right")}</th>
+                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Required Qty", "requiredQty", "right")}</th>
+                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Already Planned", "alreadyPlannedQty", "right")}</th>
                 <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Remaining Qty", "remainingQty", "right")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">Status</th>
+                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Status", "matchStatus")}</th>
                 <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black w-36">Planned Qty</th>
               </tr>
             </thead>

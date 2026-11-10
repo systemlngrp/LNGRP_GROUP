@@ -13,6 +13,7 @@ import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { getProductionDisplayStatus } from "../lib/productionStageFilters";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionEffectiveType, getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/jobClosureValidation";
@@ -434,6 +435,74 @@ export function PendingJobClosure() {
   const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const schedule = scheduleById.get(row.scheduleId); const order = orderById.get(schedule?.orderId as string); const company = companyById.get(order?.companyId as string); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companyById, filteredList, orderById, scheduleById]);
   const itemOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const item = resolveProductionItem(row); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [filteredList, findItemAcrossSources]);
 
+  const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (p, key) => {
+    const schedule = scheduleById.get(p.scheduleId);
+    const order = orderById.get(schedule?.orderId as string);
+    const item = resolveProductionItem(p);
+    const anyItem = item as any;
+    const erp = String(p.erpCode || "").trim();
+    const procTotals = processingTotalsMap.get(p.id) || { paper: 0, liner: 0, printing: 0, pasting: 0, stitching: 0, punching: 0, gluing: 0 };
+    switch (key) {
+      case "jobNo": return p.transactionNo;
+      case "firm": return getFirmDisplayNameById(String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || ""), firms);
+      case "orderNo": return order?.orderNo || "";
+      case "erp": return p.erpCode || "";
+      case "company": return companyById.get(order?.companyId as string)?.name || "";
+      case "date": return p.date;
+      case "item": return item?.name || "Unknown";
+      case "sample": return anyItem?.isSample ? "Yes" : "";
+      case "type": return getProductionEffectiveType(p, item) || "";
+      case "mandatory": {
+        const status = jobClosureStatusMap.get(p.id);
+        const required = status?.required || [];
+        const missing = status?.missing || [];
+        if (!required.length) return "";
+        return `${missing.length === 0 ? "Done" : "Pending"} ${status?.done || 0}/${required.length}`;
+      }
+      case "qty": return Number(p.qty || 0);
+      case "ups": return p.ups || anyItem?.ups || "";
+      case "loaded": return Number(loadedQtyByProductionId.get(p.id) || 0);
+      case "paper": return procTotals.paper;
+      case "liner": return procTotals.liner;
+      case "printing": return procTotals.printing;
+      case "pasting": return procTotals.pasting;
+      case "stitching": return procTotals.stitching;
+      case "punching": return procTotals.punching;
+      case "gluing": return procTotals.gluing;
+      case "length": return p.length || "";
+      case "breadth": return p.breadth || "";
+      case "height": return p.height || "";
+      case "lOd": return anyItem?.lOd || item?.raw?.lOd || "";
+      case "wOd": return anyItem?.wOd || item?.raw?.wOd || "";
+      case "hOd": return anyItem?.hOd || item?.raw?.hOd || "";
+      case "ply": return p.ply || "";
+      case "flute": return p.flute || "";
+      case "l1": return p.l1 || anyItem?.l1 || "";
+      case "f1": return p.f1 || anyItem?.f1 || "";
+      case "l2": return p.l2 || anyItem?.l2 || "";
+      case "f2": return p.f2 || anyItem?.f2 || "";
+      case "l3": return p.l3 || anyItem?.l3 || "";
+      case "gsm": return p.gsm || "";
+      case "leastGsm": return erpLeastGsmMap.get(erp) || "";
+      case "color1": return p.color1 || "";
+      case "color2": return p.color2 || "";
+      case "printingColor": return p.printingColor || "";
+      case "totalWt": return p.totalPaperWeight || "";
+      case "realKg": return Number(p.realizationPerKg || 0) || "";
+      case "reelCalc": return (p as any).reelAsPerCalc || "";
+      case "reelTrim": return (p as any).reelActualWithTrimming || "";
+      case "cuttingTrim": return (p as any).cuttingWithTrimming || anyItem?.cuttingSize || item?.raw?.cuttingSize || "";
+      case "plannedProd": return p.plannedProductionInMeter ?? "";
+      case "sheetWt": return p.sheetWeight || "";
+      case "fluteBatch": return p.fluteBatches || "";
+      case "rate": return Number(p.rate) || p.rate || "";
+      case "value": return Number(p.qty || 0) && Number(p.rate || 0) ? Number(p.qty || 0) * Number(p.rate || 0) : "";
+      case "ffg": return Number(p.prodFromFFG || 0);
+      case "actualPaper": return Number(p.actualPaperUsed || 0);
+      default: return "";
+    }
+  }, [scheduleById, orderById, companyById, firms, jobClosureStatusMap, loadedQtyByProductionId, processingTotalsMap, erpLeastGsmMap, findItemAcrossSources]);
+
   const {
     page,
     setPage,
@@ -441,7 +510,7 @@ export function PendingJobClosure() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedList,
-  } = useClientPagination(filteredList, 25);
+  } = useClientPagination(sortedList, 25);
 
   const getMandatoryStatus = (production: Production, item?: any) => {
     const status = jobClosureStatusMap.get(production.id);
@@ -607,62 +676,62 @@ export function PendingJobClosure() {
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Sr. No.</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Job No.</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Firm</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Order No.</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">ERP Code</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Company</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Plan Date</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Item Name</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Sample</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Mandatory</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Planned Qty</th>
-                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">UPS</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap bg-amber-50">Loaded Qty</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job No." sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Order No." sortKey="orderNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="ERP Code" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Plan Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Item Name" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Sample" sortKey="sample" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Type" sortKey="type" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Mandatory" sortKey="mandatory" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Planned Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="UPS" sortKey="ups" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap bg-amber-50"><SortHeader label="Loaded Qty" sortKey="loaded" sort={sort} onToggle={toggleSort} align="right" /></th>
 
-                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Paper</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Liner</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Print</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Paste</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Stitch</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Punch</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50">Glue</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50"><SortHeader label="Paper" sortKey="paper" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50"><SortHeader label="Liner" sortKey="liner" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50"><SortHeader label="Print" sortKey="printing" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50"><SortHeader label="Paste" sortKey="pasting" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50"><SortHeader label="Stitch" sortKey="stitching" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50"><SortHeader label="Punch" sortKey="punching" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-indigo-900 uppercase border border-black whitespace-nowrap bg-indigo-50"><SortHeader label="Glue" sortKey="gluing" sort={sort} onToggle={toggleSort} align="right" /></th>
                 
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">B</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">H</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L (OD)</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">W (OD)</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">H (OD)</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L" sortKey="length" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="B" sortKey="breadth" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="H" sortKey="height" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L (OD)" sortKey="lOd" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="W (OD)" sortKey="wOd" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="H (OD)" sortKey="hOd" sort={sort} onToggle={toggleSort} align="right" /></th>
                 
-                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Ply</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Flute</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L1</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">F1</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L2</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">F2</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">L3</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">GSM</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Least GSM</th>
+                <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Ply" sortKey="ply" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Flute" sortKey="flute" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L1" sortKey="l1" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="F1" sortKey="f1" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L2" sortKey="l2" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="F2" sortKey="f2" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L3" sortKey="l3" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="GSM" sortKey="gsm" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Least GSM" sortKey="leastGsm" sort={sort} onToggle={toggleSort} align="right" /></th>
 
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Color 1</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Color 2</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Printing Color</th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Color 1" sortKey="color1" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Color 2" sortKey="color2" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Printing Color" sortKey="printingColor" sort={sort} onToggle={toggleSort} align="left" /></th>
                 
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Total Wt</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Real/KG</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Reel (Calc)</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Reel Trim</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Cutting Trim</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Planned Prod (M)</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Sheet Wt</th>
-                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Flute Batch</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Rate</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Value</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Total Wt" sortKey="totalWt" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Real/KG" sortKey="realKg" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Reel (Calc)" sortKey="reelCalc" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Reel Trim" sortKey="reelTrim" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Cutting Trim" sortKey="cuttingTrim" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Planned Prod (M)" sortKey="plannedProd" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Sheet Wt" sortKey="sheetWt" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Flute Batch" sortKey="fluteBatch" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Rate" sortKey="rate" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Value" sortKey="value" sort={sort} onToggle={toggleSort} align="right" /></th>
                 
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap bg-indigo-50/50">Production FFG</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-emerald-900 uppercase border border-black whitespace-nowrap bg-emerald-50">Actual Paper (KG)</th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black whitespace-nowrap bg-indigo-50/50"><SortHeader label="Production FFG" sortKey="ffg" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-xs font-bold text-emerald-900 uppercase border border-black whitespace-nowrap bg-emerald-50"><SortHeader label="Actual Paper (KG)" sortKey="actualPaper" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Job Closer</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Close Date</th>
                 <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Actions</th>

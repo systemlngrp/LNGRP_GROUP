@@ -8,6 +8,7 @@ import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { OrderItemSource, Production } from "../types";
 import { Select } from "../components/Select";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
@@ -61,7 +62,11 @@ export function StandaloneProductionSequencing({ source }: Props) {
       .sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || String(a.transactionNo || "").localeCompare(String(b.transactionNo || "")));
   }, [activeSourceFilter, itemsBySource, jobs, searchTerm]);
 
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(pendingJobs, 25);
+  const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(pendingJobs, (job: JobRow, key) => {
+    if (key === "item") return (itemsBySource[job.jobSource] || []).find((entry) => entry.id === String(job.itemId || "").trim())?.name || job.itemId;
+    return (job as any)[key];
+  }, [itemsBySource]);
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(sortedJobs, 25);
   const selectedJob = pendingJobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey) || jobs.find((job) => `${job.jobSource}:${job.id}` === selectedJobKey);
 
   const openModal = (job: JobRow) => {
@@ -105,12 +110,12 @@ export function StandaloneProductionSequencing({ source }: Props) {
         <table className="min-w-[1280px] w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Source</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Job No</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Item</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Scheduled Date</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Shift</th>
-              <th className="px-3 py-2 text-left text-xs font-black uppercase">Methodology</th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Source" sortKey="jobSource" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Scheduled Date" sortKey="scheduledDate" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-3 py-2 text-left text-xs font-black uppercase"><SortHeader label="Methodology" sortKey="methodology" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-3 py-2 text-center text-xs font-black uppercase">Action</th>
             </tr>
           </thead>
