@@ -699,19 +699,9 @@ export function OrderForm() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 items-start gap-3 pb-4 border-b border-black sm:grid-cols-[minmax(0,1fr)_auto]">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Order Form</h2>
-        <div className="flex max-w-full flex-wrap justify-start gap-2 sm:justify-end">
-          <button
-            onClick={() => {
-              setBulkUploadFirmId("");
-              setIsBulkFirmDialogOpen(true);
-            }}
-            disabled={isSubmitting}
-            className="bg-white text-black border-2 border-black px-3 py-2 rounded font-bold hover:bg-slate-100 transition flex items-center text-sm disabled:opacity-50"
-          >
-            <Upload size={18} className="mr-2" /> Bulk Upload
-          </button>
+      <div>
+        <h2 className="text-center text-xl font-bold text-black uppercase tracking-tight">Order Form</h2>
+        <div className="hidden">
           <input
             type="file"
             ref={fileInputRef}
