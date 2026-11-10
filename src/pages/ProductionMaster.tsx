@@ -714,7 +714,7 @@ export function ProductionMaster() {
           <button
             type="button"
             onClick={() => setShowColumnPanel((value) => !value)}
-            className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
+            className="hidden rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50 md:inline-block"
           >
             Hide Columns
           </button>
@@ -828,22 +828,33 @@ export function ProductionMaster() {
                         Type: {getProductionEffectiveType(p, item) || "-"} | Print: {displayRow.printingColor || "-"}
                       </div>
                       <div className="text-[10px] text-slate-600 uppercase font-bold">
-                        OD: {formatDecimal(getItemValue(item, "lOd"))}Ã—{formatDecimal(getItemValue(item, "wOd"))}Ã—{formatDecimal(getItemValue(item, "hOd"))}
+                        OD: {formatDecimal(getItemValue(item, "lOd"))} × {formatDecimal(getItemValue(item, "wOd"))} × {formatDecimal(getItemValue(item, "hOd"))}
                       </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <div className="flex flex-col">
-                          <span>{formatDecimal(p.qty)} {p.uom}</span>
-                          <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 px-1 rounded border border-indigo-100">Production FFG: {formatDecimal(p.prodFromFFG || 0)}</span>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded border border-slate-300 bg-slate-50 px-2 py-1.5">
+                          <div className="text-[10px] font-black uppercase text-slate-500">Plan Qty</div>
+                          <div className="text-sm font-black tabular-nums">{formatDecimal(p.qty)} {p.uom}</div>
                         </div>
-                        <span className="font-bold text-amber-700">Loaded: {formatDecimal(loadedQtyByProductionId.get(p.id) || 0)}</span>
-                        <div className="flex flex-col items-end text-[10px] font-bold text-indigo-700 bg-indigo-50 p-1 border border-indigo-100 rounded">
-                          <div>Pa:{formatDecimal(procTotals.paper)} | Li:{formatDecimal(procTotals.liner)} | Pr:{formatDecimal(procTotals.printing)}</div>
-                          <div>Ps:{formatDecimal(procTotals.pasting)} | St:{formatDecimal(procTotals.stitching)} | Pu:{formatDecimal(procTotals.punching)} | Gl:{formatDecimal(procTotals.gluing)}</div>
-                          <div className="mt-1 pt-1 border-t border-indigo-200 text-emerald-700 font-black">Actual Paper: {formatDecimal(p.actualPaperUsed || 0)} KG</div>
+                        <div className="rounded border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-indigo-800">
+                          <div className="text-[10px] font-black uppercase">Production FFG</div>
+                          <div className="text-sm font-black tabular-nums">{formatDecimal(p.prodFromFFG || 0)}</div>
                         </div>
-                        <div className="flex flex-col items-end">
-                            {p.gsm && <span className="font-bold text-indigo-700">GSM: {p.gsm}</span>}
-                            {leastGsm && <span className="text-[10px] font-black text-emerald-700">Least: {leastGsm}</span>}
+                        <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-800">
+                          <div className="text-[10px] font-black uppercase">Loaded</div>
+                          <div className="text-sm font-black tabular-nums">{formatDecimal(loadedQtyByProductionId.get(p.id) || 0)}</div>
+                        </div>
+                        <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800">
+                          <div className="text-[10px] font-black uppercase">Actual Paper</div>
+                          <div className="text-sm font-black tabular-nums">{formatDecimal(p.actualPaperUsed || 0)} KG</div>
+                        </div>
+                        {p.gsm || leastGsm ? (
+                          <div className="col-span-2 flex items-center justify-between rounded border border-slate-300 px-2 py-1.5">
+                            <span className="font-black text-indigo-700">GSM: {p.gsm || "-"}</span>
+                            {leastGsm ? <span className="font-black text-emerald-700">Least: {leastGsm}</span> : null}
+                          </div>
+                        ) : null}
+                        <div className="col-span-2 rounded border border-slate-300 px-2 py-1.5 text-[11px] font-bold leading-5 text-slate-700">
+                          Paper {formatDecimal(procTotals.paper)} · Liner {formatDecimal(procTotals.liner)} · Print {formatDecimal(procTotals.printing)} · Paste {formatDecimal(procTotals.pasting)} · Stitch {formatDecimal(procTotals.stitching)} · Punch {formatDecimal(procTotals.punching)} · Glue {formatDecimal(procTotals.gluing)}
                         </div>
                       </div>
                       {mandatory.required.length > 0 ? (

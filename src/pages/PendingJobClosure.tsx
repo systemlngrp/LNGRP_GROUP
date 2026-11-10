@@ -25,6 +25,10 @@ function firstById<T extends { id: string }>(rows: T[]) {
   return map;
 }
 
+function fmtCard(value: unknown) {
+  return (Math.round((Number(value) || 0) * 100) / 100).toLocaleString();
+}
+
 export function PendingJobClosure() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -615,20 +619,31 @@ export function PendingJobClosure() {
                       <div className="text-[10px] text-slate-600 uppercase font-bold">
                         OD: {(item as any)?.lOd || item?.raw?.lOd || "-"}{" x "}{(item as any)?.wOd || item?.raw?.wOd || "-"}{" x "}{(item as any)?.hOd || item?.raw?.hOd || "-"}
                       </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <div className="flex flex-col">
-                          <span>{p.qty} {p.uom}</span>
-                          <span className="text-[10px] font-black text-indigo-700 bg-indigo-50 px-1 rounded border border-indigo-100">Production FFG: {Number(p.prodFromFFG || 0).toLocaleString()}</span>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded border border-slate-300 bg-slate-50 px-2 py-1.5">
+                          <div className="text-[10px] font-black uppercase text-slate-500">Plan Qty</div>
+                          <div className="text-sm font-black tabular-nums">{fmtCard(p.qty)} {p.uom}</div>
                         </div>
-                        <span className="font-bold text-amber-700">Loaded: {Number(loadedQtyByProductionId.get(p.id) || 0).toLocaleString()}</span>
-                        <div className="flex flex-col items-end text-[10px] font-bold text-indigo-700 bg-indigo-50 p-1 border border-indigo-100 rounded">
-                          <div>Pa:{procTotals.paper} | Li:{procTotals.liner} | Pr:{procTotals.printing}</div>
-                          <div>Ps:{procTotals.pasting} | St:{procTotals.stitching} | Pu:{procTotals.punching} | Gl:{procTotals.gluing}</div>
-                          <div className="mt-1 pt-1 border-t border-indigo-200 text-emerald-700 font-black">Actual Paper: {Number(p.actualPaperUsed || 0).toFixed(2)} KG</div>
+                        <div className="rounded border border-indigo-200 bg-indigo-50 px-2 py-1.5 text-indigo-800">
+                          <div className="text-[10px] font-black uppercase">Production FFG</div>
+                          <div className="text-sm font-black tabular-nums">{fmtCard(p.prodFromFFG || 0)}</div>
                         </div>
-                        <div className="flex flex-col items-end">
-                            {p.gsm && <span className="font-bold text-indigo-700">GSM: {p.gsm}</span>}
-                            {leastGsm && <span className="text-[10px] font-black text-emerald-700">Least: {leastGsm}</span>}
+                        <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-amber-800">
+                          <div className="text-[10px] font-black uppercase">Loaded</div>
+                          <div className="text-sm font-black tabular-nums">{fmtCard(loadedQtyByProductionId.get(p.id) || 0)}</div>
+                        </div>
+                        <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-emerald-800">
+                          <div className="text-[10px] font-black uppercase">Actual Paper</div>
+                          <div className="text-sm font-black tabular-nums">{fmtCard(p.actualPaperUsed || 0)} KG</div>
+                        </div>
+                        {p.gsm || leastGsm ? (
+                          <div className="col-span-2 flex items-center justify-between rounded border border-slate-300 px-2 py-1.5">
+                            <span className="font-black text-indigo-700">GSM: {p.gsm || "-"}</span>
+                            {leastGsm ? <span className="font-black text-emerald-700">Least: {leastGsm}</span> : null}
+                          </div>
+                        ) : null}
+                        <div className="col-span-2 rounded border border-slate-300 px-2 py-1.5 text-[11px] font-bold leading-5 text-slate-700">
+                          Paper {fmtCard(procTotals.paper)} · Liner {fmtCard(procTotals.liner)} · Print {fmtCard(procTotals.printing)} · Paste {fmtCard(procTotals.pasting)} · Stitch {fmtCard(procTotals.stitching)} · Punch {fmtCard(procTotals.punching)} · Glue {fmtCard(procTotals.gluing)}
                         </div>
                       </div>
                       {mandatory.required.length > 0 ? (

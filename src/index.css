@@ -1527,6 +1527,11 @@ table td button:focus-visible {
   [data-mobile-filters="collapsed"][data-mf-follower] {
     display: none !important;
   }
+  /* A filter grid whose every field is folded away would still leave its
+     gap / margin as blank space under the search box: hide it too. */
+  [data-mobile-filters="collapsed"] :is(div, fieldset):not([data-mf-search-row]):has(> [data-mf-unit]):not(:has(> :not([data-mf-unit]))) {
+    display: none !important;
+  }
 }
 
 /* Phone top bar (mobilePageHeader.ts): the page's title line is shown in the

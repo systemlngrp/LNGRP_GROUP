@@ -16,7 +16,6 @@ import { formatDate } from "../lib/serial";
 import { CheckCircle, Search } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { cn } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -203,8 +202,6 @@ export function ProductionPendingTally() {
           <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
-
-      <DataSummaryTiles totalRecords={productions.length} filteredRecords={pendingList.length} showingRecords={paginatedPendingList.length} pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`} />
 
       <div className="overflow-x-auto rounded border border-black bg-white">
         {/* Mobile View - Cards */}
