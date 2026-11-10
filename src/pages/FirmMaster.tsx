@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { MasterHeader } from "../components/MasterHeader";
-import { ReportFilterBox } from "../components/ReportFilterBox";
+import { ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { Plus } from "lucide-react";
 import { Spinner } from "../components/Spinner";
@@ -41,10 +41,15 @@ export function FirmMaster() {
     [firms]
   );
   const [searchTerm, setSearchTerm] = useState("");
+  const [routeFilter, setRouteFilter] = useState("");
+  const [gstFilter, setGstFilter] = useState("");
   const searchedFirms = useMemo(() => {
     const words = searchWords(searchTerm);
-    return sortedFirms.filter((firm) => matchesTableSearch([firm.firmName, firm.shortName || generateFirmShortName(firm.firmName), firm.address, firm.gstDetails, firm.tallyPortNo], words));
-  }, [sortedFirms, searchTerm]);
+    return sortedFirms.filter((firm) =>
+      (!routeFilter || (firm.routeActive === "Yes" ? "Yes" : "No") === routeFilter) &&
+      (!gstFilter || (String(firm.gstDetails || "").trim() ? "Has GST" : "No GST") === gstFilter) &&
+      matchesTableSearch([firm.firmName, firm.shortName || generateFirmShortName(firm.firmName), firm.address, firm.gstDetails, firm.tallyPortNo], words));
+  }, [sortedFirms, searchTerm, routeFilter, gstFilter]);
   const { sorted: sortedFirmRows, sort, toggle: toggleSort } = useTableSort(searchedFirms, (firm, key) => {
     if (key === "shortName") return firm.shortName || generateFirmShortName(firm.firmName);
     return (firm as any)[key];
@@ -206,7 +211,10 @@ export function FirmMaster() {
       )}
 
       {!isFormOpen ? (<>
-      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim())} onClear={() => setSearchTerm("")} />
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || routeFilter || gstFilter)} onClear={() => { setSearchTerm(""); setRouteFilter(""); setGstFilter(""); }}>
+        <SelectFilter label="Route Active" value={routeFilter} onChange={setRouteFilter} options={[{ value: "Yes", label: "Yes" }, { value: "No", label: "No" }]} />
+        <SelectFilter label="GST" value={gstFilter} onChange={setGstFilter} options={[{ value: "Has GST", label: "Has GST" }, { value: "No GST", label: "No GST" }]} />
+      </ReportFilterBox>
       <div className="text-xs font-bold text-slate-700">{searchedFirms.length} {searchedFirms.length === 1 ? "firm" : "firms"}</div>
 
       {/* Phones: one card per firm; tap to edit. */}
