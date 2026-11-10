@@ -29,8 +29,8 @@
 
   /* Compact add controls used by the QC pages. The Plus icon remains visible while
      the existing text label is replaced by the button tooltip/accessibility label. */
-  button.bg-cyan-700:has(> svg),
-  button.bg-red-600:has(> svg) {
+  button.bg-cyan-700:not([type="submit"]):has(> svg),
+  button.bg-red-600:not([type="submit"]):has(> svg) {
     width: 2.25rem;
     height: 2.25rem;
     padding: 0;
@@ -40,8 +40,8 @@
     line-height: 1;
   }
 
-  button.bg-cyan-700:has(> svg) svg,
-  button.bg-red-600:has(> svg) svg {
+  button.bg-cyan-700:not([type="submit"]):has(> svg) svg,
+  button.bg-red-600:not([type="submit"]):has(> svg) svg {
     width: 1.125rem;
     height: 1.125rem;
     flex: none;
