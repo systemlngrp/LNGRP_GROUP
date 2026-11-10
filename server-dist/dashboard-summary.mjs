@@ -1313,6 +1313,21 @@ function getDispatchPlanPendingQty(plan) {
 function getLoadingJobNumber(production) {
   return firstText(production.transactionNo, production.jobCardNo);
 }
+var jobIndexCache = /* @__PURE__ */ new WeakMap();
+function jobIndexFor(jobs) {
+  let index = jobIndexCache.get(jobs);
+  if (index) return index;
+  index = /* @__PURE__ */ new Map();
+  jobs.forEach((production, position) => {
+    productionItemKeys(production).forEach((key) => {
+      const list = index.get(key);
+      if (list) list.push(position);
+      else index.set(key, [position]);
+    });
+  });
+  jobIndexCache.set(jobs, index);
+  return index;
+}
 function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, alreadyLoaded, itemAliases = []) {
   const source = normalizeOrderItemSource(itemSource);
   const sourceJobs = source === "PHP" ? phpJobs : source === "PLATE" ? plateJobs : productions;
@@ -1320,9 +1335,11 @@ function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, p
   [itemId, ...itemAliases].forEach((value) => addKey(targetItemKeys, value));
   const targetFirm = normalizeKey(firmId);
   if (targetItemKeys.size === 0) return [];
-  return sourceJobs.filter((production) => {
-    const matchesItem = Array.from(productionItemKeys(production)).some((key) => targetItemKeys.has(key));
-    if (!matchesItem) return false;
+  const index = jobIndexFor(sourceJobs);
+  const positions = /* @__PURE__ */ new Set();
+  targetItemKeys.forEach((key) => index.get(key)?.forEach((position) => positions.add(position)));
+  const candidates = Array.from(positions).sort((a, b) => a - b).map((position) => sourceJobs[position]);
+  return candidates.filter((production) => {
     const jobFirm = normalizeKey(getJobFirmId(production));
     if (targetFirm && jobFirm && targetFirm !== jobFirm) return false;
     if (!targetFirm && jobFirm) return false;

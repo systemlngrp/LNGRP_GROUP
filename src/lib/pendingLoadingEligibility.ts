@@ -137,6 +137,23 @@ export function getLoadingJobNumber(production: Production) {
   return firstText(production.transactionNo, production.jobCardNo);
 }
 
+// Item key -> positions of the jobs carrying that key, cached per job list.
+const jobIndexCache = new WeakMap<Production[], Map<string, number[]>>();
+function jobIndexFor(jobs: Production[]) {
+  let index = jobIndexCache.get(jobs);
+  if (index) return index;
+  index = new Map<string, number[]>();
+  jobs.forEach((production, position) => {
+    productionItemKeys(production).forEach((key) => {
+      const list = index!.get(key);
+      if (list) list.push(position);
+      else index!.set(key, [position]);
+    });
+  });
+  jobIndexCache.set(jobs, index);
+  return index;
+}
+
 export function eligibleLoadingJobs(
   itemSource: OrderItemSource,
   itemId: string,
@@ -155,10 +172,14 @@ export function eligibleLoadingJobs(
 
   if (targetItemKeys.size === 0) return [];
 
-  return sourceJobs
+  // Only the jobs filed under one of the item's keys (index built once per job list).
+  const index = jobIndexFor(sourceJobs);
+  const positions = new Set<number>();
+  targetItemKeys.forEach((key) => index.get(key)?.forEach((position) => positions.add(position)));
+  const candidates = Array.from(positions).sort((a, b) => a - b).map((position) => sourceJobs[position]);
+
+  return candidates
     .filter((production) => {
-      const matchesItem = Array.from(productionItemKeys(production)).some((key) => targetItemKeys.has(key));
-      if (!matchesItem) return false;
 
       const jobFirm = normalizeKey(getJobFirmId(production));
       if (targetFirm && jobFirm && targetFirm !== jobFirm) return false;

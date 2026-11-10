@@ -16,7 +16,7 @@ import {
   OrderSchedule,
   Firm,
 } from "../types";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
+import { Select } from "../components/Select";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import {
   Truck as TruckIcon,
@@ -119,6 +119,9 @@ export function PendingLoading() {
 
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const didInitExpand = useRef(false);
   const [loadingModal, setLoadingModal] = useState<LoadingModalState | null>(null);
@@ -187,6 +190,9 @@ export function PendingLoading() {
     const words = searchWords(searchTerm);
     const filtered = planProjections.filter((projection) => {
       if (firmFilter && projection.firmId.toLowerCase() !== firmFilter.trim().toLowerCase()) return false;
+      if (sourceFilter && projection.itemSource !== sourceFilter) return false;
+      if (companyFilter && (projection.company?.name || "Company unavailable") !== companyFilter) return false;
+      if (itemFilter && (projection.item?.name || "Item unavailable") !== itemFilter) return false;
       // Shown for each plan: company / item group headings (company, item, source)
       // and the columns Order No, Firm, Plan No, Planned, Loaded, Pending.
       return matchesTableSearch([
@@ -244,18 +250,38 @@ export function PendingLoading() {
     
     // Group results by company for the UI
     const final: Array<{ groupKey: string; companyId: string; companyName: string; firmName: string; items: GroupedPlan[] }> = [];
+    const byGroupKey = new Map<string, (typeof final)[number]>();
     result.forEach(group => {
       const groupKey = `${group.firmId}::${group.companyId}`;
-      let companyGroup = final.find(f => f.groupKey === groupKey);
+      let companyGroup = byGroupKey.get(groupKey);
       if (!companyGroup) {
         companyGroup = { groupKey, companyId: group.companyId, companyName: group.companyName, firmName: group.firmName, items: [] };
         final.push(companyGroup);
+        byGroupKey.set(groupKey, companyGroup);
       }
       companyGroup.items.push(group);
     });
 
     return final;
-  }, [firms, firmFilter, planProjections, searchTerm]);
+  }, [firms, firmFilter, sourceFilter, companyFilter, itemFilter, planProjections, searchTerm]);
+
+  // Filter choices from all pending plans (not narrowed by the other filters).
+  const filterOptions = useMemo(() => {
+    const firmIds = new Set<string>(); const sources = new Set<string>(); const companyNames = new Set<string>(); const itemNames = new Set<string>();
+    planProjections.forEach((projection) => {
+      if (projection.firmId) firmIds.add(projection.firmId);
+      if (projection.itemSource) sources.add(projection.itemSource);
+      companyNames.add(projection.company?.name || "Company unavailable");
+      itemNames.add(projection.item?.name || "Item unavailable");
+    });
+    const toOptions = (values: Set<string>) => Array.from(values).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+    return {
+      firms: Array.from(firmIds).map((id) => ({ value: id, label: getFirmDisplayNameById(id, firms) })).sort((a, b) => a.label.localeCompare(b.label)),
+      sources: toOptions(sources),
+      companies: toOptions(companyNames),
+      items: toOptions(itemNames),
+    };
+  }, [planProjections, firms]);
 
   // One sort for every plan table: each item's plans are sorted inside their own table.
   const { sort: planSort, toggle: togglePlanSort } = useTableSort<never>([], () => null);
@@ -750,149 +776,211 @@ export function PendingLoading() {
     }
   };
 
+  const FILTER_LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+  const listFiltered = Boolean(searchTerm.trim() || firmFilter || sourceFilter || companyFilter || itemFilter);
+  const clearListFilters = () => { setSearchTerm(""); setFirmFilter(""); setSourceFilter(""); setCompanyFilter(""); setItemFilter(""); };
+  const listTotals = useMemo(() => {
+    let items = 0; let plans = 0; let pending = 0;
+    groupedData.forEach((company) => company.items.forEach((itemGroup) => {
+      items += 1;
+      itemGroup.plans.forEach((plan) => { plans += 1; pending += plan.pendingQty; });
+    }));
+    return { companies: groupedData.length, items, plans, pending };
+  }, [groupedData]);
+  const renderCancelControl = (plan: PendingPlan) => cancelingPlanId === plan.id ? (
+    <div className="flex items-center justify-center gap-1">
+      <input
+        type="number"
+        inputMode="numeric"
+        aria-label="Quantity to cancel"
+        value={cancelQty}
+        onChange={(e) => setCancelQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
+        className="h-8 w-20 rounded border-2 border-red-500 px-1 text-xs font-bold focus:outline-none"
+        autoFocus
+      />
+      <button
+        type="button"
+        aria-label="Confirm cancel quantity"
+        onClick={() => handleCancelPlan(plan.id)}
+        disabled={isSubmitting || cancelQty === "" || Number(cancelQty) <= 0}
+        className="rounded bg-red-600 p-1.5 text-white hover:bg-red-700 disabled:opacity-40"
+      >
+        <Check size={14} />
+      </button>
+      <button type="button" aria-label="Close" onClick={() => setCancelingPlanId(null)} className="rounded bg-slate-200 p-1.5 text-slate-700 hover:bg-slate-300">
+        <X size={14} />
+      </button>
+    </div>
+  ) : (
+    <button
+      type="button"
+      onClick={() => handleCancelClick(plan)}
+      className="rounded border border-red-300 bg-red-50 px-3 py-1 text-[10px] font-black uppercase text-red-700 transition-all hover:bg-red-700 hover:text-white active:scale-95"
+    >
+      Cancel
+    </button>
+  );
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-4 rounded-lg border-2 border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 className="mt-1 text-2xl font-black uppercase tracking-tight text-slate-950">Pending Loading</h2>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Loading</h2>
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className={FILTER_LABEL}>Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={filterOptions.firms} placeholder="All" /></div>
+          <div className="min-w-0"><span className={FILTER_LABEL}>Source</span><Select compact value={sourceFilter} onChange={setSourceFilter} options={filterOptions.sources} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={FILTER_LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={filterOptions.companies} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={FILTER_LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={filterOptions.items} placeholder="All" /></div>
         </div>
-        <div className="flex w-full flex-wrap items-end gap-3 md:w-auto">
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} className="min-w-[180px]" />
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-10 w-full rounded border-2 border-slate-300 bg-white pl-10 pr-4 text-sm font-medium focus:border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-          />
-        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {listFiltered ? <button type="button" onClick={clearListFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
+
+      {groupedData.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
+          <span>{listTotals.companies} {listTotals.companies === 1 ? "company" : "companies"} · {listTotals.items} {listTotals.items === 1 ? "item" : "items"} · {listTotals.plans} {listTotals.plans === 1 ? "plan" : "plans"} · Pending <span className="text-indigo-700">{listTotals.pending.toLocaleString()}</span></span>
+          <span className="flex gap-2">
+            <button type="button" onClick={() => setExpandedCompanies(new Set(groupedData.map((group) => group.groupKey)))} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold hover:bg-slate-100">Expand all</button>
+            <button type="button" onClick={() => setExpandedCompanies(new Set())} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold hover:bg-slate-100">Collapse all</button>
+          </span>
+        </div>
+      ) : null}
 
       {pageLoading && groupedData.length === 0 ? (
         <div className="flex justify-center p-12">
           <Spinner />
         </div>
       ) : groupedData.length === 0 ? (
-        <div className="bg-white border-2 border-dashed border-slate-300 rounded-lg p-12 text-center">
-          <Package className="mx-auto h-12 w-12 text-slate-300 mb-4" />
-          <p className="text-slate-500 font-medium">No eligible pending loading plans found.</p>
+        <div className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-12 text-center">
+          <Package className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+          <p className="font-medium text-slate-500">No eligible pending loading plans found.</p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {sortedGroupedData.map((company) => (
-            <div key={company.groupKey} className="overflow-hidden rounded-lg border-2 border-slate-300 bg-white shadow-sm">
+        <div className="space-y-3">
+          {sortedGroupedData.map((company) => {
+            const open = expandedCompanies.has(company.groupKey);
+            const companyPending = company.items.reduce((sum, itemGroup) => sum + itemGroup.plans.reduce((total, plan) => total + plan.pendingQty, 0), 0);
+            return (
+            <div key={company.groupKey} className="overflow-hidden rounded-lg border-2 border-black bg-white">
               <button
+                type="button"
+                aria-expanded={open}
                 onClick={() => {
-                  const next = new Set(expandedCompanies);
-                  if (next.has(company.groupKey)) next.delete(company.groupKey);
-                  else next.add(company.groupKey);
-                  setExpandedCompanies(next);
+                  setExpandedCompanies((current) => {
+                    const next = new Set(current);
+                    if (next.has(company.groupKey)) next.delete(company.groupKey);
+                    else next.add(company.groupKey);
+                    return next;
+                  });
                 }}
-                className="flex w-full items-center justify-between border-b-2 border-slate-300 bg-slate-900 px-4 py-3 text-white transition-colors hover:bg-slate-800"
+                className={cn("flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors sm:px-4", open ? "bg-indigo-700 text-white" : "bg-white text-black hover:bg-indigo-50")}
               >
-                <div className="flex items-center gap-3">
-                  <div className="rounded bg-indigo-500 p-1.5 shadow-inner">
-                    <TruckIcon size={18} />
-                  </div>
-                  <span className="text-base font-black uppercase tracking-wide text-white sm:text-lg">{company.companyName}</span>
-                  <span className="text-xs font-bold text-indigo-200">{company.firmName}</span>
-                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs font-black uppercase text-indigo-100">
-                    {company.items.length} {company.items.length === 1 ? "Item" : "Items"}
+                <span className={cn("shrink-0 rounded p-1.5", open ? "bg-white/15" : "bg-indigo-100 text-indigo-700")}><TruckIcon size={18} /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words text-sm font-black uppercase leading-tight sm:text-base">{company.companyName}</span>
+                  <span className={cn("mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-bold", open ? "text-indigo-100" : "text-slate-600")}>
+                    <span>{company.firmName}</span>
+                    <span>·</span>
+                    <span>{company.items.length} {company.items.length === 1 ? "item" : "items"}</span>
+                    <span>·</span>
+                    <span>Pending {companyPending.toLocaleString()}</span>
                   </span>
-                </div>
-                {expandedCompanies.has(company.groupKey) ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                </span>
+                <ChevronDown size={20} className={cn("shrink-0 transition-transform duration-200", open ? "rotate-180" : "")} />
               </button>
 
-              {expandedCompanies.has(company.groupKey) ? (
-                <div className="space-y-6 bg-slate-50/70 p-3 sm:p-4">
-                  {company.items.map((itemGroup) => (
-                    <div key={`${itemGroup.itemSource}::${itemGroup.itemId}`} className="space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-                      <div className="flex flex-col gap-3 border-l-4 border-indigo-600 bg-indigo-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex items-center gap-2">
-                          <Package size={18} className="text-indigo-600" />
-                          <span className="text-sm font-black uppercase tracking-wide text-slate-950">{itemGroup.itemName}</span>
-                          <span className="rounded bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-indigo-700">{itemGroup.itemSource}</span>
+              {open ? (
+                <div className="space-y-3 border-t-2 border-black bg-slate-50 p-2 sm:p-3">
+                  {company.items.map((itemGroup) => {
+                    const itemPending = itemGroup.plans.reduce((total, plan) => total + plan.pendingQty, 0);
+                    return (
+                    <div key={`${itemGroup.itemSource}::${itemGroup.itemId}`} className="overflow-hidden rounded border border-slate-400 bg-white">
+                      <div className="flex flex-col gap-2 border-l-4 border-indigo-600 bg-indigo-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-2">
+                          <Package size={18} className="mt-0.5 shrink-0 text-indigo-600" />
+                          <div className="min-w-0">
+                            <div className="break-words text-sm font-black uppercase leading-tight text-black">{itemGroup.itemName}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600">
+                              <span className="rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-[10px] font-black uppercase text-indigo-700">{itemGroup.itemSource}</span>
+                              <span>{itemGroup.plans.length} {itemGroup.plans.length === 1 ? "plan" : "plans"}</span>
+                              <span>· Pending <span className="text-indigo-700">{itemPending.toLocaleString()}</span></span>
+                            </div>
+                          </div>
                         </div>
                         <button
+                          type="button"
                           onClick={() => handleOpenLoad(itemGroup.firmId, company.companyId, itemGroup.itemSource, itemGroup.itemId, itemGroup.itemName, itemGroup.plans)}
                           disabled={!itemGroup.loadable}
                           title={itemGroup.unavailableReason}
-                          className="rounded bg-indigo-700 px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white shadow-[3px_3px_0px_0px_rgba(15,23,42,1)] transition hover:bg-indigo-800 active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded border-2 border-black bg-indigo-700 px-5 py-2 text-xs font-black uppercase tracking-widest text-white transition hover:bg-indigo-800 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
                         >
-                          LOAD ITEM
+                          <TruckIcon size={16} /> Load Item
                         </button>
                       </div>
-                      {itemGroup.unavailableReason ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{itemGroup.unavailableReason}. Loading is unavailable until this link is repaired.</p> : null}
+                      {itemGroup.unavailableReason ? <p className="mx-3 mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{itemGroup.unavailableReason}. Loading is unavailable until this link is repaired.</p> : null}
 
-                      <div className="table-frozen-scroll overflow-x-auto rounded border border-slate-300">
-                        <table className="w-full min-w-[760px] divide-y divide-slate-300 border-collapse">
-                          <thead className="sticky top-0 z-30 bg-slate-50">
-                            <tr className="divide-x divide-black">
-                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Order No"} sortKey="orderNo" sort={planSort} onToggle={togglePlanSort} align="left" /></th>
-                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Firm"} sortKey="firmName" sort={planSort} onToggle={togglePlanSort} align="left" /></th>
-                              <th className="px-3 py-2 text-left text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Plan No"} sortKey="planNo" sort={planSort} onToggle={togglePlanSort} align="left" /></th>
-                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Planned"} sortKey="plannedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
-                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-600"><SortHeader label={"Loaded"} sortKey="loadedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
-                              <th className="px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-indigo-700"><SortHeader label={"Pending"} sortKey="pendingQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
-                              <th className="px-3 py-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-600">Actions</th>
+                      {/* Phones: one compact card per plan. */}
+                      <div className="divide-y divide-slate-300 md:hidden">
+                        {itemGroup.plans.map((plan) => (
+                          <div key={plan.id} className="space-y-2 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+                              <span className="font-black text-black">{plan.planNo || "-"}</span>
+                              <span className="font-semibold text-slate-600">{plan.orderNo} · {plan.firmName}</span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1 text-center">
+                              {([["Planned", Number(plan.plannedQty || 0), "text-black"], ["Loaded", Number(plan.loadedQty || 0), "text-emerald-700"], ["Pending", plan.pendingQty, "text-indigo-700"]] as const).map(([label, value, tone]) => (
+                                <div key={label} className="rounded border border-slate-300 bg-slate-50 px-1 py-1">
+                                  <div className="text-[9px] font-black uppercase text-slate-500">{label}</div>
+                                  <div className={cn("text-sm font-black", tone)}>{value.toLocaleString()}</div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className="flex justify-end">{renderCancelControl(plan)}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="hidden overflow-x-auto md:block">
+                        <table data-disable-table-pagination className="w-full border-collapse">
+                          <thead className="bg-slate-100">
+                            <tr>
+                              <th className="border-y border-r border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Order No"} sortKey="orderNo" sort={planSort} onToggle={togglePlanSort} /></th>
+                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Firm"} sortKey="firmName" sort={planSort} onToggle={togglePlanSort} /></th>
+                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Plan No"} sortKey="planNo" sort={planSort} onToggle={togglePlanSort} /></th>
+                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Planned"} sortKey="plannedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Loaded"} sortKey="loadedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-indigo-700"><SortHeader label={"Pending"} sortKey="pendingQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                              <th className="border-y border-l border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700">Actions</th>
                             </tr>
                           </thead>
-                          <tbody className="bg-white divide-y divide-black">
+                          <tbody className="bg-white">
                             {itemGroup.plans.map((plan) => (
-                              <tr key={plan.id} className="divide-x divide-black hover:bg-slate-50 transition-colors">
-                                <td className="px-3 py-2 text-xs font-medium text-black">{plan.orderNo}</td>
-                                <td className="px-3 py-2 text-xs font-medium text-black">{plan.firmName}</td>
-                                <td className="px-3 py-2 text-xs font-bold text-slate-500">{plan.planNo || "-"}</td>
-                                <td className="px-3 py-2 text-xs text-right text-black">{Number(plan.plannedQty || 0).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-xs text-right text-emerald-700 font-bold">{Number(plan.loadedQty || 0).toLocaleString()}</td>
-                                <td className="px-3 py-2 text-xs text-right font-black text-indigo-700 bg-indigo-50/20">{plan.pendingQty.toLocaleString()}</td>
-                                <td className="px-3 py-2 text-center">
-                                  {cancelingPlanId === plan.id ? (
-                                    <div className="flex items-center justify-center gap-1">
-                                      <input
-                                        type="number"
-                                        value={cancelQty}
-                                        onChange={(e) => setCancelQty(e.target.value === "" ? "" : parseFloat(e.target.value))}
-                                        className="w-16 px-1 py-0.5 border-2 border-red-500 rounded text-[10px] font-bold focus:outline-none"
-                                        autoFocus
-                                      />
-                                      <button
-                                        onClick={() => handleCancelPlan(plan.id)}
-                                        disabled={isSubmitting || cancelQty === "" || Number(cancelQty) <= 0}
-                                        className="p-1 bg-red-600 text-white rounded hover:bg-red-700 transition shadow-[1px_1px_0px_0px_rgba(0,0,0,1)]"
-                                      >
-                                        <Check size={12} />
-                                      </button>
-                                      <button
-                                        onClick={() => setCancelingPlanId(null)}
-                                        className="p-1 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition"
-                                      >
-                                        <X size={12} />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => handleCancelClick(plan)}
-                                      className="text-red-700 hover:text-white hover:bg-red-700 text-[10px] font-black uppercase border border-red-200 px-3 py-1 rounded bg-red-50 transition-all active:scale-95"
-                                    >
-                                      Cancel
-                                    </button>
-                                  )}
-                                </td>
+                              <tr key={plan.id} className="hover:bg-slate-50">
+                                <td className="whitespace-nowrap border-y border-r border-slate-300 px-3 py-2 text-xs font-medium text-black">{plan.orderNo}</td>
+                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs font-medium text-black">{plan.firmName}</td>
+                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs font-bold text-black">{plan.planNo || "-"}</td>
+                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs text-black">{Number(plan.plannedQty || 0).toLocaleString()}</td>
+                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs font-bold text-emerald-700">{Number(plan.loadedQty || 0).toLocaleString()}</td>
+                                <td className="whitespace-nowrap border border-slate-300 bg-indigo-50/40 px-3 py-2 text-right text-xs font-black text-indigo-700">{plan.pendingQty.toLocaleString()}</td>
+                                <td className="whitespace-nowrap border-y border-l border-slate-300 px-3 py-2 text-center">{renderCancelControl(plan)}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : null}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
