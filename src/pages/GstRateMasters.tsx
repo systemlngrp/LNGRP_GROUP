@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { GstRateMaster } from "../types";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function GstRateMasters() {
   const { user } = useAuth();
@@ -24,6 +25,9 @@ export function GstRateMasters() {
         .filter((entry) => matchesTableSearch([entry.name, `${Number(entry.rate || 0).toFixed(2)}%`, Number(entry.rate || 0).toFixed(2), entry.active || "Yes"], searchWords(searchTerm)))
         .sort((a, b) => Number(a.rate || 0) - Number(b.rate || 0) || a.name.localeCompare(b.name)),
     [rates, searchTerm]
+  );
+  const { sorted: sortedRates, sort, toggle: toggleSort } = useTableSort(filteredRates, (row, key) =>
+    key === "rate" ? Number(row.rate || 0) : key === "active" ? row.active || "Yes" : row.name
   );
 
   const openCreate = () => {
@@ -136,9 +140,9 @@ export function GstRateMasters() {
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-30">
                   <tr className="bg-indigo-700 text-white">
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Name</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Rate %</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Active</th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Name" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Rate %" sortKey="rate" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Active" sortKey="active" sort={sort} onToggle={toggleSort} align="left" /></th>
                     <th className="px-4 py-4 text-right text-sm font-bold border-2 border-black">Action</th>
                   </tr>
                 </thead>
@@ -148,7 +152,7 @@ export function GstRateMasters() {
                       <td colSpan={4} className="px-6 py-10 text-center border-2 border-black">No GST rates found.</td>
                     </tr>
                   ) : (
-                    filteredRates.map((entry) => (
+                    sortedRates.map((entry) => (
                       <tr key={entry.id}>
                         <td className="px-4 py-5 text-black font-bold border-2 border-black">{entry.name}</td>
                         <td className="px-4 py-5 text-black border-2 border-black">{Number(entry.rate || 0).toFixed(2)}%</td>

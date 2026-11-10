@@ -9,6 +9,7 @@ import { Company, DispatchPlan, Invoice, LoadingSlip, Order, OrderSchedule } fro
 import { formatDate, getFinancialYear } from "../lib/serial";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type DelayBucket = "0-3" | "4-7" | "8-10" | "11-15" | ">15" | "";
 type RowStatus = "Hit" | "Miss" | "Pending";
@@ -277,6 +278,19 @@ export function HitVsMissReport() {
       }))
       .sort((a, b) => a.sortDate.localeCompare(b.sortDate));
   }, [rows]);
+
+  // Column sorts for both tables; month and bucket sort in calendar / delay order.
+  const BUCKET_ORDER: DelayBucket[] = ["0-3", "4-7", "8-10", "11-15", ">15"];
+  const { sorted: sortedSummaryRows, sort: summarySort, toggle: toggleSummarySort } = useTableSort(summaryRows, (row, key) => {
+    if (key === "month") return MONTH_LABELS.indexOf(row.month);
+    if (key.endsWith("Pct")) return percent(Number(row[key.slice(0, -3) as keyof MonthlySummaryRow] || 0), row.delayed);
+    return row[key as keyof MonthlySummaryRow];
+  });
+  const { sorted: sortedRows, sort: detailSort, toggle: toggleDetailSort } = useTableSort(rows, (row, key) => {
+    if (key === "month") return MONTH_LABELS.indexOf(row.month);
+    if (key === "delayBucket") return row.delayBucket ? BUCKET_ORDER.indexOf(row.delayBucket) : null;
+    return row[key as keyof ScheduleReportRow];
+  });
 
   const overall = useMemo(() => {
     return summaryRows.reduce(
@@ -577,26 +591,26 @@ export function HitVsMissReport() {
             <thead className="sticky top-0 z-20">
               <tr className="bg-indigo-700 text-white">
                 {[
-                  "FY",
-                  "Month",
-                  "Total",
-                  "Delayed",
-                  "Delayed (%)",
-                  "On Time",
-                  "On Time (%)",
-                  "Delay (0-3)",
-                  "Delay (0-3)%",
-                  "Delay (4-7)",
-                  "Delay (4-7)%",
-                  "Delay (8-10)",
-                  "Delay (8-10)%",
-                  "Delay (11-15)",
-                  "Delay (11-15)%",
-                  "Delay (>15)",
-                  "Delay (>15)%",
-                ].map((heading) => (
+                  ["FY", "fy"],
+                  ["Month", "month"],
+                  ["Total", "total"],
+                  ["Delayed", "delayed"],
+                  ["Delayed (%)", "delayedPercent"],
+                  ["On Time", "onTime"],
+                  ["On Time (%)", "onTimePercent"],
+                  ["Delay (0-3)", "bucket0to3"],
+                  ["Delay (0-3)%", "bucket0to3Pct"],
+                  ["Delay (4-7)", "bucket4to7"],
+                  ["Delay (4-7)%", "bucket4to7Pct"],
+                  ["Delay (8-10)", "bucket8to10"],
+                  ["Delay (8-10)%", "bucket8to10Pct"],
+                  ["Delay (11-15)", "bucket11to15"],
+                  ["Delay (11-15)%", "bucket11to15Pct"],
+                  ["Delay (>15)", "bucketAbove15"],
+                  ["Delay (>15)%", "bucketAbove15Pct"],
+                ].map(([heading, sortKey]) => (
                   <th key={heading} className="sticky top-0 z-20 whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white">
-                    {heading}
+                    <SortHeader label={heading} sortKey={sortKey} sort={summarySort} onToggle={toggleSummarySort} align="left" />
                   </th>
                 ))}
               </tr>
@@ -609,7 +623,7 @@ export function HitVsMissReport() {
                   </td>
                 </tr>
               ) : (
-                summaryRows.map((row) => (
+                sortedSummaryRows.map((row) => (
                   <tr key={`${row.fy}-${row.month}`} className="text-black hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3">{row.fy}</td>
                     <td className="border-2 border-black px-3 py-3 font-bold">{row.month}</td>
@@ -645,25 +659,25 @@ export function HitVsMissReport() {
             <thead className="sticky top-0 z-20">
               <tr className="bg-indigo-700 text-white">
                 {[
-                  "S.No",
-                  "FY",
-                  "Month",
-                  "Schedule Date",
-                  "Order No",
-                  "Company",
-                  "Item",
-                  "Sch Qty",
-                  "Canceled",
-                  "Target Qty",
-                  "Invoiced Qty",
-                  "Pending Qty",
-                  "Full Invoice Date",
-                  "Status",
-                  "Delay Days",
-                  "Bucket",
-                ].map((heading) => (
+                  ["S.No", ""],
+                  ["FY", "fy"],
+                  ["Month", "month"],
+                  ["Schedule Date", "scheduledDate"],
+                  ["Order No", "orderNo"],
+                  ["Company", "companyName"],
+                  ["Item", "itemName"],
+                  ["Sch Qty", "scheduledQty"],
+                  ["Canceled", "canceledQty"],
+                  ["Target Qty", "targetQty"],
+                  ["Invoiced Qty", "invoicedQty"],
+                  ["Pending Qty", "pendingQty"],
+                  ["Full Invoice Date", "fullInvoiceDate"],
+                  ["Status", "hitMissLabel"],
+                  ["Delay Days", "delayDays"],
+                  ["Bucket", "delayBucket"],
+                ].map(([heading, sortKey]) => (
                   <th key={heading} className="sticky top-0 z-20 whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white">
-                    {heading}
+                    {sortKey ? <SortHeader label={heading} sortKey={sortKey} sort={detailSort} onToggle={toggleDetailSort} align="left" /> : heading}
                   </th>
                 ))}
               </tr>
@@ -676,7 +690,7 @@ export function HitVsMissReport() {
                   </td>
                 </tr>
               ) : (
-                rows.map((row, index) => (
+                sortedRows.map((row, index) => (
                   <tr key={row.id} className="text-black hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3">{index + 1}</td>
                     <td className="border-2 border-black px-3 py-3">{row.fy}</td>

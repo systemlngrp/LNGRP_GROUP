@@ -7,6 +7,7 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import type { ExpenseMaster } from "../types";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 
 const EXPENSE_TYPES: NonNullable<ExpenseMaster["type"]>[] = ["Monthly", "Daily"];
@@ -33,6 +34,7 @@ export function ExpenseMasters() {
         }),
     [expenses, searchTerm]
   );
+  const { sorted: sortedExpenses, sort, toggle: toggleSort } = useTableSort(filteredExpenses, (row, key) => (key === "type" ? row.type || "Monthly" : row.name));
 
   const resetForm = () => {
     setEditingId(null);
@@ -162,8 +164,8 @@ export function ExpenseMasters() {
             <table className="min-w-full border-collapse divide-y divide-black border border-black">
               <thead className="sticky top-0 z-30 divide-x divide-black bg-slate-100">
                 <tr className="divide-x divide-black">
-                  <th className="border border-black px-6 py-3 text-left text-sm font-bold uppercase text-black">Expense Name</th>
-                  <th className="border border-black px-6 py-3 text-left text-sm font-bold uppercase text-black">Type</th>
+                  <th className="border border-black px-6 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Expense Name" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                  <th className="border border-black px-6 py-3 text-left text-sm font-bold uppercase text-black"><SortHeader label="Type" sortKey="type" sort={sort} onToggle={toggleSort} align="left" /></th>
                   <th className="border border-black px-6 py-3 text-right text-sm font-bold uppercase text-black">Actions</th>
                 </tr>
               </thead>
@@ -173,7 +175,7 @@ export function ExpenseMasters() {
                     <td colSpan={3} className="px-6 py-8 text-center font-medium text-black">No expenses found.</td>
                   </tr>
                 ) : (
-                  filteredExpenses.map((expense) => (
+                  sortedExpenses.map((expense) => (
                     <tr key={expense.id} className="divide-x divide-black hover:bg-slate-50">
                       <td className="border border-black px-6 py-4 text-sm text-black">{expense.name}</td>
                       <td className="border border-black px-6 py-4 text-sm text-black">{expense.type || "Monthly"}</td>

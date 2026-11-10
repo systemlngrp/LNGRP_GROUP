@@ -3,6 +3,7 @@ import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, SampleRequest, Setting } from "../types";
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { ExcelExport } from "../components/ExcelExport";
@@ -155,6 +156,22 @@ export function ProductionPlan() {
     { value: row.productionPlanCompanyId || row.productionPlanCompanyName, label: row.productionPlanCompanyName },
   ])).values()).filter((option) => option.value && option.label && option.label !== "-").sort((a, b) => a.label.localeCompare(b.label)), [statusRows]);
   const itemOptions = useMemo(() => Array.from(new Map(statusRows.map((row) => { const item = npdItems.find((i) => i.id === String(row.itemId || "").trim()); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [statusRows, npdItems]);
+  // Column sort over every searched row before paging; no sort keeps the plan's own order.
+  const { sorted: columnSortedRows, sort, toggle: toggleSort } = useTableSort(statusRows, (p, key) => {
+    switch (key) {
+      case "transactionNo": return p.transactionNo;
+      case "company": return p.productionPlanCompanyName;
+      case "itemName": return p.itemName || "";
+      case "erpCode": return p.erpCode || "";
+      case "flute": return p.flute || "";
+      case "remarks": return p.remarks || "";
+      case "fluteBatches": return p.fluteBatches || "";
+      case "date": return p.date;
+      case "value": return (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
+      case "isSample": return p.isSample ? "Yes" : "No";
+      default: return Number((p as any)[key] || 0);
+    }
+  });
   const {
     page,
     setPage,
@@ -162,7 +179,7 @@ export function ProductionPlan() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedList,
-  } = useClientPagination(statusRows, 25);
+  } = useClientPagination(columnSortedRows, 25);
 
   const getExportData = (data: Production[]) => {
     return data.map((p, index) => {
@@ -299,35 +316,35 @@ export function ProductionPlan() {
             <thead className="bg-slate-100 sticky top-0 z-10">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Sr. No.</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Job No</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Company Name</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Item Name</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">ERP CODE</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">UPS</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Plan QTY</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Reel As Per Calculation</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">REEL Actual with TRIMMING</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">CUTTING with TRIMMING</th>
-                <th className="px-4 py-3 text-center text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">PLY</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">FLUTE</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">L1</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">F1</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">L2</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">F2</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">L3</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">GSM</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">TOTAL Paper WEIGHT</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Planned Production in Meter</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">REMARK</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">REALIZATION PER KG</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">SHEET WEIGHT</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Least Sheet Weight</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Flute Batch</th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Company Name" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Item Name" sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="ERP CODE" sortKey="erpCode" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="UPS" sortKey="ups" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Plan QTY" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Reel As Per Calculation" sortKey="reelAsPerCalc" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="REEL Actual with TRIMMING" sortKey="reelActualWithTrimming" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="CUTTING with TRIMMING" sortKey="cuttingWithTrimming" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-center text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="PLY" sortKey="ply" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="FLUTE" sortKey="flute" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L1" sortKey="l1" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="F1" sortKey="f1" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L2" sortKey="l2" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="F2" sortKey="f2" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="L3" sortKey="l3" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="GSM" sortKey="gsm" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="TOTAL Paper WEIGHT" sortKey="totalPaperWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Planned Production in Meter" sortKey="plannedProductionInMeter" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="REMARK" sortKey="remarks" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="REALIZATION PER KG" sortKey="realizationPerKg" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="SHEET WEIGHT" sortKey="sheetWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Least Sheet Weight" sortKey="leastGsm" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Flute Batch" sortKey="fluteBatches" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Job Sequence</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Date</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Rate</th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Value</th>
-                <th className="px-4 py-3 text-center text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Sample</th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Rate" sortKey="rate" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Value" sortKey="value" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-3 text-center text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Sample" sortKey="isSample" sort={sort} onToggle={toggleSort} align="center" /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">

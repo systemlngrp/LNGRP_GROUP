@@ -10,6 +10,7 @@ import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { useTableSearch } from "../lib/tableSearch";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 export function Trucks() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
@@ -99,6 +100,14 @@ export function Trucks() {
     (truck) => [truck.truckNo, String(truck.driverName || "").toUpperCase(), truck.mobileNo, truck.truckType || "External", loadingCountByTruckId.get(truck.id) || 0],
     [loadingCountByTruckId],
   );
+  const { sorted: sortedTruckRows, sort, toggle: toggleSort } = useTableSort(filteredTrucks, (truck, key) => {
+    switch (key) {
+      case "driverName": return String(truck.driverName || "").toUpperCase();
+      case "truckType": return truck.truckType || "External";
+      case "loadings": return loadingCountByTruckId.get(truck.id) || 0;
+      default: return (truck as any)[key];
+    }
+  }, [loadingCountByTruckId]);
 
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -248,7 +257,7 @@ export function Trucks() {
       <div className="bg-white rounded-lg shadow-sm border border-black table-sticky-scroll">
         {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4">
-            {filteredTrucks.map((truck) => {
+            {sortedTruckRows.map((truck) => {
               const loadingCount = loadingCountByTruckId.get(truck.id) || 0;
               return (
                 <div key={truck.id} className="bg-white border-2 border-black p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
@@ -287,11 +296,11 @@ export function Trucks() {
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">SL No</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Truck No</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Driver Name</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Mobile No.</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Truck Type</th>
-              <th className="px-6 py-3 text-center text-sm font-bold text-black uppercase border border-black">Loadings</th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Truck No" sortKey="truckNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Driver Name" sortKey="driverName" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Mobile No." sortKey="mobileNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Truck Type" sortKey="truckType" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-center text-sm font-bold text-black uppercase border border-black"><SortHeader label="Loadings" sortKey="loadings" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
             </tr>
           </thead>
@@ -303,7 +312,7 @@ export function Trucks() {
                 </td>
               </tr>
             ) : (
-              filteredTrucks.map((truck, index) => {
+              sortedTruckRows.map((truck, index) => {
                 const loadingCount = loadingCountByTruckId.get(truck.id) || 0;
                 return (
                 <tr key={truck.id} className="hover:bg-slate-50 transition-colors divide-x divide-black">

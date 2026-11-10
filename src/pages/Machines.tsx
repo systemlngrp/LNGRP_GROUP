@@ -11,6 +11,7 @@ import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/utils";
 
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 export function Machines() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
@@ -162,6 +163,14 @@ export function Machines() {
       m.updatedBy,
       formatDate(m.updateTimestamp),
     ], searchWordList));
+  const { sorted: sortedMachines, sort, toggle: toggleSort } = useTableSort(filtered, (machine, key) => {
+    switch (key) {
+      case "name": return normalizeMachineName(machine.name);
+      case "maxOutputPerHour": return Number(machine.maxOutputPerHour || 0);
+      case "operators": return getAssignedOperatorNames(machine).join(", ");
+      default: return (machine as any)[key];
+    }
+  }, [operatorNameById]);
 
   return (
     <div className="space-y-6">
@@ -281,12 +290,12 @@ export function Machines() {
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr className="divide-x divide-black">
                 <th className="border border-black px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">SL No</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Machine Name</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Maximum Per Hour</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">UOM</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Assigned Operators</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Updated By</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">Updated Timestamp</th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="Machine Name" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="Maximum Per Hour" sortKey="maxOutputPerHour" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="UOM" sortKey="uom" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="Assigned Operators" sortKey="operators" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="Updated By" sortKey="updatedBy" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="Updated Timestamp" sortKey="updateTimestamp" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="border border-black px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -306,7 +315,7 @@ export function Machines() {
                   </td>
                 </tr>
               ) : (
-                filtered.map((machine, index) => (
+                sortedMachines.map((machine, index) => (
                   <tr key={machine.id} className="divide-x divide-black hover:bg-slate-50">
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm font-bold text-black text-right">{index + 1}</td>
                     <td className="border border-black px-6 py-4 whitespace-nowrap text-sm font-bold text-black">{normalizeMachineName(machine.name)}</td>

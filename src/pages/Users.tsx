@@ -10,6 +10,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { parseSystemRoles, SystemRole } from "../lib/userRoles";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function parseDesignations(setting?: Setting) {
   if (!setting?.designations) return [];
@@ -262,6 +263,13 @@ export function Users() {
     const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
     return timeB - timeA || a.name.localeCompare(b.name);
   });
+  const { sorted: columnSortedUsers, sort, toggle: toggleSort } = useTableSort(sortedFilteredUsers, (u, key) => {
+    switch (key) {
+      case "role": return u.role || "Employee";
+      case "status": return u.status || "Active";
+      default: return (u as any)[key];
+    }
+  });
   const {
     page,
     setPage,
@@ -269,7 +277,7 @@ export function Users() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedUsers,
-  } = useClientPagination(sortedFilteredUsers, 25);
+  } = useClientPagination(columnSortedUsers, 25);
 
   const selectedMenuAccess = useMemo(() => new Set(formData.menuAccess), [formData.menuAccess]);
 
@@ -662,13 +670,13 @@ export function Users() {
               <table className="min-w-max divide-y divide-black border-collapse border border-black">
                 <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                   <tr className="divide-x divide-black">
-                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">User ID</th>
-                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Name</th>
-                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Role</th>
-                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Status</th>
-                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Designation</th>
-                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Mobile</th>
-                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Email</th>
+                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="User ID" sortKey="userId" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Name" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Role" sortKey="role" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Designation" sortKey="designation" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Mobile" sortKey="mobile" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Email" sortKey="email" sort={sort} onToggle={toggleSort} align="left" /></th>
                     <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
                   </tr>
                 </thead>

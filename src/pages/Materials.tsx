@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useEffect } from "react";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Disc, ArrowUpDown } from "lucide-react";
+import { Edit, Plus, Trash2, Search, Upload, Download, CheckCircle, Package, Disc } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -17,6 +17,7 @@ import { useConfirm } from "../components/ConfirmDialog";
 import { OPENING_REEL_MATERIAL_IN_ID, isOpeningReelPackingSlip } from "../lib/materialMovement";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort, type SortState } from "../lib/tableSort";
 
 type MaterialType = Material["type"];
 type ActiveValue = NonNullable<Material["active"]>;
@@ -541,7 +542,43 @@ export function Materials() {
       closingValueTotal,
     };
   }, [filteredMaterials, movementSummaryMap, unitOneFirm, visibleFirms]);
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: paginatedMaterials } = useClientPagination(filteredMaterials, 25);
+  const FIRM_STOCK_FIELDS: Record<string, keyof ReturnType<typeof getMaterialStockValues>> = {
+    "Opening Qty": "openingQty",
+    "Opening Rate": "openingRate",
+    "Receipts Qty": "receiptQty",
+    "Issues Qty": "issueQty",
+    "Returns Qty": "returnQty",
+    "Closing Stock Qty": "balance",
+    "Closing Value": "closingValue",
+  };
+  const { sorted: sortedMaterials, sort: columnSort, toggle: toggleColumnSort, setSort: setColumnSort } = useTableSort(filteredMaterials, (material, key) => {
+    if (key.startsWith("firm::")) {
+      const [, firmId, field] = key.split("::");
+      const stock = getMaterialFirmStocks(material).find(({ firm }) => String(firm.id) === firmId);
+      return stock ? Number(stock.values[field as keyof ReturnType<typeof getMaterialStockValues>] || 0) : null;
+    }
+    switch (key) {
+      case "type": return material.isVirtualReceiptItem ? "FG" : material.type;
+      case "gstRate": return Number(material.gstRate ?? 0);
+      default: return (material as any)[key];
+    }
+  }, [movementSummaryMap, materialFirmOpenings, unitOneFirm, visibleFirms]);
+  useEffect(() => { setColumnSort(null); }, [typeFilter, setColumnSort]);
+  // Size / GSM keep the page's own sort (with its tie-breaks); every other column uses the table sort. Only one is active at a time.
+  const materialSort: SortState = columnSort ?? (sortKey !== "updated" ? { key: sortKey, direction: sortDirection } : null);
+  const toggleMaterialSort = (key: string) => {
+    if (key === "size" || key === "gsm") {
+      setColumnSort(null);
+      handleSort(key);
+      return;
+    }
+    if (sortKey !== "updated") {
+      setSortKey("updated");
+      setSortDirection("desc");
+    }
+    toggleColumnSort(key);
+  };
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: paginatedMaterials } = useClientPagination(sortedMaterials, 25);
 
   const [formData, setFormData] = useState(() => createInitialFormState(materials, reelGroup?.id || ""));
   const [openingReels, setOpeningReels] = useState<OpeningReelDraft[]>([]);
@@ -703,6 +740,11 @@ export function Materials() {
       }))
       .sort((a, b) => String(a.ourReelNo || "").localeCompare(String(b.ourReelNo || ""), undefined, { numeric: true }));
   }, [editingId, formData.erpCode, formData.firmId, formData.type, materialIn, materials, packingSlips]);
+  const { sorted: sortedConnectedReels, sort: reelSort, toggle: toggleReelSort } = useTableSort(connectedReelsForCurrentMaterial, (row, key) => {
+    if (key === "weightKg") return round2(row.weightKg);
+    if (key === "openingRate") return row.openingRate ?? null;
+    return (row as any)[key];
+  });
 
   useEffect(() => {
     setPage(1);
@@ -750,20 +792,6 @@ export function Materials() {
     }
     setSortKey(key);
     setSortDirection(key === "updated" ? "desc" : "asc");
-  }
-
-  function renderSortableHeader(label: string, key: MaterialSortKey) {
-    const active = sortKey === key;
-    return (
-      <button
-        type="button"
-        onClick={() => handleSort(key)}
-        className="inline-flex items-center gap-1 font-black uppercase tracking-wider"
-      >
-        <span>{label}</span>
-        <ArrowUpDown size={12} className={active ? "text-white" : "text-indigo-200"} />
-      </button>
-    );
   }
 
   async function handleTallySync() {
@@ -1968,13 +1996,13 @@ export function Materials() {
                       <table className="min-w-full border-collapse text-xs">
                         <thead className="sticky top-0 bg-slate-100">
                           <tr>
-                            {["Our Reel No.", "KG", "Rate", "Source"].map((heading) => (
-                              <th key={heading} className="border border-slate-400 px-2 py-1.5 text-left font-black uppercase">{heading}</th>
+                            {([["Our Reel No.", "ourReelNo"], ["KG", "weightKg"], ["Rate", "openingRate"], ["Source", "source"]] as const).map(([heading, key]) => (
+                              <th key={heading} className="border border-slate-400 px-2 py-1.5 text-left font-black uppercase"><SortHeader label={heading} sortKey={key} sort={reelSort} onToggle={toggleReelSort} align="left" /></th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {connectedReelsForCurrentMaterial.map((row) => (
+                          {sortedConnectedReels.map((row) => (
                             <tr key={row.id}>
                               <td className="border border-slate-300 px-2 py-1.5 font-black">{row.ourReelNo}</td>
                               <td className="border border-slate-300 px-2 py-1.5 text-right font-bold">{round2(row.weightKg).toFixed(2)}</td>
@@ -2160,25 +2188,25 @@ export function Materials() {
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-indigo-700 text-white divide-x divide-indigo-800">
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">SL</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Type</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">ERP Code</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Item Name</th>
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Type" sortKey="type" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="ERP Code" sortKey="erpCode" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Item Name" sortKey="name" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
                     {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
-                      {renderSortableHeader("Size", "size")}
+                      <SortHeader label="Size" sortKey="size" sort={materialSort} onToggle={toggleMaterialSort} align="left" />
                     </th>}
                     {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
-                      {renderSortableHeader("GSM", "gsm")}
+                      <SortHeader label="GSM" sortKey="gsm" sort={materialSort} onToggle={toggleMaterialSort} align="left" />
                     </th>}
-                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">BF</th>}
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">GST Rate (%)</th>
-                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Color</th>}
+                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="BF" sortKey="bf" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="GST Rate (%)" sortKey="gstRate" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Color" sortKey="color" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
                     {displayFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={7} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">UOM</th>
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="UOM" sortKey="uom" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
                   </tr>
                   <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
                     {Array.from({ length: typeFilter === "Other" ? 6 : 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
-                    {displayFirms.map((firm) => ["Opening Qty", "Opening Rate", "Receipts Qty", "Issues Qty", ...(showReturnsColumn ? ["Returns Qty"] : []), "Closing Stock Qty", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap">{label}</th>))}
+                    {displayFirms.map((firm) => ["Opening Qty", "Opening Rate", "Receipts Qty", "Issues Qty", ...(showReturnsColumn ? ["Returns Qty"] : []), "Closing Stock Qty", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap"><SortHeader label={label} sortKey={`firm::${firm.id}::${FIRM_STOCK_FIELDS[label]}`} sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>))}
                     <th /><th />
                   </tr>
                 </thead>

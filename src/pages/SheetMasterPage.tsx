@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import type { SheetMasterColumn, SheetMasterFilter } from "../lib/sheetMasterConfigs";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export type SheetMasterRow = {
   id: string;
@@ -109,6 +110,11 @@ export function SheetMasterPage({
     });
   }, [searchedRows, filterValues, filters, stockFilter, stockKey]);
 
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) => {
+    const value = row[key];
+    return typeof value === "boolean" ? (value ? "Yes" : "No") : value;
+  });
+
   const {
     page,
     setPage,
@@ -116,7 +122,7 @@ export function SheetMasterPage({
     setPageSize,
     totalItems,
     paginatedItems: paginatedRows,
-  } = useClientPagination(filteredRows, 25);
+  } = useClientPagination(sortedRows, 25);
 
   const hasActiveFilters = Boolean(searchTerm.trim()) || Boolean(stockFilter) || filters.some((filter) => String(filterValues[filter.key] || "").trim());
 
@@ -273,7 +279,11 @@ export function SheetMasterPage({
               <tr>
                 {columns.map((column) => (
                   <th key={column.key} className="border border-black px-2 py-2 text-left text-xs font-bold uppercase text-black">
-                    {column.label}
+                    {canManage && editableColumnSet.has(column.key) ? (
+                      column.label
+                    ) : (
+                      <SortHeader label={column.label} sortKey={column.key} sort={sort} onToggle={toggleSort} align="left" />
+                    )}
                   </th>
                 ))}
               </tr>

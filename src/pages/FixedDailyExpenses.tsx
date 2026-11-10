@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Edit, Eye, RotateCcw, Save } from "lucide-react";
 import { useData } from "../hooks/useData";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import type { ExpenseMaster, FixedDailyExpense, FixedMonthlyExpenseLine } from "../types";
 
 function todayLocalDate() {
@@ -84,6 +85,14 @@ export function FixedDailyExpenses() {
   );
 
   const viewLines = viewRecord ? normalizeLines(viewRecord.lines) : [];
+  // Column sorts: saved records table and the View popup's expense lines.
+  const { sorted: sortedSavedRows, sort: savedSort, toggle: toggleSavedSort } = useTableSort(savedRows, (record, key) => {
+    if (key === "expenses") return normalizeLines(record.lines).map((line) => line.expenseName).join(", ");
+    if (key === "totalAmount") return Number(record.totalAmount || 0);
+    return record.date;
+  });
+  const { sorted: sortedViewLines, sort: viewSort, toggle: toggleViewSort, setSort: setViewSort } = useTableSort(viewLines, (line, key) => (key === "amount" ? Number(line.amount || 0) : line.expenseName || ""), [viewRecord]);
+  useEffect(() => { setViewSort(null); }, [viewRecord, setViewSort]);
   const viewTotalAmount = viewLines.reduce((sum, line) => sum + Number(line.amount || 0), 0);
 
   const resetForm = () => {
@@ -208,14 +217,14 @@ export function FixedDailyExpenses() {
         <table className="w-full min-w-[760px] border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100">
-              <th className="border border-gray-900 p-2 text-left">Date</th>
-              <th className="border border-gray-900 p-2 text-left">Expenses</th>
-              <th className="border border-gray-900 p-2 text-right">Total Amount</th>
+              <th className="border border-gray-900 p-2 text-left"><SortHeader label="Date" sortKey="date" sort={savedSort} onToggle={toggleSavedSort} align="left" /></th>
+              <th className="border border-gray-900 p-2 text-left"><SortHeader label="Expenses" sortKey="expenses" sort={savedSort} onToggle={toggleSavedSort} align="left" /></th>
+              <th className="border border-gray-900 p-2 text-right"><SortHeader label="Total Amount" sortKey="totalAmount" sort={savedSort} onToggle={toggleSavedSort} align="right" /></th>
               <th className="border border-gray-900 p-2 text-center">Action</th>
             </tr>
           </thead>
           <tbody>
-            {savedRows.map((record) => (
+            {sortedSavedRows.map((record) => (
               <tr key={record.id}>
                 <td className="border border-gray-900 p-2 font-bold">{formatDate(record.date)}</td>
                 <td className="border border-gray-900 p-2">{normalizeLines(record.lines).map((line) => line.expenseName).join(", ") || "-"}</td>
@@ -261,12 +270,12 @@ export function FixedDailyExpenses() {
                   <thead>
                     <tr className="bg-slate-100">
                       <th className="w-20 border border-gray-900 p-2 text-left">Sl No</th>
-                      <th className="border border-gray-900 p-2 text-left">Expense</th>
-                      <th className="w-40 border border-gray-900 p-2 text-right">Amount</th>
+                      <th className="border border-gray-900 p-2 text-left"><SortHeader label="Expense" sortKey="expenseName" sort={viewSort} onToggle={toggleViewSort} align="left" /></th>
+                      <th className="w-40 border border-gray-900 p-2 text-right"><SortHeader label="Amount" sortKey="amount" sort={viewSort} onToggle={toggleViewSort} align="right" /></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {viewLines.map((line, index) => (
+                    {sortedViewLines.map((line, index) => (
                       <tr key={line.id || `${line.expenseName}-${index}`}>
                         <td className="border border-gray-900 p-2 font-bold">{index + 1}</td>
                         <td className="border border-gray-900 p-2">{line.expenseName || "-"}</td>

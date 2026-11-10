@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Service } from "../types";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function Services() {
   const { user } = useAuth();
@@ -27,6 +28,7 @@ export function Services() {
       })(),
     [searchTerm, services]
   );
+  const { sorted: sortedServices, sort, toggle: toggleSort } = useTableSort(filteredServices, (row, key) => (key === "active" ? row.active || "Yes" : row.name));
 
   const openCreate = () => {
     setEditingId(null);
@@ -130,8 +132,8 @@ export function Services() {
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-30">
                   <tr className="bg-indigo-700 text-white">
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Service</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Active</th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Service" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Active" sortKey="active" sort={sort} onToggle={toggleSort} align="left" /></th>
                     <th className="px-4 py-4 text-right text-sm font-bold border-2 border-black">Action</th>
                   </tr>
                 </thead>
@@ -141,7 +143,7 @@ export function Services() {
                       <td colSpan={3} className="px-6 py-10 text-center border-2 border-black">No services found.</td>
                     </tr>
                   ) : (
-                    filteredServices.map((service) => (
+                    sortedServices.map((service) => (
                       <tr key={service.id}>
                         <td className="px-4 py-5 text-black font-bold border-2 border-black">{service.name}</td>
                         <td className="px-4 py-5 text-black border-2 border-black">{service.active || "Yes"}</td>

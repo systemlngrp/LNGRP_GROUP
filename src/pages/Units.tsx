@@ -5,6 +5,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Spinner } from "../components/Spinner";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { UnitMaster } from "../types";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function Units() {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ export function Units() {
         .sort((a, b) => a.name.localeCompare(b.name)),
     [searchTerm, units]
   );
+  const { sorted: sortedUnits, sort, toggle: toggleSort } = useTableSort(filteredUnits, (row, key) => (key === "active" ? row.active || "Yes" : row.name));
 
   const openCreate = () => {
     setEditingId(null);
@@ -158,8 +160,8 @@ export function Units() {
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-30">
                   <tr className="bg-indigo-700 text-white">
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Unit</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Active</th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Unit" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Active" sortKey="active" sort={sort} onToggle={toggleSort} align="left" /></th>
                     <th className="px-4 py-4 text-right text-sm font-bold border-2 border-black">Action</th>
                   </tr>
                 </thead>
@@ -171,7 +173,7 @@ export function Units() {
                       </td>
                     </tr>
                   ) : (
-                    filteredUnits.map((unit) => (
+                    sortedUnits.map((unit) => (
                       <tr key={unit.id}>
                         <td className="px-4 py-5 text-black font-bold border-2 border-black">{unit.name}</td>
                         <td className="px-4 py-5 text-black border-2 border-black">{unit.active || "Yes"}</td>

@@ -9,6 +9,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { Order } from "../types";
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type LmL1Row = {
   id: string;
@@ -262,6 +263,11 @@ export function LmL1Report() {
   // Search matches every table column as the cells display them.
   const filteredRows = useTableSearch(dateFilteredRows, searchTerm, displayCells);
 
+  // Column sort over every filtered row (keys are the column headings); Month sorts in calendar order.
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) =>
+    key === "Month" ? MONTHS.indexOf(row.month) : getRowExport(row)[key as keyof ReturnType<typeof getRowExport>]
+  );
+
   const summary = useMemo(
     () => ({
       totalOrderQty: filteredRows.reduce((sum, row) => sum + row.orderQty, 0),
@@ -436,7 +442,7 @@ export function LmL1Report() {
               <tr className="bg-indigo-700 text-white">
                 {REPORT_COLUMNS.map((heading) => (
                   <th key={heading} className="sticky top-0 z-20 whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white">
-                    {heading}
+                    <SortHeader label={heading} sortKey={heading} sort={sort} onToggle={toggleSort} align="left" />
                   </th>
                 ))}
               </tr>
@@ -449,7 +455,7 @@ export function LmL1Report() {
                   </td>
                 </tr>
               ) : (
-                filteredRows.map((row) => (
+                sortedRows.map((row) => (
                   <tr key={row.id} className="text-black hover:bg-slate-50">
                     {Object.values(getRowExport(row)).map((value, index) => (
                       <td key={`${row.id}-${REPORT_COLUMNS[index]}`} className={`border-2 border-black px-3 py-3 ${typeof value === "number" ? "text-right" : "whitespace-normal break-words"}`}>

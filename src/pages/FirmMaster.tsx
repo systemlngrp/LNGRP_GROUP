@@ -6,6 +6,7 @@ import { Firm } from "../types";
 import { generateFirmShortName } from "../lib/firmDisplay";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const inputClass = "border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors";
 
@@ -36,6 +37,10 @@ export function FirmMaster() {
         }),
     [firms]
   );
+  const { sorted: sortedFirmRows, sort, toggle: toggleSort } = useTableSort(sortedFirms, (firm, key) => {
+    if (key === "shortName") return firm.shortName || generateFirmShortName(firm.firmName);
+    return (firm as any)[key];
+  });
 
   const resetForm = () => {
     setEditingId(null);
@@ -202,11 +207,11 @@ export function FirmMaster() {
             <thead className="sticky top-0 z-10 bg-slate-100">
               <tr>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">SL No</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Firm Name</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Short Name</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Address</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">GST</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Tally Port No</th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Firm Name" sortKey="firmName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Short Name" sortKey="shortName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Address" sortKey="address" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="GST" sortKey="gstDetails" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="Tally Port No" sortKey="tallyPortNo" sort={sort} onToggle={toggleSort} align="right" /></th>
               </tr>
             </thead>
             <tbody className="bg-white">
@@ -217,7 +222,7 @@ export function FirmMaster() {
                   </td>
                 </tr>
               ) : (
-                sortedFirms.map((firm, index) => (
+                sortedFirmRows.map((firm, index) => (
                   <tr key={firm.id} onClick={canManage ? () => openEdit(firm) : undefined} className={canManage ? "cursor-pointer hover:bg-slate-50" : undefined}>
                     <td className="px-4 py-3 text-right text-sm font-bold text-black border border-black">{index + 1}</td>
                     <td className="px-4 py-3 text-sm text-black border border-black">{firm.firmName}</td>

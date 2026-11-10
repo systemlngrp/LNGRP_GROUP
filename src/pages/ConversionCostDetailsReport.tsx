@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import type {
   FixedDailyExpense,
   FixedMonthlyExpense,
@@ -74,6 +75,10 @@ export function ConversionCostDetailsReport() {
     setInputs(defaultInputs);
   };
   const factoryDisplayRows = report.factoryRows;
+  // Factory Consumption table column sort (the MIS statement keeps its fixed layout).
+  const { sorted: sortedFactoryRows, sort: factorySort, toggle: toggleFactorySort } = useTableSort(factoryDisplayRows, (row, key) =>
+    key === "label" ? row.label : key === "perKg" ? Number(report.expensePerKg(row.amount) || 0) : Number(row.amount || 0)
+  , [report]);
 
   const renderInputCell = (key: keyof MisInputs) => (
     <input
@@ -124,13 +129,13 @@ export function ConversionCostDetailsReport() {
               </tr>
               <tr className="bg-orange-100">
                 <th className="border border-gray-900 p-2 text-center">Sl No.</th>
-                <th className="border border-gray-900 p-2 text-left">Particulars</th>
-                <th className="border border-gray-900 p-2 text-right">Payable amount</th>
-                <th className="border border-gray-900 p-2 text-right">Cost Per Kg</th>
+                <th className="border border-gray-900 p-2 text-left"><SortHeader label="Particulars" sortKey="label" sort={factorySort} onToggle={toggleFactorySort} align="left" /></th>
+                <th className="border border-gray-900 p-2 text-right"><SortHeader label="Payable amount" sortKey="amount" sort={factorySort} onToggle={toggleFactorySort} align="right" /></th>
+                <th className="border border-gray-900 p-2 text-right"><SortHeader label="Cost Per Kg" sortKey="perKg" sort={factorySort} onToggle={toggleFactorySort} align="right" /></th>
               </tr>
             </thead>
             <tbody>
-              {factoryDisplayRows.map((row) => (
+              {sortedFactoryRows.map((row) => (
                 <tr key={row.label}>
                   <td className="border border-gray-900 p-2 text-center font-bold">{row.slNo}</td>
                   <td className="border border-gray-900 p-2 font-bold">{row.label}</td>

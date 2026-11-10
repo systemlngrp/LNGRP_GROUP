@@ -7,6 +7,7 @@ import { MaterialGroup } from "../types";
 import { Plus, Edit, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function MaterialGroups() {
   const { user } = useAuth();
@@ -75,6 +76,7 @@ export function MaterialGroups() {
       const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
       return timeB - timeA || a.name.localeCompare(b.name);
     });
+  const { sorted: sortedGroups, sort, toggle: toggleSort } = useTableSort(filteredGroups, (row) => row.name);
 
   return (
     <div className="space-y-6">
@@ -133,7 +135,7 @@ export function MaterialGroups() {
           <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
           <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
             <div className="block md:hidden space-y-4 p-2">
-              {filteredGroups.map((group) => (
+              {sortedGroups.map((group) => (
                 <div key={group.id} className="bg-white border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
                   <div className="flex justify-between items-center">
                     <div className="font-bold">{group.name}</div>
@@ -163,7 +165,7 @@ export function MaterialGroups() {
             <table className="hidden md:table min-w-full divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">
-                  <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Group Name</th>
+                  <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Group Name" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
                   <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
                 </tr>
               </thead>
@@ -175,7 +177,7 @@ export function MaterialGroups() {
                     </td>
                   </tr>
                 ) : (
-                  filteredGroups.map((group) => (
+                  sortedGroups.map((group) => (
                     <tr key={group.id} className="hover:bg-slate-50 divide-x divide-black">
                       <td className="px-6 py-4 text-sm text-black border border-black">{group.name}</td>
                       <td className="px-6 py-4 text-right text-sm font-medium border border-black whitespace-nowrap">

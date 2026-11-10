@@ -8,6 +8,7 @@ import { FileText, RotateCcw, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { useServerReport } from "../hooks/useServerReport";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import {
   DispatchPlan,
   LoadingSlip,
@@ -153,6 +154,8 @@ export function PaperRequirementReport() {
   }), [groupType, netFilter, reportData, selectedRangeGsm]);
 
   const summary = useMemo(() => summarizeRows(filteredRows), [filteredRows]);
+  // Table column sort (the chart and PDF keep their own order).
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) => row[key as keyof ReportRow]);
 
   const chartRows = useMemo(() => {
     const limit = getChartLimitCount(chartLimit);
@@ -297,8 +300,8 @@ export function PaperRequirementReport() {
           <table className="w-full min-w-max border-collapse text-[12px]">
             <thead className="sticky top-0 z-20">
               <tr>
-                {["RAPC Range", "GSM", "Total Paper Requirement", "Total Closing Stock", "Total Pending PO", "MIL", "Net Paper To Order"].map((heading) => (
-                  <th key={heading} className="sticky top-0 z-20 whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white">{heading}</th>
+                {[["RAPC Range", "rapcRange"], ["GSM", "gsm"], ["Total Paper Requirement", "totalPaperRequirement"], ["Total Closing Stock", "totalClosingStock"], ["Total Pending PO", "totalPendingPo"], ["MIL", "mil"], ["Net Paper To Order", "netPaperToOrder"]].map(([heading, sortKey]) => (
+                  <th key={heading} className="sticky top-0 z-20 whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white"><SortHeader label={heading} sortKey={sortKey} sort={sort} onToggle={toggleSort} align="left" /></th>
                 ))}
               </tr>
             </thead>
@@ -306,7 +309,7 @@ export function PaperRequirementReport() {
               {filteredRows.length === 0 ? (
                 <tr><td colSpan={7} className="border-2 border-black px-6 py-10 text-center text-sm font-medium text-black">No rows found for the selected filters.</td></tr>
               ) : (
-                filteredRows.map((row) => (
+                sortedRows.map((row) => (
                   <tr key={makeKey(row.rapcRange, row.gsm)} onClick={() => setDetailRow(row)} className="cursor-pointer text-black hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3 font-bold">{row.rapcRange}</td>
                     <td className="border-2 border-black px-3 py-3 text-right">{row.gsm}</td>

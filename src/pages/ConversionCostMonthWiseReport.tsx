@@ -16,6 +16,7 @@ import { FY_MONTHS, getCurrentFinancialYear } from "../lib/financialYear";
 import { computeConversionCostMonthWise, round2 } from "../lib/reports/conversionCostMonthWise";
 import type { ConversionCostMonthRow } from "../lib/reports/conversionCostMonthWise";
 import { useServerReport } from "../hooks/useServerReport";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 function formatMoney(value: number) {
   return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -75,6 +76,11 @@ export function ConversionCostMonthWiseReport() {
     [rows]
   );
 
+  // Column sort over the month rows; Month sorts in financial-year order.
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) =>
+    key === "month" ? FY_MONTHS.findIndex((entry) => entry.value === row.monthValue) : Number((row as any)[key] || 0)
+  );
+
   const totalRatio = totals.actualPaperUsedCost > 0 ? round2(totals.totalConsumption / totals.actualPaperUsedCost) : 0;
 
   const clearFilters = () => {
@@ -131,16 +137,16 @@ export function ConversionCostMonthWiseReport() {
         <table className="w-full min-w-[980px] border-collapse text-sm">
           <thead>
             <tr className="bg-slate-100">
-              <th className="border border-gray-900 p-2 text-left">Month</th>
-              <th className="border border-gray-900 p-2 text-right">Consumables</th>
-              <th className="border border-gray-900 p-2 text-right">Fixed and Semi Variable Expenses</th>
-              <th className="border border-gray-900 p-2 text-right">Total Consumption</th>
-              <th className="border border-gray-900 p-2 text-right">Actual Paper Used Cost</th>
-              <th className="border border-gray-900 p-2 text-right">Ratio</th>
+              <th className="border border-gray-900 p-2 text-left"><SortHeader label="Month" sortKey="month" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-gray-900 p-2 text-right"><SortHeader label="Consumables" sortKey="consumables" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-gray-900 p-2 text-right"><SortHeader label="Fixed and Semi Variable Expenses" sortKey="fixed" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-gray-900 p-2 text-right"><SortHeader label="Total Consumption" sortKey="totalConsumption" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-gray-900 p-2 text-right"><SortHeader label="Actual Paper Used Cost" sortKey="actualPaperUsedCost" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-gray-900 p-2 text-right"><SortHeader label="Ratio" sortKey="ratio" sort={sort} onToggle={toggleSort} align="right" /></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {sortedRows.map((row) => (
               <tr key={row.monthValue}>
                 <td className="border border-gray-900 p-2 font-bold">{row.month}</td>
                 <td className="border border-gray-900 p-2 text-right">{formatMoney(row.consumables)}</td>

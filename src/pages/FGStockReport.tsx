@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import type { Item } from "../types";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type FgStockRow = {
   id: string;
@@ -87,6 +88,9 @@ export function FGStockReport() {
     row.stockValue,
   ]);
 
+  // Column sort over every searched row; with no sort the highest-balance-first order stays.
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => row[key as keyof FgStockRow]);
+
   const totals = useMemo(
     () =>
       rows.reduce(
@@ -147,9 +151,9 @@ export function FGStockReport() {
           <table className="w-full min-w-max border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-indigo-700 text-white">
-                {["ERP", "Item Name", "Customer / Party", "UOM", "Opening", "Receipt", "Production", "Invoiced", "Balance", "Rate", "Stock Value"].map((heading) => (
+                {([["ERP", "erp"], ["Item Name", "itemName"], ["Customer / Party", "customer"], ["UOM", "uom"], ["Opening", "opening"], ["Receipt", "receipt"], ["Production", "production"], ["Invoiced", "invoiced"], ["Balance", "balance"], ["Rate", "rate"], ["Stock Value", "stockValue"]] as const).map(([heading, sortKey]) => (
                   <th key={heading} className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">
-                    {heading}
+                    <SortHeader label={heading} sortKey={sortKey} sort={sort} onToggle={toggleSort} align="left" />
                   </th>
                 ))}
               </tr>
@@ -176,7 +180,7 @@ export function FGStockReport() {
                   <td colSpan={11} className="border-2 border-black px-6 py-10 text-center font-medium text-black">No FG stock found with balance greater than 0.</td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                sortedRows.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap border-2 border-black px-3 py-3 text-sm text-black">{row.erp}</td>
                     <td className="min-w-[260px] max-w-[420px] whitespace-normal break-words border-2 border-black px-3 py-3 text-sm text-black">{row.itemName}</td>

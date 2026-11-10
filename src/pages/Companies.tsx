@@ -13,6 +13,7 @@ import { isMandatoryField } from "../lib/mandatoryFields";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useTableSearch } from "../lib/tableSearch";
 import * as XLSX from "xlsx";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function Companies() {
   const { user } = useAuth();
@@ -376,6 +377,13 @@ export function Companies() {
     c.toleranceAllowed,
     c.active === "No" ? "No" : "Yes",
   ]);
+  const { sorted: sortedFilteredCompanies, sort, toggle: toggleSort } = useTableSort(filteredCompanies, (c, key) => {
+    switch (key) {
+      case "gstSupplyType": return c.gstSupplyType || "INTRA_STATE";
+      case "active": return c.active === "No" ? "No" : "Yes";
+      default: return (c as any)[key];
+    }
+  });
 
   const {
     page,
@@ -384,7 +392,7 @@ export function Companies() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedCompanies,
-  } = useClientPagination(filteredCompanies, 25);
+  } = useClientPagination(sortedFilteredCompanies, 25);
 
   return (
     <div className="space-y-6">
@@ -617,31 +625,31 @@ export function Companies() {
             <thead className="bg-slate-100 divide-x divide-black sticky top-0 z-10">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">SL No</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Company</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Contact Person</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Contact Number</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Email Id</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Address</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">District</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">State</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">PIN</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">GST NO</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">GST Type</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">GST Supply Type</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">PAN No</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Sales Person</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">PAYMENT TERMS</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">OPENING BALANCE</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">OVERDUES</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">TARGET</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">REFF. PERSON</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Priority</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Followup Frequency</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Auto Email</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Followup Approval</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Deviation Allowed</th>
-                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Tolerance Allowed</th>
-                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black">Active</th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Company" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Contact Person" sortKey="contactPerson" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Contact Number" sortKey="contactNumber" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Email Id" sortKey="email" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Address" sortKey="address" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="District" sortKey="district" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="State" sortKey="state" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="PIN" sortKey="pin" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="GST NO" sortKey="gstNo" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="GST Type" sortKey="gstType" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="GST Supply Type" sortKey="gstSupplyType" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="PAN No" sortKey="panNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Sales Person" sortKey="salesPerson" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="PAYMENT TERMS" sortKey="paymentTerms" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="OPENING BALANCE" sortKey="openingBalance" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="OVERDUES" sortKey="overdues" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="TARGET" sortKey="target" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="REFF. PERSON" sortKey="reffPerson" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Priority" sortKey="priority" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Followup Frequency" sortKey="followupFrequency" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Auto Email" sortKey="autoEmail" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Followup Approval" sortKey="followupApproval" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="Deviation Allowed" sortKey="deviationAllowed" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="Tolerance Allowed" sortKey="toleranceAllowed" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-4 py-2 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Active" sortKey="active" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-4 py-2 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
               </tr>
             </thead>

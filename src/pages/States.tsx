@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { Spinner } from "../components/Spinner";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function States() {
   const { user } = useAuth();
@@ -24,6 +25,7 @@ export function States() {
         .sort((a, b) => a.name.localeCompare(b.name)),
     [searchTerm, states]
   );
+  const { sorted: sortedStates, sort, toggle: toggleSort } = useTableSort(filteredStates, (row, key) => (key === "active" ? row.active || "Yes" : row.name));
 
   const openCreate = () => {
     setEditingId(null);
@@ -158,8 +160,8 @@ export function States() {
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-30">
                   <tr className="bg-indigo-700 text-white">
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">State</th>
-                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black">Active</th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="State" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
+                    <th className="px-4 py-4 text-left text-sm font-bold border-2 border-black"><SortHeader label="Active" sortKey="active" sort={sort} onToggle={toggleSort} align="left" /></th>
                     <th className="px-4 py-4 text-right text-sm font-bold border-2 border-black">Action</th>
                   </tr>
                 </thead>
@@ -171,7 +173,7 @@ export function States() {
                       </td>
                     </tr>
                   ) : (
-                    filteredStates.map((state) => (
+                    sortedStates.map((state) => (
                       <tr key={state.id}>
                         <td className="px-4 py-5 text-black font-bold border-2 border-black">{state.name}</td>
                         <td className="px-4 py-5 text-black border-2 border-black">{state.active || "Yes"}</td>

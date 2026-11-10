@@ -8,6 +8,7 @@ import { Trash2 } from "lucide-react";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function ConsumptionMaster() {
   const { user } = useAuth();
@@ -35,6 +36,15 @@ export function ConsumptionMaster() {
       const timeB = new Date(b.updateTimestamp || b.date || 0).getTime();
       return timeB - timeA;
     });
+  const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (c, key) => {
+    switch (key) {
+      case "date": return c.date;
+      case "item": return npdItems.find(i => i.id === c.itemId)?.name || "Unknown";
+      case "qty": return Number(c.qty);
+      case "history": return c.phTimestamp || c.tallyTimestamp;
+      default: return (c as any)[key];
+    }
+  }, [npdItems]);
 
   return (
     <div className="space-y-6">
@@ -51,7 +61,7 @@ export function ConsumptionMaster() {
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4 p-2">
-            {filteredList.map((c) => (
+            {sortedList.map((c) => (
                 <div key={c.id} className="bg-white border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded relative">
                      <div className="flex justify-between items-center">
                         <div className="font-bold text-sm">{c.transactionNo}</div>
@@ -77,13 +87,13 @@ export function ConsumptionMaster() {
         <table className="hidden md:table min-w-full divide-y divide-black border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Trn No</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Date</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Item Name</th>
-              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Consumed Qty</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">UOM</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Status</th>
-              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">History</th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Trn No" sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Item Name" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black"><SortHeader label="Consumed Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="UOM" sortKey="uom" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="History" sortKey="history" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Actions</th>
             </tr>
           </thead>
@@ -93,7 +103,7 @@ export function ConsumptionMaster() {
                 <td colSpan={8} className="px-6 py-8 text-center text-black font-medium">No consumptions found.</td>
               </tr>
             ) : (
-              filteredList.map((c) => (
+              sortedList.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50 divide-x divide-black">
                   <td className="px-6 py-4 text-sm font-medium text-black border border-black">{c.transactionNo}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black whitespace-nowrap">{formatDate(c.date)}</td>

@@ -6,6 +6,7 @@ import { Machine, ProductionProcessing, User } from "../types";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type ViewMode = "detailed" | "machineDaily" | "operatorMachineDaily";
 type Shift = "Day" | "Night";
@@ -192,6 +193,9 @@ export function EfficiencyReport() {
     );
   }, [rows]);
 
+  // Column sort over every row of the current view; no sort keeps the newest-first order.
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => (key === "jobNo" ? row.jobNo || "-" : row[key as keyof EfficiencyRow]));
+
   const overallEfficiency = safePercent(summary.qty, summary.expected);
 
   const handleClear = () => {
@@ -303,15 +307,15 @@ export function EfficiencyReport() {
           <table className="w-full min-w-max border-collapse">
             <thead className="sticky top-0 z-10">
               <tr className="bg-indigo-700 text-white">
-                <th className="min-w-[110px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">Date</th>
-                <th className="min-w-[130px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">Job No.</th>
-                <th className="min-w-[150px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">Machine</th>
-                <th className="min-w-[80px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">Shift</th>
-                <th className="min-w-[140px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase">Operator</th>
-                <th className="min-w-[95px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase">Qty</th>
-                <th className="min-w-[95px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase">Max/Hr</th>
-                <th className="min-w-[105px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase">Expected</th>
-                <th className="min-w-[90px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase">Eff%</th>
+                <th className="min-w-[110px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="min-w-[130px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase"><SortHeader label="Job No." sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="min-w-[150px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase"><SortHeader label="Machine" sortKey="machineName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="min-w-[80px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="min-w-[140px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase"><SortHeader label="Operator" sortKey="operatorName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="min-w-[95px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="min-w-[95px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase"><SortHeader label="Max/Hr" sortKey="maxOutputPerHour" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="min-w-[105px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase"><SortHeader label="Expected" sortKey="expectedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="min-w-[90px] whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase"><SortHeader label="Eff%" sortKey="efficiencyPercent" sort={sort} onToggle={toggleSort} align="right" /></th>
               </tr>
             </thead>
             <tbody>
@@ -322,7 +326,7 @@ export function EfficiencyReport() {
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                sortedRows.map((row) => (
                   <tr key={row.id} className="hover:bg-slate-50">
                     <td className="whitespace-nowrap border-2 border-black px-3 py-3 text-sm font-semibold text-black">
                       {formatDate(row.date)}

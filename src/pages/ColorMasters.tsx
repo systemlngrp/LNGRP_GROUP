@@ -7,6 +7,7 @@ import { Spinner } from "../components/Spinner";
 import { TableControls } from "../components/TableControls";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { ColorMaster } from "../types";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function ColorMasters() {
   const { user } = useAuth();
@@ -73,6 +74,7 @@ export function ColorMasters() {
       const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
       return timeB - timeA || a.name.localeCompare(b.name);
     });
+  const { sorted: sortedColors, sort, toggle: toggleSort } = useTableSort(filteredColors, (row) => row.name);
 
   return (
     <div className="space-y-6">
@@ -119,7 +121,7 @@ export function ColorMasters() {
           <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
           <div className="bg-white rounded shadow-sm border border-black table-sticky-scroll">
             <div className="block md:hidden space-y-4 p-2">
-              {filteredColors.map((color) => (
+              {sortedColors.map((color) => (
                 <div key={color.id} className="bg-white border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
                   <div className="flex justify-between items-center">
                     <div className="font-bold">{color.name}</div>
@@ -135,7 +137,7 @@ export function ColorMasters() {
             <table className="hidden md:table min-w-full divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">
-                  <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">Color Name</th>
+                  <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Color Name" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>
                   <th className="px-6 py-3 text-right text-sm font-bold text-black uppercase border border-black">Actions</th>
                 </tr>
               </thead>
@@ -145,7 +147,7 @@ export function ColorMasters() {
                     <td colSpan={2} className="px-6 py-8 text-center text-black font-medium">No colors found.</td>
                   </tr>
                 ) : (
-                  filteredColors.map((color) => (
+                  sortedColors.map((color) => (
                     <tr key={color.id} className="hover:bg-slate-50 divide-x divide-black">
                       <td className="px-6 py-4 text-sm text-black border border-black">{color.name}</td>
                       <td className="px-6 py-4 text-right text-sm font-medium border border-black whitespace-nowrap">

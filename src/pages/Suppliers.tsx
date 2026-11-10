@@ -13,6 +13,7 @@ import { isMandatoryField } from "../lib/mandatoryFields";
 import { useTableSearch } from "../lib/tableSearch";
 import * as XLSX from "xlsx";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type SupplierFormState = {
   name: string;
@@ -88,6 +89,26 @@ export function Suppliers() {
         .sort((a, b) => (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" })),
     [searchedSuppliers]
   );
+  const SUPPLIER_SORT_KEYS: Record<string, string> = {
+    "Supplier Name": "name",
+    "Contact Person": "contactPerson",
+    "Contact Number": "contactNumber",
+    Email: "email",
+    "GST No.": "gstNo",
+    "GST Supply Type": "gstSupplyType",
+    State: "state",
+    District: "district",
+    "PIN Code": "pinCode",
+    Active: "active",
+  };
+  const { sorted: sortedSuppliers, sort, toggle: toggleSort } = useTableSort(filteredSuppliers, (supplier, key) => {
+    switch (key) {
+      case "gstSupplyType": return supplier.gstSupplyType || "INTRA_STATE";
+      case "state": return (supplier.stateId && stateNameById.get(supplier.stateId)) || "";
+      case "active": return supplier.active || "Yes";
+      default: return (supplier as any)[key];
+    }
+  }, [stateNameById]);
   const {
     page,
     setPage,
@@ -95,7 +116,7 @@ export function Suppliers() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedSuppliers,
-  } = useClientPagination(filteredSuppliers, 25);
+  } = useClientPagination(sortedSuppliers, 25);
 
   const resetForm = () => {
     setEditingId(null);
@@ -488,7 +509,11 @@ export function Suppliers() {
                 <tr className="divide-x divide-black">
                   {["SL No", "Supplier Name", "Contact Person", "Contact Number", "Email", "GST No.", "GST Supply Type", "State", "District", "PIN Code", "Active", "Actions"].map((heading) => (
                     <th key={heading} className="px-4 py-3 text-left text-sm font-bold text-black uppercase border border-black whitespace-nowrap">
-                      {heading}
+                      {SUPPLIER_SORT_KEYS[heading] ? (
+                        <SortHeader label={heading} sortKey={SUPPLIER_SORT_KEYS[heading]} sort={sort} onToggle={toggleSort} align="left" />
+                      ) : (
+                        heading
+                      )}
                     </th>
                   ))}
                 </tr>

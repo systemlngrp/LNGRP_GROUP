@@ -11,6 +11,7 @@ import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/re
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 type TargetRow = {
   dateFrom: string;
@@ -299,6 +300,9 @@ export function RealizationReport() {
   const visibleSalesRows = useTableSearch(salesRows, searchTerm, (row) => [row.name, Number(row.average || 0).toFixed(2)]);
   const visibleCompanyRows = useTableSearch(companyRows, searchTerm, (row) => [row.name, Number(row.average || 0).toFixed(2)]);
 
+  // Company table column sort; no sort keeps the highest-average-first order.
+  const { sorted: sortedCompanyRows, sort: companySort, toggle: toggleCompanySort } = useTableSort(visibleCompanyRows, (row, key) => (key === "name" ? row.name : Number(row.average || 0)));
+
   const currentTarget = useMemo(() => resolveCurrentTarget(targets), [targets]);
   const currentTargetFy = useMemo(() => currentTarget ? `FY ${getFinancialYear(currentTarget.dateFrom)}` : "Not set", [currentTarget]);
 
@@ -530,8 +534,8 @@ export function RealizationReport() {
             <thead className="bg-indigo-700 text-white">
               <tr className="bg-indigo-700 text-white">
                 <th className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white">SL No</th>
-                <th className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white">Company</th>
-                <th className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase text-white">Average Realization/Kg</th>
+                <th className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white"><SortHeader label="Company" sortKey="name" sort={companySort} onToggle={toggleCompanySort} align="left" /></th>
+                <th className="whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-right text-xs font-black uppercase text-white"><SortHeader label="Average Realization/Kg" sortKey="average" sort={companySort} onToggle={toggleCompanySort} align="right" /></th>
               </tr>
             </thead>
             <tbody>
@@ -542,7 +546,7 @@ export function RealizationReport() {
                   </td>
                 </tr>
               ) : (
-                visibleCompanyRows.map((row, index) => (
+                sortedCompanyRows.map((row, index) => (
                   <tr key={row.id} className="text-black hover:bg-slate-50">
                     <td className="border-2 border-black px-3 py-3 font-bold">{index + 1}</td>
                     <td className="border-2 border-black px-3 py-3 font-semibold">{row.name}</td>

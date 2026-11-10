@@ -10,6 +10,7 @@ import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { buildSeedRapcRanges } from "../lib/rapcRanges";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 export function RapcRangeMaster() {
   const { user } = useAuth();
@@ -92,6 +93,7 @@ export function RapcRangeMaster() {
       return matchesSearch && matchesFrom && matchesTo;
     });
   }, [ranges, searchTerm, filterFrom, filterTo]);
+  const { sorted: sortedRanges, sort, toggle: toggleSort } = useTableSort(filteredRanges, (row, key) => (row as any)[key]);
 
   const {
     page,
@@ -100,7 +102,7 @@ export function RapcRangeMaster() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedRanges,
-  } = useClientPagination(filteredRanges, 25);
+  } = useClientPagination(sortedRanges, 25);
 
   return (
     <div className="space-y-6">
@@ -219,9 +221,9 @@ export function RapcRangeMaster() {
             <thead className="bg-slate-100 sticky top-0 z-10">
               <tr className="divide-x divide-black">
                 <th className="border border-black px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">SL No</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">From</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">To</th>
-                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider">RAPC Range</th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="From" sortKey="from" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="To" sortKey="to" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="border border-black px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider"><SortHeader label="RAPC Range" sortKey="rapcRange" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="border border-black px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider">Actions</th>
               </tr>
             </thead>

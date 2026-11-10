@@ -9,6 +9,7 @@ import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 interface LeastCostRecord {
   date: string;
@@ -152,6 +153,9 @@ export function ItemwiseLeastCost() {
     finally { if (uploadRef.current) uploadRef.current.value = ""; }
   };
 
+  // Column sort over every filtered row before paging; no sort keeps ERP order.
+  const { sorted: sortedData, sort, toggle: toggleSort } = useTableSort(filteredData, (row, key) => (key === "jobCardNo" ? row.jobCardNo || "" : row[key as keyof LeastCostRecord]));
+
   const {
     page,
     setPage,
@@ -159,7 +163,7 @@ export function ItemwiseLeastCost() {
     setPageSize,
     totalItems,
     paginatedItems: paginatedData,
-  } = useClientPagination(filteredData, 25);
+  } = useClientPagination(sortedData, 25);
 
   // The centred loading card comes from the page loading boundary.
   if (isLoading) return null;
@@ -195,23 +199,23 @@ export function ItemwiseLeastCost() {
             <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black whitespace-nowrap">
               <tr className="divide-x divide-black">
                 <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">SL No</th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Job No</th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Item Name</th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">ERP CODE</th>
-                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Company</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">L</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">B</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">H</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Reel Calc</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Reel Act</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Cut</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">L1</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">F1</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">L2</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">F2</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">L3</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">GSM</th>
-                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black">Sheet Wt</th>
+                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Job No" sortKey="jobCardNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Item Name" sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="ERP CODE" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-3 py-3 text-left text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L" sortKey="length" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="B" sortKey="breadth" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="H" sortKey="height" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Reel Calc" sortKey="reelAsPerCalc" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Reel Act" sortKey="reelActual" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Cut" sortKey="cutting" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L1" sortKey="l1" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="F1" sortKey="f1" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L2" sortKey="l2" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="F2" sortKey="f2" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="L3" sortKey="l3" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="GSM" sortKey="gsm" sort={sort} onToggle={toggleSort} align="right" /></th>
+                <th className="px-3 py-3 text-right text-[10px] font-black text-black uppercase tracking-wider border-b border-black"><SortHeader label="Sheet Wt" sortKey="sheetWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">

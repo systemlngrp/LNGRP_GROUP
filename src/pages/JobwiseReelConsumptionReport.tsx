@@ -18,6 +18,7 @@ import { formatDate } from "../lib/serial";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useTableSearch } from "../lib/tableSearch";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const JOBWISE_REEL_TABLES = ["productions", "production_processing", "materials", "material_in", "material_in_packing_slips", "material_issue_reel_lines", "material_return_reel_lines"];
 
@@ -77,7 +78,9 @@ export function JobwiseReelConsumptionReport() {
 
   // Totals and Excel use every matching job; the table draws one page at a
   // time so thousands of rows do not freeze the screen.
-  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(rows, 100);
+  // Column sort covers every matching job before paging; no sort keeps newest first.
+  const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => (key === "jobNo" || key === "corrugationDate" ? row[key] : Number((row as any)[key] || 0)));
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(sortedRows, 100);
   useEffect(() => { setPage(1); }, [dateFrom, dateTo, minGpPercent, searchTerm, setPage]);
 
   const summary = useMemo(() => {
@@ -216,23 +219,23 @@ export function JobwiseReelConsumptionReport() {
             <thead className="sticky top-0 z-20">
               <tr className="bg-indigo-700 text-white">
                 {[
-                  "Job No.",
-                  "Corrugation Date",
-                  "Job FFG",
-                  "Job Rate",
-                  "Job Value",
-                  "Reel Issued",
-                  "Reel Returned",
-                  "Reel Consumed",
-                  "Actual Consumed Value",
-                  "GP",
-                  "GP%",
-                ].map((heading) => (
+                  ["Job No.", "jobNo"],
+                  ["Corrugation Date", "corrugationDate"],
+                  ["Job FFG", "jobFfg"],
+                  ["Job Rate", "jobRate"],
+                  ["Job Value", "jobValue"],
+                  ["Reel Issued", "reelIssued"],
+                  ["Reel Returned", "reelReturned"],
+                  ["Reel Consumed", "reelConsumed"],
+                  ["Actual Consumed Value", "consumedValue"],
+                  ["GP", "gp"],
+                  ["GP%", "gpPercent"],
+                ].map(([heading, sortKey]) => (
                   <th
                     key={heading}
                     className="sticky top-0 z-20 whitespace-nowrap border-2 border-black bg-indigo-700 px-3 py-3 text-left text-xs font-black uppercase text-white"
                   >
-                    {heading}
+                    <SortHeader label={heading} sortKey={sortKey} sort={sort} onToggle={toggleSort} align="left" />
                   </th>
                 ))}
               </tr>
