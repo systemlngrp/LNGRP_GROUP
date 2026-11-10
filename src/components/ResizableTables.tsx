@@ -7,6 +7,8 @@ import type { Setting } from "../types";
 const STORAGE_PREFIX = "table-column-widths:v1:";
 const MIN_COLUMN_WIDTH = 80;
 const ACTION_COLUMN_MIN_WIDTH = 160;
+// A select column (only a checkbox in each cell, no header text) stays narrow.
+const CHECKBOX_COLUMN_WIDTH = 44;
 const TABLE_SCROLL_READY = "tableScrollReady";
 const TABLE_PAGINATION_HIDDEN = "tablePaginationHidden";
 const TABLE_PAGINATION_EXTERNAL = "tablePaginationExternal";
@@ -207,7 +209,29 @@ function getActionColumnIndexes(table: HTMLTableElement, count: number) {
     });
   }
 
+  getCheckboxColumnIndexes(table, count).forEach((index) => actionColumns.delete(index));
   return actionColumns;
+}
+
+function isCheckboxOnlyCell(cell: HTMLTableCellElement, allowEmpty: boolean) {
+  if (cellText(cell)) return false;
+  const controls = cell.querySelectorAll("button, a, input, select, textarea, [role=button]");
+  if (!controls.length) return allowEmpty;
+  return Array.from(controls).every((control) => control instanceof HTMLInputElement && control.type === "checkbox");
+}
+
+function getCheckboxColumnIndexes(table: HTMLTableElement, count: number) {
+  const result = new Set<number>();
+  const bodyRanges = getCellRanges(getDirectTableRows(table).filter((row) => !isSpanningTableRow(row, count)).slice(0, MAX_MEASURED_ROWS), count);
+  const headerRanges = getCellRanges(table.tHead ? Array.from(table.tHead.rows) : [], count);
+  for (let column = 0; column < count; column += 1) {
+    const cells = bodyRanges.filter(({ start, end }) => start === column && end - start === 1).map(({ cell }) => cell);
+    if (!cells.length || !cells.some((cell) => cell.querySelector('input[type="checkbox"]'))) continue;
+    if (!cells.every((cell) => isCheckboxOnlyCell(cell, false))) continue;
+    const headers = headerRanges.filter(({ start, end }) => start <= column && column < end).map(({ cell }) => cell);
+    if (headers.every((cell) => cell.colSpan === 1 && isCheckboxOnlyCell(cell, true))) result.add(column);
+  }
+  return result;
 }
 
 function markActionColumns(table: HTMLTableElement, actionColumns: Set<number>, count: number) {
@@ -383,11 +407,13 @@ function ensureColGroup(table: HTMLTableElement, count: number) {
 
 function applyColumnWidths(table: HTMLTableElement, widths: number[], actionColumns = new Set<number>()) {
   const columns = ensureColGroup(table, widths.length);
+  const checkboxColumns = getCheckboxColumnIndexes(table, widths.length);
+  const widthAt = (index: number) => checkboxColumns.has(index) ? CHECKBOX_COLUMN_WIDTH : Math.max(MIN_COLUMN_WIDTH, widths[index] || MIN_COLUMN_WIDTH);
   columns.forEach((column, index) => {
     column.classList.toggle("app-table-action-column", actionColumns.has(index));
-    column.style.width = `${Math.max(MIN_COLUMN_WIDTH, widths[index] || MIN_COLUMN_WIDTH)}px`;
+    column.style.width = `${widthAt(index)}px`;
   });
-  const totalWidth = widths.reduce((sum, width) => sum + Math.max(MIN_COLUMN_WIDTH, width || MIN_COLUMN_WIDTH), 0);
+  const totalWidth = widths.reduce((sum, _width, index) => sum + widthAt(index), 0);
   const parentWidth = table.parentElement?.clientWidth || 0;
   table.style.width = `${Math.max(totalWidth, parentWidth)}px`;
 }

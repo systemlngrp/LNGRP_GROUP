@@ -1,17 +1,16 @@
 import React, { useState, useMemo } from "react";
 
-import { TableControls } from "../components/TableControls";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
+import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { OrderSchedule, Order, Company, Item, DispatchPlan, LoadingSlip, Production, Firm } from "../types";
-import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { cn } from "../lib/utils";
 import { normalizeOrderItemSource } from "../lib/orderItems";
-import { Save } from "lucide-react";
+import { Save, Search } from "lucide-react";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
@@ -38,6 +37,10 @@ export function PendingDispatchPlanning() {
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
   const [selectedFirmId, setSelectedFirmId] = useState<string>("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [rowPlannedQty, setRowPlannedQty] = useState<Record<string, number | "">>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,6 +61,19 @@ export function PendingDispatchPlanning() {
     value.setHours(23, 59, 59, 999);
     return value;
   }, [today]);
+
+  // Overdue / Due Today / Due Tomorrow, from the scheduled date.
+  const dayIso = (value: unknown) => {
+    const date = new Date(String(value || ""));
+    if (isNaN(date.getTime())) return "";
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+  const todayIso = dayIso(today);
+  const dueStatus = (value: unknown) => {
+    const day = dayIso(value);
+    if (!day) return "";
+    return day < todayIso ? "Overdue" : day === todayIso ? "Due Today" : "Due Tomorrow";
+  };
 
   const isFfgFilled = (value: unknown) => {
     if (value === null || value === undefined) return false;
@@ -194,12 +210,34 @@ export function PendingDispatchPlanning() {
     return companies.filter(c => compIds.has(c.id)).sort((a, b) => a.name.localeCompare(b.name));
   }, [basePendingSchedules, orders, companies, lookup]);
 
+  const filterOptions = useMemo(() => {
+    const firmIds = new Set<string>();
+    const items = new Set<string>();
+    basePendingSchedules.forEach((s) => {
+      const order = lookup.orderById.get(s.orderId);
+      const firmId = String(s.firmId || order?.firmId || "");
+      if (firmId) firmIds.add(firmId);
+      const name = resolveOrderItem(order)?.name;
+      if (name) items.add(name);
+    });
+    return {
+      firms: getFirmOptions(firms.filter((firm) => firmIds.has(String(firm.id)))),
+      companies: availableCompanies.map((c) => ({ value: c.id, label: c.name })),
+      items: Array.from(items).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name })),
+      statuses: ["Overdue", "Due Today", "Due Tomorrow"].map((value) => ({ value, label: value })),
+    };
+  }, [basePendingSchedules, availableCompanies, firms, lookup, resolveOrderItem]);
+
   const filteredSchedules = useMemo(() => {
     const words = searchWords(searchTerm);
     const rows = basePendingSchedules.filter(s => {
       const order = lookup.orderById.get(s.orderId);
+      const day = dayIso(s.scheduledDate);
       return (!selectedCompanyId || order?.companyId === selectedCompanyId) &&
-        (!selectedFirmId || String(s.firmId || order?.firmId || "") === selectedFirmId);
+        (!selectedFirmId || String(s.firmId || order?.firmId || "") === selectedFirmId) &&
+        (!itemFilter || (resolveOrderItem(order)?.name || "") === itemFilter) &&
+        (!statusFilter || dueStatus(s.scheduledDate) === statusFilter) &&
+        (!fromDate || day >= fromDate) && (!toDate || day <= toDate);
     });
 
     return [...rows]
@@ -211,6 +249,7 @@ export function PendingDispatchPlanning() {
         // Visible columns: Scheduled Date, Schedule No, Order No, Firm, Company, Item Name, Pending Qty.
         return matchesTableSearch([
           formatDate(schedule.scheduledDate),
+          dueStatus(schedule.scheduledDate),
           schedule.scheduleNo,
           order?.orderNo,
           getFirmDisplayNameById(schedule.firmId || order?.firmId, firms),
@@ -258,7 +297,7 @@ export function PendingDispatchPlanning() {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, resolveOrderItem, lookup]);
+  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, resolveOrderItem, lookup]);
 
   const {
     page,
@@ -475,95 +514,95 @@ export function PendingDispatchPlanning() {
     }
   };
 
+  const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+  const DATE_INPUT = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
+  const hasFilters = Boolean(searchTerm.trim() || selectedFirmId || selectedCompanyId || itemFilter || statusFilter || fromDate || toDate);
+  const clearFilters = () => {
+    setSearchTerm(""); setSelectedFirmId(""); setSelectedCompanyId(""); setItemFilter(""); setStatusFilter(""); setFromDate(""); setToDate("");
+    setSelectedIds(new Set());
+  };
+  const changeFilter = (setter: (value: string) => void) => (value: string) => { setter(value); setSelectedIds(new Set()); };
+  const STATUS_BADGE: Record<string, string> = {
+    "Overdue": "border-red-600 bg-red-50 text-red-700",
+    "Due Today": "border-amber-600 bg-amber-50 text-amber-800",
+    "Due Tomorrow": "border-emerald-600 bg-emerald-50 text-emerald-800",
+  };
+  const statusBadge = (status: string) => status
+    ? <span className={cn("inline-block whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-black uppercase", STATUS_BADGE[status])}>{status}</span>
+    : <span>-</span>;
+  const plannedValue = (id: string, balance: number) => (rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : balance);
+  const setPlanned = (id: string, value: string) => setRowPlannedQty((prev) => ({ ...prev, [id]: value === "" ? "" : Number(value) }));
+  const pageAllSelected = paginatedSchedules.length > 0 && paginatedSchedules.every((schedule) => selectedIds.has(schedule.id));
+  const rowInfo = (s: OrderSchedule) => {
+    const order = lookup.orderById.get(s.orderId);
+    return {
+      order,
+      company: lookup.companyById.get(order?.companyId as string),
+      item: resolveOrderItem(order),
+      status: dueStatus(s.scheduledDate),
+      balance: getScheduleAvailableQty(s, lookup.plansBySchedule.get(String(s.id || "")) || []),
+      firm: getFirmDisplayNameById(s.firmId || order?.firmId, firms),
+    };
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-black pb-4">
-          <div>
-            <h2 className="text-2xl font-black text-black tracking-tight uppercase">Pending Dispatch Planning</h2>
-          </div>
-          
-          <div className="flex items-center gap-3">
-             {selectedIds.size > 0 && (
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold hover:bg-emerald-700 transition flex items-center border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-x-1 active:translate-y-1"
-              >
-                <Save size={18} className="mr-2" />
-                {isSubmitting ? "Saving..." : `Submit Plan (${selectedIds.size})`}
-              </button>
-            )}
+    <div className={cn("space-y-4", selectedIds.size > 0 && "pb-20 md:pb-0")}>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Dispatch Planning</h2>
+        {selectedIds.size > 0 && (
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-center gap-2 rounded-lg border-2 border-black bg-emerald-600 px-5 py-3 text-sm font-bold text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-700 disabled:opacity-60 md:static md:py-2"
+          >
+            <Save size={18} />
+            {isSubmitting ? "Saving..." : `Submit Plan (${selectedIds.size}) · ${totalSessionPlannedQty.toLocaleString()}`}
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+        <div className="rounded-lg border-2 border-black bg-gradient-to-br from-indigo-500 to-indigo-700 p-3 text-white">
+          <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Pending Orders</div>
+          <div className="text-2xl font-black">{metrics.pendingOrders.toLocaleString()}</div>
+        </div>
+        <div className="rounded-lg border-2 border-black bg-gradient-to-br from-rose-500 to-rose-700 p-3 text-white">
+          <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Overdue</div>
+          <div className="text-2xl font-black">{metrics.overdue.toLocaleString()}</div>
+        </div>
+        <div className="rounded-lg border-2 border-black bg-gradient-to-br from-emerald-500 to-emerald-700 p-3 text-white">
+          <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Pending Qty</div>
+          <div className="text-2xl font-black">{metrics.pendingQty.toLocaleString()}</div>
+        </div>
+        <div className="rounded-lg border-2 border-black bg-gradient-to-br from-amber-500 to-amber-700 p-3 text-white">
+          <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Session Planned</div>
+          <div className="text-2xl font-black">{metrics.activePlanned.toLocaleString()}</div>
+          <div className="text-[10px] font-bold opacity-90">{metrics.activeSelection} selected</div>
+        </div>
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className={LABEL}>Firm</span><Select compact value={selectedFirmId} onChange={changeFilter(setSelectedFirmId)} options={filterOptions.firms} placeholder="All" /></div>
+          <div className="min-w-0"><span className={LABEL}>Status</span><Select compact value={statusFilter} onChange={changeFilter(setStatusFilter)} options={filterOptions.statuses} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Company</span><Select compact value={selectedCompanyId} onChange={changeFilter(setSelectedCompanyId)} options={filterOptions.companies} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={changeFilter(setItemFilter)} options={filterOptions.items} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
+            <label className="min-w-0"><span className={LABEL}>Schedule From</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => changeFilter(setFromDate)(e.target.value)} className={DATE_INPUT} /></label>
+            <label className="min-w-0"><span className={LABEL}>Schedule To</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => changeFilter(setToDate)(e.target.value)} className={DATE_INPUT} /></label>
           </div>
         </div>
-
-        {/* Colorful Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-            <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Pending Orders</div>
-            <div className="text-3xl font-black">{metrics.pendingOrders}</div>
-          </div>
-          <div className="bg-gradient-to-br from-rose-500 to-rose-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-            <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Overdue</div>
-            <div className="text-3xl font-black">{metrics.overdue}</div>
-          </div>
-          <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-            <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Pending Qty</div>
-            <div className="text-3xl font-black">{metrics.pendingQty.toLocaleString()}</div>
-            <div className="text-[10px] font-bold mt-1 opacity-90">Total balance pieces</div>
-          </div>
-          <div className="bg-gradient-to-br from-amber-500 to-amber-700 p-4 rounded-xl border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-white">
-            <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Session Planned</div>
-            <div className="text-3xl font-black">{metrics.activePlanned.toLocaleString()}</div>
-            <div className="text-[10px] font-bold mt-1 opacity-90">{metrics.activeSelection} items selected now</div>
-          </div>
-        </div>
-
-        <div className="bg-white border-2 border-black rounded-xl p-4 shadow-sm space-y-4">
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="flex-1 min-w-[240px] space-y-1">
-              <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Search Orders</div>
-              <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
-            </div>
-
-            <FirmFilter value={selectedFirmId} onChange={(firmId) => { setSelectedFirmId(firmId); setSelectedIds(new Set()); }} className="min-w-[180px]" />
-
-            <div className="space-y-1">
-              <div className="text-indigo-700 font-bold text-[10px] uppercase tracking-wider">Filter by Company</div>
-              <select 
-                value={selectedCompanyId}
-                onChange={(e) => {
-                  setSelectedCompanyId(e.target.value);
-                  setSelectedIds(new Set());
-                }}
-                className="border-2 border-black rounded px-3 py-1.5 text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-[240px]"
-              >
-                <option value="">Companies</option>
-                {availableCompanies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-            
-            {(selectedCompanyId || selectedFirmId || searchTerm) && (
-              <button 
-                onClick={() => {
-                  setSelectedCompanyId("");
-                  setSelectedFirmId("");
-                  setSearchTerm("");
-                }}
-                className="text-[10px] font-black uppercase text-red-600 hover:text-red-800 underline pb-2"
-              >
-                Reset
-              </button>
-            )}
-          </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
       {calculationRows.length > 0 ? (
         <>
-          <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+          <div className="overflow-hidden rounded border border-black bg-white shadow-sm">
           <div className="px-4 py-3 border-b border-black bg-slate-50">
             <div className="text-sm font-black uppercase text-black">Dispatch Planning Calculation</div>
           </div>
@@ -609,96 +648,101 @@ export function PendingDispatchPlanning() {
         </>
       ) : null}
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
-         <div className="table-frozen-scroll">
-          <table className="min-w-full divide-y divide-black border-collapse border border-black">
-            <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
-              <tr className="divide-x divide-black">
-                <th className="px-4 py-3 text-center border border-black w-10">
-                  <input 
-                    type="checkbox" 
-                    className="w-4 h-4 rounded border-black text-indigo-600 focus:ring-indigo-600"
-                    onChange={handleSelectAll}
-                    checked={paginatedSchedules.length > 0 && paginatedSchedules.every((schedule) => selectedIds.has(schedule.id))}
-                  />
+      {/* Phones: one card per schedule. */}
+      <div className="space-y-2 md:hidden">
+        {filteredSchedules.length > 0 && (
+          <label className="flex items-center justify-between rounded border border-black bg-slate-100 px-3 py-2 text-xs font-bold">
+            <span className="flex items-center gap-2">
+              <input type="checkbox" className="h-4 w-4" checked={pageAllSelected} onChange={handleSelectAll} />
+              Select all
+            </span>
+            <span className="text-slate-600">{filteredSchedules.length.toLocaleString()} schedules</span>
+          </label>
+        )}
+        {filteredSchedules.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">No pending dispatch plans found.</div>
+        ) : paginatedSchedules.map((s) => {
+          const info = rowInfo(s);
+          const selected = selectedIds.has(s.id);
+          return (
+            <div key={s.id} className={cn("rounded-lg border-2 bg-white p-3", selected ? "border-indigo-600 bg-indigo-50/60" : "border-black")}>
+              <div className="flex items-start gap-3">
+                <input type="checkbox" aria-label={`Select ${s.scheduleNo || "schedule"}`} className="mt-0.5 h-5 w-5 shrink-0" checked={selected} onChange={() => toggleSelect(s.id)} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-black">{s.scheduleNo || "-"}</span>
+                    {statusBadge(info.status)}
+                  </div>
+                  <div className="mt-0.5 text-[11px] font-semibold text-slate-600">{formatDate(s.scheduledDate)} · {info.order?.orderNo || "-"} · {info.firm}</div>
+                  <div className="mt-1 break-words text-xs font-bold text-black">{info.company?.name || "-"}</div>
+                  <div className="break-words text-xs text-slate-700">{info.item?.name || "-"}</div>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
+                  <div className="text-[10px] font-black uppercase text-slate-500">Pending Qty</div>
+                  <div className="text-sm font-black text-indigo-700">{info.balance.toLocaleString()}</div>
+                </div>
+                <label className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
+                  <span className="block text-[10px] font-black uppercase text-slate-500">Planned Qty</span>
+                  <input type="number" inputMode="numeric" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full rounded border border-slate-400 bg-white px-1 text-right text-sm font-bold focus:border-indigo-600 focus:outline-none" />
+                </label>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-hidden rounded border border-black bg-white shadow-sm md:block">
+        <div className="table-frozen-scroll">
+          <table className="min-w-full border-collapse border border-black">
+            <thead className="sticky top-0 z-30 bg-slate-100">
+              <tr>
+                <th className="w-11 border border-black px-1 py-3 text-center">
+                  <input type="checkbox" aria-label="Select all on this page" className="h-4 w-4" onChange={handleSelectAll} checked={pageAllSelected} />
                 </th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Order No", "orderNo")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Firm", "firmName")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Company", "companyName")}</th>
-                <th className="px-4 py-3 text-left text-xs text-black uppercase border border-black">{renderSortHeader("Item Name", "itemName")}</th>
-                <th className="px-4 py-3 text-right text-xs text-black uppercase border border-black">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
-                <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black w-32">Planned Qty</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black">Status</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Order No", "orderNo")}</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Firm", "firmName")}</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Company", "companyName")}</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Item Name", "itemName")}</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black">Planned Qty</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-black bg-white">
+            <tbody className="bg-white">
               {filteredSchedules.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-black font-medium">No pending dispatch plans found.</td>
-                </tr>
-              ) : (
-                paginatedSchedules.map((s) => {
-                  const order = orders.find(o => o.id === s.orderId);
-                  const company = companies.find(c => c.id === order?.companyId);
-                  const item = resolveOrderItem(order);
-                  
-                  const schedDate = new Date(s.scheduledDate);
-                  const isOverdue = schedDate < today;
-                  
-                  const effectivePlanned = getEffectivePlannedForSchedule(s.id);
-                  const balance = getScheduleAvailableQty(s, dispatchPlans);
-                  
-                  return (
-                    <tr key={s.id} className={cn(
-                      "hover:bg-slate-50 divide-x divide-black", 
-                      isOverdue && "bg-red-50",
-                      selectedIds.has(s.id) && "bg-indigo-50/50"
-                    )}>
-                      <td className="px-4 py-4 text-center border border-black">
-                         <input 
-                          type="checkbox" 
-                          className="w-4 h-4 rounded border-black text-indigo-600 focus:ring-indigo-600 cursor-pointer"
-                          checked={selectedIds.has(s.id)}
-                          onChange={() => toggleSelect(s.id)}
-                        />
-                      </td>
-                      <td className={cn("px-4 py-4 text-xs font-bold border border-black whitespace-nowrap", isOverdue ? "text-red-600" : "text-black")}>
-                        {formatDate(s.scheduledDate)}
-                        {isOverdue && <div className="text-[8px] uppercase px-1 border border-red-600 rounded inline-block ml-1">Overdue</div>}
-                      </td>
-                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{s.scheduleNo || "-"}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{getFirmDisplayNameById(s.firmId || order?.firmId, firms)}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black">{company?.name || "-"}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black">{item?.name || "-"}</td>
-                      <td className="px-4 py-4 text-right text-xs font-bold text-indigo-700 border border-black whitespace-nowrap">{balance}</td>
-                      
-                      <td className="px-2 py-2 border border-black">
-                        <input
-                          type="number"
-                          value={rowPlannedQty[s.id] !== undefined ? rowPlannedQty[s.id] : balance}
-                          onChange={(e) =>
-                            setRowPlannedQty({
-                              ...rowPlannedQty,
-                              [s.id]: e.target.value === "" ? "" : Number(e.target.value),
-                            })
-                          }
-                          className="w-full border border-slate-300 rounded p-1 text-right text-[11px] focus:outline-none focus:border-indigo-600 font-bold"
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
+                <tr><td colSpan={10} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
+              ) : paginatedSchedules.map((s) => {
+                const info = rowInfo(s);
+                const selected = selectedIds.has(s.id);
+                return (
+                  <tr key={s.id} className={cn("hover:bg-slate-50", info.status === "Overdue" && "bg-red-50/60", selected && "bg-indigo-50")}>
+                    <td className="w-11 border border-black px-1 py-2 text-center">
+                      <input type="checkbox" aria-label={`Select ${s.scheduleNo || "schedule"}`} className="h-4 w-4 cursor-pointer" checked={selected} onChange={() => toggleSelect(s.id)} />
+                    </td>
+                    <td className={cn("whitespace-nowrap border border-black px-3 py-2 text-xs font-bold", info.status === "Overdue" ? "text-red-600" : "text-black")}>{formatDate(s.scheduledDate)}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-center">{statusBadge(info.status)}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-xs font-bold text-black">{s.scheduleNo || "-"}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{info.order?.orderNo || "-"}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{info.firm}</td>
+                    <td className="border border-black px-3 py-2 text-xs text-black">{info.company?.name || "-"}</td>
+                    <td className="border border-black px-3 py-2 text-xs text-black">{info.item?.name || "-"}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-indigo-700">{info.balance.toLocaleString()}</td>
+                    <td className="border border-black px-2 py-1">
+                      <input type="number" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full rounded border border-slate-300 p-1 text-right text-[11px] font-bold focus:border-indigo-600 focus:outline-none" />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             {selectedIds.size > 0 && (
-              <tfoot className="bg-slate-100 border-t-2 border-black">
-                <tr className="divide-x divide-black font-black">
-                  <td colSpan={8} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
-                  <td className="px-4 py-3 text-right text-sm text-indigo-700 bg-indigo-50 border border-black">
-                    {totalSessionPlannedQty.toLocaleString()}
-                  </td>
+              <tfoot className="border-t-2 border-black bg-slate-100">
+                <tr className="font-black">
+                  <td colSpan={9} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td className="border border-black bg-indigo-50 px-4 py-3 text-right text-sm text-indigo-700">{totalSessionPlannedQty.toLocaleString()}</td>
                 </tr>
               </tfoot>
             )}
