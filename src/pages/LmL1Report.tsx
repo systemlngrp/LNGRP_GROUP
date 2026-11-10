@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { Download, FileText, RotateCcw, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Order } from "../types";
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
@@ -166,6 +167,19 @@ function displayCells(row: LmL1Row) {
 export function LmL1Report() {
   const [orders] = useData<Order>("orders", []);
   const { resolveOrderItem } = useOrderItemCatalog();
+  // The shared item list carries only names / codes; the RAPC, UPS, cutting and
+  // L1–L3 / F1–F2 papers come from the full NPD rows.
+  const npdFull = useNpdItemsWithoutStock();
+  const npdFullLookup = useMemo(() => {
+    const byKey = new Map<string, Record<string, unknown>>();
+    npdFull.forEach((row) => {
+      [row.id, (row as any).npdId, (row as any).itemId, row.erp].forEach((value) => {
+        const key = String(value ?? "").trim().toLowerCase();
+        if (key && !byKey.has(key)) byKey.set(key, row as unknown as Record<string, unknown>);
+      });
+    });
+    return byKey;
+  }, [npdFull]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -178,7 +192,10 @@ export function LmL1Report() {
       .filter((order) => order.status !== "Cancelled")
       .map((order) => {
         const item = resolveOrderItem(order);
-        const raw = item?.raw || {};
+        const fullRow = [item?.id, order.itemId, (order as any).npdId, item?.erp, order.erpCode]
+          .map((value) => npdFullLookup.get(String(value ?? "").trim().toLowerCase()))
+          .find(Boolean);
+        const raw = { ...(item?.raw || {}), ...(fullRow || {}) } as Record<string, any>;
         const orderDate = parseAppDate(order.orderDate);
         const orderQty = toNumber(order.qty);
         const rapc = firstPositiveNumber(raw.rapc, raw.rapcForSingleBox);
@@ -240,7 +257,7 @@ export function LmL1Report() {
       })
       .filter((row): row is LmL1Row => Boolean(row))
       .sort((a, b) => b.year - a.year || MONTHS.indexOf(b.month) - MONTHS.indexOf(a.month) || a.itemName.localeCompare(b.itemName));
-  }, [orders, resolveOrderItem]);
+  }, [orders, resolveOrderItem, npdFullLookup]);
 
   const yearOptions = useMemo(() => ["All", ...Array.from(new Set(rows.map((row) => String(row.year)))).sort((a, b) => Number(b) - Number(a))], [rows]);
 
