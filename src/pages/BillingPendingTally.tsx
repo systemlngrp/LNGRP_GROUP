@@ -27,7 +27,6 @@ import {
 import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { useAuth } from "../auth/AuthContext";
 import { getInvoiceGrandTotal } from "../lib/gatePasses";
@@ -40,6 +39,15 @@ const formatInr = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+// yyyy-mm-dd (local) of an invoice date, for the date filters.
+function invoiceDay(value: unknown) {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  if (isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export function BillingPendingTally() {
   const confirm = useConfirm();
@@ -59,6 +67,8 @@ export function BillingPendingTally() {
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
@@ -229,10 +239,13 @@ export function BillingPendingTally() {
           });
           if (!hasItem) return false;
         }
+        const day = invoiceDay(inv.date);
+        if (fromDate && (!day || day < fromDate)) return false;
+        if (toDate && (!day || day > toDate)) return false;
         return matchesTableSearch(inv.searchText, words);
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoiceRows, companyFilter, itemFilter, searchTerm]);
+  }, [invoiceRows, companyFilter, itemFilter, searchTerm, fromDate, toDate]);
 
   // The table draws 100 invoices per page; filters still cover every invoice.
   const { sorted: sortedInvoices, sort, toggle: toggleSort } = useTableSort(processedInvoices, (inv, key) => {
@@ -247,7 +260,7 @@ export function BillingPendingTally() {
     }
   });
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedInvoices } = useClientPagination(sortedInvoices, 100);
-  useEffect(() => { setPage(1); }, [companyFilter, itemFilter, searchTerm, setPage]);
+  useEffect(() => { setPage(1); }, [companyFilter, itemFilter, searchTerm, fromDate, toDate, setPage]);
 
   const companyOptions = useMemo(() => Array.from(new Map(processedInvoices.map((inv) => [inv.companyId, { value: inv.companyId, label: inv.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [processedInvoices]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); processedInvoices.forEach((inv) => inv.details.forEach((line: any) => { const key = line.itemId || `${line.itemName || ""}::${line.erp || ""}`; if (!key || map.has(key)) return; const name = line.itemName || ""; const erp = line.erp || ""; map.set(key, { value: key, label: erp && name && !name.toLowerCase().includes(String(erp).toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }); })); return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)); }, [processedInvoices]);
@@ -273,33 +286,120 @@ export function BillingPendingTally() {
   };
 
 
+  const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+  const DATE_INPUT = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
+  const hasFilters = Boolean(searchTerm.trim() || companyFilter || itemFilter || fromDate || toDate);
+  const clearFilters = () => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setFromDate(""); setToDate(""); };
+  const pendingTotal = processedInvoices.reduce((sum, inv) => sum + Number(inv.grandTotal || 0), 0);
+  const renderDetails = (inv: (typeof pagedInvoices)[number]) => (
+    <div className="overflow-x-auto">
+    <div className="border border-black rounded overflow-hidden">
+      <table className="min-w-full divide-y divide-black">
+        <thead className="sticky top-0 z-30 bg-slate-200">
+          <tr className="divide-x divide-black text-[10px] font-black uppercase">
+            <th className="px-3 py-2 text-left">Item Name</th>
+            <th className="px-3 py-2 text-left">ERP</th>
+            <th className="px-3 py-2 text-left">UOM</th>
+            <th className="px-3 py-2 text-left">Slip No</th>
+            <th className="px-3 py-2 text-right">Qty</th>
+            <th className="px-3 py-2 text-right">Rate</th>
+            <th className="px-3 py-2 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-black">
+          {inv.details.length === 0 ? (
+            <tr className="divide-x divide-black text-[11px]">
+              <td colSpan={7} className="px-3 py-4 text-center text-slate-500 italic">
+                No item breakup found for this invoice.
+              </td>
+            </tr>
+          ) : (
+            inv.details.map((line: any, idx: number) => {
+              const tax = (Number(line.cgst) || 0) + (Number(line.sgst) || 0) + (Number(line.igst) || 0);
+              return (
+                <tr key={idx} className="divide-x divide-black text-[11px]">
+                  <td className="px-3 py-2 font-bold uppercase">{line.itemName}</td>
+                  <td className="px-3 py-2">{line.erp || "-"}</td>
+                  <td className="px-3 py-2">{line.uom || "-"}</td>
+                  <td className="px-3 py-2">{line.slipNo}</td>
+                  <td className="px-3 py-2 text-right">{Number(line.qty || 0).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-right">{Number(line.rate || 0).toFixed(2)}</td>
+                  <td className="px-3 py-2 text-right font-bold">{formatInr.format(Number(line.amount || 0) + tax)}</td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+    </div>
+  );
+  const postButton = (inv: (typeof pagedInvoices)[number]) => (
+    <button
+      type="button"
+      disabled={!!processingId}
+      onClick={() => handleMarkPosted(inv.id)}
+      className="flex items-center justify-center gap-2 rounded bg-emerald-600 px-4 py-1.5 text-xs font-black uppercase text-white hover:bg-emerald-700 disabled:opacity-50"
+    >
+      {processingId === inv.id ? <Spinner size={12} /> : <><CheckCircle size={14} /> Post</>}
+    </button>
+  );
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center border-b border-black pb-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Tally Posting</h2>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Tally Posting</h2>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white border-2 border-black p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
-          <div className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">Total Pending Invoices</div>
-          <div className="text-2xl font-black text-indigo-700">{processedInvoices.length}</div>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
+            <label className="min-w-0"><span className={LABEL}>From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className={DATE_INPUT} /></label>
+            <label className="min-w-0"><span className={LABEL}>To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className={DATE_INPUT} /></label>
+          </div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
-        <TableControls
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          placeholder="Search"
-        />
-        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        {(searchTerm || companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
+        <span>Pending invoices: <span className="text-indigo-700">{processedInvoices.length.toLocaleString()}</span></span>
+        <span>Total <span className="text-indigo-700">{formatInr.format(pendingTotal)}</span></span>
       </div>
 
-      <div className="bg-white border border-black rounded shadow-sm overflow-hidden">
+      {/* Phones: one card per invoice. */}
+      <div className="space-y-2 md:hidden">
+        {processedInvoices.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm italic text-slate-500">{isLoading ? "Loading…" : "No pending invoices for Tally posting."}</div>
+        ) : pagedInvoices.map((inv) => {
+          const open = expandedRows.has(inv.id);
+          return (
+            <div key={inv.id} className="rounded-lg border-2 border-black bg-white p-3 text-black">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-black">{inv.invoiceNo}</span>
+                <span className="text-sm font-black text-indigo-700">{formatInr.format(inv.grandTotal)}</span>
+              </div>
+              <div className="mt-0.5 text-[11px] font-semibold text-slate-700">{formatDate(inv.date)}{inv.poNumbers.length ? ` · PO ${inv.poNumbers.join(", ")}` : ""}</div>
+              <div className="mt-1 break-words text-xs font-bold">{inv.companyName}</div>
+              {inv.tallySyncRemark ? <div className="mt-1 break-words text-[11px] font-semibold text-amber-800">{inv.tallySyncRemark}</div> : null}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <button type="button" onClick={() => toggleRow(inv.id)} className="flex items-center gap-1 rounded border border-black bg-white px-2 py-1 text-[11px] font-bold uppercase">
+                  {open ? "Hide" : "Items"} {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
+                {canPostTally ? postButton(inv) : null}
+              </div>
+              {open ? <div className="mt-2">{renderDetails(inv)}</div> : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded border border-black bg-white shadow-sm md:block">
         <table className="min-w-full divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr className="divide-x divide-black">
@@ -358,10 +458,8 @@ export function BillingPendingTally() {
                     <td className="px-4 py-4 text-right font-black text-indigo-700">
                       {formatInr.format(inv.grandTotal)}
                     </td>
-                    <td className="px-4 py-4 text-xs text-slate-700 max-w-[260px]">
-                      <div className="truncate" title={inv.tallySyncRemark || ""}>
-                        {inv.tallySyncRemark || "-"}
-                      </div>
+                    <td className="px-4 py-4 text-xs text-slate-700">
+                      <div className="max-w-[260px] whitespace-normal break-words">{inv.tallySyncRemark || "-"}</div>
                     </td>
                     {canPostTally ? (
                       <td className="px-4 py-4 text-center">
@@ -379,46 +477,8 @@ export function BillingPendingTally() {
                   </tr>
                   {expandedRows.has(inv.id) && (
                     <tr className="bg-slate-50">
-                      <td colSpan={tableColumnCount} className="px-12 py-4">
-                        <div className="border border-black rounded overflow-hidden">
-                          <table className="min-w-full divide-y divide-black">
-                            <thead className="sticky top-0 z-30 bg-slate-200">
-                              <tr className="divide-x divide-black text-[10px] font-black uppercase">
-                                <th className="px-3 py-2 text-left">Item Name</th>
-                                <th className="px-3 py-2 text-left">ERP</th>
-                                <th className="px-3 py-2 text-left">UOM</th>
-                                <th className="px-3 py-2 text-left">Slip No</th>
-                                <th className="px-3 py-2 text-right">Qty</th>
-                                <th className="px-3 py-2 text-right">Rate</th>
-                                <th className="px-3 py-2 text-right">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-black">
-                              {inv.details.length === 0 ? (
-                                <tr className="divide-x divide-black text-[11px]">
-                                  <td colSpan={7} className="px-3 py-4 text-center text-slate-500 italic">
-                                    No item breakup found for this invoice.
-                                  </td>
-                                </tr>
-                              ) : (
-                                inv.details.map((line: any, idx: number) => {
-                                  const tax = (Number(line.cgst) || 0) + (Number(line.sgst) || 0) + (Number(line.igst) || 0);
-                                  return (
-                                    <tr key={idx} className="divide-x divide-black text-[11px]">
-                                      <td className="px-3 py-2 font-bold uppercase">{line.itemName}</td>
-                                      <td className="px-3 py-2">{line.erp || "-"}</td>
-                                      <td className="px-3 py-2">{line.uom || "-"}</td>
-                                      <td className="px-3 py-2">{line.slipNo}</td>
-                                      <td className="px-3 py-2 text-right">{Number(line.qty || 0).toLocaleString()}</td>
-                                      <td className="px-3 py-2 text-right">{Number(line.rate || 0).toFixed(2)}</td>
-                                      <td className="px-3 py-2 text-right font-bold">{formatInr.format(Number(line.amount || 0) + tax)}</td>
-                                    </tr>
-                                  );
-                                })
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
+                      <td colSpan={tableColumnCount} className="px-4 py-3">
+                        {renderDetails(inv)}
                       </td>
                     </tr>
                   )}

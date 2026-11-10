@@ -191,6 +191,8 @@ export function TruckStatusReport() {
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Truck Status</h2>
         <button
           type="button"
+          data-header-action="true"
+          title="Copy Driver Form Link"
           onClick={() => void handleCopyDriverFormLink()}
           className="inline-flex items-center justify-center gap-2 rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-black uppercase text-black hover:bg-slate-50"
         >

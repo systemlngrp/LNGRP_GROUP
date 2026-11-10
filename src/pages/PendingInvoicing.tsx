@@ -39,7 +39,6 @@ import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildGatePassFromInvoice } from "../lib/gatePasses";
 import { useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { useAuth } from "../auth/AuthContext";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 
 interface GroupedLoading {
@@ -101,6 +100,15 @@ function toPersistableLoadingSlip(slip: LoadingSlip & { totalQty?: number; items
   return persistableSlip;
 }
 
+// yyyy-mm-dd (local) of a slip date, for the date filters.
+function slipDayKey(value: unknown) {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  if (isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export function PendingInvoicing() {
   const navigate = useNavigate();
   const { user, activeFirmId, setActiveFirm } = useAuth();
@@ -131,6 +139,8 @@ export function PendingInvoicing() {
   const [firmFilter, setFirmFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
   const didInitExpand = useRef(false);
   const [billingMode, setBillingMode] = useState<string | null>(null);
@@ -565,7 +575,13 @@ export function PendingInvoicing() {
     });
 
     return Array.from(companyMap.values())
-      .map((group) => ({ ...group, slips: group.slips.filter((slip) => !itemFilter || slip.itemKeys.includes(itemFilter)) }))
+      .map((group) => ({ ...group, slips: group.slips.filter((slip) => {
+        if (itemFilter && !slip.itemKeys.includes(itemFilter)) return false;
+        const day = slipDayKey(slip.date);
+        if (fromDate && (!day || day < fromDate)) return false;
+        if (toDate && (!day || day > toDate)) return false;
+        return true;
+      }) }))
       .filter((group) => group.slips.length > 0)
       .filter((group) => !companyFilter || group.companyId === companyFilter)
       .filter((group) => !firmFilter || group.firmId === firmFilter)
@@ -588,8 +604,9 @@ export function PendingInvoicing() {
       })
       .filter((group) => group.slips.length > 0)
       .sort((a, b) => a.companyName.localeCompare(b.companyName));
-  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, findItemAcrossSources, resolveOrderItem, lookup, trucks]);
+  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, fromDate, toDate, findItemAcrossSources, resolveOrderItem, lookup, trucks]);
 
+  const firmOptions = useMemo(() => Array.from(new Map(groupedData.filter((group) => group.firmId).map((group) => [group.firmId, { value: group.firmId, label: group.firmName }])).values()).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
   const companyOptions = useMemo(() => Array.from(new Map(groupedData.map((group) => [group.companyId, { value: group.companyId, label: group.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); groupedData.forEach((group) => group.slips.forEach((slip) => slip.items.forEach((name, index) => { const key = slip.itemKeys[index] || name; if (!key || map.has(key)) return; map.set(key, { value: key, label: name, searchText: name }); }))); return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label)); }, [groupedData]);
 
@@ -1190,29 +1207,38 @@ export function PendingInvoicing() {
     };
   const format2 = (num: number) => num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  const FILTER_LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+  const FILTER_DATE = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
+  const listFiltered = Boolean(searchTerm.trim() || companyFilter || firmFilter || itemFilter || fromDate || toDate);
+  const clearListFilters = () => { setSearchTerm(""); setCompanyFilter(""); setFirmFilter(""); setItemFilter(""); setFromDate(""); setToDate(""); };
+  const pendingSlipCount = groupedData.reduce((sum, group) => sum + group.slips.length, 0);
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Invoicing</h2>
-        <div className="grid w-full gap-3 md:grid-cols-[minmax(240px,1.4fr)_minmax(200px,1fr)_minmax(240px,1.1fr)_minmax(180px,1fr)_auto] md:items-center md:max-w-5xl">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
-            />
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Invoicing</h2>
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className={FILTER_LABEL}>Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className={FILTER_LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={FILTER_LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
+            <label className="min-w-0"><span className={FILTER_LABEL}>From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className={FILTER_DATE} /></label>
+            <label className="min-w-0"><span className={FILTER_LABEL}>To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className={FILTER_DATE} /></label>
           </div>
-          <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-          <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-          <FirmFilter value={firmFilter} onChange={setFirmFilter} />
-          {(searchTerm || companyFilter || firmFilter || itemFilter) ? (
-            <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setFirmFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-          ) : null}
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {listFiltered ? <button type="button" onClick={clearListFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
+
+      {groupedData.length > 0 ? (
+        <div className="text-xs font-bold text-slate-700">{groupedData.length} {groupedData.length === 1 ? "company" : "companies"} · {pendingSlipCount} loading {pendingSlipCount === 1 ? "slip" : "slips"} pending</div>
+      ) : null}
 
       <div className="space-y-4">
         {interFirmPending.filter((row) => row.status === "Pending").length > 0 && (
@@ -1236,16 +1262,16 @@ export function PendingInvoicing() {
           </div>
         ) : sortedGroupedData.map((group) => (
           <div key={group.groupKey} className="bg-white border border-black rounded shadow-sm overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-slate-100 border-b border-black">
-              <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <Building2 size={20} className="text-indigo-600" />
-                <span className="font-bold text-lg">{group.companyName}</span>
+            <div className="flex flex-col gap-2 border-b border-black bg-slate-100 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
+              <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+                <Building2 size={20} className="shrink-0 text-indigo-600" />
+                <span className="min-w-0 break-words text-base font-bold sm:text-lg">{group.companyName}</span>
                 <span className="text-xs font-black text-indigo-700">{group.firmName}</span>
                 <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full uppercase">
                   {group.slips.length} Loading Slips
                 </span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-3 sm:justify-end">
                 {billingMode === group.groupKey ? (
                   <button 
                     onClick={handleOpenInvoiceForm}
@@ -1272,8 +1298,30 @@ export function PendingInvoicing() {
             </div>
 
             {expandedCompanies.has(group.groupKey) && (
-              <div className="p-4">
-                <div className="overflow-hidden rounded border border-black bg-white">
+              <div className="p-2 sm:p-4">
+                {/* Phones: one card per loading slip. */}
+                <div className="space-y-2 md:hidden">
+                  {group.slips.map((s) => {
+                    const selecting = billingMode === group.groupKey;
+                    const checked = selectedSlips.has(s.id);
+                    return (
+                      <label key={s.id} className={cn("block rounded border-2 bg-white p-2.5 text-black", selecting && checked ? "border-indigo-600 bg-indigo-50" : "border-slate-400", selecting ? "cursor-pointer" : "")}>
+                        <div className="flex items-start gap-2">
+                          {selecting ? <input type="checkbox" checked={checked} onChange={() => handleToggleSlip(s.id)} className="mt-0.5 h-5 w-5 shrink-0" /> : null}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-sm font-black">{s.slipNo}</span>
+                              <span className="text-xs font-bold text-slate-600">Qty <span className="text-sm font-black text-black">{s.totalQty.toLocaleString()}</span></span>
+                            </div>
+                            <div className="text-[11px] font-semibold text-slate-700">{formatDate(s.date)} · <span className="font-bold uppercase text-indigo-700">{s.truckNo || trucks.find(t => t.id === s.truckId)?.truckNo || "N/A"}</span></div>
+                            <div className="mt-1 space-y-0.5">{s.items.map((itemName) => <div key={itemName} className="break-words text-xs font-semibold">{itemName}</div>)}</div>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="hidden overflow-hidden rounded border border-black bg-white md:block">
                   <div className="w-full overflow-x-auto">
                     <table className="w-full min-w-[760px] border-collapse">
                       <thead className="sticky top-0 z-30 bg-slate-50">

@@ -103,7 +103,7 @@ export function Layout() {
         const children = Array.from(header.children) as HTMLElement[];
         // Add (+) and download (PDF/Excel) buttons sit at the right of the title.
         const isHeaderAction = (element: Element) =>
-          element.classList.contains("app-add-action") || element.hasAttribute("data-export");
+          element.classList.contains("app-add-action") || element.hasAttribute("data-export") || element.hasAttribute("data-header-action");
         const actions = children.filter(child => child !== title);
         const isSingleAddAction = actions.length >= 1 && actions.length <= 4 && actions.every(child =>
           isHeaderAction(child) ||

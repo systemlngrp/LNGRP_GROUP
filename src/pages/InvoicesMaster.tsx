@@ -63,6 +63,15 @@ function getInvoiceSortValue(invoiceNo: string) {
   };
 }
 
+// yyyy-mm-dd (local) of an invoice date, for the date filters.
+function invoiceDayKey(value: unknown) {
+  const text = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  if (isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export function InvoicesMaster() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -82,6 +91,9 @@ export function InvoicesMaster() {
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [tallyFilter, setTallyFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
@@ -356,6 +368,11 @@ export function InvoicesMaster() {
       .filter((invoice) => {
         if (companyFilter && invoice.companyName !== companyFilter) return false;
         if (itemFilter && !invoice.itemKeys.includes(itemFilter)) return false;
+        if (tallyFilter === "posted" && !invoice.tallyTimestamp) return false;
+        if (tallyFilter === "pending" && invoice.tallyTimestamp) return false;
+        const day = invoiceDayKey(invoice.date);
+        if (fromDate && (!day || day < fromDate)) return false;
+        if (toDate && (!day || day > toDate)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -366,7 +383,7 @@ export function InvoicesMaster() {
         if (bSort.numeric !== aSort.numeric) return bSort.numeric - aSort.numeric;
         return bSort.raw.localeCompare(aSort.raw, undefined, { sensitivity: "base" });
       });
-  }, [invoices, companies, companyFilter, itemFilter, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, lookup, detailsByInvoice]);
+  }, [invoices, companies, companyFilter, itemFilter, tallyFilter, fromDate, toDate, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, lookup, detailsByInvoice]);
 
   // Table search: only the columns the table shows.
   const processedInvoices = useTableSearch(invoiceRows, searchTerm, (invoice) => [
@@ -447,53 +464,75 @@ export function InvoicesMaster() {
     return buildInvoiceDetails(selectedInvoice);
   }, [selectedInvoice, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials]);
 
+  const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+  const DATE_INPUT = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
+  const TALLY_OPTIONS = [{ value: "posted", label: "Posted" }, { value: "pending", label: "Pending" }];
+  const hasFilters = Boolean(searchTerm.trim() || companyFilter || itemFilter || tallyFilter || fromDate || toDate);
+  const clearFilters = () => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); setTallyFilter(""); setFromDate(""); setToDate(""); };
+  const money = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-black pb-4">
-        <div className="flex items-center gap-4">
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">Billing Master</h2>
-        </div>
-        <div className="grid w-full gap-3 md:max-w-4xl md:grid-cols-[minmax(220px,1.4fr)_minmax(190px,1fr)_minmax(240px,1.1fr)_auto] md:items-center">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-black rounded focus:outline-none focus:ring-1 focus:ring-black text-sm"
-            />
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Billing Master</h2>
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className={LABEL}>Tally</span><Select compact value={tallyFilter} onChange={setTallyFilter} options={TALLY_OPTIONS} placeholder="All" /></div>
+          <div className="min-w-0"><span className={LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
+            <label className="min-w-0"><span className={LABEL}>From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className={DATE_INPUT} /></label>
+            <label className="min-w-0"><span className={LABEL}>To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className={DATE_INPUT} /></label>
           </div>
-          <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-          <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-          {(searchTerm || companyFilter || itemFilter) ? (
-            <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-          ) : null}
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="rounded border border-black bg-slate-50 px-4 py-3">
-          <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Before GST</div>
-          <div className="mt-1 text-xl font-black text-slate-900">
-            {billingSummary.beforeGst.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-          </div>
-        </div>
-        <div className="rounded border border-black bg-slate-50 px-4 py-3">
-          <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">GST</div>
-          <div className="mt-1 text-xl font-black text-slate-900">
-            {billingSummary.gst.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-          </div>
-        </div>
-        <div className="rounded border border-black bg-slate-50 px-4 py-3">
-          <div className="text-[10px] font-black uppercase tracking-wide text-slate-500">Total</div>
-          <div className="mt-1 text-xl font-black text-indigo-700">
-            {billingSummary.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-          </div>
-        </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded border border-black bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700">
+        <span>{processedInvoices.length.toLocaleString()} {processedInvoices.length === 1 ? "invoice" : "invoices"}</span>
+        <span>Before GST <span className="text-black">{money(billingSummary.beforeGst)}</span></span>
+        <span>GST <span className="text-black">{money(billingSummary.gst)}</span></span>
+        <span>Total <span className="text-indigo-700">{money(billingSummary.total)}</span></span>
       </div>
 
-      <div className="bg-white border border-black rounded shadow-sm overflow-x-auto overflow-y-hidden">
+      {/* Phones: one card per invoice. */}
+      <div className="space-y-2 md:hidden">
+        {paginatedInvoices.length === 0 ? (
+          <div className="rounded border border-black bg-white p-6 text-center text-sm italic text-slate-500">No invoices found.</div>
+        ) : paginatedInvoices.map((invoice) => (
+          <div key={invoice.id} className="rounded-lg border-2 border-black bg-white p-3 text-black">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-sm font-black">{invoice.invoiceNo}</span>
+              <span className={`rounded border px-1.5 py-0.5 text-[10px] font-black uppercase ${invoice.tallyTimestamp ? "border-emerald-700 bg-emerald-50 text-emerald-800" : "border-amber-700 bg-amber-50 text-amber-800"}`}>{invoice.tallyTimestamp ? "Tally Posted" : "Tally Pending"}</span>
+            </div>
+            <div className="mt-0.5 text-[11px] font-semibold text-slate-700">{formatDate(invoice.date)}{invoice.tallyInvNo ? ` · Tally ${invoice.tallyInvNo}` : ""}</div>
+            <div className="mt-1 break-words text-xs font-bold">{invoice.companyName}</div>
+            <div className="break-words text-xs uppercase text-slate-700">{invoice.itemSummary}</div>
+            {invoice.tallySyncRemark ? <div className="mt-1 break-words text-[11px] font-semibold text-amber-800">{invoice.tallySyncRemark}</div> : null}
+            <div className="mt-2 grid grid-cols-3 gap-1 text-center">
+              {([["Before GST", Number(invoice.totalBeforeGst || 0)], ["GST", getGstTotal(invoice)], ["Total", getGrandTotal(invoice)]] as const).map(([label, value]) => (
+                <div key={label} className="rounded border border-slate-300 bg-slate-50 px-1 py-1">
+                  <div className="text-[9px] font-black uppercase text-slate-500">{label}</div>
+                  <div className={`text-xs font-black ${label === "Total" ? "text-indigo-700" : ""}`}>{money(value)}</div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-2 flex justify-end gap-2">
+              <button type="button" onClick={() => setSelectedInvoice(invoice)} className="flex items-center gap-1 rounded border border-indigo-600 bg-indigo-50 px-2 py-1 text-[11px] font-bold uppercase text-indigo-700"><FileText size={14} /> Details</button>
+              {canFullEditInvoice(invoice) ? <button type="button" onClick={() => openInvoiceEditor(invoice.id)} className="flex items-center gap-1 rounded border border-amber-700 bg-amber-50 px-2 py-1 text-[11px] font-bold uppercase text-amber-800"><Pencil size={14} /> Edit</button> : null}
+              <button type="button" onClick={() => openGatePass(invoice.id)} className="flex items-center gap-1 rounded border border-emerald-700 bg-emerald-50 px-2 py-1 text-[11px] font-bold uppercase text-emerald-800"><TruckIcon size={14} /> Gate Pass</button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="hidden bg-white border border-black rounded shadow-sm overflow-x-auto overflow-y-hidden md:block">
         <table className="min-w-[1800px] divide-y divide-black border-collapse">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr className="divide-x divide-black">
@@ -576,10 +615,8 @@ export function InvoicesMaster() {
                       {invoice.tallyTimestamp ? formatDate(invoice.tallyTimestamp) : "-"}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-xs">{invoice.tallyBy || "-"}</td>
-                    <td className="px-4 py-4 text-xs max-w-[220px]">
-                      <div className="truncate" title={invoice.tallySyncRemark || ""}>
-                        {invoice.tallySyncRemark || "-"}
-                      </div>
+                    <td className="px-4 py-4 text-xs">
+                      <div className="max-w-[220px] whitespace-normal break-words">{invoice.tallySyncRemark || "-"}</div>
                     </td>
                     <td className="px-4 py-4 text-[10px] font-mono max-w-[200px]">
                       <div className="truncate" title={invoice.tallyInvId || ""}>
@@ -660,7 +697,7 @@ export function InvoicesMaster() {
                   </tr>
                   {expandedRows.has(invoice.id) && (
                     <tr className="bg-slate-50">
-                      <td colSpan={15} className="px-12 py-4">
+                      <td colSpan={15} className="px-4 py-3">
                         <div className="border-2 border-black rounded overflow-x-auto overflow-y-hidden shadow-sm">
                           <table className="min-w-[1100px] divide-y divide-black">
                             <thead className="sticky top-0 z-30 bg-slate-200">
