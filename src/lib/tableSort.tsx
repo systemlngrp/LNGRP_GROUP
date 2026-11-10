@@ -7,7 +7,7 @@
 // yyyy-mm-dd), and codes / text naturally (MRR/26-27/00027 after 00021).
 // Empty values always go last.
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 
 export type SortDirection = "asc" | "desc";
@@ -81,6 +81,35 @@ export function useTableSort<T>(rows: T[], getValue: (row: T, key: string) => un
     [rows, sort, ...deps],
   );
   return { sorted, sort, toggle, setSort };
+}
+
+/**
+ * Sort state for tables the server pages: the server sorts the whole filtered
+ * list before slicing the page. Same click cycle as useTableSort (asc → desc →
+ * off); `onChange` runs on every click (e.g. go back to page 1). Send the sort
+ * with `applySortParams` on every page and export request.
+ */
+export function useServerSort(onChange?: () => void) {
+  const [sort, setSort] = useState<SortState>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const toggle = useCallback((key: string) => {
+    setSort((current) => {
+      if (!current || current.key !== key) return { key, direction: "asc" };
+      if (current.direction === "asc") return { key, direction: "desc" };
+      return null;
+    });
+    onChangeRef.current?.();
+  }, []);
+  return { sort, toggle, setSort };
+}
+
+/** Adds sortKey / sortDir query params when a sort is set. */
+export function applySortParams(params: URLSearchParams, sort: SortState) {
+  if (!sort) return params;
+  params.set("sortKey", sort.key);
+  params.set("sortDir", sort.direction);
+  return params;
 }
 
 /**

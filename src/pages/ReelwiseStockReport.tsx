@@ -18,6 +18,7 @@ import {
 } from "../types";
 import type { ReelStockCalculationRow } from "../lib/reelStock";
 import { formatDate } from "../lib/utils";
+import { SortHeader, applySortParams, useServerSort } from "../lib/tableSort";
 
 type AvailabilityFilter = "all" | "gt500" | "lt500";
 type ReelwiseStockRow = ReelStockCalculationRow;
@@ -43,6 +44,27 @@ const tableColumns = [
   "Age(D days)",
   "Download",
 ];
+
+// Column → server sort key (/api/reports/reelwise-stock whitelist). SL No and QR have none.
+const sortKeyByColumn: Record<string, string> = {
+  "MRR No.": "mrrNo",
+  "Our Reel No.": "ourReelNo",
+  ERP: "erp",
+  "Inventory Owner": "firmName",
+  "Suppliers Name": "supplierName",
+  GSM: "gsm",
+  Size: "size",
+  BF: "bf",
+  "Opening Qty": "openingQty",
+  "MRR Qty": "mrrQty",
+  Issued: "issuedWeight",
+  Return: "returnedWeight",
+  "Net Issued": "netIssuedWeight",
+  "Available Weight": "availableWeight",
+  Rate: "rate",
+  Valuation: "valuation",
+  "Age(D days)": "ageDays",
+};
 
 const formatReportDate = formatDate;
 
@@ -96,6 +118,8 @@ export function ReelwiseStockReport() {
   const [sizeFilter, setSizeFilter] = useState("");
   const [bfFilter, setBfFilter] = useState("");
   const abortRef = useRef<AbortController | null>(null);
+  // Column sort: the server sorts the whole filtered list before paging; exports follow it.
+  const { sort, toggle: toggleSort } = useServerSort(() => setPage(1));
 
   const buildParams = useCallback(() => {
     const params = new URLSearchParams({ availability: availabilityFilter });
@@ -111,8 +135,9 @@ export function ReelwiseStockReport() {
     if (maxAge) params.set("maxAge", maxAge);
     if (stockYetToIssueOnly) params.set("stockYetToIssue", "true");
     if (excludeZeroAvailable) params.set("excludeZero", "true");
+    applySortParams(params, sort);
     return params;
-  }, [availabilityFilter, bfFilter, erpFilter, excludeZeroAvailable, gsmFilter, maxAge, minAge, mrrDateFrom, mrrDateTo, mrrFilter, searchTerm, sizeFilter, stockYetToIssueOnly]);
+  }, [availabilityFilter, bfFilter, erpFilter, excludeZeroAvailable, gsmFilter, maxAge, minAge, mrrDateFrom, mrrDateTo, mrrFilter, searchTerm, sizeFilter, sort, stockYetToIssueOnly]);
 
   // Exports cover every row matching the filters and search, not just this page.
   const [exporting, setExporting] = useState(false);
@@ -562,7 +587,11 @@ export function ReelwiseStockReport() {
           <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
             <tr>
               {tableColumns.map((heading) => (
-                <th key={heading} className="border border-black px-2 py-2 text-left whitespace-nowrap">{heading === "Download" ? "QR" : heading}</th>
+                <th key={heading} className="border border-black px-2 py-2 text-left whitespace-nowrap">
+                  {sortKeyByColumn[heading]
+                    ? <SortHeader label={heading} sortKey={sortKeyByColumn[heading]} sort={sort} onToggle={toggleSort} align="left" />
+                    : heading === "Download" ? "QR" : heading}
+                </th>
               ))}
             </tr>
           </thead>

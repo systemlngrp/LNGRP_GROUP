@@ -7,6 +7,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useConfirm } from "../components/ConfirmDialog";
 import { formatDate } from "../lib/serial";
 import { usePendingConsumptionTally, type PendingTallyRow } from "../hooks/usePendingConsumptionTally";
+import { SortHeader, useServerSort } from "../lib/tableSort";
 
 function formatMoney(value?: number) {
   return Number(value || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,7 +31,9 @@ export function PendingConsumptionTallyPosting() {
     const firm = row.firmId ? firmById.get(row.firmId) : undefined;
     return firm ? getFirmDisplayName(firm) : (row.firmName || row.firmId || "-");
   };
-  const { rows, total, loading, error, linesByIssueId, lineLoadingId, loadLines, deletePending } = usePendingConsumptionTally({ page, pageSize, search: searchTerm, firmId: firmFilter, dateFrom, dateTo, status: statusFilter });
+  // Column sort: the server sorts the whole filtered list before paging.
+  const { sort, toggle: toggleSort } = useServerSort(() => { setPage(1); setExpandedIssueId(null); });
+  const { rows, total, loading, error, linesByIssueId, lineLoadingId, loadLines, deletePending } = usePendingConsumptionTally({ page, pageSize, search: searchTerm, firmId: firmFilter, dateFrom, dateTo, status: statusFilter, sort });
 
   const handleSearchChange = (value: string) => {
     setSearchTerm(value);
@@ -178,15 +181,15 @@ export function PendingConsumptionTallyPosting() {
         <table className="min-w-full border-collapse text-sm">
           <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
             <tr>
-              <th className="border border-black px-3 py-3 text-left">Issue No</th>
-              <th className="border border-black px-3 py-3 text-left">Firm</th>
-              <th className="border border-black px-3 py-3 text-left">Consumption No</th>
-              <th className="border border-black px-3 py-3 text-left">Date</th>
-              <th className="border border-black px-3 py-3 text-right">No. of Items</th>
-              <th className="border border-black px-3 py-3 text-right">Total Value</th>
-              <th className="border border-black px-3 py-3 text-left">Status</th>
-              <th className="border border-black px-3 py-3 text-left">Remark</th>
-              <th className="border border-black px-3 py-3 text-left">Error</th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Issue No" sortKey="issueNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Consumption No" sortKey="consumptionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-right"><SortHeader label="No. of Items" sortKey="itemCount" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black px-3 py-3 text-right"><SortHeader label="Total Value" sortKey="totalValue" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Status" sortKey="status" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Remark" sortKey="remark" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Error" sortKey="error" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className="border border-black px-3 py-3 text-center">Action</th>
             </tr>
           </thead>

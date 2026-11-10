@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getDataAuthHeaders } from "./useData";
 import { useAutoRefreshEffect } from "./useAutoRefresh";
 import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
+import { applySortParams, type SortState } from "../lib/tableSort";
 
 export type PendingTallyRow = {
   id: string;
@@ -30,9 +31,9 @@ export type PendingTallyLine = {
   amount?: number;
 };
 
-type Options = { page: number; pageSize: number; search: string; firmId?: string; dateFrom?: string; dateTo?: string; status?: string };
+type Options = { page: number; pageSize: number; search: string; firmId?: string; dateFrom?: string; dateTo?: string; status?: string; sort?: SortState };
 
-export function usePendingConsumptionTally({ page, pageSize, search, firmId = "", dateFrom = "", dateTo = "", status = "" }: Options) {
+export function usePendingConsumptionTally({ page, pageSize, search, firmId = "", dateFrom = "", dateTo = "", status = "", sort = null }: Options) {
   const [rows, setRows] = useState<PendingTallyRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -56,6 +57,7 @@ export function usePendingConsumptionTally({ page, pageSize, search, firmId = ""
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
     if (status) params.set("status", status);
+    applySortParams(params, sort);
     try {
       const response = await fetch(`/api/material-issues/pending-tally?${params.toString()}`, {
         headers: getDataAuthHeaders(false),
@@ -74,7 +76,7 @@ export function usePendingConsumptionTally({ page, pageSize, search, firmId = ""
     } finally {
       if (generation === generationRef.current && !background) setLoading(false);
     }
-  }, [page, pageSize, search, firmId, dateFrom, dateTo, status]);
+  }, [page, pageSize, search, firmId, dateFrom, dateTo, status, sort]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 300);

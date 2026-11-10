@@ -7,6 +7,7 @@ import { Ban, FilePlus2, Search } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
 import { formatDate } from "../lib/serial";
 import { usePendingDailyConsumables } from "../hooks/usePendingDailyConsumables";
+import { SortHeader, useServerSort } from "../lib/tableSort";
 
 export function PendingNonJobMaterialIssue() {
   const navigate = useNavigate();
@@ -21,7 +22,9 @@ export function PendingNonJobMaterialIssue() {
   const [notApplicableDate, setNotApplicableDate] = useState<string | null>(null);
   const [notApplicableRemarks, setNotApplicableRemarks] = useState("");
   const [notApplicableError, setNotApplicableError] = useState("");
-  const pending = usePendingDailyConsumables({ page, pageSize, search: searchTerm, firmId: firmFilter });
+  // Column sort: the server sorts the whole filtered list before paging.
+  const { sort, toggle: toggleSort } = useServerSort(() => setPage(1));
+  const pending = usePendingDailyConsumables({ page, pageSize, search: searchTerm, firmId: firmFilter, sort });
   const loadError = firmsApi.error || pending.error;
   const filtered = pending.rows;
 
@@ -109,7 +112,8 @@ export function PendingNonJobMaterialIssue() {
 
   const firmById = useMemo(() => new Map(firms.map((firm) => [firm.id, firm])), [firms]);
   const firmCode = (firmId: string, fallback: string) => getFirmDisplayName(firmById.get(firmId) || { firmName: fallback });
-  const rows = useMemo(() => groupedByFirm.flatMap((group) => group.rows), [groupedByFirm]);
+  // With a column sort the server's order is kept; otherwise rows are grouped by firm as before.
+  const rows = useMemo(() => (sort ? filtered : groupedByFirm.flatMap((group) => group.rows)), [sort, filtered, groupedByFirm]);
   const todayKey = new Date().toISOString().slice(0, 10);
   const daysPending = (date: string) => {
     const ms = new Date(`${todayKey}T00:00:00`).getTime() - new Date(`${String(date).slice(0, 10)}T00:00:00`).getTime();
@@ -194,10 +198,10 @@ export function PendingNonJobMaterialIssue() {
         <table className="min-w-full border-collapse text-sm">
           <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
             <tr>
-              <th className="border border-black px-3 py-3 text-left">Firm</th>
-              <th className="border border-black px-3 py-3 text-left">Date</th>
-              <th className="border border-black px-3 py-3 text-left">Day</th>
-              <th className="border border-black px-3 py-3 text-right">Days Pending</th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Day" sortKey="day" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-right"><SortHeader label="Days Pending" sortKey="daysPending" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className="border border-black px-3 py-3 text-center">Action</th>
             </tr>
           </thead>

@@ -3,6 +3,7 @@ import { getDataAuthHeaders } from "./useData";
 import { useAutoRefreshEffect } from "./useAutoRefresh";
 import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
 import type { DailyConsumablePending } from "../lib/dailyConsumables";
+import { applySortParams, type SortState } from "../lib/tableSort";
 
 export type PendingDailyPage = {
   rows: Array<DailyConsumablePending & { id: string }>;
@@ -11,9 +12,9 @@ export type PendingDailyPage = {
   pageSize: number;
 };
 
-type Options = { page: number; pageSize: number; search: string; firmId: string };
+type Options = { page: number; pageSize: number; search: string; firmId: string; sort?: SortState };
 
-export function usePendingDailyConsumables({ page, pageSize, search, firmId }: Options) {
+export function usePendingDailyConsumables({ page, pageSize, search, firmId, sort = null }: Options) {
   const [result, setResult] = useState<PendingDailyPage>({ rows: [], total: 0, page, pageSize });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export function usePendingDailyConsumables({ page, pageSize, search, firmId }: O
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (search.trim()) params.set("search", search.trim());
     if (firmId) params.set("firmId", firmId);
+    applySortParams(params, sort);
     try {
       const response = await fetch(`/api/material-issues/pending-daily?${params.toString()}`, {
         headers: getDataAuthHeaders(false),
@@ -51,7 +53,7 @@ export function usePendingDailyConsumables({ page, pageSize, search, firmId }: O
     } finally {
       if (generation === generationRef.current && !background) setLoading(false);
     }
-  }, [firmId, page, pageSize, search]);
+  }, [firmId, page, pageSize, search, sort]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 300);

@@ -24,6 +24,7 @@ import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
 import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
 import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
+import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms, type ServerSort, type SqlSortColumn } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
 import {
   APP_BUILD_MARKER,
@@ -1247,6 +1248,72 @@ function isNpdFirmWiseRequestAllowed(req: express.Request) {
   return Boolean(token && verifyToken(token));
 }
 
+// NPD Items column sorting (?sortKey=&sortDir=): the item columns the page
+// shows (row fields, Consumable/URL excluded) plus firm stock columns as
+// firm:<firmId>:<column>. Only these keys are accepted.
+const NPD_SORT_ITEM_KEYS = new Set<string>([
+  "boxType", "customerName", "itemName", "erp", "rate", "uom", "fluteType", "ply", "noOfParts", "noOfUps",
+  "idToOd2", "openLength", "openWidth", "lengthId", "breadthId", "heightId", "lengthOd", "breadthOd",
+  "heightOd", "psL1", "psL1Bf", "psF1", "psF1Bf", "psL2", "psL2Bf", "psF2", "psF2Bf", "psL3", "psL3Bf",
+  "materialWeightInsideInOneBox", "stackHeight", "safetyFactor", "csKgStd", "csKgTarget", "bsKgCm2Std",
+  "bsKgCm2Calculated", "takeUpFactor", "ups", "internalUps", "internalRapc", "rapc", "gstRate", "part",
+  "cuttingWithTrimming", "standardWeightGms", "calculatedWeightPerBox", "standardBGsm", "calculatedBGsm",
+  "stitchingGluing", "rsl1", "rsl1Bf", "rsf2", "rsf2Bf", "rsl3", "rsl3Bf", "rsf4", "rsf4Bf", "rsl5",
+  "rsf5Bf", "flapSize", "deckleSize", "topPaperShade", "colorId1", "printingColour1", "colorId2",
+  "printingColour2", "plainBox", "whetherPlateApplicable", "whetherPhpApplicable", "dimensionsApproved",
+  "artworkApproved", "artworkUpload", "poDate", "poNumber", "supplier", "printingBlockItemName",
+  "blockSizeSqInch", "approvedRateOfSupplier", "poPdf", "chargeableToCustomer", "amount", "poPdfApproval",
+  "emailSentToSupplier", "emailTimestamp", "invoiceNo", "invoiceDate", "invoiceAmount", "geNo", "mrrNo",
+  "dateOfReceipt", "supplierInvoiceNoMrr", "itemValueMrr", "invoiceValueMrr", "approvalStatus",
+  "debitNoteNo", "debitNoteDate", "debitNoteAmount", "customerPoNo", "customerPoDate", "orderQuantity",
+  "orderRate", "customerPoAmount", "boxesPerSheetDieCut", "reelSize", "cuttingSize", "rapcForSingleBox",
+  "dieCutUps", "syncInItemMaster", "platePhpWeight", "item9001", "item9002", "item9003", "item9004",
+  "gsmLeastCost", "backingPaperShade", "artwork", "spec",
+]);
+const NPD_SORT_FIRM_KEY = /^firm:([A-Za-z0-9_-]{1,64}):(opening|corrugation|receipt|production|invoiced|balance|value)$/;
+
+function npdPositiveNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+// Same as the page's calculateInternalUps / calculateInternalRapc fallbacks
+// (src/lib/internalUps.ts), used when the row has no saved value.
+function npdInternalUpsForSort(row: any) {
+  if (row.internalUps !== null && row.internalUps !== undefined && row.internalUps !== "") return row.internalUps;
+  const rapc = Number(row.rapcForSingleBox);
+  return Number.isFinite(rapc) && rapc > 0 ? Math.floor(1320 / rapc) : undefined;
+}
+
+function npdInternalRapcForSort(row: any) {
+  if (row.internalRapc !== null && row.internalRapc !== undefined && row.internalRapc !== "") return row.internalRapc;
+  const savedUps = Number(row.internalUps);
+  const rapcSingle = Number(row.rapcForSingleBox);
+  const ups = Number.isFinite(savedUps) && savedUps > 0 ? savedUps : (Number.isFinite(rapcSingle) && rapcSingle > 0 ? Math.floor(1320 / rapcSingle) : 0);
+  if (ups <= 0) return undefined;
+  const breadth = npdPositiveNumber(row.breadth);
+  const height = npdPositiveNumber(row.height);
+  const ply = Number(row.ply || 0);
+  const idToOd = ply === 3 ? 6 : ply === 5 ? 10 : 0;
+  const rapc = breadth === 0 ? height * ups : (breadth + height) * ups + (idToOd * ups + 16);
+  return Number.isFinite(rapc) && rapc > 0 ? Math.round(rapc * 100) / 100 : undefined;
+}
+
+function readNpdSort(query: Record<string, unknown>): { sort: ServerSort; getValue: (row: any) => unknown } | null {
+  const raw = String(query.sortKey ?? "").trim();
+  const firmMatch = NPD_SORT_FIRM_KEY.exec(raw);
+  const sort = readServerSort(query, firmMatch ? new Set([raw]) : NPD_SORT_ITEM_KEYS);
+  if (!sort) return null;
+  if (firmMatch) {
+    const [, firmId, column] = firmMatch;
+    return { sort, getValue: (row) => row.firmStocks?.[firmId]?.[column] };
+  }
+  if (sort.key === "internalUps") return { sort, getValue: npdInternalUpsForSort };
+  if (sort.key === "internalRapc") return { sort, getValue: npdInternalRapcForSort };
+  const key = sort.key;
+  return { sort, getValue: (row) => row[key] };
+}
+
 app.get("/api/npd-firm-wise", async (req, res) => {
   if (!isNpdFirmWiseRequestAllowed(req)) return res.status(401).json({ error: "Unauthorized" });
   const db = await getPool();
@@ -1263,14 +1330,15 @@ app.get("/api/npd-firm-wise", async (req, res) => {
     const npdFilters = Object.fromEntries(npdFilterKeys.map((key) => [key, String(req.query[key] || "").trim()]).filter(([, value]) => value));
     const consumableFilter = String(req.query.consumable || "").trim().toLowerCase();
     const wantOptions = String(req.query.options || "") === "1";
-    if (!Object.keys(npdFilters).length && !consumableFilter && !wantOptions) {
+    const npdSort = readNpdSort(req.query as Record<string, unknown>);
+    if (!Object.keys(npdFilters).length && !consumableFilter && !wantOptions && !npdSort) {
       const result = await getCachedFirmWiseNpdItems(db, { search, status, limit: pageSize, offset: (page - 1) * pageSize });
       res.setHeader("X-LNGRP-Build", APP_BUILD_MARKER);
       return res.json({ ...result, page, pageSize, search, status });
     }
     const full = await getCachedFirmWiseNpdItems(db, { search, status, limit: NPD_FULL_LIST_LIMIT, offset: 0 });
     const isYes = (value: unknown) => ["yes", "true", "1", "y"].includes(String(value ?? "").trim().toLowerCase());
-    const filtered = (full.rows as any[]).filter((row) => {
+    const matched = (full.rows as any[]).filter((row) => {
       for (const [key, value] of Object.entries(npdFilters)) {
         if (String(row[key] ?? "").trim() !== value) return false;
       }
@@ -1278,6 +1346,7 @@ app.get("/api/npd-firm-wise", async (req, res) => {
       if (consumableFilter === "no" && isYes(row.consumable)) return false;
       return true;
     });
+    const filtered = npdSort ? sortRowsInMemory(matched, npdSort.getValue, npdSort.sort!.direction) : matched;
     let options: Record<string, string[]> | undefined;
     if (wantOptions) {
       const all = await getCachedFirmWiseNpdItems(db, { search: "", status, limit: NPD_FULL_LIST_LIMIT, offset: 0 });
@@ -11649,6 +11718,11 @@ app.get("/api/reports/printing-shift", requireAuth, async (req, res) => {
   }
 });
 
+const ERP_WISE_REEL_STOCK_SORT_KEYS = [
+  "erp", "itemName", "size", "gsm", "bf", "openingStock", "receipts", "issued", "returned", "netIssued",
+  "availableWeight", "tallyStock", "stockDifference", "rate", "valuation", "noOfReels",
+] as const;
+
 app.get("/api/reports/erp-wise-reel-stock", requireAuth, async (req, res) => {
   try {
     const db = await getPool();
@@ -11691,12 +11765,31 @@ app.get("/api/reports/erp-wise-reel-stock", requireAuth, async (req, res) => {
     const q = req.query as Record<string, unknown>; const search = String(q.search || '').trim().toLowerCase();
     rows = rows.filter((row) => (!search || [row.erp,row.itemName,row.size,row.gsm,row.bf].join(' ').toLowerCase().includes(search)) && (!q.erp || row.erp === String(q.erp)) && (!q.size || String(row.size) === String(q.size)) && (!q.gsm || String(row.gsm) === String(q.gsm)) && (!q.bf || String(row.bf) === String(q.bf)));
     rows.sort((a,b) => Number(b.availableWeight>0)-Number(a.availableWeight>0) || a.erp.localeCompare(b.erp, undefined, {numeric:true}) || a.size-b.size || a.gsm-b.gsm || a.bf-b.bf);
+    // Column sort (?sortKey=&sortDir=) on the whole filtered list before paging.
+    // Size/GSM/BF show blank for 0; Tally Stock / Difference show "-" for null.
+    const erpSort = readServerSort(q, ERP_WISE_REEL_STOCK_SORT_KEYS);
+    if (erpSort) rows = sortRowsInMemory(rows, (row: any) => (["size", "gsm", "bf"].includes(erpSort.key) ? (row[erpSort.key] || null) : erpSort.key === "itemName" ? (row.itemName || null) : row[erpSort.key]), erpSort.direction);
     const summary = rows.reduce((s,r) => ({ openingStock:s.openingStock+r.openingStock, receipts:s.receipts+r.receipts, issued:s.issued+r.issued, returned:s.returned+r.returned, netIssued:s.netIssued+r.netIssued, availableWeight:s.availableWeight+r.availableWeight, tallyStock:s.tallyStock+r.tallyStock, stockDifference:s.stockDifference+(r.stockDifference||0), valuation:s.valuation+r.valuation, noOfReels:s.noOfReels+r.noOfReels }), { openingStock:0, receipts:0, issued:0, returned:0, netIssued:0, availableWeight:0, tallyStock:0, stockDifference:0, valuation:0, noOfReels:0 });
     const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 100)); const totalRows=rows.length; const totalPages=Math.max(1,Math.ceil(totalRows/pageSize)); const page=Math.min(totalPages,Math.max(1,Number(q.page)||1));
     const options=(field:string)=>Array.from(new Set(rows.map((r:any)=>String(r[field]??'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
     return res.json({ rows: rows.slice((page-1)*pageSize,page*pageSize), totalRows, page, pageSize, totalPages, summary, options:{erp:options('erp'),size:options('size'),gsm:options('gsm'),bf:options('bf')}, unitOneFirm: unitOne });
   } catch (error) { console.error('[ERP_WISE_REEL_STOCK] failed:', error); return res.status(500).json({ error: 'Could not load ERP Wise Reel Stock report.' }); }
 });
+
+// Material Receipt (Itemized) → Reel Details column sort: key → fixed SQL
+// expression of what the column shows ("specs" = GSM, then BF, then Size).
+// Supplier = supplier name, else company name, else the id (as the page shows).
+const REEL_DETAILS_SORT_COLUMNS: Record<string, SqlSortColumn> = {
+  geNo: { expr: "NULLIF(COALESCE(mi.gateEntryNo, '-'), '-')", type: "text" },
+  mrrNo: { expr: "COALESCE(mi.transactionNo, 'Opening')", type: "text" },
+  date: { expr: "NULLIF(LEFT(COALESCE(mi.date, ''), 10), '')", type: "date" },
+  vehicleNo: { expr: "NULLIF(UPPER(COALESCE(ge.truckNo, '-')), '-')", type: "text" },
+  supplier: { expr: "COALESCE(s.name, (SELECT c.name FROM companies c WHERE c.id = COALESCE(mi.supplierId, ps.supplierId) LIMIT 1), COALESCE(mi.supplierId, ps.supplierId))", type: "text" },
+  ourReelNo: { expr: "ps.ourReelNo", type: "text" },
+  supplierReelNo: { expr: "ps.supplierReelNo", type: "text" },
+  weightKg: { expr: "COALESCE(ps.weightKg, 0)", type: "number" },
+};
+const REEL_DETAILS_SORT_COLUMNS_KEYS = [...Object.keys(REEL_DETAILS_SORT_COLUMNS), "specs"];
 
 app.get("/api/reports/reel-details", requireAuth, async (req, res) => {
   try {
@@ -11717,7 +11810,12 @@ app.get("/api/reports/reel-details", requireAuth, async (req, res) => {
     const page = Math.max(1, Number(q.page) || 1);
     const [countRows] = await db.query(`SELECT COUNT(*) totalRows FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) WHERE ${where.join(" AND ")}`, params);
     const totalRows = Number((countRows as any[])[0]?.totalRows || 0); const totalPages = Math.max(1, Math.ceil(totalRows / pageSize)); const safePage = Math.min(page, totalPages);
-    const [rows] = await db.query(`SELECT ps.id, ps.ourReelNo, ps.supplierReelNo, ps.weightKg, ps.materialId, m.erpCode, m.gsm, m.bf, m.size, COALESCE(mi.transactionNo,'Opening') parentTransactionNo, COALESCE(mi.date,'') parentDate, COALESCE(mi.supplierId,ps.supplierId) parentSupplierId, COALESCE(mi.gateEntryNo,'-') parentGateEntryNo, UPPER(COALESCE(ge.truckNo,'-')) parentVehicleNo, COALESCE(s.name,'-') supplierName FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE ${where.join(" AND ")} ORDER BY COALESCE(mi.date,''), ps.ourReelNo, ps.id LIMIT ? OFFSET ?`, [...params, pageSize, (safePage - 1) * pageSize]);
+    // Column sort (?sortKey=&sortDir=): whitelisted ORDER BY first, the existing order after it.
+    const detailSort = readServerSort(q, REEL_DETAILS_SORT_COLUMNS_KEYS);
+    const detailSortSql = detailSort?.key === "specs"
+      ? `(m.gsm IS NULL AND m.bf IS NULL AND m.size IS NULL) ASC, (m.gsm + 0) ${detailSort.direction}, (m.bf + 0) ${detailSort.direction}, (m.size + 0) ${detailSort.direction}, `
+      : detailSort ? `${sqlSortTerms(detailSort, REEL_DETAILS_SORT_COLUMNS)}, ` : "";
+    const [rows] = await db.query(`SELECT ps.id, ps.ourReelNo, ps.supplierReelNo, ps.weightKg, ps.materialId, m.erpCode, m.gsm, m.bf, m.size, COALESCE(mi.transactionNo,'Opening') parentTransactionNo, COALESCE(mi.date,'') parentDate, COALESCE(mi.supplierId,ps.supplierId) parentSupplierId, COALESCE(mi.gateEntryNo,'-') parentGateEntryNo, UPPER(COALESCE(ge.truckNo,'-')) parentVehicleNo, COALESCE(s.name,'-') supplierName FROM material_in_packing_slips ps JOIN materials m ON m.id=ps.materialId LEFT JOIN material_in mi ON mi.id=ps.materialInId AND UPPER(TRIM(ps.materialInId)) <> 'OPENING' LEFT JOIN suppliers s ON s.id=COALESCE(mi.supplierId,ps.supplierId) LEFT JOIN gate_entries ge ON ge.id=mi.gateEntryId WHERE ${where.join(" AND ")} ORDER BY ${detailSortSql}COALESCE(mi.date,''), ps.ourReelNo, ps.id LIMIT ? OFFSET ?`, [...params, pageSize, (safePage - 1) * pageSize]);
     return res.json({ rows, totalRows, page: safePage, pageSize, totalPages });
   } catch (error) { console.error('[REEL_DETAILS] failed:', error); return res.status(500).json({ error: 'Could not load Reel details.' }); }
 });
@@ -11746,6 +11844,8 @@ async function getReelSummaryLines(db: mysql.Pool, firmId: string): Promise<any[
   return reelSummaryLinesInflight;
 }
 
+const REEL_SUMMARY_SORT_KEYS = ["geNo", "mrrNo", "date", "vehicleNo", "party", "itemName", "invoiceNo", "qty", "uom", "rate", "value"] as const;
+
 app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
   try {
     const db = await getPool(); if (!db) return res.status(503).json({ error: "Database unavailable." });
@@ -11757,6 +11857,36 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
     const all = await getReelSummaryLines(db, String(unitOne.id));
     const q = req.query as Record<string, unknown>; const search = String(q.search || "").trim().toLowerCase(); let rows = all.filter((r) => (!search || [r.parentTransactionNo,r.parentInvoiceNo,r.itemName].join(" ").toLowerCase().includes(search)) && (!q.mrr || r.parentTransactionNo === String(q.mrr)) && (!q.dateFrom || r.parentDate >= String(q.dateFrom)) && (!q.dateTo || r.parentDate <= String(q.dateTo)));
     const pageSize = Math.min(100, Math.max(1, Number(q.pageSize) || 100)); const totalRows = rows.length; const totalPages = Math.max(1, Math.ceil(totalRows / pageSize)); const page = Math.min(totalPages, Math.max(1, Number(q.page) || 1));
+    // Column sort (?sortKey=&sortDir=) on the whole filtered list before paging.
+    // Party = supplier name, else company name, else the id (as the page shows).
+    const summarySort = readServerSort(q, REEL_SUMMARY_SORT_KEYS);
+    if (summarySort) {
+      let partyNames: Map<string, string> | null = null;
+      if (summarySort.key === "party") {
+        partyNames = new Map();
+        const [companyRows] = await db.query("SELECT id, name FROM `companies`").catch(() => [[]] as any);
+        for (const row of companyRows as any[]) partyNames.set(String(row.id), String(row.name ?? ""));
+        const [supplierRows] = await db.query("SELECT id, name FROM `suppliers`");
+        for (const row of supplierRows as any[]) partyNames.set(String(row.id), String(row.name ?? ""));
+      }
+      const getValue = (row: any): unknown => {
+        switch (summarySort.key) {
+          case "geNo": return row.parentGateEntryNo;
+          case "mrrNo": return row.parentTransactionNo;
+          case "date": return row.parentDate;
+          case "vehicleNo": return row.parentVehicleNo;
+          case "party": return partyNames?.has(String(row.parentSupplierId)) ? partyNames.get(String(row.parentSupplierId)) : row.parentSupplierId;
+          case "itemName": return row.itemName;
+          case "invoiceNo": return row.parentInvoiceNo;
+          case "qty": return Number(row.qty || 0);
+          case "uom": return row.uom;
+          case "rate": return row.rate;
+          case "value": return row.value;
+          default: return null;
+        }
+      };
+      rows = sortRowsInMemory(rows, getValue, summarySort.direction);
+    }
     const summary = rows.reduce((sum, row) => ({
       receiptQty: sum.receiptQty + Number(row.qty || 0),
       receiptValue: sum.receiptValue + Number(row.value || 0),
@@ -11765,6 +11895,11 @@ app.get("/api/reports/reel-summary", requireAuth, async (req, res) => {
     return res.json({ rows: rows.slice((page - 1) * pageSize, page * pageSize), totalRows, page, pageSize, totalPages, summary });
   } catch (error) { console.error('[REEL_SUMMARY] failed:', error); return res.status(503).json({ error: 'Reel Summary is temporarily unavailable.' }); }
 });
+
+const REELWISE_STOCK_SORT_KEYS = [
+  "mrrNo", "ourReelNo", "erp", "firmName", "supplierName", "gsm", "size", "bf", "openingQty", "mrrQty",
+  "issuedWeight", "returnedWeight", "netIssuedWeight", "availableWeight", "rate", "valuation", "ageDays",
+] as const;
 
 app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
   try {
@@ -11927,6 +12062,12 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
       if (date) return date;
       return String(a.ourReelNo).localeCompare(String(b.ourReelNo), undefined, { numeric: true }) || String(a.slipId).localeCompare(String(b.slipId));
     });
+    // Column sort (?sortKey=&sortDir=), whole filtered list, before paging.
+    // Keys are the table's columns; GSM/Size/BF show blank for 0.
+    const reelSort = readServerSort(query, REELWISE_STOCK_SORT_KEYS);
+    const sortedRows = reelSort
+      ? sortRowsInMemory(filteredRows, (row: any) => (["gsm", "size", "bf"].includes(reelSort.key) ? (row[reelSort.key] || null) : row[reelSort.key]), reelSort.direction)
+      : filteredRows;
     const summary = filteredRows.reduce((sum: any, row: any) => ({
       totalAvailableStock: sum.totalAvailableStock + row.availableWeight,
       totalReels: sum.totalReels + (row.availableWeight > 0 ? 1 : 0),
@@ -11942,7 +12083,7 @@ app.get("/api/reports/reelwise-stock", requireAuth, async (_req, res) => {
     const options = (field: string) => Array.from(new Set(filteredRows.map((row: any) => String(row[field] ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     const start = (page - 1) * pageSize;
     return res.json({
-      rows: filteredRows.slice(start, start + pageSize), totalRows: filteredRows.length, page, pageSize: exportAll ? filteredRows.length : pageSize, totalPages,
+      rows: sortedRows.slice(start, start + pageSize), totalRows: filteredRows.length, page, pageSize: exportAll ? filteredRows.length : pageSize, totalPages,
       summary, options: { mrr: options("mrrNo"), erp: options("erp"), gsm: options("gsm"), size: options("size"), bf: options("bf") }, unitOneFirm: unitOne,
     });
   } catch (error) {
@@ -17678,6 +17819,20 @@ app.delete("/api/printing-stereo-records/:id", requireAuth, createPrintingStereo
   getPool,
 }));
 
+// Pending Consumption Tally column sort: key → fixed SQL expression matching
+// what the column shows ("firm" sorts by the firm code via sqlFirmCodeOrder).
+const PENDING_TALLY_SORT_COLUMNS: Record<string, SqlSortColumn> = {
+  issueNo: { expr: "COALESCE(NULLIF(TRIM(dc.issueNo), ''), dc.id)", type: "text" },
+  consumptionNo: { expr: "COALESCE(NULLIF(TRIM(dc.consumptionTransactionNo), ''), NULLIF(TRIM(dc.issueNo), ''))", type: "text" },
+  date: { expr: "NULLIF(LEFT(dc.date, 10), '')", type: "date" },
+  itemCount: { expr: "COALESCE(lineSummary.itemCount, 0)", type: "number" },
+  totalValue: { expr: "COALESCE(lineSummary.totalValue, 0)", type: "number" },
+  status: { expr: "COALESCE(NULLIF(TRIM(dc.tallyPostingStatus), ''), 'Pending')", type: "text" },
+  remark: { expr: "COALESCE(NULLIF(TRIM(dc.tallyPostingRemark), ''), NULLIF(TRIM(dc.remarks), ''))", type: "text" },
+  error: { expr: "dc.tallyPostingError", type: "text" },
+};
+const PENDING_TALLY_SORT_KEYS = [...Object.keys(PENDING_TALLY_SORT_COLUMNS), "firm"];
+
 app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
   const user = await getRequestUser(req);
   if (!user || !hasPermission(user, "/material-movement/pending-consumption-tally")) return res.status(403).json({ error: "Forbidden" });
@@ -17718,6 +17873,18 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
     const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM daily_consumptions dc ${where}`, searchParams);
     const total = Number((countRows as any[])[0]?.total || 0);
     const offset = (page - 1) * pageSize;
+    // Column sort (?sortKey=&sortDir=): a whitelisted ORDER BY term first, the
+    // existing order after it as the tiebreaker.
+    const tallySort = readServerSort(req.query as Record<string, unknown>, PENDING_TALLY_SORT_KEYS);
+    let tallySortSql = "";
+    const tallySortParams: any[] = [];
+    if (tallySort?.key === "firm") {
+      const [sortFirms] = await db.query("SELECT id, firmName, shortName FROM `firms`");
+      const firmOrder = sqlFirmCodeOrder("dc.firmId", sortFirms as any[], tallySort.direction, "NULLIF(TRIM(dc.firmId), '')");
+      if (firmOrder.sql) { tallySortSql = `${firmOrder.sql}, `; tallySortParams.push(...firmOrder.params); }
+    } else if (tallySort) {
+      tallySortSql = `${sqlSortTerms(tallySort, PENDING_TALLY_SORT_COLUMNS)}, `;
+    }
     const [rows] = await db.query(
       `SELECT dc.*,
           NULLIF(TRIM(f.firmName), '') AS resolvedFirmName,
@@ -17736,9 +17903,9 @@ app.get("/api/material-issues/pending-tally", requireAuth, async (req, res) => {
          GROUP BY mil.dailyConsumptionId
        ) lineSummary ON lineSummary.dailyConsumptionId = dc.id
        ${where}
-       ORDER BY LEFT(dc.date, 10) DESC, dc.issueNo DESC, dc.id ASC
+       ORDER BY ${tallySortSql}LEFT(dc.date, 10) DESC, dc.issueNo DESC, dc.id ASC
        LIMIT ? OFFSET ?`,
-      [...searchParams, pageSize, offset]
+      [...searchParams, ...tallySortParams, pageSize, offset]
     );
     console.info("[DB] Pending Consumption Tally lookup", {
       elapsedMs: Date.now() - startedAt,
@@ -17816,6 +17983,8 @@ app.delete("/api/material-issues/pending-tally/:id", requireAuth, async (req, re
   }
 });
 
+const PENDING_DAILY_SORT_KEYS = ["firm", "date", "day", "daysPending"] as const;
+
 app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
   const db = await getPool();
   if (!db) return res.status(503).json({ error: "Database unavailable" });
@@ -17829,7 +17998,7 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
   const firmFilter = String(req.query.firmId || "").trim();
   try {
     const today = String(req.query.today || new Date().toISOString().slice(0, 10)).slice(0, 10);
-    const [firmRows] = await db.query("SELECT id, firmName FROM `firms` ORDER BY firmName ASC");
+    const [firmRows] = await db.query("SELECT id, firmName, shortName FROM `firms` ORDER BY firmName ASC");
     const [productionRows] = await db.query(
       "SELECT COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) AS firmId, MIN(LEFT(p.date, 10)) AS firstJobDate FROM `productions` p LEFT JOIN `orders_schedule` os ON os.id = p.scheduleId LEFT JOIN `orders` o ON o.id = os.orderId WHERE COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), '')) <> '' AND LEFT(p.date, 10) <> '' GROUP BY COALESCE(NULLIF(TRIM(p.orderFirmId), ''), NULLIF(TRIM(os.firmId), ''), NULLIF(TRIM(o.firmId), ''), NULLIF(TRIM(o.orderFirmId), ''))"
     );
@@ -17856,8 +18025,27 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
       if (!search) return true;
       return `${row.firmName} ${row.date}`.toLowerCase().includes(search);
     });
+    // Column sort (?sortKey=&sortDir=) on the whole filtered list before paging:
+    // firm = the firm code the page shows, day = weekday (Mon..Sun), daysPending
+    // = days from today to the date.
+    const pendingSort = readServerSort(req.query as Record<string, unknown>, PENDING_DAILY_SORT_KEYS);
+    let sortedRows = filteredRows;
+    if (pendingSort) {
+      const firmCodes = new Map((firmRows as any[]).map((firm) => [String(firm.id || "").trim(), firmDisplayNameForSort(firm)]));
+      const todayMs = Date.parse(`${today}T00:00:00Z`);
+      const dateMs = (value: unknown) => Date.parse(`${String(value || "").slice(0, 10)}T00:00:00Z`);
+      const getValue = (row: any): unknown => {
+        if (pendingSort.key === "firm") return firmCodes.get(String(row.firmId)) || row.firmName;
+        if (pendingSort.key === "date") return String(row.date || "").slice(0, 10) || null;
+        const ms = dateMs(row.date);
+        if (!Number.isFinite(ms)) return null;
+        if (pendingSort.key === "day") return ((new Date(ms).getUTCDay() + 6) % 7) + 1;
+        return Number.isFinite(todayMs) ? Math.max(0, Math.round((todayMs - ms) / 86_400_000)) : null;
+      };
+      sortedRows = sortRowsInMemory(filteredRows, getValue, pendingSort.direction);
+    }
     const total = filteredRows.length;
-    const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
+    const pagedRows = sortedRows.slice((page - 1) * pageSize, page * pageSize);
     console.info("[DB] Pending Daily Consumables lookup", {
       elapsedMs: Date.now() - startedAt,
       page,
@@ -17873,6 +18061,20 @@ app.get("/api/material-issues/pending-daily", requireAuth, async (req, res) => {
     return res.status(500).json({ error: (error as Error).message || "Failed to load pending Daily Consumables." });
   }
 });
+
+// Non-Job Issue Master column sort: key → fixed SQL expression ("firm" sorts
+// by the firm code via sqlFirmCodeOrder).
+const DAILY_CONSUMPTION_SORT_COLUMNS: Record<string, SqlSortColumn> = {
+  issueNo: { expr: "dc.issueNo", type: "text" },
+  consumptionNo: { expr: "dc.consumptionTransactionNo", type: "text" },
+  date: { expr: "NULLIF(LEFT(dc.date, 10), '')", type: "date" },
+  tallyStatus: { expr: "COALESCE(NULLIF(TRIM(dc.tallyPostingStatus), ''), 'Pending')", type: "text" },
+  items: { expr: "summary.itemNames", type: "text" },
+  totalQty: { expr: "COALESCE(summary.totalQty, 0)", type: "number" },
+  totalValue: { expr: "COALESCE(summary.totalValue, 0)", type: "number" },
+  remarks: { expr: "dc.remarks", type: "text" },
+};
+const DAILY_CONSUMPTION_SORT_COLUMNS_KEYS = [...Object.keys(DAILY_CONSUMPTION_SORT_COLUMNS), "firm"];
 
 app.get("/api/daily-consumptions", requireAuth, async (req, res) => {
   const user = await getRequestUser(req);
@@ -17913,6 +18115,18 @@ app.get("/api/daily-consumptions", requireAuth, async (req, res) => {
   try {
     const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM daily_consumptions dc LEFT JOIN firms f ON f.id = dc.firmId ${where}`, params);
     const total = Number((countRows as any[])[0]?.total || 0);
+    // Column sort (?sortKey=&sortDir=): a whitelisted ORDER BY term first, the
+    // existing order after it as the tiebreaker.
+    const dcSort = readServerSort(req.query as Record<string, unknown>, DAILY_CONSUMPTION_SORT_COLUMNS_KEYS);
+    let dcSortSql = "";
+    const dcSortParams: any[] = [];
+    if (dcSort?.key === "firm") {
+      const [sortFirms] = await db.query("SELECT id, firmName, shortName FROM `firms`");
+      const firmOrder = sqlFirmCodeOrder("dc.firmId", sortFirms as any[], dcSort.direction, "'Legacy / Unassigned'");
+      if (firmOrder.sql) { dcSortSql = `${firmOrder.sql}, `; dcSortParams.push(...firmOrder.params); }
+    } else if (dcSort) {
+      dcSortSql = `${sqlSortTerms(dcSort, DAILY_CONSUMPTION_SORT_COLUMNS)}, `;
+    }
     const [rows] = await db.query(
       `SELECT dc.*, NULLIF(TRIM(f.firmName), '') AS firmName,
           COALESCE(summary.itemCount, 0) AS itemCount,
@@ -17931,8 +18145,8 @@ app.get("/api/daily-consumptions", requireAuth, async (req, res) => {
          GROUP BY dci.dailyConsumptionId
        ) summary ON summary.dailyConsumptionId = dc.id
        ${where}
-       ORDER BY LEFT(dc.date, 10) DESC, dc.issueNo DESC, dc.id ASC
-       LIMIT ? OFFSET ?`, [...params, pageSize, (page - 1) * pageSize]
+       ORDER BY ${dcSortSql}LEFT(dc.date, 10) DESC, dc.issueNo DESC, dc.id ASC
+       LIMIT ? OFFSET ?`, [...params, ...dcSortParams, pageSize, (page - 1) * pageSize]
     );
     return res.json({ rows, total, page, pageSize });
   } catch (error) {

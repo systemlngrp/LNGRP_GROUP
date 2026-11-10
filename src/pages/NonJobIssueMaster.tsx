@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Search, XCircle } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
 import { DailyConsumptionLine, DailyConsumptionRow, useDailyConsumptions } from "../hooks/useDailyConsumptions";
+import { SortHeader, useServerSort } from "../lib/tableSort";
 import { ClientPagination } from "../components/ClientPagination";
 import { formatDate } from "../lib/serial";
 import { Firm } from "../types";
@@ -34,7 +35,9 @@ export function NonJobIssueMaster() {
   const [linesById, setLinesById] = useState<Record<string, DailyConsumptionLine[]>>({});
   const [lineLoadingId, setLineLoadingId] = useState<string | null>(null);
 
-  const { rows, total, loading, error, httpStatus, loadLines, refresh, retry } = useDailyConsumptions({ page, pageSize, date: "", firmId: firmFilter, search: searchTerm, dateFrom, dateTo, status: statusFilter });
+  // Column sort: the server sorts the whole filtered list before paging.
+  const { sort, toggle: toggleSort } = useServerSort(() => { setPage(1); setExpandedIssueId(null); });
+  const { rows, total, loading, error, httpStatus, loadLines, refresh, retry } = useDailyConsumptions({ page, pageSize, date: "", firmId: firmFilter, search: searchTerm, dateFrom, dateTo, status: statusFilter, sort });
   const canCancelIssues = String(user?.email || "").trim().toLowerCase() === CANCEL_ALLOWED_EMAIL;
   const expandedLines = expandedIssueId ? linesById[expandedIssueId] || [] : [];
   const colSpan = canCancelIssues ? 10 : 9;
@@ -219,15 +222,15 @@ export function NonJobIssueMaster() {
         <table className="min-w-full border-collapse text-sm">
           <thead className="bg-slate-100 text-xs font-bold uppercase text-black">
             <tr>
-              <th className="border border-black px-3 py-3 text-left">Issue No</th>
-              <th className="border border-black px-3 py-3 text-left">Firm</th>
-              <th className="border border-black px-3 py-3 text-left">Consumption No</th>
-              <th className="border border-black px-3 py-3 text-left">Date</th>
-              <th className="border border-black px-3 py-3 text-left">Tally Status</th>
-              <th className="border border-black px-3 py-3 text-left">Items</th>
-              <th className="border border-black px-3 py-3 text-right">Total Qty</th>
-              <th className="border border-black px-3 py-3 text-right">Total Value</th>
-              <th className="border border-black px-3 py-3 text-left">Remarks</th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Issue No" sortKey="issueNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Consumption No" sortKey="consumptionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Tally Status" sortKey="tallyStatus" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Items" sortKey="items" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className="border border-black px-3 py-3 text-right"><SortHeader label="Total Qty" sortKey="totalQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black px-3 py-3 text-right"><SortHeader label="Total Value" sortKey="totalValue" sort={sort} onToggle={toggleSort} align="right" /></th>
+              <th className="border border-black px-3 py-3 text-left"><SortHeader label="Remarks" sortKey="remarks" sort={sort} onToggle={toggleSort} align="left" /></th>
               {canCancelIssues ? <th className="border border-black px-3 py-3 text-center">Actions</th> : null}
             </tr>
           </thead>

@@ -13,6 +13,7 @@ import { calculateInternalRapc, calculateInternalUps } from "../lib/internalUps"
 import { useAuth } from "../auth/AuthContext";
 import { useTrackPageLoading } from "../components/DataLoadingBoundary";
 import type { Firm, NpdFirmStock, Setting } from "../types";
+import { SortHeader, applySortParams, useServerSort } from "../lib/tableSort";
 
 type NpdRecord = {
   id: string;
@@ -75,6 +76,8 @@ export function NpdMaster() {
   const [npdFilters, setNpdFilters] = useState<Record<string, string>>({});
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({});
   const [exporting, setExporting] = useState(false);
+  // Column sort: the server sorts the whole filtered list before paging.
+  const { sort, toggle: toggleSort } = useServerSort(() => setPage(1));
   const setNpdFilter = (key: string, value: string) => {
     setPage(1);
     setNpdFilters((prev) => ({ ...prev, [key]: value }));
@@ -153,6 +156,7 @@ export function NpdMaster() {
         params.set("status", "all");
         Object.entries(npdFilters).forEach(([key, value]) => { if (value) params.set(key, value); });
         if (!Object.keys(filterOptions).length) params.set("options", "1");
+        applySortParams(params, sort);
 
         const response = await fetch(`/api/npd-firm-wise?${params.toString()}`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -191,7 +195,7 @@ export function NpdMaster() {
     },
     // filterOptions is only read to ask for the choices once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [authLoading, page, pageSize, searchTerm, npdFilters]
+    [authLoading, page, pageSize, searchTerm, npdFilters, sort]
   );
 
   // Excel: every row matching the search and filters, fetched page by page.
@@ -205,6 +209,7 @@ export function NpdMaster() {
         const params = new URLSearchParams({ page: String(next), pageSize: "1000", status: "all" });
         if (searchTerm) params.set("search", searchTerm);
         Object.entries(npdFilters).forEach(([key, value]) => { if (value) params.set(key, value); });
+        applySortParams(params, sort);
         const response = await fetch(`/api/npd-firm-wise?${params.toString()}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
         if (!response.ok) throw new Error("Failed to load NPD rows for Excel.");
         const result = await response.json();
@@ -446,13 +451,21 @@ export function NpdMaster() {
                 <th rowSpan={2} className="border border-black px-3 py-3 text-right text-xs font-bold uppercase text-black align-top min-w-[72px] whitespace-nowrap">SL No</th>
                 {tableColumns.map((column) => (
                   <th rowSpan={2} key={column.key} className="border border-black px-3 py-3 text-left text-xs font-bold uppercase text-black align-top min-w-[92px] max-w-[180px] whitespace-normal break-words">
-                    <span className="block leading-4">
-                      {getHeaderLines(column.label).map((line, index) => (
-                        <span key={`${column.key}-${index}`} className="block">
-                          {line}
+                    {(() => {
+                      const label = (
+                        <span className="block leading-4">
+                          {getHeaderLines(column.label).map((line, index) => (
+                            <span key={`${column.key}-${index}`} className="block">
+                              {line}
+                            </span>
+                          ))}
                         </span>
-                      ))}
-                    </span>
+                      );
+                      // Consumable is an editable checkbox and URL an Open button: no sort.
+                      return column.key === "consumable" || column.key === "url"
+                        ? label
+                        : <SortHeader label={label} sortKey={column.key} sort={sort} onToggle={toggleSort} align="left" />;
+                    })()}
                   </th>
                 ))}
                 {displayFirms.map((firm) => <th key={firm.id} colSpan={firmColumnsFor(firm).length} className="border border-black px-3 py-2 text-center text-xs font-bold uppercase text-black whitespace-nowrap">{firm.firmName}</th>)}
@@ -461,7 +474,15 @@ export function NpdMaster() {
                 </th>
               </tr>
               <tr className="divide-x divide-black">
-                {displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => <th key={`${firm.id}-${column.key}`} className="border border-black px-2 py-2 text-left text-[10px] font-bold uppercase text-black min-w-[105px] whitespace-normal">{column.label}</th>))}
+                {displayFirms.flatMap((firm) => firmColumnsFor(firm).map((column) => {
+                  // Admins edit Opening in place, so that column has no sort for them.
+                  const editable = column.key === "opening" && isAdmin && !String(firm.firmName || "").includes("Unknown");
+                  return (
+                    <th key={`${firm.id}-${column.key}`} className="border border-black px-2 py-2 text-left text-[10px] font-bold uppercase text-black min-w-[105px] whitespace-normal">
+                      {editable ? column.label : <SortHeader label={column.label} sortKey={`firm:${firm.id}:${column.key}`} sort={sort} onToggle={toggleSort} align="left" />}
+                    </th>
+                  );
+                }))}
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">

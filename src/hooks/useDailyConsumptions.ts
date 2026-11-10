@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getDataAuthHeaders } from "./useData";
 import { REALTIME_DATA_CHANGE_EVENT } from "./useRealtimeDataSync";
+import { applySortParams, type SortState } from "../lib/tableSort";
 
 export type DailyConsumptionRow = {
   id: string;
@@ -32,9 +33,9 @@ export type DailyConsumptionLine = {
   amount?: number;
 };
 
-type Options = { page: number; pageSize: number; date: string; firmId: string; search: string; dateFrom?: string; dateTo?: string; status?: string };
+type Options = { page: number; pageSize: number; date: string; firmId: string; search: string; dateFrom?: string; dateTo?: string; status?: string; sort?: SortState };
 
-export function useDailyConsumptions({ page, pageSize, date, firmId, search, dateFrom = "", dateTo = "", status = "" }: Options) {
+export function useDailyConsumptions({ page, pageSize, date, firmId, search, dateFrom = "", dateTo = "", status = "", sort = null }: Options) {
   const [rows, setRows] = useState<DailyConsumptionRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -58,6 +59,7 @@ export function useDailyConsumptions({ page, pageSize, date, firmId, search, dat
     if (dateTo) params.set("dateTo", dateTo);
     if (status) params.set("status", status);
     if (search.trim()) params.set("search", search.trim());
+    applySortParams(params, sort);
     try {
       const response = await fetch(`/api/daily-consumptions?${params.toString()}`, { headers: getDataAuthHeaders(false), signal: controller.signal });
       const body = await response.json().catch(() => ({}));
@@ -72,7 +74,7 @@ export function useDailyConsumptions({ page, pageSize, date, firmId, search, dat
     } finally {
       if (!background) setLoading(false);
     }
-  }, [date, firmId, page, pageSize, search, dateFrom, dateTo, status]);
+  }, [date, firmId, page, pageSize, search, dateFrom, dateTo, status, sort]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 250);

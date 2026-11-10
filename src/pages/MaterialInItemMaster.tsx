@@ -17,7 +17,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { buildReelStockRows } from "../lib/reelStock";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
-import { SortHeader, useTableSort } from "../lib/tableSort";
+import { SortHeader, applySortParams, sortRows, useServerSort, useTableSort } from "../lib/tableSort";
 
 function makeOptions(values: Array<string | number>) {
   return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)))
@@ -72,6 +72,10 @@ export function MaterialInItemMaster() {
   const [mrrFilter, setMrrFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  // Reel Summary / Reel Details column sort: the server sorts the whole filtered
+  // list before paging (the General tab sorts on the page, below).
+  const { sort: summarySort, toggle: toggleSummarySort } = useServerSort(() => setRemoteSummaryPage(1));
+  const { sort: detailsSort, toggle: toggleDetailsSort } = useServerSort(() => setRemoteDetailsPage(1));
 
   useEffect(() => {
     // Reel Details is shown only on its own tab: do not run this heavy report
@@ -85,6 +89,7 @@ export function MaterialInItemMaster() {
       if (mrrFilter) params.set("mrr", mrrFilter);
       if (fromDate) params.set("dateFrom", fromDate);
       if (toDate) params.set("dateTo", toDate);
+      applySortParams(params, detailsSort);
       try {
         const response = await fetch(`/api/reports/reel-details?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal });
         const body = await response.json().catch(() => ({}));
@@ -97,7 +102,7 @@ export function MaterialInItemMaster() {
       } finally { if (!controller.signal.aborted) setRemoteDetailsLoading(false); }
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [activeTab, fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
+  }, [activeTab, detailsSort, fromDate, mrrFilter, remoteDetailsPage, searchTerm, toDate]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -105,12 +110,13 @@ export function MaterialInItemMaster() {
       setRemoteSummaryLoading(true); setRemoteSummaryError(null);
       const params = new URLSearchParams({ page: String(remoteSummaryPage), pageSize: "100" });
       if (searchTerm.trim()) params.set("search", searchTerm.trim()); if (mrrFilter) params.set("mrr", mrrFilter); if (fromDate) params.set("dateFrom", fromDate); if (toDate) params.set("dateTo", toDate);
+      applySortParams(params, summarySort);
       try { const response = await fetch(`/api/reports/reel-summary?${params}`, { headers: getDataAuthHeaders(false), signal: controller.signal }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(String(body?.error || response.statusText)); setRemoteReelSummary(Array.isArray(body.rows) ? body.rows : []); setRemoteSummaryTotalRows(Number(body.totalRows) || 0); setRemoteSummaryTotalPages(Number(body.totalPages) || 1); setRemoteSummaryMetrics({ receiptQty: Number(body.summary?.receiptQty || 0), receiptValue: Number(body.summary?.receiptValue || 0), totalReceipts: Number(body.summary?.totalReceipts || 0) }); }
       catch (error) { if ((error as Error).name !== "AbortError") { setRemoteReelSummary([]); setRemoteSummaryMetrics({ receiptQty: 0, receiptValue: 0, totalReceipts: 0 }); setRemoteSummaryError(error instanceof Error ? error.message : "Unable to load Reel Summary."); } }
       finally { if (!controller.signal.aborted) setRemoteSummaryLoading(false); }
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [fromDate, mrrFilter, remoteSummaryPage, searchTerm, toDate]);
+  }, [fromDate, mrrFilter, remoteSummaryPage, searchTerm, summarySort, toDate]);
 
   useEffect(() => { setRemoteDetailsPage(1); setRemoteSummaryPage(1); }, [fromDate, mrrFilter, searchTerm, toDate]);
 
@@ -373,8 +379,25 @@ export function MaterialInItemMaster() {
   useEffect(() => { setOthersPage(1); }, [searchTerm, fromDate, toDate, mrrFilter, activeTab, setOthersPage]);
 
   const excelRows = useMemo(() => {
+    // Reel tabs export in the column sort shown on screen (same columns as the server sort).
     if (activeTab === "reel-details") {
-      return processedData.reelDetails.map((reel: any) => ({
+      const details = detailsSort
+        ? sortRows(processedData.reelDetails as any[], (reel: any) => {
+            switch (detailsSort.key) {
+              case "geNo": return reel.parentGateEntryNo;
+              case "mrrNo": return reel.parentTransactionNo;
+              case "date": return reel.parentDate;
+              case "vehicleNo": return reel.parentVehicleNo;
+              case "supplier": return getSupplierName(reel.parentSupplierId);
+              case "specs": return reel.specs;
+              case "ourReelNo": return reel.ourReelNo;
+              case "supplierReelNo": return reel.supplierReelNo;
+              case "weightKg": return Number(reel.weightKg || 0);
+              default: return null;
+            }
+          }, detailsSort.direction)
+        : processedData.reelDetails;
+      return details.map((reel: any) => ({
         "GE No": reel.parentGateEntryNo,
         "MRR No": reel.parentTransactionNo,
         Date: formatDate(reel.parentDate),
@@ -387,7 +410,25 @@ export function MaterialInItemMaster() {
       }));
     }
 
-    const data = activeTab === "others" ? othersPagination.paginatedItems : processedData.reelSummary;
+    const summaryRows = summarySort
+      ? sortRows(processedData.reelSummary as any[], (line: any) => {
+          switch (summarySort.key) {
+            case "geNo": return line.parentGateEntryNo;
+            case "mrrNo": return line.parentTransactionNo;
+            case "date": return line.parentDate;
+            case "vehicleNo": return line.parentVehicleNo;
+            case "party": return getSupplierName(line.parentSupplierId);
+            case "itemName": return itemNameOf(line.itemId) || "Unknown";
+            case "invoiceNo": return line.parentInvoiceNo;
+            case "qty": return Number(line.qty || 0);
+            case "uom": return line.uom;
+            case "rate": return line.rate;
+            case "value": return line.value;
+            default: return null;
+          }
+        }, summarySort.direction)
+      : processedData.reelSummary;
+    const data = activeTab === "others" ? othersPagination.paginatedItems : summaryRows;
     return data.map((line: any) => {
       const itemName = itemNameOf(line.itemId) || "Unknown";
       return {
@@ -404,7 +445,7 @@ export function MaterialInItemMaster() {
         Value: Number(line.value || 0),
       };
     });
-  }, [activeTab, processedData, materials, npdItems, suppliers, companies]);
+  }, [activeTab, processedData, materials, npdItems, suppliers, companies, summarySort, detailsSort]);
   const renderTable = () => {
     const data = activeTab === "others" ? othersPagination.paginatedItems : 
                  activeTab === "reel-summary" ? remoteReelSummary : 
@@ -430,15 +471,15 @@ export function MaterialInItemMaster() {
 <table data-table-pagination="true" className="min-w-full divide-y divide-black border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GE No</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">MRR No</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Date</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Vehicle No</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Supplier</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Material Specs</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Our Reel No</th>
-              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Supplier Reel No</th>
-              <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">Weight (KG)</th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="GE No" sortKey="geNo" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="MRR No" sortKey="mrrNo" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Date" sortKey="date" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Vehicle No" sortKey="vehicleNo" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Supplier" sortKey="supplier" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Material Specs" sortKey="specs" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Our Reel No" sortKey="ourReelNo" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black"><SortHeader label="Supplier Reel No" sortKey="supplierReelNo" sort={detailsSort} onToggle={toggleDetailsSort} align="left" /></th>
+              <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black"><SortHeader label="Weight (KG)" sortKey="weightKg" sort={detailsSort} onToggle={toggleDetailsSort} align="right" /></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-black bg-white">
@@ -474,17 +515,17 @@ export function MaterialInItemMaster() {
       <table data-table-pagination={activeTab === "reel-summary" ? "true" : undefined} className="min-w-full divide-y divide-black border-collapse border border-black">
         <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
           <tr className="divide-x divide-black">
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="GE No" sortKey="geNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "GE No"}</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="MRR No" sortKey="mrrNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "MRR No"}</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Date" sortKey="date" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Date"}</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Vehicle No" sortKey="vehicleNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Vehicle No"}</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[240px]">{activeTab === "others" ? <SortHeader label="Party" sortKey="party" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Party"}</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[320px]">{activeTab === "others" ? <SortHeader label="Item Name" sortKey="itemName" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Item Name"}</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">{activeTab === "others" ? <SortHeader label="Invoice No" sortKey="invoiceNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "Invoice No"}</th>
-            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Qty" sortKey="qty" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : "Qty"}</th>
-            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="UOM" sortKey="uom" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : "UOM"}</th>
-            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Rate" sortKey="rate" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : "Rate"}</th>
-            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Value" sortKey="value" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : "Value"}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="GE No" sortKey="geNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="GE No" sortKey="geNo" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="MRR No" sortKey="mrrNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="MRR No" sortKey="mrrNo" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Date" sortKey="date" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="Date" sortKey="date" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Vehicle No" sortKey="vehicleNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="Vehicle No" sortKey="vehicleNo" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[240px]">{activeTab === "others" ? <SortHeader label="Party" sortKey="party" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="Party" sortKey="party" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black min-w-[320px]">{activeTab === "others" ? <SortHeader label="Item Name" sortKey="itemName" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="Item Name" sortKey="itemName" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">{activeTab === "others" ? <SortHeader label="Invoice No" sortKey="invoiceNo" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="Invoice No" sortKey="invoiceNo" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Qty" sortKey="qty" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : <SortHeader label="Qty" sortKey="qty" sort={summarySort} onToggle={toggleSummarySort} align="right" />}</th>
+            <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="UOM" sortKey="uom" sort={othersSort} onToggle={toggleOthersSort} align="left" /> : <SortHeader label="UOM" sortKey="uom" sort={summarySort} onToggle={toggleSummarySort} align="left" />}</th>
+            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Rate" sortKey="rate" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : <SortHeader label="Rate" sortKey="rate" sort={summarySort} onToggle={toggleSummarySort} align="right" />}</th>
+            <th className="px-4 py-3 text-right text-xs font-bold text-black uppercase border border-black">{activeTab === "others" ? <SortHeader label="Value" sortKey="value" sort={othersSort} onToggle={toggleOthersSort} align="right" /> : <SortHeader label="Value" sortKey="value" sort={summarySort} onToggle={toggleSummarySort} align="right" />}</th>
             <th className="px-4 py-3 text-center text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Actions</th>
           </tr>
         </thead>
