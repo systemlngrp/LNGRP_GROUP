@@ -73,7 +73,7 @@ export function DirectLoadingSlip() {
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 pb-8">
+    <div className="mx-auto max-w-5xl space-y-4 pb-6">
       <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">Direct Loading Slip</h2>
       <DirectLoadingSlipModal
         key={formKey}

@@ -522,7 +522,7 @@ export function ReelwiseStockReport() {
         </div>
       </div>
 
-      <div className="space-y-2 rounded border border-black bg-white p-3">
+      <div data-mf-panel="true" className="space-y-2 rounded border border-black bg-white p-3">
         <div className="relative w-full min-w-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
           <input

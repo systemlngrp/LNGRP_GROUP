@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { DateRangeFilter, ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 import { Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
@@ -258,44 +259,13 @@ export function EfficiencyReport() {
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative min-w-[260px] flex-[1_1_300px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search"
-              className="w-full rounded border-2 border-black pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-            />
-          </div>
-          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
-            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="min-w-[140px] flex-[0_1_160px] rounded border-2 border-black px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          /></label>
-          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="min-w-[140px] flex-[0_1_160px] rounded border-2 border-black px-3 py-2.5 text-sm font-semibold focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          /></label>
-          </div>
-          <div className="min-w-[210px] flex-[1_1_220px]"><Select value={viewMode} onChange={(value) => setViewMode(value as ViewMode)} options={viewModeOptions} placeholder="View" /></div>
-          <div className="min-w-[150px] flex-[1_1_160px]"><Select value={shift} onChange={(value) => setShift(value as "" | Shift)} options={shiftOptions} placeholder="Shift" /></div>
-          <div className="min-w-[180px] flex-[1_1_200px]"><Select value={machineId} onChange={setMachineId} options={machineOptions} placeholder="Machine" /></div>
-          <div className="min-w-[180px] flex-[1_1_200px]"><Select value={operatorId} onChange={setOperatorId} options={operatorOptions} placeholder="Operator" /></div>
-          <button
-            type="button"
-            onClick={handleClear}
-            className="min-w-[120px] rounded border border-black bg-white px-3 py-2.5 text-sm font-bold text-black hover:bg-slate-50"
-          >
-            Clear Filters
-          </button>
-        </div>
-      </div>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || dateFrom || dateTo || shift || machineId || operatorId || viewMode !== "machineDaily")} onClear={handleClear}>
+        <SelectFilter label="View" value={viewMode} onChange={(value) => setViewMode((value || "machineDaily") as ViewMode)} options={viewModeOptions} wide />
+        <SelectFilter label="Shift" value={shift} onChange={(value) => setShift(value as "" | Shift)} options={shiftOptions} />
+        <SelectFilter label="Machine" value={machineId} onChange={setMachineId} options={machineOptions} />
+        <SelectFilter label="Operator" value={operatorId} onChange={setOperatorId} options={operatorOptions} wide />
+        <DateRangeFilter from={dateFrom} to={dateTo} onFrom={setDateFrom} onTo={setDateTo} />
+      </ReportFilterBox>
 
       <div className="bg-white rounded shadow-sm border-2 border-black overflow-hidden">
         <div className="flex flex-col gap-1 border-b-2 border-black px-4 py-3 md:flex-row md:items-center md:justify-between">

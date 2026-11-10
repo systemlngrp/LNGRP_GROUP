@@ -177,7 +177,7 @@ export function FixedDailyExpenses({ view = "form" }: { view?: "form" | "master"
 
   if (view === "form") {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 pb-8">
+      <div className="mx-auto max-w-3xl space-y-4 pb-6">
         <div className="flex flex-wrap items-end justify-between gap-2 border-b border-gray-900 pb-3">
           <h1 className="text-xl font-bold uppercase tracking-tight text-black">Fixed Daily Expenses Form</h1>
           <div className="text-right">

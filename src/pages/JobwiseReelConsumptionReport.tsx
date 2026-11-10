@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { DateRangeFilter, FILTER_DATE_INPUT, FILTER_LABEL, ReportFilterBox } from "../components/ReportFilterBox";
 import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { ExcelExport } from "../components/ExcelExport";
@@ -139,9 +140,9 @@ export function JobwiseReelConsumptionReport() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 border-b border-black pb-3">
+      <div className="flex items-center justify-between gap-2 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Jobwise Reel Consumption</h2>
-        
+        <ExcelExport data={excelRows} fileName="Jobwise_Reel_Consumption_Report" sheetName="Jobwise Consumption" />
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -163,57 +164,10 @@ export function JobwiseReelConsumptionReport() {
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-3">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_repeat(3,minmax(130px,0.8fr))_auto] xl:items-center">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search"
-              className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            />
-          </div>
-
-          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
-            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            title="Date From"
-            className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          /></label>
-
-          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            title="Date To"
-            className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          /></label>
-          </div>
-
-          <input
-            type="number"
-            value={minGpPercent}
-            onChange={(e) => setMinGpPercent(e.target.value)}
-            placeholder="Min GP%"
-            className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          />
-
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={handleClear}
-              className="min-h-[42px] rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
-            >
-              Clear Filters
-            </button>
-            <ExcelExport data={excelRows} fileName="Jobwise_Reel_Consumption_Report" sheetName="Jobwise Consumption" />
-          </div>
-        </div>
-      </div>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || dateFrom || dateTo || minGpPercent)} onClear={handleClear}>
+        <DateRangeFilter from={dateFrom} to={dateTo} onFrom={setDateFrom} onTo={setDateTo} fromLabel="Corrugation From" toLabel="Corrugation To" />
+        <label className="min-w-0"><span className={FILTER_LABEL}>Min GP %</span><input type="number" value={minGpPercent} onChange={(e) => setMinGpPercent(e.target.value)} placeholder="Any" className={FILTER_DATE_INPUT} /></label>
+      </ReportFilterBox>
 
       <div className="overflow-hidden rounded border-2 border-black bg-white shadow-sm">
         <div className="max-h-[calc(100vh-250px)] w-full overflow-auto relative">

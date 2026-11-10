@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Select } from "../components/Select";
 import { Search } from "lucide-react";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import type { Item } from "../types";
@@ -61,9 +62,14 @@ function toRow(item: Item): FgStockRow {
   };
 }
 
+const FILTER_LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
+
 export function FGStockReport() {
   const { items, loading, error } = useNpdItemsWithStatus();
   const [searchTerm, setSearchTerm] = useState("");
+  const [customerFilter, setCustomerFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [uomFilter, setUomFilter] = useState("");
 
   const baseRows = useMemo(
     () =>
@@ -74,7 +80,23 @@ export function FGStockReport() {
     [items],
   );
 
-  const rows = useTableSearch(baseRows, searchTerm, (row) => [
+  const filterOptions = useMemo(() => {
+    const toOptions = (values: string[]) => Array.from(new Set(values.map((value) => String(value || "").trim()).filter((value) => value && value !== "-"))).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+    return {
+      customers: toOptions(baseRows.map((row) => row.customer)),
+      items: Array.from(new Map(baseRows.map((row) => [row.erp, { value: row.erp, label: `${row.itemName} - ${row.erp}`, searchText: `${row.itemName} ${row.erp}` }])).values()).filter((option) => option.value).sort((a, b) => a.label.localeCompare(b.label)),
+      uoms: toOptions(baseRows.map((row) => row.uom)),
+    };
+  }, [baseRows]);
+  const filteredRows = useMemo(() => baseRows.filter((row) =>
+    (!customerFilter || row.customer === customerFilter) &&
+    (!itemFilter || row.erp === itemFilter) &&
+    (!uomFilter || row.uom === uomFilter)
+  ), [baseRows, customerFilter, itemFilter, uomFilter]);
+  const hasFilters = Boolean(searchTerm.trim() || customerFilter || itemFilter || uomFilter);
+  const clearFilters = () => { setSearchTerm(""); setCustomerFilter(""); setItemFilter(""); setUomFilter(""); };
+
+  const rows = useTableSearch(filteredRows, searchTerm, (row) => [
     row.erp,
     row.itemName,
     row.customer,
@@ -126,23 +148,16 @@ export function FGStockReport() {
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-3">
-        <div className="grid gap-3 md:grid-cols-[minmax(260px,1fr)_auto] md:items-center">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search"
-              className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            />
-          </div>
-          {searchTerm ? (
-            <button type="button" onClick={() => setSearchTerm("")} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">
-              Clear
-            </button>
-          ) : null}
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={FILTER_LABEL}>Customer / Party</span><Select compact value={customerFilter} onChange={setCustomerFilter} options={filterOptions.customers} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className={FILTER_LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={filterOptions.items} placeholder="All" /></div>
+          <div className="min-w-0"><span className={FILTER_LABEL}>UOM</span><Select compact value={uomFilter} onChange={setUomFilter} options={filterOptions.uoms} placeholder="All" /></div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasFilters ? <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 

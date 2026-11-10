@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from "react";
+import { ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import type {
@@ -32,6 +34,7 @@ type ConversionCostResult = { rows: ConversionCostMonthRow[]; fyOptions: string[
 export function ConversionCostMonthWiseReport() {
   const [fy, setFy] = useState(getCurrentFinancialYear());
   const [monthFilter, setMonthFilter] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Calculated on the server; if it cannot, the lists are loaded and
   // calculated here as before.
@@ -58,8 +61,14 @@ export function ConversionCostMonthWiseReport() {
     return options.includes(fy) ? options : [fy, ...options];
   }, [fy, result]);
   const rows = useMemo(
-    () => (result?.rows || []).filter((row) => !monthFilter || Number(monthFilter) === row.monthValue),
-    [monthFilter, result]
+    () => {
+      const words = searchWords(searchTerm);
+      return (result?.rows || []).filter((row) =>
+        (!monthFilter || Number(monthFilter) === row.monthValue) &&
+        matchesTableSearch(rowSearchText([row.month, formatMoney(row.consumables), formatMoney(row.fixed), formatNumber(row.totalConsumption), formatMoney(row.actualPaperUsedCost), formatNumber(row.ratio)]), words)
+      );
+    },
+    [monthFilter, result, searchTerm]
   );
 
   const totals = useMemo(
@@ -86,35 +95,21 @@ export function ConversionCostMonthWiseReport() {
   const clearFilters = () => {
     setFy(getCurrentFinancialYear());
     setMonthFilter("");
+    setSearchTerm("");
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-900 pb-3">
-        <div><h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Month Wise</h1></div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select className="rounded border border-gray-900 p-2 text-sm font-bold" value={fy} onChange={(event) => setFy(event.target.value)}>
-            {fyOptions.map((option) => (
-              <option key={option} value={option}>
-                FY {option}
-              </option>
-            ))}
-          </select>
-          <select className="rounded border border-gray-900 p-2 text-sm font-bold" value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)}>
-            <option value="">Months</option>
-            {FY_MONTHS.map((month) => (
-              <option key={month.value} value={month.value}>
-                {month.label}
-              </option>
-            ))}
-          </select>
-          <button className="inline-flex items-center gap-2 rounded border border-gray-900 px-3 py-2 text-sm font-bold" type="button" onClick={clearFilters}>
-            <RotateCcw size={16} /> Clear
-          </button>
-        </div>
+      <div className="border-b border-black pb-3">
+        <h1 className="text-xl font-bold uppercase tracking-tight text-black">Conversion Cost Month Wise</h1>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || monthFilter || fy !== getCurrentFinancialYear())} onClear={clearFilters}>
+        <SelectFilter label="FY" value={fy} onChange={(value) => setFy(value || getCurrentFinancialYear())} options={fyOptions.map((option) => ({ value: option, label: `FY ${option}` }))} />
+        <SelectFilter label="Month" value={monthFilter} onChange={setMonthFilter} options={FY_MONTHS.map((month) => ({ value: String(month.value), label: month.label }))} />
+      </ReportFilterBox>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="border border-gray-900 bg-emerald-50 p-3">
           <p className="text-xs font-black uppercase text-slate-600">Consumables</p>
           <p className="text-2xl font-black text-emerald-700">{formatMoney(totals.consumables)}</p>

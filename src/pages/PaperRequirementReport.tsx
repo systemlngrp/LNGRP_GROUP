@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from "react";
+import { FILTER_DATE_INPUT, FILTER_LABEL, ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import Select from "react-select";
 import { FileText, RotateCcw, X } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -102,6 +103,7 @@ export function PaperRequirementReport() {
   const [groupType, setGroupType] = useState<GroupTypeFilter>("All");
   const [chartLimit, setChartLimit] = useState<ChartLimit>("Top 30");
   const [detailRow, setDetailRow] = useState<ReportRow | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const filteredTimestamp = useMemo(() => {
     const parsed = parseAppDate(uptoDate);
@@ -146,12 +148,15 @@ export function PaperRequirementReport() {
     return { value: label, label };
   }), [reportData]);
 
-  const filteredRows = useMemo(() => reportData.filter((row) => {
-    if (selectedRangeGsm && getRangeGsmLabel(row) !== selectedRangeGsm.value) return false;
-    if (!passesNetFilter(row, netFilter)) return false;
-    if (!passesGroupType(row, groupType)) return false;
-    return true;
-  }), [groupType, netFilter, reportData, selectedRangeGsm]);
+  const filteredRows = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return reportData.filter((row) => {
+      if (selectedRangeGsm && getRangeGsmLabel(row) !== selectedRangeGsm.value) return false;
+      if (!passesNetFilter(row, netFilter)) return false;
+      if (!passesGroupType(row, groupType)) return false;
+      return matchesTableSearch(rowSearchText([getRangeGsmLabel(row), row.totalPaperRequirement, row.totalClosingStock, row.totalPendingPo, row.mil, row.netPaperToOrder, row.consumption]), words);
+    });
+  }, [groupType, netFilter, reportData, selectedRangeGsm, searchTerm]);
 
   const summary = useMemo(() => summarizeRows(filteredRows), [filteredRows]);
   // Table column sort (the chart and PDF keep their own order).
@@ -229,11 +234,12 @@ export function PaperRequirementReport() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-1 border-b border-black pb-3">
+      <div className="flex items-center justify-between gap-2 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Paper Requirement</h2>
+        <button type="button" onClick={handleExportPdf} className="inline-flex items-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-1.5 text-sm font-bold text-rose-800 hover:bg-rose-100"><FileText size={14} />PDF</button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <MetricTile label="Total Paper Requirement" value={summary.totalPaperRequirement} className="border-blue-300 bg-blue-50 text-blue-900" />
         <MetricTile label="Closing Stock" value={summary.totalClosingStock} className="border-emerald-300 bg-emerald-50 text-emerald-900" />
         <MetricTile label="Pending PO" value={summary.totalPendingPo} className="border-amber-300 bg-amber-50 text-amber-900" />
@@ -241,36 +247,13 @@ export function PaperRequirementReport() {
         <MetricTile label="Net Paper To Order" value={summary.netPaperToOrder} className={summary.netPaperToOrder >= 0 ? "border-rose-300 bg-rose-50 text-rose-900" : "border-emerald-300 bg-emerald-50 text-emerald-900"} />
       </div>
 
-      <div className="rounded border border-black bg-white p-3">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(150px,0.7fr)_minmax(250px,1.2fr)_repeat(3,minmax(160px,0.8fr))_repeat(2,auto)] xl:items-center">
-          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Up to Date</span><input type="date" value={uptoDate} onChange={(e) => setUptoDate(e.target.value)} title="Upto Date" className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></label>
-          <Select
-            value={selectedRangeGsm}
-            onChange={(option) => setSelectedRangeGsm(option as RangeGsmOption | null)}
-            options={rangeOptions}
-            isClearable
-            placeholder="RAPC Range + GSM"
-            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-            menuPosition="fixed"
-            styles={{
-              control: (provided) => ({ ...provided, minHeight: 42, borderColor: "black", borderWidth: 2, borderRadius: 4 }),
-              menu: (provided) => ({ ...provided, zIndex: 9999 }),
-              menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-            }}
-          />
-          <select value={netFilter} onChange={(e) => setNetFilter(e.target.value as NetFilter)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600">
-            {NET_FILTER_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-          </select>
-          <select value={groupType} onChange={(e) => setGroupType(e.target.value as GroupTypeFilter)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600">
-            {GROUP_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-          </select>
-          <select value={chartLimit} onChange={(e) => setChartLimit(e.target.value as ChartLimit)} className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600">
-            {CHART_LIMIT_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-          </select>
-          <button type="button" onClick={handleClear} className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"><RotateCcw size={14} />Clear</button>
-          <button type="button" onClick={handleExportPdf} className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100"><FileText size={14} />PDF</button>
-        </div>
-      </div>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || selectedRangeGsm || netFilter !== "All Positive" || groupType !== "All" || chartLimit !== "Top 30" || uptoDate !== toDateInput(new Date()))} onClear={() => { setSearchTerm(""); handleClear(); }}>
+        <label className="min-w-0"><span className={FILTER_LABEL}>Up to Date</span><input type="date" value={uptoDate} onChange={(e) => setUptoDate(e.target.value)} className={FILTER_DATE_INPUT} /></label>
+        <SelectFilter label="RAPC Range + GSM" value={selectedRangeGsm?.value || ""} onChange={(value) => setSelectedRangeGsm(value ? { value, label: value } : null)} options={Array.from(new Map(rangeOptions.map((option) => [option.value, option])).values())} wide />
+        <SelectFilter label="Net Paper" value={netFilter === "All" ? "" : netFilter} onChange={(value) => setNetFilter((value || "All") as NetFilter)} options={NET_FILTER_OPTIONS.filter((option) => option !== "All").map((option) => ({ value: option, label: option }))} />
+        <SelectFilter label="Group Type" value={groupType === "All" ? "" : groupType} onChange={(value) => setGroupType((value || "All") as GroupTypeFilter)} options={GROUP_TYPE_OPTIONS.filter((option) => option !== "All").map((option) => ({ value: option, label: option }))} />
+        <SelectFilter label="Graph" value={chartLimit === "All" ? "" : chartLimit} onChange={(value) => setChartLimit((value || "All") as ChartLimit)} options={CHART_LIMIT_OPTIONS.filter((option) => option !== "All").map((option) => ({ value: option, label: option }))} />
+      </ReportFilterBox>
 
       <div className="rounded border-2 border-black bg-white p-3">
         <div className="mb-2 flex items-center justify-between gap-3">

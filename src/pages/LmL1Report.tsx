@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { DateRangeFilter, ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -341,8 +342,12 @@ export function LmL1Report() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 border-b border-black pb-3">
+      <div className="flex items-center justify-between gap-2 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">LM-L1</h2>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={handleExportExcel} className="inline-flex items-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100"><Download size={14} />Excel</button>
+          <button type="button" onClick={handleExportPdf} className="inline-flex items-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-1.5 text-sm font-bold text-rose-800 hover:bg-rose-100"><FileText size={14} />PDF</button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -364,78 +369,11 @@ export function LmL1Report() {
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-3">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.2fr)_repeat(4,minmax(140px,0.7fr))_repeat(3,auto)] xl:items-center">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search"
-              className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            />
-          </div>
-          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
-            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-            title="Date From"
-            className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          /></label>
-          <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-            title="Date To"
-            className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          /></label>
-          </div>
-          <select
-            value={yearFilter}
-            onChange={(event) => setYearFilter(event.target.value)}
-            className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          >
-            {yearOptions.map((option) => (
-              <option key={option} value={option}>{option === "All" ? "Years" : option}</option>
-            ))}
-          </select>
-          <select
-            value={monthFilter}
-            onChange={(event) => setMonthFilter(event.target.value)}
-            className="w-full rounded border-2 border-black px-3 py-2.5 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-          >
-            {["All", ...MONTHS].map((option) => (
-              <option key={option} value={option}>{option === "All" ? "Months" : option}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={handleClear}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
-          >
-            <RotateCcw size={14} />
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100"
-          >
-            <Download size={14} />
-            Excel
-          </button>
-          <button
-            type="button"
-            onClick={handleExportPdf}
-            className="inline-flex min-h-[42px] items-center justify-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100"
-          >
-            <FileText size={14} />
-            PDF
-          </button>
-        </div>
-      </div>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || dateFrom || dateTo || yearFilter !== "All" || monthFilter !== "All")} onClear={handleClear}>
+        <SelectFilter label="Year" value={yearFilter === "All" ? "" : yearFilter} onChange={(value) => setYearFilter(value || "All")} options={yearOptions.filter((option) => option !== "All").map((option) => ({ value: String(option), label: String(option) }))} />
+        <SelectFilter label="Month" value={monthFilter === "All" ? "" : monthFilter} onChange={(value) => setMonthFilter(value || "All")} options={MONTHS.map((option) => ({ value: option, label: option }))} />
+        <DateRangeFilter from={dateFrom} to={dateTo} onFrom={setDateFrom} onTo={setDateTo} fromLabel="Order Date From" toLabel="Order Date To" />
+      </ReportFilterBox>
 
       <div className="overflow-hidden rounded border-2 border-black bg-white shadow-sm">
         <div className="max-h-[calc(100vh-250px)] w-full overflow-auto">

@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { DateRangeFilter, ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -498,8 +499,12 @@ export function HitVsMissReport() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 border-b border-black pb-3">
+      <div className="flex items-center justify-between gap-2 border-b border-black pb-3">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Hit Vs Miss</h2>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={handleExportExcel} className="inline-flex items-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-3 py-1.5 text-sm font-bold text-emerald-800 hover:bg-emerald-100"><Download size={14} />Excel</button>
+          <button type="button" onClick={handleExportPdf} className="inline-flex items-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-1.5 text-sm font-bold text-rose-800 hover:bg-rose-100"><FileText size={14} />PDF</button>
+        </div>
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -521,68 +526,13 @@ export function HitVsMissReport() {
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-3">
-        <div className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_repeat(4,minmax(140px,1fr))]">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search"
-                className="w-full rounded border-2 border-black py-2.5 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-              />
-            </div>
-            <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-            <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-            <Select value={fyFilter} onChange={setFyFilter} options={fySelectOptions} placeholder="FY" />
-            <Select value={monthFilter} onChange={setMonthFilter} options={monthSelectOptions} placeholder="Months" />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[260px]">
-              <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              title="From Date"
-              className="min-h-[42px] rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            /></label>
-            <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              title="To Date"
-              className="min-h-[42px] rounded border-2 border-black px-3 py-2 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600"
-            /></label>
-            </div>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="min-h-[42px] rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
-            >
-              Clear Filters
-            </button>
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              className="inline-flex min-h-[42px] items-center gap-2 rounded border border-emerald-700 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100"
-            >
-              <Download size={14} />
-              Excel
-            </button>
-            <button
-              type="button"
-              onClick={handleExportPdf}
-              className="inline-flex min-h-[42px] items-center gap-2 rounded border border-rose-700 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-800 hover:bg-rose-100"
-            >
-              <FileText size={14} />
-              PDF
-            </button>
-          </div>
-        </div>
-      </div>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || companyFilter || itemFilter || fyFilter || monthFilter || fromDate || toDate)} onClear={clearFilters}>
+        <SelectFilter label="FY" value={fyFilter} onChange={setFyFilter} options={fySelectOptions} />
+        <SelectFilter label="Month" value={monthFilter} onChange={setMonthFilter} options={monthSelectOptions} />
+        <SelectFilter label="Company" value={companyFilter} onChange={setCompanyFilter} options={companyOptions} wide />
+        <SelectFilter label="Item" value={itemFilter} onChange={setItemFilter} options={itemOptions} wide />
+        <DateRangeFilter from={fromDate} to={toDate} onFrom={setFromDate} onTo={setToDate} />
+      </ReportFilterBox>
 
       <div className="rounded border-2 border-black bg-white shadow-sm">
         <div className="border-b-2 border-black px-3 py-3">

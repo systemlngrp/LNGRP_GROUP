@@ -180,7 +180,7 @@ export function FixedMonthlyExpenses({ view = "form" }: { view?: "form" | "maste
 
   if (view === "form") {
     return (
-      <div className="mx-auto max-w-3xl space-y-4 pb-8">
+      <div className="mx-auto max-w-3xl space-y-4 pb-6">
         <div className="flex flex-wrap items-end justify-between gap-2 border-b border-gray-900 pb-3">
           <h1 className="text-xl font-bold uppercase tracking-tight text-black">Fixed Monthly Expenses Form</h1>
           <div className="text-right">
@@ -237,6 +237,13 @@ export function FixedMonthlyExpenses({ view = "form" }: { view?: "form" | "maste
                   </td>
                 </tr>
               ))}
+              {!lines.length && (
+                <tr>
+                  <td className="border border-gray-900 p-4 text-center text-slate-500" colSpan={2}>
+                    No monthly expenses found in Expense Master.
+                  </td>
+                </tr>
+              )}
             </tbody>
             <tfoot>
               <tr className="bg-slate-50 font-black">

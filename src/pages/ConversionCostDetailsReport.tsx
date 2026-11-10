@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from "react";
+import { DateRangeFilter, ReportFilterBox } from "../components/ReportFilterBox";
+import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { RotateCcw } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -40,6 +42,7 @@ export function ConversionCostDetailsReport() {
   const [fromDate, setFromDate] = useState(currentRange.from);
   const [toDate, setToDate] = useState(currentRange.to);
   const [inputs, setInputs] = useState<MisInputs>(defaultInputs);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Date-range totals are calculated on the server; the manual inputs are
   // applied here. If the server cannot run it, every list is loaded and the
@@ -70,11 +73,15 @@ export function ConversionCostDetailsReport() {
   const base = (browserFallback ? clientBase : serverReport.result) || EMPTY_BASE;
   const report = useMemo(() => applyConversionCostInputs(base, inputs), [base, inputs]);
   const resetReport = () => {
+    setSearchTerm("");
     setFromDate(currentRange.from);
     setToDate(currentRange.to);
     setInputs(defaultInputs);
   };
-  const factoryDisplayRows = report.factoryRows;
+  const factoryDisplayRows = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return report.factoryRows.filter((row) => matchesTableSearch(rowSearchText([row.slNo, row.label, formatMoney(row.amount)]), words));
+  }, [report.factoryRows, searchTerm]);
   // Factory Consumption table column sort (the MIS statement keeps its fixed layout).
   const { sorted: sortedFactoryRows, sort: factorySort, toggle: toggleFactorySort } = useTableSort(factoryDisplayRows, (row, key) =>
     key === "label" ? row.label : key === "perKg" ? Number(report.expensePerKg(row.amount) || 0) : Number(row.amount || 0)
@@ -98,27 +105,13 @@ export function ConversionCostDetailsReport() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-900 pb-3">
-        <div><h1 className="text-2xl font-black uppercase tracking-tight">Conversion Cost Details</h1></div>
-        <button className="inline-flex items-center gap-2 rounded border border-gray-900 px-3 py-2 text-sm font-bold" type="button" onClick={resetReport}>
-          <RotateCcw size={16} /> Reset
-        </button>
+      <div className="border-b border-black pb-3">
+        <h1 className="text-xl font-bold uppercase tracking-tight text-black">Conversion Cost Details</h1>
       </div>
 
-      <div className="border border-gray-900 bg-white p-3">
-        <div className="grid gap-3 md:grid-cols-2 xl:max-w-xl">
-          <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
-          <label className="text-xs font-black uppercase text-slate-700">
-            From Date
-            <input className="mt-1 h-9 w-full border border-gray-900 px-2 text-sm font-bold" type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-          </label>
-          <label className="text-xs font-black uppercase text-slate-700">
-            To Date
-            <input className="mt-1 h-9 w-full border border-gray-900 px-2 text-sm font-bold" type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
-          </label>
-          </div>
-        </div>
-      </div>
+      <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || fromDate !== currentRange.from || toDate !== currentRange.to)} onClear={resetReport}>
+        <DateRangeFilter from={fromDate} to={toDate} onFrom={setFromDate} onTo={setToDate} />
+      </ReportFilterBox>
 
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="overflow-x-auto border border-gray-900 bg-white">
