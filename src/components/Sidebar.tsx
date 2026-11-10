@@ -147,7 +147,6 @@ const phpPlateProcessItems: NavItem[] = [
   { name: "Production", href: "/production/php-plate/pending-production", icon: Hammer, countKey: "/production/php-plate/pending-production" },
   { name: "PHP Production Master", href: "/production/php/master", icon: Database },
   { name: "Plate Production Master", href: "/production/plate/master", icon: Database },
-  { name: "PHP-PLATE IN / OUT", href: "/production/php-plate/in-out", icon: ArrowLeftRight },
 ];
 
 
@@ -158,8 +157,6 @@ const productionProcessingItems: NavItem[] = [
 ];
 
 const sampleItems: NavItem[] = [
-  { name: "Control Sample Form", href: "/quality/sample-requirement/master/form", icon: ClipboardList },
-  { name: "Control Sample Master", href: "/quality/sample-requirement/master", icon: Database },
   { name: "Sample Form", href: "/samples/form", icon: FlaskConical },
   { name: "Pending Samples", href: "/samples/pending", icon: Activity, countKey: "/samples/pending" },
   { name: "Samples Produced", href: "/samples/produced", icon: CheckCircle },
@@ -167,6 +164,14 @@ const sampleItems: NavItem[] = [
 ];
 
 const qualityItems: NavEntry[] = [
+  {
+    // Moved here from Production → Samples.
+    section: "Control Sample",
+    items: [
+      { name: "Control Sample Form", href: "/quality/sample-requirement/master/form", icon: ClipboardList },
+      { name: "Control Sample Master", href: "/quality/sample-requirement/master", icon: Database },
+    ],
+  },
   {
     section: "BoardLine QC Check",
     items: [

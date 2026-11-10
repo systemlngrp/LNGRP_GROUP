@@ -100,13 +100,15 @@ export function SampleForm() {
             <label className="font-bold text-black">
               Item Name <span className="text-red-500">*</span>
             </label>
-            <Select
-              options={itemOptions}
-              value={itemId}
-              onChange={setItemId}
-              required
-              placeholder="Search and select item..."
-            />
+            <div className="app-select-wrap">
+              <Select
+                options={itemOptions}
+                value={itemId}
+                onChange={setItemId}
+                required
+                placeholder="Search and select item..."
+              />
+            </div>
           </div>
 
           <div className="flex flex-col space-y-1">
