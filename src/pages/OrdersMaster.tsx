@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowDown, ArrowUp, Plus, Search, Calendar } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Search } from "lucide-react";
 import Select from "react-select";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
@@ -145,7 +145,7 @@ export function OrdersMaster() {
 
       return {
         order,
-        firmName: String(order.firmName || firmMap.get(order.firmId || "") || "Unassigned"),
+        firmName: String(firmMap.get(order.firmId || "") || order.firmName || "Unassigned"),
         companyName: companyMap.get(order.companyId) || "",
         itemName,
         itemErp,
@@ -267,167 +267,131 @@ export function OrdersMaster() {
     setOrderNoSort((current) => (current === "asc" ? "desc" : "asc"));
   };
 
+  const hasActiveFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || orderByFilter || dateFrom || dateTo);
+  const clearAllFilters = () => {
+    setFirmFilter("");
+    setCompanyFilter("");
+    setItemFilter("");
+    setOrderByFilter("");
+    setDateFrom("");
+    setDateTo("");
+    setSearchTerm("");
+  };
+  const compactSelectStyles = {
+    control: (provided: any) => ({ ...provided, minHeight: 34, height: 34, borderWidth: 2, borderColor: "#000", fontSize: 12, fontWeight: 600 }),
+    valueContainer: (provided: any) => ({ ...provided, padding: "0 6px" }),
+    indicatorsContainer: (provided: any) => ({ ...provided, height: 30 }),
+    dropdownIndicator: (provided: any) => ({ ...provided, padding: 4 }),
+    clearIndicator: (provided: any) => ({ ...provided, padding: 4 }),
+    menu: (provided: any) => ({ ...provided, zIndex: 9999, fontSize: 12 }),
+    menuPortal: (provided: any) => ({ ...provided, zIndex: 9999 }),
+  };
+  const menuPortalTarget = typeof document !== "undefined" ? document.body : null;
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-b border-black pb-4">
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 border-b border-black pb-3">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Orders Master</h2>
         <button
           onClick={() => navigate("/orders/form")}
-          className="flex items-center gap-2 justify-self-end rounded bg-indigo-600 px-3 py-2 text-sm font-bold whitespace-nowrap text-white shadow transition hover:bg-indigo-700"
+          className="flex items-center gap-2 rounded bg-indigo-600 px-3 py-2 text-sm font-bold whitespace-nowrap text-white shadow transition hover:bg-indigo-700"
         >
           <Plus size={18} /> New Order
         </button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded p-4 bg-gradient-to-r from-indigo-50 to-indigo-100 border border-indigo-200">
-          <div className="text-xs font-bold uppercase tracking-wide text-indigo-600">Total Orders</div>
-          <div className="mt-2 text-2xl font-bold text-indigo-800">{summary.totalOrders}</div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <div className="rounded-lg border-2 border-black bg-indigo-50 p-3 text-indigo-900">
+          <div className="text-[11px] font-black uppercase">Orders</div>
+          <div className="text-xl font-black tabular-nums">{summary.totalOrders}</div>
         </div>
-        <div className="rounded p-4 bg-gradient-to-r from-emerald-50 to-emerald-100 border border-emerald-200">
-          <div className="text-xs font-bold uppercase tracking-wide text-emerald-600">Order Value</div>
-          <div className="mt-2 text-2xl font-bold text-emerald-800">{formatAmount(summary.orderValue)}</div>
+        <div className="rounded-lg border-2 border-black bg-emerald-50 p-3 text-emerald-900">
+          <div className="text-[11px] font-black uppercase">Order Value</div>
+          <div className="text-xl font-black tabular-nums">{formatAmount(summary.orderValue)}</div>
         </div>
-        <div className="rounded p-4 bg-gradient-to-r from-rose-50 to-rose-100 border border-rose-200">
-          <div className="text-xs font-bold uppercase tracking-wide text-rose-600">Pending Order Quantity</div>
-          <div className="mt-2 text-2xl font-bold text-rose-800">{formatAmount(summary.pendingQuantity)}</div>
+        <div className="rounded-lg border-2 border-black bg-rose-50 p-3 text-rose-900">
+          <div className="text-[11px] font-black uppercase">Pending Order Quantity</div>
+          <div className="text-xl font-black tabular-nums">{formatAmount(summary.pendingQuantity)}</div>
         </div>
-        <div className="rounded p-4 bg-gradient-to-r from-purple-50 to-purple-100 border border-purple-200">
-          <div className="text-xs font-bold uppercase tracking-wide text-purple-600">Pending Order Value</div>
-          <div className="mt-2 text-2xl font-bold text-purple-800">{formatAmount(summary.pendingValue)}</div>
+        <div className="rounded-lg border-2 border-black bg-purple-50 p-3 text-purple-900">
+          <div className="text-[11px] font-black uppercase">Pending Order Value</div>
+          <div className="text-xl font-black tabular-nums">{formatAmount(summary.pendingValue)}</div>
         </div>
       </div>
 
-      <div className="rounded border border-black bg-white p-4">
-        <div className="grid items-end gap-3 sm:grid-cols-2 xl:grid-cols-6">
-          <label className="flex flex-col gap-1 text-sm font-bold text-black xl:col-span-2">
-            <span>Search</span>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-                placeholder="Search"
-                className="w-full rounded border border-black py-2 pl-10 pr-3 font-normal"
-              />
-            </div>
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm font-bold text-black">
-            <span>Firm</span>
-            <Select options={firmOptions} value={firmFilter ? { value: firmFilter, label: firmOptions.find((f) => f.value === firmFilter)?.label || firmFilter } : null} onChange={(option) => setFirmFilter(option?.value || "")} placeholder="Firms" isClearable
-              menuPortalTarget={typeof document !== "undefined" ? document.body : null} menuPosition="fixed"
-              styles={{ control: (provided) => ({ ...provided, minHeight: 40 }), menu: (provided) => ({ ...provided, zIndex: 9999 }), menuPortal: (provided) => ({ ...provided, zIndex: 9999 }) }} />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm font-bold text-black">
-            <span>Company</span>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span>
+            <Select options={firmOptions} value={firmFilter ? { value: firmFilter, label: firmOptions.find((f) => f.value === firmFilter)?.label || firmFilter } : null} onChange={(option) => setFirmFilter(option?.value || "")} placeholder="All" isClearable
+              menuPortalTarget={menuPortalTarget} menuPosition="fixed" styles={compactSelectStyles} />
+          </div>
+          <div className="min-w-0">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span>
             <Select
               options={availableCompanies.map((c) => ({ value: c, label: c }))}
               value={companyFilter ? { value: companyFilter, label: companyFilter } : null}
               onChange={(opt) => setCompanyFilter(opt ? (opt as any).value : "")}
               isClearable
-              placeholder="Companies"
+              placeholder="All"
               menuPlacement="bottom"
-              menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+              menuPortalTarget={menuPortalTarget}
               menuPosition="fixed"
-              styles={{
-                control: (provided) => ({ ...provided, minHeight: 40 }),
-                menu: (provided) => ({ ...provided, zIndex: 9999 }),
-                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-              }}
+              styles={compactSelectStyles}
             />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm font-bold text-black">
-            <span>Item</span>
+          </div>
+          <div className="col-span-2 min-w-0 md:col-span-1">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span>
             <Select
               options={availableItems}
               value={availableItems.find((option) => option.value === itemFilter) || null}
               onChange={(opt) => setItemFilter(opt ? (opt as any).value : "")}
               isClearable
-              placeholder="Items"
+              placeholder="All"
               menuPlacement="bottom"
-              menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+              menuPortalTarget={menuPortalTarget}
               menuPosition="fixed"
-              styles={{
-                control: (provided) => ({ ...provided, minHeight: 40 }),
-                menu: (provided) => ({ ...provided, zIndex: 9999 }),
-                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-              }}
+              styles={compactSelectStyles}
             />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm font-bold text-black">
-            <span>Order By</span>
+          </div>
+          <div className="min-w-0">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Order By</span>
             <Select
               options={availableUsers.map((u) => ({ value: u, label: u }))}
               value={orderByFilter ? { value: orderByFilter, label: orderByFilter } : null}
               onChange={(opt) => setOrderByFilter(opt ? (opt as any).value : "")}
               isClearable
-              placeholder="Users"
+              placeholder="All"
               menuPlacement="bottom"
-              menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+              menuPortalTarget={menuPortalTarget}
               menuPosition="fixed"
-              styles={{
-                control: (provided) => ({ ...provided, minHeight: 40 }),
-                menu: (provided) => ({ ...provided, zIndex: 9999 }),
-                menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-              }}
+              styles={compactSelectStyles}
             />
-          </label>
-        </div>
-
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-6 items-end">
-          <label className="flex flex-col gap-1 text-sm font-bold text-black xl:col-span-1">
-            <span>Order Date From</span>
-            <div className="relative">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(event) => setDateFrom(event.target.value)}
-                className="w-full rounded border border-black px-3 py-2 pr-10 font-normal"
-              />
-              <Calendar size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-500" />
-            </div>
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm font-bold text-black xl:col-span-1">
-            <span>Order Date To</span>
-            <div className="relative">
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(event) => setDateTo(event.target.value)}
-                className="w-full rounded border border-black px-3 py-2 pr-10 font-normal"
-              />
-              <Calendar size={18} className="absolute right-3 top-1/2 -translate-y-1/2 text-indigo-500" />
-            </div>
-          </label>
-
-          <div className="flex items-center gap-2 sm:col-span-2 xl:col-span-2 xl:justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setFirmFilter("");
-                setCompanyFilter("");
-                setItemFilter("");
-                setOrderByFilter("");
-                setDateFrom("");
-                setDateTo("");
-                setSearchTerm("");
-              }}
-              className="ml-auto rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50"
-            >
-              Clear Filters
-            </button>
           </div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Order From Date</span><input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Order To Date</span><input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearAllFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
       <div className="overflow-x-auto rounded border border-black bg-white">
         <table className="min-w-full border-collapse border border-black text-sm">
-          <thead className="sticky top-0 z-30 bg-slate-100">
+          <thead className="bg-slate-100">
             <tr>
               <th className="border border-black px-3 py-2">
                 <button
@@ -456,11 +420,7 @@ export function OrdersMaster() {
           </thead>
           <tbody>
             {paginatedRows.length === 0 ? (
-              <tr>
-                <td colSpan={14} className="border border-black px-3 py-8 text-center text-slate-500">
-                  No orders found for the current filters.
-                </td>
-              </tr>
+              <tr><td colSpan={14} className="h-16" aria-label="No records" /></tr>
             ) : (
               paginatedRows.map((row) => (
                 <tr key={row.order.id} className="align-top">

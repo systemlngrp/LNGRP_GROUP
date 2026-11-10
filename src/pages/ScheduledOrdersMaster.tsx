@@ -11,7 +11,7 @@ import {
   Firm,
 } from "../types";
 import { formatDate } from "../lib/serial";
-import { Search, Calendar, Building2, Package, X, ArrowUpDown } from "lucide-react";
+import { Search, ArrowUpDown } from "lucide-react";
 import Select from "react-select";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { ClientPagination } from "../components/ClientPagination";
@@ -335,127 +335,93 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
     }
   };
 
+  const hasActiveFilters = Boolean(searchTerm.trim() || companyFilter || itemFilter || firmFilter || fromDate || toDate);
+  const menuPortalTarget = typeof document !== "undefined" ? document.body : null;
+  const compactSelectStyles = {
+    control: (provided: any) => ({ ...provided, minHeight: 34, height: 34, borderWidth: 2, borderColor: "#000", borderRadius: 4, fontSize: 12, fontWeight: 600 }),
+    valueContainer: (provided: any) => ({ ...provided, padding: "0 6px" }),
+    indicatorsContainer: (provided: any) => ({ ...provided, height: 30 }),
+    dropdownIndicator: (provided: any) => ({ ...provided, padding: 4 }),
+    clearIndicator: (provided: any) => ({ ...provided, padding: 4 }),
+    menu: (provided: any) => ({ ...provided, zIndex: 9999, fontSize: 12 }),
+    menuPortal: (provided: any) => ({ ...provided, zIndex: 9999 }),
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 border-b border-black pb-4">
-        <h2 className="min-w-0 text-xl font-bold uppercase tracking-tight text-black">{pendingOnly ? "Scheduled But Not Dispatched" : "Scheduled Orders Master"}</h2>
-        <button 
-          type="button"
-          onClick={clearFilters}
-          className="inline-flex w-auto max-w-max items-center justify-self-end gap-2 whitespace-nowrap rounded border border-black px-3 py-1.5 text-xs font-bold uppercase transition-colors hover:bg-slate-50"
-          style={{ width: "max-content" }}
-        >
-          <X size={14} /> Clear Filters
-        </button>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3 border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">{pendingOnly ? "Scheduled But Not Dispatched" : "Scheduled Orders Master"}</h2>
       </div>
 
-      {/* Filter Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 bg-white p-4 border border-black rounded shadow-sm">
-        {/* Search */}
-        <div className="relative">
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input 
+          <input
             type="text"
             placeholder="Search"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           />
         </div>
-
-        {/* Firm Filter */}
-        <div className="relative">
-          <Building2 className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
-          <Select
-            options={firmOptions}
-            value={firmOptions.find((option) => option.value === firmFilter) || null}
-            onChange={(option) => setFirmFilter(option ? (option as SelectOption).value : "")}
-            filterOption={(candidate, inputValue) => {
-              const query = inputValue.trim().toLowerCase();
-              if (!query) return true;
-              const option = candidate.data as SelectOption;
-              return String(option.searchText || option.label).toLowerCase().includes(query);
-            }}
-            isClearable
-            placeholder="Firms"
-            menuPlacement="bottom"
-            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-            menuPosition="fixed"
-            styles={{
-              control: (provided) => ({ ...provided, minHeight: 40, borderColor: "black", borderRadius: 4, paddingLeft: 28 }),
-              menu: (provided) => ({ ...provided, zIndex: 9999 }),
-              menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-            }}
-          />
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span>
+            <Select
+              options={firmOptions}
+              value={firmOptions.find((option) => option.value === firmFilter) || null}
+              onChange={(option) => setFirmFilter(option ? (option as SelectOption).value : "")}
+              filterOption={(candidate, inputValue) => {
+                const query = inputValue.trim().toLowerCase();
+                if (!query) return true;
+                const option = candidate.data as SelectOption;
+                return String(option.searchText || option.label).toLowerCase().includes(query);
+              }}
+              isClearable
+              placeholder="All"
+              menuPlacement="bottom"
+              menuPortalTarget={menuPortalTarget}
+              menuPosition="fixed"
+              styles={compactSelectStyles}
+            />
+          </div>
+          <div className="min-w-0">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span>
+            <Select
+              options={companyOptions}
+              value={companyOptions.find((option) => option.value === companyFilter) || null}
+              onChange={(option) => setCompanyFilter(option ? (option as SelectOption).value : "")}
+              isClearable
+              placeholder="All"
+              menuPlacement="bottom"
+              menuPortalTarget={menuPortalTarget}
+              menuPosition="fixed"
+              styles={compactSelectStyles}
+            />
+          </div>
+          <div className="col-span-2 min-w-0 md:col-span-1">
+            <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span>
+            <Select
+              options={itemOptions}
+              value={itemOptions.find((option) => option.value === itemFilter) || null}
+              onChange={(option) => setItemFilter(option ? (option as SelectOption).value : "")}
+              isClearable
+              placeholder="All"
+              menuPlacement="bottom"
+              menuPortalTarget={menuPortalTarget}
+              menuPosition="fixed"
+              styles={compactSelectStyles}
+            />
+          </div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Schedule From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Schedule To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
         </div>
-
-        {/* Company Filter */}
-        <div className="relative">
-          <Building2 className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
-          <Select
-            options={companyOptions}
-            value={companyOptions.find((option) => option.value === companyFilter) || null}
-            onChange={(option) => setCompanyFilter(option ? (option as SelectOption).value : "")}
-            isClearable
-            placeholder="Companies"
-            menuPlacement="bottom"
-            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-            menuPosition="fixed"
-            styles={{
-              control: (provided) => ({ ...provided, minHeight: 40, borderColor: "black", borderRadius: 4, paddingLeft: 28 }),
-              menu: (provided) => ({ ...provided, zIndex: 9999 }),
-              menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-            }}
-          />
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
-
-        {/* Item Filter */}
-        <div className="relative">
-          <Package className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-slate-400" size={16} />
-          <Select
-            options={itemOptions}
-            value={itemOptions.find((option) => option.value === itemFilter) || null}
-            onChange={(option) => setItemFilter(option ? (option as SelectOption).value : "")}
-            isClearable
-            placeholder="Items"
-            menuPlacement="bottom"
-            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-            menuPosition="fixed"
-            styles={{
-              control: (provided) => ({ ...provided, minHeight: 40, borderColor: "black", borderRadius: 4, paddingLeft: 28 }),
-              menu: (provided) => ({ ...provided, zIndex: 9999 }),
-              menuPortal: (provided) => ({ ...provided, zIndex: 9999 }),
-            }}
-          />
-        </div>
-
-        {/* From Date */}
-        <label className="block min-w-0">
-        <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span>
-        <div className="relative">
-          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input 
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"
-          />
-        </div>
-        </label>
-
-        {/* To Date */}
-        <label className="block min-w-0">
-        <span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span>
-        <div className="relative">
-          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input 
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 border border-black rounded text-sm focus:ring-1 focus:ring-black outline-none"
-          />
-        </div>
-        </label>
       </div>
 
       {schedulesState.error ? (
@@ -471,10 +437,9 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
         </div>
       ) : null}
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
-        <div className="overflow-x-auto">
+      <div className="overflow-x-auto rounded border border-black bg-white">
           <table className="min-w-full divide-y divide-black border-collapse border border-black text-xs">
-            <thead className="sticky top-0 z-30 bg-slate-100">
+            <thead className="bg-slate-100">
               <tr className="divide-x divide-black">
                 <th className="px-2 py-2 border border-black text-left leading-tight">S.No</th>
                 <th className="px-2 py-2 border border-black text-left leading-tight">
@@ -600,11 +565,7 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
                 </tr>
               ))}
               {detailedSchedules.length === 0 && (
-                <tr>
-                  <td colSpan={pendingOnly ? 18 : 17} className="px-6 py-12 text-center text-slate-500 font-bold italic uppercase tracking-widest bg-slate-50/50">
-                    No schedules found matching your criteria
-                  </td>
-                </tr>
+                <tr><td colSpan={pendingOnly ? 18 : 17} className="h-16" aria-label="No records" /></tr>
               )}
             </tbody>
             {detailedSchedules.length > 0 && (
@@ -643,15 +604,14 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
               </tfoot>
             )}
           </table>
-        </div>
-        <ClientPagination
-          page={page}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
       </div>
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </div>
   );
 }

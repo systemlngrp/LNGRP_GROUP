@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useData } from "../hooks/useData";
 import { Firm, Order, OrderSchedule } from "../types";
-import { Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Trash2, ChevronUp, ChevronDown, Search } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
+import { Select } from "../components/Select";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -12,6 +14,9 @@ import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 export function OrdersPendingScheduling() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [firmFilter, setFirmFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [itemFilter, setItemFilter] = useState('');
 
   const [orders, setOrders] = useData<Order>("orders", [], { firmScope: "all" });
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
@@ -40,8 +45,7 @@ export function OrdersPendingScheduling() {
 
   const today = new Date().toISOString().slice(0, 10);
   
-  const pending = useMemo(() => {
-    const words = searchWords(searchTerm);
+  const pendingBase = useMemo(() => {
     return orders
       .filter((order) => order.status === "Pending Scheduling")
       .map((order) => {
@@ -52,7 +56,17 @@ export function OrdersPendingScheduling() {
         const pendingQty = Number(order.qty || 0) - scheduledQty;
         return { order, item, firmName, companyName, scheduledQty, pendingQty };
       })
-      .filter(({ pendingQty }) => pendingQty > 0)
+      .filter(({ pendingQty }) => pendingQty > 0);
+  }, [companies, firms, orders, resolveOrderItem, schedules]);
+
+  const getItemKey = (item: ReturnType<typeof resolveOrderItem>) => String(item?.id || item?.name || "").trim();
+
+  const pending = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return pendingBase
+      .filter(({ order }) => !firmFilter || String(order.firmId || "") === firmFilter)
+      .filter(({ order }) => !companyFilter || String(order.companyId || "") === companyFilter)
+      .filter(({ item }) => !itemFilter || getItemKey(item) === itemFilter)
       .filter(({ order, item, firmName, companyName, pendingQty, scheduledQty }) => matchesTableSearch([
         order.orderNo,
         firmName,
@@ -69,7 +83,51 @@ export function OrdersPendingScheduling() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return sortOrder === "asc" ? cmp : -cmp;
       });
-  }, [companies, firms, orders, resolveOrderItem, schedules, searchTerm, sortOrder]);
+  }, [companyFilter, firmFilter, itemFilter, pendingBase, searchTerm, sortOrder]);
+
+  const firmOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    pendingBase.forEach(({ order, firmName }) => {
+      const id = String(order.firmId || "").trim();
+      if (id && !map.has(id)) map.set(id, firmName);
+    });
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [pendingBase]);
+  const companyOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    pendingBase.forEach(({ order, companyName }) => {
+      const id = String(order.companyId || "").trim();
+      if (id && companyName && !map.has(id)) map.set(id, companyName);
+    });
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [pendingBase]);
+  const itemOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string; searchText: string }>();
+    pendingBase.forEach(({ item }) => {
+      const key = getItemKey(item);
+      if (!key || map.has(key) || !item?.name) return;
+      map.set(key, { value: key, label: item.name, searchText: `${item.name} ${item.erp || ""}` });
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [pendingBase]);
+
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter);
+  const clearFilters = () => {
+    setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter("");
+  };
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalItems,
+    paginatedItems: paginatedPending,
+  } = useClientPagination(pending, 25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, firmFilter, companyFilter, itemFilter, setPage]);
 
   const toggleSort = () => {
     setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -218,21 +276,43 @@ export function OrdersPendingScheduling() {
   };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-black uppercase">Pending Scheduling</h2>
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Scheduling</h2>
+      </div>
 
-      <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {filtersActive ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
 
-      <div className="bg-white p-4 rounded border border-black">
-        <div className="mb-4">
-          <h3 className="font-bold mb-2">Pending Orders</h3>
-          <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-black border-collapse border border-black mb-3 text-sm">
-            <thead className="sticky top-0 z-30 bg-slate-100">
+      <div className="space-y-4">
+        <div className="overflow-x-auto rounded border border-black bg-white">
+          <table className="min-w-full border-collapse border border-black text-sm">
+            <thead className="bg-slate-100">
               <tr>
-                <th className="px-3 py-2 border border-black">S.No</th>
-                <th 
-                  className="px-3 py-2 border border-black cursor-pointer hover:bg-slate-200 select-none"
+                <th className="px-2 py-1.5 border border-black text-right">S.No</th>
+                <th
+                  className="px-2 py-1.5 border border-black cursor-pointer hover:bg-slate-200 select-none"
                   onClick={toggleSort}
                 >
                   <div className="flex items-center justify-center gap-1">
@@ -240,37 +320,46 @@ export function OrdersPendingScheduling() {
                     {sortOrder === "asc" ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </div>
                 </th>
-                <th className="px-3 py-2 border border-black">Firm</th>
-                <th className="px-3 py-2 border border-black">Company</th>
-                <th className="px-3 py-2 border border-black">Item</th>
-                <th className="px-3 py-2 border border-black">Order Quantity</th>
-                <th className="px-3 py-2 border border-black">Scheduled Qty</th>
-                <th className="px-3 py-2 border border-black">Pending Scheduling</th>
-                <th className="px-3 py-2 border border-black">Unit</th>
-                <th className="px-3 py-2 border border-black">Actions</th>
+                <th className="px-2 py-1.5 border border-black">Firm</th>
+                <th className="px-2 py-1.5 border border-black">Company</th>
+                <th className="px-2 py-1.5 border border-black">Item</th>
+                <th className="px-2 py-1.5 border border-black text-right">Order Quantity</th>
+                <th className="px-2 py-1.5 border border-black text-right">Scheduled Qty</th>
+                <th className="px-2 py-1.5 border border-black text-right">Pending Scheduling</th>
+                <th className="px-2 py-1.5 border border-black">Unit</th>
+                <th className="px-2 py-1.5 border border-black">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {pending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
+              {paginatedPending.length === 0 ? (
+                <tr><td colSpan={10} className="h-16" aria-label="No records" /></tr>
+              ) : paginatedPending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
                 return (
                   <tr key={o.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 border border-black">{idx + 1}</td>
-                    <td className="px-3 py-2 border border-black">{o.orderNo}</td>
-                    <td className="px-3 py-2 border border-black font-semibold">{firmName}</td>
-                    <td className="px-3 py-2 border border-black">{companyName || "-"}</td>
-                    <td className="px-3 py-2 border border-black">{item?.name || "-"}</td>
-                    <td className="px-3 py-2 border border-black">{formatQty(o.qty)}</td>
-                    <td className="px-3 py-2 border border-black">{formatQty(sched)}</td>
-                    <td className="px-3 py-2 border border-black font-bold text-indigo-700">{formatQty(pendingSched)}</td>
-                    <td className="px-3 py-2 border border-black">{item?.uom || "-"}</td>
-                    <td className="px-3 py-2 border border-black"><button onClick={() => { setModalOrderId(o.id); setModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-1 rounded">Schedule</button></td>
+                    <td className="px-2 py-1.5 border border-black text-right tabular-nums">{(page - 1) * pageSize + idx + 1}</td>
+                    <td className="px-2 py-1.5 border border-black">{o.orderNo}</td>
+                    <td className="px-2 py-1.5 border border-black font-semibold">{firmName}</td>
+                    <td className="px-2 py-1.5 border border-black">{companyName || "-"}</td>
+                    <td className="px-2 py-1.5 border border-black">{item?.name || "-"}</td>
+                    <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatQty(o.qty)}</td>
+                    <td className="px-2 py-1.5 border border-black text-right tabular-nums">{formatQty(sched)}</td>
+                    <td className="px-2 py-1.5 border border-black text-right tabular-nums font-bold text-indigo-700">{formatQty(pendingSched)}</td>
+                    <td className="px-2 py-1.5 border border-black">{item?.uom || "-"}</td>
+                    <td className="px-2 py-1.5 border border-black text-center"><button onClick={() => { setModalOrderId(o.id); setModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-1 rounded">Schedule</button></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          </div>
         </div>
+
+        <ClientPagination
+          page={page}
+          pageSize={pageSize}
+          totalItems={totalItems}
+          onPageChange={setPage}
+          onPageSizeChange={setPageSize}
+        />
         {/* Modal scheduler */}
         {modalOpen && modalOrderId && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

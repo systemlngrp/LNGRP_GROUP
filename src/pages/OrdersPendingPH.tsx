@@ -1,17 +1,17 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { Invoice, InvoiceLineItem, Production, User } from "../types";
 import { useData } from "../hooks/useData";
 import { Order } from "../types";
 import { formatDate } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { ChevronUp, ChevronDown, CheckCircle, XCircle, Edit } from "lucide-react";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
+import { ChevronUp, ChevronDown, CheckCircle, XCircle, Edit, Search } from "lucide-react";
 import { Firm } from "../types";
-import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { TableActionCell } from "../components/TableActionCell";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
@@ -19,6 +19,10 @@ export function OrdersPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
   const [orderByFilter, setOrderByFilter] = useState('');
   const [firmFilter, setFirmFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [itemFilter, setItemFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const [orders, setOrders] = useData<Order>("orders", [], { firmScope: "all" });
@@ -121,6 +125,11 @@ export function OrdersPendingPH() {
       .filter(({ order, item, companyName, firmName, orderByLabel, commercialHistory }) => {
         if (firmFilter && String(order.firmId || "") !== firmFilter) return false;
         if (orderByFilter && String(order.orderBy || "") !== orderByFilter) return false;
+        if (companyFilter && String(order.companyId || "") !== companyFilter) return false;
+        if (itemFilter && String(item?.name || "") !== itemFilter) return false;
+        const orderDay = String(order.orderDate || "").slice(0, 10);
+        if (dateFrom && orderDay < dateFrom) return false;
+        if (dateTo && orderDay > dateTo) return false;
         return matchesTableSearch([
           order.orderNo,
           formatDate(order.orderDate),
@@ -142,7 +151,43 @@ export function OrdersPendingPH() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return sortOrder === "asc" ? cmp : -cmp;
       });
-  }, [commercialHistoryByItem, companies, firmFilter, firms, orderByFilter, pending, resolveOrderItem, searchTerm, sortOrder]);
+  }, [commercialHistoryByItem, companies, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, orderByFilter, pending, resolveOrderItem, searchTerm, sortOrder]);
+
+  const firmFilterOptions = useMemo(() => {
+    const ids = new Set(pending.map((order) => String(order.firmId || "")).filter(Boolean));
+    return firms
+      .filter((firm) => ids.has(String(firm.id)))
+      .map((firm) => ({ value: String(firm.id), label: getFirmDisplayName(firm) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [firms, pending]);
+  const companyFilterOptions = useMemo(() => {
+    const ids = new Set(pending.map((order) => String(order.companyId || "")).filter(Boolean));
+    return (companies as any[])
+      .filter((company: any) => ids.has(String(company.id)))
+      .map((company: any) => ({ value: String(company.id), label: String(company.name || company.id) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [companies, pending]);
+  const itemFilterOptions = useMemo(() => {
+    const names = new Set(pending.map((order) => String(resolveOrderItem(order)?.name || "")).filter(Boolean));
+    return Array.from(names).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
+  }, [pending, resolveOrderItem]);
+  const filtersActive = Boolean(searchTerm.trim() || firmFilter || orderByFilter || companyFilter || itemFilter || dateFrom || dateTo);
+  const clearFilters = () => {
+    setSearchTerm(""); setFirmFilter(""); setOrderByFilter(""); setCompanyFilter(""); setItemFilter(""); setDateFrom(""); setDateTo("");
+  };
+
+  const {
+    page,
+    setPage,
+    pageSize,
+    setPageSize,
+    totalItems,
+    paginatedItems: paginatedRows,
+  } = useClientPagination(filtered, 25);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, firmFilter, orderByFilter, companyFilter, itemFilter, dateFrom, dateTo, setPage]);
 
   const presentOrderByValues = Array.from(new Set(pending.map(o => String(o.orderBy || "").trim()).filter(Boolean)));
   const unmappedOrderBys = presentOrderByValues.filter(v => !resolveOrderByUser(v));
@@ -195,35 +240,46 @@ export function OrdersPendingPH() {
   };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-bold text-black uppercase">Pending Salesman Approval</h2>
-
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="min-w-[320px]">
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-black uppercase">Order By</span>
-          <div className="w-64">
-            <Select
-              options={orderByOptions}
-              value={orderByFilter}
-              onChange={(v) => setOrderByFilter(v)}
-              placeholder="All"
-            />
-          </div>
-        </div>
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+    <div className="space-y-4">
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Salesman Approval</h2>
       </div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmFilterOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyFilterOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemFilterOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Order By</span><Select compact value={orderByFilter} onChange={setOrderByFilter} options={orderByOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Order From Date</span><input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Order To Date</span><input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {filtersActive ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded border border-black bg-white">
         {showDebug && (
           <div className="p-3 bg-yellow-50 border-b border-black text-sm">
             <strong>Debug:</strong> Unmapped Order By values: {unmappedOrderBys.length} {unmappedOrderBys.length > 0 && ` â€” ${unmappedOrderBys.slice(0,10).join(", ")}`}
           </div>
         )}
         <table className="min-w-full divide-y divide-black border-collapse border border-black text-sm">
-          <thead className="sticky top-0 z-30 bg-slate-100">
+          <thead className="bg-slate-100">
             <tr>
               <th 
                 className="px-4 py-2 border border-black cursor-pointer hover:bg-slate-200 select-none"
@@ -249,7 +305,9 @@ export function OrdersPendingPH() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(({ order: o, item, companyName, firmName, orderByLabel, commercialHistory }) => (
+            {filtered.length === 0 ? (
+              <tr><td colSpan={13} className="h-16" aria-label="No records" /></tr>
+            ) : paginatedRows.map(({ order: o, item, companyName, firmName, orderByLabel, commercialHistory }) => (
               <tr key={o.id} className="hover:bg-slate-50">
                 <td className="px-4 py-2 border border-black">{o.orderNo}</td>
                 <td className="px-4 py-2 border border-black">{formatDate(o.orderDate)}</td>
@@ -299,6 +357,14 @@ export function OrdersPendingPH() {
           </tbody>
         </table>
       </div>
+
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </div>
   );
 }
