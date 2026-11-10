@@ -155,5 +155,122 @@ export function PreDispatchInspection() {
   const saveEdit = async () => { if (!editingRow) return; const jobFields: Array<[string, unknown]> = [["Firm", editForm.firmName], ["ERP", editForm.erpCode], ["Party Name", editForm.partyName], ["Item Name", editForm.itemName]]; const missingJob = jobFields.find(([, value]) => !text(value)); if (missingJob) return setEditMessage(missingJob[0] + " is required."); const invalidNumber = invalidInspectionNumberField(editForm); if (invalidNumber) return setEditMessage(invalidNumber + " must be a number greater than zero (without units)."); const missingCheck = checks.find(check => !text(editForm[check])); if (missingCheck) return setEditMessage(checkLabels[missingCheck] + " is required."); if (!text(editForm.qcPerson)) return setEditMessage("QC Person is required."); if (!text(editForm.frontPhoto)) return setEditMessage("Box Photo Front is required."); if (!text(editForm.backPhoto)) return setEditMessage("Box Photo Back is required."); if (!text(editForm.remarks)) return setEditMessage("Remarks are required."); const updated: Inspection = { ...editingRow, ...editForm, id: editingRow.id, inspectionDate: editingRow.inspectionDate, result: derivePdiResult(editForm, csStandardForRecord(editingRow)), updatedBy: "System User", updateTimestamp: new Date().toISOString() } as Inspection; setEditSaving(true); try { await api.saveItem(updated); closeEdit(); } catch (error) { setEditMessage(error instanceof Error ? error.message : "Unable to save inspection."); } finally { setEditSaving(false); } };
   const readOnlyEditFields = [["Job No.", "jobNo"], ["Firm *", "firmName"], ["ERP *", "erpCode"], ["Party Name *", "partyName"], ["Item Name *", "itemName"], ["Planned Quantity *", "plannedQty"]] as const;
   const editFields = [["Length (ID) *", "lengthId"], ["Width (ID) *", "widthId"], ["Height (ID) *", "heightId"], ["CS Achieved *", "csAchieved"], ["GSM Achieved *", "gsmAchieved"], ["Box Weight (Grams) *", "boxWeightGrams"]] as const;
-  const tile = (label: string, value: number, tone: string) => <div className={"rounded border-2 border-black p-3 " + tone}><div className="text-xs font-bold uppercase">{label}</div><div className="text-2xl font-black">{value}</div></div>;
+  const tile = (label: string, value: number, tone: string) => <div className={"rounded-lg border-2 border-black p-3 " + tone}><div className="text-[11px] font-black uppercase">{label}</div><div className="text-xl font-black tabular-nums">{value}</div></div>;
+  // The list itself (this part was missing, so PDI Master showed a blank page).
+  const optionsFor = (values: unknown[]) => opts(values.map(text));
+  const firmOptions = firms.filter(f => records.some(r => r.firmId === f.id)).map(f => ({ value: f.id, label: text(f.shortName) || text(f.firmName) }));
+  const anyFilter = Object.values(filters).some(value => text(value));
+  const sorted = [...filtered].sort((a, b) => text(b.updateTimestamp || b.inspectionDate).localeCompare(text(a.updateTimestamp || a.inspectionDate)));
+  const firmLabel = (r: Inspection) => { const firm = firms.find(f => f.id === r.firmId); return firm ? (text(firm.shortName) || text(firm.firmName)) : (text(r.firmName) || "-"); };
+  const cell = "border border-black px-2 py-1.5 text-sm";
+  const resultTone = (value: string) => value === "QC PASS" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : value === "QC FAIL" ? "bg-red-100 text-red-700 border-red-300" : "bg-amber-50 text-amber-900 border-amber-300";
+  return (
+    <div className="space-y-4 text-black">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight">PDI Master</h2>
+        <button type="button" onClick={() => navigate("/quality/pre-dispatch-inspection/form")} title="New PDI" aria-label="New PDI" className="inline-flex items-center gap-1 rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700"><Plus size={15} /> New PDI</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        {tile("Total", tiles.total, "bg-indigo-50 text-indigo-900")}
+        {tile("Pending", tiles.pending, "bg-amber-50 text-amber-900")}
+        {tile("QC Pass", tiles.pass, "bg-emerald-50 text-emerald-900")}
+        {tile("QC Fail", tiles.fail, "bg-rose-50 text-rose-900")}
+        {tile("Today", tiles.today, "bg-sky-50 text-sky-900")}
+      </div>
+
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <input type="text" placeholder="Search" value={filters.search} onChange={e => setFilter("search", e.target.value)} className="w-full rounded border-2 border-black bg-white px-3 py-2 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600" />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select value={filters.firmId} onChange={value => setFilter("firmId", value)} options={firmOptions} placeholder="All" compact /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job No.</span>{filter("jobNo", "All", optionsFor(records.map(r => r.jobNo)))}</div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">ERP</span>{filter("erpCode", "All", optionsFor(records.map(r => r.erpCode)))}</div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Party</span>{filter("partyName", "All", optionsFor(records.map(r => r.partyName)))}</div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span>{filter("itemName", "All", optionsFor(records.map(r => r.itemName)))}</div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Result</span>{filter("result", "All", [{ value: "Pending", label: "Pending" }, { value: "QC PASS", label: "QC PASS" }, { value: "QC FAIL", label: "QC FAIL" }])}</div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">QC Person</span>{filter("qcPerson", "All", optionsFor(records.map(r => r.qcPerson)))}</div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Date</span><input type="date" value={filters.date} onChange={e => setFilter("date", e.target.value)} className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {anyFilter ? <button type="button" onClick={() => setFilters({ search: "", firmId: "", jobNo: "", erpCode: "", partyName: "", itemName: "", result: "", qcPerson: "", date: "" })} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold hover:bg-slate-100">Clear</button> : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
+
+      {loading && records.length === 0 ? <div className="rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-bold text-slate-600">Loading...</div> : null}
+
+      <div className="overflow-x-auto rounded border border-black bg-white">
+        <table className="min-w-full border-collapse">
+          <thead className="bg-slate-100 text-xs font-bold uppercase">
+            <tr>{headers.filter(h => h !== "Actions" || canManage).map(h => <th key={h} className="border border-black px-2 py-2">{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {sorted.length === 0 ? (
+              <tr><td colSpan={canManage ? headers.length : headers.length - 1} className="h-16" aria-label="No records" /></tr>
+            ) : sorted.map(r => {
+              const result = inspectionResult(r, productions, items);
+              return (
+                <tr key={r.id} className="hover:bg-slate-50">
+                  <td className={cell + " font-bold"}>{r.jobNo || "-"}</td>
+                  <td className={cell}>{text(r.inspectionDate).slice(0, 10) ? text(r.inspectionDate).slice(0, 10).split("-").reverse().join("-") : "-"}</td>
+                  <td className={cell}>{formatTimestamp(r.inspectionDate) || "-"}</td>
+                  <td className={cell}>{firmLabel(r)}</td>
+                  <td className={cell}>{r.erpCode || "-"}</td>
+                  <td className={cell}>{r.partyName || "-"}</td>
+                  <td className={cell + " min-w-[200px] max-w-[300px] whitespace-normal break-words"}>{r.itemName || "-"}</td>
+                  <td className={cell}>{r.plannedQty ?? "-"}</td>
+                  <td className={cell}>{r.lotNo || "-"}</td>
+                  <td className={cell}>{text(r.csRequired) || "-"}</td>
+                  <td className={cell}>{text(csStandardForRecord(r)) || "-"}</td>
+                  <td className={cell}>{text(r.lengthId) || "-"}</td>
+                  <td className={cell}>{text(r.widthId) || "-"}</td>
+                  <td className={cell}>{text(r.heightId) || "-"}</td>
+                  <td className={cell}>{text(r.csAchieved) || "-"}</td>
+                  <td className={cell}>{text(r.gsmAchieved) || "-"}</td>
+                  <td className={cell}>{text(r.boxWeightGrams) || "-"}</td>
+                  {checks.map(check => <td key={check} className={cell}>{text(r[check]) || "-"}</td>)}
+                  <td className={cell}>{photoCell(r.frontPhoto)}</td>
+                  <td className={cell}>{photoCell(r.backPhoto)}</td>
+                  <td className={cell}><span className={"inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold " + resultTone(result)}>{result}</span></td>
+                  <td className={cell}>{r.qcPerson || "-"}</td>
+                  <td className={cell + " min-w-[160px] whitespace-normal break-words"}>{r.remarks || "-"}</td>
+                  <td className={cell}>{r.updatedBy || "-"}</td>
+                  <td className={cell}>{formatTimestamp(r.updateTimestamp) || "-"}</td>
+                  {canManage ? <td className={cell + " text-center"}><button type="button" onClick={() => openEdit(r)} title="Edit" aria-label="Edit" className="inline-flex h-8 w-8 items-center justify-center rounded-md border-2 border-blue-600 bg-white text-blue-600 hover:bg-blue-50"><Edit size={14} /></button></td> : null}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {editingRow ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-xl border-2 border-black bg-white shadow-2xl sm:rounded-xl">
+            <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
+              <div className="text-base font-black">Edit PDI — {editingRow.jobNo}</div>
+              <button type="button" onClick={closeEdit} aria-label="Close" className="inline-flex h-9 w-9 items-center justify-center rounded-md border-2 border-black bg-white"><X size={18} /></button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                {readOnlyEditFields.map(([label, key]) => <label key={key} className="space-y-1"><span className="text-xs font-bold">{label}</span><input value={text((editForm as any)[key])} readOnly className={jobInformationInput + " bg-slate-50"} /></label>)}
+                {editFields.map(([label, key]) => <label key={key} className="space-y-1"><span className="text-xs font-bold">{label}</span><input value={text((editForm as any)[key])} onChange={e => updateEdit(key, e.target.value)} inputMode="decimal" className={input} /></label>)}
+                {checks.map(check => <label key={check} className="space-y-1"><span className="text-xs font-bold">{checkLabels[check]} *</span><Select value={text(editForm[check])} onChange={value => updateEdit(check, value)} options={[{ value: "OK", label: "OK" }, { value: "NOT OK", label: "NOT OK" }]} placeholder="Select" /></label>)}
+                <label className="space-y-1"><span className="text-xs font-bold">QC Person *</span><Select value={text(editForm.qcPerson)} onChange={value => updateEdit("qcPerson", value)} options={qcPersonOptions(activePeople)} placeholder="Select" /></label>
+                <label className="space-y-1"><span className="text-xs font-bold">Box Photo Front *</span><input type="file" accept="image/*" onChange={e => void uploadEdit("frontPhoto", e.target.files?.[0])} className={input} />{text(editForm.frontPhoto) ? <span className="text-xs">{photoCell(editForm.frontPhoto)}</span> : null}</label>
+                <label className="space-y-1"><span className="text-xs font-bold">Box Photo Back *</span><input type="file" accept="image/*" onChange={e => void uploadEdit("backPhoto", e.target.files?.[0])} className={input} />{text(editForm.backPhoto) ? <span className="text-xs">{photoCell(editForm.backPhoto)}</span> : null}</label>
+                <label className="col-span-2 space-y-1 md:col-span-3"><span className="text-xs font-bold">Remarks *</span><textarea value={text(editForm.remarks)} onChange={e => updateEdit("remarks", e.target.value)} className={input} rows={2} /></label>
+              </div>
+              {editMessage ? <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{editMessage}</div> : null}
+            </div>
+            <div className="border-t-2 border-black px-4 py-3">
+              <button type="button" onClick={() => void saveEdit()} disabled={editSaving} className="w-full rounded bg-black px-6 py-3 text-sm font-black uppercase tracking-widest text-white disabled:opacity-40">{editSaving ? "Saving..." : "Update"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
