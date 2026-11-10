@@ -15,6 +15,7 @@ const SECTION_HEX: Record<string, string> = {
   "bg-sky-700": "#0369a1",
   "bg-indigo-700": "#4338ca",
   "bg-indigo-900": "#312e81",
+  "bg-fuchsia-800": "#86198f",
 };
 
 function collectHrefs(entries: NavEntry[], out: string[]) {

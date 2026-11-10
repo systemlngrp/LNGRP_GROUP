@@ -83,6 +83,11 @@ export function Layout() {
         const hasPlus = Boolean(action.querySelector("svg.lucide-plus"));
         const textPlus = (action.textContent || "").trim().startsWith("+");
         action.classList.toggle("app-add-action", hasPlus || textPlus);
+        // Save buttons take the colour of this page's menu section (CSS: [data-save-button]).
+        if (action.tagName === "BUTTON") {
+          const isSave = /^\s*sav(e|ing)\b/i.test(action.textContent || "") || /^\s*save\b/i.test(action.getAttribute("aria-label") || "");
+          if (isSave !== action.hasAttribute("data-save-button")) action.toggleAttribute("data-save-button", isSave);
+        }
       });
 
       content.querySelectorAll<HTMLElement>(".app-add-action-group").forEach(group => group.classList.remove("app-add-action-group"));

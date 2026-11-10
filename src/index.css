@@ -1675,3 +1675,16 @@ table td button:focus-visible {
 [data-mf-apply]:is(:not([data-mobile-filters] [data-mf-apply]), [data-mobile-filters="collapsed"] [data-mf-apply]) {
   display: none !important;
 }
+
+/* Save buttons use the colour of the page's menu section (Layout marks them). */
+.app-view-content[data-section-color] button[data-save-button] {
+  background-color: var(--section-head-bg) !important;
+  border-color: #000 !important;
+  color: #fff !important;
+}
+.app-view-content[data-section-color] button[data-save-button]:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--section-head-bg) 82%, #000) !important;
+}
+.app-view-content[data-section-color] button[data-save-button] svg {
+  color: #fff !important;
+}
