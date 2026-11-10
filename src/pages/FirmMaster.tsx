@@ -210,7 +210,7 @@ export function FirmMaster() {
       <div className="text-xs font-bold text-slate-700">{searchedFirms.length} {searchedFirms.length === 1 ? "firm" : "firms"}</div>
 
       {/* Phones: one card per firm; tap to edit. */}
-      <div className="space-y-2 md:hidden">
+      <div className="hidden">
         {searchedFirms.length === 0 ? (
           <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">{isLoading ? "Loading…" : "No firms found."}</div>
         ) : sortedFirmRows.map((firm) => (
@@ -225,7 +225,7 @@ export function FirmMaster() {
         ))}
       </div>
 
-      <div className="hidden bg-white rounded-lg shadow-sm overflow-hidden border border-black md:block">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto border border-black">
         <div className="table-sticky-scroll">
           <table className="min-w-full border-collapse border border-black">
             <thead className="sticky top-0 z-10 bg-slate-100">

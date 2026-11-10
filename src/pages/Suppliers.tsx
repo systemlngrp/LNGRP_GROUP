@@ -471,7 +471,7 @@ export function Suppliers() {
           <div className="text-xs font-bold text-slate-700">{filteredSuppliers.length.toLocaleString()} {filteredSuppliers.length === 1 ? "supplier" : "suppliers"}</div>
 
           {/* Phones: one card per supplier. */}
-          <div className="space-y-2 md:hidden">
+          <div className="hidden">
             {paginatedSuppliers.length === 0 ? (
               <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">{suppliersLoading || isSubmitting ? "Loading…" : "No suppliers found."}</div>
             ) : paginatedSuppliers.map((supplier) => (
@@ -494,8 +494,8 @@ export function Suppliers() {
             ))}
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-black">
-            <div className="table-sticky-scroll hidden md:block">
+          <div className="bg-white rounded-lg shadow-sm overflow-x-auto border border-black">
+            <div className="table-sticky-scroll overflow-x-auto">
             <table className="min-w-max divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">

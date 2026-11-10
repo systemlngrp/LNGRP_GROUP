@@ -124,7 +124,7 @@ export function States() {
 
           <div className="text-xs font-bold text-slate-700">{filteredStates.length.toLocaleString()} {filteredStates.length === 1 ? "state" : "states"}</div>
 
-          <div className="overflow-hidden rounded border border-black bg-white">
+          <div className="overflow-x-auto rounded border border-black bg-white">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr>

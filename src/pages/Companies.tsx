@@ -606,8 +606,8 @@ export function Companies() {
 
       <div className="text-xs font-bold text-slate-700">{filteredCompanies.length.toLocaleString()} {filteredCompanies.length === 1 ? "company" : "companies"}</div>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-black">
-        <div className="block md:hidden space-y-4 p-4">
+      <div className="bg-white rounded-lg shadow-sm overflow-x-auto border border-black">
+        <div className="hidden">
           {paginatedCompanies.map((c, index) => (
             <div
               key={c.id}
@@ -641,7 +641,7 @@ export function Companies() {
           ))}
         </div>
 
-        <div className="table-sticky-scroll hidden md:block">
+        <div className="table-sticky-scroll overflow-x-auto">
           <table className="min-w-max divide-y divide-black border-collapse border border-black">
             <thead className="bg-slate-100 divide-x divide-black sticky top-0 z-10">
               <tr className="divide-x divide-black">

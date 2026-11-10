@@ -126,7 +126,7 @@ export function GstRateMasters() {
             <SelectFilter label="Active" value={activeFilter} onChange={setActiveFilter} options={[{ value: "Yes", label: "Yes" }, { value: "No", label: "No" }]} />
           </ReportFilterBox>
           <div className="text-xs font-bold text-slate-700">{filteredRates.length.toLocaleString()} {filteredRates.length === 1 ? "rate" : "rates"}</div>
-          <div className="overflow-hidden rounded border border-black bg-white">
+          <div className="overflow-x-auto rounded border border-black bg-white">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr>

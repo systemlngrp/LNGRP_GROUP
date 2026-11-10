@@ -2125,7 +2125,7 @@ export function Materials() {
             <DateRangeFilter from={fromDate} to={toDate} onFrom={setFromDate} onTo={setToDate} />
           </ReportFilterBox>
 
-          <div className="bg-white rounded shadow-sm border border-black overflow-hidden">
+          <div className="bg-white rounded shadow-sm border border-black overflow-x-auto">
             <div className="table-sticky-scroll">
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-20">

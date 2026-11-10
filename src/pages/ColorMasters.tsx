@@ -113,7 +113,7 @@ export function ColorMasters() {
           <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim())} onClear={() => setSearchTerm("")} />
           <div className="text-xs font-bold text-slate-700">{filteredColors.length.toLocaleString()} {filteredColors.length === 1 ? "color" : "colors"}</div>
           <div className="bg-white rounded shadow-sm border border-black table-sticky-scroll">
-            <div className="block md:hidden space-y-4 p-2">
+            <div className="hidden">
               {sortedColors.map((color) => (
                 <div key={color.id} className="bg-white border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
                   <div className="flex justify-between items-center">
@@ -127,7 +127,7 @@ export function ColorMasters() {
               ))}
             </div>
 
-            <table className="hidden md:table min-w-full divide-y divide-black border-collapse border border-black">
+            <table className="min-w-full divide-y divide-black border-collapse border border-black">
               <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                 <tr className="divide-x divide-black">
                   <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Color Name" sortKey="name" sort={sort} onToggle={toggleSort} align="left" /></th>

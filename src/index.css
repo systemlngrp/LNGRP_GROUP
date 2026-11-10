@@ -1670,3 +1670,8 @@ table td button:focus-visible {
   table[data-form-grid] > tbody > tr > td { width: 100% !important; border-left-width: 0 !important; }
   table[data-form-grid] > tbody > tr > td + td { border-top: 1px solid #000; }
 }
+
+/* The phone "Apply" button only makes sense in a folding filter box that is open. */
+[data-mf-apply]:is(:not([data-mobile-filters] [data-mf-apply]), [data-mobile-filters="collapsed"] [data-mf-apply]) {
+  display: none !important;
+}

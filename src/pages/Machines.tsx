@@ -285,7 +285,7 @@ export function Machines() {
       <div className="text-xs font-bold text-slate-700">{filtered.length.toLocaleString()} {filtered.length === 1 ? "machine" : "machines"}</div>
 
       {/* Phones: one card per machine. */}
-      <div className="space-y-2 md:hidden">
+      <div className="hidden">
         {filtered.length === 0 ? (
           <div className="rounded border border-black bg-white p-6 text-center text-sm font-medium">{machinesLoading ? "Loading…" : "No machines found."}</div>
         ) : sortedMachines.map((machine) => (
@@ -306,7 +306,7 @@ export function Machines() {
         ))}
       </div>
 
-      <div className="hidden bg-white rounded shadow-sm overflow-hidden border border-black md:block">
+      <div className="bg-white rounded shadow-sm overflow-x-auto border border-black">
         <div className="table-sticky-scroll">
           <table className="min-w-max divide-y divide-black border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">

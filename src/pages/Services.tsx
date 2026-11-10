@@ -123,7 +123,7 @@ export function Services() {
 
           <div className="text-xs font-bold text-slate-700">{filteredServices.length.toLocaleString()} {filteredServices.length === 1 ? "service" : "services"}</div>
 
-          <div className="overflow-hidden rounded border border-black bg-white">
+          <div className="overflow-x-auto rounded border border-black bg-white">
             <table className="w-full border-collapse">
               <thead className="sticky top-0 z-30 bg-slate-100">
                 <tr>

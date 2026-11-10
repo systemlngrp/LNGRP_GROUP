@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { Edit, Plus, Trash2 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
-import { TableControls } from "../components/TableControls";
+import { MasterHeader } from "../components/MasterHeader";
+import { ReportFilterBox, SelectFilter } from "../components/ReportFilterBox";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
@@ -20,19 +21,20 @@ export function ExpenseMasters() {
   const [name, setName] = useState("");
   const [type, setType] = useState<NonNullable<ExpenseMaster["type"]>>("Monthly");
   const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const filteredExpenses = useMemo(
     () =>
       [...expenses]
-        .filter((expense) => matchesTableSearch([expense.name, expense.type || "Monthly"], searchWords(searchTerm)))
+        .filter((expense) => (!typeFilter || (expense.type || "Monthly") === typeFilter) && matchesTableSearch([expense.name, expense.type || "Monthly"], searchWords(searchTerm)))
         .sort((a, b) => {
           const timeA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
           const timeB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
           return timeB - timeA || a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
         }),
-    [expenses, searchTerm]
+    [expenses, searchTerm, typeFilter]
   );
   const { sorted: sortedExpenses, sort, toggle: toggleSort } = useTableSort(filteredExpenses, (row, key) => (key === "type" ? row.type || "Monthly" : row.name));
 
@@ -105,23 +107,15 @@ export function ExpenseMasters() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between border-b border-black pb-4">
-        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Expense Master</h2>
-        {!isFormOpen ? (
-          <button
-            type="button"
-            onClick={openCreate}
-            className="flex items-center gap-2 rounded bg-indigo-600 px-4 py-2 font-bold text-white shadow transition hover:bg-indigo-700"
-          >
-            <Plus size={18} /> Add Expense
-          </button>
-        ) : null}
-      </div>
+    <div className="space-y-4">
+      {isFormOpen ? (
+        <h2 className="text-center text-xl font-bold uppercase tracking-tight text-black">{editingId ? "Edit Expense" : "New Expense"}</h2>
+      ) : (
+        <MasterHeader title="Expense Master" addLabel="Add Expense" onAdd={openCreate} />
+      )}
 
       {isFormOpen ? (
-        <div className="max-w-xl rounded border border-black bg-white p-6 shadow-sm">
-          <h3 className="mb-6 text-lg font-bold uppercase text-black">{editingId ? "Edit Expense" : "Create Expense"}</h3>
+        <div className="mx-auto w-full max-w-xl rounded-lg border-2 border-black bg-white p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
             <label className="flex flex-col gap-1 font-bold text-black">
               Expense Name *
@@ -159,8 +153,11 @@ export function ExpenseMasters() {
         </div>
       ) : (
         <>
-          <TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" />
-          <div className="table-sticky-scroll rounded border border-black bg-white shadow-sm">
+          <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || typeFilter)} onClear={() => { setSearchTerm(""); setTypeFilter(""); }}>
+            <SelectFilter label="Type" value={typeFilter} onChange={setTypeFilter} options={[{ value: "Monthly", label: "Monthly" }, { value: "Daily", label: "Daily" }]} />
+          </ReportFilterBox>
+          <div className="text-xs font-bold text-slate-700">{filteredExpenses.length.toLocaleString()} {filteredExpenses.length === 1 ? "expense" : "expenses"}</div>
+          <div className="table-sticky-scroll overflow-x-auto rounded border border-black bg-white shadow-sm">
             <table className="min-w-full border-collapse divide-y divide-black border border-black">
               <thead className="sticky top-0 z-30 divide-x divide-black bg-slate-100">
                 <tr className="divide-x divide-black">

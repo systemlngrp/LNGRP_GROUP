@@ -169,7 +169,7 @@ export function RapcRangeMaster() {
 
       <div className="text-xs font-bold text-slate-700">{filteredRanges.length.toLocaleString()} {filteredRanges.length === 1 ? "range" : "ranges"}</div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+      <div className="bg-white rounded shadow-sm overflow-x-auto border border-black">
         <div className="table-sticky-scroll">
           <table className="w-full divide-y divide-black border-collapse border border-black">
             <thead className="bg-slate-100 sticky top-0 z-10">

@@ -619,9 +619,9 @@ export function Users() {
           </ReportFilterBox>
           <div className="text-xs font-bold text-slate-700">{filteredUsers.length.toLocaleString()} {filteredUsers.length === 1 ? "user" : "users"}</div>
 
-          <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+          <div className="bg-white rounded shadow-sm overflow-x-auto border border-black">
             {/* Mobile View - Cards */}
-            <div className="block md:hidden space-y-4 p-2">
+            <div className="hidden">
                 {paginatedUsers.map((user) => (
                     <div key={user.id} className="bg-white border-2 border-black p-4 space-y-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded">
                         <div className="flex justify-between items-center">
@@ -659,7 +659,7 @@ export function Users() {
                 ))}
             </div>
 
-            <div className="table-sticky-scroll hidden md:block">
+            <div className="table-sticky-scroll overflow-x-auto">
               <table className="min-w-max divide-y divide-black border-collapse border border-black">
                 <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
                   <tr className="divide-x divide-black">
