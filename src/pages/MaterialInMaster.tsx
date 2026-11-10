@@ -195,9 +195,12 @@ export function MaterialInMaster() {
 
   // Totals recalculated once per data change, not on every keystroke.
   const normalizedMaterialIn = useMemo(() => materialIn.map((entry) => normalizeMaterialInRecord(entry)), [materialIn]);
-  // Search text of each row from the table's visible columns, built once per data change.
+  // Search text of each row from the table's visible columns: built only while
+  // something is typed, once per data change.
+  const isSearching = searchWords(searchTerm).length > 0;
   const searchTextById = useMemo(() => {
     const map = new Map<string, string>();
+    if (!isSearching) return map;
     normalizedMaterialIn.forEach((entry) => {
       map.set(entry.id, rowSearchText([
         entry.transactionNo,
@@ -236,7 +239,7 @@ export function MaterialInMaster() {
     });
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [normalizedMaterialIn, supplierNameById, companyNameById, firms]);
+  }, [normalizedMaterialIn, supplierNameById, companyNameById, firms, isSearching]);
 
   const filteredMaterialIn = useMemo(() => {
     const words = searchWords(searchTerm);

@@ -225,25 +225,28 @@ export function ScheduledOrdersMaster({ pendingOnly = false }: ScheduledOrdersMa
     });
   }, [pendingOnly, scheduleDispatchDetails, schedulesLoading, plansLoading, loadingSlipsLoading, setSchedules]);
 
-  // Search text of each schedule from the table's visible columns, built once per list.
-  const searchTextById = useMemo(() => new Map(scheduleDispatchDetails.map((s) => [s.id, rowSearchText([
+  // Search text of each schedule from the table's visible columns: built only
+  // while something is typed, once per list.
+  const isSearching = searchWords(searchTerm).length > 0;
+  const searchTextById = useMemo(() => (isSearching ? new Map(scheduleDispatchDetails.map((s) => [s.id, rowSearchText([
     formatDate(s.scheduledDate),
+    s.scheduledDate,
     s.scheduleNo,
     s.orderNo,
     s.firmName,
     s.companyName,
     s.itemName,
     s.itemErp,
-    (Number(s.qty) || 0).toLocaleString(),
-    (Number(s.canceledQty) || 0).toLocaleString(),
-    s.plannedQty.toLocaleString(),
-    s.producedFgQty.toLocaleString(),
-    s.pendingPlanning.toLocaleString(),
-    s.loaded.toLocaleString(),
-    s.invoiced.toLocaleString(),
-    s.pendingInvoice.toLocaleString(),
-    s.pendingOrderQty.toLocaleString(),
-  ])])), [scheduleDispatchDetails]);
+    Number(s.qty) || 0,
+    Number(s.canceledQty) || 0,
+    s.plannedQty,
+    s.producedFgQty,
+    s.pendingPlanning,
+    s.loaded,
+    s.invoiced,
+    s.pendingInvoice,
+    s.pendingOrderQty,
+  ])])) : new Map<string, string>()), [scheduleDispatchDetails, isSearching]);
 
   const detailedSchedules = useMemo(() => {
     const words = searchWords(searchTerm);

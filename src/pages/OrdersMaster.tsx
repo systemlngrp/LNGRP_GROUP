@@ -159,8 +159,10 @@ export function OrdersMaster() {
     });
   }, [canceledQtyByOrderId, companyMap, firmMap, invoicedQtyByOrderId, itemMap, orders, userMap]);
 
-  // Search text of each row from the table's visible columns, built once per row list.
-  const searchTextByRow = useMemo(() => new Map(rows.map((row) => [row, rowSearchText([
+  // Search text of each row from the table's visible columns: built only while
+  // something is typed, once per row list.
+  const isSearching = searchWords(searchTerm).length > 0;
+  const searchTextByRow = useMemo(() => (isSearching ? new Map(rows.map((row) => [row, rowSearchText([
     row.order.orderNo,
     formatDate(row.order.orderDate),
     row.firmName,
@@ -168,14 +170,14 @@ export function OrdersMaster() {
     row.order.erpCode,
     row.itemName,
     row.order.poNumber,
-    formatAmount(toNumber(row.order.qty)),
-    formatAmount(toNumber(row.order.rate)),
-    formatAmount(row.orderAmount),
-    formatAmount(row.invoicedQty),
-    formatAmount(row.canceledQty),
-    formatAmount(row.pendingQty),
+    toNumber(row.order.qty),
+    toNumber(row.order.rate),
+    row.orderAmount,
+    row.invoicedQty,
+    row.canceledQty,
+    row.pendingQty,
     row.orderByName,
-  ])])), [rows]);
+  ])])) : new Map<OrderMasterRow, string>()), [rows, isSearching]);
   const searchWordsList = useMemo(() => searchWords(searchTerm), [searchTerm]);
   const matchesSearch = (row: OrderMasterRow) => matchesTableSearch(searchTextByRow.get(row) || "", searchWordsList);
 

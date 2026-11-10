@@ -13,15 +13,28 @@ const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 const DMY_DATE = /^(\d{2})[-/](\d{2})[-/](\d{4})$/;
 const NUMBER = /^-?[\d,]*\.?\d+$/;
 
-/** Words of the search box, lower-cased. Empty when nothing is typed. */
-export function searchWords(term: string | null | undefined) {
-  return String(term || "").toLowerCase().split(/\s+/).map((word) => word.trim()).filter(Boolean);
+/** Typed numbers match with or without thousands commas and trailing zeros. */
+function normalizeNumberWord(word: string) {
+  if (!NUMBER.test(word)) return word;
+  let text = word.replace(/,/g, "");
+  if (text.includes(".")) text = text.replace(/0+$/, "").replace(/\.$/, "");
+  return text;
 }
 
+/** Words of the search box, lower-cased. Empty when nothing is typed. */
+export function searchWords(term: string | null | undefined) {
+  return String(term || "").toLowerCase().split(/\s+/).map((word) => normalizeNumberWord(word.trim())).filter(Boolean);
+}
+
+// Cheap string work only (no toLocaleString): this runs for every row.
 function variants(value: unknown, out: string[]) {
   if (value === null || value === undefined || value === "") return;
   if (Array.isArray(value)) {
-    value.forEach((item) => variants(item, out));
+    for (const item of value) variants(item, out);
+    return;
+  }
+  if (typeof value === "number") {
+    if (Number.isFinite(value)) out.push(String(Math.round(value * 100) / 100));
     return;
   }
   if (value instanceof Date) {
@@ -34,7 +47,7 @@ function variants(value: unknown, out: string[]) {
   out.push(text);
   const iso = ISO_DATE.exec(text);
   if (iso) {
-    out.push(`${iso[3]}-${iso[2]}-${iso[1]}`, `${iso[3]}/${iso[2]}/${iso[1]}`, iso[0]);
+    out.push(`${iso[3]}-${iso[2]}-${iso[1]}`, `${iso[3]}/${iso[2]}/${iso[1]}`);
     return;
   }
   const dmy = DMY_DATE.exec(text);
@@ -43,11 +56,8 @@ function variants(value: unknown, out: string[]) {
     return;
   }
   if (NUMBER.test(text)) {
-    const number = Number(text.replace(/,/g, ""));
-    if (Number.isFinite(number)) {
-      const rounded = Math.round(number * 100) / 100;
-      out.push(String(rounded), rounded.toLocaleString("en-IN"), rounded.toLocaleString("en-US"), rounded.toFixed(2));
-    }
+    const plain = normalizeNumberWord(text);
+    if (plain !== text) out.push(plain);
   }
 }
 
@@ -71,14 +81,16 @@ export function matchesTableSearch(values: unknown[] | string, words: string[]) 
  * built once per row list, so typing stays fast on long lists.
  */
 export function useTableSearch<T>(rows: T[], term: string, cells: (row: T) => unknown[], deps: unknown[] = []) {
+  const searching = searchWords(term).length > 0;
+  // The index is only built while something is typed, and then once per row list.
   const index = useMemo(
-    () => rows.map((row) => ({ row, text: rowSearchText(cells(row)) })),
+    () => (searching ? rows.map((row) => ({ row, text: rowSearchText(cells(row)) })) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rows, ...deps],
+    [rows, searching, ...deps],
   );
   return useMemo(() => {
     const words = searchWords(term);
-    if (!words.length) return rows;
+    if (!words.length || !index) return rows;
     return index.filter((entry) => words.every((word) => entry.text.includes(word))).map((entry) => entry.row);
   }, [index, rows, term]);
 }
