@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { TableControls } from "../components/TableControls";
+import { Select } from "../components/Select";
 import { buildReelIssueHistoryChecker, buildReelTransferContexts, DEFAULT_REEL_TRANSFER_WINDOW_HOURS } from "../lib/reelTransfer";
 import { formatDate } from "../lib/utils";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -19,6 +19,10 @@ export function PendingJobTransfer() {
   const [issueLines] = useData<MaterialIssueLine>("material_issue_lines", []);
   const [settings] = useData<Setting>("settings", []);
   const [searchTerm, setSearchTerm] = useState("");
+  const [companyFilter, setCompanyFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
   const { findItemAcrossSources } = useOrderItemCatalog();
   const windowHours = Number(settings[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
 
@@ -48,20 +52,45 @@ export function PendingJobTransfer() {
       .sort((a, b) => Number(b.context.eligible) - Number(a.context.eligible) || b.context.fullTime - a.context.fullTime);
   }, [findItemAcrossSources, issueLines, issueReels, processing, productions, returnReels, windowHours]);
 
+  const companyOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.company).filter((value) => value && value !== "-")))
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value })),
+    [rows]
+  );
+  const itemOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.item).filter((value) => value && value !== "-")))
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ value, label: value })),
+    [rows]
+  );
+
   const filteredRows = useMemo(() => {
     const words = searchWords(searchTerm);
-    if (!words.length) return rows;
-    return rows.filter(({ production, company, item, transferableReels }) =>
-      matchesTableSearch([
+    return rows.filter(({ production, company, item, transferableReels }) => {
+      const jobDate = String(production.date || "").slice(0, 10);
+      if (companyFilter && company !== companyFilter) return false;
+      if (itemFilter && item !== itemFilter) return false;
+      if (fromDateFilter && (!jobDate || jobDate < fromDateFilter)) return false;
+      if (toDateFilter && (!jobDate || jobDate > toDateFilter)) return false;
+      return matchesTableSearch([
         production.transactionNo,
         production.date,
         company,
         item,
         transferableReels.length,
         transferableReels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0).toFixed(2),
-      ], words)
-    );
-  }, [rows, searchTerm]);
+      ], words);
+    });
+  }, [companyFilter, fromDateFilter, itemFilter, rows, searchTerm, toDateFilter]);
+  const hasActiveFilters = Boolean(searchTerm.trim() || companyFilter || itemFilter || fromDateFilter || toDateFilter);
+  const clearFilters = () => {
+    setSearchTerm("");
+    setCompanyFilter("");
+    setItemFilter("");
+    setFromDateFilter("");
+    setToDateFilter("");
+  };
 
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filteredRows, (row, key) => {
     if (key === "jobNo") return row.production.transactionNo;
@@ -84,16 +113,36 @@ export function PendingJobTransfer() {
 
   return (
     <div className="space-y-5 text-black">
-      <div className="flex flex-col gap-3 border-b border-black pb-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-xl font-bold uppercase tracking-tight">Job Transfer</h2>
-        <TableControls
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          placeholder="Search"
-        />
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Job Transfer</h2>
       </div>
 
-      <div className="overflow-x-auto rounded border border-black bg-white shadow-sm">
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded border border-black bg-white">
         <table className="min-w-full border-collapse">
           <thead className="bg-slate-800 text-white">
             <tr>
@@ -104,7 +153,7 @@ export function PendingJobTransfer() {
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
-              <tr><td colSpan={7} className="px-6 py-10 text-center font-medium text-slate-500">{rows.length ? "No jobs match the current search." : "No jobs are currently eligible for reel balance transfer."}</td></tr>
+              <tr><td colSpan={7} className="h-16" aria-label="No records" /></tr>
             ) : sortedRows.map(({ production, context, company, item, transferableReels }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
                 <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>

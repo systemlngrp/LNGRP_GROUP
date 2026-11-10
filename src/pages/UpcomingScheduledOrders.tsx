@@ -1,15 +1,14 @@
 import React, { useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Company, Firm, Order, OrderSchedule, Production } from "../types";
 import { Spinner } from "../components/Spinner";
 
-import { TableControls } from "../components/TableControls";
-import { DataSummaryTiles } from "../components/DataSummaryTiles";
+import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
 import { useNavigate } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -37,6 +36,10 @@ function parseLocalYmd(dateStr?: string) {
 export function UpcomingScheduledOrders() {
   const [searchTerm, setSearchTerm] = useState('');
   const [firmFilter, setFirmFilter] = useState('');
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [itemFilter, setItemFilter] = useState('');
+  const [fromDateFilter, setFromDateFilter] = useState('');
+  const [toDateFilter, setToDateFilter] = useState('');
 
   const navigate = useNavigate();
   const [schedules, setSchedules] = useData<OrderSchedule>("orders_schedule", []);
@@ -66,8 +69,7 @@ export function UpcomingScheduledOrders() {
     [phpJobs, plateJobs, productions]
   );
 
-  const upcomingRows = useMemo(() => {
-    const words = searchWords(searchTerm);
+  const baseRows = useMemo(() => {
     return schedules
         .filter((schedule) => {
           const consumedQty = Number(consumptionByScheduleId.get(schedule.id)?.effectiveConsumedQty || 0);
@@ -95,9 +97,19 @@ export function UpcomingScheduledOrders() {
             actualProducedQty,
             pendingQty: getPendingProductionQty(schedule, consumedQty),
           };
-        })
+        });
+  }, [companies, consumptionByScheduleId, cutoffDate, firms, orders, resolveOrderItem, schedules]);
+
+  const upcomingRows = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return baseRows
         .filter(({ schedule, order, item, company, firmId, firmName, pendingQty, plannedQty, actualProducedQty }) => {
           if (firmFilter && firmId !== firmFilter) return false;
+          if (companyFilter && String(order?.companyId || "") !== companyFilter) return false;
+          if (itemFilter && String(item?.id || "") !== itemFilter) return false;
+          const scheduledYmd = String(schedule.scheduledDate || "").slice(0, 10);
+          if (fromDateFilter && scheduledYmd < fromDateFilter) return false;
+          if (toDateFilter && scheduledYmd > toDateFilter) return false;
           return matchesTableSearch([
             order?.orderNo,
             schedule.scheduleNo,
@@ -117,7 +129,13 @@ export function UpcomingScheduledOrders() {
           const timeB = new Date(b.schedule.scheduledDate || 0).getTime();
           return timeA - timeB; // Ascending by date
         });
-  }, [companies, consumptionByScheduleId, cutoffDate, firmFilter, firms, orders, resolveOrderItem, schedules, searchTerm]);
+  }, [baseRows, companyFilter, firmFilter, fromDateFilter, itemFilter, searchTerm, toDateFilter]);
+
+  const firmOptions = useMemo(() => Array.from(new Map(baseRows.filter((row) => row.firmId).map((row) => [row.firmId, { value: row.firmId, label: row.firmName }])).values()).sort((a, b) => a.label.localeCompare(b.label)), [baseRows]);
+  const companyOptions = useMemo(() => Array.from(new Map(baseRows.filter((row) => row.order?.companyId && row.company?.name).map((row) => [String(row.order?.companyId), { value: String(row.order?.companyId), label: String(row.company?.name || "") }])).values()).sort((a, b) => a.label.localeCompare(b.label)), [baseRows]);
+  const itemOptions = useMemo(() => Array.from(new Map(baseRows.filter((row) => row.item?.id && row.item?.name).map((row) => [String(row.item?.id), { value: String(row.item?.id), label: String(row.item?.name || "") }])).values()).sort((a, b) => a.label.localeCompare(b.label)), [baseRows]);
+  const hasActiveFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || fromDateFilter || toDateFilter);
+  const clearFilters = () => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); setFromDateFilter(""); setToDateFilter(""); };
 
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(upcomingRows, (row, key) => {
     switch (key) {
@@ -187,20 +205,39 @@ export function UpcomingScheduledOrders() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center border-b border-black pb-4">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Upcoming Scheduled Orders</h2>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Upcoming Scheduled Orders</h2>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[280px] flex-1"><TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} /></div>
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Schedule From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Schedule To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
-      <DataSummaryTiles totalRecords={schedules.length} filteredRecords={upcomingRows.length} showingRecords={upcomingRows.length} pageLabel="1 / 1" />
-
-      <div className="bg-white rounded shadow-sm border border-black table-sticky-scroll">
+      <div className="overflow-x-auto rounded border border-black bg-white">
         <table className="min-w-full divide-y divide-black border-collapse border border-black text-sm">
-          <thead className="sticky top-0 z-30 bg-slate-100">
+          <thead className="bg-slate-100">
             <tr>
               <th className="px-3 py-2 border border-black">SL No</th>
               <th className="px-3 py-2 border border-black"><SortHeader label="Order No" sortKey="orderNo" sort={sort} onToggle={toggleSort} align="center" /></th>
@@ -220,11 +257,7 @@ export function UpcomingScheduledOrders() {
           </thead>
           <tbody>
             {upcomingRows.length === 0 ? (
-              <tr>
-                <td colSpan={14} className="px-6 py-8 text-center text-black font-medium italic">
-                  No upcoming production schedules (beyond today + 2 days).
-                </td>
-              </tr>
+              <tr><td colSpan={14} className="h-16" aria-label="No records" /></tr>
             ) : (
               sortedRows.map(({ schedule, order, item, company, firmName, pendingQty, plannedQty, actualProducedQty }, index) => (
                 <tr key={schedule.id} className="hover:bg-slate-50">

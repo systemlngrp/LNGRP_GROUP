@@ -2,10 +2,9 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, Firm, ProductionProcessing, Setting, LoadingSlip, LoadingSlipLine, MaterialIssue, Machine } from "../types";
 import { formatDate } from "../lib/serial";
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
-import { ClipboardList, CheckCircle, XCircle } from "lucide-react";
+import { ClipboardList, CheckCircle, XCircle, Search } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { PROCESSING_MACHINE_COLUMNS } from "../lib/productionProcessingSummary";
@@ -17,7 +16,6 @@ import { SortHeader, useTableSort } from "../lib/tableSort";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionEffectiveType, getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/jobClosureValidation";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
@@ -48,6 +46,8 @@ export function PendingJobClosure() {
   const [companyFilter, setCompanyFilter] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
   const [closingId, setClosingId] = useState<string | null>(null);
   const [cancelModalJobId, setCancelModalJobId] = useState<string | null>(null);
   const [cancelRemarks, setCancelRemarks] = useState("");
@@ -344,16 +344,17 @@ export function PendingJobClosure() {
   const orderById = useMemo(() => firstById(orders), [orders]);
   const companyById = useMemo(() => firstById(companies), [companies]);
 
+  // Rule: Only show jobs where closeBy and closeDate are empty/not filled
+  const pendingClosureRows = useMemo(
+    () => productions.filter((p) => !p.closeBy && !p.closeDate && p.status !== "Cancelled"),
+    [productions]
+  );
+
   // Worked out once per data or filter change instead of on every render.
   const filteredList = useMemo(() => {
     const words = searchWords(searchTerm);
-    return productions
+    return pendingClosureRows
     .filter(p => {
-      // Rule: Only show jobs where closeBy and closeDate are empty/not filled
-      const isNotClosed = !p.closeBy && !p.closeDate;
-      const isNotCancelled = p.status !== "Cancelled";
-      if (!isNotClosed || !isNotCancelled) return false;
-
       const item = resolveProductionItem(p);
       const schedule = scheduleById.get(p.scheduleId);
       const order = orderById.get(schedule?.orderId as string);
@@ -364,6 +365,9 @@ export function PendingJobClosure() {
       if (firmFilter && firmId !== firmFilter) return false;
       const itemKey = item?.id || `${item?.name || ""}::${p.erpCode || ""}`;
       if (itemFilter && itemKey !== itemFilter) return false;
+      const planDate = String(p.date || "").slice(0, 10);
+      if (fromDateFilter && (!planDate || planDate < fromDateFilter)) return false;
+      if (toDateFilter && (!planDate || planDate > toDateFilter)) return false;
       if (!words.length) return true;
       // Visible table columns only (as the cells show them).
       const anyItem = item as any;
@@ -430,10 +434,11 @@ export function PendingJobClosure() {
     .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: 'base' }));
   },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  [companyById, companyFilter, erpLeastGsmMap, firmFilter, firms, findItemAcrossSources, itemFilter, jobClosureStatusMap, loadedQtyByProductionId, orderById, processingTotalsMap, productions, scheduleById, searchTerm]);
+  [companyById, companyFilter, erpLeastGsmMap, firmFilter, firms, findItemAcrossSources, itemFilter, fromDateFilter, toDateFilter, jobClosureStatusMap, loadedQtyByProductionId, orderById, processingTotalsMap, pendingClosureRows, scheduleById, searchTerm]);
 
-  const companyOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const schedule = scheduleById.get(row.scheduleId); const order = orderById.get(schedule?.orderId as string); const company = companyById.get(order?.companyId as string); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companyById, filteredList, orderById, scheduleById]);
-  const itemOptions = useMemo(() => Array.from(new Map(filteredList.map((row) => { const item = resolveProductionItem(row); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [filteredList, findItemAcrossSources]);
+  const firmOptions = useMemo(() => Array.from(new Map(pendingClosureRows.map((row) => { const schedule = scheduleById.get(row.scheduleId); const order = orderById.get(schedule?.orderId as string); const firmId = String(schedule?.firmId || row.firmId || row.orderFirmId || order?.firmId || ""); return [firmId, { value: firmId, label: firmId ? getFirmDisplayNameById(firmId, firms) : "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [firms, orderById, pendingClosureRows, scheduleById]);
+  const companyOptions = useMemo(() => Array.from(new Map(pendingClosureRows.map((row) => { const schedule = scheduleById.get(row.scheduleId); const order = orderById.get(schedule?.orderId as string); const company = companyById.get(order?.companyId as string); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companyById, pendingClosureRows, orderById, scheduleById]);
+  const itemOptions = useMemo(() => Array.from(new Map(pendingClosureRows.map((row) => { const item = resolveProductionItem(row); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingClosureRows, findItemAcrossSources]);
 
   const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (p, key) => {
     const schedule = scheduleById.get(p.scheduleId);
@@ -512,6 +517,20 @@ export function PendingJobClosure() {
     paginatedItems: paginatedList,
   } = useClientPagination(sortedList, 25);
 
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, firmFilter, companyFilter, itemFilter, fromDateFilter, toDateFilter, setPage]);
+
+  const hasActiveFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || fromDateFilter || toDateFilter);
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFirmFilter("");
+    setCompanyFilter("");
+    setItemFilter("");
+    setFromDateFilter("");
+    setToDateFilter("");
+  };
+
   const getMandatoryStatus = (production: Production, item?: any) => {
     const status = jobClosureStatusMap.get(production.id);
     return {
@@ -528,25 +547,37 @@ export function PendingJobClosure() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Pending Job Closure</h2>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Job Closure</h2>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(180px,0.8fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
-        <TableControls
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          placeholder="Search"
-        />
-        <FirmFilter value={firmFilter} onChange={setFirmFilter} />
-        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        {(searchTerm || firmFilter || companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Plan From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Plan To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
+      <div className="space-y-2">
         {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4 p-2">
             {paginatedList.map((p) => {
@@ -671,9 +702,9 @@ export function PendingJobClosure() {
                 );
             })}
         </div>
-        <div className="table-sticky-scroll hidden md:block pb-2">
+        <div className="hidden overflow-x-auto rounded border border-black bg-white md:block">
           <table className="min-w-max w-full divide-y divide-black border-collapse border border-black">
-            <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
+            <thead className="bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">Sr. No.</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job No." sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
@@ -740,7 +771,7 @@ export function PendingJobClosure() {
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
                 <tr>
-                  <td colSpan={56} className="px-6 py-8 text-center text-black font-medium">No pending closures found.</td>
+                  <td colSpan={55} className="h-16" aria-label="No records" />
                 </tr>
               ) : (
                 paginatedList.map((p, idx) => {

@@ -2,16 +2,24 @@ import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, Firm } from "../types";
 import { formatDate } from "../lib/serial";
-import { TableControls } from "../components/TableControls";
+import { Select } from "../components/Select";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useConfirm } from "../components/ConfirmDialog";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+
+function toLocalYmd(value?: string | null) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text.slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 
 export function CanceledProductions() {
   const confirm = useConfirm();
@@ -24,6 +32,9 @@ export function CanceledProductions() {
   
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [itemFilter, setItemFilter] = useState("");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
   const [activatingId, setActivatingId] = useState<string | null>(null);
 
   const handleActivate = async (id: string) => {
@@ -77,6 +88,10 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
         const order = orders.find((row) => row.id === schedule?.orderId);
         const firmId = String(schedule?.firmId || production.firmId || production.orderFirmId || order?.firmId || "");
         if (firmFilter && firmId !== firmFilter) return false;
+        if (itemFilter && String(production.itemId || "") !== itemFilter) return false;
+        const cancelYmd = toLocalYmd(production.cancelTimestamp);
+        if (fromDateFilter && (!cancelYmd || cancelYmd < fromDateFilter)) return false;
+        if (toDateFilter && (!cancelYmd || cancelYmd > toDateFilter)) return false;
         if (!words.length) return true;
         return matchesTableSearch([
           production.transactionNo,
@@ -89,7 +104,30 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
         ], words);
       })
       .sort((a, b) => b.transactionNo.localeCompare(a.transactionNo, undefined, { numeric: true, sensitivity: "base" }));
-  }, [canceledProductions, companies, firmFilter, firms, npdItems, orders, schedules, searchTerm]);
+  }, [canceledProductions, companies, firmFilter, firms, fromDateFilter, itemFilter, npdItems, orders, schedules, searchTerm, toDateFilter]);
+
+  const firmOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string }>();
+    canceledProductions.forEach((production) => {
+      const schedule = schedules.find((row) => row.id === production.scheduleId);
+      const order = orders.find((row) => row.id === schedule?.orderId);
+      const firmId = String(schedule?.firmId || production.firmId || production.orderFirmId || order?.firmId || "");
+      if (firmId && !map.has(firmId)) map.set(firmId, { value: firmId, label: getFirmDisplayNameById(firmId, firms) });
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [canceledProductions, firms, orders, schedules]);
+  const itemOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string }>();
+    canceledProductions.forEach((production) => {
+      const itemId = String(production.itemId || "");
+      if (!itemId || map.has(itemId)) return;
+      const name = npdItems.find((row) => row.id === production.itemId)?.name;
+      if (name) map.set(itemId, { value: itemId, label: name });
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [canceledProductions, npdItems]);
+  const hasActiveFilters = Boolean(searchTerm.trim() || firmFilter || itemFilter || fromDateFilter || toDateFilter);
+  const clearFilters = () => { setSearchTerm(""); setFirmFilter(""); setItemFilter(""); setFromDateFilter(""); setToDateFilter(""); };
 
   const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (p, key) => {
     const schedule = schedules.find((s) => s.id === p.scheduleId);
@@ -106,22 +144,40 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Canceled Jobs (Productions)</h2>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Canceled Jobs (Productions)</h2>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3"><div className="min-w-[280px] flex-1"><TableControls
-        searchTerm={searchTerm} 
-        onSearchChange={setSearchTerm} 
-        placeholder="Search" 
-      /></div><FirmFilter value={firmFilter} onChange={setFirmFilter} /></div>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Cancel From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Cancel To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
+      </div>
 
       <DataSummaryTiles totalRecords={canceledProductions.length} filteredRecords={filteredList.length} showingRecords={filteredList.length} pageLabel="1 / 1" />
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
-        <div className="table-sticky-scroll">
+      <div className="overflow-x-auto rounded border border-black bg-white">
           <table className="min-w-full divide-y divide-black border-collapse border border-black">
-            <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
+            <thead className="bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">SL No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job No." sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
@@ -136,9 +192,7 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
             </thead>
             <tbody className="divide-y divide-black bg-white">
               {filteredList.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-black font-medium">No canceled jobs found.</td>
-                </tr>
+                <tr><td colSpan={9} className="h-16" aria-label="No records" /></tr>
               ) : (
                 sortedList.map((p, index) => {
                   const schedule = schedules.find(s => s.id === p.scheduleId);
@@ -171,7 +225,6 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
               )}
             </tbody>
           </table>
-        </div>
       </div>
     </div>
   );

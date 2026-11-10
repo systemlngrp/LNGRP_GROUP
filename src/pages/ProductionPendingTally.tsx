@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import {
   Material,
@@ -15,6 +15,7 @@ import { Spinner } from "../components/Spinner";
 import { formatDate } from "../lib/serial";
 import { CheckCircle, Search } from "lucide-react";
 import { ClientPagination } from "../components/ClientPagination";
+import { Select } from "../components/Select";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { cn } from "../lib/utils";
@@ -67,6 +68,9 @@ export function ProductionPendingTally() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [tallyStatusFilter, setTallyStatusFilter] = useState("");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostTally = currentUserEmail === "pankaj@bizskilledu.com";
   const tableColumnCount = canPostTally ? 10 : 9;
@@ -110,10 +114,20 @@ export function ProductionPendingTally() {
   };
 
   const searchWordList = searchWords(searchTerm);
-  const pendingList = productions
-    .filter(p => 
-      isProductionReadyForTally(p, getProductionActualPaperUsed(p, usageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap)) &&
-      matchesTableSearch([
+  const readyList = productions.filter(p =>
+    isProductionReadyForTally(p, getProductionActualPaperUsed(p, usageMap), hasProductionCorrugatedSheetUsage(p, corrugatedSheetUsageMap))
+  );
+  // Tally Status options from the loaded rows; a blank status shows as "-" in the table.
+  const tallyStatusOptions = Array.from(new Set(readyList.map((p) => String(p.tallyPostingStatus || "").trim() || "-")))
+    .sort((a, b) => a.localeCompare(b))
+    .map((value) => ({ value, label: value }));
+  const pendingList = readyList
+    .filter(p => {
+      const jobDate = String(p.date || "").slice(0, 10);
+      if (tallyStatusFilter && (String(p.tallyPostingStatus || "").trim() || "-") !== tallyStatusFilter) return false;
+      if (fromDateFilter && (!jobDate || jobDate < fromDateFilter)) return false;
+      if (toDateFilter && (!jobDate || jobDate > toDateFilter)) return false;
+      return matchesTableSearch([
         p.transactionNo,
         p.date,
         resolveProductionTallyItem(p, npdItems)?.name || "Unknown",
@@ -122,8 +136,8 @@ export function ProductionPendingTally() {
         p.tallyPostingStatus,
         p.tallyPostingRemark,
         p.tallyPostingError,
-      ], searchWordList)
-    )
+      ], searchWordList);
+    })
     .sort((a, b) => new Date(b.updateTimestamp).getTime() - new Date(a.updateTimestamp).getTime());
 
   const { sorted: sortedPendingList, sort, toggle: toggleSort } = useTableSort(pendingList, (p, key) => {
@@ -146,27 +160,51 @@ export function ProductionPendingTally() {
     totalItems,
     paginatedItems: paginatedPendingList,
   } = useClientPagination(sortedPendingList, 25);
+  const hasActiveFilters = Boolean(searchTerm.trim() || tallyStatusFilter || fromDateFilter || toDateFilter);
+  const clearFilters = () => {
+    setSearchTerm("");
+    setTallyStatusFilter("");
+    setFromDateFilter("");
+    setToDateFilter("");
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, tallyStatusFilter, fromDateFilter, toDateFilter, setPage]);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production: Pending Tally Entry</h2>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">Production: Pending Tally Entry</h2>
       </div>
 
-      <div className="relative w-full max-w-sm">
-        <Search className="absolute left-3 top-2.5 text-slate-400" size={18} />
-        <input
-          type="text"
-          placeholder="Search"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600"
-        />
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Tally Status</span><Select compact value={tallyStatusFilter} onChange={setTallyStatusFilter} options={tallyStatusOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
       <DataSummaryTiles totalRecords={productions.length} filteredRecords={pendingList.length} showingRecords={paginatedPendingList.length} pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`} />
 
-      <div className="bg-white rounded shadow-sm border border-black table-sticky-scroll">
+      <div className="overflow-x-auto rounded border border-black bg-white">
         {/* Mobile View - Cards */}
         <div className="block md:hidden space-y-4 p-2">
             {paginatedPendingList.map((p, index) => (
@@ -195,7 +233,7 @@ export function ProductionPendingTally() {
             ))}
         </div>
         <table className="hidden md:table min-w-full divide-y divide-black border-collapse border border-black">
-          <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
+          <thead className="bg-slate-100 divide-x divide-black">
             <tr className="divide-x divide-black">
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black">SL No</th>
               <th className="px-6 py-3 text-left text-sm font-bold text-black uppercase border border-black"><SortHeader label="Job No." sortKey="transactionNo" sort={sort} onToggle={toggleSort} align="left" /></th>
@@ -213,9 +251,7 @@ export function ProductionPendingTally() {
           </thead>
           <tbody className="divide-y divide-black bg-white">
             {paginatedPendingList.length === 0 ? (
-              <tr>
-                <td colSpan={tableColumnCount} className="px-6 py-8 text-center text-black font-medium">No pending Tally entries.</td>
-              </tr>
+              <tr><td colSpan={tableColumnCount} className="h-16" aria-label="No records" /></tr>
             ) : (
               paginatedPendingList.map((p, index) => (
                 <tr key={p.id} className="hover:bg-slate-50 divide-x divide-black">

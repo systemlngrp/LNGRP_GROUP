@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
-import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, RotateCcw, CheckCircle2, X } from "lucide-react";
+import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, CheckCircle2, X } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
@@ -16,7 +16,6 @@ import { useProductionMaterialUsage } from "../hooks/useProductionMaterialUsage"
 import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { resolveProductionErp, resolveProductionItem } from "../lib/productionErp";
 import { getProductionOriginSource } from "../lib/productionOrigin";
-import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
 interface PendingMachineJob {
@@ -66,6 +65,10 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [machineFilter, setMachineFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
   const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set());
   const [successMessage, setSuccessMessage] = useState(() => String((location.state as { successMessage?: string } | null)?.successMessage || ""));
 
@@ -117,7 +120,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     return String(item?.companyName || item?.raw?.customer || item?.raw?.customerName || "").trim();
   }, [scheduleById, orderById, companyNameById]);
 
-  const machineGroups = useMemo(() => {
+  // Every pending job per machine, before the page filters (filter options come from these).
+  const baseMachineGroups = useMemo(() => {
     const groups: Map<string, MachineGroup> = new Map();
     const machineSequence = new Map<string, number>();
     Object.values(mandatoryMachinesMapping).forEach((machineNames) => {
@@ -218,12 +222,26 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       });
     });
 
-    const words = searchWords(searchTerm);
     return Array.from(groups.values())
       .filter(g => g.jobs.length > 0)
+      .sort((a, b) => {
+        const aSequence = machineSequence.get(normalizeMachineName(a.machineName)) ?? Number.MAX_SAFE_INTEGER;
+        const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
+        return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
+      });
+  }, [productions, phpJobs, plateJobs, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
+
+  const machineGroups = useMemo(() => {
+    const words = searchWords(searchTerm);
+    return baseMachineGroups
+      .filter(g => !machineFilter || g.machineId === machineFilter)
       .map(g => ({
         ...g,
         jobs: g.jobs.filter(j => {
+          if (sourceFilter && j.source !== sourceFilter) return false;
+          const jobDate = String(j.production.date || "").slice(0, 10);
+          if (fromDateFilter && (!jobDate || jobDate < fromDateFilter)) return false;
+          if (toDateFilter && (!jobDate || jobDate > toDateFilter)) return false;
           if (companyFilter && j.companyName !== companyFilter) return false;
           if (firmFilter && j.firmId !== firmFilter) return false;
           const itemKey = j.item?.id ? `${j.source}::${j.item.id}` : `${j.source}::${j.itemName}::${j.erpCode}`;
@@ -243,13 +261,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
           ], words);
         }).sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }))
       }))
-      .filter(g => g.jobs.length > 0)
-      .sort((a, b) => {
-        const aSequence = machineSequence.get(normalizeMachineName(a.machineName)) ?? Number.MAX_SAFE_INTEGER;
-        const bSequence = machineSequence.get(normalizeMachineName(b.machineName)) ?? Number.MAX_SAFE_INTEGER;
-        return aSequence - bSequence || a.machineName.localeCompare(b.machineName);
-      });
-  }, [productions, phpJobs, plateJobs, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, searchTerm, companyFilter, firmFilter, itemFilter, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
+      .filter(g => g.jobs.length > 0);
+  }, [baseMachineGroups, searchTerm, companyFilter, firmFilter, itemFilter, machineFilter, sourceFilter, fromDateFilter, toDateFilter]);
 
   // One sort for every machine table: all jobs are sorted together, then each
   // machine's table shows its own jobs in that order.
@@ -281,21 +294,39 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     return map;
   }, [sortedGroupJobs]);
 
+  const showMachineFilter = !filterMachineId && !fixedNormalizedMachineName;
+  const machineOptions = useMemo(
+    () => baseMachineGroups.map((group) => ({ value: group.machineId, label: group.machineName })),
+    [baseMachineGroups]
+  );
+
+  const firmOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    baseMachineGroups.forEach((group) => group.jobs.forEach((job) => { if (job.firmId && !map.has(job.firmId)) map.set(job.firmId, job.firmName); }));
+    return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [baseMachineGroups]);
+
+  const sourceOptions = useMemo(() => {
+    const sources = new Set<string>();
+    baseMachineGroups.forEach((group) => group.jobs.forEach((job) => sources.add(job.source)));
+    return Array.from(sources).sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+  }, [baseMachineGroups]);
+
   const companyOptions = useMemo(() => {
     const names = new Set<string>();
-    machineGroups.forEach((group) => group.jobs.forEach((job) => { if (job.companyName) names.add(job.companyName); }));
+    baseMachineGroups.forEach((group) => group.jobs.forEach((job) => { if (job.companyName) names.add(job.companyName); }));
     return Array.from(names).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
-  }, [machineGroups]);
+  }, [baseMachineGroups]);
 
   const itemOptions = useMemo(() => {
     const map = new Map<string, { value: string; label: string; searchText: string }>();
-    machineGroups.forEach((group) => group.jobs.forEach((job) => {
+    baseMachineGroups.forEach((group) => group.jobs.forEach((job) => {
       const key = job.item?.id ? `${job.source}::${job.item.id}` : `${job.source}::${job.itemName}::${job.erpCode}`;
       if (!key || map.has(key)) return;
       map.set(key, { value: key, label: job.erpCode && job.itemName && !job.itemName.toLowerCase().includes(job.erpCode.toLowerCase()) ? `${job.itemName} - ${job.erpCode}` : job.itemName || job.erpCode, searchText: `${job.itemName} ${job.erpCode} ${job.fallbackErps.join(" ")}` });
     }));
     return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label));
-  }, [machineGroups]);
+  }, [baseMachineGroups]);
 
   const toggleMachine = (id: string) => {
     const next = new Set(expandedMachines);
@@ -309,14 +340,37 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     return machines.find(m => m.id === filterMachineId)?.name || "";
   }, [filterMachineId, machines]);
 
-  const hasActiveFilters = Boolean(searchTerm || firmFilter || companyFilter || itemFilter);
+  const hasActiveFilters = Boolean(searchTerm.trim() || machineFilter || firmFilter || companyFilter || itemFilter || sourceFilter || fromDateFilter || toDateFilter);
 
   const clearFilters = () => {
     setSearchTerm("");
+    setMachineFilter("");
     setFirmFilter("");
     setCompanyFilter("");
     setItemFilter("");
+    setSourceFilter("");
+    setFromDateFilter("");
+    setToDateFilter("");
   };
+
+  const tableHead = (
+    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
+      <tr className="divide-x divide-black">
+        <th className="px-3 py-2 text-left"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
+        <th className="px-3 py-2 text-left"><SortHeader label="Source" sortKey="source" sort={sort} onToggle={toggleSort} align="left" /></th>
+        <th className="px-3 py-2 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
+        <th className="px-3 py-2 text-left"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
+        <th className="px-3 py-2 text-left"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
+        <th className="px-3 py-2 text-left"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
+        <th className="px-3 py-2 text-left"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
+        <th className="px-3 py-2 text-right"><SortHeader label="Plan Qty" sortKey="requiredQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+        <th className="px-3 py-2 text-right"><SortHeader label="FFG" sortKey="ffgQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+        <th className="px-3 py-2 text-right"><SortHeader label="Reported" sortKey="reportedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+        <th className="px-3 py-2 text-right text-indigo-700"><SortHeader label="Pending" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="right" /></th>
+        <th className="px-3 py-2 text-center">Action</th>
+      </tr>
+    </thead>
+  );
 
   useEffect(() => {
     if (filterMachineId || fixedNormalizedMachineName) return;
@@ -340,57 +394,55 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
           </div>
         </div>
       )}
-      <div className="border-b border-black pb-2">
-        <div className="flex min-h-[32px] items-center gap-3">
-          <h2 className="text-xl font-bold text-black uppercase tracking-tight">
-            {title || (filterMachineId ? `${selectedMachineName} - Pending Jobs` : "Pending Processing")}
-          </h2>
-        </div>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">
+          {title || (filterMachineId ? `${selectedMachineName} - Pending Jobs` : "Pending Processing")}
+        </h2>
       </div>
 
-      <div className="grid w-full min-w-0 gap-3 rounded border border-black bg-white p-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(220px,1.2fr)_minmax(160px,0.8fr)_minmax(200px,1fr)_minmax(240px,1.2fr)_auto] xl:items-end">
-          <div className="min-w-0">
-            <label htmlFor="pending-processing-search" className="mb-1 block text-[10px] font-black uppercase">Search</label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-              <input
-                id="pending-processing-search"
-                type="text"
-                placeholder="Search"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="h-[34px] w-full rounded border-2 border-black bg-white py-1.5 pl-9 pr-3 text-xs font-semibold text-black outline-none transition placeholder:text-slate-500 focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-              />
-            </div>
-          </div>
-          <FirmFilter value={firmFilter} onChange={setFirmFilter} className="min-w-0" />
-          <div className="min-w-0">
-            <label className="mb-1 block text-[10px] font-black uppercase">Company</label>
-            <Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-          </div>
-          <div className="min-w-0">
-            <label className="mb-1 block text-[10px] font-black uppercase">Item</label>
-            <Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-          </div>
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!hasActiveFilters}
-            className="inline-flex h-[34px] items-center justify-center gap-1.5 self-end rounded border-2 border-black bg-white px-3 text-xs font-black uppercase text-black transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-400 sm:col-span-2 lg:col-span-4 xl:col-span-1"
-          >
-            <RotateCcw size={14} />
-            Clear
-          </button>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          {showMachineFilter ? (
+            <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Machine</span><Select compact value={machineFilter} onChange={setMachineFilter} options={machineOptions} placeholder="All" /></div>
+          ) : null}
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Source</span><Select compact value={sourceFilter} onChange={setSourceFilter} options={sourceOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+        </div>
       </div>
 
       <div className="space-y-3">
         {machineGroups.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-6 py-8 text-center text-sm font-medium italic text-slate-500">
-            No pending processing jobs found {fixedNormalizedMachineName ? `for ${fixedNormalizedMachineName}` : filterMachineId ? `for ${selectedMachineName}` : ""}.
+          <div className="overflow-x-auto rounded border border-black bg-white">
+            <table className="min-w-full divide-y divide-black border-collapse">
+              {tableHead}
+              <tbody className="bg-white">
+                <tr><td colSpan={12} className="h-16" aria-label="No records" /></tr>
+              </tbody>
+            </table>
           </div>
         ) : (
           machineGroups.map((group) => (
-            <div key={group.machineId} className="bg-white border border-black rounded shadow-sm overflow-hidden">
+            <div key={group.machineId} className="bg-white border border-black rounded shadow-sm">
               {!filterMachineId && !fixedNormalizedMachineName && (
                 <button
                   onClick={() => toggleMachine(group.machineId)}
@@ -409,24 +461,9 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
               {(filterMachineId || fixedNormalizedMachineName || expandedMachines.has(group.machineId)) && (
                 <div className="p-4">
-                  <div className="overflow-x-auto border border-black">
+                  <div className="overflow-x-auto rounded border border-black bg-white">
                     <table className="min-w-full divide-y divide-black border-collapse">
-                      <thead className="sticky top-0 z-30 bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                        <tr className="divide-x divide-black">
-                          <th className="px-3 py-2 text-left"><SortHeader label="Job No" sortKey="jobNo" sort={sort} onToggle={toggleSort} align="left" /></th>
-                          <th className="px-3 py-2 text-left"><SortHeader label="Source" sortKey="source" sort={sort} onToggle={toggleSort} align="left" /></th>
-                          <th className="px-3 py-2 text-left"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
-                          <th className="px-3 py-2 text-left"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
-                          <th className="px-3 py-2 text-left"><SortHeader label="Firm" sortKey="firm" sort={sort} onToggle={toggleSort} align="left" /></th>
-                          <th className="px-3 py-2 text-left"><SortHeader label="Company" sortKey="company" sort={sort} onToggle={toggleSort} align="left" /></th>
-                          <th className="px-3 py-2 text-left"><SortHeader label="Item" sortKey="item" sort={sort} onToggle={toggleSort} align="left" /></th>
-                          <th className="px-3 py-2 text-right"><SortHeader label="Plan Qty" sortKey="requiredQty" sort={sort} onToggle={toggleSort} align="right" /></th>
-                          <th className="px-3 py-2 text-right"><SortHeader label="FFG" sortKey="ffgQty" sort={sort} onToggle={toggleSort} align="right" /></th>
-                          <th className="px-3 py-2 text-right"><SortHeader label="Reported" sortKey="reportedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
-                          <th className="px-3 py-2 text-right text-indigo-700"><SortHeader label="Pending" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="right" /></th>
-                          <th className="px-3 py-2 text-center">Action</th>
-                        </tr>
-                      </thead>
+                      {tableHead}
                       <tbody className="bg-white divide-y divide-black text-[11px] font-bold">
                         {(sortedJobsByMachine.get(group.machineId) || group.jobs).map((job, idx) => {
                           const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Printing";

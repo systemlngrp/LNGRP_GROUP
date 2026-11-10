@@ -1,13 +1,15 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, RotateCcw } from "lucide-react";
+import { CheckCircle, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getRequiredMachinesForProduction } from "../lib/productionType";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, type SortState } from "../lib/tableSort";
+import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import {
   Company,
+  Firm,
   Material,
   MaterialIssue,
   MaterialIssueLine,
@@ -23,7 +25,6 @@ import {
   Machine,
 } from "../types";
 import { formatDate } from "../lib/serial";
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
 import { DataSummaryTiles } from "../components/DataSummaryTiles";
@@ -80,6 +81,7 @@ export function ProductionStageQueue({
   secondaryIssueActionPath,
   secondaryIssueActionLabel,
   showIssueSheetAction = true,
+  hideSummaryTiles = false,
 }: {
   title: string;
   emptyMessage: string;
@@ -97,6 +99,7 @@ export function ProductionStageQueue({
   secondaryIssueActionPath?: string;
   secondaryIssueActionLabel?: string;
   showIssueSheetAction?: boolean;
+  hideSummaryTiles?: boolean;
 }) {
   const navigate = useNavigate();
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
@@ -114,9 +117,13 @@ export function ProductionStageQueue({
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
   const [machines] = useData<Machine>("machines", []);
+  const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [searchTerm, setSearchTerm] = useState("");
+  const [firmFilter, setFirmFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
+  const [fromDateFilter, setFromDateFilter] = useState("");
+  const [toDateFilter, setToDateFilter] = useState("");
   const [ffgValues, setFfgValues] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
@@ -193,7 +200,12 @@ export function ProductionStageQueue({
           prereqQty,
         };
       })
-      .filter(({ production, order, item, company, actualPaperUsed, totalIssuedQty, prereqQty }) => {        if (companyFilter && order?.companyId !== companyFilter) return false;
+      .filter(({ production, order, item, company, actualPaperUsed, totalIssuedQty, prereqQty }) => {
+        if (firmFilter && String(production.firmId || order?.firmId || "") !== firmFilter) return false;
+        const jobDate = String(production.date || "").slice(0, 10);
+        if (fromDateFilter && (!jobDate || jobDate < fromDateFilter)) return false;
+        if (toDateFilter && (!jobDate || jobDate > toDateFilter)) return false;
+        if (companyFilter && order?.companyId !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${production.erpCode || item?.erp || ""}`;
         if (itemFilter && itemKey !== itemFilter) return false;
         if (!words.length) return true;
@@ -298,8 +310,11 @@ export function ProductionStageQueue({
     resolveOrderItem,
     schedules,
     searchTerm,
+    firmFilter,
     companyFilter,
     itemFilter,
+    fromDateFilter,
+    toDateFilter,
     settings,
     machines,
     sortDir,
@@ -312,6 +327,7 @@ export function ProductionStageQueue({
     hideStatusColumn,
   ]);
 
+  const firmOptions = useMemo(() => Array.from(new Map(rows.map((row) => { const firmId = String(row.production.firmId || row.order?.firmId || ""); return [firmId, { value: firmId, label: firmId ? getFirmDisplayNameById(firmId, firms) : "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [firms, rows]);
   const companyOptions = useMemo(() => Array.from(new Map(rows.map((row) => [row.order?.companyId || "", { value: row.order?.companyId || "", label: row.company?.name || "" }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((row) => { const erp = String(row.production.erpCode || row.item?.erp || ""); const name = row.item?.name || ""; const key = row.item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
 
@@ -323,6 +339,19 @@ export function ProductionStageQueue({
     totalItems,
     paginatedItems: paginatedRows,
   } = useClientPagination(rows, 25);
+  const hasActiveFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || fromDateFilter || toDateFilter);
+  const clearFilters = () => {
+    setSearchTerm("");
+    setFirmFilter("");
+    setCompanyFilter("");
+    setItemFilter("");
+    setFromDateFilter("");
+    setToDateFilter("");
+  };
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm, firmFilter, companyFilter, itemFilter, fromDateFilter, toDateFilter, setPage]);
 
   // Existing two-state sort (default Job No ascending), shown with the shared header arrows.
   const headerSort: SortState = { key: sortKey, direction: sortDir };
@@ -429,32 +458,50 @@ export function ProductionStageQueue({
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center pb-4 border-b border-black">
-        <h2 className="text-xl font-bold text-black uppercase tracking-tight">{title}</h2>
+      <div className="border-b border-black pb-3">
+        <h2 className="text-xl font-bold uppercase tracking-tight text-black">{title}</h2>
       </div>
 
-      <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.2fr)_minmax(220px,1fr)_minmax(240px,1fr)_auto] xl:items-end">
-          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Search</div><TableControls searchTerm={searchTerm} onSearchChange={setSearchTerm} placeholder="Search" /></div>
-          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Company</div><Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All companies" /></div>
-          <div className="min-w-0"><div className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-600">Item</div><Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All items" /></div>
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} disabled={!searchTerm && !companyFilter && !itemFilter} className="inline-flex h-[42px] items-center justify-center gap-2 rounded border border-black bg-white px-4 text-sm font-bold text-black hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"><RotateCcw size={15} /> Clear</button>
+      <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
+        <div className="relative w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+          <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+          <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
+        </div>
+        <div data-mf-actions="true" className="flex justify-end gap-2">
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          ) : null}
+          <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
 
-      <DataSummaryTiles
-        totalRecords={0}
-        filteredRecords={rows.length}
-        showingRecords={paginatedRows.length}
-        pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`}
-        hideTotalRecords
-        filteredRecordsLabel="Total Records"
-      />
+      {!hideSummaryTiles ? (
+        <DataSummaryTiles
+          totalRecords={0}
+          filteredRecords={rows.length}
+          showingRecords={paginatedRows.length}
+          pageLabel={`${page} / ${Math.max(1, Math.ceil(totalItems / pageSize))}`}
+          hideTotalRecords
+          filteredRecordsLabel="Total Records"
+        />
+      ) : null}
 
-      <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
-        <div className="table-sticky-scroll">
+      <div className="overflow-x-auto rounded border border-black bg-white">
           <table className="min-w-full divide-y divide-black border-collapse border border-black">
-            <thead className="sticky top-0 z-30 bg-slate-100 divide-x divide-black">
+            <thead className="bg-slate-100 divide-x divide-black">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap">SL No</th>
                 <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Job No." sortKey="jobNo" sort={headerSort} onToggle={onHeaderSort} align="left" /></th>
@@ -502,10 +549,9 @@ export function ProductionStageQueue({
                       (enableFfgEditing ? 1 : 0) +
                       (enableIssueAction ? 1 : 0)
                     }
-                    className="px-6 py-8 text-center text-black font-medium"
-                  >
-                    {emptyMessage}
-                  </td>
+                    className="h-16"
+                    aria-label="No records"
+                  />
                 </tr>
               ) : (
                 paginatedRows.map(({ production, order, item, company, actualPaperUsed, totalIssuedQty, prereqQty, requiredMachines }, index) => (
@@ -720,18 +766,15 @@ export function ProductionStageQueue({
               )}
             </tbody>
           </table>
-        </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg shadow-sm">
-        <ClientPagination
-          page={page}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
-      </div>
+      <ClientPagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={setPage}
+        onPageSizeChange={setPageSize}
+      />
     </div>
   );
 }
@@ -747,6 +790,7 @@ export function ProductionPendingConsumption() {
       hideActualPaperUsedColumn
       showTotalIssuedQty
       hideProdFfgColumn
+      hideSummaryTiles
       issueActionPath="/material-movement/reel-issue-return-scan/form"
       issueActionLabel="QR"
       secondaryIssueActionPath="/material-movement/reel-issue-return"
