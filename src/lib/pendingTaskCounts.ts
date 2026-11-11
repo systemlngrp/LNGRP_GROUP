@@ -37,7 +37,7 @@ import { getCurrentProcessingMachine, isCorrugationLinerComplete, isMachineStepF
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
 import { isProductionPendingConsumption, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
-import { getAllReturnableReelLines } from "./materialMovement";
+import { getPendingReturnJobReelLines } from "./materialMovement";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrugationFullTime } from "./reelTransfer";
 import { countEligibleLoadingPlans } from "./pendingLoadingEligibility";
 import { isPendingDailyConsumableTally } from "./materialIssueClassification";
@@ -462,7 +462,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       isProductionPendingConsumption(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
     "/production/pending-material-return": new Set(
-      getAllReturnableReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions)
+      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions)
         .filter((line) => activeProductionIds.has(line.productionId) && isCorrugationLinerComplete(args.processing || [], line.productionId))
         .map((line) => line.productionId)
     ).size,

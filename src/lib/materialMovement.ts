@@ -289,3 +289,26 @@ export function getAllReturnableReelLines(
     return issuedWeight > REEL_BALANCE_TOLERANCE_KG ? [{ ...line, weightKg: issuedWeight }] : [];
   });
 }
+
+/**
+ * Reel lines for the Pending Material Return list, decided per job (same as AppSheet):
+ * a job is pending only while it has issued reels and no return at all has been
+ * entered against it. Once any reel is returned for the job, the job leaves the
+ * list even if other reels on it were never returned (they were used up).
+ * The Reel Return form and journal completion still work per reel.
+ */
+export function getPendingReturnJobReelLines(
+  issueReelLines: MaterialIssueReelLine[],
+  returnReelLines: MaterialReturnReelLine[],
+  productions: Pick<Production, "id" | "transactionNo" | "jobCardNo">[] = []
+) {
+  const resolveProductionId = buildProductionResolver(productions);
+  const jobsWithReturn = new Set<string>();
+  returnReelLines.forEach((line) => {
+    if (Number(line.weightKg || 0) <= REEL_BALANCE_TOLERANCE_KG) return;
+    const productionId = resolveProductionId(line);
+    if (productionId) jobsWithReturn.add(productionId);
+  });
+  return getAllReturnableReelLines(issueReelLines, returnReelLines, productions)
+    .filter((line) => !jobsWithReturn.has(line.productionId));
+}

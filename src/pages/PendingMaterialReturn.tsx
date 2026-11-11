@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Camera, RotateCcw, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { getAllReturnableReelLines } from "../lib/materialMovement";
+import { getPendingReturnJobReelLines } from "../lib/materialMovement";
 import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
@@ -36,7 +36,8 @@ export function PendingMaterialReturn() {
       }
       return value;
     };
-    const returnable = getAllReturnableReelLines(issueReels, returnReels, productions)
+    // Job level: a job with any return entered is not pending (AppSheet logic).
+    const returnable = getPendingReturnJobReelLines(issueReels, returnReels, productions)
       .filter((line) => isLinerComplete(line.productionId));
     const byProduction = new Map<string, { reelIds: Set<string>; weight: number }>();
     returnable.forEach((line) => {
