@@ -255,6 +255,16 @@ function getAllReturnableReelLines(issueReelLines, returnReelLines, productions 
     return issuedWeight > REEL_BALANCE_TOLERANCE_KG ? [{ ...line, weightKg: issuedWeight }] : [];
   });
 }
+function getPendingReturnJobReelLines(issueReelLines, returnReelLines, productions = []) {
+  const resolveProductionId = buildProductionResolver(productions);
+  const jobsWithReturn = /* @__PURE__ */ new Set();
+  returnReelLines.forEach((line) => {
+    if (Number(line.weightKg || 0) <= REEL_BALANCE_TOLERANCE_KG) return;
+    const productionId = resolveProductionId(line);
+    if (productionId) jobsWithReturn.add(productionId);
+  });
+  return getAllReturnableReelLines(issueReelLines, returnReelLines, productions).filter((line) => !jobsWithReturn.has(line.productionId));
+}
 
 // src/lib/reelStock.ts
 function round22(value) {
@@ -1685,7 +1695,7 @@ function buildPendingTaskCounts(args) {
       (p) => isProductionPendingConsumption(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
     "/production/pending-material-return": new Set(
-      getAllReturnableReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isCorrugationLinerComplete(args.processing || [], line.productionId)).map((line) => line.productionId)
+      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isCorrugationLinerComplete(args.processing || [], line.productionId)).map((line) => line.productionId)
     ).size,
     "/production/pending-job-transfer": (() => {
       const windowHours = Number(args.settings?.[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
