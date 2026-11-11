@@ -22,3 +22,31 @@ export const getScheduleAvailableQty = (
     .reduce((sum, plan) => sum + getEffectiveDispatchPlanQty(plan), 0);
   return Math.max(0, amount(schedule.qty) - amount(schedule.canceledQty) - reserved);
 };
+
+/** Loaded qty per schedule: active loading slip lines, linked through their dispatch plan. */
+export const buildLoadedQtyByScheduleId = (
+  dispatchPlans: Array<Pick<DispatchPlan, "id" | "scheduleId">>,
+  loadingSlips: Array<{ status?: string; lines?: Array<{ dispatchPlanId?: string; loadedQty?: unknown }> }>,
+) => {
+  const scheduleIdByPlanId = new Map(dispatchPlans.map((plan) => [String(plan.id || ""), String(plan.scheduleId || "")]));
+  const map = new Map<string, number>();
+  loadingSlips.forEach((slip) => {
+    if (slip.status === "Cancelled") return;
+    (slip.lines || []).forEach((line) => {
+      const scheduleId = scheduleIdByPlanId.get(String(line.dispatchPlanId || "").trim());
+      if (!scheduleId) return;
+      map.set(scheduleId, (map.get(scheduleId) || 0) + amount(line.loadedQty));
+    });
+  });
+  return map;
+};
+
+/**
+ * Pending Dispatch Planning list rule (same as the AppSheet / New Order Master
+ * "Pending" column): schedule qty − cancelled qty − qty already dispatched
+ * (loaded). Planned-but-not-loaded qty is still pending here.
+ */
+export const getScheduleDispatchPendingQty = (
+  schedule: Pick<OrderSchedule, "qty" | "canceledQty">,
+  loadedQty: number,
+) => amount(schedule.qty) - amount(schedule.canceledQty) - amount(loadedQty);

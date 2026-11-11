@@ -1536,11 +1536,20 @@ var amount = (value) => {
   const number = Number(value || 0);
   return Number.isFinite(number) ? number : 0;
 };
-var getEffectiveDispatchPlanQty = (plan) => Math.max(0, amount(plan.plannedQty) - amount(plan.canceledQty));
-var getScheduleAvailableQty = (schedule, plans) => {
-  const reserved = plans.filter((plan) => String(plan.scheduleId || "") === String(schedule.id || "")).reduce((sum, plan) => sum + getEffectiveDispatchPlanQty(plan), 0);
-  return Math.max(0, amount(schedule.qty) - amount(schedule.canceledQty) - reserved);
+var buildLoadedQtyByScheduleId = (dispatchPlans, loadingSlips) => {
+  const scheduleIdByPlanId = new Map(dispatchPlans.map((plan) => [String(plan.id || ""), String(plan.scheduleId || "")]));
+  const map = /* @__PURE__ */ new Map();
+  loadingSlips.forEach((slip) => {
+    if (slip.status === "Cancelled") return;
+    (slip.lines || []).forEach((line) => {
+      const scheduleId = scheduleIdByPlanId.get(String(line.dispatchPlanId || "").trim());
+      if (!scheduleId) return;
+      map.set(scheduleId, (map.get(scheduleId) || 0) + amount(line.loadedQty));
+    });
+  });
+  return map;
 };
+var getScheduleDispatchPendingQty = (schedule, loadedQty) => amount(schedule.qty) - amount(schedule.canceledQty) - amount(loadedQty);
 
 // src/lib/pendingTaskCounts.ts
 var isPendingPH = (status) => !status || status === "Pending PH";
@@ -1872,23 +1881,18 @@ function buildPendingTaskCounts(args) {
       args.schedules.forEach((schedule) => scheduledQtyByOrderId.set(schedule.orderId, (scheduledQtyByOrderId.get(schedule.orderId) || 0) + (Number(schedule.qty) || 0)));
       return args.orders.filter((o) => o.status === "Pending Scheduling" && Number(o.qty || 0) - (scheduledQtyByOrderId.get(o.id) || 0) > 0).length;
     })(),
-    // Same rows as the Pending Dispatch Planning page.
+    // Same rows as the Pending Dispatch Planning page (AppSheet rule):
+    // qty − cancelled − dispatched (loaded) > 0, scheduled by tomorrow.
     "/dispatch/pending-planning": (() => {
       const tomorrow = /* @__PURE__ */ new Date();
       tomorrow.setHours(0, 0, 0, 0);
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(23, 59, 59, 999);
-      const plansBySchedule = /* @__PURE__ */ new Map();
-      args.dispatchPlans.forEach((plan) => {
-        const key = String(plan.scheduleId || "");
-        const list = plansBySchedule.get(key);
-        if (list) list.push(plan);
-        else plansBySchedule.set(key, [plan]);
-      });
+      const loadedByScheduleId = buildLoadedQtyByScheduleId(args.dispatchPlans, args.loadingSlips);
       return args.schedules.filter((schedule) => {
         const scheduledDate = new Date(schedule.scheduledDate);
         if (isNaN(scheduledDate.getTime())) return false;
-        return scheduledDate <= tomorrow && getScheduleAvailableQty(schedule, plansBySchedule.get(String(schedule.id || "")) || []) > 0;
+        return scheduledDate <= tomorrow && getScheduleDispatchPendingQty(schedule, loadedByScheduleId.get(String(schedule.id || "")) || 0) > 0;
       }).length;
     })(),
     "/loading/pending": countEligibleLoadingPlans({

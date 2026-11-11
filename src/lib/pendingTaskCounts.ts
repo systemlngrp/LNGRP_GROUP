@@ -43,7 +43,7 @@ import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrug
 import { countEligibleLoadingPlans } from "./pendingLoadingEligibility";
 import { isPendingDailyConsumableTally } from "./materialIssueClassification";
 import { buildPendingInvoicingContext, getPendingInvoicingSlip } from "./pendingInvoicing";
-import { getScheduleAvailableQty } from "./dispatchPlanBalances";
+import { buildLoadedQtyByScheduleId, getScheduleDispatchPendingQty } from "./dispatchPlanBalances";
 import { normalizeOrderItemSource } from "./orderItems";
 
 type OrderCatalogItem = {
@@ -567,18 +567,18 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       args.schedules.forEach((schedule) => scheduledQtyByOrderId.set(schedule.orderId, (scheduledQtyByOrderId.get(schedule.orderId) || 0) + (Number(schedule.qty) || 0)));
       return args.orders.filter((o) => o.status === "Pending Scheduling" && Number(o.qty || 0) - (scheduledQtyByOrderId.get(o.id) || 0) > 0).length;
     })(),
-    // Same rows as the Pending Dispatch Planning page.
+    // Same rows as the Pending Dispatch Planning page (AppSheet rule):
+    // qty − cancelled − dispatched (loaded) > 0, scheduled by tomorrow.
     "/dispatch/pending-planning": (() => {
       const tomorrow = new Date();
       tomorrow.setHours(0, 0, 0, 0);
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(23, 59, 59, 999);
-      const plansBySchedule = new Map<string, DispatchPlan[]>();
-      args.dispatchPlans.forEach((plan) => { const key = String(plan.scheduleId || ""); const list = plansBySchedule.get(key); if (list) list.push(plan); else plansBySchedule.set(key, [plan]); });
+      const loadedByScheduleId = buildLoadedQtyByScheduleId(args.dispatchPlans, args.loadingSlips);
       return args.schedules.filter((schedule) => {
         const scheduledDate = new Date(schedule.scheduledDate);
         if (isNaN(scheduledDate.getTime())) return false;
-        return scheduledDate <= tomorrow && getScheduleAvailableQty(schedule, plansBySchedule.get(String(schedule.id || "")) || []) > 0;
+        return scheduledDate <= tomorrow && getScheduleDispatchPendingQty(schedule, loadedByScheduleId.get(String(schedule.id || "")) || 0) > 0;
       }).length;
     })(),
     "/loading/pending": countEligibleLoadingPlans({

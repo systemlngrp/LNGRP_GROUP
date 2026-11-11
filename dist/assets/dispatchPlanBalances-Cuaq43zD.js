@@ -1,1 +1,0 @@
-const a=t=>{const e=Number(t||0);return Number.isFinite(e)?e:0},c=t=>Math.max(0,a(t.plannedQty)-a(t.canceledQty)),s=(t,e)=>Math.max(0,c(t)-Math.max(0,a(e))),d=(t,e)=>{const r=e.filter(n=>String(n.scheduleId||"")===String(t.id||"")).reduce((n,i)=>n+c(i),0);return Math.max(0,a(t.qty)-a(t.canceledQty)-r)};export{s as a,c as b,d as g};

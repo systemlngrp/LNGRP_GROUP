@@ -15,7 +15,7 @@ import { SortHeader, useTableSort } from "../lib/tableSort";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useAuth } from "../auth/AuthContext";
-import { getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty } from "../lib/dispatchPlanBalances";
+import { buildLoadedQtyByScheduleId, getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty, getScheduleDispatchPendingQty } from "../lib/dispatchPlanBalances";
 
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "firmName" | "companyName" | "itemName" | "pendingQty";
 
@@ -190,16 +190,19 @@ export function PendingDispatchPlanning() {
     return { orderById: firstById(orders), companyById: firstById(companies), plansBySchedule };
   }, [orders, companies, dispatchPlans]);
 
+  // Pending Qty (list rule, same as AppSheet): qty − cancelled − dispatched.
+  // Unplanned Qty (planning limit): qty − cancelled − already planned.
+  const loadedQtyByScheduleId = useMemo(() => buildLoadedQtyByScheduleId(dispatchPlans, loadingSlips), [dispatchPlans, loadingSlips]);
+  const getPendingQty = (s: OrderSchedule) => getScheduleDispatchPendingQty(s, loadedQtyByScheduleId.get(String(s.id || "")) || 0);
+  const getUnplannedQty = (s: OrderSchedule) => getScheduleAvailableQty(s, lookup.plansBySchedule.get(String(s.id || "")) || []);
+
   const basePendingSchedules = useMemo(() => {
     return schedules.filter(s => {
       const scheduledDate = new Date(s.scheduledDate);
       if (isNaN(scheduledDate.getTime())) return false;
-      
-      const effectivePlanned = getEffectivePlannedForSchedule(s.id);
-      const balance = getScheduleAvailableQty(s, lookup.plansBySchedule.get(String(s.id || "")) || []);
-      return scheduledDate <= tomorrow && balance > 0;
+      return scheduledDate <= tomorrow && getScheduleDispatchPendingQty(s, loadedQtyByScheduleId.get(String(s.id || "")) || 0) > 0;
     }).sort((a, b) => new Date(a.scheduledDate).getTime() - new Date(b.scheduledDate).getTime());
-  }, [schedules, tomorrow, effectivePlannedByScheduleId, lookup]);
+  }, [schedules, tomorrow, loadedQtyByScheduleId]);
 
   const availableCompanies = useMemo(() => {
     const compIds = new Set(basePendingSchedules.map(s => {
@@ -246,7 +249,7 @@ export function PendingDispatchPlanning() {
         const order = lookup.orderById.get(schedule.orderId);
         const company = lookup.companyById.get(order?.companyId as string);
         const item = resolveOrderItem(order);
-        // Visible columns: Scheduled Date, Schedule No, Order No, Firm, Company, Item Name, Pending Qty.
+        // Visible columns: Scheduled Date, Schedule No, Order No, Firm, Company, Item Name, Pending Qty, Unplanned Qty.
         return matchesTableSearch([
           formatDate(schedule.scheduledDate),
           dueStatus(schedule.scheduledDate),
@@ -255,7 +258,8 @@ export function PendingDispatchPlanning() {
           getFirmDisplayNameById(schedule.firmId || order?.firmId, firms),
           company?.name,
           item?.name,
-          getScheduleAvailableQty(schedule, lookup.plansBySchedule.get(String(schedule.id || "")) || []),
+          getPendingQty(schedule),
+          getUnplannedQty(schedule),
         ], words);
       })
       .sort((a, b) => {
@@ -265,10 +269,8 @@ export function PendingDispatchPlanning() {
       const companyB = lookup.companyById.get(orderB?.companyId as string)?.name || "";
       const itemA = resolveOrderItem(orderA)?.name || "";
       const itemB = resolveOrderItem(orderB)?.name || "";
-      const plannedA = getEffectivePlannedForSchedule(a.id);
-      const plannedB = getEffectivePlannedForSchedule(b.id);
-      const pendingA = Math.max(0, Number(a.qty || 0) - Number(a.canceledQty || 0) - plannedA);
-      const pendingB = Math.max(0, Number(b.qty || 0) - Number(b.canceledQty || 0) - plannedB);
+      const pendingA = getPendingQty(a);
+      const pendingB = getPendingQty(b);
 
       let compare = 0;
       switch (sortKey) {
@@ -297,7 +299,7 @@ export function PendingDispatchPlanning() {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, resolveOrderItem, lookup]);
+  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, loadedQtyByScheduleId, resolveOrderItem, lookup]);
 
   const {
     page,
@@ -434,9 +436,7 @@ export function PendingDispatchPlanning() {
     let overdueCount = 0;
 
     basePendingSchedules.forEach(s => {
-      const effectivePlanned = getEffectivePlannedForSchedule(s.id);
-      const balance = getScheduleAvailableQty(s, dispatchPlans);
-      totalPendingQty += Math.max(0, balance);
+      totalPendingQty += Math.max(0, getPendingQty(s));
       
       const schedDate = new Date(s.scheduledDate);
       if (schedDate < today) overdueCount++;
@@ -449,7 +449,7 @@ export function PendingDispatchPlanning() {
       activeSelection: selectedIds.size,
       activePlanned: totalSessionPlannedQty
     };
-  }, [basePendingSchedules, effectivePlannedByScheduleId, today, selectedIds, totalSessionPlannedQty]);
+  }, [basePendingSchedules, loadedQtyByScheduleId, today, selectedIds, totalSessionPlannedQty]);
 
   const handleSubmit = async () => {
     if (selectedIds.size === 0) {
@@ -463,6 +463,19 @@ export function PendingDispatchPlanning() {
       if (plannedNow > available + 1e-9) {
         const itemName = npdItems.find((i) => i.id === itemId)?.name || "Unknown Item";
         violations.push(`${itemName}: Trying to plan ${plannedNow.toLocaleString()} but only ${available.toLocaleString()} is available.`);
+      }
+    });
+
+    // A schedule cannot be planned beyond its unplanned qty (qty − cancelled − already planned).
+    selectedIds.forEach((id) => {
+      const schedule = schedules.find((row) => row.id === id);
+      if (!schedule) return;
+      const unplanned = getScheduleAvailableQty(schedule, dispatchPlans);
+      const planned = Number(rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : unplanned) || 0;
+      if (planned <= 0) {
+        violations.push(`${schedule.scheduleNo || id}: Planned qty must be more than 0 (already fully planned, waiting for loading).`);
+      } else if (planned > unplanned + 1e-9) {
+        violations.push(`${schedule.scheduleNo || id}: Trying to plan ${planned.toLocaleString()} but only ${unplanned.toLocaleString()} is not yet planned.`);
       }
     });
 
@@ -540,7 +553,8 @@ export function PendingDispatchPlanning() {
       company: lookup.companyById.get(order?.companyId as string),
       item: resolveOrderItem(order),
       status: dueStatus(s.scheduledDate),
-      balance: getScheduleAvailableQty(s, lookup.plansBySchedule.get(String(s.id || "")) || []),
+      balance: getUnplannedQty(s),
+      pendingQty: getPendingQty(s),
       firm: getFirmDisplayNameById(s.firmId || order?.firmId, firms),
     };
   };
@@ -681,7 +695,8 @@ export function PendingDispatchPlanning() {
               <div className="mt-2 grid grid-cols-2 gap-2">
                 <div className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
                   <div className="text-[10px] font-black uppercase text-slate-500">Pending Qty</div>
-                  <div className="text-sm font-black text-indigo-700">{info.balance.toLocaleString()}</div>
+                  <div className="text-sm font-black text-indigo-700">{info.pendingQty.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-slate-500">Unplanned {info.balance.toLocaleString()}</div>
                 </div>
                 <label className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
                   <span className="block text-[10px] font-black uppercase text-slate-500">Planned Qty</span>
@@ -709,12 +724,13 @@ export function PendingDispatchPlanning() {
                 <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Item Name", "itemName")}</th>
                 <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Qty not yet on a dispatch plan">Unplanned Qty</th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black">Planned Qty</th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {filteredSchedules.length === 0 ? (
-                <tr><td colSpan={10} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
+                <tr><td colSpan={11} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
               ) : paginatedSchedules.map((s) => {
                 const info = rowInfo(s);
                 const selected = selectedIds.has(s.id);
@@ -730,7 +746,8 @@ export function PendingDispatchPlanning() {
                     <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{info.firm}</td>
                     <td className="border border-black px-3 py-2 text-xs text-black">{info.company?.name || "-"}</td>
                     <td className="border border-black px-3 py-2 text-xs text-black">{info.item?.name || "-"}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-indigo-700">{info.balance.toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-indigo-700">{info.pendingQty.toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-slate-700">{info.balance.toLocaleString()}</td>
                     <td className="border border-black px-2 py-1">
                       <input type="number" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full rounded border border-slate-300 p-1 text-right text-[11px] font-bold focus:border-indigo-600 focus:outline-none" />
                     </td>
@@ -741,7 +758,7 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="border-t-2 border-black bg-slate-100">
                 <tr className="font-black">
-                  <td colSpan={9} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={10} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="border border-black bg-indigo-50 px-4 py-3 text-right text-sm text-indigo-700">{totalSessionPlannedQty.toLocaleString()}</td>
                 </tr>
               </tfoot>
