@@ -7,6 +7,7 @@ import type {
   Indent,
   IndentLine,
   Invoice,
+  InvoiceLineItem,
   LoadingSlip,
   Machine,
   Material,
@@ -41,6 +42,9 @@ import { getPendingReturnJobReelLines } from "./materialMovement";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrugationFullTime } from "./reelTransfer";
 import { countEligibleLoadingPlans } from "./pendingLoadingEligibility";
 import { isPendingDailyConsumableTally } from "./materialIssueClassification";
+import { buildPendingInvoicingContext, getPendingInvoicingSlip } from "./pendingInvoicing";
+import { getScheduleAvailableQty } from "./dispatchPlanBalances";
+import { normalizeOrderItemSource } from "./orderItems";
 
 type OrderCatalogItem = {
   id: string;
@@ -135,6 +139,7 @@ export type BuildPendingTaskCountsArgs = {
   invoices: Invoice[];
   gatePasses?: GatePass[];
   companies?: Company[];
+  invoiceLineItems?: InvoiceLineItem[];
   machines?: Machine[];
   processing?: ProductionProcessing[];
   settings?: Setting[];
@@ -449,15 +454,22 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/material-receipt/pending-md-approval": args.materialIn.filter((m) => m.status === "Pending MD").length,
     "/material-receipt/pending-tally": args.materialIn.filter((m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in").length,
     "/production/pending": getPendingProductionPlanCount(args.schedules, args.productions, args.phpJobMaster, args.plateJobMaster, args.dispatchPlans, args.loadingSlips),
-    "/production/pending-npd": args.schedules.filter((schedule) => {
-      const order = orderById.get(schedule.orderId);
-      if (!order || order.status === "Cancelled") return false;
-      const item = npdItemById.get(String(order.itemId || "").trim());
-      if (!item) return false;
-      const boxType = String(item.boxType || "").trim();
-      const rapcValue = String(item.rapc ?? "").trim();
-      return !boxType && !rapcValue;
-    }).length,
+    // Same rows as the Pending NPD page: FG orders whose item is missing box
+    // type or RAPC.
+    "/production/pending-npd": (() => {
+      const fgItemById = new Map<string, any>();
+      (args.itemsBySource?.FG || []).forEach((item: any) => { const id = String(item?.id ?? ""); if (!fgItemById.has(id)) fgItemById.set(id, item); });
+      return args.schedules.filter((schedule) => {
+        const order = orderById.get(schedule.orderId);
+        if (!order || order.status === "Cancelled") return false;
+        if (normalizeOrderItemSource(order.itemSource) !== "FG") return false;
+        const item = fgItemById.get(String(order.itemId || "").trim());
+        if (!item) return false;
+        const boxType = String(item?.boxType || item?.raw?.boxType || "").trim();
+        const rapcValue = String(item?.raw?.rapc ?? item?.rapc ?? "").trim();
+        return !boxType || !rapcValue;
+      }).length;
+    })(),
     "/production/pending-consumption": args.productions.filter((p) =>
       isProductionPendingConsumption(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
@@ -492,7 +504,8 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/production/pending-tally": args.productions.filter((p) =>
       isProductionReadyForTally(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
-    "/production/pending-job-closure": args.pendingJobClosureCount || 0,
+    // Same rows as the Pending Job Closure page.
+    "/production/pending-job-closure": args.productions.filter((p) => !p.closeBy && !p.closeDate && p.status !== "Cancelled").length,
     "/production/pending-machine-processing": getPendingMachineProcessingCount(
       processingCandidates,
       args.machines,
@@ -548,19 +561,26 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/loading/plate/pending-tally": pendingPlateLoadingTallyCount,
     "/samples/pending": args.sampleRequests.filter((s) => !s.jobCardNo && !s.cancelTimestamp).length,
     "/orders/pending-ph": args.orders.filter((o) => isPendingPH(o.status)).length,
-    "/orders/pending-scheduling": args.orders.filter((o) => o.status === "Pending Scheduling").length,
-    "/dispatch/pending-planning": args.schedules.filter((schedule) => {
-      if (!schedule?.scheduledDate) return false;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
+    // Same rows as the Pending Scheduling page: order qty not yet scheduled.
+    "/orders/pending-scheduling": (() => {
+      const scheduledQtyByOrderId = new Map<string, number>();
+      args.schedules.forEach((schedule) => scheduledQtyByOrderId.set(schedule.orderId, (scheduledQtyByOrderId.get(schedule.orderId) || 0) + (Number(schedule.qty) || 0)));
+      return args.orders.filter((o) => o.status === "Pending Scheduling" && Number(o.qty || 0) - (scheduledQtyByOrderId.get(o.id) || 0) > 0).length;
+    })(),
+    // Same rows as the Pending Dispatch Planning page.
+    "/dispatch/pending-planning": (() => {
+      const tomorrow = new Date();
+      tomorrow.setHours(0, 0, 0, 0);
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(23, 59, 59, 999);
-      const schedDate = new Date(schedule.scheduledDate);
-      const alreadyPlanned = plannedQtyByScheduleId.get(schedule.id) || 0;
-      const balance = Number(schedule.qty || 0) - alreadyPlanned;
-      return !Number.isNaN(schedDate.getTime()) && schedDate <= tomorrow && balance > 0;
-    }).length,
+      const plansBySchedule = new Map<string, DispatchPlan[]>();
+      args.dispatchPlans.forEach((plan) => { const key = String(plan.scheduleId || ""); const list = plansBySchedule.get(key); if (list) list.push(plan); else plansBySchedule.set(key, [plan]); });
+      return args.schedules.filter((schedule) => {
+        const scheduledDate = new Date(schedule.scheduledDate);
+        if (isNaN(scheduledDate.getTime())) return false;
+        return scheduledDate <= tomorrow && getScheduleAvailableQty(schedule, plansBySchedule.get(String(schedule.id || "")) || []) > 0;
+      }).length;
+    })(),
     "/loading/pending": countEligibleLoadingPlans({
       plans: args.dispatchPlans,
       orders: args.orders,
@@ -572,7 +592,27 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       resolveOrderItem: args.resolveOrderItem,
       findItemAcrossSources: args.findItemAcrossSources,
     }),
-    "/billing/pending": args.loadingSlips.filter((slip) => !slip.invoiceId && slip.status !== "Cancelled").length,
+    // Same rows as the Pending Invoicing page (lib/pendingInvoicing).
+    "/billing/pending": (() => {
+      const ctx = buildPendingInvoicingContext({
+        plans: args.dispatchPlans,
+        orders: args.orders,
+        invoiceLineItems: args.invoiceLineItems || [],
+        findItemAcrossSources: args.findItemAcrossSources,
+        resolveOrderItem: args.resolveOrderItem,
+      });
+      const companyById = new Map<string, Company>();
+      (args.companies || []).forEach((company) => { if (!companyById.has(company.id)) companyById.set(company.id, company); });
+      return args.loadingSlips.filter((slip) => {
+        const pending = getPendingInvoicingSlip(ctx, slip);
+        const firstLine: any = pending?.lines?.[0];
+        if (!pending || !firstLine) return false;
+        const plan = ctx.planById.get(firstLine.dispatchPlanId);
+        const order = ctx.orderById.get(plan?.orderId as string);
+        const company = companyById.get((order?.companyId || (pending as any).companyId || firstLine.companyId) as string);
+        return Boolean(company || (pending as any).companyName || firstLine.companyName);
+      }).length;
+    })(),
     "/billing/pending-tally": args.invoices.filter((invoice) => !invoice.tallyTimestamp).length,
     "/gate-pass/pending-returnable": getPendingReturnableGatePassCount(args.gatePasses, args.gateEntries, args.materialIn),
     "/orders/upcoming": args.schedules.filter((schedule) => {

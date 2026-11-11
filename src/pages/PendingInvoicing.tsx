@@ -40,6 +40,7 @@ import { buildGatePassFromInvoice } from "../lib/gatePasses";
 import { useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { useAuth } from "../auth/AuthContext";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { getPendingInvoicingSlip } from "../lib/pendingInvoicing";
 
 interface GroupedLoading {
   groupKey: string;
@@ -360,44 +361,19 @@ export function PendingInvoicing() {
     };
   }, [plans, orders, companies, loadingSlips, invoiceLineItems]);
 
-  const getPendingSlip = (slip: LoadingSlip, includeInvoiceId = "") => {
-    if (slip.status === "Cancelled") return null;
-
-    const relevantLineItems = (lookup.lineItemsBySlipId.get(slip.id) || []).filter(
-      (line) => !includeInvoiceId || String(line.invoiceId || "").trim() !== includeInvoiceId
-    );
-
-    if (slip.invoiceId && relevantLineItems.length === 0 && !includeInvoiceId) return null;
-
-    const billedByLineKey = new Map<string, number>();
-    relevantLineItems.forEach((line) => {
-      const itemSource = normalizeOrderItemSource(line.itemSource || "FG");
-      const itemId = String(line.npdId || line.itemId || "").trim();
-      if (!itemId) return;
-      const key = `${itemSource}::${itemId}`;
-      billedByLineKey.set(key, (billedByLineKey.get(key) || 0) + Number(line.qty || 0));
-    });
-
-    const pendingLines = (slip.lines || [])
-      .map((line: any) => {
-        const plan = lookup.planById.get(line.dispatchPlanId);
-        const order = lookup.orderById.get(plan?.orderId as string);
-        const lineKey = getSlipLineKey(line, order);
-        if (!lineKey) return null;
-
-        const loadedQty = Number(line.loadedQty || 0);
-        const billedQty = Math.min(loadedQty, Math.max(0, billedByLineKey.get(lineKey) || 0));
-        billedByLineKey.set(lineKey, Math.max(0, (billedByLineKey.get(lineKey) || 0) - billedQty));
-
-        const pendingQty = roundMoney(loadedQty - billedQty);
-        if (pendingQty <= 0.0001) return null;
-        return { ...line, loadedQty: pendingQty };
-      })
-      .filter(Boolean);
-
-    if (pendingLines.length === 0) return null;
-    return { ...slip, lines: pendingLines };
-  };
+  // Same rule as the dashboard's Pending Invoicing count (lib/pendingInvoicing).
+  const pendingInvoicingContext = useMemo(
+    () => ({
+      planById: lookup.planById,
+      orderById: lookup.orderById,
+      lineItemsBySlipId: lookup.lineItemsBySlipId,
+      findItemAcrossSources,
+      resolveOrderItem,
+    }),
+    [findItemAcrossSources, lookup, resolveOrderItem]
+  );
+  const getPendingSlip = (slip: LoadingSlip, includeInvoiceId = "") =>
+    getPendingInvoicingSlip(pendingInvoicingContext, slip, includeInvoiceId);
 
   const buildInvoiceRowsFromSlips = (selected: any[]) => {
     const itemMap = new Map<string, InvoiceItemRow>();

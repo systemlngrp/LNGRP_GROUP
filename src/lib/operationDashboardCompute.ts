@@ -103,12 +103,53 @@ export type OperationDashboardOptions = {
   dateRange: { from: string; to: string };
   closedJobFilter: ClosedJobFilter;
   includeExportRows?: boolean;
+  /**
+   * The same lists for all firms. Most pending pages list every firm's records
+   * (firmScope "all"), so their dashboard counts are taken from these; the
+   * pages that list only the active firm keep the firm's own lists.
+   */
+  pendingLists?: OperationDashboardLists;
 };
+
+/** Pending pages that list only the active firm's records. */
+const FIRM_SCOPED_PENDING_KEYS = [
+  "/purchase-orders/pending-indent-lines",
+  "/material-receipt/pending-mrr",
+  "/material-receipt/pending-debit-note",
+  "/material-receipt/pending-credit-note",
+  "/production/pending-job-transfer",
+  "/loading/php/pending-tally",
+  "/loading/plate/pending-tally",
+  "/samples/pending",
+  "/gate-pass/pending-returnable",
+];
+
+function computePendingCounts(lists: OperationDashboardLists) {
+  const { resolveOrderItem, findItemAcrossSources, itemsBySource } = createOrderItemCatalog({
+    fgRows: lists.catalogFgRows,
+    phpRows: lists.catalogPhpRows,
+    plateRows: lists.catalogPlateRows,
+    materialRows: lists.catalogMaterialRows,
+  });
+  return buildPendingTaskCounts({
+    firms: lists.firms, materialIn: lists.materialIn, productions: lists.productions, phpJobMaster: lists.phpJobMaster,
+    plateJobMaster: lists.plateJobMaster, materials: lists.materials, orders: lists.orders,
+    npdItems: lists.npdFirmWiseRows.map(normalizeNpdItem), consumptions: lists.consumptions,
+    materialIssues: lists.materialIssues, materialIssueLines: lists.materialIssueLines, materialIssueReelLines: lists.issueReelLines,
+    materialReturns: lists.materialReturns, materialReturnLines: lists.materialReturnLines, materialReturnReelLines: lists.returnReelLines,
+    sampleRequests: lists.sampleRequests, indents: lists.indents, indentLines: lists.indentLines, purchaseOrders: lists.purchaseOrders,
+    gateEntries: lists.gateEntries, schedules: lists.schedules, dispatchPlans: lists.dispatchPlans, loadingSlips: lists.loadingSlips,
+    phpLoadingSlips: lists.phpLoadingSlips, plateLoadingSlips: lists.plateLoadingSlips, invoices: lists.invoices,
+    invoiceLineItems: lists.invoiceLineItems, companies: lists.companies, gatePasses: lists.gatePasses, machines: lists.machines,
+    processing: lists.processing, settings: lists.settings,
+    resolveOrderItem, findItemAcrossSources, itemsBySource,
+  });
+}
 
 export type OperationDashboardResult = {
   summary: OperationDashboardSummary;
   processingMachineCards: OperationDashboardMetricCard[];
-  /** Pending task counts without the job-closure count (the page merges that in). */
+  /** Pending task counts, each matching the row count of its pending page. */
   pendingCounts: Record<string, number>;
   exportRows?: Record<string, unknown>[];
 };
@@ -274,14 +315,13 @@ export function computeOperationDashboard(lists: OperationDashboardLists, option
         returnReelLines,
       }))();
 
-  const pendingCounts = buildPendingTaskCounts({
-    firms, materialIn, productions, phpJobMaster, plateJobMaster, materials, orders, npdItems, consumptions,
-    materialIssues, materialIssueLines, materialIssueReelLines: issueReelLines, materialReturns, materialReturnLines,
-    materialReturnReelLines: returnReelLines, sampleRequests, indents, indentLines, purchaseOrders, gateEntries, schedules,
-    dispatchPlans, loadingSlips, phpLoadingSlips, plateLoadingSlips, invoices, gatePasses, machines, processing, settings,
-    pendingJobClosureCount: 0,
-    resolveOrderItem, findItemAcrossSources, itemsBySource,
-  });
+  const pendingCounts = (() => {
+    const firmCounts = computePendingCounts(lists);
+    if (!options.pendingLists) return firmCounts;
+    const counts = computePendingCounts(options.pendingLists);
+    FIRM_SCOPED_PENDING_KEYS.forEach((key) => { counts[key] = firmCounts[key] || 0; });
+    return counts;
+  })();
 
   const processingMachineCards = (() => {
     const machineMap = new Map<string, { qty: number; entries: number }>();

@@ -18208,12 +18208,23 @@ async function buildOperationDashboardSummary(db, firmId, authUserId, options, c
         steps.push([key, Date.now() - stepStart, Array.isArray(lists[key]) ? lists[key].length : -1]);
         reportBuildTimings.set("operations-dashboard", { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [...steps] });
     }
+    // Most pending pages list every firm's records, so the pending counts also
+    // use all-firm lists (shared snapshots; the firm-scoped pages keep the
+    // firm's own counts inside computeOperationDashboard).
+    let pendingLists;
+    if (firmId) {
+        pendingLists = {};
+        for (const [key, load] of operationDashboardListPlan(db, "", authUserId)) {
+            pendingLists[key] = await load();
+        }
+    }
     const loadedMs = Date.now() - startedAt;
     const { computeOperationDashboard } = await loadDashboardSummaryModule();
     const result = computeOperationDashboard(lists, {
         dateRange: { from, to },
         closedJobFilter,
         includeExportRows,
+        pendingLists,
     });
     const totalMs = Date.now() - startedAt;
     console.info(`[DASHBOARD_SUMMARY] loadMs=${loadedMs} totalMs=${totalMs} export=${includeExportRows}`);

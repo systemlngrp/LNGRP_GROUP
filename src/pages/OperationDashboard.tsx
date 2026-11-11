@@ -145,10 +145,6 @@ export function OperationDashboard() {
   const allowExports = exportsAllowed();
   const [dateRange, setDateRange] = useState(getDefaultRange);
   const [closedJobFilter, setClosedJobFilter] = useState<ClosedJobFilter>("no");
-  const [pendingJobClosureCount, setPendingJobClosureCount] = useState<number>(0);
-  const [pendingJobClosureLoading, setPendingJobClosureLoading] = useState(true);
-  const [pendingJobClosureError, setPendingJobClosureError] = useState<string | null>(null);
-  const [pendingJobClosureRetryKey, setPendingJobClosureRetryKey] = useState(0);
   const operationExportFileName =
     dateRange.from && dateRange.to
       ? `Operation_Dashboard_${dateRange.from}_${dateRange.to}`
@@ -365,31 +361,6 @@ export function OperationDashboard() {
   }, [dataReady, serverFailed]);
   const waitingSeconds = Math.max(0, Math.round((nowTick - serverStartedAt) / 1000));
 
-  useEffect(() => {
-    const refreshPendingJobClosureCount = async () => {
-      setPendingJobClosureLoading(true);
-      setPendingJobClosureError(null);
-      try {
-        const token = window.localStorage.getItem("authToken") || "";
-        // Count-only endpoint (same rows as the full list, without downloading them).
-        const response = await fetch("/api/pending-job-closure/count", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        if (!response.ok) throw new Error(await response.text());
-        const payload = await response.json();
-        setPendingJobClosureCount(Number(payload?.count || 0));
-      } catch {
-        setPendingJobClosureCount(0);
-        setPendingJobClosureError("Unable to load pending job closure count.");
-      } finally {
-        setPendingJobClosureLoading(false);
-      }
-    };
-
-    void refreshPendingJobClosureCount();
-  }, [pendingJobClosureRetryKey]);
-
-  useTrackPageLoading(pendingJobClosureLoading, pendingJobClosureError, () => setPendingJobClosureRetryKey((value) => value + 1));
   // Centred loading card while the server calculates the figures (in browser
   // mode the lists' own loading shows the card).
   useTrackPageLoading(
@@ -407,8 +378,8 @@ export function OperationDashboard() {
   const summary = result.summary;
   const processingMachineCards = result.processingMachineCards;
   const pendingTaskSummary = useMemo(
-    () => getPendingTaskGroups({ ...result.pendingCounts, "/production/pending-job-closure": pendingJobClosureCount || 0 }),
-    [result.pendingCounts, pendingJobClosureCount]
+    () => getPendingTaskGroups(result.pendingCounts),
+    [result.pendingCounts]
   );
 
   const handleExport = async () => {

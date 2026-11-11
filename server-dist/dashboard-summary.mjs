@@ -1461,6 +1461,87 @@ function countEligibleLoadingPlans(args) {
   return getPendingLoadingPlanProjections(args).length;
 }
 
+// src/lib/pendingInvoicing.ts
+var roundMoney = (value) => {
+  const numeric = Number(value) || 0;
+  return (numeric < 0 ? -1 : 1) * Math.round((Math.abs(numeric) + 1e-9) * 100) / 100;
+};
+function firstById(rows) {
+  const map = /* @__PURE__ */ new Map();
+  rows.forEach((row) => {
+    if (!map.has(row.id)) map.set(row.id, row);
+  });
+  return map;
+}
+function buildPendingInvoicingContext(args) {
+  const lineItemsBySlipId = /* @__PURE__ */ new Map();
+  args.invoiceLineItems.forEach((line) => {
+    const key = String(line.loadingSlipId || "").trim();
+    const list = lineItemsBySlipId.get(key);
+    if (list) list.push(line);
+    else lineItemsBySlipId.set(key, [line]);
+  });
+  return {
+    planById: firstById(args.plans),
+    orderById: firstById(args.orders),
+    lineItemsBySlipId,
+    findItemAcrossSources: args.findItemAcrossSources,
+    resolveOrderItem: args.resolveOrderItem
+  };
+}
+function resolvePendingInvoicingLineItem(ctx, line, order) {
+  const itemSource = normalizeOrderItemSource(line.itemSource || order?.itemSource || "FG");
+  const directItemId = String(line.itemId || order?.itemId || "").trim();
+  const directErp = String(line.erpCode || line.masterErp || order?.erpCode || "").trim();
+  return ctx.findItemAcrossSources?.(directItemId, itemSource, directErp) || ctx.resolveOrderItem?.(order) || void 0;
+}
+function getPendingInvoicingLineKey(ctx, line, order) {
+  const itemSource = normalizeOrderItemSource(line.itemSource || order?.itemSource || "FG");
+  const resolvedItem = resolvePendingInvoicingLineItem(ctx, line, order);
+  const itemId = String(resolvedItem?.id || line.itemId || order?.itemId || "").trim();
+  return itemId ? `${itemSource}::${itemId}` : "";
+}
+function getPendingInvoicingSlip(ctx, slip, includeInvoiceId = "") {
+  if (slip.status === "Cancelled") return null;
+  const relevantLineItems = (ctx.lineItemsBySlipId.get(slip.id) || []).filter(
+    (line) => !includeInvoiceId || String(line.invoiceId || "").trim() !== includeInvoiceId
+  );
+  if (slip.invoiceId && relevantLineItems.length === 0 && !includeInvoiceId) return null;
+  const billedByLineKey = /* @__PURE__ */ new Map();
+  relevantLineItems.forEach((line) => {
+    const itemSource = normalizeOrderItemSource(line.itemSource || "FG");
+    const itemId = String(line.npdId || line.itemId || "").trim();
+    if (!itemId) return;
+    const key = `${itemSource}::${itemId}`;
+    billedByLineKey.set(key, (billedByLineKey.get(key) || 0) + Number(line.qty || 0));
+  });
+  const pendingLines = (slip.lines || []).map((line) => {
+    const plan = ctx.planById.get(line.dispatchPlanId);
+    const order = ctx.orderById.get(plan?.orderId);
+    const lineKey = getPendingInvoicingLineKey(ctx, line, order);
+    if (!lineKey) return null;
+    const loadedQty = Number(line.loadedQty || 0);
+    const billedQty = Math.min(loadedQty, Math.max(0, billedByLineKey.get(lineKey) || 0));
+    billedByLineKey.set(lineKey, Math.max(0, (billedByLineKey.get(lineKey) || 0) - billedQty));
+    const pendingQty = roundMoney(loadedQty - billedQty);
+    if (pendingQty <= 1e-4) return null;
+    return { ...line, loadedQty: pendingQty };
+  }).filter(Boolean);
+  if (pendingLines.length === 0) return null;
+  return { ...slip, lines: pendingLines };
+}
+
+// src/lib/dispatchPlanBalances.ts
+var amount = (value) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+};
+var getEffectiveDispatchPlanQty = (plan) => Math.max(0, amount(plan.plannedQty) - amount(plan.canceledQty));
+var getScheduleAvailableQty = (schedule, plans) => {
+  const reserved = plans.filter((plan) => String(plan.scheduleId || "") === String(schedule.id || "")).reduce((sum, plan) => sum + getEffectiveDispatchPlanQty(plan), 0);
+  return Math.max(0, amount(schedule.qty) - amount(schedule.canceledQty) - reserved);
+};
+
 // src/lib/pendingTaskCounts.ts
 var isPendingPH = (status) => !status || status === "Pending PH";
 function parseLocalYmd(dateStr) {
@@ -1682,15 +1763,25 @@ function buildPendingTaskCounts(args) {
     "/material-receipt/pending-md-approval": args.materialIn.filter((m) => m.status === "Pending MD").length,
     "/material-receipt/pending-tally": args.materialIn.filter((m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in").length,
     "/production/pending": getPendingProductionPlanCount(args.schedules, args.productions, args.phpJobMaster, args.plateJobMaster, args.dispatchPlans, args.loadingSlips),
-    "/production/pending-npd": args.schedules.filter((schedule) => {
-      const order = orderById.get(schedule.orderId);
-      if (!order || order.status === "Cancelled") return false;
-      const item = npdItemById.get(String(order.itemId || "").trim());
-      if (!item) return false;
-      const boxType = String(item.boxType || "").trim();
-      const rapcValue = String(item.rapc ?? "").trim();
-      return !boxType && !rapcValue;
-    }).length,
+    // Same rows as the Pending NPD page: FG orders whose item is missing box
+    // type or RAPC.
+    "/production/pending-npd": (() => {
+      const fgItemById = /* @__PURE__ */ new Map();
+      (args.itemsBySource?.FG || []).forEach((item) => {
+        const id = String(item?.id ?? "");
+        if (!fgItemById.has(id)) fgItemById.set(id, item);
+      });
+      return args.schedules.filter((schedule) => {
+        const order = orderById.get(schedule.orderId);
+        if (!order || order.status === "Cancelled") return false;
+        if (normalizeOrderItemSource(order.itemSource) !== "FG") return false;
+        const item = fgItemById.get(String(order.itemId || "").trim());
+        if (!item) return false;
+        const boxType = String(item?.boxType || item?.raw?.boxType || "").trim();
+        const rapcValue = String(item?.raw?.rapc ?? item?.rapc ?? "").trim();
+        return !boxType || !rapcValue;
+      }).length;
+    })(),
     "/production/pending-consumption": args.productions.filter(
       (p) => isProductionPendingConsumption(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
@@ -1719,7 +1810,8 @@ function buildPendingTaskCounts(args) {
     "/production/pending-tally": args.productions.filter(
       (p) => isProductionReadyForTally(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
-    "/production/pending-job-closure": args.pendingJobClosureCount || 0,
+    // Same rows as the Pending Job Closure page.
+    "/production/pending-job-closure": args.productions.filter((p) => !p.closeBy && !p.closeDate && p.status !== "Cancelled").length,
     "/production/pending-machine-processing": getPendingMachineProcessingCount(
       processingCandidates,
       args.machines,
@@ -1774,19 +1866,31 @@ function buildPendingTaskCounts(args) {
     "/loading/plate/pending-tally": pendingPlateLoadingTallyCount,
     "/samples/pending": args.sampleRequests.filter((s) => !s.jobCardNo && !s.cancelTimestamp).length,
     "/orders/pending-ph": args.orders.filter((o) => isPendingPH(o.status)).length,
-    "/orders/pending-scheduling": args.orders.filter((o) => o.status === "Pending Scheduling").length,
-    "/dispatch/pending-planning": args.schedules.filter((schedule) => {
-      if (!schedule?.scheduledDate) return false;
-      const today = /* @__PURE__ */ new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
+    // Same rows as the Pending Scheduling page: order qty not yet scheduled.
+    "/orders/pending-scheduling": (() => {
+      const scheduledQtyByOrderId = /* @__PURE__ */ new Map();
+      args.schedules.forEach((schedule) => scheduledQtyByOrderId.set(schedule.orderId, (scheduledQtyByOrderId.get(schedule.orderId) || 0) + (Number(schedule.qty) || 0)));
+      return args.orders.filter((o) => o.status === "Pending Scheduling" && Number(o.qty || 0) - (scheduledQtyByOrderId.get(o.id) || 0) > 0).length;
+    })(),
+    // Same rows as the Pending Dispatch Planning page.
+    "/dispatch/pending-planning": (() => {
+      const tomorrow = /* @__PURE__ */ new Date();
+      tomorrow.setHours(0, 0, 0, 0);
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(23, 59, 59, 999);
-      const schedDate = new Date(schedule.scheduledDate);
-      const alreadyPlanned = plannedQtyByScheduleId.get(schedule.id) || 0;
-      const balance = Number(schedule.qty || 0) - alreadyPlanned;
-      return !Number.isNaN(schedDate.getTime()) && schedDate <= tomorrow && balance > 0;
-    }).length,
+      const plansBySchedule = /* @__PURE__ */ new Map();
+      args.dispatchPlans.forEach((plan) => {
+        const key = String(plan.scheduleId || "");
+        const list = plansBySchedule.get(key);
+        if (list) list.push(plan);
+        else plansBySchedule.set(key, [plan]);
+      });
+      return args.schedules.filter((schedule) => {
+        const scheduledDate = new Date(schedule.scheduledDate);
+        if (isNaN(scheduledDate.getTime())) return false;
+        return scheduledDate <= tomorrow && getScheduleAvailableQty(schedule, plansBySchedule.get(String(schedule.id || "")) || []) > 0;
+      }).length;
+    })(),
     "/loading/pending": countEligibleLoadingPlans({
       plans: args.dispatchPlans,
       orders: args.orders,
@@ -1798,7 +1902,29 @@ function buildPendingTaskCounts(args) {
       resolveOrderItem: args.resolveOrderItem,
       findItemAcrossSources: args.findItemAcrossSources
     }),
-    "/billing/pending": args.loadingSlips.filter((slip) => !slip.invoiceId && slip.status !== "Cancelled").length,
+    // Same rows as the Pending Invoicing page (lib/pendingInvoicing).
+    "/billing/pending": (() => {
+      const ctx = buildPendingInvoicingContext({
+        plans: args.dispatchPlans,
+        orders: args.orders,
+        invoiceLineItems: args.invoiceLineItems || [],
+        findItemAcrossSources: args.findItemAcrossSources,
+        resolveOrderItem: args.resolveOrderItem
+      });
+      const companyById = /* @__PURE__ */ new Map();
+      (args.companies || []).forEach((company) => {
+        if (!companyById.has(company.id)) companyById.set(company.id, company);
+      });
+      return args.loadingSlips.filter((slip) => {
+        const pending = getPendingInvoicingSlip(ctx, slip);
+        const firstLine = pending?.lines?.[0];
+        if (!pending || !firstLine) return false;
+        const plan = ctx.planById.get(firstLine.dispatchPlanId);
+        const order = ctx.orderById.get(plan?.orderId);
+        const company = companyById.get(order?.companyId || pending.companyId || firstLine.companyId);
+        return Boolean(company || pending.companyName || firstLine.companyName);
+      }).length;
+    })(),
     "/billing/pending-tally": args.invoices.filter((invoice) => !invoice.tallyTimestamp).length,
     "/gate-pass/pending-returnable": getPendingReturnableGatePassCount(args.gatePasses, args.gateEntries, args.materialIn),
     "/orders/upcoming": args.schedules.filter((schedule) => {
@@ -2142,7 +2268,63 @@ var PROCESSING_MACHINE_CARD_ORDER = [
   "Punching",
   "Gluing"
 ];
-function firstById(rows, getKey) {
+var FIRM_SCOPED_PENDING_KEYS = [
+  "/purchase-orders/pending-indent-lines",
+  "/material-receipt/pending-mrr",
+  "/material-receipt/pending-debit-note",
+  "/material-receipt/pending-credit-note",
+  "/production/pending-job-transfer",
+  "/loading/php/pending-tally",
+  "/loading/plate/pending-tally",
+  "/samples/pending",
+  "/gate-pass/pending-returnable"
+];
+function computePendingCounts(lists) {
+  const { resolveOrderItem, findItemAcrossSources, itemsBySource } = createOrderItemCatalog({
+    fgRows: lists.catalogFgRows,
+    phpRows: lists.catalogPhpRows,
+    plateRows: lists.catalogPlateRows,
+    materialRows: lists.catalogMaterialRows
+  });
+  return buildPendingTaskCounts({
+    firms: lists.firms,
+    materialIn: lists.materialIn,
+    productions: lists.productions,
+    phpJobMaster: lists.phpJobMaster,
+    plateJobMaster: lists.plateJobMaster,
+    materials: lists.materials,
+    orders: lists.orders,
+    npdItems: lists.npdFirmWiseRows.map(normalizeNpdItem),
+    consumptions: lists.consumptions,
+    materialIssues: lists.materialIssues,
+    materialIssueLines: lists.materialIssueLines,
+    materialIssueReelLines: lists.issueReelLines,
+    materialReturns: lists.materialReturns,
+    materialReturnLines: lists.materialReturnLines,
+    materialReturnReelLines: lists.returnReelLines,
+    sampleRequests: lists.sampleRequests,
+    indents: lists.indents,
+    indentLines: lists.indentLines,
+    purchaseOrders: lists.purchaseOrders,
+    gateEntries: lists.gateEntries,
+    schedules: lists.schedules,
+    dispatchPlans: lists.dispatchPlans,
+    loadingSlips: lists.loadingSlips,
+    phpLoadingSlips: lists.phpLoadingSlips,
+    plateLoadingSlips: lists.plateLoadingSlips,
+    invoices: lists.invoices,
+    invoiceLineItems: lists.invoiceLineItems,
+    companies: lists.companies,
+    gatePasses: lists.gatePasses,
+    machines: lists.machines,
+    processing: lists.processing,
+    settings: lists.settings,
+    resolveOrderItem,
+    findItemAcrossSources,
+    itemsBySource
+  });
+}
+function firstById2(rows, getKey) {
   const index = /* @__PURE__ */ new Map();
   rows.forEach((row) => {
     const key = getKey(row);
@@ -2254,10 +2436,10 @@ function computeOperationDashboard(lists, options) {
     });
     return summarizeScrapInvoiceRows(scrapRows);
   })();
-  const scheduleById = firstById(schedules, (s) => s.id);
-  const orderById = firstById(orders, (o) => o.id);
-  const companyById = firstById(companies, (c) => c.id);
-  const npdItemById = firstById(npdItems, (i) => i.id);
+  const scheduleById = firstById2(schedules, (s) => s.id);
+  const orderById = firstById2(orders, (o) => o.id);
+  const companyById = firstById2(companies, (c) => c.id);
+  const npdItemById = firstById2(npdItems, (i) => i.id);
   const rows = (() => {
     const sorted = filteredProductions.map((p) => {
       const schedule = scheduleById.get(p.scheduleId);
@@ -2310,42 +2492,15 @@ function computeOperationDashboard(lists, options) {
     materialReturnLines,
     returnReelLines
   }))();
-  const pendingCounts = buildPendingTaskCounts({
-    firms,
-    materialIn,
-    productions,
-    phpJobMaster,
-    plateJobMaster,
-    materials,
-    orders,
-    npdItems,
-    consumptions,
-    materialIssues,
-    materialIssueLines,
-    materialIssueReelLines: issueReelLines,
-    materialReturns,
-    materialReturnLines,
-    materialReturnReelLines: returnReelLines,
-    sampleRequests,
-    indents,
-    indentLines,
-    purchaseOrders,
-    gateEntries,
-    schedules,
-    dispatchPlans,
-    loadingSlips,
-    phpLoadingSlips,
-    plateLoadingSlips,
-    invoices,
-    gatePasses,
-    machines,
-    processing,
-    settings,
-    pendingJobClosureCount: 0,
-    resolveOrderItem,
-    findItemAcrossSources,
-    itemsBySource
-  });
+  const pendingCounts = (() => {
+    const firmCounts = computePendingCounts(lists);
+    if (!options.pendingLists) return firmCounts;
+    const counts = computePendingCounts(options.pendingLists);
+    FIRM_SCOPED_PENDING_KEYS.forEach((key) => {
+      counts[key] = firmCounts[key] || 0;
+    });
+    return counts;
+  })();
   const processingMachineCards = (() => {
     const machineMap = /* @__PURE__ */ new Map();
     processing.filter((entry) => safeRange ? isDateWithinRange(entry.date, safeRange) : true).forEach((entry) => {
