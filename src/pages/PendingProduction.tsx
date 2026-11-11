@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { Company, Firm, Order, OrderSchedule, Production } from "../types";
+import { Company, DispatchPlan, Firm, Order, OrderSchedule, LoadingSlip, Production } from "../types";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 
@@ -59,6 +59,8 @@ export function PendingProduction() {
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs] = useData<Production>("php_job_master", []);
   const [plateJobs] = useData<Production>("plate_job_master", []);
+  const [dispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
+  const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const { resolveOrderItem } = useOrderItemCatalog();
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
@@ -89,8 +91,8 @@ export function PendingProduction() {
   }, []);
 
   const consumptionByScheduleId = useMemo(
-    () => buildScheduleConsumptionByScheduleId(productions, phpJobs, plateJobs),
-    [plateJobs, phpJobs, productions]
+    () => buildScheduleConsumptionByScheduleId(productions, phpJobs, plateJobs, { dispatchPlans, loadingSlips }),
+    [dispatchPlans, loadingSlips, plateJobs, phpJobs, productions]
   );
 
   const firmNameById = useMemo(
@@ -134,6 +136,7 @@ export function PendingProduction() {
         const actualProducedQty = Number(summary?.actualProducedQty || 0);
         const plannedWithoutFfgQty = Number(summary?.plannedWithoutFfgQty || 0);
         const consumedQty = Number(summary?.effectiveConsumedQty || 0);
+        const loadedFromOtherQty = Number(summary?.loadedFromOtherSourcesQty || 0);
         return {
           schedule,
           order,
@@ -144,6 +147,7 @@ export function PendingProduction() {
           plannedQty,
           actualProducedQty,
           plannedWithoutFfgQty,
+          loadedFromOtherQty,
           consumedQty,
           pendingQty: getPendingProductionQty(schedule, consumedQty),
         };
@@ -153,7 +157,7 @@ export function PendingProduction() {
   const pendingRows = useMemo(() => {
     const words = searchWords(searchTerm);
     return baseRows
-      .filter(({ schedule, order, item, company, firm, firmId, pendingQty, plannedQty, actualProducedQty }) => {
+      .filter(({ schedule, order, item, company, firm, firmId, pendingQty, plannedQty, actualProducedQty, loadedFromOtherQty }) => {
         if (firmFilter && firmId !== firmFilter) return false;
         if (companyFilter && order?.companyId !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${getPendingProductionErp(item, order)}`;
@@ -177,6 +181,7 @@ export function PendingProduction() {
           schedule.qty || 0,
           plannedQty,
           actualProducedQty,
+          loadedFromOtherQty,
           schedule.canceledQty || 0,
           pendingQty,
         ], words);
@@ -211,6 +216,7 @@ export function PendingProduction() {
       case "qty": return Number(row.schedule.qty || 0);
       case "plannedQty": return row.plannedQty;
       case "actualProducedQty": return row.actualProducedQty;
+      case "loadedFromOtherQty": return row.loadedFromOtherQty;
       case "canceledQty": return Number(row.schedule.canceledQty || 0);
       case "pendingQty": return row.pendingQty;
       default: return "";
@@ -329,6 +335,7 @@ export function PendingProduction() {
               <th className="px-3 py-2 border border-black"><SortHeader label="Scheduled Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-3 py-2 border border-black"><SortHeader label="Planned Qty" sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-3 py-2 border border-black"><SortHeader label="Actual FFG" sortKey="actualProducedQty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-3 py-2 border border-black" title="Qty already loaded for this schedule from FG stock or from other orders' jobs"><SortHeader label="Loaded from Stock" sortKey="loadedFromOtherQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-3 py-2 border border-black"><SortHeader label="Canceled Qty" sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-3 py-2 border border-black"><SortHeader label="Pending Qty" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-3 py-2 border border-black">Cancel Qty</th>
@@ -337,9 +344,9 @@ export function PendingProduction() {
           </thead>
           <tbody>
             {pendingRows.length === 0 ? (
-              <tr><td colSpan={16} className="h-16" aria-label="No records" /></tr>
+              <tr><td colSpan={17} className="h-16" aria-label="No records" /></tr>
             ) : (
-              paginatedRows.map(({ schedule, order, item, company, firm, pendingQty, plannedQty, actualProducedQty }, index) => {
+              paginatedRows.map(({ schedule, order, item, company, firm, pendingQty, plannedQty, actualProducedQty, loadedFromOtherQty }, index) => {
                 const canPlanFgJob = normalizeOrderItemSource(order?.itemSource) === "FG";
     const boxType = canPlanFgJob ? String((item as any)?.boxType || "").trim() : "";
                 const hasBoxType = Boolean(boxType);
@@ -358,6 +365,7 @@ export function PendingProduction() {
                   <td className="px-3 py-2 border border-black">{schedule.qty || 0}</td>
                   <td className="px-3 py-2 border border-black">{plannedQty}</td>
                   <td className="px-3 py-2 border border-black">{actualProducedQty}</td>
+                  <td className="px-3 py-2 border border-black">{loadedFromOtherQty}</td>
                   <td className="px-3 py-2 border border-black">{schedule.canceledQty || 0}</td>
                   <td className="px-3 py-2 border border-black font-bold">{pendingQty}</td>
                   <td className="px-3 py-2 border border-black">

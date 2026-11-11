@@ -1008,8 +1008,17 @@ function hasFilledFfgValue(production) {
   const value = Number(production.prodFromFFG);
   return Number.isFinite(value) && value > 0;
 }
-function buildScheduleConsumptionByScheduleId(productions, phpJobs = [], plateJobs = []) {
+function buildScheduleConsumptionByScheduleId(productions, phpJobs = [], plateJobs = [], supply) {
   const map = /* @__PURE__ */ new Map();
+  const jobScheduleById = /* @__PURE__ */ new Map();
+  const emptySummary = () => ({
+    plannedQty: 0,
+    actualProducedQty: 0,
+    plannedWithoutFfgQty: 0,
+    effectiveConsumedQty: 0,
+    loadedQty: 0,
+    loadedFromOtherSourcesQty: 0
+  });
   const phpScheduleByJobId = buildLinkedScheduleMap(phpJobs);
   const plateScheduleByJobId = buildLinkedScheduleMap(plateJobs);
   productions.filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp).forEach((production) => {
@@ -1022,12 +1031,8 @@ function buildScheduleConsumptionByScheduleId(productions, phpJobs = [], plateJo
     ).trim();
     const effectiveScheduleId = directScheduleId || phpLinkedScheduleId || plateLinkedScheduleId;
     if (!effectiveScheduleId) return;
-    const current = map.get(effectiveScheduleId) || {
-      plannedQty: 0,
-      actualProducedQty: 0,
-      plannedWithoutFfgQty: 0,
-      effectiveConsumedQty: 0
-    };
+    jobScheduleById.set(String(production.id || "").trim(), effectiveScheduleId);
+    const current = map.get(effectiveScheduleId) || emptySummary();
     if (hasFilledFfgValue(production)) {
       current.actualProducedQty += Number(production.prodFromFFG || 0);
     } else {
@@ -1037,6 +1042,38 @@ function buildScheduleConsumptionByScheduleId(productions, phpJobs = [], plateJo
     current.effectiveConsumedQty = current.actualProducedQty + current.plannedWithoutFfgQty;
     map.set(effectiveScheduleId, current);
   });
+  if (supply) {
+    const scheduleByPlanId = /* @__PURE__ */ new Map();
+    supply.dispatchPlans.forEach((plan) => {
+      const planId = String(plan.id || "").trim();
+      const scheduleId = String(plan.scheduleId || "").trim();
+      if (planId && scheduleId) scheduleByPlanId.set(planId, scheduleId);
+    });
+    const loadedOwnByScheduleId = /* @__PURE__ */ new Map();
+    supply.loadingSlips.filter((slip) => slip.status !== "Cancelled").forEach((slip) => {
+      (slip.lines || []).forEach((line) => {
+        const scheduleId = scheduleByPlanId.get(String(line.dispatchPlanId || "").trim());
+        if (!scheduleId) return;
+        const current = map.get(scheduleId) || emptySummary();
+        current.loadedQty += Number(line.loadedQty || 0);
+        map.set(scheduleId, current);
+        (line.allocations || []).forEach((allocation) => {
+          if (allocation.sourceType !== "job") return;
+          if (jobScheduleById.get(String(allocation.jobId || "").trim()) !== scheduleId) return;
+          loadedOwnByScheduleId.set(scheduleId, (loadedOwnByScheduleId.get(scheduleId) || 0) + Number(allocation.qty || 0));
+        });
+      });
+    });
+    map.forEach((summary, scheduleId) => {
+      if (summary.loadedQty <= 0) return;
+      const loadedOwn = Math.min(loadedOwnByScheduleId.get(scheduleId) || 0, summary.loadedQty);
+      summary.loadedFromOtherSourcesQty = summary.loadedQty - loadedOwn;
+      summary.effectiveConsumedQty = Math.max(
+        summary.plannedQty + summary.loadedFromOtherSourcesQty,
+        summary.loadedQty
+      );
+    });
+  }
   return map;
 }
 
@@ -1475,13 +1512,13 @@ function getSetsPerBox(item) {
 function getScheduledQty(schedule) {
   return Math.max(Number(schedule.qty || 0) - Number(schedule.canceledQty || 0), 0);
 }
-function getPendingProductionPlanCount(schedules, productions, phpJobs, plateJobs) {
+function getPendingProductionPlanCount(schedules, productions, phpJobs, plateJobs, dispatchPlans, loadingSlips) {
   const today = /* @__PURE__ */ new Date();
   today.setHours(0, 0, 0, 0);
   const cutoffDate = new Date(today);
   cutoffDate.setDate(cutoffDate.getDate() + 2);
   cutoffDate.setHours(23, 59, 59, 999);
-  const consumptionByScheduleId = buildScheduleConsumptionByScheduleId(productions, phpJobs, plateJobs);
+  const consumptionByScheduleId = buildScheduleConsumptionByScheduleId(productions, phpJobs, plateJobs, { dispatchPlans, loadingSlips });
   const getPendingProductionQty = (schedule) => Math.max(
     Number(schedule.qty || 0) - Number(consumptionByScheduleId.get(schedule.id)?.effectiveConsumedQty || 0) - Number(schedule.canceledQty || 0),
     0
@@ -1634,7 +1671,7 @@ function buildPendingTaskCounts(args) {
     "/material-receipt/pending-accounts-approval": args.materialIn.filter((m) => m.status === "Pending Accounts").length,
     "/material-receipt/pending-md-approval": args.materialIn.filter((m) => m.status === "Pending MD").length,
     "/material-receipt/pending-tally": args.materialIn.filter((m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in").length,
-    "/production/pending": getPendingProductionPlanCount(args.schedules, args.productions, args.phpJobMaster, args.plateJobMaster),
+    "/production/pending": getPendingProductionPlanCount(args.schedules, args.productions, args.phpJobMaster, args.plateJobMaster, args.dispatchPlans, args.loadingSlips),
     "/production/pending-npd": args.schedules.filter((schedule) => {
       const order = orderById.get(schedule.orderId);
       if (!order || order.status === "Cancelled") return false;

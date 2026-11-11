@@ -231,14 +231,14 @@ function getScheduledQty(schedule: OrderSchedule) {
 }
 
 
-function getPendingProductionPlanCount(schedules: OrderSchedule[], productions: Production[], phpJobs: Production[], plateJobs: Production[]) {
+function getPendingProductionPlanCount(schedules: OrderSchedule[], productions: Production[], phpJobs: Production[], plateJobs: Production[], dispatchPlans: DispatchPlan[], loadingSlips: LoadingSlip[]) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const cutoffDate = new Date(today);
   cutoffDate.setDate(cutoffDate.getDate() + 2);
   cutoffDate.setHours(23, 59, 59, 999);
 
-  const consumptionByScheduleId = buildScheduleConsumptionByScheduleId(productions, phpJobs, plateJobs);
+  const consumptionByScheduleId = buildScheduleConsumptionByScheduleId(productions, phpJobs, plateJobs, { dispatchPlans, loadingSlips });
   const getPendingProductionQty = (schedule: OrderSchedule) =>
     Math.max(
       Number(schedule.qty || 0) - Number(consumptionByScheduleId.get(schedule.id)?.effectiveConsumedQty || 0) - Number(schedule.canceledQty || 0),
@@ -448,7 +448,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     "/material-receipt/pending-accounts-approval": args.materialIn.filter((m) => m.status === "Pending Accounts").length,
     "/material-receipt/pending-md-approval": args.materialIn.filter((m) => m.status === "Pending MD").length,
     "/material-receipt/pending-tally": args.materialIn.filter((m) => m.status === "Pending Tally" && String(m.mrrType || "").trim().toLowerCase() !== "rejection in").length,
-    "/production/pending": getPendingProductionPlanCount(args.schedules, args.productions, args.phpJobMaster, args.plateJobMaster),
+    "/production/pending": getPendingProductionPlanCount(args.schedules, args.productions, args.phpJobMaster, args.plateJobMaster, args.dispatchPlans, args.loadingSlips),
     "/production/pending-npd": args.schedules.filter((schedule) => {
       const order = orderById.get(schedule.orderId);
       if (!order || order.status === "Cancelled") return false;
