@@ -69,7 +69,7 @@ export function SummarySheetReport() {
   const [jobStatuses] = useData<Production>("productions", [], {
     firmScope: "all",
     storageKey: "summary-sheet-job-status",
-    fields: ["status", "closeBy", "closeDate", "remarks", "date", "firmId", "firmName", "companyName", "transactionNo", "jobCardNo"],
+    fields: ["status", "closeBy", "closeDate", "remarks", "date", "firmId", "firmName", "companyName", "transactionNo", "jobCardNo", "ffgTimestamp", "qty"],
     enabled: !browserFallback,
   });
   const [needFullJobs, setNeedFullJobs] = useState(false);
@@ -227,7 +227,13 @@ export function SummarySheetReport() {
       .filter((p) => !partyFilter || s((p as any).companyName) === partyFilter)
       .map((p) => isoDateText(p.date));
     const filters = { firm: firmFilter, party: partyFilter, item: itemFilter, erp: erpFilter };
-    return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null, filters, Boolean(from || to));
+    // WIP stock: jobs created whose FFG is not filled yet (same filters as the tiles).
+    const wipJobs = tileRows.filter((row) => {
+      const production = productionById.get(s(row.__productionId));
+      return production && !s((production as any).ffgTimestamp);
+    });
+    const wip = productions.length ? { qty: wipJobs.reduce((sum, row) => sum + n(row["Planned Qty"]), 0), jobs: wipJobs.length } : null;
+    return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null, filters, Boolean(from || to), wip);
   }, [baseRows, closedFilter, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.

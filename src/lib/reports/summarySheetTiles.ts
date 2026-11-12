@@ -35,6 +35,8 @@ export function computeSummarySheetSections(
   extras: SummarySheetExtras | null,
   filters: TileFilters = { firm: "", party: "", item: "", erp: "" },
   datesChosen = false,
+  /** Jobs created but FFG not filled yet: planned qty and job count. */
+  wip: { qty: number; jobs: number } | null = null,
   now = new Date(),
 ): SummaryTileSection[] {
   const today = localDayKey(0, now);
@@ -89,14 +91,14 @@ export function computeSummarySheetSections(
       tiles: [
         { id: "todayBoardline", label: "Today's Boardline Production", value: sum(todayRows, (row) => n(row["Boardline Prod."])), format: "qty", tone: "bg-[#9900ff] text-white" },
         { id: "todayPrinting", label: "Today's BOBST Prod.", value: sum(todayRows, (row) => n(row["Printing prod."])), format: "qty", tone: "bg-[#0000ff] text-white" },
-        { id: "wip", label: "WIP", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950" },
+        { id: "wip", label: "WIP (Boardline − Printing)", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950" },
         { id: "rangePaper", label: "Paper Used / Reel Issue (Kg)", value: paperUsed, format: "qty", tone: "bg-[#00ffff] text-slate-950" },
         { id: "rangeJobs", label: "Jobs", value: rangeRows.length, format: "count", tone: "bg-[#ffe599] text-slate-950" },
         { id: "rangeClosed", label: "Closed Jobs", value: rangeRows.filter((row) => s(row["Job Closed"]) === "Yes").length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },
         { id: "rangeCancelled", label: "Cancel Jobs", value: cancelledJobDates.filter(inRange).length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },
         blank("rejection", "Rejection / Short Sent", "bg-white text-slate-950"),
-        blank("fgOpening", "FG Opening", "bg-white text-slate-950"),
-        blank("wipOpening", "WIP Opening", "bg-white text-slate-950"),
+        { id: "fgStock", label: "FG Stock (Qty)", value: ready && extras.fgStockQty ? total(filterExtraRecords(extras.fgStockQty, filters)) : null, format: "qty", tone: "bg-[#ffe599] text-slate-950" },
+        { id: "wipStock", label: wip ? `WIP Stock (${wip.jobs.toLocaleString("en-IN")} jobs, FFG not filled)` : "WIP Stock", value: wip ? wip.qty : null, format: "qty", tone: "bg-[#00ffff] text-slate-950" },
       ],
     },
     {
@@ -270,6 +272,8 @@ export type SummarySheetExtras = {
   interFirmInvoices?: ExtraRecord[];
   /** FG stock (positive balance) × latest order rate, per item; no date. */
   fgStock: ExtraRecord[];
+  /** FG stock quantity (positive balance) per item; no date. */
+  fgStockQty?: ExtraRecord[];
   /** Store stock balance (opening + receipts − issues, as on the Materials page) by tile; null = no such material yet. */
   storeStocks?: Record<string, { qty: number; unit: string; materials: string[] } | null>;
   /** Live PHP + Plate job counts waiting on the Scheduling / Sequencing / Production screens. */
@@ -412,7 +416,10 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
       round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0)),
     ] as ExtraRecord)
     .filter((record) => record[5] > 0);
-  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  const fgStockQty: ExtraRecord[] = npdItems
+    .filter((item) => n(item.balance) > 0)
+    .map((item) => ["", s(item.firmName), "", s(item.name || item.itemName), s(item.erp || item.erpCode), round(n(item.balance))] as ExtraRecord);
+  return { version: 2, fgStockQty, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 /** Filters that apply to the extra records (party / item / ERP only where the record has them). */
