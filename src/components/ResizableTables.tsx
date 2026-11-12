@@ -273,7 +273,7 @@ function getColumnWidths(table: HTMLTableElement, headerRow: HTMLTableRowElement
 // content so it can neither wrap a code nor split a header word, also when a
 // user drags it narrower.
 
-const TEXT_COLUMN_MAX_MIN_WIDTH = 300;
+const TEXT_COLUMN_MAX_MIN_WIDTH = 340;
 const MAX_MEASURED_ROWS = 1500;
 const columnMinimums = new WeakMap<HTMLTableElement, number[]>();
 let measureContext: CanvasRenderingContext2D | null = null;
@@ -285,6 +285,21 @@ function measureText(text: string, style: CSSStyleDeclaration) {
   const shown = style.textTransform === "uppercase" ? text.toUpperCase() : text;
   const spacing = Number.parseFloat(style.letterSpacing) || 0;
   return measureContext.measureText(shown).width + spacing * shown.length;
+}
+
+// Narrowest width at which these words (measured widths) wrap into at most
+// two lines, breaking only between words.
+function twoLineWidth(wordWidths: number[], spaceWidth: number) {
+  if (wordWidths.length === 0) return 0;
+  const total = wordWidths.reduce((sum, width) => sum + width, 0) + spaceWidth * (wordWidths.length - 1);
+  let best = total;
+  let first = 0;
+  for (let split = 1; split < wordWidths.length; split += 1) {
+    first += wordWidths[split - 1] + (split > 1 ? spaceWidth : 0);
+    const second = total - first - spaceWidth;
+    best = Math.min(best, Math.max(first, second));
+  }
+  return best + 2;
 }
 
 function cellText(cell: HTMLTableCellElement) {
@@ -365,16 +380,17 @@ function applyColumnContentRules(table: HTMLTableElement, count: number, actionC
       const style = getComputedStyle(cells[0]);
       const padding = horizontalPadding(style) + 4;
       let widest = 0;
-      let widestWord = 0;
+      let twoLine = 0;
+      const spaceWidth = measureText("a a", style) - measureText("aa", style);
       texts.forEach((text) => {
         if (!text) return;
-        widest = Math.max(widest, measureText(text, style));
-        if (!isCode) widestWord = Math.max(widestWord, text.split(" ").reduce((max, word) => Math.max(max, measureText(word, style)), 0));
+        if (isCode) { widest = Math.max(widest, measureText(text, style)); return; }
+        twoLine = Math.max(twoLine, twoLineWidth(text.split(" ").map((word) => measureText(word, style)), spaceWidth));
       });
       contentMin = isCode
         ? Math.ceil(widest + padding)
-        // Names: wide enough that the longest fits in about two lines.
-        : Math.ceil(Math.min(TEXT_COLUMN_MAX_MIN_WIDTH, Math.max(widest / 2 * 1.15, widestWord) + padding));
+        // Names: wide enough that every name wraps to at most two lines.
+        : Math.ceil(Math.min(TEXT_COLUMN_MAX_MIN_WIDTH, twoLine + padding));
     }
     minimums.push(Math.max(MIN_COLUMN_WIDTH, headerMin, contentMin));
   }
