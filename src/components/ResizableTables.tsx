@@ -951,41 +951,136 @@ function installResizeHandles(
   });
 }
 
-// Header row stays visible while the page scrolls: the table's header cells
-// are moved down by the part of the table already scrolled past (inside the
-// table's own sideways-scroll box, which does not scroll up/down).
-function headerBackground(cell: HTMLElement) {
-  let element: HTMLElement | null = cell;
-  while (element && element.tagName !== "TABLE") {
-    const color = window.getComputedStyle(element).backgroundColor;
-    if (color && color !== "transparent" && !/rgba\(\s*0,\s*0,\s*0,\s*0\s*\)/.test(color)) return color;
-    element = element.parentElement;
+// Header row stays visible while the page scrolls. A copy of the header is
+// shown in a fixed box at the top of the page view: a fixed box does not move
+// with scrolling, so it never shakes (moving the real header with JS on each
+// scroll event always lagged one frame behind the scroll and flickered).
+// Clicks on the copy (sorting, filters) are passed to the real header.
+type FloatingHeader = { box: HTMLDivElement; table: HTMLTableElement | null; clone: HTMLTableElement | null; source: HTMLTableElement | null; observer: MutationObserver | null };
+
+function cellPath(target: Element, root: Element) {
+  const path: number[] = [];
+  let element: Element | null = target;
+  while (element && element !== root) {
+    const parent: Element | null = element.parentElement;
+    if (!parent) break;
+    path.unshift(Array.prototype.indexOf.call(parent.children, element));
+    element = parent;
   }
-  return "#f1f5f9";
+  return path;
 }
 
-function updateStickyHeaders(content: HTMLElement) {
-  const viewTop = content.getBoundingClientRect().top;
-  content.querySelectorAll<HTMLTableElement>("table.app-enhanced-table").forEach((table) => {
+function elementAtPath(root: Element, path: number[]) {
+  let element: Element | null = root;
+  for (const index of path) {
+    element = element?.children[index] || null;
+    if (!element) return null;
+  }
+  return element;
+}
+
+function createFloatingHeader(content: HTMLElement): FloatingHeader {
+  const box = document.createElement("div");
+  box.className = "app-floating-thead";
+  box.setAttribute("aria-hidden", "true");
+  box.hidden = true;
+  content.appendChild(box);
+  const state: FloatingHeader = { box, table: null, clone: null, source: null, observer: null };
+  box.addEventListener("click", (event) => {
+    const source = state.source?.tHead;
+    const cloneHead = state.clone?.tHead;
+    if (!source || !cloneHead || !(event.target instanceof Element)) return;
+    const original = elementAtPath(source, cellPath(event.target, cloneHead));
+    if (original instanceof HTMLElement) {
+      event.preventDefault();
+      original.click();
+    }
+  });
+  return state;
+}
+
+function buildFloatingClone(state: FloatingHeader, table: HTMLTableElement) {
+  const head = table.tHead;
+  if (!head) return;
+  const clone = document.createElement("table");
+  clone.className = table.className;
+  clone.style.tableLayout = "fixed";
+  clone.style.width = `${table.getBoundingClientRect().width}px`;
+  clone.style.margin = "0";
+  const colgroup = table.querySelector(":scope > colgroup");
+  if (colgroup) clone.appendChild(colgroup.cloneNode(true));
+  else {
+    // No column list: copy the widths of the last header row.
+    const group = document.createElement("colgroup");
+    Array.from(head.rows[head.rows.length - 1]?.cells || []).forEach((cell) => {
+      for (let i = 0; i < cell.colSpan; i += 1) {
+        const col = document.createElement("col");
+        col.style.width = `${cell.getBoundingClientRect().width / cell.colSpan}px`;
+        group.appendChild(col);
+      }
+    });
+    clone.appendChild(group);
+  }
+  const headClone = head.cloneNode(true) as HTMLTableSectionElement;
+  headClone.querySelectorAll(".app-table-column-resizer").forEach((node) => node.remove());
+  headClone.querySelectorAll("[id]").forEach((node) => node.removeAttribute("id"));
+  clone.appendChild(headClone);
+  state.box.replaceChildren(clone);
+  state.clone = clone;
+}
+
+function hideFloatingHeader(state: FloatingHeader) {
+  if (!state.box.hidden) state.box.hidden = true;
+  state.observer?.disconnect();
+  state.observer = null;
+  state.source = null;
+  state.clone = null;
+}
+
+function updateStickyHeaders(content: HTMLElement, state: FloatingHeader) {
+  const viewRect = content.getBoundingClientRect();
+  const viewTop = viewRect.top;
+  let active: HTMLTableElement | null = null;
+  for (const table of Array.from(content.querySelectorAll<HTMLTableElement>("table.app-enhanced-table"))) {
     const head = table.tHead;
-    if (!head || head.rows.length === 0 || table.closest('[role="dialog"], .fixed')) return;
+    if (!head || head.rows.length === 0 || table.closest('[role="dialog"], .fixed, .app-floating-thead')) continue;
+    if (table.offsetParent === null) continue;
     const tableRect = table.getBoundingClientRect();
     const headHeight = head.getBoundingClientRect().height;
-    const offset = Math.round(Math.max(0, Math.min(viewTop - tableRect.top, tableRect.height - headHeight * 2)));
-    const next = offset > 0 ? `${offset}px` : "0px";
-    // The offset lives on <thead>, not <table>: a custom property on the table
-    // makes the browser restyle every body cell on each scroll frame, which
-    // made long or wide tables (NPD, Production) stutter.
-    if (head.style.getPropertyValue("--app-thead-offset") === next) return;
-    if (offset > 0 && !table.dataset.stickyHead) {
-      const firstCell = head.querySelector<HTMLElement>("th, td");
-      if (firstCell) head.style.setProperty("--app-thead-bg", headerBackground(firstCell));
-      table.dataset.stickyHead = "true";
-    }
-    head.style.setProperty("--app-thead-offset", next);
-    const active = offset > 0;
-    if (table.hasAttribute("data-sticky-head-active") !== active) table.toggleAttribute("data-sticky-head-active", active);
-  });
+    if (tableRect.top < viewTop && tableRect.bottom - headHeight * 2 > viewTop) { active = table; break; }
+  }
+  if (!active) { hideFloatingHeader(state); return; }
+  if (state.source !== active || !state.clone) {
+    state.observer?.disconnect();
+    state.source = active;
+    buildFloatingClone(state, active);
+    // Keep the copy in step with the real header (sort arrows, labels, widths).
+    let rebuild: number | null = null;
+    state.observer = new MutationObserver(() => {
+      if (rebuild !== null) return;
+      rebuild = requestAnimationFrame(() => { rebuild = null; if (state.source) buildFloatingClone(state, state.source); positionFloatingHeader(state, viewTop); });
+    });
+    if (active.tHead) state.observer.observe(active.tHead, { subtree: true, childList: true, characterData: true, attributes: true });
+    const colgroup = active.querySelector(":scope > colgroup");
+    if (colgroup) state.observer.observe(colgroup, { subtree: true, attributes: true, attributeFilter: ["style"] });
+  }
+  positionFloatingHeader(state, viewTop);
+}
+
+function positionFloatingHeader(state: FloatingHeader, viewTop: number) {
+  const table = state.source;
+  const clone = state.clone;
+  if (!table || !clone) return;
+  const scroller = table.closest<HTMLElement>(".app-table-scroll-container") || table.parentElement;
+  const frame = (scroller || table).getBoundingClientRect();
+  const tableRect = table.getBoundingClientRect();
+  const box = state.box;
+  box.style.top = `${Math.round(viewTop)}px`;
+  box.style.left = `${Math.round(frame.left)}px`;
+  box.style.width = `${Math.round(Math.min(frame.width, tableRect.width))}px`;
+  clone.style.width = `${tableRect.width}px`;
+  clone.style.transform = `translateX(${Math.round(tableRect.left - frame.left)}px)`;
+  if (box.hidden) box.hidden = false;
 }
 
 export function ResizableTables() {
@@ -1022,28 +1117,30 @@ export function ResizableTables() {
     };
 
     enhance();
+    const floating = createFloatingHeader(content);
     let stickyFrame: number | null = null;
     const onScroll = () => {
       if (stickyFrame !== null) return;
       stickyFrame = requestAnimationFrame(() => {
         stickyFrame = null;
-        updateStickyHeaders(content);
+        updateStickyHeaders(content, floating);
       });
     };
-    content.addEventListener("scroll", onScroll, { passive: true });
+    // Capture: also hear sideways scrolling inside each table's own box.
+    content.addEventListener("scroll", onScroll, { passive: true, capture: true });
     window.addEventListener("resize", onScroll);
     // Ignore DOM changes made by this enhancer itself. Otherwise pagination,
     // resize handles, and colgroups trigger enhance() again indefinitely.
     const isOwnNode = (node: Node | null) => {
       const element = node instanceof Element ? node : node?.parentElement;
-      return Boolean(element?.closest(".app-table-pagination, .app-table-column-resizer, colgroup[data-resizable-columns]"));
+      return Boolean(element?.closest(".app-table-pagination, .app-table-column-resizer, colgroup[data-resizable-columns], .app-floating-thead"));
     };
     const isOwnMutation = (record: MutationRecord) =>
       (record.type === "attributes" && isOwnNode(record.target)) ||
       (record.type === "childList" &&
       (isOwnNode(record.target) ||
         [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].every((node) =>
-          node instanceof Element && (node.matches(".app-table-pagination, .app-table-column-resizer, colgroup[data-resizable-columns], col"))
+          node instanceof Element && (node.matches(".app-table-pagination, .app-table-column-resizer, colgroup[data-resizable-columns], col, .app-floating-thead"))
         ) && record.addedNodes.length + record.removedNodes.length > 0));
     // Re-process at most once per ~150 ms, on an animation frame, instead of
     // after every single DOM change.
@@ -1074,8 +1171,10 @@ export function ResizableTables() {
     });
     return () => {
       observer.disconnect();
-      content.removeEventListener("scroll", onScroll);
+      content.removeEventListener("scroll", onScroll, { capture: true } as EventListenerOptions);
       window.removeEventListener("resize", onScroll);
+      hideFloatingHeader(floating);
+      floating.box.remove();
       if (stickyFrame !== null) cancelAnimationFrame(stickyFrame);
       if (timer !== null) clearTimeout(timer);
       if (frame !== null) cancelAnimationFrame(frame);
