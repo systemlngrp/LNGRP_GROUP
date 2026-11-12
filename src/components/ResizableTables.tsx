@@ -451,7 +451,9 @@ function getActionColumnWidths(table: HTMLTableElement, widths: number[], action
     // the intrinsic action-control measurement.
     void table.offsetWidth;
     ranges.forEach(({ cell, start, end }) => {
-      if (index < start || index >= end || !cell.classList.contains("app-table-action-column")) return;
+      // A group header spanning several columns (e.g. "STOCK & STATUS") must not
+      // set the action column's width.
+      if (end - start > 1 || index < start || index >= end || !cell.classList.contains("app-table-action-column")) return;
       width = Math.max(width, cell.scrollWidth + 24);
     });
     if (column) column.style.width = savedOrCurrentWidth;
