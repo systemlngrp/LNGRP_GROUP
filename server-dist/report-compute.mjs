@@ -1410,6 +1410,9 @@ function computeSummarySheetRows(lists, stockItems) {
     const vehicle = Array.from(new Set(loadingRecords.map((record) => record.vehicle).filter(Boolean))).join(", ");
     const planned = n(production.plannedQty || production.qty || schedule?.qty);
     const pprUsed = n(production.actualPaperUsed);
+    const ups = n(production.ups);
+    const cuttingMm = n(production.cuttingWithTrimming);
+    const linearMeter = ups > 0 && cuttingMm > 0 ? money(boardline / ups * (cuttingMm / 1e3)) : 0;
     const jobWeight = n(production.totalWeightOfSet) * planned;
     const rate = n(production.rate || order?.rate);
     const fgStock = stockItem?.balance || 0;
@@ -1428,7 +1431,7 @@ function computeSummarySheetRows(lists, stockItems) {
       "Customer Complaint": "",
       "PDI REPORT": "",
       "Realization / kg": realizationValue,
-      Meter: n(production.productionInMeter || production.plannedProductionInMeter),
+      Meter: linearMeter,
       "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).join(" x "),
       UPS: n(production.ups),
       "Sheets prdcd": n(production.productionOutputQty),
