@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { getFirmDisplayName } from "../lib/firmDisplay";
-import { Search } from "lucide-react";
+import { Eye, EyeOff, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { computeSummarySheetRows, isoDateText, n, s } from "../lib/reports/summarySheet";
@@ -76,6 +77,14 @@ export function SummarySheetReport() {
   const [settings] = useData<Setting>("settings", []);
   const stockItems = useNpdItems({ enabled: browserFallback });
   const realizationTargets = useMemo(() => parseRealizationTargets(settings[0]?.realizationPerKgTargets), [settings]);
+  const [showTiles, setShowTiles] = useState(() => {
+    try { return window.localStorage.getItem("summary-sheet-show-tiles") !== "no"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem("summary-sheet-show-tiles", showTiles ? "yes" : "no"); } catch { /* storage blocked */ }
+  }, [showTiles]);
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setHeaderSlot(document.getElementById("page-header-actions")), []);
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -195,7 +204,19 @@ export function SummarySheetReport() {
         {(from || to) ? <button type="button" onClick={() => { setFrom(""); setTo(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold hover:bg-slate-100">Clear Dates</button> : null}
       </div>
     </div>
-    <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div>
+    {headerSlot ? createPortal(
+      <button
+        type="button"
+        onClick={() => setShowTiles((value) => !value)}
+        title={showTiles ? "Hide tiles" : "Show tiles"}
+        aria-pressed={showTiles}
+        className={`inline-flex items-center justify-center rounded border border-black p-2 transition ${showTiles ? "bg-indigo-700 text-white hover:bg-indigo-800" : "bg-white text-black hover:bg-slate-100"}`}
+      >
+        {showTiles ? <Eye size={18} /> : <EyeOff size={18} />}
+      </button>,
+      headerSlot,
+    ) : null}
+    {showTiles ? <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
     <div className="relative z-40 grid grid-cols-1 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
 <div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={COLUMNS[columnIndex]} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; const rowColorClass = column === "Job No." ? jobNumberCellClass(row.Date, row["PDI REPORT"]) : column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : valueForColumn(row, columnIndex, (page - 1) * pageSize + index)}</td>; })}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div><ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
   </div>;

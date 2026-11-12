@@ -256,6 +256,8 @@ export function Layout() {
                  <span className={hideFullscreenOnPhone ? "hidden md:contents" : "contents"}>
                    <FullscreenViewControl />
                  </span>
+                 {/* Pages can place their own header buttons here (React portal). */}
+                 <div id="page-header-actions" className="hidden items-center gap-2 md:flex" />
                  <MobileAddButton label={mobileHeader.addLabel} onPress={mobileHeader.pressAdd} />
                </div>
                {/* On phones the user's name, role and Logout are at the bottom of the left menu. */}
