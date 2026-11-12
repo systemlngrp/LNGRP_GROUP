@@ -158,7 +158,6 @@ export function computeSummarySheetSections(
         { id: "phpScheduling", label: "Pending Scheduling", value: extras?.phpPlate ? extras.phpPlate.scheduling : null, format: "count", tone: "bg-[#7f6000] text-white" },
         { id: "phpSequence", label: "Pending Sequence", value: extras?.phpPlate ? extras.phpPlate.sequence : null, format: "count", tone: "bg-[#7f6000] text-white" },
         { id: "phpProduction", label: "Pending Production", value: extras?.phpPlate ? extras.phpPlate.production : null, format: "count", tone: "bg-[#7f6000] text-white" },
-        blank("plateRequirement", "Plate / PHP Requirement", "bg-[#bf9000] text-slate-950", "count"),
       ],
     },
   ];
