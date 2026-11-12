@@ -8,6 +8,7 @@ import { normalizeNpdItem } from "../npdItems";
 import { computeJobwiseReelConsumptionRows } from "./jobwiseReelConsumption";
 import { computeConversionCostMonthWise } from "./conversionCostMonthWise";
 import { computeSummarySheetRows } from "./summarySheet";
+import { computeSummarySheetExtras } from "./summarySheetTiles";
 import { computeConversionCostBase } from "./conversionCostDetails";
 import { computeAuditDashboard } from "./auditDashboard";
 import { computeQcViewRows, toQcItems } from "./qcView";
@@ -130,6 +131,20 @@ REPORT_DEFINITIONS["summary-sheet"] = {
     { key: "firms", entity: "firms", scope: "firm" },
   ],
   compute: (lists, _params, helpers) => computeSummarySheetRows(lists as any, (helpers.npdItems || []).map(normalizeNpdItem)),
+};
+
+REPORT_DEFINITIONS["summary-sheet-tiles"] = {
+  permission: "/reports/summary-sheet",
+  npdItems: true,
+  lists: [
+    { key: "orders", entity: "orders", scope: "all" },
+    { key: "schedules", entity: "orders_schedule", scope: "all" },
+    { key: "plans", entity: "dispatch_plans", scope: "all" },
+    { key: "slips", entity: "loading_slips", scope: "all" },
+    { key: "invoices", entity: "invoices", scope: "all" },
+    { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
+  ],
+  compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem)),
 };
 
 REPORT_DEFINITIONS["conversion-cost-details"] = {

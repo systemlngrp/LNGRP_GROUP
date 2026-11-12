@@ -160,3 +160,77 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
       return "";
   }
 }
+
+export type SummarySheetExtras = {
+  /** Pending dispatch value (schedule qty − cancel − loaded) × rate, by scheduled date. */
+  pendingOrderValueByDate: Record<string, number>;
+  /** Orders waiting for scheduling: (order qty − scheduled qty) × rate. */
+  pendingSchedulingValue: number;
+  loadingSlips: number;
+  invoices: number;
+  slipsNotInvoiced: number;
+  /** FG stock (positive balance) × latest order rate of the item. */
+  fgStockValue: number;
+};
+
+const isCancelled = (row: any) => /cancel/i.test(String(row?.status || "")) || Boolean(row?.cancelledAt);
+
+/** Extra Summary Sheet tiles that need orders, schedules, loading slips and invoices (runs on the server). */
+export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems: any[]): SummarySheetExtras {
+  const orders = (lists.orders || []).filter((order) => !isCancelled(order));
+  const orderById = new Map(orders.map((order) => [String(order.id), order]));
+  const planScheduleById = new Map((lists.plans || []).map((plan) => [String(plan.id), String(plan.scheduleId || "")]));
+  const slips = (lists.slips || []).filter((slip) => !isCancelled(slip));
+  const loadedBySchedule = new Map<string, number>();
+  slips.forEach((slip) => (slip.lines || []).forEach((line: any) => {
+    const scheduleId = planScheduleById.get(String(line?.dispatchPlanId || "").trim());
+    if (scheduleId) loadedBySchedule.set(scheduleId, (loadedBySchedule.get(scheduleId) || 0) + n(line?.loadedQty));
+  }));
+  const pendingOrderValueByDate: Record<string, number> = {};
+  const scheduledByOrder = new Map<string, number>();
+  (lists.schedules || []).forEach((schedule) => {
+    const order = orderById.get(String(schedule.orderId));
+    if (!order) return;
+    scheduledByOrder.set(String(order.id), (scheduledByOrder.get(String(order.id)) || 0) + n(schedule.qty));
+    const pending = n(schedule.qty) - n(schedule.canceledQty) - (loadedBySchedule.get(String(schedule.id)) || 0);
+    if (pending <= 0) return;
+    const date = isoDateText(schedule.scheduledDate);
+    pendingOrderValueByDate[date] = (pendingOrderValueByDate[date] || 0) + pending * n(order.rate);
+  });
+  const pendingSchedulingValue = orders
+    .filter((order) => order.status === "Pending Scheduling")
+    .reduce((sum, order) => sum + Math.max(0, n(order.qty) - (scheduledByOrder.get(String(order.id)) || 0)) * n(order.rate), 0);
+  const invoices = (lists.invoices || []).filter((invoice) => !isCancelled(invoice));
+  const invoiceIds = new Set(invoices.map((invoice) => String(invoice.id)));
+  const invoicedSlipIds = new Set((lists.invoiceLines || []).filter((line) => invoiceIds.has(String(line.invoiceId))).map((line) => String(line.loadingSlipId || "")));
+  const slipsNotInvoiced = slips.filter((slip) => !(slip.invoiceId && invoiceIds.has(String(slip.invoiceId))) && !invoicedSlipIds.has(String(slip.id))).length;
+  // Latest order rate per FG item (by order date).
+  const latestRate = new Map<string, { date: string; rate: number }>();
+  orders.forEach((order) => {
+    const itemId = String(order.npdId || order.itemId || "");
+    const rate = n(order.rate);
+    if (!itemId || rate <= 0) return;
+    const date = isoDateText(order.orderDate);
+    const current = latestRate.get(itemId);
+    if (!current || date >= current.date) latestRate.set(itemId, { date, rate });
+  });
+  const fgStockValue = npdItems.reduce((sum, item) => sum + Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0), 0);
+  return { pendingOrderValueByDate, pendingSchedulingValue, loadingSlips: slips.length, invoices: invoices.length, slipsNotInvoiced, fgStockValue };
+}
+
+/** Order / dispatch tiles from the server extras (due = scheduled up to 3 days ahead, like the sheet). */
+export function computeSummarySheetExtraTiles(extras: SummarySheetExtras, now = new Date()): SummaryTile[] {
+  const dueUntil = localDayKey(3, now);
+  const entries = Object.entries(extras.pendingOrderValueByDate || {});
+  const due = entries.filter(([date]) => date && date <= dueUntil).reduce((sum, [, value]) => sum + value, 0);
+  const total = entries.reduce((sum, [, value]) => sum + value, 0);
+  return [
+    { id: "duePendingOrderValue", label: "Due Pending Order Value", value: due, format: "money", tone: "bg-[#ff0000] text-white" },
+    { id: "totalPendingOrderValue", label: "Total Pending Order Value", value: total, format: "money", tone: "bg-[#e06666] text-white" },
+    { id: "pendingSchedulingValue", label: "Total Due Planning Value", value: extras.pendingSchedulingValue, format: "money", tone: "bg-[#ff0000] text-white" },
+    { id: "fgStockValue", label: "FG Stock Value", value: extras.fgStockValue, format: "money", tone: "bg-[#ffe599] text-slate-950" },
+    { id: "loadingSlips", label: "Total Loading Slip", value: extras.loadingSlips, format: "count", tone: "bg-[#fce5cd] text-slate-950" },
+    { id: "invoices", label: "Total Inv", value: extras.invoices, format: "count", tone: "bg-[#fce5cd] text-slate-950" },
+    { id: "slipsNotInvoiced", label: "Loading Slip Not Invoiced", value: extras.slipsNotInvoiced, format: "count", tone: "bg-[#ffff00] text-slate-950" },
+  ];
+}
