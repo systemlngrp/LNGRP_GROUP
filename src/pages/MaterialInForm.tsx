@@ -3081,7 +3081,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
             />
           </div>
-          <div className={`flex flex-col space-y-1 ${isDirectService ? ["md:col-span-2 lg:col-span-3", "md:col-span-2 lg:col-span-1", "md:col-span-2 lg:col-span-2"][(5 + (editingEntry ? 1 : 0) + (isUsdInvoice ? 1 : 0)) % 3] : "md:col-span-2"}`}>
+          <div className={`flex flex-col space-y-1 ${isDirectService ? ["md:col-span-2 lg:col-span-3", "md:col-span-2 lg:col-span-2", "md:col-span-2 lg:col-span-1"][(5 + (editingEntry ? 1 : 0) + (isUsdInvoice ? 1 : 0)) % 3] : "md:col-span-2"}`}>
             <label className="font-bold text-black">
               Party <span className="text-red-500">*</span>
             </label>
