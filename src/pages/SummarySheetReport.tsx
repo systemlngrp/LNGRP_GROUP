@@ -188,10 +188,7 @@ export function SummarySheetReport() {
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
   return <div className="space-y-4 pb-8">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3">
-      <div>
-        <h2 className="text-xl font-bold uppercase">Summary Sheet</h2>
-        <p className="mt-0.5 text-[11px] font-bold text-slate-600">Tiles for {displayDate(tileRange.from)} to {displayDate(tileRange.to)}{from || to ? "" : " (this month)"} · table shows {from || to ? "jobs in these dates" : "all jobs"}</p>
-      </div>
+      <h2 className="text-xl font-bold uppercase">Summary Sheet</h2>
       <div className="flex flex-wrap items-end gap-2">
         <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
