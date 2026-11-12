@@ -1350,6 +1350,7 @@ function computeSummarySheetRows(lists, stockItems) {
   const scheduleMap = new Map(schedules.map((row) => [row.id, row]));
   const invoiceMap = new Map(invoices.map((row) => [row.id, row]));
   const truckMap = new Map(trucks.map((row) => [row.id, row]));
+  const stockItemById = new Map(stockItems.map((item) => [s(item.id), item]));
   const stockByErp = new Map(stockItems.map((item) => [s(item.erp || item.erpCode || item.masterItemNameErpCode), { name: s(item.name || item.itemName), balance: n(item.balance) }]));
   const invoiceLinesBySlip = /* @__PURE__ */ new Map();
   invoiceLines.forEach((line) => {
@@ -1411,7 +1412,8 @@ function computeSummarySheetRows(lists, stockItems) {
     const planned = n(production.plannedQty || production.qty || schedule?.qty);
     const pprUsed = n(production.actualPaperUsed);
     const ups = n(production.ups);
-    const cuttingMm = n(production.cuttingWithTrimming);
+    const catalogItem = stockItemById.get(s(production.itemId));
+    const cuttingMm = n(production.cuttingWithTrimming) || n(catalogItem?.cuttingSize) || n(catalogItem?.cuttingSizeLengthPiece);
     const linearMeter = ups > 0 && cuttingMm > 0 ? money(boardline / ups * (cuttingMm / 1e3)) : 0;
     const jobWeight = n(production.totalWeightOfSet) * planned;
     const rate = n(production.rate || order?.rate);

@@ -94,8 +94,8 @@ export function computeSummarySheetRows(lists: SummarySheetLists, stockItems: an
     const pprUsed = n(production.actualPaperUsed);
     // Linear meter as in the Google Summary Sheet: sheets made (Boardline prod. ÷ UPS) × cutting with trimming (mm ÷ 1000).
     const ups = n(production.ups);
-    const stockItem: any = stockItemById.get(s(production.itemId));
-    const cuttingMm = n(production.cuttingWithTrimming) || n(stockItem?.cuttingSize) || n(stockItem?.cuttingSizeLengthPiece);
+    const catalogItem: any = stockItemById.get(s(production.itemId));
+    const cuttingMm = n(production.cuttingWithTrimming) || n(catalogItem?.cuttingSize) || n(catalogItem?.cuttingSizeLengthPiece);
     const linearMeter = ups > 0 && cuttingMm > 0 ? money((boardline / ups) * (cuttingMm / 1000)) : 0;
     const jobWeight = n(production.totalWeightOfSet) * planned;
     const rate = n(production.rate || order?.rate);
