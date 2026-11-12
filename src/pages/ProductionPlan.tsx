@@ -282,13 +282,13 @@ export function ProductionPlan() {
       footStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
       columnStyles: {
         0: { cellWidth: 9 },
-        1: { cellWidth: 19 },
-        2: { cellWidth: 20 },
+        1: { cellWidth: 28 },
+        2: { cellWidth: 34 },
         3: { cellWidth: 11 },
         19: { cellWidth: 16 },
         22: { cellWidth: 13 },
         23: { cellWidth: 6 },
-        24: { cellWidth: 24 },
+        24: { cellWidth: 26 },
       },
       didParseCell: (data) => {
         if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
