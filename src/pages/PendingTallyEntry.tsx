@@ -40,7 +40,7 @@ export function PendingTallyEntry() {
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
   const canPostTally = currentUserEmail === "pankaj@bizskilledu.com";
-  const tableColumnCount = canPostTally ? 23 : 21;
+  const tableColumnCount = canPostTally ? 24 : 22;
   const formatMoney = (value?: number) =>
     `${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -84,6 +84,7 @@ export function PendingTallyEntry() {
       case "mrrType": return m.mrrType || "";
       case "date": return m.date;
       case "party": return getSupplierName(m.supplierId);
+      case "itemName": return getItemNameList(m);
       case "items": return m.lines?.length || 0;
       case "gross": return Number(m.totalAmount || 0);
       case "tds": return Number(m.tdsAmount || 0);
@@ -200,6 +201,10 @@ export function PendingTallyEntry() {
     const firm = indexes.length ? firms[Math.min(...indexes)] : undefined;
     return getFirmDisplayName(firm || (mrr.firmName ? { firmName: mrr.firmName } : null));
   }
+  function getItemNameList(mrr: MaterialIn) {
+    return Array.from(new Set((mrr.lines || []).map((line) => itemNameFor(line.itemId) || "Unknown"))).join(", ");
+  }
+
   function getItemNames(mrr: MaterialIn) {
     return mrr.lines.map((line) => itemNameFor(line.itemId) || "Unknown").join(" ");
   }
@@ -253,6 +258,7 @@ export function PendingTallyEntry() {
               <th className={`${th} text-left`}><SortHeader label="MRR Type" sortKey="mrrType" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className={`${th} text-left`}><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className={`${th} text-left`}><SortHeader label="Party" sortKey="party" sort={sort} onToggle={toggleSort} align="left" /></th>
+              <th className={`${th} text-left`}><SortHeader label="Item Name" sortKey="itemName" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className={`${th} text-left`}><SortHeader label="Items" sortKey="items" sort={sort} onToggle={toggleSort} align="left" /></th>
               <th className={`${th} text-right`}><SortHeader label="Gross Amount" sortKey="gross" sort={sort} onToggle={toggleSort} align="right" /></th>
               <th className={`${th} text-right`}><SortHeader label="TDS" sortKey="tds" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -293,6 +299,7 @@ export function PendingTallyEntry() {
                       <td className={td}>{m.mrrType || "-"}</td>
                       <td className={td}>{formatDate(m.date)}</td>
                       <td className={td} title={getSupplierName(m.supplierId)}><div className="line-clamp-2 min-w-[240px] max-w-[320px] break-words">{getSupplierName(m.supplierId)}</div></td>
+                      <td className={td} title={getItemNameList(m)}><div className="line-clamp-2 min-w-[200px] max-w-[300px] break-words">{getItemNameList(m) || "-"}</div></td>
                       <td className={td}>{m.lines?.length || 0} item{(m.lines?.length || 0) === 1 ? "" : "s"}</td>
                       <td className={`${money} font-bold`}>{formatMoney(m.totalAmount)}</td>
                       <td className={money}>{formatMoney(m.tdsAmount)}</td>
