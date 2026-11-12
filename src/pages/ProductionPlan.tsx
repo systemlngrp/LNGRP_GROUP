@@ -6,10 +6,9 @@ import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
-import { ExcelExport } from "../components/ExcelExport";
 import { ClientPagination } from "../components/ClientPagination";
 import { Spinner } from "../components/Spinner";
-import { FileText } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { exportsAllowed } from "../lib/exportPolicy";
@@ -222,6 +221,52 @@ export function ProductionPlan() {
     });
   };
 
+  const handleExportExcel = async () => {
+    if (statusRows.length === 0) return;
+    const XLSX = await import("xlsx-js-style");
+    const rows = getExportData(statusRows);
+    const headers = Object.keys(rows[0]);
+    const lastCol = headers.length - 1;
+    const valueCol = headers.indexOf("Value");
+    const thin = { style: "thin", color: { rgb: "000000" } };
+    const border = { top: thin, bottom: thin, left: thin, right: thin };
+    const cellStyle = (bold: boolean, fill?: string) => ({
+      font: { name: "Arial", sz: 9, bold },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border,
+      ...(fill ? { fill: { patternType: "solid", fgColor: { rgb: fill } } } : {}),
+    });
+    const total = rows.reduce((sum, row) => sum + Number(row.Value || 0), 0);
+    const aoa: (string | number)[][] = [
+      ["Production Plan"],
+      [`Date: ${formatDate(selectedDate)}`],
+      headers,
+      ...rows.map((row) => headers.map((header) => row[header] ?? "")),
+      headers.map((_, index) => (index === 0 ? "TOTAL" : index === valueCol ? Math.round(total * 100) / 100 : "")),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } }];
+    ws["!cols"] = headers.map((header) => ({ wch: header === "Item Name" ? 34 : header === "Company Name" ? 28 : header === "Remark" ? 26 : Math.max(7, Math.min(14, header.length)) }));
+    ws["!freeze"] = { xSplit: 0, ySplit: 3 };
+    const setStyle = (r: number, c: number, style: any) => {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (!ws[ref]) ws[ref] = { t: "s", v: "" };
+      ws[ref].s = style;
+    };
+    setStyle(0, 0, { font: { name: "Arial", sz: 14, bold: true }, alignment: { horizontal: "center" } });
+    setStyle(1, 0, { font: { name: "Arial", sz: 10, bold: true }, alignment: { horizontal: "center" } });
+    for (let c = 0; c <= lastCol; c += 1) setStyle(2, c, cellStyle(true));
+    statusRows.forEach((production, index) => {
+      // Same colour as on screen: realization below 98% of the target and not a sample.
+      const fill = production.shouldHighlight ? "FF9999" : undefined;
+      for (let c = 0; c <= lastCol; c += 1) setStyle(3 + index, c, cellStyle(false, fill));
+    });
+    for (let c = 0; c <= lastCol; c += 1) setStyle(3 + statusRows.length, c, cellStyle(true));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Production Plan");
+    XLSX.writeFile(wb, `Production_Plan_${selectedDate}.xlsx`);
+  };
+
   const handleExportPDF = () => {
     if (statusRows.length === 0) return;
     // Layout of the printed Production Plan sheet: plain grid, job number only,
@@ -292,6 +337,8 @@ export function ProductionPlan() {
       },
       didParseCell: (data) => {
         if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
+        // Same colour as on screen: realization below 98% of the target and not a sample.
+        if (data.section === "body" && statusRows[data.row.index]?.shouldHighlight) data.cell.styles.fillColor = [255, 153, 153];
       },
     });
 
@@ -314,7 +361,17 @@ export function ProductionPlan() {
           </div>
           {allowExports ? (
             <>
-              <ExcelExport data={getExportData(statusRows)} fileName={`Production_Plan_${selectedDate}`} sheetName="Production Plan" />
+              <button
+                type="button"
+                data-export="excel"
+                onClick={() => void handleExportExcel()}
+                disabled={statusRows.length === 0}
+                title="Download Excel"
+                className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-1.5 text-sm font-bold uppercase tracking-tight text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40"
+              >
+                <Download size={16} />
+                <span>Excel</span>
+              </button>
               <button
                 type="button"
                 data-export="pdf"
