@@ -718,51 +718,54 @@ export function PendingDispatchPlanning() {
           <table className="min-w-full border-collapse border border-black">
             <thead className="sticky top-0 z-30 bg-slate-100">
               <tr>
-                <th className="w-11 border border-black px-1 py-3 text-center">
+                <th className="w-8 border border-black px-1 py-2 text-center">
                   <input type="checkbox" aria-label="Select all on this page" className="h-4 w-4" onChange={handleSelectAll} checked={pageAllSelected} />
                 </th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Scheduled Date", "scheduledDate")}</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black">Status</th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Order No", "orderNo")}</th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Firm", "firmName")}</th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Company", "companyName")}</th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Item Name", "itemName")}</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Schedule qty (A)">Schedule Qty (A)</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Cancelled qty on the schedule (B)">Cancel Qty (B)</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Qty loaded on loading slips (C)">Dispatched Qty (C)</th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black" title="A − B − C">{renderSortHeader("Pending Qty (A−B−C)", "pendingQty", "right")}</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Qty already on dispatch plans, less plan cancels (D)">Already Planned (D)</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="A − B − D: qty not yet on a dispatch plan">Unplanned Qty (A−B−D)</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black">Planned Qty</th>
+                <th className="w-[92px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Sch. Date / Status", "scheduledDate")}</th>
+                <th className="w-[132px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule / Order No", "scheduleNo")}</th>
+                <th className="w-[52px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Firm", "firmName")}</th>
+                <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Company", "companyName")}</th>
+                <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Item Name", "itemName")}</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule qty">Sch. Qty (A)</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Cancelled qty on the schedule">Cancel (B)</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty loaded on loading slips">Dispatched (C)</th>
+                <th className="w-[76px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="A − B − C">{renderSortHeader("Pending A−B−C", "pendingQty", "right")}</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty already on dispatch plans, less plan cancels">Planned (D)</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="A − B − D: qty not yet on a dispatch plan">Unplanned A−B−D</th>
+                <th className="w-[78px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">Plan Now</th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {filteredSchedules.length === 0 ? (
-                <tr><td colSpan={15} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
+                <tr><td colSpan={13} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
               ) : paginatedSchedules.map((s) => {
                 const info = rowInfo(s);
                 const selected = selectedIds.has(s.id);
+                const num = "whitespace-nowrap border border-black px-1.5 py-1.5 text-right text-[11px] text-black";
                 return (
                   <tr key={s.id} className={cn("hover:bg-slate-50", info.status === "Overdue" && "bg-red-50/60", selected && "bg-indigo-50")}>
-                    <td className="w-11 border border-black px-1 py-2 text-center">
+                    <td className="w-8 border border-black px-1 py-1.5 text-center">
                       <input type="checkbox" aria-label={`Select ${s.scheduleNo || "schedule"}`} className="h-4 w-4 cursor-pointer" checked={selected} onChange={() => toggleSelect(s.id)} />
                     </td>
-                    <td className={cn("whitespace-nowrap border border-black px-3 py-2 text-xs font-bold", info.status === "Overdue" ? "text-red-600" : "text-black")}>{formatDate(s.scheduledDate)}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-center">{statusBadge(info.status)}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-xs font-bold text-black">{s.scheduleNo || "-"}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{info.order?.orderNo || "-"}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{info.firm}</td>
-                    <td className="border border-black px-3 py-2 text-xs text-black">{info.company?.name || "-"}</td>
-                    <td className="border border-black px-3 py-2 text-xs text-black">{info.item?.name || "-"}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.scheduleQty.toLocaleString()}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.cancelQty.toLocaleString()}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.dispatchedQty.toLocaleString()}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-indigo-700">{info.pendingQty.toLocaleString()}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.alreadyPlannedQty.toLocaleString()}</td>
-                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-slate-700">{info.balance.toLocaleString()}</td>
-                    <td className="border border-black px-2 py-1">
-                      <input type="number" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full rounded border border-slate-300 p-1 text-right text-[11px] font-bold focus:border-indigo-600 focus:outline-none" />
+                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-center">
+                      <div className={cn("text-[11px] font-bold", info.status === "Overdue" ? "text-red-600" : "text-black")}>{formatDate(s.scheduledDate)}</div>
+                      <div className="mt-0.5">{statusBadge(info.status)}</div>
+                    </td>
+                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">
+                      <div className="font-bold">{s.scheduleNo || "-"}</div>
+                      <div className="text-[10px] text-slate-600">{info.order?.orderNo || "-"}</div>
+                    </td>
+                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">{info.firm}</td>
+                    <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[130px] max-w-[200px] whitespace-normal break-words">{info.company?.name || "-"}</div></td>
+                    <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[140px] max-w-[220px] whitespace-normal break-words">{info.item?.name || "-"}</div></td>
+                    <td className={num}>{info.scheduleQty.toLocaleString()}</td>
+                    <td className={num}>{info.cancelQty.toLocaleString()}</td>
+                    <td className={num}>{info.dispatchedQty.toLocaleString()}</td>
+                    <td className={cn(num, "font-bold text-indigo-700")}>{info.pendingQty.toLocaleString()}</td>
+                    <td className={num}>{info.alreadyPlannedQty.toLocaleString()}</td>
+                    <td className={cn(num, "font-bold text-slate-700")}>{info.balance.toLocaleString()}</td>
+                    <td className="border border-black px-1 py-1">
+                      <input type="number" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full min-w-[64px] rounded border border-slate-300 p-1 text-right text-[11px] font-bold focus:border-indigo-600 focus:outline-none" />
                     </td>
                   </tr>
                 );
@@ -771,7 +774,7 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="border-t-2 border-black bg-slate-100">
                 <tr className="font-black">
-                  <td colSpan={14} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={12} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="border border-black bg-indigo-50 px-4 py-3 text-right text-sm text-indigo-700">{totalSessionPlannedQty.toLocaleString()}</td>
                 </tr>
               </tfoot>
