@@ -222,47 +222,75 @@ export function ProductionPlan() {
   };
 
   const handleExportPDF = () => {
-    const doc = new jsPDF('landscape', 'mm', 'a3');
-    doc.setFontSize(16);
-    doc.text(`Production Plan - ${formatDate(selectedDate)}`, 14, 15);
-    doc.setFontSize(10);
-    
-    const exportData = statusRows.map((p, index) => {
-      const schedule = schedules.find(s => s.id === p.scheduleId);
-      const order = orders.find(o => o.id === schedule?.orderId);
+    if (statusRows.length === 0) return;
+    // Layout of the printed Production Plan sheet: plain grid, job number only,
+    // whole numbers without decimals, total value at the end.
+    const doc = new jsPDF("landscape", "mm", "a4");
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pdfNumber = (value: unknown) => {
+      if (value === "" || value === null || value === undefined) return "";
+      const num = Number(value);
+      if (!Number.isFinite(num)) return String(value);
+      const rounded = Math.round(num * 100) / 100;
+      return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
+    };
+    const jobNumber = (p: Production) => {
+      const text = String(p.transactionNo || p.jobCardNo || "").trim();
+      return text.match(/(\d+)\s*$/)?.[1] || text || "-";
+    };
+    let totalValue = 0;
+    const body = statusRows.map((p) => {
+      const schedule = schedules.find((row) => row.id === p.scheduleId);
+      const order = orders.find((row) => row.id === schedule?.orderId);
       const company = resolveProductionPlanCompany(p, schedule, order, companies);
-      const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
+      const item = npdItems.find((row) => row.id === String(p.itemId || "").trim());
       const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
-      return {
-        "Sr. No.": index + 1, "Job No": p.transactionNo || "-", "Company Name": company.name,
-        "Item Name": item?.name || "-", "ERP CODE": p.erpCode || "-", "UPS": format2(p.ups), "Plan QTY": format2(p.qty),
-        "Reel As Per Calculation": format2(p.reelAsPerCalc), "REEL Actual with TRIMMING": format2(p.reelActualWithTrimming),
-        "CUTTING with TRIMMING": format2(p.cuttingWithTrimming), "PLY": format2(p.ply), "FLUTE": p.flute || "-",
-        "L1": format2(p.l1), "F1": format2(p.f1), "L2": format2(p.l2), "F2": format2(p.f2), "L3": format2(p.l3), "GSM": format2(p.gsm),
-        "TOTAL Paper WEIGHT": format2(p.totalPaperWeight), "Planned Production in Meter": format2(p.plannedProductionInMeter),
-        "REMARK": p.remarks || "-", "REALIZATION PER KG": format2(p.realizationPerKg), "SHEET WEIGHT": format2(p.sheetWeight),
-        "Least Sheet Weight": format2(p.leastGsm), "Flute Batch": p.fluteBatches || "-", "Job Sequence": p.sequence || "-",
-        "Date": formatDate(p.date), "Rate": format2(p.rate), "Value": format2(value), "Sample": p.isSample ? "Yes" : "No",
-      } as Record<string, string | number>;
+      totalValue += value;
+      return [
+        jobNumber(p), company.name || "", item?.name || "", p.erpCode || "", pdfNumber(p.ups), pdfNumber(p.qty),
+        pdfNumber(p.reelAsPerCalc), pdfNumber(p.reelActualWithTrimming), pdfNumber(p.cuttingWithTrimming), pdfNumber(p.ply), p.flute || "",
+        pdfNumber(p.l1), pdfNumber(p.f1), pdfNumber(p.l2), pdfNumber(p.f2), pdfNumber(p.l3), pdfNumber(p.gsm),
+        pdfNumber(p.totalPaperWeight), pdfNumber(p.plannedProductionInMeter), pdfNumber(p.realizationPerKg), pdfNumber(p.sheetWeight),
+        pdfNumber(p.rate), value.toFixed(2), p.isSample ? "YES" : "", p.remarks || "",
+      ];
     });
-    if (exportData.length === 0) return;
+    const head = [[
+      "Job\nNo", "Company Name", "Item Name", "ERP\nCODE", "UPS", "Plan\nQTY", "Reel As\nPer\nCalculation", "REEL\nActual\nwith\nTRIMMING",
+      "CUTTING\nwith\nTRIMMING", "PLY", "FLUTE", "L1", "F1", "L2", "F2", "L3", "GSM", "TOTAL\nPaper\nWEIGHT", "Planned\nProduction\nin Meter",
+      "REALIZATION\nPER KG", "SHEET\nWEIGHT", "Rate", "Value", "", "Remark",
+    ]];
+    const foot = [["TOTAL", ...Array(21).fill(""), totalValue.toFixed(2), "", ""]];
 
-    const tableColumn = Object.keys(exportData[0]);
-    const tableRows = exportData.map(row => Object.values(row));
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("Production Plan", pageWidth / 2, 12, { align: "center" });
+    doc.setFontSize(8);
+    doc.text(`Date: ${formatDate(selectedDate)}`, pageWidth / 2, 18, { align: "center" });
 
     autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: 20,
-      theme: 'grid',
-      styles: { fontSize: 6, cellPadding: 1 },
-      headStyles: { fillColor: [200, 200, 200], textColor: 0, fontStyle: 'bold' },
+      head,
+      body,
+      foot,
+      startY: 22,
+      margin: { left: 6, right: 6 },
+      theme: "grid",
+      showFoot: "lastPage",
+      rowPageBreak: "avoid",
+      styles: { font: "helvetica", fontSize: 5.5, cellPadding: 0.8, halign: "center", valign: "middle", textColor: 0, lineColor: 0, lineWidth: 0.15, overflow: "linebreak" },
+      headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold", fontSize: 5.5 },
+      footStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 9 },
+        1: { cellWidth: 19 },
+        2: { cellWidth: 20 },
+        3: { cellWidth: 11 },
+        19: { cellWidth: 16 },
+        22: { cellWidth: 13 },
+        23: { cellWidth: 6 },
+        24: { cellWidth: 11 },
+      },
       didParseCell: (data) => {
-        if (data.section !== "body") return;
-        const production = statusRows[data.row.index];
-        if (!production) return;
-        if (!production.shouldHighlight) return;
-        data.cell.styles.fillColor = [255, 153, 153];
+        if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
       },
     });
 
