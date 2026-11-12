@@ -555,6 +555,10 @@ export function PendingDispatchPlanning() {
       status: dueStatus(s.scheduledDate),
       balance: getUnplannedQty(s),
       pendingQty: getPendingQty(s),
+      scheduleQty: Number(s.qty || 0) || 0,
+      cancelQty: Number(s.canceledQty || 0) || 0,
+      dispatchedQty: loadedQtyByScheduleId.get(String(s.id || "")) || 0,
+      alreadyPlannedQty: (lookup.plansBySchedule.get(String(s.id || "")) || []).reduce((sum, plan) => sum + getEffectiveDispatchPlanQty(plan), 0),
       firm: getFirmDisplayNameById(s.firmId || order?.firmId, firms),
     };
   };
@@ -696,7 +700,8 @@ export function PendingDispatchPlanning() {
                 <div className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
                   <div className="text-[10px] font-black uppercase text-slate-500">Pending Qty</div>
                   <div className="text-sm font-black text-indigo-700">{info.pendingQty.toLocaleString()}</div>
-                  <div className="text-[10px] font-bold text-slate-500">Unplanned {info.balance.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-slate-500">Qty {info.scheduleQty.toLocaleString()} − Cancel {info.cancelQty.toLocaleString()} − Dispatched {info.dispatchedQty.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-slate-500">Planned {info.alreadyPlannedQty.toLocaleString()} · Unplanned {info.balance.toLocaleString()}</div>
                 </div>
                 <label className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
                   <span className="block text-[10px] font-black uppercase text-slate-500">Planned Qty</span>
@@ -723,14 +728,18 @@ export function PendingDispatchPlanning() {
                 <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Item Name", "itemName")}</th>
-                <th className="border border-black px-3 py-3 text-xs uppercase text-black">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
-                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Qty not yet on a dispatch plan">Unplanned Qty</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Schedule qty (A)">Schedule Qty (A)</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Cancelled qty on the schedule (B)">Cancel Qty (B)</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Qty loaded on loading slips (C)">Dispatched Qty (C)</th>
+                <th className="border border-black px-3 py-3 text-xs uppercase text-black" title="A − B − C">{renderSortHeader("Pending Qty (A−B−C)", "pendingQty", "right")}</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="Qty already on dispatch plans, less plan cancels (D)">Already Planned (D)</th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black" title="A − B − D: qty not yet on a dispatch plan">Unplanned Qty (A−B−D)</th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black">Planned Qty</th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {filteredSchedules.length === 0 ? (
-                <tr><td colSpan={11} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
+                <tr><td colSpan={15} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
               ) : paginatedSchedules.map((s) => {
                 const info = rowInfo(s);
                 const selected = selectedIds.has(s.id);
@@ -746,7 +755,11 @@ export function PendingDispatchPlanning() {
                     <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{info.firm}</td>
                     <td className="border border-black px-3 py-2 text-xs text-black">{info.company?.name || "-"}</td>
                     <td className="border border-black px-3 py-2 text-xs text-black">{info.item?.name || "-"}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.scheduleQty.toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.cancelQty.toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.dispatchedQty.toLocaleString()}</td>
                     <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-indigo-700">{info.pendingQty.toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs text-black">{info.alreadyPlannedQty.toLocaleString()}</td>
                     <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-slate-700">{info.balance.toLocaleString()}</td>
                     <td className="border border-black px-2 py-1">
                       <input type="number" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full rounded border border-slate-300 p-1 text-right text-[11px] font-bold focus:border-indigo-600 focus:outline-none" />
@@ -758,7 +771,7 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="border-t-2 border-black bg-slate-100">
                 <tr className="font-black">
-                  <td colSpan={10} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={14} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="border border-black bg-indigo-50 px-4 py-3 text-right text-sm text-indigo-700">{totalSessionPlannedQty.toLocaleString()}</td>
                 </tr>
               </tfoot>
