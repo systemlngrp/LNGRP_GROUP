@@ -167,19 +167,30 @@ export function PendingTallyEntry() {
     }
   };
 
+  // Item details for an expanded row: a small grid (not a table, so the page's
+  // table sizing leaves it alone), kept at the left edge of the visible area.
   const getLineItemsElement = (lines: MaterialIn['lines'] = []) => {
+    const cell = "border-b border-slate-300 px-3 py-1.5 text-left text-xs";
+    const num = `${cell} text-right tabular-nums`;
     return (
-      <ul className="list-none space-y-1">
+      <div className="grid w-full max-w-[860px] grid-cols-[2.2rem_minmax(14rem,1fr)_6rem_4.5rem_6rem_7.5rem] overflow-hidden rounded border border-black bg-white text-black">
+        {["#", "Item Name", "Qty", "UOM", "Rate", "Value"].map((label, index) => (
+          <div key={label} className={`border-b border-black bg-slate-200 px-3 py-1.5 text-[11px] font-black uppercase ${index >= 2 && index !== 3 ? "text-right" : "text-left"}`}>{label}</div>
+        ))}
         {lines.map((l, idx) => {
-          const itemName = itemNameFor(l.itemId);
+          const value = Number((l as any).actualValue ?? (l as any).value ?? Number(l.qty || 0) * Number(l.rate || 0)) || 0;
           return (
-            <li key={idx} className="whitespace-normal break-words border-b border-black last:border-0 pb-1 last:pb-0 mb-1 last:mb-0 text-[10px]">
-              <span className="font-medium text-black">{itemName || 'Unknown'}</span>
-              <span className="ml-2 text-black">[{l.qty} {l.uom} @ {l.rate}]</span>
-            </li>
+            <Fragment key={idx}>
+              <div className={cell}>{idx + 1}</div>
+              <div className={`${cell} font-semibold`}>{itemNameFor(l.itemId) || "Unknown"}</div>
+              <div className={num}>{Number(l.qty || 0).toLocaleString("en-IN")}</div>
+              <div className={cell}>{l.uom || "-"}</div>
+              <div className={num}>{Number(l.rate || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}</div>
+              <div className={num}>{value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </Fragment>
           );
         })}
-      </ul>
+      </div>
     );
   };
 
@@ -351,9 +362,11 @@ export function PendingTallyEntry() {
                     </tr>
                     {isExpanded && (
                       <tr className="bg-slate-50">
-                        <td colSpan={tableColumnCount} className="border border-black px-4 py-3">
-                          <div className="mb-2 text-xs font-black uppercase text-slate-700">Item details</div>
-                          {getLineItemsElement(m.lines)}
+                        <td colSpan={tableColumnCount} className="border border-black px-4 py-3" style={{ textAlign: "left" }}>
+                          <div className="sticky left-4 w-fit max-w-[calc(100vw-22rem)]">
+                            <div className="mb-2 text-left text-xs font-black uppercase text-slate-700">Item details · {m.transactionNo}</div>
+                            {getLineItemsElement(m.lines)}
+                          </div>
                         </td>
                       </tr>
                     )}
