@@ -155,9 +155,9 @@ export function computeSummarySheetSections(
       id: "phpPlate",
       title: "PHP & Plate",
       tiles: [
-        blank("phpScheduling", "Prod Scheduling", "bg-[#7f6000] text-white", "count"),
-        blank("phpSequence", "Prod Sequence", "bg-[#7f6000] text-white", "count"),
-        blank("phpProduction", "Prod Production", "bg-[#7f6000] text-white", "count"),
+        { id: "phpScheduling", label: "Pending Scheduling", value: extras?.phpPlate ? extras.phpPlate.scheduling : null, format: "count", tone: "bg-[#7f6000] text-white" },
+        { id: "phpSequence", label: "Pending Sequence", value: extras?.phpPlate ? extras.phpPlate.sequence : null, format: "count", tone: "bg-[#7f6000] text-white" },
+        { id: "phpProduction", label: "Pending Production", value: extras?.phpPlate ? extras.phpPlate.production : null, format: "count", tone: "bg-[#7f6000] text-white" },
         blank("plateRequirement", "Plate / PHP Requirement", "bg-[#bf9000] text-slate-950", "count"),
       ],
     },
@@ -269,7 +269,20 @@ export type SummarySheetExtras = {
   fgStock: ExtraRecord[];
   /** Store stock balance (opening + receipts − issues, as on the Materials page) by tile; null = no such material yet. */
   storeStocks?: Record<string, { qty: number; unit: string; materials: string[] } | null>;
+  /** Live PHP + Plate job counts waiting on the Scheduling / Sequencing / Production screens. */
+  phpPlate?: { scheduling: number; sequence: number; production: number };
 };
+
+/** Same rules as the PHP & Plate Scheduling, Sequencing and Production screens. */
+function computePhpPlateCounts(lists: Record<string, any[]>) {
+  const jobs = [...(lists.phpJobs || []), ...(lists.plateJobs || [])].filter((job) => job.status !== "Cancelled");
+  const filled = (value: unknown) => s(value) !== "";
+  const scheduling = jobs.filter((job) => !filled(job.scheduledDate) || !filled(job.shift) || !filled(job.methodology) || !(n(job.plannedQty) > 0)).length;
+  const open = jobs.filter((job) => job.status !== "Completed");
+  const sequence = open.filter((job) => filled(job.scheduledDate) && filled(job.shift) && filled(job.methodology) && !filled(job.sequence)).length;
+  const production = open.filter((job) => filled(job.scheduledDate) && filled(job.shift) && filled(job.sequence) && (!filled(job.jobCompletionTimeOutput) || !(n(job.productionOutputQty) > 0))).length;
+  return { scheduling, sequence, production };
+}
 
 /** Store stock tiles: Materials whose name contains one of the words. */
 export const STORE_STOCK_TILES = [
@@ -389,7 +402,7 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
       round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0)),
     ] as ExtraRecord)
     .filter((record) => record[5] > 0);
-  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists) };
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 /** Filters that apply to the extra records (party / item / ERP only where the record has them). */

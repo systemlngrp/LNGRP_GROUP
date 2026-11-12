@@ -151,6 +151,8 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "materialFirmOpenings", entity: "material_firm_openings", scope: "all" },
     { key: "materialIn", entity: "material_in", scope: "all" },
     { key: "issueLines", entity: "material_issue_lines", scope: "all" },
+    { key: "phpJobs", entity: "php_job_master", scope: "all" },
+    { key: "plateJobs", entity: "plate_job_master", scope: "all" },
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem)),
 };

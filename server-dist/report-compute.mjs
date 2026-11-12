@@ -1487,6 +1487,15 @@ function computeSummarySheetRows(lists, stockItems) {
 }
 
 // src/lib/reports/summarySheetTiles.ts
+function computePhpPlateCounts(lists) {
+  const jobs = [...lists.phpJobs || [], ...lists.plateJobs || []].filter((job) => job.status !== "Cancelled");
+  const filled = (value) => s(value) !== "";
+  const scheduling = jobs.filter((job) => !filled(job.scheduledDate) || !filled(job.shift) || !filled(job.methodology) || !(n(job.plannedQty) > 0)).length;
+  const open = jobs.filter((job) => job.status !== "Completed");
+  const sequence = open.filter((job) => filled(job.scheduledDate) && filled(job.shift) && filled(job.methodology) && !filled(job.sequence)).length;
+  const production = open.filter((job) => filled(job.scheduledDate) && filled(job.shift) && filled(job.sequence) && (!filled(job.jobCompletionTimeOutput) || !(n(job.productionOutputQty) > 0))).length;
+  return { scheduling, sequence, production };
+}
 var STORE_STOCK_TILES = [
   { id: "starch", label: "Starch", keywords: ["starch", "corrugation gum", "pasting gum"], red: 4e3, green: 7e3, tone: "bg-[#ffd966] text-slate-950" },
   { id: "fevicol", label: "Fevicol", keywords: ["fevicol"], red: 200, green: 400, tone: "bg-[#ffd966] text-slate-950" },
@@ -1593,7 +1602,7 @@ function computeSummarySheetExtras(lists, npdItems) {
     s(item.erp || item.erpCode),
     round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0))
   ]).filter((record) => record[5] > 0);
-  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists) };
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 // src/lib/reports/conversionCostDetails.ts
@@ -2737,7 +2746,9 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "materials", entity: "materials", scope: "all" },
     { key: "materialFirmOpenings", entity: "material_firm_openings", scope: "all" },
     { key: "materialIn", entity: "material_in", scope: "all" },
-    { key: "issueLines", entity: "material_issue_lines", scope: "all" }
+    { key: "issueLines", entity: "material_issue_lines", scope: "all" },
+    { key: "phpJobs", entity: "php_job_master", scope: "all" },
+    { key: "plateJobs", entity: "plate_job_master", scope: "all" }
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem))
 };
