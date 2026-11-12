@@ -2954,7 +2954,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             ) : null}
           </div>
         ) : null}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className={`grid grid-cols-1 gap-4 md:grid-cols-2 ${isDirectService ? "lg:grid-cols-3" : ""}`}>
           <div className="flex flex-col space-y-1">
             <label className="font-bold text-black">
               Date <span className="text-red-500">*</span>
@@ -2980,13 +2980,13 @@ export function MaterialInForm({ directService = false }: { directService?: bool
           ) : null}
           {/* Each field in its own cell so the two columns line up. */}
           <div className="flex flex-col space-y-1">
-            <label className="flex flex-col space-y-1 font-bold text-black">
+            <label htmlFor="mrr-firm" className="font-bold text-black">
               {mrrType === "Reel" ? "Inventory Owner" : "Firm"} <span className="text-red-500">*</span>
-              <select value={firmId} disabled={firmLocked || mrrType === "Reel"} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="mt-2 w-full rounded border-2 border-indigo-300 p-2 disabled:bg-slate-100">
-                <option value="">Select Firm...</option>
-                {(mrrType === "Reel" ? firms.filter((firm) => firm.id === unitOneFirm?.id) : firms).map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
-              </select>
             </label>
+            <select id="mrr-firm" value={firmId} disabled={firmLocked || mrrType === "Reel"} onChange={(e) => { setFirmId(e.target.value); const firm = firms.find((item) => item.id === e.target.value); if (firm) setActiveFirm(firm); }} required className="w-full rounded border-2 border-black bg-white p-2 text-black focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100">
+              <option value="">Select Firm...</option>
+              {(mrrType === "Reel" ? firms.filter((firm) => firm.id === unitOneFirm?.id) : firms).map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
+            </select>
           </div>
           {/* The Direct Service form's title already says Direct Service. */}
           {isDirectService ? null : (
@@ -3081,7 +3081,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors bg-white w-full"
             />
           </div>
-          <div className="flex flex-col space-y-1 md:col-span-2">
+          <div className={`flex flex-col space-y-1 ${isDirectService ? ["md:col-span-2 lg:col-span-3", "md:col-span-2 lg:col-span-1", "md:col-span-2 lg:col-span-2"][(5 + (editingEntry ? 1 : 0) + (isUsdInvoice ? 1 : 0)) % 3] : "md:col-span-2"}`}>
             <label className="font-bold text-black">
               Party <span className="text-red-500">*</span>
             </label>
@@ -3098,7 +3098,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             {isDirectService ? "Add Service" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
           </h3>
           <div className="flex flex-wrap gap-4 items-end mb-4 bg-slate-50 p-4 rounded border border-black">
-            <div className="flex flex-col space-y-1 w-full md:w-80">
+            <div className={`flex flex-col space-y-1 w-full ${isDirectService ? "md:min-w-[280px] md:flex-1" : "md:w-80"}`}>
               <label className="text-sm font-bold text-black">
                 {activeItemLabel} <span className="text-red-600">*</span>
               </label>
@@ -3157,8 +3157,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                 />
               </div>
             ) : null}
-            <div className="flex flex-col space-y-1 w-full md:w-24">
-              <label className="text-sm font-bold text-black">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</label>
+            <div className={`flex flex-col space-y-1 w-full ${isDirectService ? "md:w-48" : "md:w-24"}`}>
+              <label className="text-sm font-bold text-black whitespace-nowrap">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</label>
               <input
                 type="number"
                 value={currentInvoiceRate || ""}

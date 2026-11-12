@@ -87,8 +87,8 @@ const gateEntryItems: NavItem[] = [
 ];
 
 const materialReceiptItems: NavItem[] = [
-  { name: "Pending Material Receipt", href: "/material-receipt/pending-mrr", icon: Activity, countKey: "/material-receipt/pending-mrr" },
   { name: "Direct Service Form", href: "/material-in/direct-service", icon: ClipboardList },
+  { name: "Pending Material Receipt", href: "/material-receipt/pending-mrr", icon: Activity, countKey: "/material-receipt/pending-mrr" },
   { name: "Material Receipt Master", href: "/material-in/master", icon: Database },
   { name: "Material Receipt (Itemized)", href: "/material-in/item-master", icon: Database },
   { name: "Pending MRR Approvals", href: "/material-receipt/approvals", icon: CheckCircle, countKey: "/material-receipt/approvals" },
