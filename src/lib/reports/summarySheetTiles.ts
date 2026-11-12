@@ -11,18 +11,30 @@ export const monthStartKey = (now = new Date()) => `${now.getFullYear()}-${Strin
 export type SummaryTile = {
   id: string;
   label: string;
-  value: number;
+  /** null: not recorded in the app yet (tile shows blank). */
+  value: number | null;
   format: "qty" | "money" | "percent" | "count";
   /** Tailwind classes for the tile (colours taken from the Google Summary Sheet). */
   tone: string;
 };
 
+export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[] };
+
+const blank = (id: string, label: string, tone: string, format: SummaryTile["format"] = "qty"): SummaryTile => ({ id, label, value: null, format, tone });
+
 /**
- * Header tiles of the Google "Summary Sheet" (rows 1-5) worked out from the
- * app's summary rows. Today/yesterday/tomorrow tiles use the job date (sales
- * use the dispatch date); range tiles use From-To (default: this month).
+ * Header tiles of the Google "Summary Sheet" (rows 1-5), grouped by section.
+ * Today/yesterday/tomorrow tiles use the job date (sales use the dispatch
+ * date); range tiles use From-To (default: this month). Tiles the app does
+ * not record yet are kept, blank, in the same place as on the sheet.
  */
-export function computeSummarySheetTiles(rows: SummaryRow[], cancelledJobDates: string[], range: { from: string; to: string }, now = new Date()) {
+export function computeSummarySheetSections(
+  rows: SummaryRow[],
+  cancelledJobDates: string[],
+  range: { from: string; to: string },
+  extras: SummarySheetExtras | null,
+  now = new Date(),
+): SummaryTileSection[] {
   const today = localDayKey(0, now);
   const yesterday = localDayKey(-1, now);
   const tomorrow = localDayKey(1, now);
@@ -35,41 +47,115 @@ export function computeSummarySheetTiles(rows: SummaryRow[], cancelledJobDates: 
   const planValue = (list: SummaryRow[]) => sum(list, (row) => n(row["Planned Qty"]) * n(row.Rate));
   const openRows = rows.filter((row) => s(row["Job Closed"]) !== "Yes");
   const rangeRows = rows.filter((row) => inRange(isoDateText(row.Date)));
-  const paperRequired = sum(rangeRows.filter((row) => n(row["PPR Used"]) > 0), (row) => n(row["PPR Rqd."]));
-  const paperWastage = sum(rangeRows, (row) => n(row["Paper Wastage"]));
+  const usedRows = rangeRows.filter((row) => n(row["PPR Used"]) > 0);
+  const paperRequired = sum(usedRows, (row) => n(row["PPR Rqd."]));
+  const paperUsed = sum(rangeRows, (row) => n(row["PPR Used"]));
+  const paperWastagePercent = paperRequired > 0 ? (sum(usedRows, (row) => n(row["Paper Wastage"])) / paperRequired) * 100 : 0;
+  const boardlineWastage = sum(rangeRows, (row) => n(row["Boardline Wastage"]));
+  const boardlineWastagePercent = paperUsed > 0 ? (boardlineWastage / paperUsed) * 100 : 0;
+  const rangeSale = sum(rows.filter((row) => inRange(isoDateText(row["Dispatch Date"]))), (row) => n(row["Sale Value"]));
+  // Days in the range up to today (sales per day so far).
+  const rangeEnd = range.to < today ? range.to : today;
+  const days = range.from && rangeEnd >= range.from ? Math.round((Date.parse(rangeEnd) - Date.parse(range.from)) / 86_400_000) + 1 : 0;
+  const wastageTone = (value: number) => value <= 8 ? "bg-[#00ff00] text-slate-950" : value <= 10 ? "bg-[#ff9900] text-slate-950" : "bg-[#ff0000] text-white";
+  const dueUntil = localDayKey(3, now);
+  const pendingEntries = Object.entries(extras?.pendingOrderValueByDate || {});
+  const extraValue = (value: number | undefined) => (extras ? Number(value || 0) : null);
 
-  const todayTiles: SummaryTile[] = [
-    { id: "todayPlan", label: "Today's Plan", value: sum(todayRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#660000] text-white" },
-    { id: "tomorrowPlan", label: "Tomorrow's Plan", value: sum(tomorrowRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#ffe599] text-slate-950" },
-    { id: "todayPlanValue", label: "Plan Value", value: planValue(todayRows), format: "money", tone: "bg-[#45818e] text-white" },
-    { id: "tomorrowPlanValue", label: "Tom. Plan Value", value: planValue(tomorrowRows), format: "money", tone: "bg-[#b4a7d6] text-slate-950" },
-    { id: "tomorrowJobs", label: "Jobs Tomorrow", value: tomorrowRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
-    { id: "todayMeter", label: "Today's Linear Meter", value: sum(todayRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#8e7cc3] text-white" },
-    { id: "todayBoardline", label: "Today's Boardline Production", value: sum(todayRows, (row) => n(row["Boardline Prod."])), format: "qty", tone: "bg-[#9900ff] text-white" },
-    { id: "todayPrinting", label: "Today's BOBST Prod.", value: sum(todayRows, (row) => n(row["Printing prod."])), format: "qty", tone: "bg-[#0000ff] text-white" },
-    { id: "yesterdaySale", label: "Yesterday's Sale", value: saleOn(yesterday), format: "money", tone: "bg-[#7f6000] text-white" },
-    { id: "todaySale", label: "Today's Sale", value: saleOn(today), format: "money", tone: "bg-[#741b47] text-white" },
-    { id: "wip", label: "WIP", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950" },
-  ];
-  const wastagePercent = paperRequired > 0 ? (paperWastage / paperRequired) * 100 : 0;
-  const rangeTiles: SummaryTile[] = [
-    { id: "rangeSale", label: "Total Sale - Rs", value: sum(rows.filter((row) => inRange(isoDateText(row["Dispatch Date"]))), (row) => n(row["Sale Value"])), format: "money", tone: "bg-[#00ff00] text-slate-950" },
-    { id: "rangePaper", label: "Paper Used (Kg)", value: sum(rangeRows, (row) => n(row["PPR Used"])), format: "qty", tone: "bg-[#00ffff] text-slate-950" },
+  return [
     {
-      id: "rangeWastage",
-      label: "Paper Wastage %",
-      value: wastagePercent,
-      format: "percent",
-      // Sheet rule on Total wastage: up to 8% green, 8-10% orange, above 10% red.
-      tone: wastagePercent <= 8 ? "bg-[#00ff00] text-slate-950" : wastagePercent <= 10 ? "bg-[#ff9900] text-slate-950" : "bg-[#ff0000] text-white",
+      id: "plan",
+      title: "Production Plan",
+      tiles: [
+        { id: "todayPlan", label: "Today's Plan", value: sum(todayRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#660000] text-white" },
+        { id: "tomorrowPlan", label: "Tomorrow's Plan", value: sum(tomorrowRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#ffe599] text-slate-950" },
+        { id: "todayPlanValue", label: "Plan Value", value: planValue(todayRows), format: "money", tone: "bg-[#45818e] text-white" },
+        { id: "tomorrowPlanValue", label: "Tom. Plan Value", value: planValue(tomorrowRows), format: "money", tone: "bg-[#b4a7d6] text-slate-950" },
+        { id: "tomorrowJobs", label: "Jobs Tomorrow", value: tomorrowRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
+        { id: "todayMeter", label: "Today's Linear Meter", value: sum(todayRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#8e7cc3] text-white" },
+        blank("todayReelIssue", "Today's Reel Issue", "bg-[#00ffff] text-[#ff0000]"),
+      ],
     },
-    { id: "rangeBoardlineWastage", label: "Boardline Wastage (Kg)", value: sum(rangeRows, (row) => n(row["Boardline Wastage"])), format: "qty", tone: "bg-[#ffff00] text-slate-950" },
-    { id: "rangePrintingWastage", label: "Printing Wastage", value: sum(rangeRows, (row) => n(row["Printing Wastage"])), format: "qty", tone: "bg-[#ffff00] text-slate-950" },
-    { id: "rangeJobs", label: "Jobs", value: rangeRows.length, format: "count", tone: "bg-[#ffe599] text-slate-950" },
-    { id: "rangeClosed", label: "Closed Jobs", value: rangeRows.filter((row) => s(row["Job Closed"]) === "Yes").length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },
-    { id: "rangeCancelled", label: "Cancel Jobs", value: cancelledJobDates.filter(inRange).length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },
+    {
+      id: "production",
+      title: "Production Summary",
+      tiles: [
+        { id: "todayBoardline", label: "Today's Boardline Production", value: sum(todayRows, (row) => n(row["Boardline Prod."])), format: "qty", tone: "bg-[#9900ff] text-white" },
+        { id: "todayPrinting", label: "Today's BOBST Prod.", value: sum(todayRows, (row) => n(row["Printing prod."])), format: "qty", tone: "bg-[#0000ff] text-white" },
+        { id: "wip", label: "WIP", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950" },
+        { id: "rangePaper", label: "Paper Used / Reel Issue (Kg)", value: paperUsed, format: "qty", tone: "bg-[#00ffff] text-slate-950" },
+        { id: "rangeJobs", label: "Jobs", value: rangeRows.length, format: "count", tone: "bg-[#ffe599] text-slate-950" },
+        { id: "rangeClosed", label: "Closed Jobs", value: rangeRows.filter((row) => s(row["Job Closed"]) === "Yes").length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },
+        { id: "rangeCancelled", label: "Cancel Jobs", value: cancelledJobDates.filter(inRange).length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },
+        blank("rejection", "Rejection / Short Sent", "bg-white text-slate-950"),
+        blank("fgOpening", "FG Opening", "bg-white text-slate-950"),
+        blank("wipOpening", "WIP Opening", "bg-white text-slate-950"),
+      ],
+    },
+    {
+      id: "sales",
+      title: "Sales",
+      tiles: [
+        { id: "todaySale", label: "Today's Sale", value: saleOn(today), format: "money", tone: "bg-[#741b47] text-white" },
+        { id: "yesterdaySale", label: "Yesterday's Sale", value: saleOn(yesterday), format: "money", tone: "bg-[#7f6000] text-white" },
+        { id: "rangeSale", label: "Total Sale - Rs", value: rangeSale, format: "money", tone: "bg-[#00ff00] text-slate-950" },
+        { id: "achievedPerDay", label: "Achieved Sales / Day", value: days > 0 ? rangeSale / days : 0, format: "money", tone: "bg-[#ff00ff] text-slate-950" },
+        blank("targetPerDay", "Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
+        blank("revisedTargetPerDay", "Revised Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
+        blank("shortSales", "Short Sales Till Date", "bg-[#ff0000] text-white", "money"),
+        blank("spPerKg", "SP / KG", "bg-[#0c343d] text-white", "money"),
+      ],
+    },
+    {
+      id: "orders",
+      title: "Orders & Dispatch (all firms)",
+      tiles: [
+        { id: "duePendingOrderValue", label: "Due Pending Order Value", value: extras ? pendingEntries.filter(([date]) => date && date <= dueUntil).reduce((total, [, value]) => total + value, 0) : null, format: "money", tone: "bg-[#ff0000] text-white" },
+        { id: "totalPendingOrderValue", label: "Total Pending Order Value", value: extras ? pendingEntries.reduce((total, [, value]) => total + value, 0) : null, format: "money", tone: "bg-[#e06666] text-white" },
+        { id: "pendingSchedulingValue", label: "Total Due Planning Value", value: extraValue(extras?.pendingSchedulingValue), format: "money", tone: "bg-[#ff0000] text-white" },
+        { id: "fgStockValue", label: "FG Stock Value", value: extraValue(extras?.fgStockValue), format: "money", tone: "bg-[#ffe599] text-slate-950" },
+        { id: "loadingSlips", label: "Total Loading Slip", value: extraValue(extras?.loadingSlips), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
+        { id: "invoices", label: "Total Inv", value: extraValue(extras?.invoices), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
+        { id: "slipsNotInvoiced", label: "Loading Slip Not Invoiced", value: extraValue(extras?.slipsNotInvoiced), format: "count", tone: "bg-[#ffff00] text-slate-950" },
+      ],
+    },
+    {
+      id: "wastage",
+      title: "Wastage Analysis",
+      tiles: [
+        { id: "paperWastage", label: "P Wastage %", value: paperWastagePercent, format: "percent", tone: wastageTone(paperWastagePercent) },
+        { id: "boardlineWastagePercent", label: "C Wastage %", value: boardlineWastagePercent, format: "percent", tone: "bg-[#ffff00] text-slate-950" },
+        blank("dispatchWastage", "D Wastage %", "bg-[#ffff00] text-slate-950", "percent"),
+        blank("totalWastage", "Total Wastage %", "bg-[#ff0000] text-white", "percent"),
+        { id: "boardlineWastage", label: "Boardline Wastage (Kg)", value: boardlineWastage, format: "qty", tone: "bg-[#ffff00] text-slate-950" },
+        { id: "printingWastage", label: "Printing Wastage", value: sum(rangeRows, (row) => n(row["Printing Wastage"])), format: "qty", tone: "bg-[#ffff00] text-slate-950" },
+        blank("noHisab", "No Hisab (Kg)", "bg-[#ffff00] text-slate-950"),
+        blank("gp", "GP %", "bg-[#ffff00] text-slate-950", "percent"),
+        blank("lcd", "LCD", "bg-[#d9d2e9] text-slate-950", "money"),
+      ],
+    },
+    {
+      id: "stocks",
+      title: "Stocks",
+      tiles: [
+        blank("starch", "Starch", "bg-[#ffd966] text-slate-950"),
+        blank("fevicol", "Fevicol", "bg-[#ffd966] text-slate-950"),
+        blank("diesel", "Diesel", "bg-[#e69138] text-slate-950"),
+        blank("firewood", "Firewood", "bg-[#93c47d] text-slate-950"),
+        blank("strapping", "Strapping Roll", "bg-[#ffd966] text-slate-950"),
+      ],
+    },
+    {
+      id: "phpPlate",
+      title: "PHP & Plate",
+      tiles: [
+        blank("phpScheduling", "Prod Scheduling", "bg-[#7f6000] text-white", "count"),
+        blank("phpSequence", "Prod Sequence", "bg-[#7f6000] text-white", "count"),
+        blank("phpProduction", "Prod Production", "bg-[#7f6000] text-white", "count"),
+        blank("plateRequirement", "Plate / PHP Requirement", "bg-[#bf9000] text-slate-950", "count"),
+      ],
+    },
   ];
-  return { todayTiles, rangeTiles };
 }
 
 const between = (value: number, low: number, high: number) => value >= low && value <= high;
@@ -216,21 +302,4 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
   });
   const fgStockValue = npdItems.reduce((sum, item) => sum + Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0), 0);
   return { pendingOrderValueByDate, pendingSchedulingValue, loadingSlips: slips.length, invoices: invoices.length, slipsNotInvoiced, fgStockValue };
-}
-
-/** Order / dispatch tiles from the server extras (due = scheduled up to 3 days ahead, like the sheet). */
-export function computeSummarySheetExtraTiles(extras: SummarySheetExtras, now = new Date()): SummaryTile[] {
-  const dueUntil = localDayKey(3, now);
-  const entries = Object.entries(extras.pendingOrderValueByDate || {});
-  const due = entries.filter(([date]) => date && date <= dueUntil).reduce((sum, [, value]) => sum + value, 0);
-  const total = entries.reduce((sum, [, value]) => sum + value, 0);
-  return [
-    { id: "duePendingOrderValue", label: "Due Pending Order Value", value: due, format: "money", tone: "bg-[#ff0000] text-white" },
-    { id: "totalPendingOrderValue", label: "Total Pending Order Value", value: total, format: "money", tone: "bg-[#e06666] text-white" },
-    { id: "pendingSchedulingValue", label: "Total Due Planning Value", value: extras.pendingSchedulingValue, format: "money", tone: "bg-[#ff0000] text-white" },
-    { id: "fgStockValue", label: "FG Stock Value", value: extras.fgStockValue, format: "money", tone: "bg-[#ffe599] text-slate-950" },
-    { id: "loadingSlips", label: "Total Loading Slip", value: extras.loadingSlips, format: "count", tone: "bg-[#fce5cd] text-slate-950" },
-    { id: "invoices", label: "Total Inv", value: extras.invoices, format: "count", tone: "bg-[#fce5cd] text-slate-950" },
-    { id: "slipsNotInvoiced", label: "Loading Slip Not Invoiced", value: extras.slipsNotInvoiced, format: "count", tone: "bg-[#ffff00] text-slate-950" },
-  ];
 }

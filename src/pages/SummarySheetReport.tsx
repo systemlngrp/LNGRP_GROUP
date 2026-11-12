@@ -6,8 +6,8 @@ import { useNpdItems } from "../hooks/useNpdItems";
 import { computeSummarySheetRows, isoDateText, n, s } from "../lib/reports/summarySheet";
 import type { SummaryRow } from "../lib/reports/summarySheet";
 import { useServerReport } from "../hooks/useServerReport";
-import { computeSummarySheetExtraTiles, computeSummarySheetTiles, monthStartKey, localDayKey, summarySheetCellClass } from "../lib/reports/summarySheetTiles";
-import type { SummarySheetExtras, SummaryTile } from "../lib/reports/summarySheetTiles";
+import { computeSummarySheetSections, monthStartKey, localDayKey, summarySheetCellClass } from "../lib/reports/summarySheetTiles";
+import type { SummarySheetExtras, SummaryTile, SummaryTileSection } from "../lib/reports/summarySheetTiles";
 import { jobNumberCellClass, realizationCellClass } from "../lib/jobCellColors";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { ClientPagination } from "../components/ClientPagination";
@@ -55,14 +55,6 @@ const displayDate = (value: unknown) => {
   const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
 };
-const parseDisplayDate = (value: string) => {
-  const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!match) return "";
-  const [, day, month, year] = match;
-  const candidate = new Date(Number(year), Number(month) - 1, Number(day));
-  if (candidate.getFullYear() !== Number(year) || candidate.getMonth() !== Number(month) - 1 || candidate.getDate() !== Number(day)) return "";
-  return `${year}-${month}-${day}`;
-};
 
 export function SummarySheetReport() {
   // Rows are calculated on the server; if it cannot, the lists are loaded and
@@ -70,7 +62,6 @@ export function SummarySheetReport() {
   const serverReport = useServerReport<SummaryRow[]>("summary-sheet", {}, SUMMARY_SHEET_TABLES);
   const browserFallback = serverReport.failed;
   const extrasReport = useServerReport<SummarySheetExtras>("summary-sheet-tiles", {}, ["orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "npd"]);
-  const extraTiles = useMemo(() => extrasReport.result ? computeSummarySheetExtraTiles(extrasReport.result) : [], [extrasReport.result]);
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", enabled: browserFallback });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", enabled: browserFallback });
@@ -88,8 +79,6 @@ export function SummarySheetReport() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [fromInput, setFromInput] = useState("");
-  const [toInput, setToInput] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [closedFilter, setClosedFilter] = useState("");
@@ -183,8 +172,8 @@ export function SummarySheetReport() {
     const cancelledDates = productions
       .filter((p) => p.status === "Cancelled" && (!firmFilter || (s((p as any).firmName).toLowerCase() || firmNameById.get(s(p.firmId))) === firmFilter.toLowerCase()))
       .map((p) => isoDateText(p.date));
-    return computeSummarySheetTiles(tileRows, cancelledDates, tileRange);
-  }, [baseRows, firmFilter, firms, productionById, productions, tileRange]);
+    return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null);
+  }, [baseRows, extrasReport.result, firmFilter, firms, productionById, productions, tileRange]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
@@ -195,34 +184,39 @@ export function SummarySheetReport() {
     return NUMERIC_COLUMNS.has(column) && s(value) !== "" ? n(value) : value;
   });
   const pagedRows = useMemo(() => sortedRows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, sortedRows]);
-  const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFromInput(""); setToInput(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
+  const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
   return <div className="space-y-4 pb-8">
     <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Summary Sheet</h2></div>
-    <SummaryTileGroup title="Today" tiles={tiles.todayTiles} />
-    <SummaryTileGroup title={`${displayDate(tileRange.from)} to ${displayDate(tileRange.to)}`} tiles={tiles.rangeTiles} />
-    {extraTiles.length ? <SummaryTileGroup title="Orders & Dispatch (all firms)" tiles={extraTiles} /> : null}
-    <div className="grid grid-cols-1 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><input type="text" inputMode="numeric" className="rounded border border-black p-2" value={fromInput} onChange={(event) => { const value = event.target.value; setFromInput(value); setFrom(parseDisplayDate(value)); }} /><input type="text" inputMode="numeric" className="rounded border border-black p-2" value={toInput} onChange={(event) => { const value = event.target.value; setToInput(value); setTo(parseDisplayDate(value)); }} /><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-20 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
+    <div className="flex flex-wrap items-end gap-3 rounded border-2 border-black bg-white p-3">
+      <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
+      <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
+      {(from || to) ? <button type="button" onClick={() => { setFrom(""); setTo(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold hover:bg-slate-100">Clear Dates</button> : null}
+      <span className="pb-2 text-xs font-bold text-slate-700">Tiles for {displayDate(tileRange.from)} to {displayDate(tileRange.to)}{from || to ? "" : " (this month)"} · table shows {from || to ? "jobs in these dates" : "all jobs"}</span>
+    </div>
+    <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div>
+    <div className="grid grid-cols-1 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-20 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
 <div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={COLUMNS[columnIndex]} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; const rowColorClass = column === "Job No." ? jobNumberCellClass(row.Date, row["PDI REPORT"]) : column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : valueForColumn(row, columnIndex, (page - 1) * pageSize + index)}</td>; })}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div><ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
   </div>;
 }
 
 const formatTileValue = (tile: SummaryTile) => {
+  if (tile.value === null) return "";
   if (tile.format === "percent") return `${tile.value.toFixed(2)}%`;
   if (tile.format === "money") return `₹ ${Math.round(tile.value).toLocaleString("en-IN")}`;
   if (tile.format === "count") return tile.value.toLocaleString("en-IN");
   return Number(tile.value.toFixed(2)).toLocaleString("en-IN");
 };
 
-function SummaryTileGroup({ title, tiles }: { title: string; tiles: SummaryTile[] }) {
+function SummaryTileGroup({ section }: { section: SummaryTileSection }) {
   return (
     <section className="overflow-hidden rounded border-2 border-black bg-white">
-      <div className="border-b-2 border-black bg-[#0c343d] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white">{title}</div>
+      <div className="border-b-2 border-black bg-[#0c343d] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white">{section.title}</div>
       <div className="flex flex-wrap">
-        {tiles.map((tile) => (
-          <div key={tile.id} className={`min-w-[150px] flex-1 border-b border-r border-black px-3 py-2 ${tile.tone}`}>
+        {section.tiles.map((tile) => (
+          <div key={tile.id} className={`min-w-[140px] flex-1 border-b border-r border-black px-3 py-2 ${tile.tone}`} title={tile.value === null ? "Not recorded in the app yet" : undefined}>
             <div className="text-[10px] font-black uppercase leading-tight tracking-wide">{tile.label}</div>
-            <div className="mt-1 whitespace-nowrap text-base font-black leading-tight">{formatTileValue(tile)}</div>
+            <div className="mt-1 min-h-[1.25rem] whitespace-nowrap text-base font-black leading-tight">{formatTileValue(tile)}</div>
           </div>
         ))}
       </div>
