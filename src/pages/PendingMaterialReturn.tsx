@@ -190,10 +190,10 @@ export function PendingMaterialReturn() {
                 <td className="border border-black px-3 py-3">
                   <div className="flex gap-2 whitespace-nowrap">
                     <button type="button" onClick={() => openReturn(production, "manual")} className="inline-flex items-center gap-1 rounded border border-black bg-indigo-600 px-3 py-1.5 text-xs font-bold uppercase text-white">
-                      <RotateCcw size={14} /> Manual Return
+                      <RotateCcw size={14} /> Manual
                     </button>
                     <button type="button" onClick={() => openReturn(production, "qr")} className="inline-flex items-center gap-1 rounded border border-black bg-emerald-600 px-3 py-1.5 text-xs font-bold uppercase text-white">
-                      <Camera size={14} /> QR Return
+                      <Camera size={14} /> QR
                     </button>
                   </div>
                 </td>
