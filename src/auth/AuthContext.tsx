@@ -97,6 +97,8 @@ function getEffectiveMenuAccess(user: AuthUser | null) {
   return normalizeMenuAccess(user.menuAccess);
 }
 
+const TALLY_POSTING_TAB_PATHS = ["/material-receipt/pending-tally", "/material-receipt/pending-credit-note", "/material-receipt/pending-debit-note"];
+
 function isAllowed(user: AuthUser | null, href: string) {
   if (!user) return false;
   if (href === "/") return true;
@@ -108,6 +110,9 @@ function isAllowed(user: AuthUser | null, href: string) {
   const list = getEffectiveMenuAccess(user);
   if (list.includes("*")) return true;
   if (href === "/material-movement/reel-transfer" && list.includes("/material-movement/issue")) return true;
+  // Tally Posting page = MRR / credit note / debit note tally posting tabs.
+  if (href === "/material-receipt/tally-posting" && TALLY_POSTING_TAB_PATHS.some((path) => list.includes(path))) return true;
+  if (TALLY_POSTING_TAB_PATHS.includes(href) && list.includes("/material-receipt/tally-posting")) return true;
   if (
     href === "/production/pending-material-return" &&
     ["/production/pending-consumption", "/material-movement/return", "/material-movement/reel-return"].some((path) => list.includes(path))

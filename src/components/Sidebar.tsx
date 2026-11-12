@@ -92,12 +92,7 @@ const materialReceiptItems: NavItem[] = [
   { name: "Material Receipt Master", href: "/material-in/master", icon: Database },
   { name: "Material Receipt (Itemized)", href: "/material-in/item-master", icon: Database },
   { name: "Pending MRR Approvals", href: "/material-receipt/approvals", icon: CheckCircle, countKey: "/material-receipt/approvals" },
-  { name: "Pending PH Approval", href: "/material-receipt/pending-ph-approval", icon: UserCheck, countKey: "/material-receipt/pending-ph-approval" },
-  { name: "Pending Accounts Approval", href: "/material-receipt/pending-accounts-approval", icon: UserCheck, countKey: "/material-receipt/pending-accounts-approval" },
-  { name: "Pending MD Approval", href: "/material-receipt/pending-md-approval", icon: UserCheck, countKey: "/material-receipt/pending-md-approval" },
-  { name: "Pending MRR Tally Posting", href: "/material-receipt/pending-tally", icon: FileText, countKey: "/material-receipt/pending-tally" },
-  { name: "Pending Debit Note Tally Posting", href: "/material-receipt/pending-debit-note", icon: FileText, countKey: "/material-receipt/pending-debit-note" },
-  { name: "Pending Credit Note Tally Posting", href: "/material-receipt/pending-credit-note", icon: FileText, countKey: "/material-receipt/pending-credit-note" },
+  { name: "Tally Posting", href: "/material-receipt/tally-posting", icon: FileText },
 ];
 
 const materialIssueItems: NavItem[] = [

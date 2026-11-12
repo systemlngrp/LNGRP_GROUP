@@ -41,6 +41,7 @@ const GateEntryMaster = lazy(() => import("./pages/GateEntryMaster").then((modul
 const PendingMrr = lazy(() => import("./pages/PendingMrr").then((module) => ({ default: module.PendingMrr })));
 const PendingTallyEntry = lazy(() => import("./pages/PendingTallyEntry").then((module) => ({ default: module.PendingTallyEntry })));
 const PendingDebitNote = lazy(() => import("./pages/PendingDebitNote").then((module) => ({ default: module.PendingDebitNote })));
+const TallyPosting = lazy(() => import("./pages/TallyPosting").then((module) => ({ default: module.TallyPosting })));
 const PendingCreditNote = lazy(() => import("./pages/PendingCreditNote").then((module) => ({ default: module.PendingCreditNote })));
 const PendingPHApproval = lazy(() => import("./pages/PendingPHApproval").then((module) => ({ default: module.PendingPHApproval })));
 const PendingAccountsApproval = lazy(() => import("./pages/PendingAccountsApproval").then((module) => ({ default: module.PendingAccountsApproval })));
@@ -322,6 +323,7 @@ export default function App() {
           <Route path="material-receipt/pending-ph-approval" element={<PendingPHApproval />} />
           <Route path="material-receipt/pending-accounts-approval" element={<PendingAccountsApproval />} />
           <Route path="material-receipt/pending-md-approval" element={<PendingMDApproval />} />
+          <Route path="material-receipt/tally-posting" element={<TallyPosting />} />
           <Route path="material-receipt/pending-tally" element={<PendingTallyEntry />} />
           <Route path="material-receipt/pending-debit-note" element={<PendingDebitNote />} />
           <Route path="material-receipt/pending-credit-note" element={<PendingCreditNote />} />
