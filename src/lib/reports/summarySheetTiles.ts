@@ -66,6 +66,7 @@ export function computeSummarySheetSections(
   const pendingOrders = ready ? filterExtraRecords(extras.pendingOrders, filters) : [];
   const slipRecords = ready ? filterExtraRecords(extras.loadingSlips, filters, datesChosen ? range : undefined) : [];
   const invoiceRecords = ready ? filterExtraRecords(extras.invoices, filters, datesChosen ? range : undefined) : [];
+  const interFirmInvoiceRecords = ready ? filterExtraRecords(extras.interFirmInvoices, filters, datesChosen ? range : undefined) : [];
   const extraValue = (value: number) => (ready ? value : null);
 
   return [
@@ -122,6 +123,7 @@ export function computeSummarySheetSections(
         { id: "fgStockValue", label: "FG Stock Value", value: extraValue(ready ? total(filterExtraRecords(extras.fgStock, filters)) : 0), format: "money", tone: "bg-[#ffe599] text-slate-950" },
         { id: "loadingSlips", label: "Total Loading Slip", value: extraValue(slipRecords.length), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
         { id: "invoices", label: "Total Inv", value: extraValue(invoiceRecords.length), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
+        { id: "interFirmInvoices", label: "Inter-Firm Inv", value: extraValue(interFirmInvoiceRecords.length), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
         { id: "slipsNotInvoiced", label: "Loading Slip Not Invoiced", value: extraValue(slipRecords.filter((record) => record[5] === 0).length), format: "count", tone: "bg-[#ffff00] text-slate-950" },
       ],
     },
@@ -262,8 +264,10 @@ export type SummarySheetExtras = {
   pendingScheduling: ExtraRecord[];
   /** Active loading slips; value 1 = invoiced, 0 = not invoiced; date = slip date. */
   loadingSlips: ExtraRecord[];
-  /** Active invoices; value = invoice total; date = invoice date. */
+  /** Active invoices to customers (inter-firm invoices left out); value = invoice total; date = invoice date. */
   invoices: ExtraRecord[];
+  /** Active inter-firm invoices (billed to one of our own firms). */
+  interFirmInvoices?: ExtraRecord[];
   /** FG stock (positive balance) × latest order rate, per item; no date. */
   fgStock: ExtraRecord[];
   /** Store stock balance (opening + receipts − issues, as on the Materials page) by tile; null = no such material yet. */
@@ -372,14 +376,21 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
     const invoiced = (slip.invoiceId && invoiceIds.has(String(slip.invoiceId))) || invoicedSlipIds.has(String(slip.id));
     return [isoDateText(slip.date), firmName.get(String(slip.firmId)) || "", s(slip.companyName) || companyName.get(String(slip.companyId)) || "", "", "", invoiced ? 1 : 0];
   });
-  const invoices: ExtraRecord[] = invoiceRows.map((invoice) => [
+  // Inter-firm: marked inter-firm, or billed to a party with one of our firm names.
+  const firmKey = (value: unknown) => s(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const ownFirmKeys = new Set((lists.firms || []).map((firm) => firmKey(firm.firmName)).filter(Boolean));
+  const isInterFirm = (invoice: any) => s(invoice.interFirmFlow).toLowerCase() === "yes"
+    || ownFirmKeys.has(firmKey(s(invoice.companyName) || companyName.get(String(invoice.companyId)) || ""));
+  const toInvoiceRecord = (invoice: any): ExtraRecord => [
     isoDateText(invoice.date),
     firmName.get(String(invoice.firmId)) || "",
     s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "",
     "",
     "",
     round(n(invoice.totalAfterGst)),
-  ]);
+  ];
+  const invoices: ExtraRecord[] = invoiceRows.filter((invoice) => !isInterFirm(invoice)).map(toInvoiceRecord);
+  const interFirmInvoices: ExtraRecord[] = invoiceRows.filter(isInterFirm).map(toInvoiceRecord);
 
   // Latest order rate per FG item (by order date).
   const latestRate = new Map<string, { date: string; rate: number }>();
@@ -401,7 +412,7 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
       round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0)),
     ] as ExtraRecord)
     .filter((record) => record[5] > 0);
-  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 /** Filters that apply to the extra records (party / item / ERP only where the record has them). */

@@ -1577,14 +1577,19 @@ function computeSummarySheetExtras(lists, npdItems) {
     const invoiced = slip.invoiceId && invoiceIds.has(String(slip.invoiceId)) || invoicedSlipIds.has(String(slip.id));
     return [isoDateText(slip.date), firmName.get(String(slip.firmId)) || "", s(slip.companyName) || companyName.get(String(slip.companyId)) || "", "", "", invoiced ? 1 : 0];
   });
-  const invoices = invoiceRows.map((invoice) => [
+  const firmKey = (value) => s(value).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const ownFirmKeys = new Set((lists.firms || []).map((firm) => firmKey(firm.firmName)).filter(Boolean));
+  const isInterFirm = (invoice) => s(invoice.interFirmFlow).toLowerCase() === "yes" || ownFirmKeys.has(firmKey(s(invoice.companyName) || companyName.get(String(invoice.companyId)) || ""));
+  const toInvoiceRecord = (invoice) => [
     isoDateText(invoice.date),
     firmName.get(String(invoice.firmId)) || "",
     s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "",
     "",
     "",
     round(n(invoice.totalAfterGst))
-  ]);
+  ];
+  const invoices = invoiceRows.filter((invoice) => !isInterFirm(invoice)).map(toInvoiceRecord);
+  const interFirmInvoices = invoiceRows.filter(isInterFirm).map(toInvoiceRecord);
   const latestRate = /* @__PURE__ */ new Map();
   orders.forEach((order) => {
     const itemId = String(order.npdId || order.itemId || "");
@@ -1602,7 +1607,7 @@ function computeSummarySheetExtras(lists, npdItems) {
     s(item.erp || item.erpCode),
     round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0))
   ]).filter((record) => record[5] > 0);
-  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, interFirmInvoices, fgStock, storeStocks: computeStoreStocks(lists), phpPlate: computePhpPlateCounts(lists) };
 }
 
 // src/lib/reports/conversionCostDetails.ts
