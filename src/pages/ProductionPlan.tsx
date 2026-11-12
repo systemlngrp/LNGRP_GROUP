@@ -182,41 +182,42 @@ export function ProductionPlan() {
     paginatedItems: paginatedList,
   } = useClientPagination(columnSortedRows, 25);
 
+  // Excel uses the same columns as the printed plan sheet / PDF, numbers as numbers.
   const getExportData = (data: Production[]) => {
-    return data.map((p, index) => {
+    const toNum = (value: unknown) => {
+      if (value === "" || value === null || value === undefined) return "";
+      const num = Number(value);
+      return Number.isFinite(num) ? Math.round(num * 100) / 100 : String(value);
+    };
+    return data.map((p) => {
       const schedule = schedules.find(s => s.id === p.scheduleId);
       const order = orders.find(o => o.id === schedule?.orderId);
       const company = resolveProductionPlanCompany(p, schedule, order, companies);
       const item = npdItems.find(i => i.id === String(p.itemId || "").trim());
-      const isSample = sampleJobNumbers.has(String(p.transactionNo || p.jobCardNo || "").trim());
+      const jobText = String(p.transactionNo || p.jobCardNo || "").trim();
       const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
-
       return {
-        "Sr. No.": index + 1,
-        "Date": formatDate(p.date),
-        "Job Number": p.transactionNo || "-",
-        "Company": company.name,
-        "ERP": p.erpCode || "-",
-        "Item Name": item?.name || "-",
-        "Sample (Yes/No)": isSample ? "Yes" : "No",
-        "Plan Quantity": format2(p.qty),
-        "UPS": format2(p.ups),
-        "Ply": format2(p.ply),
-        "Flute": p.flute || "-",
-        "L1": format2(p.l1),
-        "F1": format2(p.f1),
-        "L2": format2(p.l2),
-        "F2": format2(p.f2),
-        "L3": format2(p.l3),
-        "GSM": format2(p.gsm),
-        "Least GSM": format2(p.leastGsm),
-        "Reel As Per Calculation": format2(p.reelAsPerCalc),
-        "Reel Actual Trim": format2(p.reelActualWithTrimming),
-        "Cutting Trim": format2(p.cuttingWithTrimming),
-        "Planned Production (Meter)": format2(p.plannedProductionInMeter),
-        "Sheet Weight": format2(p.sheetWeight),
-        "Total Paper Weight": format2(p.totalPaperWeight),
-        "Flute Batch": p.fluteBatches || "-",
+        "Job No": jobText.match(/(\d+)\s*$/)?.[1] || jobText || "",
+        "Company Name": company.name || "",
+        "Item Name": item?.name || "",
+        "ERP CODE": p.erpCode || "",
+        "UPS": toNum(p.ups),
+        "Plan QTY": toNum(p.qty),
+        "Reel As Per Calculation": toNum(p.reelAsPerCalc),
+        "REEL Actual with TRIMMING": toNum(p.reelActualWithTrimming),
+        "CUTTING with TRIMMING": toNum(p.cuttingWithTrimming),
+        "PLY": toNum(p.ply),
+        "FLUTE": p.flute || "",
+        "L1": toNum(p.l1), "F1": toNum(p.f1), "L2": toNum(p.l2), "F2": toNum(p.f2), "L3": toNum(p.l3),
+        "GSM": toNum(p.gsm),
+        "TOTAL Paper WEIGHT": toNum(p.totalPaperWeight),
+        "Planned Production in Meter": toNum(p.plannedProductionInMeter),
+        "REALIZATION PER KG": toNum(p.realizationPerKg),
+        "SHEET WEIGHT": toNum(p.sheetWeight),
+        "Rate": toNum(p.rate),
+        "Value": Math.round(value * 100) / 100,
+        "Sample": (p as any).isSample ? "YES" : "",
+        "Remark": p.remarks || "",
       } as Record<string, string | number>;
     });
   };
@@ -313,7 +314,18 @@ export function ProductionPlan() {
           </div>
           {allowExports ? (
             <>
-              <ExcelExport data={getExportData(sortedList)} fileName={`Production_Plan_${selectedDate}`} />
+              <ExcelExport data={getExportData(statusRows)} fileName={`Production_Plan_${selectedDate}`} sheetName="Production Plan" />
+              <button
+                type="button"
+                data-export="pdf"
+                onClick={handleExportPDF}
+                disabled={statusRows.length === 0}
+                title="Download PDF"
+                className="inline-flex items-center gap-2 rounded border border-red-700 px-3 py-1.5 text-sm font-bold uppercase tracking-tight text-red-700 transition-colors hover:bg-red-50 disabled:opacity-40"
+              >
+                <FileText size={16} />
+                <span>PDF</span>
+              </button>
             </>
           ) : null}
         </div>
