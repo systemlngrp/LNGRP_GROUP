@@ -17827,6 +17827,8 @@ async function loadNpdPagesLikeClient(fetchPage) {
     return Array.from(rowsById.values());
 }
 const DASHBOARD_SUMMARY_CACHE_TTL_MS = 30_000;
+// How long after expiry the last figures may still be shown while new ones are built.
+const DASHBOARD_SUMMARY_STALE_MS = 30 * 60_000;
 const dashboardSummaryCache = new Map();
 const dashboardSummaryInflight = new Map();
 // FG catalog rows for server reports, kept until the NPD table changes.
@@ -18094,6 +18096,18 @@ app.post("/api/operations-dashboard/summary", requireAuth, async (req, res) => {
             res.setHeader("Cache-Control", "no-store");
             return res.json({ ...cached.value, cached: true });
         }
+        // Recently expired: answer at once with the last figures and recalculate
+        // in the background; the page asks again a few seconds later.
+        if (cached && cached.expiresAt + DASHBOARD_SUMMARY_STALE_MS > Date.now()) {
+            if (!dashboardSummaryInflight.has(cacheKey)) {
+                const refresh = buildOperationDashboardSummary(db, firmId, authUserId, { from, to, closedJobFilter, includeExportRows }, cacheKey)
+                    .finally(() => { dashboardSummaryInflight.delete(cacheKey); });
+                refresh.catch((error) => console.warn("[DASHBOARD_SUMMARY] background refresh failed:", error.message));
+                dashboardSummaryInflight.set(cacheKey, refresh);
+            }
+            res.setHeader("Cache-Control", "no-store");
+            return res.json({ ...cached.value, cached: true, stale: true });
+        }
         // Build in the background and wait at most ~25s, so the request never hits
         // the hosting proxy's 60s limit (the page then fell back to downloading
         // every list in the browser). The page asks again while it gets 202.
@@ -18165,7 +18179,7 @@ function operationDashboardListPlan(db, firmId, authUserId) {
 }
 // After a restart, read the dashboard's lists once in the background so the
 // first person to open a screen does not wait for every list to load from the
-// database. Starts 1 minute after startup, reads one list at a time (one DB
+// database. Starts 20 seconds after startup, reads one list at a time (one DB
 // connection), runs once per restart and only reads: no figure or record
 // changes. Set DASHBOARD_WARMUP=off to disable.
 let dashboardWarmupStarted = false;
@@ -18191,6 +18205,20 @@ async function warmDashboardSnapshots() {
         }
     }
     await loadDashboardSummaryModule();
+    // Pre-build the dashboard's default view for every firm, so the first person
+    // to open it after a restart gets the figures at once.
+    for (const firmId of firmIds) {
+        const options = { from: "", to: "", closedJobFilter: "no", includeExportRows: false };
+        const cacheKey = JSON.stringify([firmId, options.from, options.to, options.closedJobFilter, options.includeExportRows]);
+        if (dashboardSummaryCache.has(cacheKey) || dashboardSummaryInflight.has(cacheKey))
+            continue;
+        try {
+            await buildOperationDashboardSummary(db, firmId, adminId, options, cacheKey);
+        }
+        catch (error) {
+            console.warn("[WARMUP] dashboard summary failed:", error.message);
+        }
+    }
     reportBuildTimings.set("dashboard-warmup", { at: new Date().toISOString(), totalMs: Date.now() - startedAt, steps: [["lists", Date.now() - startedAt, lists]] });
     console.info(`[WARMUP] dashboard lists ready firms=${firmIds.length} lists=${lists} ms=${Date.now() - startedAt}`);
 }
@@ -18511,7 +18539,7 @@ async function startServer() {
         if (String(process.env.DASHBOARD_WARMUP || "on").toLowerCase() !== "off") {
             setTimeout(() => {
                 void warmDashboardSnapshots().catch((error) => console.warn("[WARMUP] dashboard warm-up failed:", error.message));
-            }, 60_000);
+            }, 20_000);
         }
         setInterval(() => {
             void retryPendingWhatsappComplaints();

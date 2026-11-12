@@ -119,6 +119,37 @@ function getDefaultRange() {
   return { from: "", to: "" };
 }
 
+const SUMMARY_STORAGE_PREFIX = "operation-dashboard-summary:v1:";
+function getSummaryStorageKey(from: string, to: string, closedJobFilter: string) {
+  let firmId = "";
+  try {
+    firmId = String(JSON.parse(window.localStorage.getItem("activeFirm") || "null")?.id || "");
+  } catch {
+    firmId = "";
+  }
+  return `${SUMMARY_STORAGE_PREFIX}${firmId}|${from}|${to}|${closedJobFilter}`;
+}
+function readSavedSummary(key: string): OperationDashboardResult | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    // Ignore figures older than one day.
+    if (!parsed?.savedAt || Date.now() - Number(parsed.savedAt) > 24 * 60 * 60_000) return null;
+    return parsed.value as OperationDashboardResult;
+  } catch {
+    return null;
+  }
+}
+function saveSummary(key: string, value: OperationDashboardResult) {
+  try {
+    const { exportRows: _exportRows, ...rest } = value as any;
+    window.localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), value: rest }));
+  } catch {
+    // Storage full or blocked: the page still works, it just cannot show saved figures next time.
+  }
+}
+
 class DashboardSummaryError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -195,7 +226,16 @@ export function OperationDashboard() {
   useEffect(() => {
     if (clientMode) return;
     const requestId = ++serverRequestRef.current;
-    const background = serverRefreshKey > 0 && serverResult !== null;
+    const storageKey = getSummaryStorageKey(dateRange.from, dateRange.to, closedJobFilter);
+    // Show the last figures saved in this browser at once (first open / reload);
+    // the fresh figures replace them when the server answers.
+    const saved = serverRefreshKey === 0 ? readSavedSummary(storageKey) : null;
+    if (saved) {
+      setServerResult(saved);
+      setServerLoading(false);
+      setServerError(null);
+    }
+    const background = saved !== null || (serverRefreshKey > 0 && serverResult !== null);
     if (!background) {
       setServerLoading(true);
       setServerError(null);
@@ -207,6 +247,14 @@ export function OperationDashboard() {
         setServerResult(result);
         setServerError(null);
         setServerLoading(false);
+        saveSummary(storageKey, result);
+        // The server answered with its last figures while it recalculates;
+        // ask again shortly for the fresh ones.
+        if ((result as any)?.stale) {
+          window.setTimeout(() => {
+            if (requestId === serverRequestRef.current) setServerRefreshKey((value) => value + 1);
+          }, 5000);
+        }
       })
       .catch((error) => {
         if (requestId !== serverRequestRef.current || error instanceof DashboardRequestSuperseded) return;
