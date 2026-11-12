@@ -726,13 +726,13 @@ export function PendingDispatchPlanning() {
                 <th className="w-[52px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Item Name", "itemName")}</th>
-                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule qty">Sch. Qty (A)</th>
-                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Cancelled qty on the schedule">Cancel (B)</th>
-                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty loaded on loading slips">Dispatched (C)</th>
-                <th className="w-[76px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="A − B − C">{renderSortHeader("Pending A−B−C", "pendingQty", "right")}</th>
-                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty already on dispatch plans, less plan cancels">Planned (D)</th>
-                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="A − B − D: qty not yet on a dispatch plan">Unplanned A−B−D</th>
-                <th className="w-[78px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">Plan Now</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule qty">Schedule Qty</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Cancelled qty on the schedule">Cancel Qty</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty loaded on loading slips">Dispatched Qty</th>
+                <th className="w-[76px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule Qty − Cancel Qty − Dispatched Qty">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty already on dispatch plans, less plan cancels">Already Planned Qty</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule Qty − Cancel Qty − Already Planned Qty">Unplanned Qty</th>
+                <th className="w-[78px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">Planned Qty</th>
               </tr>
             </thead>
             <tbody className="bg-white">
