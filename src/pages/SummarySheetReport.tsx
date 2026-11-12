@@ -6,7 +6,9 @@ import { useNpdItems } from "../hooks/useNpdItems";
 import { computeSummarySheetRows, isoDateText, n, s } from "../lib/reports/summarySheet";
 import type { SummaryRow } from "../lib/reports/summarySheet";
 import { useServerReport } from "../hooks/useServerReport";
-import { jobDateCellClass, jobNumberCellClass, realizationCellClass } from "../lib/jobCellColors";
+import { computeSummarySheetTiles, monthStartKey, localDayKey, summarySheetCellClass } from "../lib/reports/summarySheetTiles";
+import type { SummaryTile } from "../lib/reports/summarySheetTiles";
+import { jobNumberCellClass, realizationCellClass } from "../lib/jobCellColors";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { ClientPagination } from "../components/ClientPagination";
 import { useTableSearch } from "../lib/tableSearch";
@@ -162,14 +164,24 @@ export function SummarySheetReport() {
     items: [...new Set(rows.map((r) => s(r["Item Name"])).filter(Boolean))].sort(),
     erps: [...new Set(rows.map((r) => s(r.ERP)).filter(Boolean))].sort(),
   }), [productions, rows]);
-  const summary = useMemo(() => ({
-    total: rows.length,
-    open: rows.filter((r) => !s(r["Job Closed"])).length,
-    closed: rows.filter((r) => s(r["Job Closed"]) === "Yes").length,
-    planned: rows.reduce((sum, r) => sum + n(r["Planned Qty"]), 0),
-    dispatched: rows.reduce((sum, r) => sum + n(r["Dispatched Qty"]), 0),
-    fgLeft: rows.reduce((sum, r) => sum + n(r["FG LEFT"]), 0),
-  }), [rows]);
+  // Header tiles like the Google Summary Sheet (rows 1-5): live job status,
+  // firm filter only; range tiles use From-To (default this month).
+  const tileRange = useMemo(() => ({ from: from || monthStartKey(), to: to || localDayKey(0) }), [from, to]);
+  const tiles = useMemo(() => {
+    const tileRows = baseRows.map((baseRow) => {
+      const production = productionById.get(s(baseRow.__productionId));
+      return production ? { ...baseRow, "Job Closed": s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "" } : baseRow;
+    }).filter((row) => {
+      const production = productionById.get(s(row.__productionId));
+      if (production?.status === "Cancelled") return false;
+      return !firmFilter || s(row.__firmName).toLowerCase() === firmFilter.toLowerCase();
+    });
+    const firmNameById = new Map(firms.map((firm) => [firm.id, s(firm.firmName).toLowerCase()]));
+    const cancelledDates = productions
+      .filter((p) => p.status === "Cancelled" && (!firmFilter || (s((p as any).firmName).toLowerCase() || firmNameById.get(s(p.firmId))) === firmFilter.toLowerCase()))
+      .map((p) => isoDateText(p.date));
+    return computeSummarySheetTiles(tileRows, cancelledDates, tileRange);
+  }, [baseRows, firmFilter, firms, productionById, productions, tileRange]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
@@ -184,8 +196,32 @@ export function SummarySheetReport() {
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
   return <div className="space-y-4 pb-8">
     <div className="border-b border-black pb-3"><h2 className="text-xl font-bold uppercase">Summary Sheet</h2></div>
-    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">{[["Total Jobs", summary.total, "bg-indigo-100"], ["Open Jobs", summary.open, "bg-amber-100"], ["Closed Jobs", summary.closed, "bg-emerald-100"], ["Planned Qty", summary.planned, "bg-sky-100"], ["Dispatched Qty", summary.dispatched, "bg-violet-100"], ["FG Left", summary.fgLeft, "bg-rose-100"]].map(([label, value, color]) => <div key={String(label)} className={`rounded border border-black p-3 ${color}`}><div className="text-xs font-bold uppercase">{label}</div><div className="text-xl font-black">{Number(value).toLocaleString("en-IN")}</div></div>)}</div>
+    <SummaryTileGroup title="Today" tiles={tiles.todayTiles} />
+    <SummaryTileGroup title={`${displayDate(tileRange.from)} to ${displayDate(tileRange.to)}`} tiles={tiles.rangeTiles} />
     <div className="grid grid-cols-1 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><input type="text" inputMode="numeric" className="rounded border border-black p-2" value={fromInput} onChange={(event) => { const value = event.target.value; setFromInput(value); setFrom(parseDisplayDate(value)); }} /><input type="text" inputMode="numeric" className="rounded border border-black p-2" value={toInput} onChange={(event) => { const value = event.target.value; setToInput(value); setTo(parseDisplayDate(value)); }} /><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-20 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
-<div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={COLUMNS[columnIndex]} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; const rowColorClass = column === "Job No." ? jobNumberCellClass(row.Date, row["PDI REPORT"]) : column === "Realization / kg" ? realizationCellClass(row[column], target) : ["Date", "Party Name", "Item Name", "ERP"].includes(column) ? jobDateCellClass(row.Date) : ""; return <td key={`${column}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div className="space-y-1"><div className="font-bold text-emerald-700">Yes ({displayDate(row["Close Date"])})</div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : valueForColumn(row, columnIndex, (page - 1) * pageSize + index)}</td>; })}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div><ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+<div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={COLUMNS[columnIndex]} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; const rowColorClass = column === "Job No." ? jobNumberCellClass(row.Date, row["PDI REPORT"]) : column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div className="space-y-1"><div className="font-bold text-emerald-700">Yes ({displayDate(row["Close Date"])})</div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : valueForColumn(row, columnIndex, (page - 1) * pageSize + index)}</td>; })}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div><ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
   </div>;
+}
+
+const formatTileValue = (tile: SummaryTile) => {
+  if (tile.format === "percent") return `${tile.value.toFixed(2)}%`;
+  if (tile.format === "money") return `₹ ${Math.round(tile.value).toLocaleString("en-IN")}`;
+  if (tile.format === "count") return tile.value.toLocaleString("en-IN");
+  return Number(tile.value.toFixed(2)).toLocaleString("en-IN");
+};
+
+function SummaryTileGroup({ title, tiles }: { title: string; tiles: SummaryTile[] }) {
+  return (
+    <section className="overflow-hidden rounded border-2 border-black bg-white">
+      <div className="border-b-2 border-black bg-[#0c343d] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white">{title}</div>
+      <div className="grid grid-cols-2 gap-px bg-black sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-11">
+        {tiles.map((tile) => (
+          <div key={tile.id} className={`min-w-0 px-3 py-2 ${tile.tone}`}>
+            <div className="truncate text-[10px] font-black uppercase tracking-wide" title={tile.label}>{tile.label}</div>
+            <div className="mt-0.5 truncate text-lg font-black leading-tight">{formatTileValue(tile)}</div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }
