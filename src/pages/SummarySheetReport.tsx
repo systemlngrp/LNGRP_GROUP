@@ -173,16 +173,27 @@ export function SummarySheetReport() {
       const production = productionById.get(s(baseRow.__productionId));
       return production ? { ...baseRow, "Job Closed": s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "" } : baseRow;
     }).filter((row) => {
+      // Same filters as the table except the dates (they set the tiles' range).
       const production = productionById.get(s(row.__productionId));
       if (production?.status === "Cancelled") return false;
-      return !firmFilter || s(row.__firmName).toLowerCase() === firmFilter.toLowerCase();
+      if (firmFilter && s(row.__firmName).toLowerCase() !== firmFilter.toLowerCase()) return false;
+      if (statusFilter && s(production?.status ?? row.Status) !== statusFilter) return false;
+      const closed = s(production?.closeBy).toLowerCase() === "yes" && s(production?.closeDate);
+      if (closedFilter === "Closed" && !closed) return false;
+      if (closedFilter === "Open" && closed) return false;
+      if (partyFilter && s(row["Party Name"]) !== partyFilter) return false;
+      if (itemFilter && s(row["Item Name"]) !== itemFilter) return false;
+      if (erpFilter && s(row.ERP) !== erpFilter) return false;
+      return true;
     });
     const firmNameById = new Map(firms.map((firm) => [firm.id, s(firm.firmName).toLowerCase()]));
     const cancelledDates = productions
       .filter((p) => p.status === "Cancelled" && (!firmFilter || (s((p as any).firmName).toLowerCase() || firmNameById.get(s(p.firmId))) === firmFilter.toLowerCase()))
+      .filter((p) => !partyFilter || s((p as any).companyName) === partyFilter)
       .map((p) => isoDateText(p.date));
-    return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null);
-  }, [baseRows, extrasReport.result, firmFilter, firms, productionById, productions, tileRange]);
+    const filters = { firm: firmFilter, party: partyFilter, item: itemFilter, erp: erpFilter };
+    return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null, filters, Boolean(from || to));
+  }, [baseRows, closedFilter, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
@@ -216,7 +227,7 @@ export function SummarySheetReport() {
       </button>,
       headerSlot,
     ) : null}
-    {showTiles ? <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
+    {showTiles ? <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
     <div className="relative z-40 grid grid-cols-1 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg">{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
 <div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={COLUMNS[columnIndex]} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; const rowColorClass = column === "Job No." ? jobNumberCellClass(row.Date, row["PDI REPORT"]) : column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : valueForColumn(row, columnIndex, (page - 1) * pageSize + index)}</td>; })}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div><ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
   </div>;
@@ -232,13 +243,19 @@ const formatTileValue = (tile: SummaryTile) => {
 
 function SummaryTileGroup({ section }: { section: SummaryTileSection }) {
   return (
-    <section className="overflow-hidden rounded border-2 border-black bg-white">
-      <div className="border-b-2 border-black bg-[#0c343d] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white">{section.title}</div>
-      <div className="flex flex-wrap">
+    <section className="overflow-hidden rounded-md border-2 border-black bg-white shadow-[2px_2px_0_0_rgba(15,23,42,1)]">
+      <div className="flex items-center justify-between border-b-2 border-black bg-[#0c343d] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white">
+        <span>{section.title}</span>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))]">
         {section.tiles.map((tile) => (
-          <div key={tile.id} className={`min-w-[140px] flex-1 border-b border-r border-black px-3 py-2 ${tile.tone}`} title={tile.value === null ? "Not recorded in the app yet" : undefined}>
-            <div className="text-[10px] font-black uppercase leading-tight tracking-wide">{tile.label}</div>
-            <div className="mt-1 min-h-[1.25rem] whitespace-nowrap text-base font-black leading-tight">{formatTileValue(tile)}</div>
+          <div
+            key={tile.id}
+            className={`flex min-h-[54px] flex-col justify-between border-b border-r border-black/40 px-2 py-1.5 ${tile.tone}`}
+            title={tile.value === null ? `${tile.label}: not recorded in the app yet` : tile.label}
+          >
+            <div className="line-clamp-2 text-[9.5px] font-black uppercase leading-[1.15] tracking-wide">{tile.label}</div>
+            <div className={`mt-1 truncate text-[15px] font-black leading-none ${tile.value === null ? "opacity-40" : ""}`}>{tile.value === null ? "—" : formatTileValue(tile)}</div>
           </div>
         ))}
       </div>

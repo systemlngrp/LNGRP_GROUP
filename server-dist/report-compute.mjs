@@ -1489,8 +1489,15 @@ function computeSummarySheetRows(lists, stockItems) {
 // src/lib/reports/summarySheetTiles.ts
 var isCancelled = (row) => /cancel/i.test(String(row?.status || "")) || Boolean(row?.cancelledAt);
 function computeSummarySheetExtras(lists, npdItems) {
+  const firmName = new Map((lists.firms || []).map((firm) => [String(firm.id), s(firm.firmName)]));
+  const companyName = new Map((lists.companies || []).map((company) => [String(company.id), s(company.name || company.companyName)]));
+  const itemById = new Map(npdItems.map((item) => [String(item.id), { name: s(item.name || item.itemName), erp: s(item.erp || item.erpCode) }]));
   const orders = (lists.orders || []).filter((order) => !isCancelled(order));
   const orderById = new Map(orders.map((order) => [String(order.id), order]));
+  const orderFirm = (order) => s(order.firmName) || firmName.get(String(order.firmId)) || "";
+  const orderParty = (order) => s(order.companyName) || companyName.get(String(order.companyId)) || "";
+  const orderItem = (order) => itemById.get(String(order.npdId || order.itemId)) || { name: s(order.itemName), erp: s(order.erpCode) };
+  const round = (value) => Math.round(value * 100) / 100;
   const planScheduleById = new Map((lists.plans || []).map((plan) => [String(plan.id), String(plan.scheduleId || "")]));
   const slips = (lists.slips || []).filter((slip) => !isCancelled(slip));
   const loadedBySchedule = /* @__PURE__ */ new Map();
@@ -1498,7 +1505,7 @@ function computeSummarySheetExtras(lists, npdItems) {
     const scheduleId = planScheduleById.get(String(line?.dispatchPlanId || "").trim());
     if (scheduleId) loadedBySchedule.set(scheduleId, (loadedBySchedule.get(scheduleId) || 0) + n(line?.loadedQty));
   }));
-  const pendingOrderValueByDate = {};
+  const pendingOrders = [];
   const scheduledByOrder = /* @__PURE__ */ new Map();
   (lists.schedules || []).forEach((schedule) => {
     const order = orderById.get(String(schedule.orderId));
@@ -1506,14 +1513,28 @@ function computeSummarySheetExtras(lists, npdItems) {
     scheduledByOrder.set(String(order.id), (scheduledByOrder.get(String(order.id)) || 0) + n(schedule.qty));
     const pending = n(schedule.qty) - n(schedule.canceledQty) - (loadedBySchedule.get(String(schedule.id)) || 0);
     if (pending <= 0) return;
-    const date = isoDateText(schedule.scheduledDate);
-    pendingOrderValueByDate[date] = (pendingOrderValueByDate[date] || 0) + pending * n(order.rate);
+    const item = orderItem(order);
+    pendingOrders.push([isoDateText(schedule.scheduledDate), orderFirm(order), orderParty(order), item.name, item.erp, round(pending * n(order.rate))]);
   });
-  const pendingSchedulingValue = orders.filter((order) => order.status === "Pending Scheduling").reduce((sum, order) => sum + Math.max(0, n(order.qty) - (scheduledByOrder.get(String(order.id)) || 0)) * n(order.rate), 0);
-  const invoices = (lists.invoices || []).filter((invoice) => !isCancelled(invoice));
-  const invoiceIds = new Set(invoices.map((invoice) => String(invoice.id)));
+  const pendingScheduling = orders.filter((order) => order.status === "Pending Scheduling").map((order) => {
+    const item = orderItem(order);
+    return [isoDateText(order.orderDate), orderFirm(order), orderParty(order), item.name, item.erp, round(Math.max(0, n(order.qty) - (scheduledByOrder.get(String(order.id)) || 0)) * n(order.rate))];
+  }).filter((record) => record[5] > 0);
+  const invoiceRows = (lists.invoices || []).filter((invoice) => !isCancelled(invoice));
+  const invoiceIds = new Set(invoiceRows.map((invoice) => String(invoice.id)));
   const invoicedSlipIds = new Set((lists.invoiceLines || []).filter((line) => invoiceIds.has(String(line.invoiceId))).map((line) => String(line.loadingSlipId || "")));
-  const slipsNotInvoiced = slips.filter((slip) => !(slip.invoiceId && invoiceIds.has(String(slip.invoiceId))) && !invoicedSlipIds.has(String(slip.id))).length;
+  const loadingSlips = slips.map((slip) => {
+    const invoiced = slip.invoiceId && invoiceIds.has(String(slip.invoiceId)) || invoicedSlipIds.has(String(slip.id));
+    return [isoDateText(slip.date), firmName.get(String(slip.firmId)) || "", s(slip.companyName) || companyName.get(String(slip.companyId)) || "", "", "", invoiced ? 1 : 0];
+  });
+  const invoices = invoiceRows.map((invoice) => [
+    isoDateText(invoice.date),
+    firmName.get(String(invoice.firmId)) || "",
+    s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "",
+    "",
+    "",
+    round(n(invoice.totalAfterGst))
+  ]);
   const latestRate = /* @__PURE__ */ new Map();
   orders.forEach((order) => {
     const itemId = String(order.npdId || order.itemId || "");
@@ -1523,8 +1544,15 @@ function computeSummarySheetExtras(lists, npdItems) {
     const current = latestRate.get(itemId);
     if (!current || date >= current.date) latestRate.set(itemId, { date, rate });
   });
-  const fgStockValue = npdItems.reduce((sum, item) => sum + Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0), 0);
-  return { pendingOrderValueByDate, pendingSchedulingValue, loadingSlips: slips.length, invoices: invoices.length, slipsNotInvoiced, fgStockValue };
+  const fgStock = npdItems.map((item) => [
+    "",
+    s(item.firmName),
+    "",
+    s(item.name || item.itemName),
+    s(item.erp || item.erpCode),
+    round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0))
+  ]).filter((record) => record[5] > 0);
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock };
 }
 
 // src/lib/reports/conversionCostDetails.ts
@@ -2661,7 +2689,9 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "plans", entity: "dispatch_plans", scope: "all" },
     { key: "slips", entity: "loading_slips", scope: "all" },
     { key: "invoices", entity: "invoices", scope: "all" },
-    { key: "invoiceLines", entity: "invoice_line_items", scope: "all" }
+    { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "firms", entity: "firms", scope: "all" }
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem))
 };

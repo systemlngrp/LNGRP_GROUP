@@ -33,6 +33,8 @@ export function computeSummarySheetSections(
   cancelledJobDates: string[],
   range: { from: string; to: string },
   extras: SummarySheetExtras | null,
+  filters: TileFilters = { firm: "", party: "", item: "", erp: "" },
+  datesChosen = false,
   now = new Date(),
 ): SummaryTileSection[] {
   const today = localDayKey(0, now);
@@ -59,8 +61,12 @@ export function computeSummarySheetSections(
   const days = range.from && rangeEnd >= range.from ? Math.round((Date.parse(rangeEnd) - Date.parse(range.from)) / 86_400_000) + 1 : 0;
   const wastageTone = (value: number) => value <= 8 ? "bg-[#00ff00] text-slate-950" : value <= 10 ? "bg-[#ff9900] text-slate-950" : "bg-[#ff0000] text-white";
   const dueUntil = localDayKey(3, now);
-  const pendingEntries = Object.entries(extras?.pendingOrderValueByDate || {});
-  const extraValue = (value: number | undefined) => (extras ? Number(value || 0) : null);
+  const ready = extras?.version === 2;
+  const total = (records: ExtraRecord[]) => records.reduce((sum, record) => sum + record[5], 0);
+  const pendingOrders = ready ? filterExtraRecords(extras.pendingOrders, filters) : [];
+  const slipRecords = ready ? filterExtraRecords(extras.loadingSlips, filters, datesChosen ? range : undefined) : [];
+  const invoiceRecords = ready ? filterExtraRecords(extras.invoices, filters, datesChosen ? range : undefined) : [];
+  const extraValue = (value: number) => (ready ? value : null);
 
   return [
     {
@@ -108,15 +114,15 @@ export function computeSummarySheetSections(
     },
     {
       id: "orders",
-      title: "Orders & Dispatch (all firms)",
+      title: "Orders & Dispatch",
       tiles: [
-        { id: "duePendingOrderValue", label: "Due Pending Order Value", value: extras ? pendingEntries.filter(([date]) => date && date <= dueUntil).reduce((total, [, value]) => total + value, 0) : null, format: "money", tone: "bg-[#ff0000] text-white" },
-        { id: "totalPendingOrderValue", label: "Total Pending Order Value", value: extras ? pendingEntries.reduce((total, [, value]) => total + value, 0) : null, format: "money", tone: "bg-[#e06666] text-white" },
-        { id: "pendingSchedulingValue", label: "Total Due Planning Value", value: extraValue(extras?.pendingSchedulingValue), format: "money", tone: "bg-[#ff0000] text-white" },
-        { id: "fgStockValue", label: "FG Stock Value", value: extraValue(extras?.fgStockValue), format: "money", tone: "bg-[#ffe599] text-slate-950" },
-        { id: "loadingSlips", label: "Total Loading Slip", value: extraValue(extras?.loadingSlips), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
-        { id: "invoices", label: "Total Inv", value: extraValue(extras?.invoices), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
-        { id: "slipsNotInvoiced", label: "Loading Slip Not Invoiced", value: extraValue(extras?.slipsNotInvoiced), format: "count", tone: "bg-[#ffff00] text-slate-950" },
+        { id: "duePendingOrderValue", label: "Due Pending Order Value", value: extraValue(total(pendingOrders.filter(([date]) => date && date <= dueUntil))), format: "money", tone: "bg-[#ff0000] text-white" },
+        { id: "totalPendingOrderValue", label: "Total Pending Order Value", value: extraValue(total(pendingOrders)), format: "money", tone: "bg-[#e06666] text-white" },
+        { id: "pendingSchedulingValue", label: "Total Due Planning Value", value: extraValue(ready ? total(filterExtraRecords(extras.pendingScheduling, filters)) : 0), format: "money", tone: "bg-[#ff0000] text-white" },
+        { id: "fgStockValue", label: "FG Stock Value", value: extraValue(ready ? total(filterExtraRecords(extras.fgStock, filters)) : 0), format: "money", tone: "bg-[#ffe599] text-slate-950" },
+        { id: "loadingSlips", label: "Total Loading Slip", value: extraValue(slipRecords.length), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
+        { id: "invoices", label: "Total Inv", value: extraValue(invoiceRecords.length), format: "count", tone: "bg-[#fce5cd] text-slate-950" },
+        { id: "slipsNotInvoiced", label: "Loading Slip Not Invoiced", value: extraValue(slipRecords.filter((record) => record[5] === 0).length), format: "count", tone: "bg-[#ffff00] text-slate-950" },
       ],
     },
     {
@@ -247,24 +253,36 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
   }
 }
 
+/** [date, firm, party, item, erp, value] — kept small so the page can filter it. */
+export type ExtraRecord = [string, string, string, string, string, number];
 export type SummarySheetExtras = {
-  /** Pending dispatch value (schedule qty − cancel − loaded) × rate, by scheduled date. */
-  pendingOrderValueByDate: Record<string, number>;
-  /** Orders waiting for scheduling: (order qty − scheduled qty) × rate. */
-  pendingSchedulingValue: number;
-  loadingSlips: number;
-  invoices: number;
-  slipsNotInvoiced: number;
-  /** FG stock (positive balance) × latest order rate of the item. */
-  fgStockValue: number;
+  version: 2;
+  /** Pending dispatch value per schedule: (qty − cancel − loaded) × rate; date = scheduled date. */
+  pendingOrders: ExtraRecord[];
+  /** Orders waiting for scheduling: (order qty − scheduled qty) × rate; date = order date. */
+  pendingScheduling: ExtraRecord[];
+  /** Active loading slips; value 1 = invoiced, 0 = not invoiced; date = slip date. */
+  loadingSlips: ExtraRecord[];
+  /** Active invoices; value = invoice total; date = invoice date. */
+  invoices: ExtraRecord[];
+  /** FG stock (positive balance) × latest order rate, per item; no date. */
+  fgStock: ExtraRecord[];
 };
 
 const isCancelled = (row: any) => /cancel/i.test(String(row?.status || "")) || Boolean(row?.cancelledAt);
 
 /** Extra Summary Sheet tiles that need orders, schedules, loading slips and invoices (runs on the server). */
 export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems: any[]): SummarySheetExtras {
+  const firmName = new Map((lists.firms || []).map((firm) => [String(firm.id), s(firm.firmName)]));
+  const companyName = new Map((lists.companies || []).map((company) => [String(company.id), s(company.name || company.companyName)]));
+  const itemById = new Map(npdItems.map((item) => [String(item.id), { name: s(item.name || item.itemName), erp: s(item.erp || item.erpCode) }]));
   const orders = (lists.orders || []).filter((order) => !isCancelled(order));
   const orderById = new Map(orders.map((order) => [String(order.id), order]));
+  const orderFirm = (order: any) => s(order.firmName) || firmName.get(String(order.firmId)) || "";
+  const orderParty = (order: any) => s(order.companyName) || companyName.get(String(order.companyId)) || "";
+  const orderItem = (order: any) => itemById.get(String(order.npdId || order.itemId)) || { name: s(order.itemName), erp: s(order.erpCode) };
+  const round = (value: number) => Math.round(value * 100) / 100;
+
   const planScheduleById = new Map((lists.plans || []).map((plan) => [String(plan.id), String(plan.scheduleId || "")]));
   const slips = (lists.slips || []).filter((slip) => !isCancelled(slip));
   const loadedBySchedule = new Map<string, number>();
@@ -272,7 +290,7 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
     const scheduleId = planScheduleById.get(String(line?.dispatchPlanId || "").trim());
     if (scheduleId) loadedBySchedule.set(scheduleId, (loadedBySchedule.get(scheduleId) || 0) + n(line?.loadedQty));
   }));
-  const pendingOrderValueByDate: Record<string, number> = {};
+  const pendingOrders: ExtraRecord[] = [];
   const scheduledByOrder = new Map<string, number>();
   (lists.schedules || []).forEach((schedule) => {
     const order = orderById.get(String(schedule.orderId));
@@ -280,16 +298,33 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
     scheduledByOrder.set(String(order.id), (scheduledByOrder.get(String(order.id)) || 0) + n(schedule.qty));
     const pending = n(schedule.qty) - n(schedule.canceledQty) - (loadedBySchedule.get(String(schedule.id)) || 0);
     if (pending <= 0) return;
-    const date = isoDateText(schedule.scheduledDate);
-    pendingOrderValueByDate[date] = (pendingOrderValueByDate[date] || 0) + pending * n(order.rate);
+    const item = orderItem(order);
+    pendingOrders.push([isoDateText(schedule.scheduledDate), orderFirm(order), orderParty(order), item.name, item.erp, round(pending * n(order.rate))]);
   });
-  const pendingSchedulingValue = orders
+  const pendingScheduling: ExtraRecord[] = orders
     .filter((order) => order.status === "Pending Scheduling")
-    .reduce((sum, order) => sum + Math.max(0, n(order.qty) - (scheduledByOrder.get(String(order.id)) || 0)) * n(order.rate), 0);
-  const invoices = (lists.invoices || []).filter((invoice) => !isCancelled(invoice));
-  const invoiceIds = new Set(invoices.map((invoice) => String(invoice.id)));
+    .map((order) => {
+      const item = orderItem(order);
+      return [isoDateText(order.orderDate), orderFirm(order), orderParty(order), item.name, item.erp, round(Math.max(0, n(order.qty) - (scheduledByOrder.get(String(order.id)) || 0)) * n(order.rate))] as ExtraRecord;
+    })
+    .filter((record) => record[5] > 0);
+
+  const invoiceRows = (lists.invoices || []).filter((invoice) => !isCancelled(invoice));
+  const invoiceIds = new Set(invoiceRows.map((invoice) => String(invoice.id)));
   const invoicedSlipIds = new Set((lists.invoiceLines || []).filter((line) => invoiceIds.has(String(line.invoiceId))).map((line) => String(line.loadingSlipId || "")));
-  const slipsNotInvoiced = slips.filter((slip) => !(slip.invoiceId && invoiceIds.has(String(slip.invoiceId))) && !invoicedSlipIds.has(String(slip.id))).length;
+  const loadingSlips: ExtraRecord[] = slips.map((slip) => {
+    const invoiced = (slip.invoiceId && invoiceIds.has(String(slip.invoiceId))) || invoicedSlipIds.has(String(slip.id));
+    return [isoDateText(slip.date), firmName.get(String(slip.firmId)) || "", s(slip.companyName) || companyName.get(String(slip.companyId)) || "", "", "", invoiced ? 1 : 0];
+  });
+  const invoices: ExtraRecord[] = invoiceRows.map((invoice) => [
+    isoDateText(invoice.date),
+    firmName.get(String(invoice.firmId)) || "",
+    s(invoice.companyName) || companyName.get(String(invoice.companyId)) || "",
+    "",
+    "",
+    round(n(invoice.totalAfterGst)),
+  ]);
+
   // Latest order rate per FG item (by order date).
   const latestRate = new Map<string, { date: string; rate: number }>();
   orders.forEach((order) => {
@@ -300,6 +335,30 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
     const current = latestRate.get(itemId);
     if (!current || date >= current.date) latestRate.set(itemId, { date, rate });
   });
-  const fgStockValue = npdItems.reduce((sum, item) => sum + Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0), 0);
-  return { pendingOrderValueByDate, pendingSchedulingValue, loadingSlips: slips.length, invoices: invoices.length, slipsNotInvoiced, fgStockValue };
+  const fgStock: ExtraRecord[] = npdItems
+    .map((item) => [
+      "",
+      s(item.firmName),
+      "",
+      s(item.name || item.itemName),
+      s(item.erp || item.erpCode),
+      round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0)),
+    ] as ExtraRecord)
+    .filter((record) => record[5] > 0);
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock };
+}
+
+/** Filters that apply to the extra records (party / item / ERP only where the record has them). */
+export type TileFilters = { firm: string; party: string; item: string; erp: string };
+export function filterExtraRecords(records: ExtraRecord[] | undefined, filters: TileFilters, range?: { from: string; to: string }) {
+  const lower = (value: string) => value.trim().toLowerCase();
+  return (records || []).filter(([date, firm, party, item, erp]) => {
+    // A filter only applies where the record carries that field.
+    if (filters.firm && firm && lower(firm) !== lower(filters.firm)) return false;
+    if (filters.party && party && lower(party) !== lower(filters.party)) return false;
+    if (filters.item && item && lower(item) !== lower(filters.item)) return false;
+    if (filters.erp && erp && lower(erp) !== lower(filters.erp)) return false;
+    if (range && (!date || date < range.from || date > range.to)) return false;
+    return true;
+  });
 }

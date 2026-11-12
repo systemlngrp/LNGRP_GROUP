@@ -143,6 +143,8 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "slips", entity: "loading_slips", scope: "all" },
     { key: "invoices", entity: "invoices", scope: "all" },
     { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
+    { key: "companies", entity: "companies", scope: "all" },
+    { key: "firms", entity: "firms", scope: "all" },
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem)),
 };
