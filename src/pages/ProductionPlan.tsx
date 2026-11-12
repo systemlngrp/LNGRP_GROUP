@@ -13,7 +13,7 @@ import { FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { exportsAllowed } from "../lib/exportPolicy";
-import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
+import { useNpdItemNames } from "../hooks/useNpdItems";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { sortProductionPlanRows } from "../lib/productionPlanSorting";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
@@ -27,7 +27,9 @@ export function ProductionPlan() {
   const [companies, , companiesLoading] = useData<Company>("companies", []);
   const [sampleRequests, , sampleRequestsLoading] = useData<SampleRequest>("sample_requests", []);
   const [settings, , settingsLoading] = useData<Setting>("settings", []);
-  const { items: npdItems, loading: npdLoading } = useNpdItemsWithStatus();
+  // Only item names are shown here, so the light NPD catalog is enough. The
+  // firm-wise stock list (~9 MB) reloaded on every save anywhere in the app.
+  const npdItems = useNpdItemNames();
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -49,8 +51,7 @@ export function ProductionPlan() {
     ordersLoading ||
     companiesLoading ||
     sampleRequestsLoading ||
-    settingsLoading ||
-    npdLoading;
+    settingsLoading;
 
   const normalizeDate = (dStr: string) => {
     if (!dStr) return "";
