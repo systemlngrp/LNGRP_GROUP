@@ -13,7 +13,7 @@ export type SummaryTile = {
   label: string;
   /** null: not recorded in the app yet (tile shows blank). */
   value: number | null;
-  format: "qty" | "money" | "percent" | "count";
+  format: "qty" | "money" | "percent" | "count" | "rate";
   /** Tailwind classes for the tile (colours taken from the Google Summary Sheet). */
   tone: string;
 };
@@ -112,7 +112,9 @@ export function computeSummarySheetSections(
         blank("targetPerDay", "Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
         blank("revisedTargetPerDay", "Revised Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
         blank("shortSales", "Short Sales Till Date", "bg-[#ff0000] text-white", "money"),
-        blank("spPerKg", "SP / KG", "bg-[#0c343d] text-white", "money"),
+        // Sheet: (Total Sale + FG closing − FG opening − WIP opening − Rejection) ÷ paper issued.
+        // Openings and rejection are not recorded in the app, so: Total Sale ÷ paper used.
+        { id: "spPerKg", label: "SP / KG", value: paperUsed > 0 ? rangeSale / paperUsed : 0, format: "rate", tone: "bg-[#0c343d] text-white" },
       ],
     },
     {

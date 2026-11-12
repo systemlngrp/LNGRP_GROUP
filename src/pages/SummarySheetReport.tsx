@@ -277,6 +277,7 @@ export function SummarySheetReport() {
 const formatTileValue = (tile: SummaryTile) => {
   if (tile.value === null) return "";
   if (tile.format === "percent") return `${tile.value.toFixed(2)}%`;
+  if (tile.format === "rate") return `₹ ${tile.value.toFixed(2)}`;
   if (tile.format === "money") return `₹ ${Math.round(tile.value).toLocaleString("en-IN")}`;
   if (tile.format === "count") return tile.value.toLocaleString("en-IN");
   return Number(tile.value.toFixed(2)).toLocaleString("en-IN");
