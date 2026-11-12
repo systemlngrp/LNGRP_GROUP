@@ -287,7 +287,7 @@ export function ProductionPlan() {
         19: { cellWidth: 16 },
         22: { cellWidth: 13 },
         23: { cellWidth: 6 },
-        24: { cellWidth: 11 },
+        24: { cellWidth: 24 },
       },
       didParseCell: (data) => {
         if (data.section === "foot" && data.column.index === 0) data.cell.styles.halign = "left";
