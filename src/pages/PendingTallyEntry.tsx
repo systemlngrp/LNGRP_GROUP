@@ -292,7 +292,7 @@ export function PendingTallyEntry() {
                       <td className={`${td} font-semibold`}>{getFirmName(m)}</td>
                       <td className={td}>{m.mrrType || "-"}</td>
                       <td className={td}>{formatDate(m.date)}</td>
-                      <td className={td}>{getSupplierName(m.supplierId)}</td>
+                      <td className={td} title={getSupplierName(m.supplierId)}><div className="line-clamp-2 min-w-[240px] max-w-[320px] break-words">{getSupplierName(m.supplierId)}</div></td>
                       <td className={td}>{m.lines?.length || 0} item{(m.lines?.length || 0) === 1 ? "" : "s"}</td>
                       <td className={`${money} font-bold`}>{formatMoney(m.totalAmount)}</td>
                       <td className={money}>{formatMoney(m.tdsAmount)}</td>
