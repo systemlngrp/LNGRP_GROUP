@@ -12,7 +12,16 @@ import { useTrackPageLoading } from "../components/DataLoadingBoundary";
  * `failed` is true when the server cannot run the report (older server build,
  * error); the page then falls back to computing in the browser.
  */
-export function useServerReport<T>(name: string, params: Record<string, unknown>, tables: string[], enabled = true) {
+export function useServerReport<T>(
+  name: string,
+  params: Record<string, unknown>,
+  tables: string[],
+  enabled = true,
+  /** Refresh at most this often after data changes (big reports). */
+  options: { minRefreshMs?: number } = {},
+) {
+  const minRefreshMs = options.minRefreshMs || 0;
+  const lastRunRef = useRef(0);
   const [result, setResult] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [failed, setFailed] = useState(false);
@@ -47,6 +56,7 @@ export function useServerReport<T>(name: string, params: Record<string, unknown>
   useEffect(() => {
     if (!enabled || failed) return;
     const requestId = ++requestRef.current;
+    lastRunRef.current = Date.now();
     if (refreshKey === 0 || result === null) setLoading(true);
     run()
       .then((value) => {
@@ -71,14 +81,15 @@ export function useServerReport<T>(name: string, params: Record<string, unknown>
       const entities = (event as CustomEvent<{ entities?: string[] }>).detail?.entities || ["*"];
       if (!realtimeChangeAffects(entities, tablesRef.current)) return;
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => setRefreshKey((key) => key + 1), 1500);
+      const wait = Math.max(1500, minRefreshMs - (Date.now() - lastRunRef.current));
+      timer = setTimeout(() => setRefreshKey((key) => key + 1), wait);
     };
     window.addEventListener(REALTIME_DATA_CHANGE_EVENT, handleChange);
     return () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener(REALTIME_DATA_CHANGE_EVENT, handleChange);
     };
-  }, [enabled, failed]);
+  }, [enabled, failed, minRefreshMs]);
 
   // Centred loading card while the server calculates (first build after a
   // restart can take a while, so say so after 20 s).

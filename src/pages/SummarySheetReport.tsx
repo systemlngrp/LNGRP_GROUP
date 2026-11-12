@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Eye, EyeOff, Search } from "lucide-react";
@@ -60,10 +60,27 @@ const displayDate = (value: unknown) => {
 export function SummarySheetReport() {
   // Rows are calculated on the server; if it cannot, the lists are loaded and
   // calculated here as before. Jobs stay loaded for Close / Unclose.
-  const serverReport = useServerReport<SummaryRow[]>("summary-sheet", {}, SUMMARY_SHEET_TABLES);
+  const serverReport = useServerReport<SummaryRow[]>("summary-sheet", {}, SUMMARY_SHEET_TABLES, true, { minRefreshMs: 60_000 });
   const browserFallback = serverReport.failed;
-  const extrasReport = useServerReport<SummarySheetExtras>("summary-sheet-tiles", {}, ["orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "npd"]);
-  const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
+  const extrasReport = useServerReport<SummarySheetExtras>("summary-sheet-tiles", {}, ["orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "npd"], true, { minRefreshMs: 60_000 });
+  // Live job status / closure / remarks: only these columns are downloaded
+  // (the full jobs list is ~11 MB). The full list loads only to save a
+  // Close / Unclose, or when the browser has to calculate the report itself.
+  const [jobStatuses] = useData<Production>("productions", [], {
+    firmScope: "all",
+    storageKey: "summary-sheet-job-status",
+    fields: ["status", "closeBy", "closeDate", "remarks", "date", "firmId", "firmName", "companyName", "transactionNo", "jobCardNo"],
+    enabled: !browserFallback,
+  });
+  const [needFullJobs, setNeedFullJobs] = useState(false);
+  const [fullProductions, setProductions, fullProductionsLoading] = useData<Production>("productions", [], { firmScope: "all", enabled: browserFallback || needFullJobs });
+  const [closeOverrides, setCloseOverrides] = useState<Record<string, { closeBy: string; closeDate: string }>>({});
+  const pendingCloseActions = useRef<Array<{ id: string; close: boolean }>>([]);
+  const productions = useMemo(() => {
+    const list = browserFallback ? fullProductions : jobStatuses;
+    if (!Object.keys(closeOverrides).length) return list;
+    return list.map((p) => closeOverrides[p.id] ? { ...p, ...closeOverrides[p.id] } : p);
+  }, [browserFallback, closeOverrides, fullProductions, jobStatuses]);
   const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", enabled: browserFallback });
   const [orders] = useData<Order>("orders", [], { firmScope: "all", enabled: browserFallback });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all", enabled: browserFallback });
@@ -97,8 +114,26 @@ export function SummarySheetReport() {
   const [visibleColumns, setVisibleColumns] = useState<number[]>(() => COLUMNS.map((_, index) => index));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const closeJob = (id: string) => void setProductions((current) => current.map((p) => p.id === id ? { ...p, closeBy: "Yes", closeDate: new Date().toISOString().slice(0, 10), updatedBy: "System User", updateTimestamp: new Date().toISOString() } : p));
-  const uncloseJob = (id: string) => void setProductions((current) => current.map((p) => p.id === id ? { ...p, closeBy: "", closeDate: "", updatedBy: "System User", updateTimestamp: new Date().toISOString() } : p));
+  const queueCloseAction = (id: string, close: boolean) => {
+    // Show the change at once; save it on the full job record.
+    setCloseOverrides((current) => ({ ...current, [id]: close ? { closeBy: "Yes", closeDate: new Date().toISOString().slice(0, 10) } : { closeBy: "", closeDate: "" } }));
+    pendingCloseActions.current.push({ id, close });
+    setNeedFullJobs(true);
+  };
+  const closeJob = (id: string) => queueCloseAction(id, true);
+  const uncloseJob = (id: string) => queueCloseAction(id, false);
+  useEffect(() => {
+    if (!needFullJobs || fullProductionsLoading || !fullProductions.length || !pendingCloseActions.current.length) return;
+    const actions = pendingCloseActions.current.splice(0);
+    const byId = new Map(actions.map((action) => [action.id, action.close]));
+    const now = new Date().toISOString();
+    void setProductions((current) => current.map((p) => {
+      if (!byId.has(p.id)) return p;
+      return byId.get(p.id)
+        ? { ...p, closeBy: "Yes", closeDate: now.slice(0, 10), updatedBy: "System User", updateTimestamp: now }
+        : { ...p, closeBy: "", closeDate: "", updatedBy: "System User", updateTimestamp: now };
+    }));
+  }, [fullProductions, fullProductionsLoading, needFullJobs, setProductions]);
 
   const productionById = useMemo(() => new Map(productions.map((production) => [production.id, production])), [productions]);
   const clientBaseRows = useMemo<SummaryRow[]>(

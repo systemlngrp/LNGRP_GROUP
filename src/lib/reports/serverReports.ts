@@ -130,7 +130,9 @@ REPORT_DEFINITIONS["summary-sheet"] = {
     { key: "companies", entity: "companies", scope: "firm" },
     { key: "firms", entity: "firms", scope: "firm" },
   ],
-  compute: (lists, _params, helpers) => computeSummarySheetRows(lists as any, (helpers.npdItems || []).map(normalizeNpdItem)),
+  // Blank cells are left out to keep the download small (the page reads a missing value as blank).
+  compute: (lists, _params, helpers) => computeSummarySheetRows(lists as any, (helpers.npdItems || []).map(normalizeNpdItem))
+    .map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== "" && value !== null && value !== undefined))),
 };
 
 REPORT_DEFINITIONS["summary-sheet-tiles"] = {
