@@ -214,11 +214,11 @@ function SummaryTileGroup({ title, tiles }: { title: string; tiles: SummaryTile[
   return (
     <section className="overflow-hidden rounded border-2 border-black bg-white">
       <div className="border-b-2 border-black bg-[#0c343d] px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-white">{title}</div>
-      <div className="grid grid-cols-2 gap-px bg-black sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-11">
+      <div className="flex flex-wrap">
         {tiles.map((tile) => (
-          <div key={tile.id} className={`min-w-0 px-3 py-2 ${tile.tone}`}>
-            <div className="truncate text-[10px] font-black uppercase tracking-wide" title={tile.label}>{tile.label}</div>
-            <div className="mt-0.5 truncate text-lg font-black leading-tight">{formatTileValue(tile)}</div>
+          <div key={tile.id} className={`min-w-[150px] flex-1 border-b border-r border-black px-3 py-2 ${tile.tone}`}>
+            <div className="text-[10px] font-black uppercase leading-tight tracking-wide">{tile.label}</div>
+            <div className="mt-1 whitespace-nowrap text-base font-black leading-tight">{formatTileValue(tile)}</div>
           </div>
         ))}
       </div>
