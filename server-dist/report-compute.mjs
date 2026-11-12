@@ -1487,6 +1487,47 @@ function computeSummarySheetRows(lists, stockItems) {
 }
 
 // src/lib/reports/summarySheetTiles.ts
+var STORE_STOCK_TILES = [
+  { id: "starch", label: "Starch", keywords: ["starch", "corrugation gum", "pasting gum"], red: 4e3, green: 7e3, tone: "bg-[#ffd966] text-slate-950" },
+  { id: "fevicol", label: "Fevicol", keywords: ["fevicol"], red: 200, green: 400, tone: "bg-[#ffd966] text-slate-950" },
+  { id: "diesel", label: "Diesel", keywords: ["diesel"], red: 500, green: 1e3, tone: "bg-[#e69138] text-slate-950" },
+  { id: "firewood", label: "Firewood", keywords: ["firewood", "fire wood"], red: 2e4, green: 4e4, tone: "bg-[#93c47d] text-slate-950" },
+  { id: "strapping", label: "Strapping Roll", keywords: ["strapping"], red: 30, green: 60, tone: "bg-[#ffd966] text-slate-950" }
+];
+function computeStoreStocks(lists) {
+  const materials = (lists.materials || []).filter((material) => String(material.type || "") !== "Reel");
+  const firmOpenings = /* @__PURE__ */ new Map();
+  (lists.materialFirmOpenings || []).forEach((row) => firmOpenings.set(String(row.materialId), (firmOpenings.get(String(row.materialId)) || 0) + n(row.openingQty)));
+  const receipts = /* @__PURE__ */ new Map();
+  (lists.materialIn || []).forEach((receipt) => {
+    if (receipt.mrrType === "Reel" || isCancelled(receipt)) return;
+    (receipt.lines || []).forEach((line) => {
+      const id = String(line.itemId || line.npdId || "").trim();
+      if (!id || line.lineType === "Service") return;
+      receipts.set(id, (receipts.get(id) || 0) + n(line.actualQty ?? line.qty ?? line.invoiceQty));
+    });
+  });
+  const issues = /* @__PURE__ */ new Map();
+  (lists.issueLines || []).forEach((line) => issues.set(String(line.materialId), (issues.get(String(line.materialId)) || 0) + n(line.qty)));
+  const result = {};
+  STORE_STOCK_TILES.forEach((tile) => {
+    const matched = materials.filter((material) => {
+      const name = s(material.name).toLowerCase();
+      return tile.keywords.some((keyword) => name.includes(keyword));
+    });
+    if (!matched.length) {
+      result[tile.id] = null;
+      return;
+    }
+    const qty = matched.reduce((sum, material) => {
+      const id = String(material.id);
+      const opening = firmOpenings.has(id) ? firmOpenings.get(id) || 0 : n(material.openingQty);
+      return sum + opening + (receipts.get(id) || 0) - (issues.get(id) || 0);
+    }, 0);
+    result[tile.id] = { qty: Math.round(qty * 100) / 100, unit: s(matched[0].unit || matched[0].uom), materials: matched.map((material) => s(material.name)) };
+  });
+  return result;
+}
 var isCancelled = (row) => /cancel/i.test(String(row?.status || "")) || Boolean(row?.cancelledAt);
 function computeSummarySheetExtras(lists, npdItems) {
   const firmName = new Map((lists.firms || []).map((firm) => [String(firm.id), s(firm.firmName)]));
@@ -1552,7 +1593,7 @@ function computeSummarySheetExtras(lists, npdItems) {
     s(item.erp || item.erpCode),
     round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0))
   ]).filter((record) => record[5] > 0);
-  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock };
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists) };
 }
 
 // src/lib/reports/conversionCostDetails.ts
@@ -2692,7 +2733,11 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "invoices", entity: "invoices", scope: "all" },
     { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
     { key: "companies", entity: "companies", scope: "all" },
-    { key: "firms", entity: "firms", scope: "all" }
+    { key: "firms", entity: "firms", scope: "all" },
+    { key: "materials", entity: "materials", scope: "all" },
+    { key: "materialFirmOpenings", entity: "material_firm_openings", scope: "all" },
+    { key: "materialIn", entity: "material_in", scope: "all" },
+    { key: "issueLines", entity: "material_issue_lines", scope: "all" }
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem))
 };

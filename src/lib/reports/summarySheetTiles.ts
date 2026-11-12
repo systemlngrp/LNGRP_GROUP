@@ -142,14 +142,14 @@ export function computeSummarySheetSections(
     },
     {
       id: "stocks",
-      title: "Stocks",
-      tiles: [
-        blank("starch", "Starch", "bg-[#ffd966] text-slate-950"),
-        blank("fevicol", "Fevicol", "bg-[#ffd966] text-slate-950"),
-        blank("diesel", "Diesel", "bg-[#e69138] text-slate-950"),
-        blank("firewood", "Firewood", "bg-[#93c47d] text-slate-950"),
-        blank("strapping", "Strapping Roll", "bg-[#ffd966] text-slate-950"),
-      ],
+      title: "Stocks (Balance)",
+      tiles: STORE_STOCK_TILES.map((tile) => {
+        const stock = extras?.storeStocks?.[tile.id];
+        if (!stock) return blank(tile.id, tile.label, tile.tone);
+        // Sheet colours: up to the low level red, between light green, above green.
+        const tone = stock.qty <= tile.red ? "bg-[#ff0000] text-white" : stock.qty < tile.green ? "bg-[#b7e1cd] text-slate-950" : "bg-[#00ff00] text-slate-950";
+        return { id: tile.id, label: stock.unit ? `${tile.label} (${stock.unit})` : tile.label, value: stock.qty, format: "qty" as const, tone };
+      }),
     },
     {
       id: "phpPlate",
@@ -267,7 +267,51 @@ export type SummarySheetExtras = {
   invoices: ExtraRecord[];
   /** FG stock (positive balance) × latest order rate, per item; no date. */
   fgStock: ExtraRecord[];
+  /** Store stock balance (opening + receipts − issues, as on the Materials page) by tile; null = no such material yet. */
+  storeStocks?: Record<string, { qty: number; unit: string; materials: string[] } | null>;
 };
+
+/** Store stock tiles: Materials whose name contains one of the words. */
+export const STORE_STOCK_TILES = [
+  { id: "starch", label: "Starch", keywords: ["starch", "corrugation gum", "pasting gum"], red: 4000, green: 7000, tone: "bg-[#ffd966] text-slate-950" },
+  { id: "fevicol", label: "Fevicol", keywords: ["fevicol"], red: 200, green: 400, tone: "bg-[#ffd966] text-slate-950" },
+  { id: "diesel", label: "Diesel", keywords: ["diesel"], red: 500, green: 1000, tone: "bg-[#e69138] text-slate-950" },
+  { id: "firewood", label: "Firewood", keywords: ["firewood", "fire wood"], red: 20000, green: 40000, tone: "bg-[#93c47d] text-slate-950" },
+  { id: "strapping", label: "Strapping Roll", keywords: ["strapping"], red: 30, green: 60, tone: "bg-[#ffd966] text-slate-950" },
+] as const;
+
+/** Balance per store stock tile, same formula as the Materials page for non-reel items. */
+function computeStoreStocks(lists: Record<string, any[]>) {
+  const materials = (lists.materials || []).filter((material) => String(material.type || "") !== "Reel");
+  const firmOpenings = new Map<string, number>();
+  (lists.materialFirmOpenings || []).forEach((row) => firmOpenings.set(String(row.materialId), (firmOpenings.get(String(row.materialId)) || 0) + n(row.openingQty)));
+  const receipts = new Map<string, number>();
+  (lists.materialIn || []).forEach((receipt) => {
+    if (receipt.mrrType === "Reel" || isCancelled(receipt)) return;
+    (receipt.lines || []).forEach((line: any) => {
+      const id = String(line.itemId || line.npdId || "").trim();
+      if (!id || line.lineType === "Service") return;
+      receipts.set(id, (receipts.get(id) || 0) + n(line.actualQty ?? line.qty ?? line.invoiceQty));
+    });
+  });
+  const issues = new Map<string, number>();
+  (lists.issueLines || []).forEach((line) => issues.set(String(line.materialId), (issues.get(String(line.materialId)) || 0) + n(line.qty)));
+  const result: Record<string, { qty: number; unit: string; materials: string[] } | null> = {};
+  STORE_STOCK_TILES.forEach((tile) => {
+    const matched = materials.filter((material) => {
+      const name = s(material.name).toLowerCase();
+      return tile.keywords.some((keyword) => name.includes(keyword));
+    });
+    if (!matched.length) { result[tile.id] = null; return; }
+    const qty = matched.reduce((sum, material) => {
+      const id = String(material.id);
+      const opening = firmOpenings.has(id) ? firmOpenings.get(id) || 0 : n(material.openingQty);
+      return sum + opening + (receipts.get(id) || 0) - (issues.get(id) || 0);
+    }, 0);
+    result[tile.id] = { qty: Math.round(qty * 100) / 100, unit: s(matched[0].unit || matched[0].uom), materials: matched.map((material) => s(material.name)) };
+  });
+  return result;
+}
 
 const isCancelled = (row: any) => /cancel/i.test(String(row?.status || "")) || Boolean(row?.cancelledAt);
 
@@ -345,7 +389,7 @@ export function computeSummarySheetExtras(lists: Record<string, any[]>, npdItems
       round(Math.max(0, n(item.balance)) * (latestRate.get(String(item.id))?.rate || 0)),
     ] as ExtraRecord)
     .filter((record) => record[5] > 0);
-  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock };
+  return { version: 2, pendingOrders, pendingScheduling, loadingSlips, invoices, fgStock, storeStocks: computeStoreStocks(lists) };
 }
 
 /** Filters that apply to the extra records (party / item / ERP only where the record has them). */

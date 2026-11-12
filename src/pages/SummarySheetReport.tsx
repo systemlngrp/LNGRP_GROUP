@@ -62,7 +62,7 @@ export function SummarySheetReport() {
   // calculated here as before. Jobs stay loaded for Close / Unclose.
   const serverReport = useServerReport<SummaryRow[]>("summary-sheet", {}, SUMMARY_SHEET_TABLES, true, { minRefreshMs: 60_000 });
   const browserFallback = serverReport.failed;
-  const extrasReport = useServerReport<SummarySheetExtras>("summary-sheet-tiles", {}, ["orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "npd"], true, { minRefreshMs: 60_000 });
+  const extrasReport = useServerReport<SummarySheetExtras>("summary-sheet-tiles", {}, ["orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "npd", "materials", "material_in", "material_issue_lines", "material_firm_openings"], true, { minRefreshMs: 60_000 });
   // Live job status / closure / remarks: only these columns are downloaded
   // (the full jobs list is ~11 MB). The full list loads only to save a
   // Close / Unclose, or when the browser has to calculate the report itself.

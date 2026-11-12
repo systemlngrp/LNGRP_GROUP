@@ -147,6 +147,10 @@ REPORT_DEFINITIONS["summary-sheet-tiles"] = {
     { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
     { key: "companies", entity: "companies", scope: "all" },
     { key: "firms", entity: "firms", scope: "all" },
+    { key: "materials", entity: "materials", scope: "all" },
+    { key: "materialFirmOpenings", entity: "material_firm_openings", scope: "all" },
+    { key: "materialIn", entity: "material_in", scope: "all" },
+    { key: "issueLines", entity: "material_issue_lines", scope: "all" },
   ],
   compute: (lists, _params, helpers) => computeSummarySheetExtras(lists, (helpers.npdItems || []).map(normalizeNpdItem)),
 };
