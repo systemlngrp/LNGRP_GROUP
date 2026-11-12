@@ -4,7 +4,7 @@ import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { OrderSchedule, Order, Company, Item, DispatchPlan, LoadingSlip, Production, Firm } from "../types";
+import { OrderSchedule, Order, Company, Item, DispatchPlan, LoadingSlip, Production, Firm, InvoiceLineItem } from "../types";
 import { getFirmDisplayNameById, getFirmOptions } from "../lib/firmDisplay";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -15,7 +15,7 @@ import { SortHeader, useTableSort } from "../lib/tableSort";
 import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useAuth } from "../auth/AuthContext";
-import { buildLoadedQtyByScheduleId, getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty, getScheduleDispatchPendingQty } from "../lib/dispatchPlanBalances";
+import { buildInvoicedQtyByScheduleId, buildLoadedQtyByScheduleId, getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty, getScheduleDispatchPendingQty } from "../lib/dispatchPlanBalances";
 
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "firmName" | "companyName" | "itemName" | "pendingQty";
 
@@ -33,6 +33,7 @@ export function PendingDispatchPlanning() {
   const [dispatchPlans, setDispatchPlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
   // Read-only here: only the columns this screen uses are downloaded.
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms-dispatch-planning", fields: ["status", "lines"] });
+  const [invoiceLineItems] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "invoice-line-items-all-firms-dispatch-planning" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all", storageKey: "productions-all-firms-dispatch-planning", fields: ["itemId", "status", "cancelTimestamp", "qty"] });
 
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>("");
@@ -193,6 +194,16 @@ export function PendingDispatchPlanning() {
   // Pending Qty (list rule, same as AppSheet): qty − cancelled − dispatched.
   // Unplanned Qty (planning limit): qty − cancelled − already planned.
   const loadedQtyByScheduleId = useMemo(() => buildLoadedQtyByScheduleId(dispatchPlans, loadingSlips), [dispatchPlans, loadingSlips]);
+  const invoicedQtyByScheduleId = useMemo(() => buildInvoicedQtyByScheduleId(dispatchPlans, loadingSlips, invoiceLineItems), [dispatchPlans, loadingSlips, invoiceLineItems]);
+  // FFG stock of the item: opening + receipt + production − loaded (same as FG Balance below).
+  const ffgStockByItemId = useMemo(() => {
+    const map = new Map<string, number>();
+    npdItems.forEach((item) => {
+      const base = Number((item as any).opening || 0) + Number((item as any).receipt || 0) + Number((item as any).production || 0);
+      map.set(item.id, base - Number(loadedQtyByItemId.get(item.id) || 0));
+    });
+    return map;
+  }, [npdItems, loadedQtyByItemId]);
   const getPendingQty = (s: OrderSchedule) => getScheduleDispatchPendingQty(s, loadedQtyByScheduleId.get(String(s.id || "")) || 0);
   const getUnplannedQty = (s: OrderSchedule) => getScheduleAvailableQty(s, lookup.plansBySchedule.get(String(s.id || "")) || []);
 
@@ -555,6 +566,9 @@ export function PendingDispatchPlanning() {
       status: dueStatus(s.scheduledDate),
       balance: getUnplannedQty(s),
       pendingQty: getPendingQty(s),
+      orderQty: Number(order?.qty || 0) || 0,
+      ffgStock: ffgStockByItemId.get(itemIdByScheduleId.get(s.id) || "") ?? null,
+      invoicedQty: invoicedQtyByScheduleId.get(String(s.id || "")) || 0,
       scheduleQty: Number(s.qty || 0) || 0,
       cancelQty: Number(s.canceledQty || 0) || 0,
       dispatchedQty: loadedQtyByScheduleId.get(String(s.id || "")) || 0,
@@ -700,7 +714,8 @@ export function PendingDispatchPlanning() {
                 <div className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
                   <div className="text-[10px] font-black uppercase text-slate-500">Pending Qty</div>
                   <div className="text-sm font-black text-indigo-700">{info.pendingQty.toLocaleString()}</div>
-                  <div className="text-[10px] font-bold text-slate-500">Qty {info.scheduleQty.toLocaleString()} − Cancel {info.cancelQty.toLocaleString()} − Dispatched {info.dispatchedQty.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-slate-500">Order {info.orderQty.toLocaleString()} · FFG {info.ffgStock === null ? "-" : info.ffgStock.toLocaleString()} · Invoiced {info.invoicedQty.toLocaleString()}</div>
+                  <div className="text-[10px] font-bold text-slate-500">Schedule {info.scheduleQty.toLocaleString()} − Cancel {info.cancelQty.toLocaleString()} − Loaded {info.dispatchedQty.toLocaleString()}</div>
                   <div className="text-[10px] font-bold text-slate-500">Planned {info.alreadyPlannedQty.toLocaleString()} · Unplanned {info.balance.toLocaleString()}</div>
                 </div>
                 <label className="rounded border border-slate-300 bg-slate-50 px-2 py-1">
@@ -726,10 +741,13 @@ export function PendingDispatchPlanning() {
                 <th className="w-[52px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Item Name", "itemName")}</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Order qty">Order Qty</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule qty">Schedule Qty</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Cancelled qty on the schedule">Cancel Qty</th>
-                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty loaded on loading slips">Dispatched Qty</th>
-                <th className="w-[76px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule Qty − Cancel Qty − Dispatched Qty">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Item FG stock: opening + receipt + production − loaded">FFG Stock</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty loaded on loading slips for this schedule">Loaded Qty</th>
+                <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty invoiced against those loading slips">Invoiced Qty</th>
+                <th className="w-[76px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule Qty − Cancel Qty − Loaded Qty">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty already on dispatch plans, less plan cancels">Already Planned Qty</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule Qty − Cancel Qty − Already Planned Qty">Unplanned Qty</th>
                 <th className="w-[78px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">Planned Qty</th>
@@ -737,7 +755,7 @@ export function PendingDispatchPlanning() {
             </thead>
             <tbody className="bg-white">
               {filteredSchedules.length === 0 ? (
-                <tr><td colSpan={13} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
+                <tr><td colSpan={16} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
               ) : paginatedSchedules.map((s) => {
                 const info = rowInfo(s);
                 const selected = selectedIds.has(s.id);
@@ -758,9 +776,12 @@ export function PendingDispatchPlanning() {
                     <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">{info.firm}</td>
                     <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[130px] max-w-[200px] whitespace-normal break-words">{info.company?.name || "-"}</div></td>
                     <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[140px] max-w-[220px] whitespace-normal break-words">{info.item?.name || "-"}</div></td>
+                    <td className={num}>{info.orderQty.toLocaleString()}</td>
                     <td className={num}>{info.scheduleQty.toLocaleString()}</td>
                     <td className={num}>{info.cancelQty.toLocaleString()}</td>
+                    <td className={cn(num, info.ffgStock !== null && info.ffgStock <= 0 && "text-red-600")}>{info.ffgStock === null ? "-" : info.ffgStock.toLocaleString()}</td>
                     <td className={num}>{info.dispatchedQty.toLocaleString()}</td>
+                    <td className={num}>{info.invoicedQty.toLocaleString()}</td>
                     <td className={cn(num, "font-bold text-indigo-700")}>{info.pendingQty.toLocaleString()}</td>
                     <td className={num}>{info.alreadyPlannedQty.toLocaleString()}</td>
                     <td className={cn(num, "font-bold text-slate-700")}>{info.balance.toLocaleString()}</td>
@@ -774,7 +795,7 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="border-t-2 border-black bg-slate-100">
                 <tr className="font-black">
-                  <td colSpan={12} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={15} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="border border-black bg-indigo-50 px-4 py-3 text-right text-sm text-indigo-700">{totalSessionPlannedQty.toLocaleString()}</td>
                 </tr>
               </tfoot>

@@ -50,3 +50,39 @@ export const getScheduleDispatchPendingQty = (
   schedule: Pick<OrderSchedule, "qty" | "canceledQty">,
   loadedQty: number,
 ) => amount(schedule.qty) - amount(schedule.canceledQty) - amount(loadedQty);
+
+/**
+ * Invoiced qty per schedule: each loading slip's invoice lines are matched to
+ * the slip's lines of the same item (in slip order) and counted against that
+ * line's dispatch plan schedule, up to the line's loaded qty.
+ */
+export const buildInvoicedQtyByScheduleId = (
+  dispatchPlans: Array<Pick<DispatchPlan, "id" | "scheduleId">>,
+  loadingSlips: Array<{ id?: string; status?: string; lines?: Array<{ dispatchPlanId?: string; loadedQty?: unknown; itemId?: string }> }>,
+  invoiceLineItems: Array<{ loadingSlipId?: string; itemId?: string; npdId?: string; qty?: unknown }>,
+) => {
+  const scheduleIdByPlanId = new Map(dispatchPlans.map((plan) => [String(plan.id || ""), String(plan.scheduleId || "")]));
+  const billed = new Map<string, number>();
+  invoiceLineItems.forEach((line) => {
+    const slipId = String(line.loadingSlipId || "").trim();
+    const itemId = String(line.npdId || line.itemId || "").trim();
+    if (!slipId || !itemId) return;
+    const key = `${slipId}::${itemId}`;
+    billed.set(key, (billed.get(key) || 0) + amount(line.qty));
+  });
+  const map = new Map<string, number>();
+  loadingSlips.forEach((slip) => {
+    if (slip.status === "Cancelled") return;
+    const slipId = String(slip.id || "").trim();
+    (slip.lines || []).forEach((line) => {
+      const key = `${slipId}::${String(line.itemId || "").trim()}`;
+      const left = billed.get(key) || 0;
+      if (left <= 0) return;
+      const used = Math.min(left, Math.max(0, amount(line.loadedQty)));
+      billed.set(key, left - used);
+      const scheduleId = scheduleIdByPlanId.get(String(line.dispatchPlanId || "").trim());
+      if (scheduleId) map.set(scheduleId, (map.get(scheduleId) || 0) + used);
+    });
+  });
+  return map;
+};
