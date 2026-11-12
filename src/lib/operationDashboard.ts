@@ -456,9 +456,9 @@ export function buildOperationDashboardSummary(args: BuildOperationDashboardSumm
       id: "sales",
       title: "Sales",
       cards: [
-        makeCard({ id: "totalSales", label: "Total Sales", value: totalSale, format: "currency" }),
         makeCard({ id: "todaySalesValue", label: "Today Sales Value", value: todaySalesValue, format: "currency" }),
-        makeCard({ id: "invoiceCount", label: "Invoices", value: filteredInvoices.length, format: "number" }),
+        makeCard({ id: "totalSales", label: "Total Sales Value", value: totalSale, format: "currency" }),
+        makeCard({ id: "invoiceCount", label: "Total Invoices", value: filteredInvoices.length, format: "number" }),
       ],
     },
   ];

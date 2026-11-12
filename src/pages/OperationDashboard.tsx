@@ -95,8 +95,8 @@ const SUMMARY_GROUP_CONFIGS: SummaryGroupConfig[] = [
   {
     groupId: "sales",
     cards: [
-      { id: "totalSales", tone: "bg-emerald-50", valueTone: "text-emerald-800" },
       { id: "todaySalesValue", tone: "bg-teal-50", valueTone: "text-teal-800" },
+      { id: "totalSales", tone: "bg-emerald-50", valueTone: "text-emerald-800" },
       { id: "invoiceCount", tone: "bg-yellow-50", valueTone: "text-yellow-800" },
     ],
   },
@@ -424,7 +424,8 @@ export function OperationDashboard() {
   );
 
   const summary = result.summary;
-  const processingMachineCards = result.processingMachineCards;
+  // Machines with no output in the selected period are not shown.
+  const processingMachineCards = result.processingMachineCards.filter((card) => card.value === null || Number(card.value) > 0);
   const pendingTaskSummary = useMemo(
     () => getPendingTaskGroups(result.pendingCounts),
     [result.pendingCounts]
@@ -557,6 +558,9 @@ export function OperationDashboard() {
           Production Processing
         </div>
         <div className="flex overflow-x-auto divide-x divide-slate-900 scrollbar-thin">
+          {processingMachineCards.length === 0 ? (
+            <div className="px-3 py-4 text-[11px] font-bold uppercase tracking-wide text-slate-500">No machine output in this period.</div>
+          ) : null}
           {processingMachineCards.map((card, index) => (
             <SummaryMetricCard
               key={card.id}
