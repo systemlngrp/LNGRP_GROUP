@@ -296,7 +296,7 @@ export function GateEntryMaster({ cancelledOnly = false }: GateEntryMasterProps 
                       <td className="border border-black px-4 py-3 text-sm font-semibold text-black">{getFirmNameById(entry.firmId || entry.destinationFirmId, firms) || "Unassigned"}</td>
                       <td className="border border-black px-4 py-3 text-sm font-semibold text-black">{getJobNo(entry)}</td>
                       <td className="border border-black px-4 py-3 text-sm text-black">{formatGateEntryDate(entry.date)}</td>
-                      <td className="border border-black px-4 py-3 text-sm text-black">{getSupplierName(entry.supplierId)}</td>
+                      <td className="border border-black px-4 py-3 text-sm text-black" title={getSupplierName(entry.supplierId)}><div className="line-clamp-2 min-w-[240px] max-w-[320px] break-words">{getSupplierName(entry.supplierId)}</div></td>
                       <td className="border border-black px-4 py-3 text-sm text-black">{entry.invoiceNo}</td>
                       <td className="border border-black px-4 py-3 text-sm text-black">{Number(entry.invoiceValue || 0).toFixed(2)}</td>
                       <td className="border border-black px-4 py-3 text-sm text-black">{entry.truckNo}</td>
