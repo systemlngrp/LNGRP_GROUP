@@ -18,6 +18,23 @@ export function getNextNumber(values: unknown[], configuredStart: unknown) {
   return Math.max(start, highest + 1);
 }
 
+/**
+ * Next "Our Reel No". Reel numbers have a fixed width (the width of the
+ * Settings start number, e.g. 8 digits). Stray longer values such as
+ * opening reels saved as 111038741 or 11104067.1 are ignored so they can't
+ * push the sequence into a 9-digit range.
+ */
+export function getNextReelNumber(values: unknown[], configuredStart: unknown) {
+  const start = normalizeStartNumber(configuredStart);
+  const width = String(start).length;
+  const highest = values.reduce<number>((max, value) => {
+    const digits = String(value ?? "").replace(/\D/g, "");
+    if (!digits || digits.length > width) return max;
+    return Math.max(max, extractNumericSequence(digits));
+  }, 0);
+  return Math.max(start, highest + 1);
+}
+
 export function getNextPlainNumber(values: unknown[], configuredStart: unknown) {
   const start = normalizeStartNumber(configuredStart);
   const highest = values.reduce<number>((max, value) => {

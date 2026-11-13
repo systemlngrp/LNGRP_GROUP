@@ -9,7 +9,7 @@ import {
   MaterialReturnReelLine,
   Production,
 } from "../types";
-import { formatOurReelNo, getNextNumber } from "./materialNumbering";
+import { formatOurReelNo, getNextReelNumber } from "./materialNumbering";
 
 export function round2(value: number) {
   return Number((Number(value) || 0).toFixed(2));
@@ -171,7 +171,7 @@ export function buildOpeningReelPackingSlips(
       .filter(isOpeningReelPackingSlip)
       .map((slip) => slip.materialId)
   );
-  const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
+  const firstOpeningReelNo = getNextReelNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
 
   return materials
     .filter(

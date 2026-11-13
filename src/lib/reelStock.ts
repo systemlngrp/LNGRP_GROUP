@@ -7,7 +7,7 @@ import type {
   Firm,
   Supplier,
 } from "../types";
-import { formatOurReelNo, getNextNumber } from "./materialNumbering";
+import { formatOurReelNo, getNextReelNumber } from "./materialNumbering";
 import { isActiveReelMaterial, isOpeningReelPackingSlip } from "./materialMovement";
 
 export type ReelStockCalculationRow = {
@@ -120,7 +120,7 @@ export function buildReelStockRows({
     });
     return rows;
   };
-  const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
+  const firstOpeningReelNo = getNextReelNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
 
   const explicitOpeningMaterialIds = new Set(
     packingSlips

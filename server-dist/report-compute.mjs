@@ -279,9 +279,14 @@ function extractNumericSequence(value) {
   const parsed = Number(digits);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
-function getNextNumber(values, configuredStart) {
+function getNextReelNumber(values, configuredStart) {
   const start = normalizeStartNumber(configuredStart);
-  const highest = values.reduce((max, value) => Math.max(max, extractNumericSequence(value)), 0);
+  const width = String(start).length;
+  const highest = values.reduce((max, value) => {
+    const digits = String(value ?? "").replace(/\D/g, "");
+    if (!digits || digits.length > width) return max;
+    return Math.max(max, extractNumericSequence(digits));
+  }, 0);
   return Math.max(start, highest + 1);
 }
 function formatOurReelNo(value) {
@@ -409,7 +414,7 @@ function buildReelStockRows({
     });
     return rows2;
   };
-  const firstOpeningReelNo = getNextNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
+  const firstOpeningReelNo = getNextReelNumber(packingSlips.map((slip) => slip.ourReelNo), ourReelNoStartNumber);
   const explicitOpeningMaterialIds = new Set(
     packingSlips.filter(isOpeningReelPackingSlip).map((slip) => slip.materialId)
   );

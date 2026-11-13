@@ -37,7 +37,7 @@ import { getGatePassLinesWithReturns } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
 import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/materialInPoMandatory";
 import { downloadMaterialInPdf } from "../lib/materialInPdf";
-import { formatOurReelNo as formatReelNo, getNextNumber } from "../lib/materialNumbering";
+import { formatOurReelNo as formatReelNo, getNextReelNumber } from "../lib/materialNumbering";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { MATERIAL_IN_SUB_TYPES, getMaterialInSubTypeLedger, isValidMaterialInSubType, normalizeMaterialInSubType } from "../lib/materialInSubTypes";
 
@@ -1133,7 +1133,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const getAllDraftSlips = () => Object.values(packingSlipDrafts).flat();
 
   const getNextOurReelNo = () => {
-    return formatReelNo(getNextNumber([
+    return formatReelNo(getNextReelNumber([
       ...packingSlips.map((row) => row.ourReelNo),
       ...getAllDraftSlips().map((row) => row.ourReelNo),
     ], ourReelNoStartNumber));
@@ -1552,7 +1552,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       .flat()
       .map((row) => Number(String(row.ourReelNo).replace(/\D/g, "")))
       .filter((value) => Number.isFinite(value));
-    let nextReelNumber = getNextNumber([...persistedNumbers, ...existingDraftNumbers], ourReelNoStartNumber) - 1;
+    let nextReelNumber = getNextReelNumber([...persistedNumbers, ...existingDraftNumbers], ourReelNoStartNumber) - 1;
 
     const nextLines = [...lines];
 
@@ -1709,7 +1709,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
           .map((row) => Number(String(row.ourReelNo).replace(/\D/g, "")))
           .filter((value) => Number.isFinite(value));
         
-        let currentMax = getNextNumber([...nextReelNo, ...draftNumbers], ourReelNoStartNumber) - 1;
+        let currentMax = getNextReelNumber([...nextReelNo, ...draftNumbers], ourReelNoStartNumber) - 1;
 
         const poOptions = getApprovedPoOptionsForMaterial(line.itemId);
 
@@ -2184,7 +2184,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     setExchangeRate(nextExchangeRate as number | "");
 
     const nextPackingDrafts: Record<string, PackingSlipDraft[]> = {};
-    let nextOurReelNo = getNextNumber([
+    let nextOurReelNo = getNextReelNumber([
       ...packingSlips.map((row) => row.ourReelNo),
       ...getAllDraftSlips().map((row) => row.ourReelNo),
     ], ourReelNoStartNumber) - 1;
