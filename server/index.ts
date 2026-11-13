@@ -7234,7 +7234,7 @@ async function initDb(retries = 5) {
         CREATE TABLE IF NOT EXISTS \`purchase_order_lines\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
           \`purchaseOrderId\` VARCHAR(36) NOT NULL,
-          \`indentLineId\` VARCHAR(36) NOT NULL,
+          \`indentLineId\` VARCHAR(36) NULL,
           \`materialId\` VARCHAR(36) NOT NULL,
           \`erpCode\` VARCHAR(100),
           \`uom\` VARCHAR(50),
@@ -7255,6 +7255,21 @@ async function initDb(retries = 5) {
           \`updateTimestamp\` VARCHAR(255)
         )
       `);
+
+      // Migration: Independent (manual) POs have lines without an indent line.
+      // Keep the foreign key for linked lines; only allow NULL.
+      try {
+        const [columns] = await db.query(
+          "SELECT IS_NULLABLE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'purchase_order_lines' AND COLUMN_NAME = 'indentLineId'",
+          [database]
+        );
+        if ((columns as any[]).length > 0 && (columns as any[])[0].IS_NULLABLE === "NO") {
+          console.log("[DB] Making purchase_order_lines.indentLineId nullable...");
+          await db.query("ALTER TABLE `purchase_order_lines` MODIFY `indentLineId` VARCHAR(36) NULL");
+        }
+      } catch (err) {
+        console.warn("[DB] Could not make purchase_order_lines.indentLineId nullable:", (err as Error).message);
+      }
 
       await db.query(`
         CREATE TABLE IF NOT EXISTS \`gate_entries\` (
@@ -9367,7 +9382,7 @@ await db.query(`
         { table: "purchase_orders", column: "updatedBy", type: "VARCHAR(255)" },
         { table: "purchase_orders", column: "updateTimestamp", type: "VARCHAR(255)" },
         { table: "purchase_order_lines", column: "purchaseOrderId", type: "VARCHAR(36) NOT NULL" },
-        { table: "purchase_order_lines", column: "indentLineId", type: "VARCHAR(36) NOT NULL" },
+        { table: "purchase_order_lines", column: "indentLineId", type: "VARCHAR(36) NULL" },
         { table: "purchase_order_lines", column: "materialId", type: "VARCHAR(36) NOT NULL" },
         { table: "purchase_order_lines", column: "erpCode", type: "VARCHAR(100)" },
         { table: "purchase_order_lines", column: "uom", type: "VARCHAR(50)" },
