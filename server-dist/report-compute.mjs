@@ -1413,6 +1413,7 @@ function computeSummarySheetRows(lists, stockItems) {
       vehicle: s(slip.truckNo || truckMap.get(slip.truckId)?.truckNo)
     }));
     const dispatchedQty = loadingRecords.slice(0, 6).reduce((sum, record) => sum + n(record.qty), 0);
+    const dispatchedQty3 = loadingRecords.slice(0, 3).reduce((sum, record) => sum + n(record.qty), 0);
     const vehicle = Array.from(new Set(loadingRecords.map((record) => record.vehicle).filter(Boolean))).join(", ");
     const planned = n(production.plannedQty || production.qty || schedule?.qty);
     const pprUsed = n(production.actualPaperUsed);
@@ -1451,6 +1452,7 @@ function computeSummarySheetRows(lists, stockItems) {
       "Boardline Wastage": money(wastage.corrugationKg),
       "Actual Realization / kg": n(production.realizationPerKg),
       "Dispatched Qty": money(dispatchedQty),
+      "Dispatched Qty (3 slips)": money(dispatchedQty3),
       "Dispatch Date": invoiceDates[0] || "",
       "Vehicle No": vehicle,
       "App Stock": fgStock,
@@ -1492,6 +1494,7 @@ function computeSummarySheetRows(lists, stockItems) {
       Status: s(production.status),
       "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0),
       "Sale Value": money(dispatchedQty * rate),
+      "Sale Value (3 slips)": money(dispatchedQty3 * rate),
       "FINAL FG LEFT": money(Math.max(0, planned - dispatchedQty)),
       "wip value": money(Math.max(0, planned - dispatchedQty) * rate),
       Remarks: s(production.remarks),
