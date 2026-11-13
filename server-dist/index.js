@@ -24,6 +24,7 @@ import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
 import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
 import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
+import { migrationJobNoError, parseMigrationJobNo } from "./migrationJobNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
 import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
@@ -12893,9 +12894,30 @@ const createHandlers = (tableName) => {
                 // (e.g. LNCB-2/26-27/02668), assigned above; the generic firm document
                 // counter (…/INV/…) must not overwrite it.
                 const firmDocument = tableName === "invoices" ? undefined : firmDocumentFields[tableName];
+                // Migration only: an Admin may create a job under its original old job
+                // number (sent with migrationKeepJobNo: true). The job counter is not
+                // used, so no other numbering changes. See migrationJobNo.ts.
+                const migrationKeepJobNo = tableName === "productions" && data.migrationKeepJobNo === true;
+                delete data.migrationKeepJobNo;
                 if (firmDocument && String(data.id || "").trim()) {
                     const [existingDocumentRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [data.id]);
-                    if (!existingDocumentRows[0]) {
+                    if (!existingDocumentRows[0] && migrationKeepJobNo) {
+                        if (requestUser?.role !== "Admin") {
+                            return res.status(403).json({ error: "Only an Admin can create a job with its old job number." });
+                        }
+                        const parsed = parseMigrationJobNo(data.transactionNo);
+                        const [sameNumberRows] = parsed
+                            ? await db.query("SELECT id FROM `productions` WHERE transactionNo = ? OR jobCardNo = ?", [parsed.transactionNo, parsed.transactionNo])
+                            : [[]];
+                        const [fyRows] = parsed
+                            ? await db.query("SELECT MAX(CAST(SUBSTRING_INDEX(transactionNo, '/', -1) AS UNSIGNED)) AS highest FROM `productions` WHERE transactionNo LIKE ?", [`%JOB/${parsed.fy}/%`])
+                            : [[]];
+                        const error = migrationJobNoError(parsed, sameNumberRows.map((row) => String(row.id)), Number(fyRows[0]?.highest || 0));
+                        if (error || !parsed)
+                            return res.status(400).json({ error: error || "Invalid migration job number." });
+                        data.transactionNo = parsed.transactionNo;
+                    }
+                    else if (!existingDocumentRows[0]) {
                         const firmId = String(["dispatch_plans", "loading_slips"].includes(tableName) && String(data.loadingSource || "").toUpperCase() !== "DIRECT"
                             ? data.orderFirmId
                             : data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || "").trim();
