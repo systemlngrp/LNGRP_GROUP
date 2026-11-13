@@ -1412,7 +1412,7 @@ function computeSummarySheetRows(lists, stockItems) {
       qty: money(qty),
       vehicle: s(slip.truckNo || truckMap.get(slip.truckId)?.truckNo)
     }));
-    const dispatchedQty = loadingRecords.slice(0, 3).reduce((sum, record) => sum + n(record.qty), 0);
+    const dispatchedQty = loadingRecords.slice(0, 6).reduce((sum, record) => sum + n(record.qty), 0);
     const vehicle = Array.from(new Set(loadingRecords.map((record) => record.vehicle).filter(Boolean))).join(", ");
     const planned = n(production.plannedQty || production.qty || schedule?.qty);
     const pprUsed = n(production.actualPaperUsed);
@@ -1475,6 +1475,18 @@ function computeSummarySheetRows(lists, stockItems) {
       "Loading Date 3": loadingRecords[2]?.date || "",
       "Loading Qty 3": loadingRecords[2]?.qty ?? "",
       "Vehicle 3": loadingRecords[2]?.vehicle || "",
+      "Loading No 4": loadingRecords[3]?.slipNo || "",
+      "Loading Date 4": loadingRecords[3]?.date || "",
+      "Loading Qty 4": loadingRecords[3]?.qty ?? "",
+      "Vehicle 4": loadingRecords[3]?.vehicle || "",
+      "Loading No 5": loadingRecords[4]?.slipNo || "",
+      "Loading Date 5": loadingRecords[4]?.date || "",
+      "Loading Qty 5": loadingRecords[4]?.qty ?? "",
+      "Vehicle 5": loadingRecords[4]?.vehicle || "",
+      "Loading No 6": loadingRecords[5]?.slipNo || "",
+      "Loading Date 6": loadingRecords[5]?.date || "",
+      "Loading Qty 6": loadingRecords[5]?.qty ?? "",
+      "Vehicle 6": loadingRecords[5]?.vehicle || "",
       "FG LEFT": money(Math.max(0, planned - dispatchedQty)),
       Rate: rate,
       Status: s(production.status),
