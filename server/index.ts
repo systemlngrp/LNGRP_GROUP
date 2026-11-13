@@ -24,7 +24,7 @@ import { writeLoadingSlipPdf } from "./loadingSlipPdf.js";
 import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
 import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
-import { migrationJobNoError, parseMigrationJobNo } from "./migrationJobNo.js";
+import { migrationJobNoError, migrationNeedsCounterRaise, parseMigrationJobNo } from "./migrationJobNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms, type ServerSort, type SqlSortColumn } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -13569,8 +13569,8 @@ const createHandlers = (tableName: string) => {
         // counter (…/INV/…) must not overwrite it.
         const firmDocument = tableName === "invoices" ? undefined : firmDocumentFields[tableName];
         // Migration only: an Admin may create a job under its original old job
-        // number (sent with migrationKeepJobNo: true). The job counter is not
-        // used, so no other numbering changes. See migrationJobNo.ts.
+        // number (sent with migrationKeepJobNo: true). The current year's job
+        // counter is not used, so no other numbering changes. See migrationJobNo.ts.
         const migrationKeepJobNo = tableName === "productions" && data.migrationKeepJobNo === true;
         delete data.migrationKeepJobNo;
         if (firmDocument && String(data.id || "").trim()) {
@@ -13583,18 +13583,27 @@ const createHandlers = (tableName: string) => {
             const [sameNumberRows] = parsed
               ? await db.query("SELECT id FROM `productions` WHERE transactionNo = ? OR jobCardNo = ?", [parsed.transactionNo, parsed.transactionNo])
               : [[]];
-            const [fyRows] = parsed
-              ? await db.query(
-                  "SELECT MAX(CAST(SUBSTRING_INDEX(transactionNo, '/', -1) AS UNSIGNED)) AS highest FROM `productions` WHERE transactionNo LIKE ?",
-                  [`%JOB/${parsed.fy}/%`]
-                )
+            const currentFy = getShortFinancialYear() || "";
+            const [counterRows] = parsed
+              ? await db.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [`JOB/${parsed.fy}`])
               : [[]];
+            const counterLastValue = Number((counterRows as any[])[0]?.lastValue || 0);
             const error = migrationJobNoError(
               parsed,
               (sameNumberRows as any[]).map((row) => String(row.id)),
-              Number((fyRows as any[])[0]?.highest || 0)
+              counterLastValue,
+              currentFy
             );
             if (error || !parsed) return res.status(400).json({ error: error || "Invalid migration job number." });
+            if (migrationNeedsCounterRaise(parsed, counterLastValue, currentFy)) {
+              // Closed financial year only: move its counter past the migrated
+              // number so it can never be issued again.
+              await db.query(
+                `INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`,
+                [`JOB/${parsed.fy}`, parsed.number]
+              );
+            }
             data.transactionNo = parsed.transactionNo;
           } else if (!(existingDocumentRows as any[])[0]) {
             const firmId = String(

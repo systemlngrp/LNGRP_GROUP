@@ -2,9 +2,13 @@
 // job number (for example a job that was missed when the Loading PDF history
 // was migrated), without drawing a new number from the job counter.
 //
-// The number is kept only when it is a plain "JOB/<fy>/<n>" number that does
-// not exist yet and is not above the highest job number already used in that
-// financial year, so the counter can never hand the same number out later.
+// Job numbers come from a counter per financial year ("JOB/<fy>"). A number is
+// kept only when it is a plain "JOB/<fy>/<n>" number that does not exist yet
+// and the counter can never hand it out again:
+// - in the current financial year the counter must already be past it, so the
+//   counter is not touched;
+// - in a closed financial year a number above that year's counter is allowed,
+//   and the caller raises that closed year's counter to it.
 
 export type MigrationJobNo = { transactionNo: string; fy: string; number: number };
 
@@ -20,12 +24,18 @@ export function parseMigrationJobNo(value: unknown): MigrationJobNo | null {
 export function migrationJobNoError(
   parsed: MigrationJobNo | null,
   existingIds: string[],
-  highestNumberInFy: number,
+  counterLastValue: number,
+  currentFy: string,
 ): string | null {
-  if (!parsed) return "Migration job number must look like JOB/26-27/6924.";
+  if (!parsed) return "Migration job number must look like JOB/25-26/6924.";
   if (existingIds.length) return `${parsed.transactionNo} already exists.`;
-  if (parsed.number > highestNumberInFy) {
-    return `${parsed.transactionNo} is above the highest job number used in ${parsed.fy} (${highestNumberInFy}); only old numbers can be migrated.`;
+  if (parsed.fy === currentFy && parsed.number > counterLastValue) {
+    return `${parsed.transactionNo} is above the job counter for ${parsed.fy} (${counterLastValue}); only old numbers can be migrated.`;
   }
   return null;
+}
+
+// True when the closed year's counter has to be raised to the migrated number.
+export function migrationNeedsCounterRaise(parsed: MigrationJobNo, counterLastValue: number, currentFy: string): boolean {
+  return parsed.fy !== currentFy && parsed.number > counterLastValue;
 }
