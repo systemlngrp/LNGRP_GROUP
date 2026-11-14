@@ -1284,7 +1284,7 @@ var positiveQty = (value) => {
   const qty = Number(value);
   return Number.isFinite(qty) && qty > 0 ? qty : 0;
 };
-function buildJobLoadingRecords(productions, slips, plans) {
+function buildJobLoadingRecords(productions, slips, plans, options = {}) {
   const byId = new Map(productions.map((production) => [key2(production.id), production.id]));
   const byJobNo = new Map(productions.map((production) => [key2(production.transactionNo || production.jobCardNo), production.id]));
   const planById = new Map(plans.map((plan) => [key2(plan.id), plan]));
@@ -1300,6 +1300,11 @@ function buildJobLoadingRecords(productions, slips, plans) {
           const productionId = byId.get(key2(allocation.jobId)) || byJobNo.get(key2(allocation.jobNo));
           const qty = positiveQty(allocation.qty);
           if (productionId && qty) quantities.set(productionId, (quantities.get(productionId) || 0) + qty);
+        }
+        if (options.includeOpeningStock && quantities.size) {
+          const opening = (line.allocations || []).filter((allocation) => allocation.sourceType === "opening_stock").reduce((sum, allocation) => sum + positiveQty(allocation.qty), 0);
+          const firstJobId = quantities.keys().next().value;
+          if (opening) quantities.set(firstJobId, (quantities.get(firstJobId) || 0) + opening);
         }
       } else {
         const plan = planById.get(key2(line.dispatchPlanId));
@@ -1379,7 +1384,7 @@ function computeSummarySheetRows(lists, stockItems) {
     if (slip?.invoiceId) current.invoiceIds.add(slip.invoiceId);
     dispatchByProduction.set(productionId, current);
   };
-  const loadingByJob = buildJobLoadingRecords(productions, slips, plans);
+  const loadingByJob = buildJobLoadingRecords(productions, slips, plans, { includeOpeningStock: true });
   loadingByJob.forEach((records, productionId) => records.forEach(({ slip, qty, itemIds }) => {
     addDispatch(productionId, qty, isoDateText(slip.date), slip);
     const dispatch = dispatchByProduction.get(productionId);

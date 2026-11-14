@@ -53,3 +53,18 @@ test("legacy plan links work without allocations; cancelled and unlinked slips d
   assert.equal(records.get("job-1")?.reduce((sum, record) => sum + record.qty, 0), 10);
   assert.equal(records.has("job-2"), false);
 });
+
+test("opening stock on a line counts under the first job only when asked", () => {
+  const slips = [slip("LS-1", "2026-05-02", [{
+    dispatchPlanId: "plan-x", loadedQty: 5220, allocations: [
+      { sourceType: "job", jobId: "job-1", jobNo: "JOB-1", qty: 3979 },
+      { sourceType: "opening_stock", qty: 1241 } as any,
+    ],
+  }, {
+    dispatchPlanId: "plan-x", loadedQty: 320, allocations: [{ sourceType: "opening_stock", qty: 320 } as any],
+  }])];
+  assert.equal(buildJobLoadingRecords(jobs, slips, []).get("job-1")?.[0].qty, 3979);
+  const withOpening = buildJobLoadingRecords(jobs, slips, [], { includeOpeningStock: true });
+  assert.equal(withOpening.get("job-1")?.[0].qty, 5220);
+  assert.equal(withOpening.has("job-2"), false);
+});

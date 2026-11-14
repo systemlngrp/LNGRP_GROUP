@@ -55,7 +55,7 @@ export function computeSummarySheetRows(lists: SummarySheetLists, stockItems: an
     if (slip?.invoiceId) current.invoiceIds.add(slip.invoiceId);
     dispatchByProduction.set(productionId, current);
   };
-  const loadingByJob = buildJobLoadingRecords(productions, slips, plans);
+  const loadingByJob = buildJobLoadingRecords(productions, slips, plans, { includeOpeningStock: true });
   loadingByJob.forEach((records, productionId) => records.forEach(({ slip, qty, itemIds }) => {
     addDispatch(productionId, qty, isoDateText(slip.date), slip);
     const dispatch = dispatchByProduction.get(productionId);

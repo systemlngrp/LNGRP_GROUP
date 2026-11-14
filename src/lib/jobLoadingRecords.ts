@@ -8,7 +8,12 @@ const positiveQty = (value: unknown) => {
   return Number.isFinite(qty) && qty > 0 ? qty : 0;
 };
 
-export function buildJobLoadingRecords(productions: Production[], slips: LoadingSlip[], plans: DispatchPlan[]) {
+export type JobLoadingOptions = {
+  /** Count a line's opening-stock qty under the first job on that line (as the Google Summary Sheet does). */
+  includeOpeningStock?: boolean;
+};
+
+export function buildJobLoadingRecords(productions: Production[], slips: LoadingSlip[], plans: DispatchPlan[], options: JobLoadingOptions = {}) {
   const byId = new Map(productions.map((production) => [key(production.id), production.id]));
   const byJobNo = new Map(productions.map((production) => [key(production.transactionNo || production.jobCardNo), production.id]));
   const planById = new Map(plans.map((plan) => [key(plan.id), plan]));
@@ -25,6 +30,13 @@ export function buildJobLoadingRecords(productions: Production[], slips: Loading
           const productionId = byId.get(key(allocation.jobId)) || byJobNo.get(key(allocation.jobNo));
           const qty = positiveQty(allocation.qty);
           if (productionId && qty) quantities.set(productionId, (quantities.get(productionId) || 0) + qty);
+        }
+        if (options.includeOpeningStock && quantities.size) {
+          const opening = (line.allocations || [])
+            .filter((allocation) => allocation.sourceType === "opening_stock")
+            .reduce((sum, allocation) => sum + positiveQty(allocation.qty), 0);
+          const firstJobId = quantities.keys().next().value as string;
+          if (opening) quantities.set(firstJobId, (quantities.get(firstJobId) || 0) + opening);
         }
       } else {
         const plan = planById.get(key(line.dispatchPlanId));
