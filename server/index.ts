@@ -25,6 +25,7 @@ import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
 import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { migrationJobNoError, migrationNeedsCounterRaise, parseMigrationJobNo } from "./migrationJobNo.js";
+import { migrationSlipCounterValue, migrationSlipNoError, parseMigrationSlipNo } from "./migrationSlipNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms, type ServerSort, type SqlSortColumn } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
 import {
@@ -13600,7 +13601,41 @@ const createHandlers = (tableName: string) => {
         // counter is not used, so no other numbering changes. See migrationJobNo.ts.
         const migrationKeepJobNo = tableName === "productions" && data.migrationKeepJobNo === true;
         delete data.migrationKeepJobNo;
-        if (firmDocument && String(data.id || "").trim()) {
+        // Migration only: an Admin may save a Direct loading slip under a chosen
+        // number in its firm's LS series (sent with migrationKeepSlipNo: true);
+        // the firm's counter is then set to the highest number in use, so the
+        // next normal slip follows on. See migrationSlipNo.ts.
+        const migrationKeepSlipNo = tableName === "loading_slips" && data.migrationKeepSlipNo === true;
+        delete data.migrationKeepSlipNo;
+        if (migrationKeepSlipNo) {
+          if (requestUser?.role !== "Admin") {
+            return res.status(403).json({ error: "Only an Admin can save a loading slip with a migration number." });
+          }
+          if (String(data.loadingSource || "").toUpperCase() !== "DIRECT") {
+            return res.status(400).json({ error: "Only Direct loading slips can keep a migration number." });
+          }
+          const slipFirmId = String(data.orderFirmId || "").trim();
+          const slipFy = String(data.date || "").trim() ? getShortFinancialYear(String(data.date)) || "" : "";
+          if (!slipFirmId || !slipFy) return res.status(400).json({ error: "Migration slip needs its firm and date." });
+          const slipPrefix = await getFirmDocumentPrefix(db, slipFirmId);
+          const series = `${slipPrefix}/LS/${slipFy}`;
+          const parsedSlipNo = parseMigrationSlipNo(data.slipNo, slipPrefix, slipFy);
+          const [seriesRows] = await db.query("SELECT id, slipNo FROM `loading_slips` WHERE slipNo LIKE ?", [`${series}/%`]);
+          const otherRows = (seriesRows as any[]).filter((row) => String(row.id) !== String(data.id || ""));
+          const slipNoError = migrationSlipNoError(
+            parsedSlipNo,
+            series,
+            parsedSlipNo ? otherRows.filter((row) => String(row.slipNo || "").trim() === parsedSlipNo.slipNo).map((row) => String(row.id)) : [],
+          );
+          if (slipNoError || !parsedSlipNo) return res.status(400).json({ error: slipNoError || "Invalid migration slip number." });
+          data.slipNo = parsedSlipNo.slipNo;
+          await db.query(
+            `INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE lastValue = VALUES(lastValue)`,
+            [series, migrationSlipCounterValue(parsedSlipNo, otherRows.map((row) => String(row.slipNo || "")))]
+          );
+        }
+        if (firmDocument && String(data.id || "").trim() && !migrationKeepSlipNo) {
           const [existingDocumentRows] = await db.query(`SELECT id FROM \`${tableName}\` WHERE id = ? LIMIT 1`, [data.id]);
           if (!(existingDocumentRows as any[])[0] && migrationKeepJobNo) {
             if (requestUser?.role !== "Admin") {
