@@ -1351,8 +1351,20 @@ function firstById(rows2) {
   });
   return map;
 }
+function combineWithPreApp(preApp, appRecords) {
+  const before = preApp.map((row) => ({ slipNo: s(row.slipRef), date: isoDateText(row.invoiceDate || row.date), qty: n(row.qty), preApp: true })).filter((row) => row.qty > 0).sort((a, b) => a.date.localeCompare(b.date));
+  return [...before, ...appRecords.map((row) => ({ ...row, preApp: false }))];
+}
 function computeSummarySheetRows(lists, stockItems) {
   const { productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms } = lists;
+  const preAppByJob = /* @__PURE__ */ new Map();
+  (lists.preAppDispatches || []).forEach((row) => {
+    const key5 = s(row.productionId) || `job:${s(row.jobCardNo).toUpperCase()}`;
+    if (key5 === "job:") return;
+    const list = preAppByJob.get(key5) || [];
+    list.push(row);
+    preAppByJob.set(key5, list);
+  });
   const orderMap = new Map(orders.map((row) => [row.id, row]));
   const firstScheduleById = firstById(schedules);
   const companyById = firstById(companies);
@@ -1508,6 +1520,35 @@ function computeSummarySheetRows(lists, stockItems) {
       Timestamp: isoDateText(production.updateTimestamp),
       "App sale value": money(dispatchedQty * rate)
     };
+    const preApp = [
+      ...preAppByJob.get(production.id) || [],
+      ...preAppByJob.get(`job:${jobNo.toUpperCase()}`) || [],
+      ...s(production.jobCardNo) && s(production.jobCardNo) !== jobNo ? preAppByJob.get(`job:${s(production.jobCardNo).toUpperCase()}`) || [] : []
+    ].filter((row2, index, all) => all.findIndex((other) => other.id === row2.id) === index);
+    if (preApp.length) {
+      const combined = combineWithPreApp(preApp, loadingRecords);
+      const preAppQty = combined.filter((record) => record.preApp).reduce((sum, record) => sum + record.qty, 0);
+      const preAppDates = combined.filter((record) => record.preApp && record.date).map((record) => record.date).sort();
+      const totalQty = combined.slice(0, 6).reduce((sum, record) => sum + record.qty, 0);
+      const totalQty3 = combined.slice(0, 3).reduce((sum, record) => sum + record.qty, 0);
+      const firstDate = [preAppDates[0], invoiceDates[0]].filter(Boolean).sort()[0] || "";
+      row["Pre-App Dispatched Qty"] = money(preAppQty);
+      row["Pre-App Sale Value"] = money(preAppQty * rate);
+      row["Pre-App Loading No"] = combined.filter((record) => record.preApp).map((record) => record.slipNo).filter(Boolean).join(", ");
+      row["Pre-App Invoice No"] = preApp.map((entry) => s(entry.invoiceNo)).filter(Boolean).join(", ");
+      row["Pre-App Invoice Date"] = preAppDates[0] || "";
+      row["Dispatched Qty incl. Pre-App"] = money(totalQty);
+      row["Dispatched Qty incl. Pre-App (3 slips)"] = money(totalQty3);
+      row["Sale Value incl. Pre-App"] = money(totalQty * rate);
+      row["Sale Value incl. Pre-App (3 slips)"] = money(totalQty3 * rate);
+      row["Invoice Date 1 incl. Pre-App"] = firstDate;
+    } else {
+      row["Dispatched Qty incl. Pre-App"] = money(dispatchedQty);
+      row["Dispatched Qty incl. Pre-App (3 slips)"] = money(dispatchedQty3);
+      row["Sale Value incl. Pre-App"] = money(dispatchedQty * rate);
+      row["Sale Value incl. Pre-App (3 slips)"] = money(dispatchedQty3 * rate);
+      row["Invoice Date 1 incl. Pre-App"] = invoiceDates[0] || "";
+    }
     row["Job Closed"] = s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "";
     row["Close Date"] = isoDateText(production.closeDate);
     row.__productionId = production.id;
@@ -2762,7 +2803,8 @@ REPORT_DEFINITIONS["summary-sheet"] = {
     { key: "invoiceLines", entity: "invoice_line_items", scope: "all" },
     { key: "trucks", entity: "trucks", scope: "all" },
     { key: "companies", entity: "companies", scope: "firm" },
-    { key: "firms", entity: "firms", scope: "firm" }
+    { key: "firms", entity: "firms", scope: "firm" },
+    { key: "preAppDispatches", entity: "pre_app_dispatches", scope: "all" }
   ],
   // Blank cells are left out to keep the download small (the page reads a missing value as blank).
   compute: (lists, _params, helpers) => computeSummarySheetRows(lists, (helpers.npdItems || []).map(normalizeNpdItem)).map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== "" && value !== null && value !== void 0)))

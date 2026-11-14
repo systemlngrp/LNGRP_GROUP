@@ -5647,6 +5647,7 @@ function entityPermissionKey(entity) {
         case "invoice_line_items":
             return "/billing";
         case "realization_rate_chart":
+        case "pre_app_dispatches":
         case "fixed_monthly_expenses":
         case "fixed_daily_expenses":
             return "/reports";
@@ -7017,6 +7018,28 @@ async function initDb(retries = 5) {
           \`approvedEmail\` VARCHAR(255),
           \`updatedBy\` VARCHAR(255),
           \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+            // Loadings made before the app went live, kept only so the Summary report
+            // can show a job's full dispatch. No invoice, Tally posting or stock movement.
+            await db.query(`
+        CREATE TABLE IF NOT EXISTS \`pre_app_dispatches\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`firmId\` VARCHAR(36),
+          \`productionId\` VARCHAR(36),
+          \`jobCardNo\` VARCHAR(100) NOT NULL,
+          \`slipRef\` VARCHAR(100),
+          \`date\` VARCHAR(50) NOT NULL,
+          \`qty\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`invoiceNo\` VARCHAR(100),
+          \`invoiceDate\` VARCHAR(50),
+          \`rate\` DECIMAL(15,4) NOT NULL DEFAULT 0,
+          \`value\` DECIMAL(15,2) NOT NULL DEFAULT 0,
+          \`source\` VARCHAR(100),
+          \`remarks\` TEXT,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255),
+          KEY \`idx_pre_app_dispatches_job\` (\`jobCardNo\`)
         )
       `);
             await db.query(`
@@ -14721,7 +14744,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
         conn.release();
     }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs", "pre_app_dispatches"];
 app.get("/api/tally-sync-debug", (req, res) => {
     const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
     return res.json({

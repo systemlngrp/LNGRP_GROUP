@@ -129,6 +129,7 @@ REPORT_DEFINITIONS["summary-sheet"] = {
     { key: "trucks", entity: "trucks", scope: "all" },
     { key: "companies", entity: "companies", scope: "firm" },
     { key: "firms", entity: "firms", scope: "firm" },
+    { key: "preAppDispatches", entity: "pre_app_dispatches", scope: "all" },
   ],
   // Blank cells are left out to keep the download small (the page reads a missing value as blank).
   compute: (lists, _params, helpers) => computeSummarySheetRows(lists as any, (helpers.npdItems || []).map(normalizeNpdItem))

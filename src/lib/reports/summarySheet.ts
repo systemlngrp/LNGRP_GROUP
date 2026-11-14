@@ -27,11 +27,47 @@ export type SummarySheetLists = {
   trucks: Truck[];
   companies: Company[];
   firms: Firm[];
+  /** Loadings made before the app went live (table pre_app_dispatches). Reference only. */
+  preAppDispatches?: PreAppDispatch[];
 };
+
+/** A loading done before the app went live, kept only so the Summary can show the job's full dispatch. */
+export type PreAppDispatch = {
+  id: string;
+  productionId?: string;
+  jobCardNo?: string;
+  slipRef?: string;
+  date?: string;
+  qty?: number | string;
+  invoiceNo?: string;
+  invoiceDate?: string;
+};
+
+type DispatchRecord = { slipNo: string; date: string; qty: number; preApp: boolean };
+
+/**
+ * Pre-app loadings first (by date), then the app's own loadings, so "3 slips"
+ * counts the job's first three loadings the way the Delivery Book does.
+ */
+export function combineWithPreApp(preApp: PreAppDispatch[], appRecords: Array<{ slipNo: string; date: string; qty: number }>): DispatchRecord[] {
+  const before = preApp
+    .map((row) => ({ slipNo: s(row.slipRef), date: isoDateText(row.invoiceDate || row.date), qty: n(row.qty), preApp: true }))
+    .filter((row) => row.qty > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return [...before, ...appRecords.map((row) => ({ ...row, preApp: false }))];
+}
 
 /** One row per non-cancelled job. Hidden keys: __productionId, __firmName. */
 export function computeSummarySheetRows(lists: SummarySheetLists, stockItems: any[]): SummaryRow[] {
   const { productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms } = lists;
+  const preAppByJob = new Map<string, PreAppDispatch[]>();
+  (lists.preAppDispatches || []).forEach((row) => {
+    const key = s(row.productionId) || `job:${s(row.jobCardNo).toUpperCase()}`;
+    if (key === "job:") return;
+    const list = preAppByJob.get(key) || [];
+    list.push(row);
+    preAppByJob.set(key, list);
+  });
     const orderMap = new Map(orders.map((row) => [row.id, row]));
   const firstScheduleById = firstById(schedules);
   const companyById = firstById(companies);
@@ -109,6 +145,36 @@ export function computeSummarySheetRows(lists: SummarySheetLists, stockItems: an
     const row: SummaryRow = {
       "Job No.": jobNo, Date: isoDateText(production.date), "Party Name": s(production.companyName || company?.name), "Item Name": itemName, ERP: erp, "Planned Qty": planned, "FG Stock": fgStock, "Job Weight": money(jobWeight), "Customer Complaint": "", "PDI REPORT": "", "Realization / kg": realizationValue, Meter: linearMeter, "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).join(" x "), UPS: n(production.ups), "Sheets prdcd": n(production.productionOutputQty), "Plate per box": n(production.setsPerBox), "Boardline Prod.": boardline, "Printing prod.": printing, "PPR Rqd.": n(production.totalPaperWeight), "PPR Used": pprUsed, "Paper Wastage": pprUsed && production.totalPaperWeight ? money(pprUsed - n(production.totalPaperWeight)) : "", "Boardline Wastage": money(wastage.corrugationKg), "Actual Realization / kg": n(production.realizationPerKg), "Dispatched Qty": money(dispatchedQty), "Dispatched Qty (3 slips)": money(dispatchedQty3), "Dispatch Date": invoiceDates[0] || "", "Vehicle No": vehicle, "App Stock": fgStock, "Invoice Value 1": invoiceValues[0] ?? "", "Invoice Value 2": invoiceValues[1] ?? "", "Invoice Value 3": invoiceValues[2] ?? "", "Invoice No. 1": s(relatedInvoices[0]?.invoiceNo || relatedInvoices[0]?.tallyInvNo), "Invoice Date 1": invoiceDates[0] || "", "Invoice No. 2": s(relatedInvoices[1]?.invoiceNo || relatedInvoices[1]?.tallyInvNo), "Invoice Date 2": invoiceDates[1] || "", "Invoice No. 3": s(relatedInvoices[2]?.invoiceNo || relatedInvoices[2]?.tallyInvNo), "Invoice Date 3": invoiceDates[2] || "", "Loading No 1": loadingRecords[0]?.slipNo || "", "Loading Date 1": loadingRecords[0]?.date || "", "Loading Qty 1": loadingRecords[0]?.qty ?? "", "Vehicle 1": loadingRecords[0]?.vehicle || "", "Loading No 2": loadingRecords[1]?.slipNo || "", "Loading Date 2": loadingRecords[1]?.date || "", "Loading Qty 2": loadingRecords[1]?.qty ?? "", "Vehicle 2": loadingRecords[1]?.vehicle || "", "Loading No 3": loadingRecords[2]?.slipNo || "", "Loading Date 3": loadingRecords[2]?.date || "", "Loading Qty 3": loadingRecords[2]?.qty ?? "", "Vehicle 3": loadingRecords[2]?.vehicle || "", "Loading No 4": loadingRecords[3]?.slipNo || "", "Loading Date 4": loadingRecords[3]?.date || "", "Loading Qty 4": loadingRecords[3]?.qty ?? "", "Vehicle 4": loadingRecords[3]?.vehicle || "", "Loading No 5": loadingRecords[4]?.slipNo || "", "Loading Date 5": loadingRecords[4]?.date || "", "Loading Qty 5": loadingRecords[4]?.qty ?? "", "Vehicle 5": loadingRecords[4]?.vehicle || "", "Loading No 6": loadingRecords[5]?.slipNo || "", "Loading Date 6": loadingRecords[5]?.date || "", "Loading Qty 6": loadingRecords[5]?.qty ?? "", "Vehicle 6": loadingRecords[5]?.vehicle || "", "FG LEFT": money(Math.max(0, planned - dispatchedQty)), Rate: rate, Status: s(production.status), "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0), "Sale Value": money(dispatchedQty * rate), "Sale Value (3 slips)": money(dispatchedQty3 * rate), "FINAL FG LEFT": money(Math.max(0, planned - dispatchedQty)), "wip value": money(Math.max(0, planned - dispatchedQty) * rate), Remarks: s(production.remarks), "Dispatched From FG": dispatchedQty ? "Yes" : "", Value: money(dispatchedQty * rate), Timestamp: isoDateText(production.updateTimestamp), "App sale value": money(dispatchedQty * rate),
     };
+    // Before-app loadings: shown in their own columns; the app's own columns above are unchanged.
+    const preApp = [
+      ...(preAppByJob.get(production.id) || []),
+      ...(preAppByJob.get(`job:${jobNo.toUpperCase()}`) || []),
+      ...(s(production.jobCardNo) && s(production.jobCardNo) !== jobNo ? preAppByJob.get(`job:${s(production.jobCardNo).toUpperCase()}`) || [] : []),
+    ].filter((row, index, all) => all.findIndex((other) => other.id === row.id) === index);
+    if (preApp.length) {
+      const combined = combineWithPreApp(preApp, loadingRecords);
+      const preAppQty = combined.filter((record) => record.preApp).reduce((sum, record) => sum + record.qty, 0);
+      const preAppDates = combined.filter((record) => record.preApp && record.date).map((record) => record.date).sort();
+      const totalQty = combined.slice(0, 6).reduce((sum, record) => sum + record.qty, 0);
+      const totalQty3 = combined.slice(0, 3).reduce((sum, record) => sum + record.qty, 0);
+      const firstDate = [preAppDates[0], invoiceDates[0]].filter(Boolean).sort()[0] || "";
+      row["Pre-App Dispatched Qty"] = money(preAppQty);
+      row["Pre-App Sale Value"] = money(preAppQty * rate);
+      row["Pre-App Loading No"] = combined.filter((record) => record.preApp).map((record) => record.slipNo).filter(Boolean).join(", ");
+      row["Pre-App Invoice No"] = preApp.map((entry) => s(entry.invoiceNo)).filter(Boolean).join(", ");
+      row["Pre-App Invoice Date"] = preAppDates[0] || "";
+      row["Dispatched Qty incl. Pre-App"] = money(totalQty);
+      row["Dispatched Qty incl. Pre-App (3 slips)"] = money(totalQty3);
+      row["Sale Value incl. Pre-App"] = money(totalQty * rate);
+      row["Sale Value incl. Pre-App (3 slips)"] = money(totalQty3 * rate);
+      row["Invoice Date 1 incl. Pre-App"] = firstDate;
+    } else {
+      row["Dispatched Qty incl. Pre-App"] = money(dispatchedQty);
+      row["Dispatched Qty incl. Pre-App (3 slips)"] = money(dispatchedQty3);
+      row["Sale Value incl. Pre-App"] = money(dispatchedQty * rate);
+      row["Sale Value incl. Pre-App (3 slips)"] = money(dispatchedQty3 * rate);
+      row["Invoice Date 1 incl. Pre-App"] = invoiceDates[0] || "";
+    }
     row["Job Closed"] = s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "";
     row["Close Date"] = isoDateText(production.closeDate);
     row.__productionId = production.id;

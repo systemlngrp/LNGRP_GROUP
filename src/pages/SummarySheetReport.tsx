@@ -5,7 +5,7 @@ import { Eye, EyeOff, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { computeSummarySheetRows, isoDateText, n, s } from "../lib/reports/summarySheet";
-import type { SummaryRow } from "../lib/reports/summarySheet";
+import type { PreAppDispatch, SummaryRow } from "../lib/reports/summarySheet";
 import { useServerReport } from "../hooks/useServerReport";
 import { computeSummarySheetSections, monthStartKey, localDayKey, summarySheetCellClass } from "../lib/reports/summarySheetTiles";
 import type { SummarySheetExtras, SummaryTile, SummaryTileSection } from "../lib/reports/summarySheetTiles";
@@ -30,6 +30,8 @@ const COLUMNS = [
   "Loading No 6", "Loading Date 6", "Loading Qty 6", "Vehicle 6",
   "FG Stock", "FG LEFT", "FINAL FG LEFT", "Dispatched From FG", "Status", "Close Date", "Job Closed", "Remarks",
   "Rate", "Sale Value", "Sale Value (3 slips)", "Value", "App sale value", "wip value",
+  "Pre-App Loading No", "Pre-App Invoice No", "Pre-App Invoice Date", "Pre-App Dispatched Qty", "Pre-App Sale Value",
+  "Dispatched Qty incl. Pre-App", "Dispatched Qty incl. Pre-App (3 slips)", "Sale Value incl. Pre-App", "Sale Value incl. Pre-App (3 slips)", "Invoice Date 1 incl. Pre-App",
   "Customer Complaint", "PDI REPORT", "Timestamp",
 ] as const;
 const SUMMARY_SECTIONS = [
@@ -38,19 +40,22 @@ const SUMMARY_SECTIONS = [
   { label: "STOCK & STATUS", start: "FG Stock", end: "Remarks" },
   { label: "FINANCE & REMARKS", start: "Rate", end: "Timestamp" },
 ] as const;
-const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "companies", "firms", "npd"];
+const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "companies", "firms", "npd", "pre_app_dispatches"];
 const NUMERIC_COLUMNS = new Set([
   "Sl No", "Planned Qty", "Job Weight", "Meter", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.",
   "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Printing Wastage", "Realization / kg", "Actual Realization / kg",
   "Dispatched Qty", "Dispatched Qty (3 slips)", "Loading Qty 1", "Loading Qty 2", "Loading Qty 3", "Loading Qty 4", "Loading Qty 5", "Loading Qty 6", "FG Stock", "FG LEFT", "FINAL FG LEFT", "App Stock", "Rate",
   "Sale Value", "Sale Value (3 slips)", "Value", "App sale value", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3", "wip value",
+  "Pre-App Dispatched Qty", "Pre-App Sale Value", "Dispatched Qty incl. Pre-App", "Dispatched Qty incl. Pre-App (3 slips)", "Sale Value incl. Pre-App", "Sale Value incl. Pre-App (3 slips)",
 ]);
 const CENTER_COLUMNS = new Set([
   "Date", "Dispatch Date", "Invoice Date 1", "Invoice Date 2", "Invoice Date 3", "Loading Date 1", "Loading Date 2", "Loading Date 3", "Loading Date 4", "Loading Date 5", "Loading Date 6",
   "Status", "Close Date", "Job Closed", "Dispatched From FG", "PDI REPORT",
+  "Pre-App Invoice Date", "Invoice Date 1 incl. Pre-App",
 ]);
 const DATE_COLUMNS = new Set([
   "Date", "Dispatch Date", "Invoice Date 1", "Invoice Date 2", "Invoice Date 3", "Loading Date 1", "Loading Date 2", "Loading Date 3", "Loading Date 4", "Loading Date 5", "Loading Date 6", "Close Date", "Timestamp",
+  "Pre-App Invoice Date", "Invoice Date 1 incl. Pre-App",
 ]);
 const columnAlignment = (column: string) => NUMERIC_COLUMNS.has(column) ? "text-right" : CENTER_COLUMNS.has(column) ? "text-center" : "text-left";
 const displayDate = (value: unknown) => {
@@ -91,6 +96,7 @@ export function SummarySheetReport() {
   const [invoices] = useData<Invoice>("invoices", [], { firmScope: "all", storageKey: "summary-sheet-invoices", enabled: browserFallback });
   const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "summary-sheet-invoice-lines", enabled: browserFallback });
   const [trucks] = useData<Truck>("trucks", [], { firmScope: "all", enabled: browserFallback });
+  const [preAppDispatches] = useData<PreAppDispatch>("pre_app_dispatches", [], { firmScope: "all", enabled: browserFallback });
   const [companies] = useData<Company>("companies", [], { enabled: browserFallback });
   const [firms] = useData<Firm>("firms", []);
   const [settings] = useData<Setting>("settings", []);
@@ -139,8 +145,8 @@ export function SummarySheetReport() {
 
   const productionById = useMemo(() => new Map(productions.map((production) => [production.id, production])), [productions]);
   const clientBaseRows = useMemo<SummaryRow[]>(
-    () => (browserFallback ? computeSummarySheetRows({ productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms }, stockItems) : []),
-    [browserFallback, companies, firms, invoiceLines, invoices, orders, plans, processing, productions, schedules, slips, stockItems, trucks]
+    () => (browserFallback ? computeSummarySheetRows({ productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms, preAppDispatches }, stockItems) : []),
+    [browserFallback, preAppDispatches, companies, firms, invoiceLines, invoices, orders, plans, processing, productions, schedules, slips, stockItems, trucks]
   );
   const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
 
