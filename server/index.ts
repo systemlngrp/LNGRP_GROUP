@@ -13308,8 +13308,10 @@ const createHandlers = (tableName: string) => {
         if (tableName === "loading_slips" && String(data.loadingSource || "").toUpperCase() === "DIRECT") {
           const [existingRows] = await db.query("SELECT id FROM `loading_slips` WHERE id = ? LIMIT 1", [String(data.id || "")]);
           if (!(existingRows as any[]).length) {
-            const firmId = String(data.firmId || "").trim();
-            if (!firmId || String(data.orderFirmId || "").trim() !== firmId) {
+            // loading_slips has no firmId column (it is dropped above); the
+            // firm chosen on the Direct Loading screen is kept in orderFirmId.
+            const firmId = String(data.orderFirmId || "").trim();
+            if (!firmId) {
               return res.status(400).json({ error: "Select one firm for direct loading and billing." });
             }
             const [firmRows] = await db.query("SELECT id FROM `firms` WHERE id = ? LIMIT 1", [firmId]);
@@ -13632,7 +13634,8 @@ const createHandlers = (tableName: string) => {
             data.transactionNo = parsed.transactionNo;
           } else if (!(existingDocumentRows as any[])[0]) {
             const firmId = String(
-              ["dispatch_plans", "loading_slips"].includes(tableName) && String(data.loadingSource || "").toUpperCase() !== "DIRECT"
+              // Loading slips (dispatch-linked and Direct) keep their firm in orderFirmId.
+              ["dispatch_plans", "loading_slips"].includes(tableName)
                 ? data.orderFirmId
                 : data.firmId || data.sourceFirmId || data.destinationFirmId || requestFirmId || ""
             ).trim();
