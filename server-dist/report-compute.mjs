@@ -1894,7 +1894,7 @@ function getInvoiceGrandTotal(invoice) {
   const otherCharges = Number(invoice.otherCharges || 0);
   const otherChargesGstRate = Number(invoice.otherChargesGstRate || 0);
   const nonTaxableOtherCharges = otherCharges !== 0 && otherChargesGstRate > 0 ? 0 : otherCharges;
-  return Number(invoice.totalAfterGst || 0) + nonTaxableOtherCharges + Number(invoice.roundOff || 0);
+  return Number(invoice.totalAfterGst || 0) + nonTaxableOtherCharges + Number(invoice.tcsAmount || 0) + Number(invoice.roundOff || 0);
 }
 
 // src/lib/reports/auditDashboard.ts

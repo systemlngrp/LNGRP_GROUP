@@ -53,6 +53,8 @@ SALES_5_LEDGER_NAME = os.getenv("SALES_5_LEDGER_NAME", "SALES 5%")
 SALES_18_LEDGER_NAME = os.getenv("SALES_18_LEDGER_NAME", "SALES 18%")
 OTHER_CHARGES_LEDGER_NAME = os.getenv("SALES_OTHER_CHARGES_LEDGER_NAME", "Other Charges")
 ROUND_OFF_LEDGER_NAME = os.getenv("SALES_ROUND_OFF_LEDGER_NAME", "Round Off")
+# TCS u/s 206C collected on the invoice (invoices.tcsAmount), e.g. scrap sales.
+TCS_LEDGER_NAME = os.getenv("SALES_TCS_LEDGER_NAME", "TCS ON SALE 206C")
 CGST_LEDGER_NAME = os.getenv("OUTPUT_CGST_LEDGER_NAME", "Output CGST")
 SGST_LEDGER_NAME = os.getenv("OUTPUT_SGST_LEDGER_NAME", "Output SGST")
 IGST_LEDGER_NAME = os.getenv("OUTPUT_IGST_LEDGER_NAME", "Output IGST")
@@ -2221,6 +2223,7 @@ def create_sales_voucher_xml(
     sgst = round(to_float(invoice_row.get("sgst")), 2)
     igst = round(to_float(invoice_row.get("igst")), 2)
     other_charges = round(to_float(invoice_row.get("otherCharges")), 2)
+    tcs_amount = round(to_float(invoice_row.get("tcsAmount")), 2)
     derived_tax_rates = derive_tax_rates(invoice_row, item_lines)
     cgst_rate = derived_tax_rates["cgst_rate"] if cgst > 0 else 0
     sgst_rate = derived_tax_rates["sgst_rate"] if sgst > 0 else 0
@@ -2262,7 +2265,7 @@ def create_sales_voucher_xml(
 
     total_item_amount = round(total_item_amount, 2)
     round_off = compute_effective_round_off(invoice_row, total_item_amount)
-    total_invoice_amount = round(total_item_amount + cgst + sgst + igst + other_charges + round_off, 2)
+    total_invoice_amount = round(total_item_amount + cgst + sgst + igst + other_charges + tcs_amount + round_off, 2)
 
     ledger_entries_xml = f"""
                         <LEDGERENTRIES.LIST>
@@ -2305,6 +2308,15 @@ def create_sales_voucher_xml(
                             <LEDGERNAME>{esc(OTHER_CHARGES_LEDGER_NAME)}</LEDGERNAME>
                             <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
                             <AMOUNT>{other_charges:.2f}</AMOUNT>
+                        </LEDGERENTRIES.LIST>
+        """
+
+    if tcs_amount != 0:
+        ledger_entries_xml += f"""
+                        <LEDGERENTRIES.LIST>
+                            <LEDGERNAME>{esc(TCS_LEDGER_NAME)}</LEDGERNAME>
+                            <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+                            <AMOUNT>{tcs_amount:.2f}</AMOUNT>
                         </LEDGERENTRIES.LIST>
         """
 
@@ -2571,6 +2583,8 @@ def validate_tally_masters(customer_name, sales_ledger_name, item_lines, invoice
 
     if other_charges != 0:
         master_checks.append(("Ledger", OTHER_CHARGES_LEDGER_NAME))
+    if round(to_float(invoice_row.get("tcsAmount")), 2) != 0:
+        master_checks.append(("Ledger", TCS_LEDGER_NAME))
     if round_off != 0:
         master_checks.append(("Ledger", ROUND_OFF_LEDGER_NAME))
     if cgst > 0:

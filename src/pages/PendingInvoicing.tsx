@@ -41,6 +41,7 @@ import { useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { useAuth } from "../auth/AuthContext";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { getPendingInvoicingSlip } from "../lib/pendingInvoicing";
+import { companyTcsRate, computeTcsAmount, normalizeTcsRate } from "../lib/invoiceTcs";
 
 interface GroupedLoading {
   groupKey: string;
@@ -158,6 +159,7 @@ export function PendingInvoicing() {
   const [otherChargesGstRate, setOtherChargesGstRate] = useState<number | "">("");
   const [roundOff, setRoundOff] = useState<number | "">("");
   const [isRoundOffManual, setIsRoundOffManual] = useState(false);
+  const [tcsRate, setTcsRate] = useState<number | "">("");
   const [destination, setDestination] = useState("");
   const [transporter, setTransporter] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -682,6 +684,7 @@ export function PendingInvoicing() {
 
     const company = companies.find(c => c.id === companyGroup.companyId);
     setGstSupplyType((company?.gstSupplyType as any) || "INTRA_STATE");
+    setTcsRate(companyTcsRate(company));
   };
 
   const closeInvoiceModal = () => {
@@ -692,6 +695,7 @@ export function PendingInvoicing() {
     setOtherChargesGstRate("");
     setRoundOff("");
     setIsRoundOffManual(false);
+    setTcsRate("");
     if (editInvoiceId) {
       setSearchParams({});
       navigate("/billing/master");
@@ -813,7 +817,10 @@ export function PendingInvoicing() {
 
     const totalAfterGst = roundMoney(totalBeforeGst + totalCgst + totalSgst + totalIgst);
     const nonTaxableOtherCharges = taxableOtherCharges ? 0 : otherChargesValue;
-    const baseTotal = roundMoney(totalAfterGst + nonTaxableOtherCharges);
+    // TCS u/s 206C: rate % of the taxable value (as Tally); added to the total only.
+    const tcsRateValue = normalizeTcsRate(tcsRate);
+    const tcsAmount = computeTcsAmount(totalBeforeGst, tcsRateValue);
+    const baseTotal = roundMoney(totalAfterGst + nonTaxableOtherCharges + tcsAmount);
     const roundedGrandTotal = roundWhole(baseTotal);
     const autoRoundOffValue = roundMoney(roundedGrandTotal - baseTotal);
     const roundOffValue = isRoundOffManual ? roundMoney(Number(roundOff || 0)) : autoRoundOffValue;
@@ -831,11 +838,13 @@ export function PendingInvoicing() {
       otherChargesSgst,
       otherChargesIgst,
       nonTaxableOtherCharges,
+      tcsRate: tcsRateValue > 0 ? tcsRateValue : null,
+      tcsAmount,
       autoRoundOff: autoRoundOffValue,
       roundOff: roundOffValue, 
       grandTotal
     };
-  }, [invoiceRows, gstSupplyType, orders, otherCharges, otherChargesGstRate, roundOff, isRoundOffManual]);
+  }, [invoiceRows, gstSupplyType, orders, otherCharges, otherChargesGstRate, roundOff, isRoundOffManual, tcsRate]);
 
   const shouldShowTransporter = useMemo(() => {
     if (!invoiceModal) return false;
@@ -888,6 +897,7 @@ export function PendingInvoicing() {
     setOtherChargesGstRate(invoice.otherChargesGstRate === null || invoice.otherChargesGstRate === undefined || Number(invoice.otherChargesGstRate || 0) <= 0 ? "" : Number(invoice.otherChargesGstRate));
     setRoundOff(Number(invoice.roundOff || 0));
     setIsRoundOffManual(true);
+    setTcsRate(normalizeTcsRate(invoice.tcsRate) || "");
     setDestination(invoice.destination || "");
     setTransporter(invoice.transporter || "");
     setGstSupplyType((companies.find((row) => row.id === invoice.companyId)?.gstSupplyType as any) || "INTRA_STATE");
@@ -992,6 +1002,8 @@ export function PendingInvoicing() {
         otherChargesSgst: calculations.otherChargesSgst,
         otherChargesIgst: calculations.otherChargesIgst,
         roundOff: calculations.roundOff,
+        tcsRate: calculations.tcsRate,
+        tcsAmount: calculations.tcsAmount,
         tallyTimestamp: existingInvoice?.tallyTimestamp,
         tallyBy: existingInvoice?.tallyBy,
         tallyInvNo: existingInvoice?.tallyInvNo,
@@ -1610,6 +1622,25 @@ export function PendingInvoicing() {
                     <tr className="divide-x divide-black text-slate-500">
                       <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase">Total After GST</td>
                       <td className="px-3 py-2 text-right text-[11px]">{format2(calculations.totalAfterGst)}</td>
+                      <td></td>
+                    </tr>
+                    <tr className="divide-x divide-black">
+                      <td colSpan={8} className="px-3 py-2 text-right text-[10px] uppercase text-slate-500">TCS u/s 206C (% of taxable)</td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={tcsRate}
+                            onChange={(e) => setTcsRate(e.target.value === "" ? "" : parseFloat(e.target.value))}
+                            placeholder="%"
+                            title="TCS rate %; blank means no TCS"
+                            className="w-16 px-2 py-1 border border-black rounded text-right text-[11px] font-bold"
+                          />
+                          <span className="w-24 text-right text-[11px] font-bold">{format2(calculations.tcsAmount)}</span>
+                        </div>
+                      </td>
                       <td></td>
                     </tr>
                     <tr className="divide-x divide-black">

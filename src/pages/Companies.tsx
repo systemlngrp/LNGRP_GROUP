@@ -34,6 +34,8 @@ export function Companies() {
   const [stateField, setStateField] = useState("");
   const [gstNo, setGstNo] = useState("");
   const [gstSupplyType, setGstSupplyType] = useState<"" | "INTRA_STATE" | "INTER_STATE">("INTRA_STATE");
+  const [tcsApplicable, setTcsApplicable] = useState<"Yes" | "No">("No");
+  const [tcsRate, setTcsRate] = useState<number | "">("");
   const [deviationAllowed, setDeviationAllowed] = useState<number | "">("");
   const [toleranceAllowed, setToleranceAllowed] = useState<number | "">("");
   const [pin, setPin] = useState("");
@@ -61,6 +63,8 @@ export function Companies() {
     setStateField("");
     setGstNo("");
     setGstSupplyType("INTRA_STATE");
+    setTcsApplicable("No");
+    setTcsRate("");
     setDeviationAllowed("");
     setToleranceAllowed("");
     setPin("");
@@ -260,6 +264,8 @@ export function Companies() {
         state: stateField.trim() || undefined,
         gstNo: gstNo.trim() || undefined,
         gstSupplyType: gstSupplyType || undefined,
+        tcsApplicable,
+        tcsRate: tcsApplicable === "Yes" && Number(tcsRate) > 0 ? Number(tcsRate) : null,
         deviationAllowed: deviationAllowed === "" ? undefined : Number(deviationAllowed),
         toleranceAllowed: toleranceAllowed === "" ? undefined : Number(toleranceAllowed),
         pin: pin.trim() || undefined,
@@ -323,6 +329,8 @@ export function Companies() {
     setStateField(company.state || "");
     setGstNo(company.gstNo || "");
     setGstSupplyType((company.gstSupplyType as any) || "INTRA_STATE");
+    setTcsApplicable(String(company.tcsApplicable || "").toLowerCase() === "yes" ? "Yes" : "No");
+    setTcsRate(Number(company.tcsRate) > 0 ? Number(company.tcsRate) : "");
     setDeviationAllowed(company.deviationAllowed ?? "");
     setToleranceAllowed(company.toleranceAllowed ?? "");
     setPin(company.pin || "");
@@ -481,6 +489,31 @@ export function Companies() {
             </div>
 
             <div className="flex flex-col space-y-1">
+              <label className="font-bold text-black">TCS (u/s 206C) on Sales</label>
+              <select
+                value={tcsApplicable}
+                onChange={(e) => setTcsApplicable(e.target.value === "Yes" ? "Yes" : "No")}
+                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors"
+              >
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col space-y-1">
+              <label className="font-bold text-black">TCS Rate % (of taxable value)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={tcsRate}
+                disabled={tcsApplicable !== "Yes"}
+                onChange={(e) => setTcsRate(e.target.value === "" ? "" : Number(e.target.value))}
+                className="border-2 border-black rounded p-2 text-black disabled:bg-slate-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors"
+              />
+            </div>
+
+            <div className="flex flex-col space-y-1">
               <label className="font-bold text-black">PIN</label>
               <input value={pin} onChange={(e) => setPin(e.target.value)} className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 transition-colors" />
             </div>
@@ -621,7 +654,7 @@ export function Companies() {
                   <div className="text-xs text-slate-700">{c.contactPerson} {c.contactNumber ? `| ${c.contactNumber}` : ""}</div>
                   <div className="text-xs text-slate-700">{c.email}</div>
                   <div className="text-xs text-slate-700">{c.district} {c.state ? `| ${c.state}` : ""} {c.pin ? `| ${c.pin}` : ""}</div>
-                  <div className="text-xs text-slate-700">GST Supply Type: {c.gstSupplyType || "INTRA_STATE"} {c.gstType ? `| Type: ${c.gstType}` : ""}</div>
+                  <div className="text-xs text-slate-700">GST Supply Type: {c.gstSupplyType || "INTRA_STATE"} {c.gstType ? `| Type: ${c.gstType}` : ""}{String(c.tcsApplicable || "").toLowerCase() === "yes" ? ` | TCS ${Number(c.tcsRate || 0)}%` : ""}</div>
                   <div className="text-xs text-slate-700">PAN: {c.panNo || "-"} | Sales Person: {c.salesPerson || "-"}</div>
                   <div className="text-xs text-slate-700">Terms: {c.paymentTerms || "-"} | Priority: {c.priority || "-"}</div>
                   <div className="text-xs text-slate-700">Opening: {c.openingBalance ?? "-"} | Overdues: {c.overdues ?? "-"} | Target: {c.target ?? "-"}</div>

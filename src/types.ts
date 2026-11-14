@@ -683,6 +683,9 @@ export interface Company {
   state?: string;
   gstNo?: string;
   gstSupplyType?: "INTRA_STATE" | "INTER_STATE";
+  /** "Yes" when TCS u/s 206C is collected on sales to this company. */
+  tcsApplicable?: "Yes" | "No" | string;
+  tcsRate?: number | null;
   deviationAllowed?: number;
   toleranceAllowed?: number;
   pin?: string;
@@ -1698,6 +1701,9 @@ export interface Invoice {
   otherChargesSgst?: number;
   otherChargesIgst?: number;
   roundOff: number;
+  /** TCS u/s 206C: rate % of the taxable value; not part of the sale value. */
+  tcsRate?: number | null;
+  tcsAmount?: number;
   tallyTimestamp?: string;
   tallyBy?: string;
   tallySyncRemark?: string;

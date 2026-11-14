@@ -136,7 +136,7 @@ export function InvoicesMaster() {
   const getGstTotal = (invoice: Invoice) =>
     Number(invoice.cgst || 0) + Number(invoice.sgst || 0) + Number(invoice.igst || 0);
   const getGrandTotal = (invoice: Invoice) =>
-    Number(invoice.totalAfterGst || 0) + (hasTaxableOtherCharges(invoice) ? 0 : getOtherCharges(invoice)) + getRoundOff(invoice);
+    Number(invoice.totalAfterGst || 0) + (hasTaxableOtherCharges(invoice) ? 0 : getOtherCharges(invoice)) + Number(invoice.tcsAmount || 0) + getRoundOff(invoice);
 
   // Lookups built once per data change (first record per id; per-invoice
   // lists keep their original order), so each invoice does not scan every list.
@@ -951,6 +951,16 @@ export function InvoicesMaster() {
                         <td colSpan={5} className="px-4 py-2 text-right text-[10px] uppercase text-slate-500">Other Charges GST</td>
                         <td className="px-4 py-2 text-right text-[10px] text-slate-500">
                           {getOtherChargesGstTotal(selectedInvoice).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    )}
+                    {Number(selectedInvoice.tcsAmount || 0) !== 0 && (
+                      <tr className="divide-x divide-black">
+                        <td colSpan={5} className="px-4 py-2 text-right text-[10px] uppercase text-slate-500">
+                          TCS u/s 206C{Number(selectedInvoice.tcsRate || 0) > 0 ? ` @ ${Number(selectedInvoice.tcsRate)}%` : ""}
+                        </td>
+                        <td className="px-4 py-2 text-right text-[10px] text-slate-500">
+                          {Number(selectedInvoice.tcsAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                         </td>
                       </tr>
                     )}
