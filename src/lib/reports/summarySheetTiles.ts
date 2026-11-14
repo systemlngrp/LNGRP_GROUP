@@ -58,6 +58,11 @@ export function computeSummarySheetSections(
   const boardlineWastage = sum(rangeRows, (row) => n(row["Boardline Wastage"]));
   const boardlineWastagePercent = paperUsed > 0 ? (boardlineWastage / paperUsed) * 100 : 0;
   const rangeSale = sum(rows.filter((row) => inRange(isoDateText(row["Dispatch Date"]))), (row) => n(row["Sale Value"]));
+  // Delivery Book basis: first 3 loading slips per job (pre-app loadings included), month by first invoice date.
+  const rangeSale3 = sum(
+    rows.filter((row) => inRange(isoDateText(row["Invoice Date 1 incl. Pre-App"] ?? row["Dispatch Date"]))),
+    (row) => n(row["Sale Value incl. Pre-App (3 slips)"] ?? row["Sale Value (3 slips)"]),
+  );
   // Days in the range up to today (sales per day so far).
   const rangeEnd = range.to < today ? range.to : today;
   const days = range.from && rangeEnd >= range.from ? Math.round((Date.parse(rangeEnd) - Date.parse(range.from)) / 86_400_000) + 1 : 0;
@@ -108,6 +113,7 @@ export function computeSummarySheetSections(
         { id: "todaySale", label: "Today's Sale", value: saleOn(today), format: "money", tone: "bg-[#741b47] text-white" },
         { id: "yesterdaySale", label: "Yesterday's Sale", value: saleOn(yesterday), format: "money", tone: "bg-[#7f6000] text-white" },
         { id: "rangeSale", label: "Total Sale - Rs", value: rangeSale, format: "money", tone: "bg-[#00ff00] text-slate-950" },
+        { id: "rangeSale3", label: "Total Sale (3 slips) - Rs", value: rangeSale3, format: "money", tone: "bg-[#b6d7a8] text-slate-950" },
         { id: "achievedPerDay", label: "Achieved Sales / Day", value: days > 0 ? rangeSale / days : 0, format: "money", tone: "bg-[#ff00ff] text-slate-950" },
         blank("targetPerDay", "Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
         blank("revisedTargetPerDay", "Revised Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
