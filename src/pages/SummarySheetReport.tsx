@@ -113,6 +113,34 @@ export function SummarySheetReport() {
   const [search, setSearch] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  // From/To dates are shared and kept on the server, so they stay after a refresh.
+  const datesLoaded = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem("authToken") || "";
+    fetch("/api/summary-sheet-dates", { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((saved) => {
+        if (cancelled) return;
+        if (saved) { setFrom(String(saved.from || "")); setTo(String(saved.to || "")); }
+        datesLoaded.current = true;
+      })
+      .catch(() => { if (!cancelled) datesLoaded.current = true; });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!datesLoaded.current) return;
+    if ((from && from.length !== 10) || (to && to.length !== 10)) return;
+    const timer = window.setTimeout(() => {
+      const token = localStorage.getItem("authToken") || "";
+      fetch("/api/summary-sheet-dates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ from, to: from && to && from > to ? "" : to }),
+      }).catch(() => { /* kept on screen; saved next change */ });
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [from, to]);
   const [firmFilter, setFirmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [closedFilter, setClosedFilter] = useState("");

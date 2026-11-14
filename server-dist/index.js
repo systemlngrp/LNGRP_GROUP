@@ -9603,6 +9603,7 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "pdiReportVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "qcViewVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "productionMasterVisibleColumns", type: "LONGTEXT" },
+                { table: "settings", column: "summarySheetDateRange", type: "LONGTEXT" },
                 { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
                 { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
                 { table: "settings", column: "mandatoryMachinesByType", type: "LONGTEXT" },
@@ -18477,6 +18478,66 @@ app.put("/api/qc-report-columns/:report", async (req, res) => {
     catch (error) {
         console.error("[QC_COLUMNS] Save failed:", error);
         return res.status(500).json({ error: "Unable to save QC columns." });
+    }
+});
+// Summary Sheet From/To dates, shared by every user (kept after refresh).
+const SUMMARY_SHEET_DATE = /^\d{4}-\d{2}-\d{2}$/;
+app.get("/api/summary-sheet-dates", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (!hasPermission(user, "/reports/summary-sheet"))
+        return res.status(403).json({ error: "Forbidden" });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const [rows] = await db.query("SELECT summarySheetDateRange FROM `settings` LIMIT 1");
+        let saved = {};
+        try {
+            saved = JSON.parse(String(rows[0]?.summarySheetDateRange || "{}")) || {};
+        }
+        catch {
+            saved = {};
+        }
+        const from = SUMMARY_SHEET_DATE.test(String(saved.from || "")) ? String(saved.from) : "";
+        const to = SUMMARY_SHEET_DATE.test(String(saved.to || "")) ? String(saved.to) : "";
+        return res.json({ from, to, updatedBy: String(saved.updatedBy || ""), updatedAt: String(saved.updatedAt || "") });
+    }
+    catch (error) {
+        console.error("[SUMMARY_SHEET_DATES] Read failed:", error);
+        return res.status(500).json({ error: "Unable to read summary sheet dates." });
+    }
+});
+app.put("/api/summary-sheet-dates", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (!hasPermission(user, "/reports/summary-sheet"))
+        return res.status(403).json({ error: "Forbidden" });
+    const from = String(req.body?.from ?? "");
+    const to = String(req.body?.to ?? "");
+    if ((from && !SUMMARY_SHEET_DATE.test(from)) || (to && !SUMMARY_SHEET_DATE.test(to)) || (from && to && from > to)) {
+        return res.status(400).json({ error: "Invalid dates." });
+    }
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+        const id = String(rows[0]?.id || "");
+        const value = JSON.stringify({ from, to, updatedBy: String(user.name || user.username || user.id || ""), updatedAt: new Date().toISOString() });
+        if (id) {
+            await db.query("UPDATE `settings` SET `summarySheetDateRange` = ? WHERE id = ?", [value, id]);
+        }
+        else {
+            await db.query("INSERT INTO `settings` (`id`, `summarySheetDateRange`) VALUES (?, ?)", [crypto.randomUUID(), value]);
+        }
+        return res.json({ from, to });
+    }
+    catch (error) {
+        console.error("[SUMMARY_SHEET_DATES] Save failed:", error);
+        return res.status(500).json({ error: "Unable to save summary sheet dates." });
     }
 });
 app.post("/api/table-column-widths", async (req, res) => {
