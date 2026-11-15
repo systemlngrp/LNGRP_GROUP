@@ -1418,6 +1418,8 @@ app.use("/api", (req, res, next) => {
     req.path.startsWith("/npd-firm-wise") ||
     req.path.startsWith("/npd-sync") ||
     req.path === "/sales-order-sync" ||
+    // Sales Analysis Apps Script push; checked against the sync secret in the handler.
+    (req.method === "POST" && req.path === "/sales-targets") ||
     req.path.startsWith("/tally-sync")
   ) return next();
   return requireAuth(req, res, next);
