@@ -466,6 +466,7 @@ export const NAVIGATION: NavGroup[] = [
       { name: "Trucks", href: "/masters/trucks", icon: Truck },
       { name: "Machine Master", href: "/masters/machines", icon: Hammer },
       { name: "RAPC Range Master", href: "/masters/rapc-ranges", icon: Database },
+      { name: "Realization Rate Chart", href: "/masters/realization-rate-chart", icon: Database },
       { name: "Users", href: "/masters/users", icon: Users },
       { name: "Services", href: "/masters/services", icon: Database },
       { name: "WhatsApp Master", href: "/masters/whatsapp", icon: Database },

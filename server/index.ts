@@ -26,6 +26,7 @@ import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { migrationJobNoError, migrationNeedsCounterRaise, parseMigrationJobNo } from "./migrationJobNo.js";
 import { parseSalesTargetPayload } from "./salesTargets.js";
+import { decideOrderApproval } from "./orderApproval.js";
 import { migrationSlipCounterValue, migrationSlipNoError, parseMigrationSlipNo } from "./migrationSlipNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms, type ServerSort, type SqlSortColumn } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
@@ -13187,14 +13188,6 @@ const createHandlers = (tableName: string) => {
         // New Order Numbers are assigned by the firm-document generator below.
         if (tableName === 'orders') {
           try {
-            const requestedStatus = String(data.status || "Pending PH").trim();
-            if (!["Cancelled", "Canceled"].includes(requestedStatus)) {
-              // Salesman approval is automatic. Orders enter scheduling directly
-              // and retain an audit timestamp/user for traceability.
-              data.status = "Pending Scheduling";
-              data.approvedTimestamp = String(data.approvedTimestamp || new Date().toISOString());
-              data.approvedEmail = String(data.approvedEmail || data.updatedBy || data.orderBy || "System").trim() || "System";
-            }
             const orderQty = Number(data.qty || 0);
             const orderRate = Number(data.rate || 0);
             data.orderAmount =
@@ -13202,21 +13195,24 @@ const createHandlers = (tableName: string) => {
                 ? Number((orderQty * orderRate).toFixed(2))
                 : 0;
 
-            // Auto-approve order (skip Pending Salesman Approval) when:
+            // Approval (see server/orderApproval.ts). A new or unapproved order is
+            // approved automatically only when ALL of these hold; otherwise it
+            // waits in Pending Salesman Approval:
             // 1) Order Rate == Last Billing Rate 1 (latest invoice rate for same item)
             // 2) Punch Date (orderDate) falls into a Realization Rate Chart range
             // 3) Last RAPC 1 (latest productions.realizationPerKg for same item) >= Realization Rate (from chart)
-            // If auto-approved: fill approvedTimestamp + approvedEmail
-            const currentStatus = String(data.status || "Pending Scheduling").trim();
-            const alreadyApproved = hasWorkflowValue(data.approvedTimestamp) || hasWorkflowValue(data.approvedEmail);
-            if (!alreadyApproved && (currentStatus === "Pending PH" || !currentStatus)) {
-              const itemSource = normalizeOrderItemSourceValue(data.itemSource);
-              const itemId = itemSource === "FG" ? resolveLinkedNpdId(data) : "";
-              const punchDate = String(data.orderDate || "").trim() || new Date().toISOString().slice(0, 10);
-
-              if (itemId && Number.isFinite(orderRate) && punchDate) {
+            const orderRecordId = String(data.id || "").trim();
+            const [storedOrderRows] = orderRecordId
+              ? await db.query("SELECT status, approvedTimestamp, approvedEmail FROM `orders` WHERE id = ? LIMIT 1", [orderRecordId])
+              : [[]];
+            const passesAutoApprovalRule = async () => {
+              try {
+                const itemSource = normalizeOrderItemSourceValue(data.itemSource);
+                const itemId = itemSource === "FG" ? resolveLinkedNpdId(data) : "";
+                const punchDate = String(data.orderDate || "").trim() || new Date().toISOString().slice(0, 10);
+                if (!itemId || !Number.isFinite(orderRate) || !punchDate) return false;
                 const [billingRows] = await db.query(
-                   `SELECT ili.rate
+                  `SELECT ili.rate
                      FROM \`invoice_line_items\` ili
                      JOIN \`invoices\` inv ON inv.id = ili.invoiceId
                      WHERE COALESCE(NULLIF(ili.npdId, ''), ili.itemId) = ?
@@ -13225,47 +13221,36 @@ const createHandlers = (tableName: string) => {
                   [itemId]
                 );
                 const lastBillingRate1 = Number((billingRows as any[])?.[0]?.rate);
-
-                const ratesMatch =
-                  Number.isFinite(lastBillingRate1) && Math.abs(orderRate - lastBillingRate1) < 0.0001;
-
-                if (ratesMatch) {
-                  const [chartRows] = await db.query(
-                    `SELECT realizationRate
+                if (!Number.isFinite(lastBillingRate1) || Math.abs(orderRate - lastBillingRate1) >= 0.0001) return false;
+                const [chartRows] = await db.query(
+                  `SELECT realizationRate
                      FROM \`realization_rate_chart\`
                      WHERE STR_TO_DATE(?, '%Y-%m-%d') BETWEEN STR_TO_DATE(dateFrom, '%Y-%m-%d') AND STR_TO_DATE(dateTo, '%Y-%m-%d')
                      ORDER BY STR_TO_DATE(dateFrom, '%Y-%m-%d') DESC
                      LIMIT 1`,
-                    [punchDate]
-                  );
-                  const realizationRate = Number((chartRows as any[])?.[0]?.realizationRate);
-
-                  if (Number.isFinite(realizationRate)) {
-                    const [rapcRows] = await db.query(
-                      `SELECT realizationPerKg
-                       FROM \`productions\`
-                       WHERE COALESCE(NULLIF(npdId, ''), itemId) = ? AND realizationPerKg IS NOT NULL
-                       ORDER BY date DESC
-                       LIMIT 1`,
-                      [itemId]
-                    );
-                    const lastRapc1 = Number((rapcRows as any[])?.[0]?.realizationPerKg);
-
-                    if (Number.isFinite(lastRapc1) && lastRapc1 >= realizationRate) {
-                      data.status = "Pending Scheduling";
-                      data.approvedTimestamp = new Date().toISOString();
-                      data.approvedEmail = String(data.updatedBy || data.orderBy || "System").trim() || "System";
-                    } else {
-                      data.status = data.status || "Pending PH";
-                    }
-                  } else {
-                    data.status = data.status || "Pending PH";
-                  }
-                } else {
-                  data.status = data.status || "Pending PH";
-                }
+                  [punchDate]
+                );
+                const realizationRate = Number((chartRows as any[])?.[0]?.realizationRate);
+                if (!Number.isFinite(realizationRate)) return false;
+                const [rapcRows] = await db.query(
+                  `SELECT realizationPerKg
+                     FROM \`productions\`
+                     WHERE COALESCE(NULLIF(npdId, ''), itemId) = ? AND realizationPerKg IS NOT NULL
+                     ORDER BY date DESC
+                     LIMIT 1`,
+                  [itemId]
+                );
+                const lastRapc1 = Number((rapcRows as any[])?.[0]?.realizationPerKg);
+                return Number.isFinite(lastRapc1) && lastRapc1 >= realizationRate;
+              } catch (ruleError) {
+                console.warn("[ORDER_APPROVAL] Auto-approval rule could not be checked; order left for approval:", (ruleError as Error).message);
+                return false;
               }
-            }
+            };
+            const approval = await decideOrderApproval(data, (storedOrderRows as any[])[0] || null, passesAutoApprovalRule);
+            data.status = approval.status;
+            data.approvedTimestamp = approval.approvedTimestamp;
+            data.approvedEmail = approval.approvedEmail;
           } catch (err) {
             console.warn('[DB] Could not auto-generate orderNo:', (err as Error).message);
           }
@@ -19356,6 +19341,13 @@ entities.forEach(entity => {
       }
 
       const required = entityPermissionKey(entity);
+      if (entity === "realization_rate_chart") {
+        // Realization Rate Chart master; read also by Pending Salesman Approval (order approval rule).
+        const canWrite = hasPermission(user, "/masters/realization-rate-chart") || hasPermission(user, "/reports");
+        const canRead = canWrite || hasPermission(user, "/orders/pending-ph");
+        if (req.method === "GET" ? !canRead : !canWrite) return res.status(403).json({ error: "Forbidden" });
+        return next();
+      }
       if (entity === "fixed_monthly_expenses" || entity === "fixed_daily_expenses") {
         // Fixed Expenses menu (new) or the Report section that used to hold these pages.
         if (!hasPermission(user, "/fixed-expenses") && !hasPermission(user, "/reports")) return res.status(403).json({ error: "Forbidden" });

@@ -70,6 +70,7 @@ const ExpenseMasters = lazy(() => import("./pages/ExpenseMasters").then((module)
 const Companies = lazy(() => import("./pages/Companies").then((module) => ({ default: module.Companies })));
 const Trucks = lazy(() => import("./pages/Trucks").then((module) => ({ default: module.Trucks })));
 const Machines = lazy(() => import("./pages/Machines").then((module) => ({ default: module.Machines })));
+const RealizationRateChartMaster = lazy(() => import("./pages/RealizationRateChartMaster").then((module) => ({ default: module.RealizationRateChartMaster })));
 const RapcRangeMaster = lazy(() => import("./pages/RapcRangeMaster").then((module) => ({ default: module.RapcRangeMaster })));
 const NpdMaster = lazy(() => import("./pages/NpdMaster").then((module) => ({ default: module.NpdMaster })));
 const NewSpec = lazy(() => import("./pages/NewSpec").then((module) => ({ default: module.NewSpec })));
@@ -283,6 +284,7 @@ export default function App() {
           <Route path="masters/trucks" element={<Trucks />} />
           <Route path="masters/machines" element={<Machines />} />
           <Route path="masters/rapc-ranges" element={<RapcRangeMaster />} />
+          <Route path="masters/realization-rate-chart" element={<RealizationRateChartMaster />} />
           <Route path="masters/spec" element={<NewSpec />} />
           <Route path="masters/npd" element={<NpdMaster />} />
           <Route path="masters/php-item-master" element={<PhpItemMaster />} />

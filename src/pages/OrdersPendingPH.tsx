@@ -15,6 +15,8 @@ import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { TableActionCell } from "../components/TableActionCell";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { useAuth } from "../auth/AuthContext";
+import { autoApprovalReasons, chartRateForDate, type RealizationChartRow } from "../lib/orderApprovalRule";
 
 export function OrdersPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,6 +34,10 @@ export function OrdersPendingPH() {
   const [invoices] = useData<Invoice>("invoices", [], { firmScope: "all" });
   const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
+  // Realization Rate Chart (readable with Pending Salesman Approval access).
+  const [realizationChart] = useData<RealizationChartRow & { id: string }>("realization_rate_chart", []);
+  const { user: currentUser } = useAuth();
+  const actor = String(currentUser?.email || currentUser?.name || currentUser?.userId || "").trim() || "System User";
   const { resolveOrderItem } = useOrderItemCatalog();
   const navigate = useNavigate();
 
@@ -122,6 +128,11 @@ export function OrdersPendingPH() {
           commercialHistory: commercialHistoryByItem.get(String(order.npdId || order.itemId || "").trim()) || {},
         };
       })
+      .map((row) => {
+        const chartRate = chartRateForDate(realizationChart, String(row.order.orderDate || ""));
+        const reasons = autoApprovalReasons({ rate: Number(row.order.rate), billing1: row.commercialHistory.billing1, chartRate, rapc1: row.commercialHistory.rapc1 });
+        return { ...row, chartRate, reason: reasons.join("; ") };
+      })
       .filter(({ order, item, companyName, firmName, orderByLabel, commercialHistory }) => {
         if (firmFilter && String(order.firmId || "") !== firmFilter) return false;
         if (orderByFilter && String(order.orderBy || "") !== orderByFilter) return false;
@@ -139,6 +150,7 @@ export function OrdersPendingPH() {
           item?.erp,
           orderByLabel,
           order.qty,
+          order.rate,
           commercialHistory.billing1,
           commercialHistory.billing2,
           commercialHistory.rapc1,
@@ -151,7 +163,7 @@ export function OrdersPendingPH() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return -cmp;
       });
-  }, [commercialHistoryByItem, companies, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, orderByFilter, pending, resolveOrderItem, searchTerm]);
+  }, [realizationChart, commercialHistoryByItem, companies, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, orderByFilter, pending, resolveOrderItem, searchTerm]);
 
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filtered, (row, key) => {
     switch (key) {
@@ -163,6 +175,9 @@ export function OrdersPendingPH() {
       case "erp": return row.item?.erp;
       case "orderBy": return row.orderByLabel;
       case "qty": return Number(row.order.qty);
+      case "rate": return Number(row.order.rate);
+      case "chartRate": return row.chartRate;
+      case "reason": return row.reason;
       case "billing1": return row.commercialHistory.billing1;
       case "billing2": return row.commercialHistory.billing2;
       case "rapc1": return row.commercialHistory.rapc1;
@@ -221,8 +236,8 @@ export function OrdersPendingPH() {
               ...o,
               status: "Pending Scheduling",
               approvedTimestamp: o.approvedTimestamp || now,
-              approvedEmail: o.approvedEmail || "System User",
-              updatedBy: "System User",
+              approvedEmail: o.approvedEmail || actor,
+              updatedBy: actor,
               updateTimestamp: now,
             }
           : o
@@ -244,8 +259,8 @@ export function OrdersPendingPH() {
           ? {
               ...o,
               status: 'Cancelled',
-              remarks: [o.remarks?.trim(), `Cancel Remarks: ${cancelRemarks.trim()}`].filter(Boolean).join(" | "),
-              updatedBy: 'System User',
+              remarks: [o.remarks?.trim(), `Cancel Remarks: ${cancelRemarks.trim()}`, `Rejected by ${actor}`].filter(Boolean).join(" | "),
+              updatedBy: actor,
               updateTimestamp: timestamp,
             }
           : o
@@ -305,17 +320,20 @@ export function OrdersPendingPH() {
               <th className="px-4 py-2 border border-black"><SortHeader label="Item ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black"><SortHeader label="Order By" sortKey="orderBy" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black"><SortHeader label="Qty" sortKey="qty" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Rate" sortKey="rate" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Billing 1" sortKey="billing1" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Billing 2" sortKey="billing2" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Realization 1" sortKey="rapc1" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Realization 2" sortKey="rapc2" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black whitespace-nowrap"><SortHeader label="Chart Rate" sortKey="chartRate" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <th className="px-4 py-2 border border-black"><SortHeader label="Reason" sortKey="reason" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="px-4 py-2 border border-black">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={13} className="h-16" aria-label="No records" /></tr>
-            ) : paginatedRows.map(({ order: o, item, companyName, firmName, orderByLabel, commercialHistory }) => (
+              <tr><td colSpan={16} className="h-16" aria-label="No records" /></tr>
+            ) : paginatedRows.map(({ order: o, item, companyName, firmName, orderByLabel, commercialHistory, chartRate, reason }) => (
               <tr key={o.id} className="hover:bg-slate-50">
                 <td className="px-4 py-2 border border-black">{o.orderNo}</td>
                 <td className="px-4 py-2 border border-black">{formatDate(o.orderDate)}</td>
@@ -325,10 +343,13 @@ export function OrdersPendingPH() {
                 <td className="px-4 py-2 border border-black">{item?.erp || "-"}</td>
                 <td className="px-4 py-2 border border-black whitespace-nowrap">{orderByLabel || '-'}</td>
                 <td className="px-4 py-2 border border-black">{o.qty}</td>
+                <td className={`px-4 py-2 border border-black text-right font-semibold ${commercialHistory.billing1 !== undefined && Math.abs(Number(o.rate) - commercialHistory.billing1) >= 0.0001 ? "bg-amber-100" : ""}`}>{Number.isFinite(Number(o.rate)) ? Number(o.rate).toFixed(2) : "-"}</td>
                 <td className="px-4 py-2 border border-black text-right">{commercialHistory.billing1 === undefined ? "-" : commercialHistory.billing1.toFixed(2)}</td>
                 <td className="px-4 py-2 border border-black text-right">{commercialHistory.billing2 === undefined ? "-" : commercialHistory.billing2.toFixed(2)}</td>
                 <td className="px-4 py-2 border border-black text-right">{commercialHistory.rapc1 === undefined ? "-" : commercialHistory.rapc1.toFixed(2)}</td>
                 <td className="px-4 py-2 border border-black text-right">{commercialHistory.rapc2 === undefined ? "-" : commercialHistory.rapc2.toFixed(2)}</td>
+                <td className="px-4 py-2 border border-black text-right">{chartRate === undefined ? "-" : chartRate.toFixed(2)}</td>
+                <td className="px-4 py-2 border border-black text-xs text-red-700 min-w-[180px]">{reason || "-"}</td>
                 <td className="px-4 py-2 border border-black">
                   <TableActionCell align="center">
                     <button
