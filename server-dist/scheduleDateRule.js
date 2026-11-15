@@ -1,5 +1,6 @@
 // Date rule for orders → schedules → jobs:
-//   Order Date <= Order Scheduling Date <= Job (production plan) date.
+//   Order Date <= Order Scheduling Date <= main (box) Job date.
+// Plate / PHP part-jobs (linked to a plate/PHP job) are made ahead and are not checked.
 // Dates are stored as YYYY-MM-DD text; anything else is ignored (no check).
 const ymd = (value) => {
     const text = String(value ?? "").trim();

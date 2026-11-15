@@ -12816,7 +12816,8 @@ const createHandlers = (tableName) => {
                         return res.status(400).json({ error: message });
                     }
                 }
-                // Date rule: Order Date <= Scheduled Date <= Job date (server/scheduleDateRule.ts).
+                // Date rule: Order Date <= Scheduled Date <= main (box) Job date (server/scheduleDateRule.ts).
+                // Plate / PHP part-jobs are exempt.
                 // Checked only when a save changes the dates or links, so older records
                 // can still be updated for other fields.
                 if (tableName === "orders_schedule" && ("scheduledDate" in data || "orderId" in data)) {
@@ -12828,7 +12829,9 @@ const createHandlers = (tableName) => {
                     const orderId = String(data.orderId ?? stored.orderId ?? "").trim();
                     const [orderRows] = orderId ? await db.query("SELECT `orderDate` FROM `orders` WHERE id = ? LIMIT 1", [orderId]) : [[]];
                     const [jobRows] = scheduleId
-                        ? await db.query("SELECT MIN(`date`) AS earliest FROM `productions` WHERE scheduleId = ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(`date`, '') <> ''", [scheduleId])
+                        ? await db.query(
+                        // Main (box) jobs only: plate / PHP part-jobs are made ahead for the box job.
+                        "SELECT MIN(`date`) AS earliest FROM `productions` WHERE scheduleId = ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(`date`, '') <> '' AND COALESCE(TRIM(phpScheduledJobId), '') = '' AND COALESCE(TRIM(plateScheduledJobId), '') = ''", [scheduleId])
                         : [[]];
                     const dateError = scheduleDateRuleError({
                         orderDate: orderRows[0]?.orderDate,
@@ -12841,11 +12844,13 @@ const createHandlers = (tableName) => {
                 if (tableName === "productions" && ("date" in data || "scheduleId" in data) && String(data.status || "").trim() !== "Cancelled") {
                     const jobId = String(data.id || "").trim();
                     const [storedRows] = jobId
-                        ? await db.query("SELECT `date`, `scheduleId` FROM `productions` WHERE id = ? LIMIT 1", [jobId])
+                        ? await db.query("SELECT `date`, `scheduleId`, `phpScheduledJobId`, `plateScheduledJobId` FROM `productions` WHERE id = ? LIMIT 1", [jobId])
                         : [[]];
                     const stored = storedRows[0] || {};
                     const scheduleId = String(data.scheduleId ?? stored.scheduleId ?? "").trim();
-                    if (scheduleId) {
+                    // Plate / PHP part-jobs may be planned ahead of the order's Scheduled Date.
+                    const isPartJob = Boolean(String(data.phpScheduledJobId ?? stored.phpScheduledJobId ?? "").trim() || String(data.plateScheduledJobId ?? stored.plateScheduledJobId ?? "").trim());
+                    if (scheduleId && !isPartJob) {
                         const [scheduleRows] = await db.query("SELECT `scheduledDate` FROM `orders_schedule` WHERE id = ? LIMIT 1", [scheduleId]);
                         const dateError = jobDateRuleError({ jobDate: data.date ?? stored.date, scheduledDate: scheduleRows[0]?.scheduledDate });
                         if (dateError)
