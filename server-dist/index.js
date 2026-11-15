@@ -12818,14 +12818,19 @@ const createHandlers = (tableName) => {
                 }
                 // Date rule: Order Date <= Scheduled Date <= main (box) Job date (server/scheduleDateRule.ts).
                 // Plate / PHP part-jobs are exempt.
-                // Checked only when a save changes the dates or links, so older records
-                // can still be updated for other fields.
-                if (tableName === "orders_schedule" && ("scheduledDate" in data || "orderId" in data)) {
-                    const scheduleId = String(data.id || "").trim();
-                    const [storedRows] = scheduleId
-                        ? await db.query("SELECT `orderId`, `scheduledDate` FROM `orders_schedule` WHERE id = ? LIMIT 1", [scheduleId])
-                        : [[]];
-                    const stored = storedRows[0] || {};
+                // Checked only for a new schedule or when a save changes its date or order,
+                // so a full-row save that only changes other fields (e.g. canceledQty) is not blocked.
+                const scheduleIdForRule = tableName === "orders_schedule" ? String(data.id || "").trim() : "";
+                const [scheduleStoredRows] = tableName === "orders_schedule" && scheduleIdForRule && ("scheduledDate" in data || "orderId" in data)
+                    ? await db.query("SELECT `orderId`, `scheduledDate` FROM `orders_schedule` WHERE id = ? LIMIT 1", [scheduleIdForRule])
+                    : [[]];
+                const scheduleStored = scheduleStoredRows[0];
+                const scheduleDateChanged = !scheduleStored
+                    || ("scheduledDate" in data && String(data.scheduledDate ?? "").slice(0, 10) !== String(scheduleStored.scheduledDate ?? "").slice(0, 10))
+                    || ("orderId" in data && String(data.orderId ?? "").trim() !== String(scheduleStored.orderId ?? "").trim());
+                if (tableName === "orders_schedule" && ("scheduledDate" in data || "orderId" in data) && scheduleDateChanged) {
+                    const scheduleId = scheduleIdForRule;
+                    const stored = scheduleStored || {};
                     const orderId = String(data.orderId ?? stored.orderId ?? "").trim();
                     const [orderRows] = orderId ? await db.query("SELECT `orderDate` FROM `orders` WHERE id = ? LIMIT 1", [orderId]) : [[]];
                     const [jobRows] = scheduleId
