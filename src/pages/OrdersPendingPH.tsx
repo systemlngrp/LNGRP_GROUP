@@ -16,7 +16,8 @@ import { TableActionCell } from "../components/TableActionCell";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { useAuth } from "../auth/AuthContext";
-import { autoApprovalReasons, chartRateForDate, type RealizationChartRow } from "../lib/orderApprovalRule";
+import { autoApprovalReasons } from "../lib/orderApprovalRule";
+import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 
 export function OrdersPendingPH() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,8 +35,9 @@ export function OrdersPendingPH() {
   const [invoices] = useData<Invoice>("invoices", [], { firmScope: "all" });
   const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all" });
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
-  // Realization Rate Chart (readable with Pending Salesman Approval access).
-  const [realizationChart] = useData<RealizationChartRow & { id: string }>("realization_rate_chart", []);
+  // Benchmark realization rate per period: Settings > Realization Setup (same source as Production Plan / Realization Report).
+  const [settings] = useData<{ id: string; realizationPerKgTargets?: string | null }>("settings", []);
+  const realizationTargets = useMemo(() => parseRealizationTargets(settings[0]?.realizationPerKgTargets), [settings]);
   const { user: currentUser } = useAuth();
   const actor = String(currentUser?.email || currentUser?.name || currentUser?.userId || "").trim() || "System User";
   const { resolveOrderItem } = useOrderItemCatalog();
@@ -129,7 +131,7 @@ export function OrdersPendingPH() {
         };
       })
       .map((row) => {
-        const chartRate = chartRateForDate(realizationChart, String(row.order.orderDate || ""));
+        const chartRate = findRealizationTargetForDate(realizationTargets, String(row.order.orderDate || ""))?.value;
         const reasons = autoApprovalReasons({ rate: Number(row.order.rate), billing1: row.commercialHistory.billing1, chartRate, rapc1: row.commercialHistory.rapc1 });
         return { ...row, chartRate, reason: reasons.join("; ") };
       })
@@ -163,7 +165,7 @@ export function OrdersPendingPH() {
         const cmp = aNo.localeCompare(bNo, undefined, { numeric: true, sensitivity: "base" });
         return -cmp;
       });
-  }, [realizationChart, commercialHistoryByItem, companies, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, orderByFilter, pending, resolveOrderItem, searchTerm]);
+  }, [realizationTargets, commercialHistoryByItem, companies, companyFilter, dateFrom, dateTo, firmFilter, firms, itemFilter, orderByFilter, pending, resolveOrderItem, searchTerm]);
 
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(filtered, (row, key) => {
     switch (key) {

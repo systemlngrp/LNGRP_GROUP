@@ -56,3 +56,18 @@ test("cancelled stays cancelled", async () => {
   assert.equal(d.status, "Cancelled");
   assert.equal(d.approvedTimestamp, "x1");
 });
+
+import { realizationTargetForDate } from "./orderApproval";
+test("realization target comes from Settings > Realization Setup periods", () => {
+  const raw = JSON.stringify([
+    { dateFrom: "2026-04-01", dateTo: "2026-08-31", value: 44 },
+    { dateFrom: "2026-09-01", dateTo: "2027-03-31", value: 48 },
+    { dateFrom: "2026-11-10", dateTo: "2026-11-20", value: 50 },
+  ]);
+  assert.equal(realizationTargetForDate(raw, "2026-06-15"), 44);
+  assert.equal(realizationTargetForDate(raw, "2026-10-01"), 48);
+  assert.equal(realizationTargetForDate(raw, "2026-11-15"), 50);
+  assert.equal(realizationTargetForDate(raw, "2027-04-01"), undefined);
+  assert.equal(realizationTargetForDate("", "2026-06-15"), undefined);
+  assert.equal(realizationTargetForDate("not json", "2026-06-15"), undefined);
+});

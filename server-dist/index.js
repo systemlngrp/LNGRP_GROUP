@@ -26,7 +26,7 @@ import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { migrationJobNoError, migrationNeedsCounterRaise, parseMigrationJobNo } from "./migrationJobNo.js";
 import { parseSalesTargetPayload } from "./salesTargets.js";
-import { decideOrderApproval } from "./orderApproval.js";
+import { decideOrderApproval, realizationTargetForDate } from "./orderApproval.js";
 import { migrationSlipCounterValue, migrationSlipNoError, parseMigrationSlipNo } from "./migrationSlipNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
@@ -12549,8 +12549,8 @@ const createHandlers = (tableName) => {
                         // approved automatically only when ALL of these hold; otherwise it
                         // waits in Pending Salesman Approval:
                         // 1) Order Rate == Last Billing Rate 1 (latest invoice rate for same item)
-                        // 2) Punch Date (orderDate) falls into a Realization Rate Chart range
-                        // 3) Last RAPC 1 (latest productions.realizationPerKg for same item) >= Realization Rate (from chart)
+                        // 2) Punch Date (orderDate) falls into a Settings > Realization Setup period
+                        // 3) Last RAPC 1 (latest productions.realizationPerKg for same item) >= that period's benchmark rate
                         const orderRecordId = String(data.id || "").trim();
                         const [storedOrderRows] = orderRecordId
                             ? await db.query("SELECT status, approvedTimestamp, approvedEmail FROM `orders` WHERE id = ? LIMIT 1", [orderRecordId])
@@ -12571,12 +12571,8 @@ const createHandlers = (tableName) => {
                                 const lastBillingRate1 = Number(billingRows?.[0]?.rate);
                                 if (!Number.isFinite(lastBillingRate1) || Math.abs(orderRate - lastBillingRate1) >= 0.0001)
                                     return false;
-                                const [chartRows] = await db.query(`SELECT realizationRate
-                     FROM \`realization_rate_chart\`
-                     WHERE STR_TO_DATE(?, '%Y-%m-%d') BETWEEN STR_TO_DATE(dateFrom, '%Y-%m-%d') AND STR_TO_DATE(dateTo, '%Y-%m-%d')
-                     ORDER BY STR_TO_DATE(dateFrom, '%Y-%m-%d') DESC
-                     LIMIT 1`, [punchDate]);
-                                const realizationRate = Number(chartRows?.[0]?.realizationRate);
+                                const [settingsRows] = await db.query("SELECT realizationPerKgTargets FROM `settings` LIMIT 1");
+                                const realizationRate = Number(realizationTargetForDate(settingsRows?.[0]?.realizationPerKgTargets, punchDate));
                                 if (!Number.isFinite(realizationRate))
                                     return false;
                                 const [rapcRows] = await db.query(`SELECT realizationPerKg
@@ -18435,14 +18431,6 @@ entities.forEach(entity => {
                 }
             }
             const required = entityPermissionKey(entity);
-            if (entity === "realization_rate_chart") {
-                // Realization Rate Chart master; read also by Pending Salesman Approval (order approval rule).
-                const canWrite = hasPermission(user, "/masters/realization-rate-chart") || hasPermission(user, "/reports");
-                const canRead = canWrite || hasPermission(user, "/orders/pending-ph");
-                if (req.method === "GET" ? !canRead : !canWrite)
-                    return res.status(403).json({ error: "Forbidden" });
-                return next();
-            }
             if (entity === "fixed_monthly_expenses" || entity === "fixed_daily_expenses") {
                 // Fixed Expenses menu (new) or the Report section that used to hold these pages.
                 if (!hasPermission(user, "/fixed-expenses") && !hasPermission(user, "/reports"))
