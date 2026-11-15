@@ -8,6 +8,8 @@ export const NPD_SYNC_SECRET = String(process.env.NPD_SYNC_SECRET || "").trim();
 // IMPORT_KEY is the shared secret name used by the manual order importer.
 // Keep ORDER_SYNC_SECRET as a backwards-compatible override.
 export const ORDER_SYNC_SECRET = String(process.env.ORDER_SYNC_SECRET || process.env.IMPORT_KEY || "").trim();
+// Sales targets pushed hourly by the Sales Analysis Apps Script (defaults to the NPD sync secret).
+export const SALES_TARGET_SYNC_SECRET = String(process.env.SALES_TARGET_SYNC_SECRET || NPD_SYNC_SECRET).trim();
 export const NPD_SYNC_ALLOWED_TAB = String(process.env.NPD_SYNC_ALLOWED_TAB || "NPD").trim();
 export const NPD_SYNC_LOG_PREFIX = "[NPD_SYNC]";
 export const TALLY_SYNC_SECRET = String(process.env.TALLY_SYNC_SECRET || "!Office1@").trim();

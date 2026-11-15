@@ -16,6 +16,19 @@ export type SummaryTile = {
   format: "qty" | "money" | "percent" | "count" | "rate";
   /** Tailwind classes for the tile (colours taken from the Google Summary Sheet). */
   tone: string;
+  /** Hover text (e.g. where the figure comes from). */
+  note?: string;
+};
+
+/** Figures pushed by the Sales Analysis sheet (POST /api/sales-targets). */
+export type SalesTargetFigures = {
+  targetPerDay: number;
+  revisedTargetPerDay: number;
+  achievedPerDay: number;
+  shortSales: number;
+  reportDate?: string;
+  receivedAt?: string;
+  source?: string;
 };
 
 export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[] };
@@ -38,6 +51,8 @@ export function computeSummarySheetSections(
   /** Jobs created but FFG not filled yet: planned qty and job count. */
   wip: { qty: number; jobs: number } | null = null,
   now = new Date(),
+  /** Sales Analysis figures; when present they fill Target / Revised / Achieved / Short. */
+  salesTargets: SalesTargetFigures | null = null,
 ): SummaryTileSection[] {
   const today = localDayKey(0, now);
   const yesterday = localDayKey(-1, now);
@@ -75,6 +90,9 @@ export function computeSummarySheetSections(
   const invoiceRecords = ready ? filterExtraRecords(extras.invoices, filters, datesChosen ? range : undefined) : [];
   const interFirmInvoiceRecords = ready ? filterExtraRecords(extras.interFirmInvoices, filters, datesChosen ? range : undefined) : [];
   const extraValue = (value: number) => (ready ? value : null);
+  const salesNote = salesTargets
+    ? `From ${salesTargets.source || "Sales Analysis"}${salesTargets.reportDate ? `, report date ${salesTargets.reportDate}` : ""}${salesTargets.receivedAt ? `, updated ${new Date(salesTargets.receivedAt).toLocaleString("en-IN")}` : ""}`
+    : "";
 
   return [
     {
@@ -114,10 +132,18 @@ export function computeSummarySheetSections(
         { id: "yesterdaySale", label: "Yesterday's Sale", value: saleOn(yesterday), format: "money", tone: "bg-[#7f6000] text-white" },
         { id: "rangeSale", label: "Total Sale - Rs", value: rangeSale, format: "money", tone: "bg-[#00ff00] text-slate-950" },
         { id: "rangeSale3", label: "Total Sale (3 slips) - Rs", value: rangeSale3, format: "money", tone: "bg-[#b6d7a8] text-slate-950" },
-        { id: "achievedPerDay", label: "Achieved Sales / Day", value: days > 0 ? rangeSale / days : 0, format: "money", tone: "bg-[#ff00ff] text-slate-950" },
-        blank("targetPerDay", "Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
-        blank("revisedTargetPerDay", "Revised Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
-        blank("shortSales", "Short Sales Till Date", "bg-[#ff0000] text-white", "money"),
+        salesTargets
+          ? { id: "achievedPerDay", label: "Achieved Sales / Day", value: salesTargets.achievedPerDay, format: "money", tone: "bg-[#ff00ff] text-slate-950", note: salesNote }
+          : { id: "achievedPerDay", label: "Achieved Sales / Day", value: days > 0 ? rangeSale / days : 0, format: "money", tone: "bg-[#ff00ff] text-slate-950" },
+        salesTargets
+          ? { id: "targetPerDay", label: "Target Sales / Day", value: salesTargets.targetPerDay, format: "money", tone: "bg-[#ff00ff] text-slate-950", note: salesNote }
+          : blank("targetPerDay", "Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
+        salesTargets
+          ? { id: "revisedTargetPerDay", label: "Revised Target Sales / Day", value: salesTargets.revisedTargetPerDay, format: "money", tone: "bg-[#ff00ff] text-slate-950", note: salesNote }
+          : blank("revisedTargetPerDay", "Revised Target Sales / Day", "bg-[#ff00ff] text-slate-950", "money"),
+        salesTargets
+          ? { id: "shortSales", label: "Short Sales Till Date", value: salesTargets.shortSales, format: "money", tone: "bg-[#ff0000] text-white", note: salesNote }
+          : blank("shortSales", "Short Sales Till Date", "bg-[#ff0000] text-white", "money"),
         // Sheet: (Total Sale + FG closing − FG opening − WIP opening − Rejection) ÷ paper issued.
         // Openings and rejection are not recorded in the app, so: Total Sale ÷ paper used.
         { id: "spPerKg", label: "SP / KG", value: paperUsed > 0 ? rangeSale / paperUsed : 0, format: "rate", tone: "bg-[#0c343d] text-white" },

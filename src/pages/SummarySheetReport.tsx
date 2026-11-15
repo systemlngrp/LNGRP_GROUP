@@ -7,7 +7,7 @@ import { useNpdItems } from "../hooks/useNpdItems";
 import { computeSummarySheetRows, isoDateText, n, s } from "../lib/reports/summarySheet";
 import type { PreAppDispatch, SummaryRow } from "../lib/reports/summarySheet";
 import { useServerReport } from "../hooks/useServerReport";
-import { computeSummarySheetSections, monthStartKey, localDayKey, summarySheetCellClass } from "../lib/reports/summarySheetTiles";
+import { computeSummarySheetSections, type SalesTargetFigures, monthStartKey, localDayKey, summarySheetCellClass } from "../lib/reports/summarySheetTiles";
 import type { SummarySheetExtras, SummaryTile, SummaryTileSection } from "../lib/reports/summarySheetTiles";
 import { jobNumberCellClass, realizationCellClass } from "../lib/jobCellColors";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
@@ -141,6 +141,20 @@ export function SummarySheetReport() {
     }, 600);
     return () => window.clearTimeout(timer);
   }, [from, to]);
+  // Target / Revised / Achieved / Short sales per day, pushed hourly from the Sales Analysis sheet.
+  const [salesTargets, setSalesTargets] = useState<SalesTargetFigures | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem("authToken") || "";
+    fetch("/api/sales-targets", { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((saved) => {
+        if (cancelled || !saved || typeof saved.targetPerDay !== "number") return;
+        setSalesTargets(saved as SalesTargetFigures);
+      })
+      .catch(() => { /* tiles stay blank */ });
+    return () => { cancelled = true; };
+  }, []);
   const [firmFilter, setFirmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [closedFilter, setClosedFilter] = useState("");
@@ -269,8 +283,8 @@ export function SummarySheetReport() {
       return production && !s((production as any).ffgTimestamp);
     });
     const wip = productions.length ? { qty: wipJobs.reduce((sum, row) => sum + n(row["Planned Qty"]), 0), jobs: wipJobs.length } : null;
-    return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null, filters, Boolean(from || to), wip);
-  }, [baseRows, closedFilter, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
+    return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null, filters, Boolean(from || to), wip, new Date(), salesTargets);
+  }, [salesTargets, baseRows, closedFilter, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
@@ -330,7 +344,7 @@ function SummaryTileGroup({ section }: { section: SummaryTileSection }) {
           <div
             key={tile.id}
             className={`flex min-h-[54px] flex-col justify-between border-b border-r border-black/40 px-2 py-1.5 ${tile.tone}`}
-            title={tile.value === null ? `${tile.label}: not recorded in the app yet` : tile.label}
+            title={tile.value === null ? `${tile.label}: not recorded in the app yet` : tile.note ? `${tile.label}: ${tile.note}` : tile.label}
           >
             <div className="line-clamp-2 text-[9.5px] font-black uppercase leading-[1.15] tracking-wide">{tile.label}</div>
             <div className={`mt-1 truncate text-[15px] font-black leading-none ${tile.value === null ? "opacity-40" : ""}`}>{tile.value === null ? "—" : formatTileValue(tile)}</div>

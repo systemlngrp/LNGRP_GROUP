@@ -22,3 +22,17 @@ test("Total Sale (3 slips) uses the pre-app first invoice month", () => {
   assert.equal(tile(rows, "rangeSale"), 100);
   assert.equal(tile(rows, "rangeSale3"), 0);
 });
+
+test("Sales Analysis figures fill Target / Revised / Achieved / Short", () => {
+  const figures = { targetPerDay: 2123920, revisedTargetPerDay: 1768526.72, achievedPerDay: 1768526.72, shortSales: -4975505.94, reportDate: "2026-11-14" };
+  const tiles = computeSummarySheetSections([], [], { from: "2026-11-01", to: "2026-11-30" }, null, undefined, false, null, new Date(), figures)
+    .flatMap((section) => section.tiles);
+  const value = (id: string) => tiles.find((t) => t.id === id)?.value;
+  assert.equal(value("targetPerDay"), 2123920);
+  assert.equal(value("revisedTargetPerDay"), 1768526.72);
+  assert.equal(value("achievedPerDay"), 1768526.72);
+  assert.equal(value("shortSales"), -4975505.94);
+  // Without figures the target tiles stay blank.
+  const blank = computeSummarySheetSections([], [], { from: "2026-11-01", to: "2026-11-30" }, null).flatMap((section) => section.tiles);
+  assert.equal(blank.find((t) => t.id === "targetPerDay")?.value, null);
+});

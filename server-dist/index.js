@@ -25,10 +25,11 @@ import { writeMrrWhatsappPdfs } from "./mrrWhatsappPdf.js";
 import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { migrationJobNoError, migrationNeedsCounterRaise, parseMigrationJobNo } from "./migrationJobNo.js";
+import { parseSalesTargetPayload } from "./salesTargets.js";
 import { migrationSlipCounterValue, migrationSlipNoError, parseMigrationSlipNo } from "./migrationSlipNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
-import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, TALLY_SYNC_SECRET, } from "./config.js";
+import { APP_BUILD_MARKER, AUTH_SECRET, AUTH_TTL_SECONDS, DEFAULT_GEMINI_MODEL, GEMINI_API_KEY, GLOBAL_ITEM_RENAME_ALLOWED_EMAIL, NPD_SYNC_ALLOWED_TAB, NPD_SYNC_LOG_PREFIX, NPD_SYNC_SECRET, PORT, SALES_TARGET_SYNC_SECRET, TALLY_SYNC_SECRET, } from "./config.js";
 const execPromise = util.promisify(exec);
 let tallySyncRunner = execPromise;
 export function setTestTallySyncRunner(testRunner) {
@@ -9609,6 +9610,7 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "qcViewVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "productionMasterVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "summarySheetDateRange", type: "LONGTEXT" },
+                { table: "settings", column: "salesTargetSnapshot", type: "LONGTEXT" },
                 { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
                 { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
                 { table: "settings", column: "mandatoryMachinesByType", type: "LONGTEXT" },
@@ -18576,6 +18578,62 @@ app.put("/api/summary-sheet-dates", async (req, res) => {
     catch (error) {
         console.error("[SUMMARY_SHEET_DATES] Save failed:", error);
         return res.status(500).json({ error: "Unable to save summary sheet dates." });
+    }
+});
+// Sales targets (Target / Revised / Achieved per day, Short till date), pushed hourly
+// by the Sales Analysis Apps Script. Any future sales app can post to the same endpoint.
+app.post("/api/sales-targets", async (req, res) => {
+    const provided = String(req.headers["x-sync-secret"] || req.headers["x-npd-sync-secret"] || req.body?.secret || "").trim();
+    if (!SALES_TARGET_SYNC_SECRET)
+        return res.status(503).json({ error: "Sales target sync is not configured." });
+    if (!provided || provided !== SALES_TARGET_SYNC_SECRET)
+        return res.status(401).json({ error: "Invalid sync secret." });
+    const parsed = parseSalesTargetPayload(req.body || {});
+    if ("error" in parsed)
+        return res.status(400).json({ error: parsed.error });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const snapshot = { ...parsed, receivedAt: new Date().toISOString() };
+        const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+        const id = String(rows[0]?.id || "");
+        if (id) {
+            await db.query("UPDATE `settings` SET `salesTargetSnapshot` = ? WHERE id = ?", [JSON.stringify(snapshot), id]);
+        }
+        else {
+            await db.query("INSERT INTO `settings` (`id`, `salesTargetSnapshot`) VALUES (?, ?)", [crypto.randomUUID(), JSON.stringify(snapshot)]);
+        }
+        return res.json({ ok: true, ...snapshot });
+    }
+    catch (error) {
+        console.error("[SALES_TARGETS] Save failed:", error);
+        return res.status(500).json({ error: "Unable to save sales targets." });
+    }
+});
+app.get("/api/sales-targets", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (!hasPermission(user, "/reports/summary-sheet"))
+        return res.status(403).json({ error: "Forbidden" });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(500).json({ error: "DB connection not available" });
+        const [rows] = await db.query("SELECT salesTargetSnapshot FROM `settings` LIMIT 1");
+        let saved = null;
+        try {
+            saved = JSON.parse(String(rows[0]?.salesTargetSnapshot || "null"));
+        }
+        catch {
+            saved = null;
+        }
+        return res.json(saved || {});
+    }
+    catch (error) {
+        console.error("[SALES_TARGETS] Read failed:", error);
+        return res.status(500).json({ error: "Unable to read sales targets." });
     }
 });
 app.post("/api/table-column-widths", async (req, res) => {
