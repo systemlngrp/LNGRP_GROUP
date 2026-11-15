@@ -19396,8 +19396,12 @@ app.put("/api/qc-report-columns/:report", async (req, res) => {
     const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
     const id = String((rows as any[])[0]?.id || "");
     const normalizedColumns = [...columns].sort((a: number, b: number) => a - b);
-    const value = Number(req.body?.schemaVersion) === 2
-      ? JSON.stringify({ schemaVersion: 2, columns: normalizedColumns })
+    // Store the layout with the schema version the screen sent (Production
+    // Master uses 1, QC View / PDI Report use 2); the screen ignores an
+    // untagged list when it expects a version, which showed every column.
+    const schemaVersion = Number(req.body?.schemaVersion);
+    const value = Number.isInteger(schemaVersion) && schemaVersion > 0
+      ? JSON.stringify({ schemaVersion, columns: normalizedColumns })
       : JSON.stringify(normalizedColumns);
     if (id) {
       await db.query("UPDATE `settings` SET `" + rule.setting + "` = ? WHERE id = ?", [value, id]);

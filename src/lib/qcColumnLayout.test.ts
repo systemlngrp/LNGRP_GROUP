@@ -27,3 +27,8 @@ test("save selection rejects empty, duplicate, and out-of-range columns", () => 
   assert.equal(validQcColumnSelection([0, 0], 3), false);
   assert.equal(validQcColumnSelection([3], 3), false);
 });
+
+test("Production Master layout (schema 1) is read back when saved with its version", () => {
+  const saved = JSON.stringify({ schemaVersion: 1, columns: [0, 1, 61] });
+  assert.deepEqual(parseQcColumnSelection(saved, QC_REPORT_COLUMN_COUNTS["production-master"], 1), [0, 1, 61]);
+});
