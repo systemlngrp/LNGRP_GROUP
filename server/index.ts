@@ -27,6 +27,7 @@ import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { migrationJobNoError, migrationNeedsCounterRaise, parseMigrationJobNo } from "./migrationJobNo.js";
 import { parseSalesTargetPayload } from "./salesTargets.js";
 import { decideOrderApproval, realizationTargetForDate } from "./orderApproval.js";
+import { jobDateRuleError, scheduleDateRuleError } from "./scheduleDateRule.js";
 import { migrationSlipCounterValue, migrationSlipNoError, parseMigrationSlipNo } from "./migrationSlipNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms, type ServerSort, type SqlSortColumn } from "./tableSort.js";
 import { GoogleGenAI } from "@google/genai";
@@ -13478,6 +13479,44 @@ const createHandlers = (tableName: string) => {
           }
         }
 
+        // Date rule: Order Date <= Scheduled Date <= Job date (server/scheduleDateRule.ts).
+        // Checked only when a save changes the dates or links, so older records
+        // can still be updated for other fields.
+        if (tableName === "orders_schedule" && ("scheduledDate" in data || "orderId" in data)) {
+          const scheduleId = String(data.id || "").trim();
+          const [storedRows] = scheduleId
+            ? await db.query("SELECT `orderId`, `scheduledDate` FROM `orders_schedule` WHERE id = ? LIMIT 1", [scheduleId])
+            : [[]];
+          const stored = (storedRows as any[])[0] || {};
+          const orderId = String(data.orderId ?? stored.orderId ?? "").trim();
+          const [orderRows] = orderId ? await db.query("SELECT `orderDate` FROM `orders` WHERE id = ? LIMIT 1", [orderId]) : [[]];
+          const [jobRows] = scheduleId
+            ? await db.query(
+                "SELECT MIN(`date`) AS earliest FROM `productions` WHERE scheduleId = ? AND COALESCE(status, '') <> 'Cancelled' AND COALESCE(`date`, '') <> ''",
+                [scheduleId]
+              )
+            : [[]];
+          const dateError = scheduleDateRuleError({
+            orderDate: (orderRows as any[])[0]?.orderDate,
+            scheduledDate: data.scheduledDate ?? stored.scheduledDate,
+            earliestJobDate: (jobRows as any[])[0]?.earliest,
+          });
+          if (dateError) return res.status(400).json({ error: dateError });
+        }
+        if (tableName === "productions" && ("date" in data || "scheduleId" in data) && String(data.status || "").trim() !== "Cancelled") {
+          const jobId = String(data.id || "").trim();
+          const [storedRows] = jobId
+            ? await db.query("SELECT `date`, `scheduleId` FROM `productions` WHERE id = ? LIMIT 1", [jobId])
+            : [[]];
+          const stored = (storedRows as any[])[0] || {};
+          const scheduleId = String(data.scheduleId ?? stored.scheduleId ?? "").trim();
+          if (scheduleId) {
+            const [scheduleRows] = await db.query("SELECT `scheduledDate` FROM `orders_schedule` WHERE id = ? LIMIT 1", [scheduleId]);
+            const dateError = jobDateRuleError({ jobDate: data.date ?? stored.date, scheduledDate: (scheduleRows as any[])[0]?.scheduledDate });
+            if (dateError) return res.status(400).json({ error: dateError });
+          }
+        }
+
         if (tableName === "orders_schedule" && !String(data.scheduleNo || "").trim()) {
           try {
             const scheduleId = String(data.id || "").trim();
@@ -18647,6 +18686,8 @@ app.post("/api/orders/bulk-upload", requireAuth, async (req, res) => {
       seen.add(key);
       const qty = Number(row.qty), rate = Number(row.rate);
       if (!row.orderDate || !row.scheduledDate) throw new Error(`Row ${rowNo}: Order Date and Scheduled Date are required.`);
+      const scheduleDateError = scheduleDateRuleError({ orderDate: row.orderDate, scheduledDate: row.scheduledDate });
+      if (scheduleDateError) throw new Error(`Row ${rowNo}: ${scheduleDateError}`);
       if (!Number.isFinite(qty) || qty <= 0) throw new Error(`Row ${rowNo}: Qty must be greater than 0.`);
       if (!Number.isFinite(rate) || rate < 0) throw new Error(`Row ${rowNo}: Rate must be valid.`);
       if (!String(row.companyId || "").trim() || !String(row.itemId || "").trim()) throw new Error(`Row ${rowNo}: Company and item are required.`);
