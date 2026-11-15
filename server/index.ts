@@ -13505,7 +13505,8 @@ const createHandlers = (tableName: string) => {
           });
           if (dateError) return res.status(400).json({ error: dateError });
         }
-        if (tableName === "productions" && ("date" in data || "scheduleId" in data) && String(data.status || "").trim() !== "Cancelled") {
+        // Jobs brought in from the Daily Production Master (migrationKeepJobNo) keep the sheet's dates as they are.
+        if (tableName === "productions" && ("date" in data || "scheduleId" in data) && String(data.status || "").trim() !== "Cancelled" && data.migrationKeepJobNo !== true) {
           const jobId = String(data.id || "").trim();
           const [storedRows] = jobId
             ? await db.query("SELECT `date`, `scheduleId`, `phpScheduledJobId`, `plateScheduledJobId` FROM `productions` WHERE id = ? LIMIT 1", [jobId])
@@ -13688,8 +13689,8 @@ const createHandlers = (tableName: string) => {
             );
             if (error || !parsed) return res.status(400).json({ error: error || "Invalid migration job number." });
             if (migrationNeedsCounterRaise(parsed, counterLastValue, currentFy)) {
-              // Closed financial year only: move its counter past the migrated
-              // number so it can never be issued again.
+              // Move the year's counter past the migrated number so it can never
+              // be issued again and the next normal job continues after it.
               await db.query(
                 `INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)
                  ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`,

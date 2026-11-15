@@ -10,11 +10,13 @@ test("parses plain old job numbers", () => {
   assert.equal(parseMigrationJobNo(""), null);
 });
 
-test("current year: only numbers the counter has already passed", () => {
+test("current year: old numbers keep the counter; newer numbers raise it", () => {
   const old = parseMigrationJobNo("JOB/26-27/7949")!;
   assert.equal(migrationJobNoError(old, [], 10956, "26-27"), null);
   assert.equal(migrationNeedsCounterRaise(old, 10956, "26-27"), false);
-  assert.match(String(migrationJobNoError(parseMigrationJobNo("JOB/26-27/11000"), [], 10956, "26-27")), /above the job counter/);
+  const newer = parseMigrationJobNo("JOB/26-27/11000")!;
+  assert.equal(migrationJobNoError(newer, [], 10956, "26-27"), null);
+  assert.equal(migrationNeedsCounterRaise(newer, 10956, "26-27"), true);
   assert.match(String(migrationJobNoError(old, ["abc"], 10956, "26-27")), /already exists/);
   assert.match(String(migrationJobNoError(null, [], 10956, "26-27")), /must look like/);
 });
