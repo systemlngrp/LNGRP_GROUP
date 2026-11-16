@@ -85,8 +85,11 @@ export function IndentForm() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((material) => ({
       value: material.id,
-      // Name only (the ERP shows in its own column); typing an ERP still finds it.
-      label: stripErpPrefix(material.name, material.erpCode),
+      // Reel: ERP + size/GSM/BF, since many reels share a similar name.
+      // Other types: name only (the ERP shows in its own column); typing an ERP still finds it.
+      label: indentType === "Reel" && material.erpCode
+        ? `${material.erpCode} - ${stripErpPrefix(material.name, material.erpCode)}`
+        : stripErpPrefix(material.name, material.erpCode),
       searchText: `${material.erpCode || ""} ${material.name}`,
     }));
 
