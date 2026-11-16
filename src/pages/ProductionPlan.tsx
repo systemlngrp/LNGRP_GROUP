@@ -209,12 +209,14 @@ export function ProductionPlan() {
       ...(fill ? { fill: { patternType: "solid", fgColor: { rgb: fill } } } : {}),
     });
     const total = rows.reduce((sum, row) => sum + Number(row.Value || 0), 0);
+    const paperWeightCol = headers.indexOf("TOTAL Paper WEIGHT");
+    const totalPaperWeight = rows.reduce((sum, row) => sum + Number(row["TOTAL Paper WEIGHT"] || 0), 0);
     const aoa: (string | number)[][] = [
       ["Production Plan"],
       [`Date: ${formatDate(selectedDate)}`],
       headers,
       ...rows.map((row) => headers.map((header) => row[header] ?? "")),
-      headers.map((_, index) => (index === 0 ? "TOTAL" : index === valueCol ? Math.round(total * 100) / 100 : "")),
+      headers.map((_, index) => (index === 0 ? "TOTAL" : index === valueCol ? Math.round(total * 100) / 100 : index === paperWeightCol ? Math.round(totalPaperWeight * 100) / 100 : "")),
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } }];
@@ -257,6 +259,7 @@ export function ProductionPlan() {
       return text.match(/(\d+)\s*$/)?.[1] || text || "-";
     };
     let totalValue = 0;
+    let totalPaperWeight = 0;
     const body = statusRows.map((p) => {
       const schedule = schedules.find((row) => row.id === p.scheduleId);
       const order = orders.find((row) => row.id === schedule?.orderId);
@@ -264,6 +267,7 @@ export function ProductionPlan() {
       const item = npdItems.find((row) => row.id === String(p.itemId || "").trim());
       const value = (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
       totalValue += value;
+      totalPaperWeight += Number(p.totalPaperWeight || 0) || 0;
       return [
         jobNumber(p), company.name || "", item?.name || "", p.erpCode || "", pdfNumber(p.ups), pdfNumber(p.qty),
         pdfNumber(p.reelAsPerCalc), pdfNumber(p.reelActualWithTrimming), pdfNumber(p.cuttingWithTrimming), pdfNumber(p.ply), p.flute || "",
@@ -277,7 +281,8 @@ export function ProductionPlan() {
       "CUTTING\nwith\nTRIMMING", "PLY", "FLUTE", "L1", "F1", "L2", "F2", "L3", "GSM", "TOTAL\nPaper\nWEIGHT", "Planned\nProduction\nin Meter",
       "REALIZATION\nPER KG", "SHEET\nWEIGHT", "Rate", "Value", "Sample", "Remark",
     ]];
-    const foot = [["TOTAL", ...Array(21).fill(""), totalValue.toFixed(2), "", ""]];
+    // TOTAL row: Total Paper Weight (column 18) and Value.
+    const foot = [["TOTAL", ...Array(16).fill(""), totalPaperWeight.toFixed(2), ...Array(4).fill(""), totalValue.toFixed(2), "", ""]];
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
