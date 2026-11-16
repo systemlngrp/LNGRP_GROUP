@@ -274,7 +274,7 @@ export function ProductionPlan() {
     const head = [[
       "Job\nNo", "Company Name", "Item Name", "ERP\nCODE", "UPS", "Plan\nQTY", "Reel As\nPer\nCalculation", "REEL\nActual\nwith\nTRIMMING",
       "CUTTING\nwith\nTRIMMING", "PLY", "FLUTE", "L1", "F1", "L2", "F2", "L3", "GSM", "TOTAL\nPaper\nWEIGHT", "Planned\nProduction\nin Meter",
-      "REALIZATION\nPER KG", "SHEET\nWEIGHT", "Rate", "Value", "", "Remark",
+      "REALIZATION\nPER KG", "SHEET\nWEIGHT", "Rate", "Value", "Sample", "Remark",
     ]];
     const foot = [["TOTAL", ...Array(21).fill(""), totalValue.toFixed(2), "", ""]];
 
@@ -303,7 +303,7 @@ export function ProductionPlan() {
         3: { cellWidth: 11 },
         19: { cellWidth: 16 },
         22: { cellWidth: 13 },
-        23: { cellWidth: 6 },
+        23: { cellWidth: 9 },
         24: { cellWidth: 26 },
       },
       didParseCell: (data) => {

@@ -20,4 +20,12 @@ describe("production plan statuses", () => {
     expect(result[0].isSample).toBe(true);
     expect(result[0].shouldHighlight).toBe(false);
   });
+
+  it("works with app job numbers like JOB/26-27/11036", () => {
+    const result = deriveProductionPlanStatuses([
+      row("JOB/26-27/11035", "CBB RCT", 57), row("JOB/26-27/11036", "cbb rct", 43), row("JOB/26-27/11044", "CFC", 99),
+    ], buildSampleJobNumbers([{ jobCardNo: "11044" } as any]), 50);
+    expect(result.map((item) => item.isSample)).toEqual([false, true, true]);
+    expect(result.map((item) => item.shouldHighlight)).toEqual([false, false, false]);
+  });
 });
