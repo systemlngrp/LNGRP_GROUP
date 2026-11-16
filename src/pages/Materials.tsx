@@ -102,13 +102,21 @@ function getReelDisplayName(erpCode: string | number, size: number, gsm: number,
   return `${erpCode} - Size: ${size} CM X GSM: ${gsm} X BF: ${bf}   Color - ${color}`;
 }
 
-function getNextNumericErpCode(materials: Material[], startNumber: unknown = 1) {
-  return String(getNextPlainNumber(materials.map((material) => material.erpCode), startNumber));
+// New Reel ERP = highest 7-digit Reel ERP + 1 (e.g. 7220552 -> 7220553).
+// Reel ERPs are 7 digits; an odd longer code (11105814, a reel number entered
+// as ERP) and the start number in Settings are ignored.
+function getNextNumericErpCode(materials: Material[], _startNumber: unknown = 1) {
+  const highest = materials.reduce((max, material) => {
+    if (material.type !== "Reel") return max;
+    const erpCode = String(material.erpCode ?? "").trim();
+    return /^\d{7}$/.test(erpCode) ? Math.max(max, Number(erpCode)) : max;
+  }, 0);
+  return highest > 0 ? String(highest + 1) : String(getNextPlainNumber([], _startNumber));
 }
 
 function getNextOtherErpCode(materials: Material[], startNumber: unknown = 1) {
   const start = Math.max(1, Number(startNumber) || 1);
-  const highest = materials.reduce((max, material) => {
+  const highest = materials.filter((material) => material.type !== "Reel").reduce((max, material) => {
     const erpCode = String(material.erpCode || "").trim();
     return /^\d{8}$/.test(erpCode) ? Math.max(max, Number(erpCode)) : max;
   }, 0);
