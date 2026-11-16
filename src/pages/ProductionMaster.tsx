@@ -621,7 +621,7 @@ export function ProductionMaster() {
   const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (p, key) => {
     const value = getTableColumnValues(p)[Number(key)];
     return Array.isArray(value) ? value[0] : value;
-  }, [scheduleById, orderById, companyById, firmMap, itemsBySource, processingTotalsMap, corrugationWastageTotalsMap, printingWastageTotalsMap, loadedQtyByProductionId, erpLeastGsmMap, jobClosureStatusMap]);
+  }, [scheduleById, orderById, companyById, firmMap, itemsBySource, processingTotalsMap, corrugationWastageTotalsMap, printingWastageTotalsMap, loadedQtyByProductionId, erpLeastGsmMap, jobClosureStatusMap], { key: "6", direction: "desc" });
   const columnSortKey = (label: string) => String(PRODUCTION_MASTER_COLUMN_LABELS.indexOf(label as typeof PRODUCTION_MASTER_COLUMN_LABELS[number]));
   const {
     page,

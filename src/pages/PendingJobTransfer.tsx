@@ -101,7 +101,7 @@ export function PendingJobTransfer() {
     if (key === "reels") return row.transferableReels.length;
     if (key === "weight") return Number(row.transferableReels.reduce((sum, reel) => sum + Number(reel.transferWeightKg || 0), 0).toFixed(2));
     return "";
-  });
+  }, [], { key: "date", direction: "desc" });
 
   const openTransfer = (productionId: string) => {
     const params = new URLSearchParams({

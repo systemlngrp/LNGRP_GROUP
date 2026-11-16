@@ -511,7 +511,7 @@ export function PendingJobClosure() {
       case "actualPaper": return Number(p.actualPaperUsed || 0);
       default: return "";
     }
-  }, [scheduleById, orderById, companyById, firms, jobClosureStatusMap, loadedQtyByProductionId, processingTotalsMap, erpLeastGsmMap, findItemAcrossSources]);
+  }, [scheduleById, orderById, companyById, firms, jobClosureStatusMap, loadedQtyByProductionId, processingTotalsMap, erpLeastGsmMap, findItemAcrossSources], { key: "date", direction: "desc" });
 
   const {
     page,

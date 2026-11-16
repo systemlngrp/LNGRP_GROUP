@@ -150,7 +150,7 @@ export function ProductionPendingTally() {
     if (key === "tallyPostingRemark") return p.tallyPostingRemark || "";
     if (key === "tallyPostingError") return p.tallyPostingError || "";
     return "";
-  }, [npdItems]);
+  }, [npdItems], { key: "date", direction: "desc" });
 
   const {
     page,

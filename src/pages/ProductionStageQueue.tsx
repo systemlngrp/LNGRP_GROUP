@@ -128,8 +128,8 @@ export function ProductionStageQueue({
   const [ffgValues, setFfgValues] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("jobNo");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortKey, setSortKey] = useState<SortKey>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const usageMap = useMemo(
     () =>
       buildProductionMaterialUsageMap(

@@ -110,7 +110,7 @@ export function PendingMaterialReturn() {
     if (key === "reelCount") return row.reelCount;
     if (key === "weight") return row.weight;
     return "";
-  });
+  }, [], { key: "date", direction: "desc" });
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(sortedRows, 100);
   const hasActiveFilters = Boolean(searchTerm.trim() || companyFilter || itemFilter || fromDateFilter || toDateFilter);
   const clearFilters = () => {

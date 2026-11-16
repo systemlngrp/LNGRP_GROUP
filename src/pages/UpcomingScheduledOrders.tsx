@@ -152,7 +152,7 @@ export function UpcomingScheduledOrders() {
       case "pendingQty": return row.pendingQty;
       default: return "";
     }
-  });
+  }, [], { key: "scheduledDate", direction: "desc" });
 
   const handleCancelQty = async (schedule: OrderSchedule) => {
     const rawValue = cancelValues[schedule.id];

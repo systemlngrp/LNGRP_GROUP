@@ -140,7 +140,7 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
     if (key === "cancelDate") return p.cancelTimestamp || "";
     if (key === "cancelRemarks") return p.cancelRemarks || "";
     return "";
-  }, [schedules, orders, firms, npdItems]);
+  }, [schedules, orders, firms, npdItems], { key: "cancelDate", direction: "desc" });
 
   return (
     <div className="space-y-6">

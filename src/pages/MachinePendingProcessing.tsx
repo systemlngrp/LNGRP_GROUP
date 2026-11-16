@@ -284,7 +284,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     if (key === "reportedQty") return job.reportedQty;
     if (key === "pendingQty") return job.pendingQty;
     return "";
-  });
+  }, [], { key: "date", direction: "desc" });
   const sortedJobsByMachine = useMemo(() => {
     const map = new Map<string, PendingMachineJob[]>();
     sortedGroupJobs.forEach(({ machineId, job }) => {

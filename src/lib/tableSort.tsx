@@ -66,8 +66,9 @@ export function sortRows<T>(rows: T[], getValue: (row: T) => unknown, direction:
  * shows (the displayed name, not an ID). Returns the sorted rows, the current
  * sort and `toggle(key)` for the header buttons.
  */
-export function useTableSort<T>(rows: T[], getValue: (row: T, key: string) => unknown, deps: unknown[] = []) {
-  const [sort, setSort] = useState<SortState>(null);
+export function useTableSort<T>(rows: T[], getValue: (row: T, key: string) => unknown, deps: unknown[] = [], initialSort: SortState = null) {
+  // initialSort: the order a view opens in (e.g. newest date first).
+  const [sort, setSort] = useState<SortState>(initialSort);
   const toggle = useCallback((key: string) => {
     setSort((current) => {
       if (!current || current.key !== key) return { key, direction: "asc" };

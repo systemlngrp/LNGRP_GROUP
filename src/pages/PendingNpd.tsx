@@ -114,7 +114,7 @@ export function PendingNpd() {
       case "rapc": return row.rapcValue || "Missing";
       default: return "";
     }
-  });
+  }, [], { key: "scheduledDate", direction: "desc" });
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedRows } = useClientPagination(sortedRows, 100);
   useEffect(() => { setPage(1); }, [firmFilter, companyFilter, itemFilter, boxTypeFilter, fromDateFilter, toDateFilter, searchTerm, setPage]);
 

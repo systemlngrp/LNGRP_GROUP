@@ -221,7 +221,7 @@ export function PendingProduction() {
       case "pendingQty": return row.pendingQty;
       default: return "";
     }
-  });
+  }, [], { key: "scheduledDate", direction: "desc" });
   const {
     page,
     setPage,
