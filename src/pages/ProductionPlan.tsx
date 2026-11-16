@@ -37,10 +37,6 @@ export function ProductionPlan() {
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
-  const [editingSequenceId, setEditingSequenceId] = useState<string | null>(null);
-  const [editingSequence, setEditingSequence] = useState("");
-  const [sequenceError, setSequenceError] = useState("");
-  const [savingSequenceId, setSavingSequenceId] = useState<string | null>(null);
   const allowExports = exportsAllowed();
   const isLoading =
     productionsLoading ||
@@ -74,36 +70,18 @@ export function ProductionPlan() {
     [realizationTargets, selectedDate]
   );
   const requiredRealization = selectedRealizationTarget ? Number(selectedRealizationTarget.value || 0) * 0.98 : null;
-  const beginSequenceEdit = (production: Production) => {
-    setEditingSequenceId(production.id);
-    setEditingSequence(String(production.sequence ?? ""));
-    setSequenceError("");
-  };
-
-  const cancelSequenceEdit = () => {
-    setEditingSequenceId(null);
-    setEditingSequence("");
-    setSequenceError("");
-  };
-
-  const saveSequence = async (production: Production) => {
-    const nextSequence = editingSequence.trim();
-    const duplicate = productions.some((row) => row.id !== production.id && normalizeDate(row.date) === normalizeDate(production.date) && Boolean(nextSequence) && String(row.sequence ?? "").trim().toLowerCase() === nextSequence.toLowerCase());
-    if (duplicate) {
-      setSequenceError(`Job Sequence "${nextSequence}" is already used on this date.`);
-      return;
-    }
-    setSavingSequenceId(production.id);
-    setSequenceError("");
-    try {
-      await setProductions((rows) => rows.map((row) => row.id === production.id ? { ...row, sequence: nextSequence } : row));
-      cancelSequenceEdit();
-    } catch (error) {
-      setSequenceError((error as Error).message || "Failed to save Job Sequence.");
-    } finally {
-      setSavingSequenceId(null);
-    }
-  };
+  // Least Sheet Weight = least GSM of the same ERP code across all
+  // non-cancelled jobs (same rule as Production Master / dashboards).
+  const erpLeastGsmMap = useMemo(() => {
+    const map = new Map<string, number>();
+    productions.forEach((p) => {
+      if (p.status === "Cancelled" || p.cancelTimestamp) return;
+      const erp = String(p.erpCode || "").trim();
+      const gsm = Number(p.gsm || 0);
+      if (erp && gsm > 0 && (!map.has(erp) || gsm < map.get(erp)!)) map.set(erp, gsm);
+    });
+    return map;
+  }, [productions]);
 
   const filteredList = useMemo(() => {
     return productions
@@ -125,12 +103,13 @@ export function ProductionPlan() {
         const company = resolveProductionPlanCompany(production, schedule, order, companies);
         return {
           ...production,
+          leastGsm: erpLeastGsmMap.get(String(production.erpCode || "").trim()) ?? production.leastGsm,
           productionPlanCompanyName: company.name,
           productionPlanCompanyId: company.companyId,
           itemName: npdItems.find((item) => item.id === String(production.itemId || "").trim())?.name || "",
         };
       });
-  }, [productions, selectedDate, companyFilter, itemFilter, npdItems, schedules, orders, companies]);
+  }, [productions, selectedDate, companyFilter, itemFilter, npdItems, schedules, orders, companies, erpLeastGsmMap]);
 
   const baseSortedList = useMemo(() => sortProductionPlanRows(filteredList), [filteredList]);
   const baseStatusRows = useMemo(
@@ -138,7 +117,7 @@ export function ProductionPlan() {
     [baseSortedList, sampleJobNumbers, requiredRealization]
   );
   // Table search: matches the shown columns as displayed (Sr. No. and the
-  // editable Job Sequence skipped). Order of the sorted list is kept.
+  // Sr. No. skipped). Order of the sorted list is kept.
   const statusRows = useTableSearch(baseStatusRows, searchTerm, (p) => [
     p.transactionNo, p.productionPlanCompanyName, p.itemName || "-", p.erpCode || "-",
     format2(p.ups), format2(p.qty), format2(p.reelAsPerCalc), format2(p.reelActualWithTrimming), format2(p.cuttingWithTrimming),
@@ -380,8 +359,6 @@ export function ProductionPlan() {
         </div>
       </div>
 
-      {sequenceError ? <div className="rounded border border-red-700 bg-red-50 px-3 py-2 text-sm font-bold text-red-700">{sequenceError}</div> : null}
-
       <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
         <TableControls
           searchTerm={searchTerm}
@@ -430,7 +407,6 @@ export function ProductionPlan() {
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="SHEET WEIGHT" sortKey="sheetWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Least Sheet Weight" sortKey="leastGsm" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Flute Batch" sortKey="fluteBatches" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Job Sequence</th>
                 <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Date" sortKey="date" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Rate" sortKey="rate" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Value" sortKey="value" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -483,17 +459,6 @@ export function ProductionPlan() {
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.sheetWeight)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.leastGsm)}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{p.fluteBatches || "-"}</td>
-                      <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">
-                        {editingSequenceId === p.id ? (
-                          <div className="flex items-center gap-1">
-                            <input autoFocus value={editingSequence} disabled={savingSequenceId === p.id} onChange={(event) => setEditingSequence(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveSequence(p); if (event.key === "Escape") cancelSequenceEdit(); }} className="w-20 rounded border border-indigo-600 px-1 py-0.5 text-[11px]" />
-                            <button type="button" onClick={() => void saveSequence(p)} disabled={savingSequenceId === p.id} className="font-bold text-emerald-700">✓</button>
-                            <button type="button" onClick={cancelSequenceEdit} disabled={savingSequenceId === p.id} className="font-bold text-red-700">×</button>
-                          </div>
-                        ) : (
-                          <button type="button" onClick={() => beginSequenceEdit(p)} className="min-w-8 text-left hover:text-indigo-700 hover:underline">{String(p.sequence || "-")}</button>
-                        )}
-                      </td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.rate)}</td>
                       <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{format2(value)}</td>
