@@ -135,6 +135,8 @@ function isAllowed(user: AuthUser | null, href: string) {
   ) {
     return true;
   }
+  // Job form opens from Create Job on Pending Production / Upcoming.
+  if (href === "/production/form" && ["/production/pending", "/production/upcoming"].some((path) => list.includes(path))) return true;
   if (href === "/truck/logs" && list.includes("/reports/truck-status")) return true;
   // Direct Service has its own form now; whoever could open it before (from
   // Pending Material Receipt or the Material Receipt form) still can.
