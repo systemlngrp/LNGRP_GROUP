@@ -402,7 +402,6 @@ export function ProductionPlan() {
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="GSM" sortKey="gsm" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="TOTAL Paper WEIGHT" sortKey="totalPaperWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Planned Production in Meter" sortKey="plannedProductionInMeter" sort={sort} onToggle={toggleSort} align="right" /></th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="REMARK" sortKey="remarks" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="REALIZATION PER KG" sortKey="realizationPerKg" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="SHEET WEIGHT" sortKey="sheetWeight" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Least Sheet Weight" sortKey="leastGsm" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -411,6 +410,7 @@ export function ProductionPlan() {
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Rate" sortKey="rate" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Value" sortKey="value" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-4 py-3 text-center text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="Sample" sortKey="isSample" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-4 py-3 text-left text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap"><SortHeader label="REMARK" sortKey="remarks" sort={sort} onToggle={toggleSort} align="left" /></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-black bg-white">
@@ -454,7 +454,6 @@ export function ProductionPlan() {
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.gsm)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.totalPaperWeight)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.plannedProductionInMeter)}</td>
-                      <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[220px] max-w-[220px]">{p.remarks || "-"}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.realizationPerKg)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.sheetWeight)}</td>
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.leastGsm)}</td>
@@ -463,6 +462,7 @@ export function ProductionPlan() {
                       <td className="px-4 py-3 text-right text-[11px] text-black border border-black whitespace-nowrap">{format2(p.rate)}</td>
                       <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{format2(value)}</td>
                       <td className="px-4 py-3 text-center text-[11px] text-black border border-black whitespace-nowrap">{isSample ? "Yes" : "No"}</td>
+                      <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[220px] max-w-[220px]">{p.remarks || "-"}</td>
                     </tr>
                   );
                 })
