@@ -31,6 +31,8 @@ type AuthContextValue = {
   logout: () => Promise<void>;
   setActiveFirm: (firm: ActiveFirm | null) => void;
   hasAccess: (href: string) => boolean;
+  /** Page guard: menu access plus pages reached by a button or after Save. */
+  canOpenPage: (href: string) => boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -99,7 +101,7 @@ function getEffectiveMenuAccess(user: AuthUser | null) {
 
 const TALLY_POSTING_TAB_PATHS = ["/material-receipt/pending-tally", "/material-receipt/pending-credit-note", "/material-receipt/pending-debit-note"];
 
-function isAllowed(user: AuthUser | null, href: string) {
+function isDirectlyAllowed(user: AuthUser | null, href: string) {
   if (!user) return false;
   if (href === "/") return true;
   if (user.role === "Admin") return true;
@@ -135,8 +137,6 @@ function isAllowed(user: AuthUser | null, href: string) {
   ) {
     return true;
   }
-  // Job form opens from Create Job on Pending Production / Upcoming.
-  if (href === "/production/form" && ["/production/pending", "/production/upcoming"].some((path) => list.includes(path))) return true;
   if (href === "/truck/logs" && list.includes("/reports/truck-status")) return true;
   // Direct Service has its own form now; whoever could open it before (from
   // Pending Material Receipt or the Material Receipt form) still can.
@@ -153,6 +153,69 @@ function isAllowed(user: AuthUser | null, href: string) {
     if (entry.endsWith("/*") && href.startsWith(entry.slice(0, -1))) return true;
     return false;
   });
+}
+
+// Pages opened by a button on another page, and the page a form returns to
+// after Save. Whoever can open one of the listed source pages may open the
+// target too, so buttons and post-save screens never show Unauthorized.
+// Key = target page (also covers its sub-paths like /indent/view/:id).
+const RELATED_PAGE_ACCESS: Record<string, string[]> = {
+  // Buttons -> forms / detail pages
+  "/production/form": ["/production/pending", "/production/upcoming"],
+  "/production-processing/form": ["/production/pending-machine-processing", "/production/pending-printing", "/production-processing/master", "/production/pending-job-closure"],
+  "/material-movement/issue": ["/production/pending-consumption"],
+  "/material-movement/reel-transfer": ["/production/pending-job-transfer", "/material-movement/issue"],
+  "/material-movement/daily-consumption": ["/material-movement/pending-non-job-issue"],
+  "/material-movement/reel-issue-return-scan/form": ["/material-movement/reel-issue-return-scan"],
+  "/material-movement/reel-return/qr": ["/material-movement/reel-return", "/material-movement/return", "/production/pending-material-return"],
+  "/material-in/form": ["/material-receipt/pending-mrr", "/material-in/item-master", "/material-in/master"],
+  "/material-in/direct-service": ["/material-in/form", "/material-receipt/pending-mrr"],
+  "/gate-entry/form": ["/gate-entry/master", "/gate-pass/pending-returnable"],
+  "/gate-pass/form": ["/gate-pass/master"],
+  "/indent/view": ["/indent/pending", "/indent/approved", "/indent/completed", "/indent/rejected", "/purchase-orders/pending-indent-lines"],
+  "/purchase-orders/create": ["/purchase-orders/pending-indent-lines", "/indent/approved"],
+  "/orders/form": ["/orders/master", "/orders/pending-ph", "/plant-head"],
+  "/billing/pending": ["/billing/master"],
+  "/fixed-expenses/daily-form": ["/fixed-expenses/daily-master"],
+  "/fixed-expenses/monthly-form": ["/fixed-expenses/monthly-master"],
+  "/quality/coa/form": ["/quality/coa/master"],
+  "/quality/qc-update/form": ["/quality/qc-update/master"],
+  "/quality/pre-dispatch-inspection/form": ["/quality/pre-dispatch-inspection"],
+  "/quality/printing-stereo/form": ["/quality/printing-stereo"],
+  "/quality/complaints": ["/quality/complaints/master", "/quality/complaints/pending-capa"],
+  "/quality/sample-requirement/master/form": ["/quality/sample-requirement/master"],
+  "/masters/materials": ["/indent/form"],
+  // Forms -> page shown after Save
+  "/production/pending": ["/production/form"],
+  "/production/pending-consumption": ["/material-movement/issue", "/material-movement/reel-issue-return", "/material-movement/reel-issue-return-scan"],
+  "/material-movement/pending-non-job-issue": ["/material-movement/issue", "/material-movement/daily-consumption"],
+  "/material-movement/reel-issue-return-scan": ["/material-movement/reel-issue-return-scan/form"],
+  "/material-receipt/approvals": ["/material-in/form"],
+  "/material-receipt/pending-mrr": ["/material-in/form"],
+  "/gate-entry/master": ["/gate-entry/form"],
+  "/gate-pass/master": ["/gate-pass/form"],
+  "/orders/master": ["/orders/form"],
+  "/billing/master": ["/billing/pending"],
+  "/loading/master": ["/loading/direct"],
+  "/purchase-orders/pending-approval": ["/purchase-orders/create"],
+  "/quality/coa/master": ["/quality/coa/form"],
+  "/quality/printing-stereo": ["/quality/block-record/form", "/quality/printing-stereo/form"],
+  "/quality/php-plate/in-out/master": ["/quality/php-plate/in-out/form"],
+  "/quality/printing-wastage/master": ["/quality/printing-wastage/form"],
+  "/quality/pre-dispatch-inspection": ["/quality/pre-dispatch-inspection/form"],
+  "/quality/sample-requirement/master": ["/quality/sample-requirement/master/form"],
+  "/quality/spec-card-issue-return": ["/quality/spec-card-issue-return/form"],
+  "/quality/special-remarks": ["/quality/special-remarks/form"],
+  "/quality/complaints/master": ["/quality/complaints/form"],
+};
+
+function isAllowed(user: AuthUser | null, href: string, depth = 0): boolean {
+  if (isDirectlyAllowed(user, href)) return true;
+  if (!user || depth >= 3) return false;
+  return Object.entries(RELATED_PAGE_ACCESS).some(([target, sources]) =>
+    (href === target || href.startsWith(`${target}/`)) &&
+    sources.some((source) => source !== href && isAllowed(user, source, depth + 1))
+  );
 }
 
 async function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
@@ -289,12 +352,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const hasAccess = useCallback((href: string) => isAllowed(user, href), [user]);
+  const hasAccess = useCallback((href: string) => isDirectlyAllowed(user, href), [user]);
+  const canOpenPage = useCallback((href: string) => isAllowed(user, href), [user]);
   const retryAuth = useCallback(() => { void refreshMe(true); }, [refreshMe]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, activeFirm, activeFirmId: activeFirm?.id || "", loading, authError, retryAuth, login, logout, setActiveFirm, hasAccess }),
-    [user, activeFirm, loading, authError, retryAuth, login, logout, setActiveFirm, hasAccess]
+    () => ({ user, activeFirm, activeFirmId: activeFirm?.id || "", loading, authError, retryAuth, login, logout, setActiveFirm, hasAccess, canOpenPage }),
+    [user, activeFirm, loading, authError, retryAuth, login, logout, setActiveFirm, hasAccess, canOpenPage]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

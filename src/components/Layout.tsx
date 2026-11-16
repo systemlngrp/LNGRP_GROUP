@@ -32,7 +32,7 @@ export function Layout() {
   const mobileHeader = useMobilePageHeader();
   const sectionColor = sectionColorForPath(location.pathname);
   const [hideFullscreenOnPhone, setHideFullscreenOnPhone] = useState(false);
-  const { user, activeFirm, setActiveFirm, hasAccess, logout } = useAuth();
+  const { user, activeFirm, setActiveFirm, canOpenPage, logout } = useAuth();
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const isFormRoute =
     /\/form(\/|$)/.test(location.pathname) ||
@@ -165,8 +165,8 @@ export function Layout() {
     });
   };
 
-  if (user && !hasAccess(location.pathname)) {
-    return <Navigate to="/unauthorized" replace />;
+  if (user && !canOpenPage(location.pathname)) {
+    return <Navigate to="/unauthorized" replace state={{ from: location.pathname }} />;
   }
 
   const avatar = (user?.name || user?.userId || "U").trim().slice(0, 1).toUpperCase();

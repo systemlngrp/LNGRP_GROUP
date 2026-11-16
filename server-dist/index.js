@@ -913,27 +913,26 @@ function canManageMasterRecords(value) {
     const normalizedRole = String(role ?? "").trim().toLowerCase();
     return normalizedRole === "admin" || normalizedRole === "qc manager";
 }
-// Production staff update existing production records as part of their own
-// screens (Plan Job adds to the schedule's produced qty and links the sample
-// request; consumption, printing and job closure update the job). Allowed for
-// users who have those production pages; deletes still need the Master role.
+// Working records (not master lists, not QC sign-offs) are updated by the
+// buttons on the views that show them: Plan Job adds to the schedule's
+// produced qty, Approve/Close/Cancel Qty change status, etc. A user who may
+// open a view of that section may save these button actions. Deletes and
+// master-list edits still need the Master role.
+const BUTTON_UPDATABLE_ENTITIES = new Set([
+    "material_in", "material_issues", "material_returns", "consumptions", "orders", "orders_schedule",
+    "productions", "production_processing", "dispatch_plans", "loading_slips", "material_visit",
+    "invoices", "gate_entries", "gate_passes", "sample_requests", "physical_stock_sessions",
+]);
 const PRODUCTION_PLANNING_PAGES = ["/production/pending", "/production/upcoming"];
 function canUpdateProductionRecord(user, entity) {
-    if (user.status !== "Active")
+    if (user.status !== "Active" || !BUTTON_UPDATABLE_ENTITIES.has(entity))
         return false;
     const list = user.menuAccess || [];
-    const hasAny = (pages) => pages.some((page) => list.includes(page));
-    switch (entity) {
-        case "orders_schedule":
-        case "sample_requests":
-            return hasAny(PRODUCTION_PLANNING_PAGES);
-        case "productions":
-            return hasPermission(user, "/production");
-        case "production_processing":
-            return hasPermission(user, "/production-processing");
-        default:
-            return false;
-    }
+    // Plan Job (Pending Production / Upcoming) updates the schedule and the sample request.
+    if ((entity === "orders_schedule" || entity === "sample_requests") && PRODUCTION_PLANNING_PAGES.some((page) => list.includes(page)))
+        return true;
+    const required = entityPermissionKey(entity);
+    return Boolean(required) && hasPermission(user, required);
 }
 const USER_ROLE_MAX_LENGTH = 20;
 // These entities are presented through Master screens. New records retain the
@@ -18586,7 +18585,7 @@ entities.forEach(entity => {
                     return res.status(403).json({ error: "Forbidden" });
                 return next();
             }
-            if (!hasPermission(user, required)) {
+            if (!hasPermission(user, required) && !(req.method === "POST" && canUpdateProductionRecord(user, entity))) {
                 console.warn("[AUTHZ] Permission denied", { entity, method: req.method, userId: user.id, role: user.role, required });
                 return res.status(403).json({ error: "Forbidden" });
             }

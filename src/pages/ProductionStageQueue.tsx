@@ -182,7 +182,10 @@ export function ProductionStageQueue({
             production.itemSource || order?.itemSource,
             production.erpCode || production.masterErp || order?.erpCode
           ) || resolveOrderItem(order);
-        const company = companies.find((row) => row.id === order?.companyId);
+        // Jobs migrated without an order keep the company name on the job itself.
+        const company =
+          companies.find((row) => row.id === order?.companyId) ||
+          (production.companyName ? ({ id: `name:${production.companyName}`, name: production.companyName } as Company) : undefined);
         const prereqQty = prereqMachine
           ? processing
               .filter((entry) => entry.productionId === production.id && normalizeMachineName(entry.machineName) === prereqMachine)
@@ -205,7 +208,7 @@ export function ProductionStageQueue({
         const jobDate = String(production.date || "").slice(0, 10);
         if (fromDateFilter && (!jobDate || jobDate < fromDateFilter)) return false;
         if (toDateFilter && (!jobDate || jobDate > toDateFilter)) return false;
-        if (companyFilter && order?.companyId !== companyFilter) return false;
+        if (companyFilter && (order?.companyId || company?.id) !== companyFilter) return false;
         const itemKey = item?.id || `${item?.name || ""}::${production.erpCode || item?.erp || ""}`;
         if (itemFilter && itemKey !== itemFilter) return false;
         if (!words.length) return true;
@@ -328,7 +331,7 @@ export function ProductionStageQueue({
   ]);
 
   const firmOptions = useMemo(() => Array.from(new Map(rows.map((row) => { const firmId = String(row.production.firmId || row.order?.firmId || ""); return [firmId, { value: firmId, label: firmId ? getFirmDisplayNameById(firmId, firms) : "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [firms, rows]);
-  const companyOptions = useMemo(() => Array.from(new Map(rows.map((row) => [row.order?.companyId || "", { value: row.order?.companyId || "", label: row.company?.name || "" }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
+  const companyOptions = useMemo(() => Array.from(new Map(rows.map((row) => [row.order?.companyId || row.company?.id || "", { value: row.order?.companyId || row.company?.id || "", label: row.company?.name || "" }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
   const itemOptions = useMemo(() => Array.from(new Map(rows.map((row) => { const erp = String(row.production.erpCode || row.item?.erp || ""); const name = row.item?.name || ""; const key = row.item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [rows]);
 
   const {
