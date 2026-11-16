@@ -913,6 +913,28 @@ function canManageMasterRecords(value) {
     const normalizedRole = String(role ?? "").trim().toLowerCase();
     return normalizedRole === "admin" || normalizedRole === "qc manager";
 }
+// Production staff update existing production records as part of their own
+// screens (Plan Job adds to the schedule's produced qty and links the sample
+// request; consumption, printing and job closure update the job). Allowed for
+// users who have those production pages; deletes still need the Master role.
+const PRODUCTION_PLANNING_PAGES = ["/production/pending", "/production/upcoming"];
+function canUpdateProductionRecord(user, entity) {
+    if (user.status !== "Active")
+        return false;
+    const list = user.menuAccess || [];
+    const hasAny = (pages) => pages.some((page) => list.includes(page));
+    switch (entity) {
+        case "orders_schedule":
+        case "sample_requests":
+            return hasAny(PRODUCTION_PLANNING_PAGES);
+        case "productions":
+            return hasPermission(user, "/production");
+        case "production_processing":
+            return hasPermission(user, "/production-processing");
+        default:
+            return false;
+    }
+}
 const USER_ROLE_MAX_LENGTH = 20;
 // These entities are presented through Master screens. New records retain the
 // existing create rules; updates and deletes require the Master management role.
@@ -18543,7 +18565,7 @@ entities.forEach(entity => {
                         }
                     }
                 }
-                if (isExistingRecordUpdate && !canManageMasterRecords(user)) {
+                if (isExistingRecordUpdate && !canManageMasterRecords(user) && !(req.method === "POST" && canUpdateProductionRecord(user, entity))) {
                     return res.status(403).json({ error: "Forbidden" });
                 }
             }
