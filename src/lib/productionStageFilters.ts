@@ -21,7 +21,14 @@ export function isProductionPendingConsumption(
   actualPaperUsed = production.actualPaperUsed,
   hasCorrugatedSheetUsage = false
 ) {
+  // Old jobs migrated from the Summary Sheet / Loading PDF have no order or
+  // schedule and are already Completed: nothing is left to issue for them.
+  if (isMigratedCompletedJobWithoutOrder(production)) return false;
   return !production.cancelTimestamp && !production.tallyTimestamp && !isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage);
+}
+
+export function isMigratedCompletedJobWithoutOrder(production: Production) {
+  return !String(production.scheduleId || "").trim() && production.status === "Completed";
 }
 
 export function isProductionPendingFFG(

@@ -158,7 +158,11 @@ function isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage = fal
   return hasWorkflowValue(actualPaperUsed) || hasCorrugatedSheetUsage || hasPaperNotRequiredBypass(production);
 }
 function isProductionPendingConsumption(production, actualPaperUsed = production.actualPaperUsed, hasCorrugatedSheetUsage = false) {
+  if (isMigratedCompletedJobWithoutOrder(production)) return false;
   return !production.cancelTimestamp && !production.tallyTimestamp && !isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage);
+}
+function isMigratedCompletedJobWithoutOrder(production) {
+  return !String(production.scheduleId || "").trim() && production.status === "Completed";
 }
 function isProductionReadyForTally(production, actualPaperUsed = production.actualPaperUsed, hasCorrugatedSheetUsage = false) {
   return !production.cancelTimestamp && !production.tallyTimestamp && isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage) && hasWorkflowValue(production.prodFromFFG);
