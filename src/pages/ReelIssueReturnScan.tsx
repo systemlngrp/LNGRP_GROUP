@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { OneLine } from "../components/ReelSpecs";
 import { ArrowLeft, Camera, Save, X } from "lucide-react";
@@ -151,7 +152,7 @@ export function ReelIssueReturnScan() {
         .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
         .map((production) => ({
           value: production.id,
-          label: `${production.transactionNo}${production.date ? ` | ${production.date.split("T")[0]}` : ""}`,
+          label: `${displayJobNo(production.transactionNo)}${production.date ? ` | ${production.date.split("T")[0]}` : ""}`,
         })),
     [productions]
   );

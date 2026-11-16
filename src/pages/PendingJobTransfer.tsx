@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRightLeft, Search } from "lucide-react";
@@ -158,7 +159,7 @@ export function PendingJobTransfer() {
               <tr><td colSpan={7} className="h-16" aria-label="No records" /></tr>
             ) : sortedRows.map(({ production, context, company, item, transferableReels }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
-                <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>
+                <td className="border border-black px-3 py-3 text-sm font-bold">{displayJobNo(production.transactionNo)}</td>
                 <td className="border border-black px-3 py-3 text-sm whitespace-nowrap">{formatDate(production.date)}</td>
                 <td className="border border-black px-3 py-3 text-sm">{company}</td>
                 <td className="border border-black px-3 py-3 text-sm">{item}</td>

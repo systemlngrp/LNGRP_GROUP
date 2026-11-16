@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { DispatchPlan, OrderItemSource, Production } from "../types";
@@ -216,7 +217,7 @@ export function StandaloneDispatchForm({ source }: StandaloneDispatchFormProps) 
                       onChange={() => toggleSelected(row.production.id)}
                     />
                   </td>
-                  <td className="px-3 py-2 text-sm font-semibold">{row.production.transactionNo}</td>
+                  <td className="px-3 py-2 text-sm font-semibold">{displayJobNo(row.production.transactionNo)}</td>
                   <td className="px-3 py-2 text-sm">{row.production.date}</td>
                   <td className="px-3 py-2 text-sm">{row.itemName}</td>
                   <td className="px-3 py-2 text-sm">{row.companyName}</td>

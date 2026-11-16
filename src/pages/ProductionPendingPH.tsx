@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule } from "../types";
 import { useState, useEffect } from "react";
@@ -194,7 +195,7 @@ export function ProductionPendingPH() {
                     />
                     <div className="text-right">
                         <div className="text-xs font-black text-slate-500 uppercase">Job No.</div>
-                        <div className="text-sm font-bold">{p.transactionNo}</div>
+                        <div className="text-sm font-bold">{displayJobNo(p.transactionNo)}</div>
                     </div>
                   </div>
                   <div>
@@ -326,7 +327,7 @@ export function ProductionPendingPH() {
                       onChange={() => toggleSelect(p.id)}
                     />
                   </td>
-                  <td className="px-6 py-4 text-sm font-medium text-black border border-black">{p.transactionNo}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-black border border-black">{displayJobNo(p.transactionNo)}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black">{npdItems.find(i => i.id === p.itemId)?.name || "Unknown"}</td>
                   <td className="px-6 py-4 text-right text-sm font-medium text-black border border-black">{p.qty}</td>

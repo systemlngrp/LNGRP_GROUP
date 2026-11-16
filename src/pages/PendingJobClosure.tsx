@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useEffect, useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, Firm, ProductionProcessing, Setting, LoadingSlip, LoadingSlipLine, MaterialIssue, Machine } from "../types";
@@ -602,7 +603,7 @@ export function PendingJobClosure() {
                 return (
                   <div key={p.id} className={`${isHighGsm ? "bg-amber-50" : "bg-white"} border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded relative`}>
                        <div className="flex justify-between items-center">
-                          <div className="font-bold text-sm">Job: {p.transactionNo}</div>
+                          <div className="font-bold text-sm">Job: {displayJobNo(p.transactionNo)}</div>
                       </div>
 	                      <div className="text-xs text-slate-500">Prod Date: {formatDate(p.date)}</div>
 	                      {order && (
@@ -814,7 +815,7 @@ export function PendingJobClosure() {
                     return (
                     <tr key={p.id} className={`${isHighGsm ? "bg-amber-50" : "hover:bg-slate-50"} divide-x divide-black transition-colors`}>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{srNo}</td>
-                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{displayJobNo(p.transactionNo)}</td>
                       <td className="px-4 py-4 text-xs font-semibold text-black border border-black whitespace-nowrap">{getFirmDisplayNameById(String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || ""), firms)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.erpCode || "-"}</td>
@@ -1025,7 +1026,7 @@ export function PendingJobClosure() {
             <div className="border-b border-black px-5 py-4">
               <h3 className="text-lg font-black uppercase tracking-tight text-black">Cancel Job</h3>
               <div className="mt-2 text-xs font-bold text-slate-600">
-                Job: {cancelTarget.transactionNo} | Order: {cancelTargetOrder?.orderNo || "-"} | Item: {cancelTargetItem?.name || "Unknown"}
+                Job: {displayJobNo(cancelTarget.transactionNo)} | Order: {cancelTargetOrder?.orderNo || "-"} | Item: {cancelTargetItem?.name || "Unknown"}
               </div>
             </div>
             <div className="space-y-4 px-5 py-4">

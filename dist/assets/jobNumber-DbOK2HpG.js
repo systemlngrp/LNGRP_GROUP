@@ -1,0 +1,1 @@
+function i(n){const r=String(n??"").trim();if(!r)return"";const t=r.match(/^(.*?\/)?(\d+)$/);if(!t)return r;const o=t[1]||"",c=t[2].replace(/^0+(?=\d)/,"");return`${o}${c}`}function a(n){const r=String(n??"").trim(),t=r.match(/^(?:[A-Za-z0-9-]+\/)?JOB\/(\d{2}-\d{2})\/0*(\d+)$/i);return t?`${t[1]}/${t[2]}`:r}export{a as d,i as n};

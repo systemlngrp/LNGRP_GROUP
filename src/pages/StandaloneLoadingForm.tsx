@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { DispatchPlan, LoadingSlip, LoadingSlipAllocation, OrderItemSource, Production, Truck } from "../types";
@@ -189,7 +190,7 @@ export function StandaloneLoadingForm({ source }: StandaloneLoadingFormProps) {
               paginatedItems.map((row) => (
                 <tr key={row.plan.id} className="border-t border-black">
                   <td className="px-3 py-2 text-sm font-semibold">{row.plan.planNo}</td>
-                  <td className="px-3 py-2 text-sm">{row.production.transactionNo}</td>
+                  <td className="px-3 py-2 text-sm">{displayJobNo(row.production.transactionNo)}</td>
                   <td className="px-3 py-2 text-sm">{row.itemName}</td>
                   <td className="px-3 py-2 text-sm">{row.companyName}</td>
                   <td className="px-3 py-2 text-sm text-right font-bold">{row.pendingQty.toLocaleString()}</td>

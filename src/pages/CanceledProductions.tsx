@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, Firm } from "../types";
@@ -185,7 +186,7 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
               <div key={p.id} className="rounded-md border-2 border-black bg-white p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-sm font-black">{p.transactionNo}</div>
+                    <div className="text-sm font-black">{displayJobNo(p.transactionNo)}</div>
                     <div className="text-xs font-semibold text-slate-600">{order?.orderNo || "-"} · {getFirmDisplayNameById(firmId, firms)}</div>
                   </div>
                   <span className="shrink-0 text-xs font-bold text-slate-600">{p.cancelTimestamp ? formatDate(p.cancelTimestamp) : "-"}</span>
@@ -230,7 +231,7 @@ const canceledProductions = useMemo(() => productions.filter((production) => pro
                   return (
                     <tr key={p.id} className="hover:bg-red-50 divide-x divide-black transition-colors">
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{index + 1}</td>
-                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{displayJobNo(p.transactionNo)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs font-semibold text-black border border-black whitespace-nowrap">{getFirmDisplayNameById(firmId, firms)}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black min-w-[150px]">{npdItems.find(i => i.id === p.itemId)?.name || "Unknown"}</td>

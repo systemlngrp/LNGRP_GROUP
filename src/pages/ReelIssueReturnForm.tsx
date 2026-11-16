@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, Trash2, Package2 } from "lucide-react";
 import { useData } from "../hooks/useData";
@@ -103,7 +104,7 @@ export function ReelIssueReturnForm() {
         .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
         .map((production) => ({
           value: production.id,
-          label: `${production.transactionNo}${production.date ? ` | ${production.date.split("T")[0]}` : ""}`,
+          label: `${displayJobNo(production.transactionNo)}${production.date ? ` | ${production.date.split("T")[0]}` : ""}`,
         })),
     [productions]
   );

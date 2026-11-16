@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useMemo, useState } from "react";
 import { Edit, ExternalLink, Plus, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -66,7 +67,7 @@ export function PreDispatchInspectionForm() {
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [unlockedNumericJobFields, setUnlockedNumericJobFields] = useState<Set<keyof Inspection>>(new Set());
-  const jobOptions = productions.filter(p => p.status !== "Cancelled").map(p => ({ value: p.id, label: text(p.transactionNo || p.jobCardNo), searchText: `${text(p.transactionNo || p.jobCardNo)} ${text(p.companyName)} ${text(p.erpCode || p.masterErp)}` }));
+  const jobOptions = productions.filter(p => p.status !== "Cancelled").map(p => ({ value: p.id, label: displayJobNo(text(p.transactionNo || p.jobCardNo)), searchText: `${text(p.transactionNo || p.jobCardNo)} ${displayJobNo(text(p.transactionNo || p.jobCardNo))} ${text(p.companyName)} ${text(p.erpCode || p.masterErp)}` }));
   const personOptions = qcPersonOptions(people, [text(form.qcPerson)]);
   const update = (key: string, value: unknown) => setForm(current => ({ ...current, [key]: value }));
   const selectJob = (id: string) => {

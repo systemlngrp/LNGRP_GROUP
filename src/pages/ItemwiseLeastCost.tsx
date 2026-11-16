@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
@@ -179,7 +180,7 @@ export function ItemwiseLeastCost() {
           <div key={`${row.erp}-${idx}`} className="rounded-lg border-2 border-black bg-white p-3 text-black">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-sm font-black">{row.erp}</span>
-              <span className="text-[11px] font-bold text-slate-600">{row.jobCardNo || "-"}</span>
+              <span className="text-[11px] font-bold text-slate-600">{displayJobNo(row.jobCardNo || "-")}</span>
             </div>
             <div className="mt-1 break-words text-xs font-bold">{row.itemName}</div>
             <div className="break-words text-xs text-slate-700">{row.company || "-"}</div>
@@ -229,7 +230,7 @@ export function ItemwiseLeastCost() {
                 paginatedData.map((row, idx) => (
                   <tr key={`${row.erp}-${idx}`} className="hover:bg-slate-50">
                     <td className={`${TD} text-center font-bold`}>{(page - 1) * pageSize + idx + 1}</td>
-                    <td className={`${TD} whitespace-nowrap font-bold`}>{row.jobCardNo || "-"}</td>
+                    <td className={`${TD} whitespace-nowrap font-bold`}>{displayJobNo(row.jobCardNo || "-")}</td>
                     <td className={TD}>{row.itemName}</td>
                     <td className={`${TD} whitespace-nowrap font-bold`}>{row.erp}</td>
                     <td className={TD}>{row.company}</td>

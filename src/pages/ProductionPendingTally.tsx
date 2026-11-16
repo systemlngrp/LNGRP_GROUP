@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import {
@@ -209,7 +210,7 @@ export function ProductionPendingTally() {
             {paginatedPendingList.map((p, index) => (
                 <div key={p.id} className="bg-white border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded relative">
                     <div className="flex justify-between items-center">
-                        <div className="font-bold text-sm">Job: {p.transactionNo}</div>
+                        <div className="font-bold text-sm">Job: {displayJobNo(p.transactionNo)}</div>
                         <div className="text-xs text-slate-500">{formatDate(p.date)}</div>
                     </div>
                     <div className="text-sm font-bold">{resolveProductionTallyItem(p, npdItems)?.name || "Unknown"}</div>
@@ -255,7 +256,7 @@ export function ProductionPendingTally() {
               paginatedPendingList.map((p, index) => (
                 <tr key={p.id} className="hover:bg-slate-50 divide-x divide-black">
                   <td className="px-6 py-4 text-sm font-bold text-black border border-black">{(page - 1) * pageSize + index + 1}</td>
-                  <td className="px-6 py-4 text-sm font-medium text-black border border-black">{p.transactionNo}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-black border border-black">{displayJobNo(p.transactionNo)}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
                   <td className="px-6 py-4 text-sm text-black border border-black">{resolveProductionTallyItem(p, npdItems)?.name || "Unknown"}</td>
                   <td className="px-6 py-4 text-right text-sm font-medium text-emerald-700 border border-black">{Number(p.prodFromFFG || 0).toLocaleString()}</td>

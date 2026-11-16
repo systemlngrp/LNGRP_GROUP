@@ -24,7 +24,7 @@ import { downloadJobCardPdf } from "../lib/jobCardPdf";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { resolveProductionErp, resolveProductionItem as resolveProductionCatalogItem, resolveProductionSource } from "../lib/productionErp";
 import { getFirmDisplayName } from "../lib/firmDisplay";
-import { normalizeProductionJobNumber } from "../lib/jobNumber";
+import { displayJobNo, normalizeProductionJobNumber } from "../lib/jobNumber";
 import { isScrapLinkedProduction } from "../lib/productionOrigin";
 import { useQcColumnLayout } from "../hooks/useQcColumnLayout";
 import { QC_REPORT_COLUMN_COUNTS, QC_REPORT_COLUMN_SCHEMA_VERSIONS } from "../lib/qcColumnLayout";
@@ -509,7 +509,7 @@ export function ProductionMaster() {
     const firmId = String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "").trim();
     return [
       "", // Sr. No.
-      normalizeProductionJobNumber(p.transactionNo),
+      displayJobNo(p.transactionNo),
       order?.orderNo || (p as Production & { orderNo?: string }).orderNo,
       displayRow.erpCode,
       firmMap.get(firmId) || (schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId ? "Unknown firm" : "Unassigned"),
@@ -811,7 +811,7 @@ export function ProductionMaster() {
                 return (
                   <div key={p.id} className={`${isHighGsm ? "bg-amber-50" : "bg-white"} border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded relative`}>
                        <div className="flex justify-between items-center">
-                          <div className="font-bold text-sm">Job: {normalizeProductionJobNumber(p.transactionNo)}</div>
+                          <div className="font-bold text-sm">Job: {displayJobNo(normalizeProductionJobNumber(p.transactionNo))}</div>
                       </div>
 	                      <div className="text-xs text-slate-500">Prod Date: {formatDate(p.date)}</div>
 	                      {displayStatus === "Completed" ? (
@@ -1038,7 +1038,7 @@ export function ProductionMaster() {
                     return (
                     <tr key={p.id} className={`${isHighGsm ? "bg-amber-50" : "hover:bg-slate-50"} divide-x divide-black transition-colors`}>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{srNo}</td>
-                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{normalizeProductionJobNumber(p.transactionNo)}</td>
+                      <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{displayJobNo(normalizeProductionJobNumber(p.transactionNo))}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || (p as Production & { orderNo?: string }).orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{displayRow.erpCode || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{firmMap.get(String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || "").trim()) || (schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId ? "Unknown firm" : "Unassigned")}</td>
@@ -1275,7 +1275,7 @@ export function ProductionMaster() {
             <div className="border-b border-black px-5 py-4">
               <h3 className="text-lg font-black uppercase tracking-tight text-black">Cancel Job</h3>
               <div className="mt-2 text-xs font-bold text-slate-600">
-                Job: {normalizeProductionJobNumber(cancelTarget.transactionNo)} | Order: {cancelTargetOrder?.orderNo || "-"} | Item: {cancelTargetItem?.name || "Unknown"}
+                Job: {displayJobNo(normalizeProductionJobNumber(cancelTarget.transactionNo))} | Order: {cancelTargetOrder?.orderNo || "-"} | Item: {cancelTargetItem?.name || "Unknown"}
               </div>
             </div>
             <div className="space-y-4 px-5 py-4">

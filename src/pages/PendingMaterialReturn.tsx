@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Camera, RotateCcw, Search } from "lucide-react";
@@ -181,7 +182,7 @@ export function PendingMaterialReturn() {
               <tr><td colSpan={7} className="h-16" aria-label="No records" /></tr>
             ) : pagedRows.map(({ production, company, item, reelCount, weight }, index) => (
               <tr key={production.id} className={index % 2 ? "bg-slate-50" : "bg-white"}>
-                <td className="border border-black px-3 py-3 text-sm font-bold">{production.transactionNo}</td>
+                <td className="border border-black px-3 py-3 text-sm font-bold">{displayJobNo(production.transactionNo)}</td>
                 <td className="border border-black px-3 py-3 text-sm">{String(production.date || "").slice(0, 10) || "-"}</td>
                 <td className="border border-black px-3 py-3 text-sm">{company}</td>
                 <td className="border border-black px-3 py-3 text-sm">{item}</td>

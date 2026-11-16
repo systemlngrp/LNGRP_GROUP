@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Camera, Plus, Trash2, X } from "lucide-react";
@@ -258,7 +259,7 @@ export function MaterialIssueForm() {
         .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
         .map((production) => ({
           value: production.id,
-          label: `${production.transactionNo}${production.date ? ` | ${production.date.split("T")[0]}` : ""}`,
+          label: `${displayJobNo(production.transactionNo)}${production.date ? ` | ${production.date.split("T")[0]}` : ""}`,
         })),
     [productions]
   );

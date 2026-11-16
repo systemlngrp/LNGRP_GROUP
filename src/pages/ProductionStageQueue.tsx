@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle, Search } from "lucide-react";
@@ -562,7 +563,7 @@ export function ProductionStageQueue({
                 paginatedRows.map(({ production, order, item, company, actualPaperUsed, totalIssuedQty, prereqQty, requiredMachines }, index) => (
                   <tr key={production.id} className="hover:bg-slate-50 divide-x divide-black">
                     <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
-                    <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{production.transactionNo}</td>
+                    <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{displayJobNo(production.transactionNo)}</td>
                     <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{formatDate(production.date)}</td>
                     <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
                     <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{production.erpCode || "-"}</td>

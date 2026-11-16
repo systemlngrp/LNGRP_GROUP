@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -110,7 +111,7 @@ export function QualityComplaintFormUpdated() {
       const next = applyProduction(production, current, erp);
       return { ...next, concernedPersonName: concernedPersonForJob(next.lotNo, next.areaOfIssue, productions, processing, dispatchPlans, people) };
     });
-    setHint(production ? `Latest matching Job No.: ${production.transactionNo || production.jobCardNo}` : "No matching production found for this ERP Code.");
+    setHint(production ? `Latest matching Job No.: ${displayJobNo(production.transactionNo || production.jobCardNo)}` : "No matching production found for this ERP Code.");
     setMessage("");
   };
 

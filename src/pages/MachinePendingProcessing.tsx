@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
@@ -478,7 +479,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                               : "Issue material or sheet first.";
                           return (
                           <tr key={`${job.production.id}-${idx}`} className="divide-x divide-black align-middle hover:bg-slate-50">
-                            <td className="px-3 py-2 whitespace-nowrap">{job.production.transactionNo}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{displayJobNo(job.production.transactionNo)}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.source}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{formatDate(job.production.date)}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.erpCode || "-"}</td>

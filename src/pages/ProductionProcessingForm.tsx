@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import { Production, Machine, ProductionProcessing } from "../types";
@@ -350,7 +351,7 @@ function FullReportForm() {
       .filter(p => p.status !== "Cancelled")
       .map(p => ({
         value: p.id,
-        label: `Job: ${String(p.jobCardNo || "").trim() || p.transactionNo} (Qty: ${p.qty})`
+        label: `Job: ${displayJobNo(String(p.jobCardNo || "").trim() || p.transactionNo)} (Qty: ${p.qty})`
       }));
   }, [allProductions]);
 

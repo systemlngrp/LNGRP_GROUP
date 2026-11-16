@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
 import { Production, OrderSchedule, Order, Company, SampleRequest, Setting } from "../types";
@@ -435,7 +436,7 @@ export function ProductionPlan() {
                       style={highlightRow ? { backgroundColor: "#FF9999" } : undefined}
                     >
                       <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{index + 1}</td>
-                      <td className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
+                      <td className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap">{displayJobNo(p.transactionNo)}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[220px] max-w-[220px]" title={company.name}>{company.name}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[320px] max-w-[320px]" title={item?.name}>{item?.name || "-"}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-nowrap">{p.erpCode || "-"}</td>

@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import { Select } from "../components/Select";
@@ -116,7 +117,7 @@ export function SamplesProduced() {
                     <td className="px-4 py-3 text-sm text-black border border-black whitespace-normal break-words min-w-[200px] max-w-[300px]">{row.itemName}</td>
                     <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{row.erp || "-"}</td>
                     <td className="px-4 py-3 text-sm text-right font-medium text-black border border-black whitespace-nowrap">{Number(row.plannedQuantity || 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{row.jobCardNo}</td>
+                    <td className="px-4 py-3 text-sm text-black border border-black whitespace-nowrap">{displayJobNo(row.jobCardNo)}</td>
                   </tr>
                 ))
               )}

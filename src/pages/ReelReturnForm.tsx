@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { OneLine } from "../components/ReelSpecs";
 import { ArrowLeft, Camera, PackageCheck, Trash2, X } from "lucide-react";
@@ -90,7 +91,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   );
   const jobOptions = useMemo(() => {
     const eligibleIds = new Set(returnableReels.map((row) => row.productionId));
-    return productions.filter((row) => eligibleIds.has(row.id) && row.status !== "Cancelled" && !row.cancelTimestamp).sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((row) => ({ value: row.id, label: row.transactionNo, searchText: `${row.transactionNo} ${row.date ? row.date.slice(0, 10) : ""}` }));
+    return productions.filter((row) => eligibleIds.has(row.id) && row.status !== "Cancelled" && !row.cancelTimestamp).sort((a, b) => String(b.date || "").localeCompare(String(a.date || ""))).map((row) => ({ value: row.id, label: displayJobNo(row.transactionNo), searchText: `${row.transactionNo} ${displayJobNo(row.transactionNo)} ${row.date ? row.date.slice(0, 10) : ""}` }));
   }, [productions, returnableReels]);
   const reelsForJob = useMemo(() => linerComplete ? returnableReels.filter((row) => row.productionId === productionId).sort((a, b) => String(a.ourReelNo).localeCompare(String(b.ourReelNo), undefined, { numeric: true })) : [], [linerComplete, productionId, returnableReels]);
 

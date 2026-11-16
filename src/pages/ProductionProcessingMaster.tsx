@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import React, { useEffect, useMemo, useState } from "react";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
@@ -69,7 +70,7 @@ export function ProductionProcessingMaster() {
       .sort((a, b) => String(b.transactionNo || "").localeCompare(String(a.transactionNo || ""), undefined, { numeric: true, sensitivity: "base" }))
       .map((production) => ({
         value: production.id,
-        label: `${String(production.jobCardNo || "").trim() || production.transactionNo} (Qty: ${production.qty})`,
+        label: `${displayJobNo(String(production.jobCardNo || "").trim() || production.transactionNo)} (Qty: ${production.qty})`,
       }));
   }, [productions]);
 

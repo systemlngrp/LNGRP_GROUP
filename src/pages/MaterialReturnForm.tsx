@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useMemo, useState, useEffect } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
@@ -73,7 +74,7 @@ export function MaterialReturnForm() {
         .map((production) => ({
           value: production.id,
           label: production.transactionNo,
-          searchText: `${production.transactionNo} ${production.date ? production.date.split("T")[0] : ""}`,
+          searchText: `${production.transactionNo} ${displayJobNo(production.transactionNo)} ${production.date ? production.date.split("T")[0] : ""}`,
         })),
     [productions]
   );

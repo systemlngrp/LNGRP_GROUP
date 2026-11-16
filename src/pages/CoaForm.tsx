@@ -1,3 +1,4 @@
+import { displayJobNo } from "../lib/jobNumber";
 import { useEffect, useMemo, useState } from "react";
 import { Eye, Save } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -45,7 +46,7 @@ export function CoaForm() {
   const context = useMemo<CoaSourceContext | undefined>(() => production ? resolveCoaSourceContext(production, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows) : undefined, [boardlineRows, companies, firms, invoiceLines, invoices, orders, pdis, printingRows, production, schedules]);
   const sourceMap = useMemo(() => context ? buildCoaSourceMap(context, headerData.coaDate || new Date().toISOString().slice(0, 10)) : {}, [context, headerData.coaDate]);
   const activeTemplate = context?.company ? activeTemplateForCompany(templates, context.company.id) : undefined;
-  const jobOptions = productions.filter((value) => value.status !== "Cancelled").map((value) => ({ value: value.id, label: text(value.transactionNo || value.jobCardNo), searchText: `${value.transactionNo || value.jobCardNo} ${value.companyName || ""} ${value.erpCode || value.masterErp || ""}` }));
+  const jobOptions = productions.filter((value) => value.status !== "Cancelled").map((value) => ({ value: value.id, label: displayJobNo(text(value.transactionNo || value.jobCardNo)), searchText: `${value.transactionNo || value.jobCardNo} ${displayJobNo(value.transactionNo || value.jobCardNo)} ${value.companyName || ""} ${value.erpCode || value.masterErp || ""}` }));
   const isReadOnly = editingRecord?.status === "Final" && !canManage;
 
   useEffect(() => {
