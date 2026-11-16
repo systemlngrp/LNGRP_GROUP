@@ -92,7 +92,9 @@ export function readMobilePageHeader(content: HTMLElement): MobilePageHeader {
     const others = Array.from(row.children).filter((child) => {
       if (child === title || child === addButton) return false;
       if (child.hasAttribute(MOVED_EXPORT)) return false;
-      if (child.querySelector("button, a") && Array.from(child.querySelectorAll("button, a")).every((button) => button.hasAttribute(MOVED_EXPORT) || button === addButton)) return false;
+      // A group whose buttons all moved to the top bar is empty now, unless it also
+      // holds a field (e.g. Production Plan's Plan Date), which must stay visible.
+      if (child.querySelector("button, a") && !child.querySelector("input, select, textarea") && Array.from(child.querySelectorAll("button, a")).every((button) => button.hasAttribute(MOVED_EXPORT) || button === addButton)) return false;
       if (addButton && child.contains(addButton) && (child.textContent || "").trim() === (addButton.textContent || "").trim()) return false;
       if (addButton && child.contains(addButton) && child.querySelectorAll("button, a").length === 1) return false;
       return isVisible(child) && ((child.textContent || "").trim() !== "" || child.querySelector("button, a, input, select, svg"));

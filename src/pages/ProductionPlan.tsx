@@ -152,6 +152,14 @@ export function ProductionPlan() {
   });
   // No pagination on the Production Plan: every row is shown on one page.
   const paginatedList = columnSortedRows;
+  // TOTAL row under the table: same totals as the PDF / Excel downloads.
+  const viewTotals = useMemo(() => columnSortedRows.reduce(
+    (sum, p) => ({
+      paperWeight: sum.paperWeight + (Number(p.totalPaperWeight || 0) || 0),
+      value: sum.value + (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0),
+    }),
+    { paperWeight: 0, value: 0 }
+  ), [columnSortedRows]);
 
   // Excel uses the same columns as the printed plan sheet / PDF, numbers as numbers.
   const getExportData = (data: Production[]) => {
@@ -474,6 +482,17 @@ export function ProductionPlan() {
                 })
               )}
             </tbody>
+            {paginatedList.length > 0 ? (
+              <tfoot className="bg-slate-100">
+                <tr>
+                  <td colSpan={18} className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap text-left">TOTAL</td>
+                  <td className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap text-right">{viewTotals.paperWeight.toFixed(2)}</td>
+                  <td colSpan={7} className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap"></td>
+                  <td className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap text-right">{viewTotals.value.toFixed(2)}</td>
+                  <td colSpan={2} className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap"></td>
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
         )}
