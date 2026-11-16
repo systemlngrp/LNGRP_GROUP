@@ -3572,6 +3572,17 @@ async function generateFirmDocumentNo(db, firmId, documentCode, dateStr) {
     const firmPrefix = await getFirmDocumentPrefix(db, normalizedFirmId);
     const code = String(documentCode || "DOC").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "") || "DOC";
     const key = `${firmPrefix}/${code}/${fy}`;
+    if (code === "ORD") {
+        // Orders brought in from the sheet keep the sheet's Order Id, and orders can be
+        // renumbered, so the counter alone can lag behind numbers already in use. Move it
+        // past the highest order number of this series first, so a number is never issued twice.
+        const [maxRows] = await db.query("SELECT COALESCE(MAX(CAST(SUBSTRING_INDEX(orderNo, '/', -1) AS UNSIGNED)), 0) AS maxNo FROM `orders` WHERE orderNo LIKE ?", [`${key}/%`]);
+        const highestUsed = Number(maxRows[0]?.maxNo || 0);
+        if (Number.isFinite(highestUsed) && highestUsed > 0) {
+            await db.query(`INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, ?)
+         ON DUPLICATE KEY UPDATE lastValue = GREATEST(lastValue, VALUES(lastValue))`, [key, highestUsed]);
+        }
+    }
     const nextValue = String(await allocateCounterValue(db, key));
     return [key, code === "ORD" ? nextValue : nextValue.padStart(5, "0")].join("/");
 }
