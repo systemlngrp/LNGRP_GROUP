@@ -6,14 +6,12 @@ import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
-import { ClientPagination } from "../components/ClientPagination";
 import { Spinner } from "../components/Spinner";
 import { Download, FileText } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { exportsAllowed } from "../lib/exportPolicy";
 import { useNpdItemNames } from "../hooks/useNpdItems";
-import { useClientPagination } from "../hooks/useClientPagination";
 import { sortProductionPlanRows } from "../lib/productionPlanSorting";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { resolveProductionPlanCompany } from "../lib/productionPlanCompany";
@@ -172,14 +170,8 @@ export function ProductionPlan() {
       default: return Number((p as any)[key] || 0);
     }
   });
-  const {
-    page,
-    setPage,
-    pageSize,
-    setPageSize,
-    totalItems,
-    paginatedItems: paginatedList,
-  } = useClientPagination(columnSortedRows, 25);
+  // No pagination on the Production Plan: every row is shown on one page.
+  const paginatedList = columnSortedRows;
 
   // Excel uses the same columns as the printed plan sheet / PDF, numbers as numbers.
   const getExportData = (data: Production[]) => {
@@ -466,7 +458,7 @@ export function ProductionPlan() {
                       className={`divide-x divide-black transition-colors ${highlightRow ? "hover:bg-[#FF9999]" : "hover:bg-slate-50"}`}
                       style={highlightRow ? { backgroundColor: "#FF9999" } : undefined}
                     >
-                      <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{(page - 1) * pageSize + index + 1}</td>
+                      <td className="px-4 py-3 text-right text-[11px] font-bold text-black border border-black whitespace-nowrap">{index + 1}</td>
                       <td className="px-4 py-3 text-[11px] font-bold text-black border border-black whitespace-nowrap">{p.transactionNo}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[220px] max-w-[220px]" title={company.name}>{company.name}</td>
                       <td className="px-4 py-3 text-[11px] text-black border border-black whitespace-normal break-words min-w-[320px] max-w-[320px]" title={item?.name}>{item?.name || "-"}</td>
@@ -514,13 +506,6 @@ export function ProductionPlan() {
           </table>
         </div>
         )}
-        <ClientPagination
-          page={page}
-          pageSize={pageSize}
-          totalItems={totalItems}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-        />
       </div>
     </div>
   );
