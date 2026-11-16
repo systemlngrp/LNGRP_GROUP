@@ -65,6 +65,7 @@ const Suppliers = lazy(() => import("./pages/Suppliers").then((module) => ({ def
 const States = lazy(() => import("./pages/States").then((module) => ({ default: module.States })));
 const Units = lazy(() => import("./pages/Units").then((module) => ({ default: module.Units })));
 const ColorMasters = lazy(() => import("./pages/ColorMasters").then((module) => ({ default: module.ColorMasters })));
+const FluteMasters = lazy(() => import("./pages/FluteMasters").then((module) => ({ default: module.FluteMasters })));
 const GstRateMasters = lazy(() => import("./pages/GstRateMasters").then((module) => ({ default: module.GstRateMasters })));
 const ExpenseMasters = lazy(() => import("./pages/ExpenseMasters").then((module) => ({ default: module.ExpenseMasters })));
 const Companies = lazy(() => import("./pages/Companies").then((module) => ({ default: module.Companies })));
@@ -277,6 +278,7 @@ export default function App() {
           <Route path="masters/states" element={<States />} />
           <Route path="masters/units" element={<Units />} />
           <Route path="masters/colors" element={<ColorMasters />} />
+          <Route path="masters/flutes" element={<FluteMasters />} />
           <Route path="masters/gst-rates" element={<GstRateMasters />} />
           <Route path="masters/expenses" element={<ExpenseMasters />} />
           <Route path="masters/companies" element={<Companies />} />

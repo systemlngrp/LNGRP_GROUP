@@ -460,6 +460,7 @@ export const NAVIGATION: NavGroup[] = [
       { name: "States", href: "/masters/states", icon: Database },
       { name: "Units", href: "/masters/units", icon: Database },
       { name: "Colors", href: "/masters/colors", icon: Plus },
+      { name: "Flute Master", href: "/masters/flutes", icon: Database },
       { name: "GST Rate Master", href: "/masters/gst-rates", icon: Database },
       { name: "Expense Master", href: "/masters/expenses", icon: Database },
       { name: "Companies", href: "/masters/companies", icon: Database },

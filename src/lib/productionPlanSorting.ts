@@ -21,6 +21,15 @@ function getFluteBatch(row: ProductionPlanSortRow) {
   return normalizeText(row.fluteBatches);
 }
 
+// Batch numbers sort numerically (1, 2, ... 10); blank batches go last.
+function compareFluteBatch(a: string, b: string) {
+  if (!a || !b) return a === b ? 0 : a ? -1 : 1;
+  const numA = Number(a);
+  const numB = Number(b);
+  if (Number.isFinite(numA) && Number.isFinite(numB) && numA !== numB) return numA - numB;
+  return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+}
+
 function getReel(row: ProductionPlanSortRow) {
   return toNumber(row.reelActualWithTrimming);
 }
@@ -86,7 +95,7 @@ export function sortProductionPlanRows<T extends ProductionPlanSortRow>(rows: T[
   });
 
   return Array.from(groupedByFlute.values())
-    .sort((a, b) => getFluteBatch(a[0]).localeCompare(getFluteBatch(b[0]), undefined, { sensitivity: "base" }))
+    .sort((a, b) => compareFluteBatch(getFluteBatch(a[0]), getFluteBatch(b[0])))
     .flatMap((batchRows) => {
       const bigRows = batchRows
         .filter((row) => toNumber(row.plannedProductionInMeter) > 200)

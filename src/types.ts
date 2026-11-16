@@ -572,6 +572,14 @@ export interface UnitMaster {
   updateTimestamp?: string;
 }
 
+export interface FluteMaster {
+  id: string;
+  flute: string;
+  batchNo: number | string;
+  updatedBy?: string;
+  updateTimestamp?: string;
+}
+
 export interface ColorMaster {
   id: string;
   name: string;

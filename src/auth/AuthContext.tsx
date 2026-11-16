@@ -65,6 +65,9 @@ function normalizeMenuAccess(raw: unknown): string[] {
     if (list.includes("/masters/settings") && !list.includes("/masters/machines")) {
       list.push("/masters/machines");
     }
+    if (list.includes("/masters/colors") && !list.includes("/masters/flutes")) {
+      list.push("/masters/flutes");
+    }
     return list;
   }
   if (typeof raw === "string") {
@@ -76,6 +79,9 @@ function normalizeMenuAccess(raw: unknown): string[] {
         const list = parsed.map((v) => String(v)).filter(Boolean);
         if (list.includes("/masters/settings") && !list.includes("/masters/machines")) {
           list.push("/masters/machines");
+        }
+        if (list.includes("/masters/colors") && !list.includes("/masters/flutes")) {
+          list.push("/masters/flutes");
         }
         return list;
       }
