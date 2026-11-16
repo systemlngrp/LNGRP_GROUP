@@ -402,7 +402,7 @@ export function ProductionPlan() {
           </div>
         ) : (
         <div className="overflow-x-auto max-h-[70vh]">
-          <table className="min-w-full divide-y divide-black border-collapse border border-black">
+          <table data-disable-table-pagination="true" className="min-w-full divide-y divide-black border-collapse border border-black">
             <thead className="bg-slate-100 sticky top-0 z-10">
               <tr className="divide-x divide-black">
                 <th className="px-4 py-3 text-right text-[10px] font-bold text-black uppercase border border-black whitespace-nowrap">Sr. No.</th>
