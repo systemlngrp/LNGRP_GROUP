@@ -1,3 +1,4 @@
+import { FilterBox } from "../components/FilterBox";
 import { displayJobNo } from "../lib/jobNumber";
 import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
@@ -5,7 +6,6 @@ import { Production, OrderSchedule, Order, Company, SampleRequest, Setting } fro
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
-import { TableControls } from "../components/TableControls";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { Download, FileText } from "lucide-react";
@@ -373,18 +373,33 @@ export function ProductionPlan() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[minmax(260px,1.4fr)_minmax(220px,1fr)_minmax(260px,1.1fr)_auto] md:items-center">
-        <TableControls
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          placeholder="Search"
-        />
-        <Select value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="Companies" />
-        <Select value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="Items" />
-        {(searchTerm || companyFilter || itemFilter) ? (
-          <button type="button" onClick={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }} className="rounded border border-black bg-white px-3 py-2 text-sm font-bold text-black hover:bg-slate-50">Clear Filters</button>
-        ) : null}
+      {/* Total tiles (same totals as the TOTAL row and downloads). */}
+      <div className="grid grid-cols-3 gap-2 md:gap-4">
+        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-xl border-2 border-black p-3 text-white md:p-4">
+          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Jobs</div>
+          <div className="text-xl font-black md:text-3xl">{columnSortedRows.length}</div>
+        </div>
+        <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl border-2 border-black p-3 text-white md:p-4">
+          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Total Paper Weight</div>
+          <div className="text-xl font-black md:text-3xl">{viewTotals.paperWeight.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+        </div>
+        <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl border-2 border-black p-3 text-white md:p-4">
+          <div className="text-[10px] font-black uppercase opacity-80 tracking-widest">Total Value</div>
+          <div className="text-xl font-black md:text-3xl">{viewTotals.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+        </div>
       </div>
+
+      {/* On phones the filters fold behind the filter icon (FilterBox). */}
+      <FilterBox
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        active={Boolean(searchTerm || companyFilter || itemFilter)}
+        onClear={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }}
+        columns="grid-cols-1 md:grid-cols-2"
+      >
+        <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+        <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+      </FilterBox>
 
       <div className="bg-white rounded shadow-sm overflow-hidden border border-black">
         {isLoading ? (
