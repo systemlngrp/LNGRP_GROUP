@@ -25,6 +25,13 @@ function getReel(row: ProductionPlanSortRow) {
   return toNumber(row.reelActualWithTrimming);
 }
 
+// Job number as in the sheet (trailing digits of JOB/26-27/11035).
+function getJobNumber(row: ProductionPlanSortRow) {
+  const text = normalizeText(row.transactionNo || (row as any).jobCardNo);
+  const match = text.match(/(\d+)\s*$/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
 function sortByCompanyThenReelDesc(a: ProductionPlanSortRow, b: ProductionPlanSortRow) {
   return (
     getCompanyName(a).localeCompare(getCompanyName(b), undefined, { sensitivity: "base" }) ||
@@ -79,8 +86,11 @@ function groupMergedRowsByCompany(rows: ProductionPlanSortRow[]) {
 }
 
 export function sortProductionPlanRows<T extends ProductionPlanSortRow>(rows: T[]): T[] {
+  // Start in job-number order, like the sheet's rows, so jobs that tie on
+  // every rule below keep the sheet's order (sorts are stable).
+  const inJobOrder = [...rows].sort((a, b) => getJobNumber(a) - getJobNumber(b));
   const groupedByFlute = new Map<string, T[]>();
-  rows.forEach((row) => {
+  inJobOrder.forEach((row) => {
     const key = getFluteBatch(row).toLowerCase();
     groupedByFlute.set(key, [...(groupedByFlute.get(key) || []), row]);
   });
