@@ -6064,6 +6064,58 @@ async function backfillMissingConsumptionTransactionNos(db) {
     }
     return rows.length;
 }
+async function realignJobCounterAfterRenumberedMigration(db) {
+    // One-time fix: on 17-Nov-2026 seven old plate jobs were posted without
+    // migrationKeepJobNo, so the server first gave two of them new numbers
+    // (26-27/11070 and 11071) before they were set back to 9851 and 9853.
+    // That left the JOB/26-27 counter two ahead of the last real job.
+    // Bring it back to the highest job number in use, only for that small skip.
+    const conn = await db.getConnection();
+    const migrationKey = "migration/job-counter-26-27-realign-v1";
+    const counterKey = "JOB/26-27";
+    try {
+        const [lockRows] = await conn.query("SELECT GET_LOCK(?, 30) AS acquired", [counterKey]);
+        if (Number(lockRows[0]?.acquired || 0) !== 1)
+            throw new Error("Could not acquire the job counter lock.");
+        await conn.beginTransaction();
+        const [markerRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1", [migrationKey]);
+        if (markerRows.length) {
+            await conn.commit();
+            return { changed: false, alreadyApplied: true };
+        }
+        const [counterRows] = await conn.query("SELECT lastValue FROM transaction_counters WHERE counterKey = ? LIMIT 1 FOR UPDATE", [counterKey]);
+        const counter = Number(counterRows[0]?.lastValue || 0);
+        const [jobRows] = await conn.query("SELECT transactionNo FROM `productions` WHERE transactionNo LIKE ?", ["%JOB/26-27/%"]);
+        let maxInUse = 0;
+        for (const row of jobRows) {
+            const match = String(row.transactionNo || "").match(/JOB\/26-27\/0*(\d+)$/);
+            if (match)
+                maxInUse = Math.max(maxInUse, Number(match[1]));
+        }
+        const skip = counter - maxInUse;
+        const changed = maxInUse > 0 && skip > 0 && skip <= 2;
+        if (changed)
+            await conn.query("UPDATE transaction_counters SET lastValue = ? WHERE counterKey = ?", [maxInUse, counterKey]);
+        await conn.query("INSERT INTO transaction_counters (counterKey, lastValue) VALUES (?, 1)", [migrationKey]);
+        await conn.commit();
+        console.log(`[DB] JOB/26-27 counter realign: counter ${counter}, highest job ${maxInUse}, ${changed ? "reset" : "left as is"}.`);
+        return { changed, alreadyApplied: false };
+    }
+    catch (error) {
+        try {
+            await conn.rollback();
+        }
+        catch { }
+        throw error;
+    }
+    finally {
+        try {
+            await conn.query("SELECT RELEASE_LOCK(?)", [counterKey]);
+        }
+        catch { }
+        conn.release();
+    }
+}
 async function migrateFirmWiseConsumptionTransactionNos(db) {
     const conn = await db.getConnection();
     const migrationKey = "migration/firm-consumption-numbering-v1";
@@ -9977,6 +10029,12 @@ async function initDb(retries = 5) {
                     sqlState: details?.sqlState || "",
                     message: details?.message || String(err),
                 });
+            }
+            try {
+                await realignJobCounterAfterRenumberedMigration(db);
+            }
+            catch (err) {
+                console.warn("[DB] Could not realign the JOB/26-27 counter:", err.message);
             }
             try {
                 const migration = await migrateFirmWiseConsumptionTransactionNos(db);
