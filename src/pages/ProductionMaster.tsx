@@ -19,7 +19,7 @@ import { SortHeader, useTableSort } from "../lib/tableSort";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getProductionEffectiveType, getRequiredMachinesForProduction, resolveProductionProcessingRoute } from "../lib/productionType";
 import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/jobClosureValidation";
-import { getProductionMatchingFields, hasProductionMatchingFieldChanges } from "../lib/productionMatching";
+import { getProductionMatchingFields } from "../lib/productionMatching";
 import { downloadJobCardPdf } from "../lib/jobCardPdf";
 import { findLinkedItemByErp } from "../lib/linkedLoading";
 import { resolveProductionErp, resolveProductionItem as resolveProductionCatalogItem, resolveProductionSource } from "../lib/productionErp";
@@ -137,24 +137,10 @@ export function ProductionMaster() {
     return undefined;
   };
 
-  useEffect(() => {
-    const normalizedRows = productions.map((production) => {
-      const item = resolveProductionItem(production);
-      const nextValues = getProductionMatchingFields(production, item);
-      if (!hasProductionMatchingFieldChanges(production, nextValues)) {
-        return production;
-      }
-      return {
-        ...production,
-        ...nextValues,
-      };
-    });
-
-    const hasChanges = normalizedRows.some((row, index) => row !== productions[index]);
-    if (!hasChanges) return;
-
-    void setProductions(() => normalizedRows);
-  }, [productions]);
+  // Opening this view used to re-save jobs whose item-master fields differed
+  // (e.g. weightPerPcSetReq, which the jobs table does not keep). Each save
+  // reloaded all data and started the next save, so the page kept reloading.
+  // The table already shows the item-master values without saving them.
 
   const visibleProductions = useMemo(
     () => productions.filter((production) => !isScrapLinkedProduction(production, phpJobs, plateJobs)),
