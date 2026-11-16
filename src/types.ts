@@ -732,6 +732,14 @@ export interface Order {
   status?: "Pending PH" | "Approved" | "Pending Scheduling" | "Scheduled" | "Cancelled";
   approvedTimestamp?: string;
   approvedEmail?: string;
+  /** What the rate/RAPC auto-approval rule found when it last ran (server/orderApproval.ts). */
+  approvalCheckedAt?: string | null;
+  approvalLastBillingRate?: number | string | null;
+  approvalLastBillingRef?: string | null;
+  approvalBenchmark?: number | string | null;
+  approvalLastRapc?: number | string | null;
+  approvalRapcRef?: string | null;
+  approvalReason?: string | null;
   updatedBy?: string;
   updateTimestamp?: string;
 }

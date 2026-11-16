@@ -16,13 +16,36 @@ const hasValue = (value) => {
     const text = String(value ?? "").trim();
     return Boolean(text) && text.toLowerCase() !== "null" && text.toLowerCase() !== "undefined";
 };
+const fmt = (n) => {
+    const v = Number(n);
+    return Number.isFinite(v) ? (Math.round(v * 100) / 100).toString() : "-";
+};
+const ddmmyyyy = (d) => {
+    const m = String(d || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : String(d || "");
+};
+/** One line on why the rule passed or failed, e.g. for the Order Master and Pending Scheduling screens. */
+export function describeRuleCheck(c) {
+    const bill = c.lastBillingInvoiceNo ? ` (${c.lastBillingInvoiceNo}${c.lastBillingDate ? `, ${ddmmyyyy(c.lastBillingDate)}` : ""})` : "";
+    const job = c.rapcJobNo ? ` (${c.rapcJobNo}${c.rapcJobDate ? `, ${ddmmyyyy(c.rapcJobDate)}` : ""})` : "";
+    switch (c.failed) {
+        case "item": return "Not auto-approved: item is not an FG/NPD item";
+        case "billing": return "Not auto-approved: no earlier invoice for this item";
+        case "rate": return `Not auto-approved: rate ${fmt(c.orderRate)} differs from last billing rate ${fmt(c.lastBillingRate)}${bill}`;
+        case "period": return "Not auto-approved: order date is in no Realization Setup period";
+        case "rapc": return "Not auto-approved: no job with RAPC for this item";
+        case "rapcLow": return `Not auto-approved: last RAPC ${fmt(c.lastRapc)}${job} is below benchmark ${fmt(c.benchmark)}`;
+        case "error": return "Not auto-approved: rule could not be checked";
+        default: return `Auto-approved: rate ${fmt(c.orderRate)} = last billing rate${bill}; last RAPC ${fmt(c.lastRapc)}${job} >= benchmark ${fmt(c.benchmark)}`;
+    }
+}
 export async function decideOrderApproval(data, stored, passesAutoApprovalRule, now = new Date().toISOString()) {
     const requested = String(data.status ?? "").trim();
     const sentTimestamp = hasValue(data.approvedTimestamp) ? String(data.approvedTimestamp).trim() : "";
     const sentEmail = hasValue(data.approvedEmail) ? String(data.approvedEmail).trim() : "";
     const actor = String(data.updatedBy ?? data.orderBy ?? "").trim() || "System";
     if (CANCELLED_STATUSES.has(requested)) {
-        return { status: requested, approvedTimestamp: sentTimestamp || null, approvedEmail: sentEmail || null, ruleApplied: false };
+        return { status: requested, approvedTimestamp: sentTimestamp || null, approvedEmail: sentEmail || null, ruleApplied: false, path: "cancelled" };
     }
     const storedStatus = String(stored?.status ?? "").trim();
     const storedTimestamp = hasValue(stored?.approvedTimestamp) ? String(stored?.approvedTimestamp).trim() : "";
@@ -35,6 +58,7 @@ export async function decideOrderApproval(data, stored, passesAutoApprovalRule, 
             approvedTimestamp: sentTimestamp || storedTimestamp || now,
             approvedEmail: sentEmail || storedEmail || actor,
             ruleApplied: false,
+            path: "kept",
         };
     }
     if (APPROVED_STATUSES.has(requested) || sentTimestamp || sentEmail) {
@@ -43,12 +67,13 @@ export async function decideOrderApproval(data, stored, passesAutoApprovalRule, 
             approvedTimestamp: sentTimestamp || now,
             approvedEmail: sentEmail || actor,
             ruleApplied: false,
+            path: "explicit",
         };
     }
     if (await passesAutoApprovalRule()) {
-        return { status: "Pending Scheduling", approvedTimestamp: now, approvedEmail: AUTO_APPROVED_BY, ruleApplied: true };
+        return { status: "Pending Scheduling", approvedTimestamp: now, approvedEmail: AUTO_APPROVED_BY, ruleApplied: true, path: "rule" };
     }
-    return { status: "Pending PH", approvedTimestamp: null, approvedEmail: null, ruleApplied: true };
+    return { status: "Pending PH", approvedTimestamp: null, approvedEmail: null, ruleApplied: true, path: "rule" };
 }
 /**
  * Benchmark realization rate for a date from Settings > Realization Setup

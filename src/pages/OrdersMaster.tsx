@@ -10,6 +10,7 @@ import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/utils";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { ORDER_APPROVAL_COLUMN_COUNT, OrderApprovalCells, OrderApprovalHeaders } from "../components/OrderApprovalColumns";
 import { Company, DispatchPlan, Firm, LoadingSlip, Order, OrderSchedule, User, Supplier } from "../types";
 
 type OrderMasterRow = {
@@ -426,11 +427,12 @@ export function OrdersMaster() {
               <th className="border border-black px-3 py-2"><SortHeader label="Canceled Qty" sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="border border-black px-3 py-2"><SortHeader label="Pending Order Qty" sortKey="pendingQty" sort={sort} onToggle={toggleSort} align="center" /></th>
               <th className="border border-black px-3 py-2"><SortHeader label="Order By" sortKey="orderBy" sort={sort} onToggle={toggleSort} align="center" /></th>
+              <OrderApprovalHeaders thClassName="border border-black px-3 py-2 text-xs font-bold" />
             </tr>
           </thead>
           <tbody>
             {paginatedRows.length === 0 ? (
-              <tr><td colSpan={14} className="h-16" aria-label="No records" /></tr>
+              <tr><td colSpan={14 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
             ) : (
               paginatedRows.map((row) => (
                 <tr key={row.order.id} className="align-top">
@@ -448,6 +450,7 @@ export function OrdersMaster() {
                   <td className="border border-black px-3 py-2 text-right">{formatAmount(row.canceledQty)}</td>
                   <td className="border border-black px-3 py-2 text-right">{formatAmount(row.pendingQty)}</td>
                   <td className="border border-black px-3 py-2">{row.orderByName}</td>
+                  <OrderApprovalCells order={row.order} tdClassName="border border-black px-3 py-2" />
                 </tr>
               ))
             )}

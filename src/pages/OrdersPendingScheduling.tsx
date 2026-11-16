@@ -11,6 +11,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { ORDER_APPROVAL_COLUMN_COUNT, OrderApprovalCells, OrderApprovalHeaders } from "../components/OrderApprovalColumns";
 
 export function OrdersPendingScheduling() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -330,11 +331,12 @@ export function OrdersPendingScheduling() {
                 <th className="px-2 py-1.5 border border-black text-right"><SortHeader label="Pending Scheduling" sortKey="pending" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-2 py-1.5 border border-black"><SortHeader label="Unit" sortKey="uom" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-2 py-1.5 border border-black">Actions</th>
+                <OrderApprovalHeaders thClassName="px-2 py-1.5 border border-black text-xs font-bold" />
               </tr>
             </thead>
             <tbody>
               {paginatedPending.length === 0 ? (
-                <tr><td colSpan={10} className="h-16" aria-label="No records" /></tr>
+                <tr><td colSpan={10 + ORDER_APPROVAL_COLUMN_COUNT} className="h-16" aria-label="No records" /></tr>
               ) : paginatedPending.map(({ order: o, item, firmName, companyName, scheduledQty: sched, pendingQty: pendingSched }, idx) => {
                 return (
                   <tr key={o.id} className="hover:bg-slate-50">
@@ -348,6 +350,7 @@ export function OrdersPendingScheduling() {
                     <td className="px-2 py-1.5 border border-black text-right tabular-nums font-bold text-indigo-700">{formatQty(pendingSched)}</td>
                     <td className="px-2 py-1.5 border border-black">{item?.uom || "-"}</td>
                     <td className="px-2 py-1.5 border border-black text-center"><button onClick={() => { setModalOrderId(o.id); setModalOpen(true); }} className="bg-indigo-600 text-white px-3 py-1 rounded">Schedule</button></td>
+                    <OrderApprovalCells order={o} tdClassName="px-2 py-1.5 border border-black" />
                   </tr>
                 );
               })}

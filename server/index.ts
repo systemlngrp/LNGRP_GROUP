@@ -26,7 +26,7 @@ import { writeReelReturnWhatsappPdf } from "./reelReturnWhatsappPdf.js";
 import { resolveWhatsappConfigPassword } from "./whatsappConfigPassword.js";
 import { migrationJobNoError, migrationNeedsCounterRaise, parseMigrationJobNo } from "./migrationJobNo.js";
 import { parseSalesTargetPayload } from "./salesTargets.js";
-import { decideOrderApproval, realizationTargetForDate } from "./orderApproval.js";
+import { decideOrderApproval, describeRuleCheck, realizationTargetForDate, type RuleCheck } from "./orderApproval.js";
 import { jobDateRuleError, scheduleDateRuleError } from "./scheduleDateRule.js";
 import { migrationSlipCounterValue, migrationSlipNoError, parseMigrationSlipNo } from "./migrationSlipNo.js";
 import { firmDisplayNameForSort, readServerSort, sortRowsInMemory, sqlFirmCodeOrder, sqlSortTerms, type ServerSort, type SqlSortColumn } from "./tableSort.js";
@@ -9716,6 +9716,13 @@ await db.query(`
         { table: "material_in", column: "accEmailId", type: "VARCHAR(255)" },
         { table: "orders", column: "approvedTimestamp", type: "VARCHAR(255)" },
         { table: "orders", column: "approvedEmail", type: "VARCHAR(255)" },
+        { table: "orders", column: "approvalCheckedAt", type: "VARCHAR(50)" },
+        { table: "orders", column: "approvalLastBillingRate", type: "DECIMAL(15,2)" },
+        { table: "orders", column: "approvalLastBillingRef", type: "VARCHAR(150)" },
+        { table: "orders", column: "approvalBenchmark", type: "DECIMAL(15,2)" },
+        { table: "orders", column: "approvalLastRapc", type: "DECIMAL(15,2)" },
+        { table: "orders", column: "approvalRapcRef", type: "VARCHAR(150)" },
+        { table: "orders", column: "approvalReason", type: "TEXT" },
         { table: "productions", column: "phTimestamp", type: "VARCHAR(255)" },
         { table: "productions", column: "phEmailId", type: "VARCHAR(255)" },
         { table: "productions", column: "noOfParts", type: "INT" },
@@ -13206,14 +13213,15 @@ const createHandlers = (tableName: string) => {
             const [storedOrderRows] = orderRecordId
               ? await db.query("SELECT status, approvedTimestamp, approvedEmail FROM `orders` WHERE id = ? LIMIT 1", [orderRecordId])
               : [[]];
+            const ruleCheck: RuleCheck = { orderRate };
             const passesAutoApprovalRule = async () => {
               try {
                 const itemSource = normalizeOrderItemSourceValue(data.itemSource);
                 const itemId = itemSource === "FG" ? resolveLinkedNpdId(data) : "";
                 const punchDate = String(data.orderDate || "").trim() || new Date().toISOString().slice(0, 10);
-                if (!itemId || !Number.isFinite(orderRate) || !punchDate) return false;
+                if (!itemId || !Number.isFinite(orderRate) || !punchDate) { ruleCheck.failed = "item"; return false; }
                 const [billingRows] = await db.query(
-                  `SELECT ili.rate
+                  `SELECT ili.rate, inv.invoiceNo, inv.date
                      FROM \`invoice_line_items\` ili
                      JOIN \`invoices\` inv ON inv.id = ili.invoiceId
                      WHERE COALESCE(NULLIF(ili.npdId, ''), ili.itemId) = ?
@@ -13221,23 +13229,38 @@ const createHandlers = (tableName: string) => {
                      LIMIT 1`,
                   [itemId]
                 );
-                const lastBillingRate1 = Number((billingRows as any[])?.[0]?.rate);
-                if (!Number.isFinite(lastBillingRate1) || Math.abs(orderRate - lastBillingRate1) >= 0.0001) return false;
+                const billingRow = (billingRows as any[])?.[0];
+                const lastBillingRate1 = Number(billingRow?.rate);
+                if (billingRow) {
+                  ruleCheck.lastBillingRate = lastBillingRate1;
+                  ruleCheck.lastBillingInvoiceNo = String(billingRow.invoiceNo || "");
+                  ruleCheck.lastBillingDate = String(billingRow.date || "").slice(0, 10);
+                }
+                if (!Number.isFinite(lastBillingRate1)) { ruleCheck.failed = "billing"; return false; }
+                if (Math.abs(orderRate - lastBillingRate1) >= 0.0001) { ruleCheck.failed = "rate"; return false; }
                 const [settingsRows] = await db.query("SELECT realizationPerKgTargets FROM `settings` LIMIT 1");
                 const realizationRate = Number(realizationTargetForDate((settingsRows as any[])?.[0]?.realizationPerKgTargets, punchDate));
-                if (!Number.isFinite(realizationRate)) return false;
+                if (!Number.isFinite(realizationRate)) { ruleCheck.failed = "period"; return false; }
+                ruleCheck.benchmark = realizationRate;
                 const [rapcRows] = await db.query(
-                  `SELECT realizationPerKg
+                  `SELECT realizationPerKg, transactionNo, date
                      FROM \`productions\`
                      WHERE COALESCE(NULLIF(npdId, ''), itemId) = ? AND realizationPerKg IS NOT NULL
                      ORDER BY date DESC
                      LIMIT 1`,
                   [itemId]
                 );
-                const lastRapc1 = Number((rapcRows as any[])?.[0]?.realizationPerKg);
-                return Number.isFinite(lastRapc1) && lastRapc1 >= realizationRate;
+                const rapcRow = (rapcRows as any[])?.[0];
+                const lastRapc1 = Number(rapcRow?.realizationPerKg);
+                if (!rapcRow || !Number.isFinite(lastRapc1)) { ruleCheck.failed = "rapc"; return false; }
+                ruleCheck.lastRapc = lastRapc1;
+                ruleCheck.rapcJobNo = String(rapcRow.transactionNo || "");
+                ruleCheck.rapcJobDate = String(rapcRow.date || "").slice(0, 10);
+                if (lastRapc1 < realizationRate) { ruleCheck.failed = "rapcLow"; return false; }
+                return true;
               } catch (ruleError) {
                 console.warn("[ORDER_APPROVAL] Auto-approval rule could not be checked; order left for approval:", (ruleError as Error).message);
+                ruleCheck.failed = "error";
                 return false;
               }
             };
@@ -13245,6 +13268,22 @@ const createHandlers = (tableName: string) => {
             data.status = approval.status;
             data.approvedTimestamp = approval.approvedTimestamp;
             data.approvedEmail = approval.approvedEmail;
+            // Keep what the rule found on the order, so screens can show why it was (or was not) auto-approved.
+            if (approval.path === "rule") {
+              data.approvalCheckedAt = new Date().toISOString();
+              data.approvalLastBillingRate = ruleCheck.lastBillingRate ?? null;
+              data.approvalLastBillingRef = ruleCheck.lastBillingInvoiceNo
+                ? `${ruleCheck.lastBillingInvoiceNo}${ruleCheck.lastBillingDate ? ` (${ruleCheck.lastBillingDate})` : ""}`
+                : null;
+              data.approvalBenchmark = ruleCheck.benchmark ?? null;
+              data.approvalLastRapc = ruleCheck.lastRapc ?? null;
+              data.approvalRapcRef = ruleCheck.rapcJobNo
+                ? `${ruleCheck.rapcJobNo}${ruleCheck.rapcJobDate ? ` (${ruleCheck.rapcJobDate})` : ""}`
+                : null;
+              data.approvalReason = describeRuleCheck(ruleCheck);
+            } else if (approval.path === "explicit") {
+              data.approvalReason = `Approved by ${approval.approvedEmail || "user"}`;
+            }
           } catch (err) {
             console.warn('[DB] Could not auto-generate orderNo:', (err as Error).message);
           }
