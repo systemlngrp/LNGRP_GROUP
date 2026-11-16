@@ -861,7 +861,7 @@ export function ProductionForm() {
                   className={cn(
                     "w-full border-2 border-black rounded p-2 text-[15px] text-black shadow-sm",
                     isSampleItem
-                      ? "bg-slate-100 cursor-not-allowed focus:outline-none"
+                      ? "bg-gray-300 cursor-not-allowed focus:outline-none"
                       : quantityDeviationError || maximumAllowedProductionError
                         ? "border-red-600 bg-red-50 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600"
                         : "bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
@@ -889,7 +889,7 @@ export function ProductionForm() {
               type="text"
               value={formData.remarks}
               onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              className="w-full border-2 border-black rounded p-2 text-[15px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
+              className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
             />
             </ProductionFieldRow>
           </div>}
@@ -1066,7 +1066,7 @@ function FormInput({
         onChange={(e) => onChange?.(type === "number" ? (e.target.value === "" ? "" : parseFloat(e.target.value)) : e.target.value)}
         className={cn(
           "w-full border border-black rounded px-2 py-2 text-[15px] text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600",
-          readOnly ? "bg-slate-100 cursor-not-allowed" : "bg-yellow-100",
+          readOnly ? "bg-gray-300 cursor-not-allowed" : "bg-yellow-100",
           inputClassName
         )}
       />
@@ -1093,7 +1093,7 @@ function ReadOnlyNumberField({
           type="number"
           value={value}
           readOnly
-          className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-slate-100 focus:outline-none shadow-sm"
+          className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-gray-300 focus:outline-none shadow-sm"
         />
         {suffix ? <span className="absolute right-3 top-2.5 text-black font-bold opacity-60">{suffix}</span> : null}
       </div>
@@ -1117,7 +1117,7 @@ function ReadOnlyTextField({
         type="text"
         value={value}
         readOnly
-        className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-slate-100 focus:outline-none shadow-sm"
+        className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-gray-300 focus:outline-none shadow-sm"
       />
     </ProductionFieldRow>
   );
