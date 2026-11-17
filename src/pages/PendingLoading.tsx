@@ -15,6 +15,7 @@ import {
   OrderItemSource,
   OrderSchedule,
   Firm,
+  ProductionProcessing,
 } from "../types";
 import { Select } from "../components/Select";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
@@ -43,6 +44,7 @@ import { normalizeTruckStatus } from "../lib/truckStatus";
 import { useAuth } from "../auth/AuthContext";
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
 import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
+import { corrugationLinerQtyByJobId } from "../lib/productionProcessingProgress";
 import {
   EligibleLoadingJob,
   getLoadingJobNumber,
@@ -114,6 +116,8 @@ export function PendingLoading() {
   const [phpItemMaster] = useData<any>("php_item_master", []);
   const [plateItemMaster] = useData<any>("plate_item_master", []);
   const [loadingSlips, updateLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty"] });
+  const corrugationQtyByJobId = useMemo(() => corrugationLinerQtyByJobId(processing), [processing]);
   const [phpLoadingSlips, updatePhpLoadingSlips] = useData<LoadingSlip>("php_loading_slips", []);
   const [plateLoadingSlips, updatePlateLoadingSlips] = useData<LoadingSlip>("plate_loading_slips", []);
 
@@ -180,10 +184,11 @@ export function PendingLoading() {
       phpJobs,
       plateJobs,
       loadingSlips,
+      corrugationQtyByJobId,
       resolveOrderItem,
       findItemAcrossSources,
     }),
-    [companies, findItemAcrossSources, firms, loadingSlips, orders, phpJobs, plateJobs, plans, productions, resolveOrderItem, schedules],
+    [companies, corrugationQtyByJobId, findItemAcrossSources, firms, loadingSlips, orders, phpJobs, plateJobs, plans, productions, resolveOrderItem, schedules],
   );
 
   const groupedData = useMemo(() => {
@@ -360,7 +365,8 @@ export function PendingLoading() {
 
   const getRemainingCapacityForJob = (jobId: string, currentRowQty = 0, jobSource: OrderItemSource = "FG") => {
     const production = productionMap.get(jobId);
-    const ffg = Number(jobSource === "FG" ? production?.prodFromFFG || 0 : production?.productionOutputQty || 0);
+    // FG jobs load against Corrugation Liner boxes, not Prod (FG).
+    const ffg = jobSource === "FG" ? corrugationQtyByJobId.get(jobId) || 0 : Number(production?.productionOutputQty || 0);
     const alreadyLoaded = getAlreadyLoadedForJob(jobId);
     const currentAdjustments = currentAdjustmentByJobId.get(jobId) || 0;
     return Math.max(0, ffg - alreadyLoaded - currentAdjustments + currentRowQty);
@@ -378,14 +384,14 @@ export function PendingLoading() {
     const errors: string[] = [];
 
     const totalPending = modal.plans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
-    const firmBalance = modal.itemSource === "FG" ? getFirmStockBalance(modal.itemId, modal.firmId) : Number.POSITIVE_INFINITY;
 
     const truckNoInput = modalManualTruckNo.trim();
     if (!truckNoInput) errors.push("Please enter truck number.");
     if (modalTruckId && !isTruckAvailableForLoading(modalTruckId)) errors.push("Selected truck is not an EMPTY internal truck. Please select another truck.");
     if (rowLoadedQty <= 0) errors.push("Loaded qty must be greater than 0.");
     if (rowLoadedQty > totalPending + 0.0001) errors.push("Loaded qty cannot exceed total pending for loading.");
-    if (modal.itemSource === "FG" && rowLoadedQty > firmBalance + 0.0001) errors.push(`Load quantity cannot exceed ${firmBalance.toLocaleString()} available FG stock.`);
+    // FG stock limits only the FG Stock row; job rows are limited by their
+    // Corrugation (Liner) balance, so loading no longer waits for Prod (FG).
 
     Object.entries(byJobId).forEach(([jobId, qty]) => {
       const value = Number(qty || 0);
@@ -395,9 +401,6 @@ export function PendingLoading() {
         errors.push("Adjust Now cannot exceed Yet to Load for a job.");
       }
     });
-    if (modal.itemSource === "FG" && jobAllocatedTotal > firmBalance + 0.0001) {
-      errors.push(`Job allocations cannot exceed ${firmBalance.toLocaleString()} available FG stock.`);
-    }
 
     if (modal.itemSource === "FG" && npdStockLoading) errors.unshift("FG stock is still loading. Please wait a moment.");
     const stockLabel = modal.itemSource === "FG" ? "FG Stock" : `${modal.itemSource} Stock`;
@@ -420,7 +423,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
+  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);
@@ -1038,8 +1041,7 @@ export function PendingLoading() {
                   const totalCancelled = loadingModal.plans.reduce((sum, plan) => sum + Number(plan.canceledQty || 0), 0);
                   const totalPending = loadingModal.plans.reduce((sum, plan) => sum + Number(plan.pendingQty || 0), 0);
                   const rowLoadedQty = Number(loadedQuantities[modalKey] || 0);
-                  const fgAvailable = loadingModal.itemSource === "FG" ? getFirmStockBalance(loadingModal.itemId, loadingModal.firmId) : Number.POSITIVE_INFINITY;
-                  const maxLoadable = Math.min(totalPending, fgAvailable);
+                  const maxLoadable = totalPending;
                   const validation = getModalValidation(loadingModal);
                   const phpDetailsPreview = getPreviewLinkedDetails("PHP", rowLoadedQty);
                   const plateDetailsPreview = getPreviewLinkedDetails("PLATE", rowLoadedQty);
@@ -1091,7 +1093,7 @@ export function PendingLoading() {
                             <thead className="sticky top-0 z-30 bg-slate-50">
                               <tr className="divide-x divide-slate-300 bg-slate-100">
                                 <th className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider">Job No</th>
-                                <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Prod (FG)</th>
+                                <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">{loadingModal.itemSource === "FG" ? "Corrugation (Liner)" : "Prod"}</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider">Already Loaded</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider text-emerald-700">Available</th>
                                 <th className="px-4 py-3 text-right text-xs font-black uppercase tracking-wider bg-indigo-50">Load Now</th>
@@ -1100,13 +1102,7 @@ export function PendingLoading() {
                             <tbody className="divide-y divide-slate-200 bg-white">
                               {jobs.map((job) => {
                                 const currentValue = jobSplitQtys[modalKey]?.[job.jobId] ?? "";
-                                const otherJobAllocations = Object.entries(jobSplitQtys[modalKey] || {})
-                                  .filter(([jobId]) => jobId !== job.jobId)
-                                  .reduce((sum, [, qty]) => sum + Number(qty || 0), 0);
-                                const remainingFgCapacity = loadingModal.itemSource === "FG"
-                                  ? Math.max(0, fgAvailable - otherJobAllocations)
-                                  : Number.POSITIVE_INFINITY;
-                                const jobMax = Math.min(job.yetToLoad, remainingFgCapacity);
+                                const jobMax = job.yetToLoad;
                                 return (
                                   <tr key={job.jobId} className="divide-x divide-slate-200 transition-colors hover:bg-indigo-50/40">
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
@@ -1126,13 +1122,7 @@ export function PendingLoading() {
                                             if (rawValue === "") return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: "" } };
                                             const parsedValue = Number(rawValue);
                                             if (!Number.isFinite(parsedValue)) return prev;
-                                            const otherAllocations = Object.entries(currentRows)
-                                              .filter(([jobId]) => jobId !== job.jobId)
-                                              .reduce((sum, [, qty]) => sum + Number(qty || 0), 0);
-                                            const latestFgCapacity = loadingModal.itemSource === "FG"
-                                              ? Math.max(0, fgAvailable - otherAllocations)
-                                              : Number.POSITIVE_INFINITY;
-                                            const latestMax = Math.min(job.yetToLoad, latestFgCapacity);
+                                            const latestMax = job.yetToLoad;
                                             const next = Math.max(0, Math.min(parsedValue, latestMax));
                                             return { ...prev, [modalKey]: { ...currentRows, [job.jobId]: next } };
                                           });

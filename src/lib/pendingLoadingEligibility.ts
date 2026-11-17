@@ -163,7 +163,15 @@ export function eligibleLoadingJobs(
   plateJobs: Production[],
   alreadyLoaded: Map<string, number>,
   itemAliases: string[] = [],
+  corrugationQtyByJobId?: Map<string, number>,
 ) {
+  // FG jobs: loadable qty = boxes made on Corrugation Liner (jobs without a
+  // Corrugation Liner entry are not listed). PHP / Plate keep their output qty.
+  const jobQty = (production: Production) => {
+    if (source !== "FG") return Number(production.productionOutputQty || 0);
+    if (corrugationQtyByJobId) return corrugationQtyByJobId.get(String(production.id || "").trim()) || 0;
+    return Number(production.prodFromFFG || 0);
+  };
   const source = normalizeOrderItemSource(itemSource);
   const sourceJobs = source === "PHP" ? phpJobs : source === "PLATE" ? plateJobs : productions;
   const targetItemKeys = new Set<string>();
@@ -186,15 +194,11 @@ export function eligibleLoadingJobs(
       if (!targetFirm && jobFirm) return false;
       if (isClosedOrTallied(production)) return false;
 
-      const productionQty = Number(
-        source === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0,
-      );
+      const productionQty = jobQty(production);
       return Number.isFinite(productionQty) && productionQty > 0;
     })
     .map((production) => {
-      const productionQty = Number(
-        source === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0,
-      );
+      const productionQty = jobQty(production);
       const loaded = alreadyLoaded.get(normalizeKey(production.id)) || 0;
       return {
         jobId: production.id,
@@ -232,6 +236,7 @@ export function getPendingLoadingPlanProjections(args: {
   phpJobs: Production[];
   plateJobs: Production[];
   loadingSlips: LoadingSlip[];
+  corrugationQtyByJobId?: Map<string, number>;
   resolveOrderItem?: (order?: Order) => LoadingCatalogItem | undefined;
   findItemAcrossSources?: (
     itemId: string,
@@ -267,6 +272,7 @@ export function getPendingLoadingPlanProjections(args: {
       args.plateJobs,
       loaded,
       Array.from(itemKeys(item, order)),
+      args.corrugationQtyByJobId,
     );
 
 

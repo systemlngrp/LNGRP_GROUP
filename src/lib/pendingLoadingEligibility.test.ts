@@ -136,3 +136,15 @@ test("page projections and sidebar count use the same eligible rows", () => {
     plans: [plan(), plan({ id: "empty", plannedQty: 10, loadedQty: 10 })],
   })), projections.length);
 });
+
+test("FG jobs load against Corrugation Liner qty and jobs without it are hidden", () => {
+  const rows = getPendingLoadingPlanProjections(args({
+    productions: [
+      production({ id: "corr", transactionNo: "JOB/26/021" }),
+      production({ id: "no-corr", transactionNo: "JOB/26/022" }),
+    ],
+    corrugationQtyByJobId: new Map([["corr", 450]]),
+  }));
+  assert.deepEqual(rows[0].eligibleJobs.map((job) => job.jobId), ["corr"]);
+  assert.equal(rows[0].eligibleJobs[0].productionQty, 450);
+});
