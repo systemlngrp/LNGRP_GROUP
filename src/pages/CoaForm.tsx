@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { activeTemplateForCompany, buildCoaSourceMap, buildInitialCellValues, getCoaCellValue, resolveCoaSourceContext, type CoaSourceContext, defaultCoaLayout } from "../lib/coa";
 import { printCoaRecord } from "../lib/coaPrint";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import type { BoardLineQcCheck, Company, CoaCellValue, CoaRecord, CoaTemplate, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
 
 const field = "w-full rounded border-2 border-black bg-white px-3 py-2 text-sm";
@@ -33,6 +34,7 @@ export function CoaForm() {
   const [boardlineRows] = useData<BoardLineQcCheck>("boardline_qc_checks", [], { firmScope: "all" });
   const [printingRows] = useData<PrintingQcCheck>("printing_qc_checks", [], { firmScope: "all" });
   const [templates] = useData<CoaTemplate>("coa-templates", []);
+  const npdItems = useNpdItemsWithoutStock();
   const [records, , , api] = useData<CoaRecord>("coa-records", []);
   const [productionId, setProductionId] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -43,7 +45,7 @@ export function CoaForm() {
   const [loadedId, setLoadedId] = useState("");
   const [message, setMessage] = useState("");
   const production = productions.find((value) => value.id === productionId);
-  const context = useMemo<CoaSourceContext | undefined>(() => production ? resolveCoaSourceContext(production, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows) : undefined, [boardlineRows, companies, firms, invoiceLines, invoices, orders, pdis, printingRows, production, schedules]);
+  const context = useMemo<CoaSourceContext | undefined>(() => production ? resolveCoaSourceContext(production, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows, npdItems as any[]) : undefined, [boardlineRows, companies, firms, invoiceLines, invoices, npdItems, orders, pdis, printingRows, production, schedules]);
   const sourceMap = useMemo(() => context ? buildCoaSourceMap(context, headerData.coaDate || new Date().toISOString().slice(0, 10)) : {}, [context, headerData.coaDate]);
   const activeTemplate = context?.company ? activeTemplateForCompany(templates, context.company.id) : undefined;
   const jobOptions = productions.filter((value) => value.status !== "Cancelled").map((value) => ({ value: value.id, label: displayJobNo(text(value.transactionNo || value.jobCardNo)), searchText: `${value.transactionNo || value.jobCardNo} ${displayJobNo(value.transactionNo || value.jobCardNo)} ${value.companyName || ""} ${value.erpCode || value.masterErp || ""}` }));
@@ -59,7 +61,7 @@ export function CoaForm() {
   const selectJob = (nextProductionId: string) => {
     const nextProduction = productions.find((value) => value.id === nextProductionId);
     if (!nextProduction) return;
-    const nextContext = resolveCoaSourceContext(nextProduction, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows);
+    const nextContext = resolveCoaSourceContext(nextProduction, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows, npdItems as any[]);
     const nextTemplate = nextContext.company ? activeTemplateForCompany(templates, nextContext.company.id) : undefined;
     setEditingRecord(null); setProductionId(nextProductionId); setTemplateId(nextTemplate?.id || ""); setLayout(nextTemplate?.layout || defaultCoaLayout()); setHeaderData(buildCoaSourceMap(nextContext)); setCellValues(nextTemplate ? buildInitialCellValues(nextTemplate.layout, buildCoaSourceMap(nextContext)) : {}); setMessage(nextTemplate ? "" : "No active COA template is configured for this customer company.");
   };

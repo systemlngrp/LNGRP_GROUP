@@ -1422,6 +1422,8 @@ export interface CoaTemplateLayout {
   metadataRows: CoaTemplateRow[];
   parameterRows: CoaTemplateRow[];
   footerRows: CoaTemplateRow[];
+  // Other customer companies (e.g. a group's C/O units) that use this template.
+  applyToCompanyIds?: string[];
 }
 
 export interface CoaTemplate {
