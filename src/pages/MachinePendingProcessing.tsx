@@ -391,7 +391,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   // filter is in use, the machines that still have matching jobs open by
   // themselves so the results are visible.
   useEffect(() => {
-    if (filterMachineId || fixedNormalizedMachineName || !hasActiveFilters) return;
+    if (filterMachineId || fixedNormalizedMachineName) return;
+    if (!hasActiveFilters) {
+      setExpandedMachines((current) => (current.size ? new Set() : current));
+      return;
+    }
     const machineIds = machineGroups.map((group) => group.machineId);
     setExpandedMachines((current) => {
       if (current.size === machineIds.length && machineIds.every((id) => current.has(id))) {
