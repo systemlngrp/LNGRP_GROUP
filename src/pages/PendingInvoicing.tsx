@@ -42,6 +42,7 @@ import { normalizeOrderItemSource } from "../lib/orderItems";
 import { buildGatePassFromInvoice } from "../lib/gatePasses";
 import { useAutoRefreshPause } from "../hooks/useAutoRefresh";
 import { useAuth } from "../auth/AuthContext";
+import { FirmTabs } from "../components/FirmTabs";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { getPendingInvoicingSlip } from "../lib/pendingInvoicing";
 import { companyTcsRate, computeTcsAmount, normalizeTcsRate } from "../lib/invoiceTcs";
@@ -567,7 +568,6 @@ export function PendingInvoicing() {
       }) }))
       .filter((group) => group.slips.length > 0)
       .filter((group) => !companyFilter || group.companyId === companyFilter)
-      .filter((group) => !firmFilter || group.firmId === firmFilter)
       // Each slip row is searched on what it shows: the group heading (company,
       // firm) and its columns Loading Slip No, Date, Truck No, Item Name(s), Total Qty.
       .map((group) => {
@@ -587,9 +587,16 @@ export function PendingInvoicing() {
       })
       .filter((group) => group.slips.length > 0)
       .sort((a, b) => a.companyName.localeCompare(b.companyName));
-  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, firmFilter, itemFilter, fromDate, toDate, findItemAcrossSources, resolveOrderItem, lookup, trucks]);
+  }, [loadingSlips, invoiceLineItems, companies, firms, plans, orders, npdItems, searchTerm, companyFilter, itemFilter, fromDate, toDate, findItemAcrossSources, resolveOrderItem, lookup, trucks]);
 
-  const firmOptions = useMemo(() => Array.from(new Map(groupedData.filter((group) => group.firmId).map((group) => [group.firmId, { value: group.firmId, label: group.firmName }])).values()).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
+  // Firm tabs: pending loading slips per firm (other filters applied), and the
+  // groups shown for the selected tab.
+  const firmTabCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    groupedData.forEach((group) => counts.set(group.firmId, (counts.get(group.firmId) || 0) + group.slips.length));
+    return counts;
+  }, [groupedData]);
+  const firmGroups = useMemo(() => (firmFilter ? groupedData.filter((group) => group.firmId === firmFilter) : groupedData), [groupedData, firmFilter]);
   const companyOptions = useMemo(() => Array.from(new Map(groupedData.map((group) => [group.companyId, { value: group.companyId, label: group.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [groupedData]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); groupedData.forEach((group) => group.slips.forEach((slip) => slip.items.forEach((name, index) => { const key = slip.itemKeys[index] || name; if (!key || map.has(key)) return; map.set(key, { value: key, label: name, searchText: name }); }))); return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label)); }, [groupedData]);
 
@@ -611,7 +618,7 @@ export function PendingInvoicing() {
   // One sort for every company's slip table: each company's slips are sorted inside their own table.
   const { sort: slipSort, toggle: toggleSlipSort } = useTableSort<never>([], () => null);
   const sortedGroupedData = useMemo(() => {
-    if (!slipSort) return groupedData;
+    if (!slipSort) return firmGroups;
     const getSlipValue = (slip: (typeof groupedData)[number]["slips"][number]) => {
       switch (slipSort.key) {
         case "slipNo": return slip.slipNo || "";
@@ -622,15 +629,15 @@ export function PendingInvoicing() {
         default: return "";
       }
     };
-    return groupedData.map((group) => ({ ...group, slips: sortRows(group.slips, getSlipValue, slipSort.direction) }));
-  }, [groupedData, slipSort, trucks]);
+    return firmGroups.map((group) => ({ ...group, slips: sortRows(group.slips, getSlipValue, slipSort.direction) }));
+  }, [firmGroups, slipSort, trucks]);
 
   useEffect(() => {
     if (didInitExpand.current) return;
-    if (groupedData.length === 0) return;
+    if (firmGroups.length === 0) return;
     didInitExpand.current = true;
-    setExpandedCompanies(new Set(groupedData.map((group) => group.groupKey)));
-  }, [groupedData]);
+    setExpandedCompanies(new Set(firmGroups.map((group) => group.groupKey)));
+  }, [firmGroups]);
 
   const handleStartBilling = (group: GroupedLoading) => {
     const { companyId, groupKey, firmId, slips } = group;
@@ -1214,7 +1221,7 @@ export function PendingInvoicing() {
   const FILTER_DATE = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
   const listFiltered = Boolean(searchTerm.trim() || companyFilter || firmFilter || itemFilter || fromDate || toDate);
   const clearListFilters = () => { setSearchTerm(""); setCompanyFilter(""); setFirmFilter(""); setItemFilter(""); setFromDate(""); setToDate(""); };
-  const pendingSlipCount = groupedData.reduce((sum, group) => sum + group.slips.length, 0);
+  const pendingSlipCount = firmGroups.reduce((sum, group) => sum + group.slips.length, 0);
 
   return (
     <div className="space-y-4">
@@ -1222,10 +1229,11 @@ export function PendingInvoicing() {
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Invoicing</h2>
       </div>
 
+      <FirmTabs firms={firms} counts={firmTabCounts} value={firmFilter} onChange={setFirmFilter} />
+
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
         <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
-          <div className="min-w-0"><span className={FILTER_LABEL}>Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
           <div className="min-w-0"><span className={FILTER_LABEL}>Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className={FILTER_LABEL}>Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
           <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
@@ -1239,8 +1247,8 @@ export function PendingInvoicing() {
         </div>
       </div>
 
-      {groupedData.length > 0 ? (
-        <div className="text-xs font-bold text-slate-700">{groupedData.length} {groupedData.length === 1 ? "company" : "companies"} · {pendingSlipCount} loading {pendingSlipCount === 1 ? "slip" : "slips"} pending</div>
+      {firmGroups.length > 0 ? (
+        <div className="text-xs font-bold text-slate-700">{firmGroups.length} {firmGroups.length === 1 ? "company" : "companies"} · {pendingSlipCount} loading {pendingSlipCount === 1 ? "slip" : "slips"} pending</div>
       ) : null}
 
       <div className="space-y-4">
@@ -1259,7 +1267,7 @@ export function PendingInvoicing() {
             </div>
           </div>
         )}
-        {groupedData.length === 0 ? (
+        {firmGroups.length === 0 ? (
           <div className="bg-white border-2 border-dashed border-slate-300 rounded-lg p-12 text-center">
             <p className="text-slate-500 font-medium">No pending loading slips for invoicing.</p>
           </div>
