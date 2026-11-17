@@ -1,1 +1,5 @@
+<<<<<<<< HEAD:dist/assets/TableControls-fPA7CLKJ.js
 import{j as e,b as s}from"./index-CLGBe26Z.js";function n({searchTerm:a,onSearchChange:l,placeholder:o="Search..."}){return e.jsxs("div",{className:"relative w-full min-w-0 max-w-sm",children:[e.jsx(s,{className:"absolute left-3 top-2.5 text-slate-400",size:18}),e.jsx("input",{type:"text",placeholder:"Search",value:a,onChange:r=>l(r.target.value),className:"pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600 font-medium"})]})}export{n as T};
+========
+import{j as e,b as s}from"./index-Co1_VW7C.js";function n({searchTerm:a,onSearchChange:l,placeholder:o="Search..."}){return e.jsxs("div",{className:"relative w-full min-w-0 max-w-sm",children:[e.jsx(s,{className:"absolute left-3 top-2.5 text-slate-400",size:18}),e.jsx("input",{type:"text",placeholder:"Search",value:a,onChange:r=>l(r.target.value),className:"pl-10 pr-4 py-2 w-full border-2 border-black rounded focus:outline-none focus:ring-1 focus:ring-indigo-600 font-medium"})]})}export{n as T};
+>>>>>>>> origin/form-layout:dist/assets/TableControls-CmrCcjW-.js

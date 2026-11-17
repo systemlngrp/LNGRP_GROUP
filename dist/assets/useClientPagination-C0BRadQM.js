@@ -1,1 +1,5 @@
+<<<<<<<< HEAD:dist/assets/useClientPagination-C0BRadQM.js
 import{r as a}from"./index-CLGBe26Z.js";function l(n,u=25){const[e,o]=a.useState(1),[t,i]=a.useState(u),c=n.length,s=Math.max(1,Math.ceil(c/t));a.useEffect(()=>{o(1)},[t]),a.useEffect(()=>{e>s&&o(s)},[e,s]);const g=a.useMemo(()=>{const r=(e-1)*t;return n.slice(r,r+t)},[n,e,t]);return{page:e,setPage:o,pageSize:t,setPageSize:i,totalItems:c,totalPages:s,paginatedItems:g}}export{l as u};
+========
+import{r as a}from"./index-Co1_VW7C.js";function l(n,u=25){const[e,o]=a.useState(1),[t,i]=a.useState(u),c=n.length,s=Math.max(1,Math.ceil(c/t));a.useEffect(()=>{o(1)},[t]),a.useEffect(()=>{e>s&&o(s)},[e,s]);const g=a.useMemo(()=>{const r=(e-1)*t;return n.slice(r,r+t)},[n,e,t]);return{page:e,setPage:o,pageSize:t,setPageSize:i,totalItems:c,totalPages:s,paginatedItems:g}}export{l as u};
+>>>>>>>> origin/form-layout:dist/assets/useClientPagination-th6Hh0_-.js
