@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Archive, CheckCircle2, Copy, Edit, Plus, Save } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Select } from "../components/Select";
+import { CoaSheetImport } from "../components/CoaSheetImport";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
@@ -71,6 +72,7 @@ export function CoaTemplateMaster() {
   return <div className="space-y-5 text-black">
     <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black pb-3"><div><h2 className="text-xl font-bold uppercase">COA Template Master</h2></div><button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded border-2 border-black bg-white px-3 py-2 font-bold"><Plus size={16} /> New Template</button></div>
     {message && <div className="rounded border-2 border-indigo-700 bg-indigo-50 p-3 font-bold">{message}</div>}
+    <CoaSheetImport templates={templates} companies={companies} actor={actor(user)} onDone={async (text) => { await api.refresh({ force: true }); setMessage(text); }} />
     <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
       <section className="rounded border-2 border-black bg-white p-3"><h3 className="mb-3 font-black uppercase">Existing Versions</h3>{loading ? <p>Loading...</p> : <div className="space-y-2">{templates.map((template) => <div key={template.id} className={`rounded border-2 p-2 ${template.id === selectedId ? "border-indigo-700 bg-indigo-50" : "border-black"}`}><div className="flex items-start justify-between gap-2"><div><p className="font-black">{template.companyName}</p><p className="text-xs font-bold">{template.templateName} · v{template.version}</p><p className="text-xs font-bold uppercase text-slate-600">{template.status}</p></div><button type="button" onClick={() => startFrom(template)} title="Edit or clone" className="rounded border border-black p-1"><Edit size={14} /></button></div><div className="mt-2 flex flex-wrap gap-1">{template.status === "Active" && <button type="button" onClick={() => startFrom(template)} className="inline-flex items-center gap-1 rounded bg-indigo-700 px-2 py-1 text-xs font-bold text-white"><Copy size={12} /> New version</button>}{template.status === "Draft" && <button type="button" onClick={() => void action(template.id, "activate")} className="inline-flex items-center gap-1 rounded bg-emerald-700 px-2 py-1 text-xs font-bold text-white"><CheckCircle2 size={12} /> Activate</button>}{template.status !== "Archived" && <button type="button" onClick={() => void action(template.id, "archive")} className="inline-flex items-center gap-1 rounded border border-red-700 px-2 py-1 text-xs font-bold text-red-700"><Archive size={12} /> Archive</button>}</div></div>)}</div>}</section>
       <section className="rounded border-2 border-black bg-white p-4">
