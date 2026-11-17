@@ -37,6 +37,13 @@ import {
 const getJobMasterEntityName = (source: "PHP" | "PLATE") =>
   source === "PHP" ? "php_job_master" : "plate_job_master";
 
+// Schedule date shown as DD-MM-YYYY like the rest of the form.
+function formatScheduleDate(value: unknown) {
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : raw || "-";
+}
+
 function getReelAsPerCalculationHelpText() {
   return "Fixed formula: if Breadth is blank/0, use Height x UPS; otherwise use ((Breadth + Height) x UPS) + ((ID to OD x UPS) + 16).";
 }
@@ -758,6 +765,7 @@ export function ProductionForm() {
               <InfoTile label="Type" value={String((selectedItem as any)?.boxType || "-")} />
               <InfoTile label="ERP Code" value={selectedOrder.erpCode || "-"} />
               <InfoTile label="Schedule Qty" value={`${selectedSchedule.qty || 0}${selectedItem?.uom ? ` ${selectedItem.uom}` : ""}`} />
+              <InfoTile label="Schedule Date" value={formatScheduleDate(selectedSchedule.scheduledDate)} />
             </div>
           )}
           <div className="max-w-4xl space-y-3">
@@ -882,18 +890,6 @@ export function ProductionForm() {
             </ProductionFieldRow>}
           </div>
 
-          {showField("Remarks") && <div className="max-w-4xl">
-            <ProductionFieldRow label="Remarks" helpText="Optional notes for this production entry.">
-            <input
-              data-production-field="true"
-              type="text"
-              value={formData.remarks}
-              onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-              className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
-            />
-            </ProductionFieldRow>
-          </div>}
-
           <div className="border-t border-black pt-4 mt-6">
             <h3 className="font-black uppercase text-xs text-slate-500 mb-4">Detailed Specifications</h3>
 
@@ -915,6 +911,14 @@ export function ProductionForm() {
                 value={formData.gsm}
                 readOnly
                 helpText={`${getGsmHelpText()} When this item is different from the last produced item, GSM must not exceed Least GSM.`}
+              /> : null}
+              {showField("Least GSM") ? <FormInput label="Least GSM" value={formData.leastGsm} readOnly type="number" step="0.00001" helpText="Read-only least GSM reference from production history for the current ERP code." /> : null}
+              {showField("Realization/KG") ? <FormInput
+                label="Realization/KG"
+                value={formData.realizationPerKg}
+                readOnly
+                inputClassName={realizationBelowTarget ? "border-red-600 bg-red-50 text-red-800 font-bold" : undefined}
+                helpText="Spreadsheet format: Rate / displayed Total Wt of Set x No. of Parts. Turns red when below the configured realization target for this production date."
               /> : null}
               {showField("Color 1") ? <FormInput label="Color 1" value={formData.color1} readOnly helpText="Auto-filled from Item Master for the selected item." /> : null}
               {showField("Color 2") ? <FormInput label="Color 2" value={formData.color2} readOnly helpText="Auto-filled from Item Master for the selected item." /> : null}
@@ -951,13 +955,6 @@ export function ProductionForm() {
 
               {showField("Rate") ? <FormInput label="Rate" value={formData.rate} readOnly type="number" helpText="Auto-fetched from the selected order." /> : null}
               {showField("Total Wt of Set") ? <FormInput label="Total Wt of Set" value={formData.totalWeightOfSet} readOnly helpText="Spreadsheet format: the staged 2-decimal sheet weight plus Plate/PHP Weight, displayed to 3 decimals." /> : null}
-              {showField("Realization/KG") ? <FormInput
-                label="Realization/KG"
-                value={formData.realizationPerKg}
-                readOnly
-                inputClassName={realizationBelowTarget ? "border-red-600 bg-red-50 text-red-800 font-bold" : undefined}
-                helpText="Spreadsheet format: Rate / displayed Total Wt of Set x No. of Parts. Turns red when below the configured realization target for this production date."
-              /> : null}
             </div>
 
             <div className="max-w-4xl space-y-3 mt-4">
@@ -968,10 +965,21 @@ export function ProductionForm() {
               {showField("Planned Prod (Mtr)") ? <FormInput label="Planned Prod (Mtr)" value={formData.plannedProductionInMeter} readOnly type="number" helpText="Formula: ((Cutting Trim x Plan Qty) / 1000) / UPS. If Cutting Trim or Plan Qty is blank, this stays blank." /> : null}
               {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field derived from Material Issue minus Material Return against the job." /> : null}
 
-              {showField("Least GSM") ? <FormInput label="Least GSM" value={formData.leastGsm} readOnly type="number" step="0.00001" helpText="Read-only least GSM reference from production history for the current ERP code." /> : null}
               {showField("Flute Batches") ? <FormInput label="Flute Batches" value={formData.fluteBatches} readOnly helpText="Derived from Flute using this mapping: A=1, B=2, B+C=3, C=4, E=5. Any other value stays blank." /> : null}
             </div>
           </div>
+          {showField("Remarks") && <div className="max-w-4xl border-t border-black pt-4">
+            <ProductionFieldRow label="Remarks" helpText="Optional notes for this production entry.">
+            <input
+              data-production-field="true"
+              type="text"
+              value={formData.remarks}
+              onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+              className="w-full border-2 border-black rounded p-2 text-[15px] text-black bg-yellow-100 focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm"
+            />
+            </ProductionFieldRow>
+          </div>}
+
           <div className="pt-2">
             <button
               type="submit"
