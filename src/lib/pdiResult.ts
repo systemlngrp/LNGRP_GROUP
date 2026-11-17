@@ -30,6 +30,9 @@ export function derivePdiResult(
   const checks = PDI_CHECK_KEYS.map((key) => text(value[key]).toUpperCase());
   if (checks.some((result) => result === "NOT OK")) return "QC FAIL";
 
+  // CS Achieved = 0 means CS was not tested: the result follows the checks alone.
+  const csNotTested = String(value.csAchieved ?? "").trim() !== "" && Number(value.csAchieved) === 0;
+  if (csNotTested) return checks.every((result) => result === "OK") ? "QC PASS" : "Pending";
   const actual = positiveNumber(value.csAchieved);
   const standard = positiveNumber(csStandard);
   const csPasses = actual !== undefined && standard !== undefined && actual + Math.abs(standard) * 1e-9 >= standard * 1.1;

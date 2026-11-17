@@ -43,3 +43,10 @@ test("job selection leaves new measurements blank and preserves saved manual val
   assert.equal(invalidInspectionNumberField({ ...valid, bGsm: reopened.bGsm }), undefined);
   assert.equal(invalidInspectionNumberField({ ...valid, csRequired: "old text" }), undefined);
 });
+
+test("CS Achieved accepts 0; other measurements still need more than zero", () => {
+  assert.equal(invalidInspectionNumberField({ ...valid, csAchieved: "0" }), undefined);
+  assert.equal(invalidInspectionNumberField({ ...valid, csAchieved: "-1" }), "CS Achieved");
+  assert.equal(invalidInspectionNumberField({ ...valid, csAchieved: "" }), "CS Achieved");
+  assert.equal(invalidInspectionNumberField({ ...valid, gsmAchieved: "0" }), "GSM Achieved");
+});

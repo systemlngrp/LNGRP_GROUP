@@ -31,3 +31,9 @@ test("uses the legacy stored CS value when the NPD value is unavailable", () => 
   assert.equal(resolveCsStandard("", "180"), 180);
   assert.equal(resolveCsStandard("190", "180"), 190);
 });
+
+test("CS Achieved 0 means CS not tested: result follows the checks", () => {
+  assert.equal(derivePdiResult({ ...checks, csAchieved: "0" }, "180"), "QC PASS");
+  assert.equal(derivePdiResult({ ...checks, flapGapCheck: "NOT OK", csAchieved: "0" }, "180"), "QC FAIL");
+  assert.equal(derivePdiResult({ ...checks, flapGapCheck: "", csAchieved: "0" }, "180"), "Pending");
+});
