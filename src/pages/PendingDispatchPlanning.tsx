@@ -478,17 +478,12 @@ export function PendingDispatchPlanning() {
       }
     });
 
-    // A schedule cannot be planned beyond its unplanned qty (qty − cancelled − already planned).
+    // A schedule may be planned above its schedule qty; only a quantity is required.
     selectedIds.forEach((id) => {
       const schedule = schedules.find((row) => row.id === id);
       if (!schedule) return;
-      const unplanned = getScheduleAvailableQty(schedule, dispatchPlans);
       const planned = Number(rowPlannedQty[id] ?? 0) || 0;
-      if (planned <= 0) {
-        violations.push(`${schedule.scheduleNo || id}: Enter a Planned Qty more than 0.`);
-      } else if (planned > unplanned + 1e-9) {
-        violations.push(`${schedule.scheduleNo || id}: Trying to plan ${planned.toLocaleString()} but only ${unplanned.toLocaleString()} is not yet planned.`);
-      }
+      if (planned <= 0) violations.push(`${schedule.scheduleNo || id}: Enter a Planned Qty more than 0.`);
     });
 
     if (violations.length > 0) {
