@@ -30,6 +30,7 @@ import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
+import { FirmTabs, countByFirm } from "../components/FirmTabs";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
@@ -92,6 +93,9 @@ export function InvoicesMaster() {
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [tallyFilter, setTallyFilter] = useState("");
+  const [firmTab, setFirmTab] = useState("");
+  const [firms] = useData<{ id: string; firmName?: string; shortName?: string }>("firms", [], { firmScope: "all", storageKey: "firms-all" });
+  const firmTabCounts = useMemo(() => countByFirm(invoices, (invoice) => invoice.firmId), [invoices]);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
@@ -366,6 +370,7 @@ export function InvoicesMaster() {
         };
       })
       .filter((invoice) => {
+        if (firmTab && String(invoice.firmId || "") !== firmTab) return false;
         if (companyFilter && invoice.companyName !== companyFilter) return false;
         if (itemFilter && !invoice.itemKeys.includes(itemFilter)) return false;
         if (tallyFilter === "posted" && !invoice.tallyTimestamp) return false;
@@ -383,7 +388,7 @@ export function InvoicesMaster() {
         if (bSort.numeric !== aSort.numeric) return bSort.numeric - aSort.numeric;
         return bSort.raw.localeCompare(aSort.raw, undefined, { sensitivity: "base" });
       });
-  }, [invoices, companies, companyFilter, itemFilter, tallyFilter, fromDate, toDate, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, lookup, detailsByInvoice]);
+  }, [invoices, companies, companyFilter, itemFilter, tallyFilter, firmTab, fromDate, toDate, lineItems, npdItems, slips, trucks, dispatchPlans, orders, materials, lookup, detailsByInvoice]);
 
   // Table search: only the columns the table shows.
   const processedInvoices = useTableSearch(invoiceRows, searchTerm, (invoice) => [
@@ -476,6 +481,8 @@ export function InvoicesMaster() {
       <div className="border-b border-black pb-3">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Billing Master</h2>
       </div>
+
+      <FirmTabs firms={firms} counts={firmTabCounts} value={firmTab} onChange={setFirmTab} />
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
         <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>

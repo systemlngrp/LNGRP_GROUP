@@ -29,6 +29,7 @@ import { formatDate } from "../lib/serial";
 import { matchesTableSearch, rowSearchText, searchWords } from "../lib/tableSearch";
 import { Select } from "../components/Select";
 import { useAuth } from "../auth/AuthContext";
+import { FirmTabs, countByFirm } from "../components/FirmTabs";
 import { getInvoiceGrandTotal } from "../lib/gatePasses";
 import { normalizeOrderItemSource } from "../lib/orderItems";
 import { ClientPagination } from "../components/ClientPagination";
@@ -53,6 +54,8 @@ export function BillingPendingTally() {
   const confirm = useConfirm();
   const { user } = useAuth();
   const [invoices, setInvoices, isLoading] = useData<Invoice>("invoices", []);
+  const [firms] = useData<{ id: string; firmName?: string; shortName?: string }>("firms", [], { firmScope: "all", storageKey: "firms-all" });
+  const [firmTab, setFirmTab] = useState("");
   const [lineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
   const [companies] = useData<Company>("companies", []);
   const { findItem, findItemAcrossSources, resolveOrderItem } = useOrderItemCatalog();
@@ -227,10 +230,13 @@ export function BillingPendingTally() {
       }));
   }, [invoices, companies, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, lookup, resolveOrderItem]);
 
+  const firmTabCounts = useMemo(() => countByFirm(invoiceRows, (inv: any) => inv.firmId), [invoiceRows]);
+
   const processedInvoices = useMemo(() => {
     const words = searchWords(searchTerm);
     return invoiceRows
       .filter(inv => {
+        if (firmTab && String(inv.firmId || "") !== firmTab) return false;
         if (companyFilter && inv.companyId !== companyFilter) return false;
         if (itemFilter) {
           const hasItem = inv.details.some((line: any) => {
@@ -350,6 +356,8 @@ export function BillingPendingTally() {
       <div className="border-b border-black pb-3">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Tally Posting</h2>
       </div>
+
+      <FirmTabs firms={firms} counts={firmTabCounts} value={firmTab} onChange={setFirmTab} />
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
         <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
