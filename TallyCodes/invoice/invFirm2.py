@@ -59,18 +59,5 @@ invoice_engine.map_unit1_to_unit2_invoice_lines = preserve_actual_item_lines
 
 
 if __name__ == "__main__":
-    try:
-        invoice_engine.print_tally_sync_config_summary()
-        run_had_issue, final_issue_message = invoice_engine.sync_invoices_to_tally()
-        if run_had_issue:
-            invoice_engine.report_stopped()
-            sys.exit(1)
-    except invoice_engine.mysql.connector.Error as exc:
-        invoice_engine.append_failure_text_log("RUNTIME", str(exc))
-        print(f"Database connection failed: {exc}")
-        sys.exit(1)
-    except Exception as exc:
-        invoice_engine.append_failure_text_log("RUNTIME", str(exc))
-        print(f"Invoice sync failed: {exc}")
-        invoice_engine.report_stopped()
-        sys.exit(1)
+    # Same options as invFirm1.py: run once, or keep running with --watch.
+    invoice_engine.run_cli()

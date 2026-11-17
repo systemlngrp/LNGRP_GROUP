@@ -45,3 +45,12 @@ Thumbs.db
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+
+# Tally sync scripts: runtime output written on the Tally computer.
+# Kept out of git so "git pull" there never clashes with local logs.
+__pycache__/
+*.pyc
+TallyCodes/**/Log/
+TallyCodes/**/*sync log.txt
+TallyCodes/**/*_xml_debug/
+TallyCodes/**/tally_debug/
