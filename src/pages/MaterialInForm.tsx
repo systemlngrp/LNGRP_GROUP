@@ -1828,7 +1828,13 @@ export function MaterialInForm({ directService = false }: { directService?: bool
         body: JSON.stringify({ photos: aiFiles.map(({ name, mimeType, base64 }) => ({ name, mimeType, base64 })) }),
       });
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.error || "Failed to fetch invoice data.");
+      if (!response.ok) {
+        throw new Error(result.error || (response.status === 504 || response.status === 502
+          ? "The server timed out waiting for the AI service. Try again in a minute, or upload fewer / smaller files."
+          : response.status === 413
+            ? "The files are too large to upload. Upload fewer or smaller photos."
+            : `Failed to fetch invoice data (HTTP ${response.status}).`));
+      }
       setAiDraft(result.draft || null);
     } catch (error) {
       const message = (error as Error).message || "Failed to fetch invoice data.";

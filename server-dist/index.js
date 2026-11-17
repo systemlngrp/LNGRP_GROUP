@@ -1486,6 +1486,28 @@ function extractJsonObject(text) {
         return candidate;
     return candidate.slice(start, end + 1);
 }
+// Admin check for AI Fetch MRR: one tiny text request, reports time or the exact error.
+app.get("/api/admin/ai-check", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user || String(user.role || "").trim().toLowerCase() !== "admin")
+        return res.status(403).json({ error: "Admin only." });
+    const model = resolveGeminiModel();
+    if (!GEMINI_API_KEY)
+        return res.json({ ok: false, model, error: "GEMINI_API_KEY is not configured on the server." });
+    const started = Date.now();
+    let timer;
+    try {
+        const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+        const response = await Promise.race([
+            ai.models.generateContent({ model, contents: [{ role: "user", parts: [{ text: "Reply with the word OK." }] }] }),
+            new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("No answer within 40 seconds.")), 40_000); }),
+        ]).finally(() => clearTimeout(timer));
+        return res.json({ ok: true, model, seconds: Math.round((Date.now() - started) / 100) / 10, reply: String(response.text || "").slice(0, 40) });
+    }
+    catch (error) {
+        return res.json({ ok: false, model, seconds: Math.round((Date.now() - started) / 100) / 10, error: error.message });
+    }
+});
 app.post("/api/material-in/ai-fetch", async (req, res) => {
     const user = await getRequestUser(req);
     if (!user)
@@ -1547,18 +1569,29 @@ Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, 
         const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
         const geminiModel = resolveGeminiModel();
         console.info(`[AI MRR] Using Gemini model: ${geminiModel}`);
-        const response = await ai.models.generateContent({
-            model: geminiModel,
-            contents: [{ role: "user", parts }],
-            config: { responseMimeType: "application/json" },
-        });
+        // The web proxy gives up after 60 s with an HTML page the screen cannot read,
+        // so stop waiting first and say why.
+        const AI_TIMEOUT_MS = 50_000;
+        let timer;
+        const response = await Promise.race([
+            ai.models.generateContent({
+                model: geminiModel,
+                contents: [{ role: "user", parts }],
+                config: { responseMimeType: "application/json" },
+            }),
+            new Promise((_, reject) => {
+                timer = setTimeout(() => reject(Object.assign(new Error(`The AI service (${geminiModel}) did not answer within ${AI_TIMEOUT_MS / 1000} seconds. Try again, or with fewer / smaller files.`), { code: "AI_TIMEOUT" })), AI_TIMEOUT_MS);
+            }),
+        ]).finally(() => clearTimeout(timer));
         const jsonText = extractJsonObject(response.text || "");
         const draft = JSON.parse(jsonText);
         return res.json({ draft });
     }
     catch (error) {
         console.error("[AI MRR] Failed to extract invoice:", error);
-        return res.status(500).json({ error: error.message || "Failed to extract invoice data." });
+        const code = error?.code === "AI_TIMEOUT" ? 504 : 500;
+        const detail = error.message || "Failed to extract invoice data.";
+        return res.status(code).json({ error: code === 504 ? detail : `AI service error (${resolveGeminiModel()}): ${detail}` });
     }
 });
 app.post("/api/npd-sync", async (req, res) => {
