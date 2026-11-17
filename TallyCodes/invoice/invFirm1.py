@@ -117,6 +117,50 @@ TALLY_SYNC_API_SECRET = os.getenv(
 FORCE_IPV4_HTTP = os.getenv("TALLY_SYNC_FORCE_IPV4", "1").strip() != "0"
 _HTTP_IPV4_PATCHED = False
 
+# Who decides the sales invoice number in Tally:
+#   "tally" (default) - the voucher is posted WITHOUT a number, Tally gives the next
+#                       number in its own Sales series, and that number is saved back
+#                       to invoices.tallyInvNo. The app's invoiceNo is only an internal
+#                       reference and is never sent to Tally.
+#   "app"             - old behaviour: the app's invoiceNo is sent as the voucher number.
+INVOICE_NUMBER_SOURCE = os.getenv("INVOICE_NUMBER_SOURCE", "tally").strip().lower()
+# In "tally" mode every posted voucher carries a hidden REMOTEID made from the app's
+# invoice id. It is not printed; it lets the script recognise a voucher it already
+# posted (for example if the run stopped before the Tally number was saved) so the
+# same invoice is never posted twice.
+TALLY_SEND_REMOTE_ID = os.getenv("TALLY_SEND_REMOTE_ID", "1").strip() != "0"
+TALLY_REMOTE_ID_PREFIX = os.getenv("TALLY_REMOTE_ID_PREFIX", "LNGRP-INV-")
+# Watch mode (--watch): how often to look for newly saved invoices, and how long to
+# wait before retrying after a run stopped on a problem invoice.
+WATCH_INTERVAL_SECONDS = float(os.getenv("TALLY_WATCH_INTERVAL", "20"))
+WATCH_RETRY_AFTER_ISSUE_SECONDS = float(os.getenv("TALLY_WATCH_RETRY_AFTER_ISSUE", "300"))
+
+
+def tally_assigns_number():
+    return INVOICE_NUMBER_SOURCE != "app"
+
+
+def invoice_remote_id(invoice_row):
+    invoice_id = str((invoice_row or {}).get("id") or "").strip()
+    if not (tally_assigns_number() and TALLY_SEND_REMOTE_ID and invoice_id):
+        return ""
+    return f"{TALLY_REMOTE_ID_PREFIX}{invoice_id}"
+
+
+def invoice_label(invoice_row):
+    """Readable name for logs: the app's internal invoice no, else its id."""
+    invoice_row = invoice_row or {}
+    invoice_no = str(invoice_row.get("invoiceNo") or "").strip()
+    return invoice_no or f"ID {str(invoice_row.get('id') or '').strip() or '-'}"
+
+
+def clear_tally_caches():
+    """Forget cached Tally lookups so a long-running watch sees masters/vouchers
+    created in Tally since the previous cycle."""
+    TALLY_MASTER_CACHE.clear()
+    TALLY_VOUCHER_DATE_CACHE.clear()
+    TALLY_VOUCHER_REFERENCE_CACHE.clear()
+
 
 
 def log_terminal(level, message):
@@ -561,8 +605,9 @@ def extract_voucher_summary(voucher):
         "tallyInvDate": voucher.get("DATE") or "",
         "tallyInvId": voucher.get("GUID") or voucher.get("VOUCHERKEY") or voucher.get("REMOTEID") or "",
         "partyLedgerName": voucher.get("PARTYLEDGERNAME") or "",
-        "voucherTypeName": voucher.get("VOUCHERTYPENAME") or "",
+        "voucherTypeName": voucher.get("VOUCHERTYPENAME") or voucher.get("VCHTYPE") or "",
         "narration": "",
+        "remoteId": voucher.get("REMOTEID") or "",
     }
 
     for child in voucher:
@@ -582,6 +627,8 @@ def extract_voucher_summary(voucher):
             summary["voucherTypeName"] = text
         elif tag == "NARRATION" and not summary["narration"]:
             summary["narration"] = text
+        if tag == "REMOTEID" and not summary["remoteId"]:
+            summary["remoteId"] = text
 
     return {key: value for key, value in summary.items() if value}
 
@@ -914,6 +961,136 @@ def fetch_tally_voucher_by_context(invoice_row, customer_name, narration_text):
     return {}
 
 
+def find_tally_voucher_by_remote_id(invoice_date, remote_id, force_refresh=False):
+    """Find a voucher this script posted earlier, by the hidden REMOTEID it carries.
+
+    Tally stores an imported REMOTEID as the voucher's REMOTEID (and usually its
+    GUID), so either may hold it. The voucher is always posted on the invoice date,
+    so that day's register is enough.
+    """
+    if not remote_id or not invoice_date:
+        return {}
+    wanted = str(remote_id).strip().upper()
+    vouchers = fetch_tally_vouchers_for_date(invoice_date, force_refresh=force_refresh)
+    matches = [
+        voucher
+        for voucher in vouchers
+        if str(voucher.get("remoteId") or "").strip().upper() == wanted
+        or str(voucher.get("tallyInvId") or "").strip().upper() == wanted
+    ]
+    return matches[-1] if matches else {}
+
+
+def financial_year_bounds(value):
+    """1-Apr .. 31-Mar (Tally YYYYMMDD) of the Indian financial year holding value."""
+    tally_date = format_tally_date(value)
+    if not tally_date or len(tally_date) != 8:
+        return "", ""
+    year = int(tally_date[:4])
+    month = int(tally_date[4:6])
+    start_year = year if month >= 4 else year - 1
+    return f"{start_year}0401", f"{start_year + 1}0331"
+
+
+def find_tally_vouchers_with_number(voucher_no, invoice_date, voucher_type=None):
+    """All vouchers of this type in the invoice's financial year with this number.
+
+    Returns a list (one entry = no duplicate), or None if Tally could not answer.
+    Uses a small inline TDL collection so Tally does the filtering instead of
+    sending the whole year's register.
+    """
+    voucher_no = str(voucher_no or "").strip()
+    from_date, to_date = financial_year_bounds(invoice_date)
+    if not voucher_no or not from_date:
+        return None
+    voucher_type = voucher_type or VOUCHER_TYPE_NAME
+    tdl_number = voucher_no.replace('"', "")
+    tdl_type = str(voucher_type).replace('"', "")
+    xml = f"""
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Collection</TYPE>
+        <ID>LNGRPVchByNumber</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVFROMDATE>{from_date}</SVFROMDATE>
+                <SVTODATE>{to_date}</SVTODATE>
+                <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <COLLECTION NAME="LNGRPVchByNumber" ISMODIFY="No">
+                        <TYPE>Voucher</TYPE>
+                        <FETCH>Date, VoucherNumber, GUID, MasterID, VoucherTypeName, PartyLedgerName</FETCH>
+                        <FILTER>LNGRPVchByNumberFilter</FILTER>
+                    </COLLECTION>
+                    <SYSTEM TYPE="Formulae" NAME="LNGRPVchByNumberFilter">$VoucherNumber = {esc('"' + tdl_number + '"')} AND $VoucherTypeName = {esc('"' + tdl_type + '"')}</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>
+"""
+    response_text = tally_request(xml, stage=f"Duplicate number check {voucher_no}")
+    if not response_text or response_text.startswith("Connection error"):
+        return None
+    cleaned = sanitize_tally_xml(response_text)
+    try:
+        ET.fromstring(cleaned)
+    except Exception:
+        return None
+    normalized = normalize_invoice_number(voucher_no)
+    return [
+        voucher
+        for voucher in parse_tally_voucher_collection(response_text)
+        if normalize_invoice_number(voucher.get("tallyInvNo")) == normalized
+    ]
+
+
+def resolve_tally_assigned_voucher(response_text, invoice_row, remote_id):
+    """After a successful post in "tally" mode, find the number Tally gave.
+
+    Never falls back to the app's invoiceNo or to a party/date guess: if the
+    number cannot be read, it is left empty and flagged instead of saving a
+    wrong number.
+    """
+    parsed = parse_tally_voucher_response(response_text)
+    result = {}
+    for candidate in (
+        parsed.get("lastVchId"),
+        parsed.get("tallyInvId"),
+        parsed.get("lastMasterId"),
+    ):
+        if not candidate:
+            continue
+        voucher = fetch_tally_voucher_by_id(candidate)
+        voucher_remote_id = str(voucher.get("remoteId") or "").strip().upper()
+        if remote_id and voucher_remote_id and voucher_remote_id != remote_id.upper():
+            continue  # some other voucher; do not take its number
+        if voucher.get("tallyInvNo"):
+            result = {**voucher}
+            if not result.get("tallyInvId"):
+                result["tallyInvId"] = candidate
+            break
+
+    if not result.get("tallyInvNo") and remote_id:
+        result = find_tally_voucher_by_remote_id(
+            invoice_row.get("date"), remote_id, force_refresh=True
+        ) or result
+
+    if not result.get("tallyInvId"):
+        result["tallyInvId"] = (
+            parsed.get("lastVchId") or parsed.get("tallyInvId") or parsed.get("lastMasterId") or ""
+        )
+    if not result.get("tallyInvDate"):
+        result["tallyInvDate"] = format_iso_date(invoice_row.get("date"))
+    return {key: value for key, value in result.items() if value}
+
+
 def get_db_connection():
     return mysql.connector.connect(**DB_CONFIG)
 
@@ -1176,8 +1353,24 @@ def get_pending_invoice_rows(conn, source_firm_id, destination_firm_id):
     cursor.execute(sql, params)
     rows = cursor.fetchall()
     cursor.close()
+    if tally_assigns_number():
+        # Tally hands out numbers in the order vouchers arrive, so post oldest
+        # invoice date first. The app's own number only breaks ties.
+        return sorted(rows, key=pending_invoice_date_sort_key)
     ensure_pending_invoice_numbers_are_parseable(rows)
     return sorted(rows, key=cmp_to_key(compare_pending_invoice_rows))
+
+
+def pending_invoice_date_sort_key(row):
+    invoice_no = str(row.get("invoiceNo") or "").strip()
+    parts = parse_invoice_no_parts(invoice_no)
+    return (
+        format_iso_date(row.get("date")) or "9999-12-31",
+        parts["fy_start_year"] if parts else 9999,
+        parts["suffix_number"] if parts else 10**12,
+        invoice_no,
+        str(row.get("id") or ""),
+    )
 
 
 def validate_invoice_firm_route(invoice_row, source_firm_id, destination_firm_id):
@@ -2383,6 +2576,15 @@ def create_sales_voucher_xml(
     else:
         invoice_order_list_xml = ""
 
+    if tally_assigns_number():
+        # No VOUCHERNUMBER: Tally gives the next number of its Sales series.
+        voucher_number_xml = ""
+        remote_id = invoice_remote_id(invoice_row)
+        voucher_remote_id_attr = f' REMOTEID="{esc(remote_id)}"' if remote_id else ""
+    else:
+        voucher_number_xml = f"\n                        <VOUCHERNUMBER>{esc(invoice_no)}</VOUCHERNUMBER>"
+        voucher_remote_id_attr = ""
+
     return f"""
 <ENVELOPE>
     <HEADER>
@@ -2398,9 +2600,8 @@ def create_sales_voucher_xml(
             </REQUESTDESC>
             <REQUESTDATA>
                 <TALLYMESSAGE xmlns:UDF="TallyUDF">
-                    <VOUCHER VCHTYPE="{esc(VOUCHER_TYPE_NAME)}" ACTION="Create">
-                        <DATE>{invoice_date}</DATE>
-                        <VOUCHERNUMBER>{esc(invoice_no)}</VOUCHERNUMBER>
+                    <VOUCHER{voucher_remote_id_attr} VCHTYPE="{esc(VOUCHER_TYPE_NAME)}" ACTION="Create">
+                        <DATE>{invoice_date}</DATE>{voucher_number_xml}
                         <VOUCHERTYPENAME>{esc(VOUCHER_TYPE_NAME)}</VOUCHERTYPENAME>
                         <PARTYNAME>{esc(party_name)}</PARTYNAME>
                         <PARTYLEDGERNAME>{esc(customer_name)}</PARTYLEDGERNAME>
@@ -2494,7 +2695,7 @@ def create_sales_voucher_xml(
 """
 
 
-def post_to_tally(xml_data, invoice_no=""):
+def post_to_tally(xml_data, invoice_no="", remote_id=""):
     # Never automatically retry a voucher-create request: retrying could create a duplicate
     # if Tally created the voucher but the HTTP response was delayed or lost.
     response_text = tally_request(
@@ -2510,13 +2711,21 @@ def post_to_tally(xml_data, invoice_no=""):
             xml_data,
             re.IGNORECASE | re.DOTALL,
         )
-        existing_voucher = fetch_tally_voucher_reference(
-            invoice_no,
-            voucher_type_match.group(1).strip() if voucher_type_match else VOUCHER_TYPE_NAME,
-            date_match.group(1).strip() if date_match else None,
-            None,
-            force_refresh=True,
-        )
+        if tally_assigns_number():
+            # The app's number is not in Tally; look for this invoice's REMOTEID.
+            existing_voucher = find_tally_voucher_by_remote_id(
+                date_match.group(1).strip() if date_match else None,
+                remote_id,
+                force_refresh=True,
+            )
+        else:
+            existing_voucher = fetch_tally_voucher_reference(
+                invoice_no,
+                voucher_type_match.group(1).strip() if voucher_type_match else VOUCHER_TYPE_NAME,
+                date_match.group(1).strip() if date_match else None,
+                None,
+                force_refresh=True,
+            )
         if existing_voucher:
             log_terminal(
                 "DUPLICATE",
@@ -2526,7 +2735,7 @@ def post_to_tally(xml_data, invoice_no=""):
                 "<ENVELOPE><BODY><DATA><IMPORTRESULT>"
                 "<CREATED>1</CREATED><ALTERED>0</ALTERED><ERRORS>0</ERRORS>"
                 "</IMPORTRESULT>"
-                f"<VOUCHER><VOUCHERNUMBER>{esc(existing_voucher.get('tallyInvNo') or invoice_no)}</VOUCHERNUMBER>"
+                f"<VOUCHER><VOUCHERNUMBER>{esc(existing_voucher.get('tallyInvNo') or ('' if tally_assigns_number() else invoice_no))}</VOUCHERNUMBER>"
                 f"<DATE>{esc(existing_voucher.get('tallyInvDate') or (date_match.group(1).strip() if date_match else ''))}</DATE>"
                 f"<GUID>{esc(existing_voucher.get('tallyInvId') or '')}</GUID></VOUCHER>"
                 "</DATA></BODY></ENVELOPE>"
@@ -2667,7 +2876,11 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
 
     for invoice_row in pending_invoice_rows:
         invoice_id = invoice_row.get("id")
-        invoice_no = str(invoice_row.get("invoiceNo") or "").strip()
+        if tally_assigns_number():
+            # The app's number is only a label here; Tally will give the real one.
+            invoice_no = invoice_label(invoice_row)
+        else:
+            invoice_no = str(invoice_row.get("invoiceNo") or "").strip()
         company_name = ""
 
         print(f"Precheck Invoice ID: {invoice_id} | Invoice No: {invoice_no}")
@@ -2781,7 +2994,8 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
                     True,
                     remark,
                     invoice_row.get("updatedBy") or DEFAULT_UPDATED_BY,
-                    tally_reference.get("tallyInvNo") or invoice_no,
+                    tally_reference.get("tallyInvNo")
+                    or (invoice_row.get("tallyInvNo") if tally_assigns_number() else invoice_no),
                     format_iso_date(tally_reference.get("tallyInvDate")),
                     existing_tally_id,
                     invoice_row=invoice_row,
@@ -2792,14 +3006,46 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
                 log_terminal("PRECHECK", f"{invoice_no}: {remark}")
                 continue
 
-            log_terminal("PRECHECK", f"{invoice_no}: checking existing invoice number in Tally")
-            voucher_by_number = fetch_tally_voucher_reference(
-                invoice_no,
-                VOUCHER_TYPE_NAME,
-                invoice_row.get("date"),
-                company_name,
-            )
+            if tally_assigns_number():
+                log_terminal("PRECHECK", f"{invoice_no}: checking whether this invoice was already posted")
+                voucher_by_number = find_tally_voucher_by_remote_id(
+                    invoice_row.get("date"), invoice_remote_id(invoice_row)
+                )
+            else:
+                log_terminal("PRECHECK", f"{invoice_no}: checking existing invoice number in Tally")
+                voucher_by_number = fetch_tally_voucher_reference(
+                    invoice_no,
+                    VOUCHER_TYPE_NAME,
+                    invoice_row.get("date"),
+                    company_name,
+                )
             raise_if_tally_unavailable()
+            if voucher_by_number and tally_assigns_number():
+                # Posted in an earlier run but the Tally number was not saved then.
+                # Mark it posted (never post again) and save whatever Tally reports.
+                found_no = voucher_by_number.get("tallyInvNo")
+                remark = (
+                    "Already in Tally (matched by hidden ERP id). Tally number saved."
+                    if found_no
+                    else "Already in Tally (matched by hidden ERP id) but its Tally number "
+                    "could not be read. Check Tally and enter the number."
+                )
+                update_invoice_tally_status(
+                    conn,
+                    invoice_id,
+                    True,
+                    remark,
+                    invoice_row.get("updatedBy") or DEFAULT_UPDATED_BY,
+                    found_no,
+                    format_iso_date(voucher_by_number.get("tallyInvDate")),
+                    voucher_by_number.get("tallyInvId"),
+                    invoice_row=invoice_row,
+                    company_name=company_name,
+                    stage="PRECHECK",
+                )
+                precheck_summary["invoice_numbers_existing"].append(invoice_no)
+                log_terminal("PRECHECK", f"{invoice_no}: {remark}")
+                continue
             if voucher_by_number:
                 remark = "This Invoice already exists in tally."
                 update_invoice_tally_status(
@@ -3031,9 +3277,110 @@ def update_invoice_tally_status(
         )
 
 
-def sync_invoices_to_tally():
+def post_tally_assigned_invoice(conn, context):
+    """Post one invoice WITHOUT a voucher number, let Tally number it, save that back.
+
+    Raises RuntimeError when Tally rejects the voucher, so the caller stops the batch.
+    """
+    invoice_row = context["invoice_row"]
+    invoice_id = context["invoice_id"]
+    label = context["invoice_no"]
+    company_name = context["company_name"]
+    remote_id = invoice_remote_id(invoice_row)
+    tally_by = invoice_row.get("updatedBy") or DEFAULT_UPDATED_BY
+
+    # Final guard right before posting: if this invoice already reached Tally
+    # (earlier run, or the response was lost), sync that voucher instead.
+    already_posted = find_tally_voucher_by_remote_id(
+        invoice_row.get("date"), remote_id, force_refresh=True
+    )
+    if already_posted:
+        found_no = already_posted.get("tallyInvNo")
+        remark = (
+            "Already in Tally at final pre-post check (matched by hidden ERP id). Tally number saved."
+            if found_no
+            else "Already in Tally (matched by hidden ERP id) but its Tally number could not be read. "
+            "Check Tally and enter the number."
+        )
+        update_invoice_tally_status(
+            conn, invoice_id, True, remark, tally_by, found_no,
+            format_iso_date(already_posted.get("tallyInvDate")),
+            already_posted.get("tallyInvId"),
+            invoice_row=invoice_row, company_name=company_name, stage="SYNC",
+        )
+        print(f"{label}: {remark}")
+        return
+
+    for line in context["item_lines"]:
+        print(
+            "Line -> "
+            f"item={line.get('itemName')}, qty={line.get('qty')}, uom={line.get('uom')}, "
+            f"rate={line.get('rate')}, amount={line.get('amount')}"
+        )
+    print(f"Using sales ledger: {context['sales_ledger_name']}")
+    if context["narration_text"]:
+        print(f"Narration: {context['narration_text']}")
+
+    tally_xml = create_sales_voucher_xml(
+        invoice_row,
+        company_name,
+        context["company_row"],
+        context["item_lines"],
+        context["sales_ledger_name"],
+        context["narration_text"],
+        context["dispatch_details"],
+    )
+    if DEBUG_TALLY_XML:
+        print("Generated Tally XML:")
+        print(tally_xml)
+
+    tally_response = post_to_tally(tally_xml, invoice_no=label, remote_id=remote_id)
+    print("Tally Response:")
+    print(tally_response)
+
+    if not is_tally_success(tally_response):
+        raise RuntimeError(extract_tally_error(tally_response))
+
+    posted_date = format_tally_date(invoice_row.get("date"))
+    for cache_key in list(TALLY_VOUCHER_DATE_CACHE):
+        if cache_key[0] == posted_date:
+            TALLY_VOUCHER_DATE_CACHE.pop(cache_key, None)
+
+    created = resolve_tally_assigned_voucher(tally_response, invoice_row, remote_id)
+    tally_no = created.get("tallyInvNo") or ""
+
+    if not tally_no:
+        remark = (
+            "Posted to Tally, but the number Tally gave could not be read. "
+            "Check Tally and enter the number."
+        )
+    else:
+        same_number = find_tally_vouchers_with_number(tally_no, invoice_row.get("date"))
+        if same_number is None:
+            remark = "Posted successfully to Tally (duplicate-number check could not run)"
+        elif len(same_number) > 1:
+            remark = (
+                f"Posted to Tally as {tally_no}, but {len(same_number)} {VOUCHER_TYPE_NAME} vouchers "
+                f"in Tally now have this number. Fix the duplicate in Tally."
+            )
+        else:
+            remark = "Posted successfully to Tally"
+
+    # Saved as posted in every case: the voucher exists in Tally and must never
+    # be posted again. Problems are visible in the remark.
+    update_invoice_tally_status(
+        conn, invoice_id, True, remark, tally_by, tally_no or None,
+        format_iso_date(created.get("tallyInvDate")),
+        created.get("tallyInvId"),
+        invoice_row=invoice_row, company_name=company_name, stage="SYNC",
+    )
+    print(f"{label} -> Tally No. {tally_no or '(not read)'}: {remark}")
+
+
+def sync_invoices_to_tally(quiet_when_empty=False):
     global TALLY_UNAVAILABLE_ERROR
     TALLY_UNAVAILABLE_ERROR = ""
+    clear_tally_caches()
     conn = None
     run_had_issue = False
     final_issue_message = ""
@@ -3044,8 +3391,17 @@ def sync_invoices_to_tally():
     unit2_firm = resolve_unit2_firm(conn)
     pending_invoice_rows = get_pending_invoice_rows(conn, unit1_firm["id"], unit2_firm["id"])
 
+    if not pending_invoice_rows and quiet_when_empty:
+        conn.close()
+        return False, ""
+
     try:
         print("==========================================")
+        print(
+            "Numbering: Tally gives the invoice number"
+            if tally_assigns_number()
+            else "Numbering: app invoice number is sent to Tally"
+        )
         print(f"Pending invoices found: {len(pending_invoice_rows)}")
         print(
             f"Tally target: {unit1_firm['firmName']} ({TALLY_URL}) | "
@@ -3085,6 +3441,10 @@ def sync_invoices_to_tally():
                 sales_ledger_name = context["sales_ledger_name"]
                 dispatch_details = context["dispatch_details"]
                 narration_text = context["narration_text"]
+
+                if tally_assigns_number():
+                    post_tally_assigned_invoice(conn, context)
+                    continue
 
                 # Final duplicate guard: re-check the same invoice number immediately
                 # before posting so a voucher created manually (or by another run)
@@ -3278,42 +3638,116 @@ def sync_invoices_to_tally():
     return run_had_issue, final_issue_message
 
 
-if __name__ == "__main__":
+
+def run_once():
+    """One pass. Returns True when the run stopped on an issue."""
+    run_had_issue, _final_issue_message = sync_invoices_to_tally()
+    if run_had_issue:
+        report_stopped()
+    return run_had_issue
+
+
+def report_database_error(exc):
+    append_failure_text_log(
+        "RUNTIME",
+        (
+            f"Database connection failed. Could not connect to MySQL at "
+            f"{DB_CONFIG['host']}:{DB_CONFIG['port']}. Connector message: {exc}"
+        ),
+    )
+    print("==========================================")
+    print("Database connection failed")
+    print("==========================================")
+    print(f"Could not connect to MySQL at {DB_CONFIG['host']}:{DB_CONFIG['port']}.")
+    print(f"Connector message: {exc}")
+    print(
+        "Please check whether outbound access to MySQL port 3306 is "
+        "allowed from this machine, and whether the server is accepting "
+        "connections from your current IP."
+    )
+
+
+def run_watch(interval_seconds, retry_after_issue_seconds):
+    """Keep running: post newly saved invoices within interval_seconds.
+
+    After a run stops on a problem invoice (missing ledger, Tally closed, ...),
+    wait retry_after_issue_seconds before trying again so the same error is not
+    repeated every few seconds. Stop with Ctrl+C.
+    """
+    print(
+        f"Watch mode: checking every {interval_seconds:g}s "
+        f"(after a problem: every {retry_after_issue_seconds:g}s). Press Ctrl+C to stop."
+    )
+    last_issue = None
+    while True:
+        wait_seconds = interval_seconds
+        try:
+            run_had_issue, final_issue_message = sync_invoices_to_tally(quiet_when_empty=True)
+            if run_had_issue:
+                if final_issue_message != last_issue:
+                    report_stopped()
+                last_issue = final_issue_message
+                wait_seconds = retry_after_issue_seconds
+            else:
+                last_issue = None
+        except KeyboardInterrupt:
+            raise
+        except mysql.connector.Error as exc:
+            message = f"DB: {exc}"
+            if message != last_issue:
+                report_database_error(exc)
+            last_issue = message
+            wait_seconds = retry_after_issue_seconds
+        except Exception as exc:
+            message = f"Unexpected: {exc}"
+            if message != last_issue:
+                append_failure_text_log("RUNTIME", f"Unexpected error: {exc}")
+                print(f"Unexpected error: {exc}")
+                traceback.print_exc()
+            last_issue = message
+            wait_seconds = retry_after_issue_seconds
+        time.sleep(wait_seconds)
+
+
+def run_cli(argv=None):
+    """Command line entry used by invFirm1/2/3.
+
+        python invFirm1.py                 one pass, then exit (as before)
+        python invFirm1.py --watch         keep running, check every 20 seconds
+        python invFirm1.py --watch --interval 30
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Post pending app invoices to Tally.")
+    parser.add_argument("--watch", action="store_true", help="keep running and post new invoices as they are saved")
+    parser.add_argument("--interval", type=float, default=WATCH_INTERVAL_SECONDS, help="seconds between checks in watch mode")
+    parser.add_argument(
+        "--retry-after-issue",
+        type=float,
+        default=WATCH_RETRY_AFTER_ISSUE_SECONDS,
+        help="seconds to wait after a stopped run in watch mode",
+    )
+    args = parser.parse_args(argv)
+
     try:
         print_tally_sync_config_summary()
-        run_had_issue, final_issue_message = sync_invoices_to_tally()
-        if run_had_issue:
-            report_stopped()
+        if args.watch:
+            run_watch(max(args.interval, 5.0), max(args.retry_after_issue, args.interval, 5.0))
+        elif run_once():
             sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nStopped by user.")
     except mysql.connector.Error as exc:
-        append_failure_text_log(
-            "RUNTIME",
-            (
-                f"Database connection failed. Could not connect to MySQL at "
-                f"{DB_CONFIG['host']}:{DB_CONFIG['port']}. Connector message: {exc}"
-            ),
-        )
-        print("==========================================")
-        print("Database connection failed")
-        print("==========================================")
-        print(
-            f"Could not connect to MySQL at "
-            f"{DB_CONFIG['host']}:{DB_CONFIG['port']}."
-        )
-        print(f"Connector message: {exc}")
-        print(
-            "Please check whether outbound access to MySQL port 3306 is "
-            "allowed from this machine, and whether the server is accepting "
-            "connections from your current IP."
-        )
+        report_database_error(exc)
         report_stopped()
         sys.exit(1)
     except Exception as exc:
-        append_failure_text_log(
-            "RUNTIME",
-            f"Unexpected error: {exc}",
-        )
+        append_failure_text_log("RUNTIME", f"Unexpected error: {exc}")
         print(f"Unexpected error: {exc}")
         traceback.print_exc()
         report_stopped()
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    run_cli()
