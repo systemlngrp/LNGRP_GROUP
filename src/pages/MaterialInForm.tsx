@@ -70,6 +70,8 @@ type AiMrrLine = {
   gsm?: number | null;
   bf?: number | null;
   color?: string;
+  /** Colour as printed on the invoice (Gemini also returns the LG / NS code in color). */
+  colorAsPrinted?: string;
   reels?: Array<{ supplierReelNo?: string; weightKg?: number; supplierPoNo?: string }>;
   confidence?: number;
 };
@@ -751,6 +753,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const getOriginalAiReelColor = (line: AiMrrLine) => {
     const candidates = [
       line.color,
+      line.colorAsPrinted,
       line.itemName,
       line.erpCode,
       line.poNo,
@@ -934,7 +937,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
         return { line: lineForMatch, index, status: "missing", reason: "Reel Size, GSM, BF, and Color are required before matching." };
       }
       if (expectedType === "Reel" && !hasValidReelColor(lineForMatch)) {
-        return { line: lineForMatch, index, status: "missing", reason: line.color ? `Color "${line.color}" is not in Color Master (${colorMasterNames.join(" / ") || "empty"}).` : "Original color not found in invoice." };
+        return { line: lineForMatch, index, status: "missing", reason: (line.colorAsPrinted || line.color) ? `Color "${line.colorAsPrinted || line.color}" is not in Color Master (${colorMasterNames.join(" / ") || "empty"}).` : "Original color not found in invoice." };
       }
       const material = findAiMaterial(lineForMatch);
       if (!material) {

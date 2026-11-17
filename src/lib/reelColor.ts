@@ -1,13 +1,14 @@
 // Reel colours come from Color Master (codes such as NS, LG, GY). Invoices may
 // print a name instead of the code; these names stand for a Color Master code.
-// LG = GY = Yellow = VK (Gold = GY); NS = Natural = Brown.
+// LG = LG, GY, Yellow (Gold = GY); NS = NS, Duplex, Natural, VK, Brown.
 export const REEL_COLOR_ALIASES: Record<string, string> = {
   GY: "LG",
   YELLOW: "LG",
-  VK: "LG",
   GOLD: "LG",
   GOLDEN: "LG",
+  DUPLEX: "NS",
   NATURAL: "NS",
+  VK: "NS",
   BROWN: "NS",
 };
 
