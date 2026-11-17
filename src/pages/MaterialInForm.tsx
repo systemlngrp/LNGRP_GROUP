@@ -3,6 +3,7 @@ import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, FileText, Plus, Trash2, Upload, Download, Wand2, X } from "lucide-react";
 import { resolveReelColor } from "../lib/reelColor";
+import { findInvoiceSupplier } from "../lib/partyMatch";
 import { useConfirm } from "../components/ConfirmDialog";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
 import {
@@ -778,22 +779,14 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const getReelDisplayName = (erpCode: string | number, size: number, gsm: number, bf: number, color: string) =>
     `${erpCode} - Size: ${size} CM X GSM: ${gsm} X BF: ${bf}   Color - ${color}`;
 
-  const findAiSupplier = (supplierName?: string) => {
-    const search = normalizePartyName(supplierName || "");
-    if (!search) return null;
-    const parties = [
-      ...suppliers.filter((entry) => entry.active !== "No").map((entry) => ({ id: entry.id, name: entry.name })),
-      ...companies.map((entry) => ({ id: entry.id, name: entry.name })),
-    ];
-    return (
-      parties.find((entry) => normalizePartyName(entry.name) === search) ||
-      parties.find((entry) => {
-        const name = normalizePartyName(entry.name);
-        return Boolean(name && search && (name.includes(search) || search.includes(name)));
-      }) ||
-      null
+  // Supplier Master first: a customer/company with the same name must not win
+  // (e.g. supplier "SHREE PAWAN KRAFT" vs company "SHREE PAWAN KRAFT PAPER MILLS LLP").
+  const findAiSupplier = (supplierName?: string) =>
+    findInvoiceSupplier(
+      supplierName,
+      suppliers.filter((entry) => entry.active !== "No").map((entry) => ({ id: entry.id, name: entry.name })),
+      companies.map((entry) => ({ id: entry.id, name: entry.name })),
     );
-  };
 
   const parseAiPositiveNumber = (value: unknown) => {
     const numeric = Number(String(value ?? "").replace(/,/g, ""));
