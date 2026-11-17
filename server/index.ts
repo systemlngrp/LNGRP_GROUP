@@ -5924,8 +5924,10 @@ async function ensureDevSeedUser(db: mysql.Pool) {
   const [rows] = await db.query("SELECT id FROM `users` WHERE userId = ? OR email = ? LIMIT 1", [userId, userId]);
   const existing = (rows as any[])[0];
   if (existing?.id) {
+    // Keep the System Admin usable, but never put its password back to the
+    // default on restart: only fill it when it is empty.
     await db.query(
-      "UPDATE `users` SET `role` = 'Admin', `status` = 'Active', `menuAccess` = ?, `password` = ? WHERE `id` = ?",
+      "UPDATE `users` SET `role` = 'Admin', `status` = 'Active', `menuAccess` = ?, `password` = COALESCE(NULLIF(`password`, ''), ?) WHERE `id` = ?",
       [menuAccess, password, existing.id]
     );
     return;
@@ -13049,8 +13051,11 @@ const createHandlers = (tableName: string) => {
             const values = keys.map((key) => columnValueMap[key]);
 
             if (exists) {
-              const updates = keys.filter((key) => key !== "id").map((key) => `\`${key}\` = ?`).join(", ");
-              await db.query(`UPDATE \`users\` SET ${updates} WHERE \`id\` = ?`, [...keys.filter((key) => key !== "id").map((key) => columnValueMap[key]), userRecord.id]);
+              // Editing a user without typing a new password keeps the current one
+              // (the users list never sends passwords to the screen).
+              const updateKeys = keys.filter((key) => key !== "id" && !(key === "password" && !userRecord.password));
+              const updates = updateKeys.map((key) => `\`${key}\` = ?`).join(", ");
+              await db.query(`UPDATE \`users\` SET ${updates} WHERE \`id\` = ?`, [...updateKeys.map((key) => columnValueMap[key]), userRecord.id]);
             } else {
               const placeholders = keys.map(() => "?").join(", ");
               const columnNames = keys.map((key) => `\`${key}\``).join(", ");
