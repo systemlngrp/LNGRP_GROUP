@@ -467,7 +467,11 @@ function getProductionWastageTotals(production, processingRows = []) {
   let printingKg = 0;
   let printingBoxes = 0;
   let fullCorrugationQty = 0;
-  processingRows.filter((row) => row.productionId === production.id && (row.completionStatus || "Full") === "Full").forEach((row) => {
+  const jobRows = processingRows.filter((row) => row.productionId === production.id);
+  const completedSteps = new Set(
+    jobRows.filter((row) => (row.completionStatus || "Full") === "Full").map((row) => normalizeMachineName2(row.machineName))
+  );
+  jobRows.filter((row) => completedSteps.has(normalizeMachineName2(row.machineName))).forEach((row) => {
     const machine = normalizeMachineName2(row.machineName);
     if (machine === "corrugation liner") {
       fullCorrugationQty += nonNegative(row.qty);

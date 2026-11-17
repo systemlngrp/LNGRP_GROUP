@@ -37,8 +37,14 @@ export function getProductionWastageTotals(
   let printingBoxes = 0;
   let fullCorrugationQty = 0;
 
-  processingRows
-    .filter((row) => row.productionId === production.id && (row.completionStatus || "Full") === "Full")
+  const jobRows = processingRows.filter((row) => row.productionId === production.id);
+  // Once a step is marked Job Complete, its In Progress entries count towards
+  // the step quantity too (they carry no wastage fields of their own).
+  const completedSteps = new Set(
+    jobRows.filter((row) => (row.completionStatus || "Full") === "Full").map((row) => normalizeMachineName(row.machineName))
+  );
+  jobRows
+    .filter((row) => completedSteps.has(normalizeMachineName(row.machineName)))
     .forEach((row) => {
       const machine = normalizeMachineName(row.machineName);
       if (machine === "corrugation liner") {

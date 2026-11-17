@@ -4034,9 +4034,30 @@ async function automateInterFirmProduction(
     const sourceTransactionType = sourceType;
     const now = new Date().toISOString();
     const automationWarnings: string[] = [];
-    const qty = Number(
+    let qty = Number(
       sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0
     );
+    if (sourceType === "Production Processing") {
+      // A step can be reported in several entries (In Progress ... Job Complete).
+      // The transfer carries the job's total for this step, less whatever an
+      // earlier, still-existing entry of the same step already transferred.
+      const [stepRows] = await conn.query(
+        "SELECT id, machineName, qty FROM `production_processing` WHERE productionId = ?",
+        [productionId]
+      );
+      const stepTotal = (stepRows as any[])
+        .filter((row) => normalizeMachineName(String(row.machineName || "")) === normalizedMachine)
+        .reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
+      const [transferredRows] = await conn.query(
+        `SELECT COALESCE(SUM(ip.qty), 0) AS qty FROM inter_firm_pending_invoices ip
+         JOIN production_processing otherpp ON otherpp.id = ip.sourceTransactionId
+         WHERE ip.sourceTransactionType = ? AND ip.jobId = ? AND ip.sourceFirmId = ? AND ip.destinationFirmId = ?
+           AND COALESCE(ip.status, 'Pending') <> 'Cancelled' AND ip.sourceTransactionId <> ?`,
+        [sourceType, production.id, sourceFirmId, destinationFirmId, sourceId]
+      );
+      const alreadyTransferred = Number((transferredRows as any[])[0]?.qty || 0);
+      qty = Number((stepTotal - alreadyTransferred).toFixed(5));
+    }
     if (!Number.isFinite(qty) || qty <= 0) {
       console.warn("[INTER-FIRM] Skipped: output quantity is zero", { sourceId, sourceType, productionId, qty });
       await skip(); return;

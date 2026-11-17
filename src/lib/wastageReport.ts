@@ -12,7 +12,12 @@ export function buildProductionWastageRows(processing: ProductionProcessing[], p
   const productionMap = new Map(productions.map((p) => [String(p.id), p]));
   const from = filters.fromDate ? dateTime(filters.fromDate) : null; const to = filters.toDate ? dateTime(filters.toDate) : null;
   const sourceFilter = machineName(filters.machine); const needle = String(filters.searchTerm || "").trim().toLowerCase();
-  const fullRows = processing.filter((entry) => entry.completionStatus === "Full" && ["corrugation liner", "printing"].includes(machineName(entry.machineName)));
+  const stepRows = processing.filter((entry) => ["corrugation liner", "printing"].includes(machineName(entry.machineName)));
+  // A step is reported once it has a Job Complete entry; its In Progress entries then count towards it too.
+  const completedSteps = new Set(stepRows.filter((entry) => entry.completionStatus === "Full").map((entry) => `${entry.productionId}|${machineName(entry.machineName)}`));
+  const fullRows = stepRows
+    .filter((entry) => completedSteps.has(`${entry.productionId}|${machineName(entry.machineName)}`))
+    .sort((a, b) => (a.completionStatus === "Full" ? 0 : 1) - (b.completionStatus === "Full" ? 0 : 1));
   const grouped = new Map<string, ProductionProcessing[]>();
   fullRows.forEach((entry) => grouped.set(String(entry.productionId), [...(grouped.get(String(entry.productionId)) || []), entry]));
   return Array.from(grouped.entries()).map(([productionId, group]) => {

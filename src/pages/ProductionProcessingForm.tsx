@@ -7,6 +7,7 @@ import { Select } from "../components/Select";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { MandatoryLabel } from "../components/Mandatory";
+import { ProcessingQtyFields } from "../components/ProcessingQtyFields";
 import { isMandatoryField } from "../lib/mandatoryFields";
 import { useAuth } from "../auth/AuthContext";
 import { usesPartFullProgress } from "../lib/productionProcessingProgress";
@@ -77,8 +78,13 @@ function LockedReportForm() {
   const materialIssueBlocked = isPrinting &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
   const materialIssueMessage = issuedProductionIds.has(productionId) ? PRINTING_RETURNED_MESSAGE : PRINTING_MATERIAL_MESSAGE;
+  const plannedQty = Number(selectedProduction?.qty || 0);
+  const alreadyCompletedQty = processing
+    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === normalizeMachineName(machineName))
+    .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
+  // All Corrugation Liner entries of the job (In Progress and Job Complete) plus this one.
   const fullCorrugationQty = processing
-    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && (entry.completionStatus || "Full") === "Full")
+    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner")
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0) + (isCorrugationLiner && isFullReport ? Number(qty || 0) : 0);
   const automaticNoHisab = useMemo(() => {
     if (!showCorrugationWastage || !selectedProduction) return 0;
@@ -257,17 +263,12 @@ function LockedReportForm() {
               </div>
             ) : null}
 
-            <div className="order-6 flex flex-col space-y-1 md:col-span-2">
-              <MandatoryLabel label="Quantity" required className="font-bold text-black text-sm" />
-              <input
-                type="number"
-                value={qty}
-                onChange={(e) => setQty(e.target.value)}
-                min="0"
-                required
-                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600"
-              />
-            </div>
+            <ProcessingQtyFields
+              plannedQty={selectedProduction ? plannedQty : null}
+              alreadyCompletedQty={selectedProduction ? alreadyCompletedQty : null}
+              qty={qty}
+              onQtyChange={setQty}
+            />
             {showCorrugationWastage ? (
               <div className="order-7 space-y-2 rounded border-2 border-black bg-slate-50 p-3 md:col-span-2">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
@@ -374,8 +375,9 @@ function FullReportForm() {
   const showCorrugationWastage = isCorrugationLiner && isFullReport;
   const showPrintingWastage = isPrinting && isFullReport;
   // Same "No Hisab" kg calculation as the quick (locked) entry form.
+  // All Corrugation Liner entries of the job (In Progress and Job Complete) plus this one.
   const fullCorrugationQty = processing
-    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && (entry.completionStatus || "Full") === "Full")
+    .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner")
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0) + (isCorrugationLiner && isFullReport ? Number(qty || 0) : 0);
   const automaticNoHisab = useMemo(() => {
     if (!showCorrugationWastage || !selectedProduction) return 0;
@@ -583,22 +585,12 @@ function FullReportForm() {
               </div>
             ) : null}
 
-            <div className="order-6 flex flex-col space-y-1 md:col-span-2">
-              <MandatoryLabel label="Quantity" required className="font-bold text-black text-sm" />
-              <input 
-                type="number" 
-                value={qty} 
-                onChange={(e) => setQty(e.target.value)}
-                min="0"
-                required 
-                className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600" 
-              />
-              {qtyContext && selectedProduction && selectedMachine ? (
-                <div className="text-[11px] font-bold text-slate-600">
-                  Plan: {qtyContext.plannedQty.toLocaleString()} | Reported: {qtyContext.alreadyProcessedQty.toLocaleString()} | Pending: {qtyContext.pendingQty.toLocaleString()}
-                </div>
-              ) : null}
-            </div>
+            <ProcessingQtyFields
+              plannedQty={qtyContext ? qtyContext.plannedQty : null}
+              alreadyCompletedQty={qtyContext ? qtyContext.alreadyProcessedQty : null}
+              qty={qty}
+              onQtyChange={setQty}
+            />
             {showCorrugationWastage ? (
               <div className="order-7 space-y-2 rounded border-2 border-black bg-slate-50 p-3 md:col-span-2">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Corrugation Liner Wastage</h4>
