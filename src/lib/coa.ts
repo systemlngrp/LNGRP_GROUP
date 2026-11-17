@@ -1,4 +1,4 @@
-import type { BoardLineQcCheck, Company, CoaCellValue, CoaTemplate, CoaTemplateLayout, CoaTemplateRow, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
+import type { BoardLineQcCheck, Company, CoaAutoRule, CoaCellValue, CoaTemplate, CoaTemplateLayout, CoaTemplateRow, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
 
 type AnyRecord = Record<string, any>;
 
@@ -180,6 +180,20 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     "item.weightPack": text(item?.weightPackDetails || item?.weightAndPackDetails || item?.materialWeightInsideInOneBox),
     "item.compositeGsm": sourceValue(item?.gsmLeastCost || job.gsm),
     "standard.boardThickness": boardThicknessStandard(flute),
+    "item.boxWeight": (() => {
+      const standard = Number(item?.standardWeightGms);
+      if (Number.isFinite(standard) && standard > 0) return String(standard);
+      const calculated = Number(item?.calculatedWeightPerBox);
+      return Number.isFinite(calculated) && calculated > 0 ? String(Math.round(calculated)) : "";
+    })(),
+    "item.bf": (() => {
+      const values = [...new Set(Object.entries(item || {})
+        .filter(([key, value]) => /Bf$/.test(key) && Number(value) > 0)
+        .map(([, value]) => String(Number(value))))];
+      return values.length === 1 ? `ALL ${values[0]} BF` : values.join(" / ");
+    })(),
+    "item.boxSizeOd": [item?.lengthOd || item?.lOd, item?.breadthOd || item?.wOd, item?.heightOd || item?.hOd].map(text).filter(Boolean).join(" X "),
+    "production.boxSizeX": [job.length, job.breadth, job.height].map((value) => text(value).replace(/\.0+$/, "")).filter(Boolean).join(" X "),
     "pdi.flapGapCheck": sourceValue((pdi as AnyRecord)?.flapGapCheck),
     "pdi.jointCheck": sourceValue((pdi as AnyRecord)?.jointPastingDelaminationCheck),
     "pdi.printingColorCheck": sourceValue((pdi as AnyRecord)?.printingColorCheck),
@@ -212,13 +226,61 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
   };
 }
 
+const leadingNumber = (value: unknown) => {
+  const match = String(value ?? "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  return match ? Number(match[0]) : NaN;
+};
+
+/** Value of one auto rule, given the values already filled. Same result every time for a job. */
+export function evaluateCoaAutoRule(rule: CoaAutoRule, valueOf: (cellId: string) => string, seed: string): string {
+  if (rule.copy) return valueOf(rule.copy);
+  let min = rule.min;
+  let max = rule.max;
+  if (rule.byValueOf && rule.ranges) {
+    const key = text(valueOf(rule.byValueOf)).toUpperCase().replace(/\s+/g, "");
+    const range = rule.ranges[key] ?? rule.ranges["*"];
+    if (!range) return "";
+    [min, max] = range;
+  }
+  if (min === undefined || max === undefined) return "";
+  let low = min;
+  let high = max;
+  if (rule.from) {
+    const base = leadingNumber(valueOf(rule.from));
+    if (!Number.isFinite(base)) return "";
+    low = rule.percent ? base * (1 + min) : base + min;
+    high = rule.percent ? base * (1 + max) : base + max;
+  }
+  const random = seededRandom(seed);
+  const decimals = rule.decimals ?? 0;
+  let result: string;
+  if (decimals === 0) {
+    const from = Math.ceil(Math.min(low, high));
+    const to = Math.floor(Math.max(low, high));
+    if (to < from) return "";
+    result = String(Math.floor(random() * (to - from + 1)) + from);
+  } else {
+    result = (low + random() * (high - low)).toFixed(decimals);
+  }
+  return rule.suffix ? `${result}${rule.suffix}` : result;
+}
+
 export function buildInitialCellValues(layout: CoaTemplateLayout, sourceMap: Record<string, string>): Record<string, CoaCellValue> {
   const values: Record<string, CoaCellValue> = {};
-  for (const item of [...layout.metadataRows, ...layout.parameterRows, ...layout.footerRows]) {
-    for (const cellValue of item.cells) {
-      const source = cellValue.binding ? sourceMap[cellValue.binding] || "" : "";
-      const value = cellValue.kind === "binding" ? source : cellValue.defaultValue || source;
-      if (cellValue.kind !== "static" || value) values[cellValue.id] = { value, sourceValue: source, source: source ? "auto" : "default" };
+  const cells = [...layout.metadataRows, ...layout.parameterRows, ...layout.footerRows].flatMap((row) => row.cells);
+  for (const cellValue of cells) {
+    if (cellValue.auto) continue;
+    const source = cellValue.binding ? sourceMap[cellValue.binding] || "" : "";
+    const value = cellValue.kind === "binding" ? source : cellValue.defaultValue || source;
+    if (cellValue.kind !== "static" || value) values[cellValue.id] = { value, sourceValue: source, source: source ? "auto" : "default" };
+  }
+  // Auto cells may depend on each other (e.g. a copy of a random value): fill in order, twice.
+  const seedBase = text(sourceMap.jobNo) || "coa";
+  for (let pass = 0; pass < 2; pass++) {
+    for (const cellValue of cells) {
+      if (!cellValue.auto || (pass === 1 && values[cellValue.id]?.value)) continue;
+      const value = evaluateCoaAutoRule(cellValue.auto, (cellId) => values[cellId]?.value || "", `${seedBase}|${cellValue.id}`);
+      values[cellValue.id] = { value, sourceValue: value, source: value ? "auto" : "default" };
     }
   }
   return values;

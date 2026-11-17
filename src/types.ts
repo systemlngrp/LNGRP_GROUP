@@ -1414,6 +1414,27 @@ export interface CoaTemplateCell {
   bold?: boolean;
   italic?: boolean;
   align?: "left" | "center" | "right";
+  /** Fills the cell automatically when a job is selected (COA sheet formulas). */
+  auto?: CoaAutoRule;
+}
+
+/**
+ * Automatic value for a COA cell, mirroring the COA sheet formulas.
+ * - copy: same value as another cell (e.g. observation = standard).
+ * - min/max: random value in [min, max]; with `from`, added to that cell's
+ *   number (or, with `percent`, as a fraction of it). decimals 0 = whole number.
+ * - byValueOf/ranges: [min, max] chosen by another cell's text (e.g. flute "A").
+ */
+export interface CoaAutoRule {
+  copy?: string;
+  from?: string;
+  min?: number;
+  max?: number;
+  percent?: boolean;
+  decimals?: number;
+  byValueOf?: string;
+  ranges?: Record<string, [number, number]>;
+  suffix?: string;
 }
 
 export interface CoaTemplateRow {
