@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, User } from "../types";
@@ -25,6 +25,14 @@ function createEmptyLine(): EditableIndentLine {
   };
 }
 
+// Form kept while the user creates a new material from the + button.
+const INDENT_DRAFT_KEY = "indent-form-draft";
+type IndentDraft = { requestedBy: string; requisitionDate: string; indentType: Indent["indentType"]; lines: EditableIndentLine[]; selectedFirmId: string; lineId: string };
+
+function readIndentDraft(): IndentDraft | null {
+  try { return JSON.parse(window.sessionStorage.getItem(INDENT_DRAFT_KEY) || "null"); } catch { return null; }
+}
+
 function getIndentLineUom(indentType: Indent["indentType"], material?: Material | null) {
   return indentType === "Reel" ? "Kgs" : material?.uom || "";
 }
@@ -41,6 +49,11 @@ function stripErpPrefix(name: string, erpCode?: string | number | null) {
 export function IndentForm() {
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Back from Material Master with a new material: restore the form as it was.
+  const createdMaterialId = searchParams.get("createdMaterialId") || "";
+  const [restoredDraft] = useState<IndentDraft | null>(() => (createdMaterialId ? readIndentDraft() : null));
   const [indents, setIndents] = useData<Indent>("indents", []);
   const [indentLines, setIndentLines] = useData<IndentLine>("indent-lines", []);
   const [materials] = useData<Material>("materials", []);
@@ -52,12 +65,32 @@ export function IndentForm() {
     [firms]
   );
 
-  const [requestedBy, setRequestedBy] = useState("");
-  const [requisitionDate, setRequisitionDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [indentType, setIndentType] = useState<Indent["indentType"]>("Reel");
-  const [lines, setLines] = useState<EditableIndentLine[]>([createEmptyLine()]);
+  const [requestedBy, setRequestedBy] = useState(restoredDraft?.requestedBy || "");
+  const [requisitionDate, setRequisitionDate] = useState(() => restoredDraft?.requisitionDate || new Date().toISOString().split("T")[0]);
+  const [indentType, setIndentType] = useState<Indent["indentType"]>(restoredDraft?.indentType || "Reel");
+  const [lines, setLines] = useState<EditableIndentLine[]>(() => {
+    if (!restoredDraft?.lines?.length) return [createEmptyLine()];
+    return restoredDraft.lines.map((line) => line.id === restoredDraft.lineId
+      ? { ...line, materialId: createdMaterialId, targetDeliveryDate: line.targetDeliveryDate || restoredDraft.requisitionDate || "" }
+      : line);
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedFirmId, setSelectedFirmId] = useState("");
+  const [selectedFirmId, setSelectedFirmId] = useState(restoredDraft?.selectedFirmId || "");
+
+  useEffect(() => {
+    if (!createdMaterialId) return;
+    window.sessionStorage.removeItem(INDENT_DRAFT_KEY);
+    const next = new URLSearchParams(searchParams);
+    next.delete("createdMaterialId");
+    setSearchParams(next, { replace: true });
+  }, [createdMaterialId, searchParams, setSearchParams]);
+
+  const openNewMaterial = (lineId: string) => {
+    const draft: IndentDraft = { requestedBy, requisitionDate, indentType, lines, selectedFirmId, lineId };
+    try { window.sessionStorage.setItem(INDENT_DRAFT_KEY, JSON.stringify(draft)); } catch { /* storage blocked */ }
+    const returnTo = `${location.pathname}${location.search}`;
+    navigate(`/masters/materials?new=1&type=${encodeURIComponent(indentType)}&returnTo=${encodeURIComponent(returnTo)}`);
+  };
   const selectedFirm = firms.find((firm) => firm.id === selectedFirmId);
 
   const activeMaterials = useMemo(
@@ -296,7 +329,7 @@ export function IndentForm() {
                       options={materialOptions}
                       value={line.materialId}
                       onChange={(value) => handleLineChange(line.id, "materialId", value)}
-                      onAdd={() => navigate("/masters/materials?new=1")}
+                      onAdd={() => openNewMaterial(line.id)}
                       wrapLabels
                       placeholder={activeMaterials.length === 0 ? "No material available..." : "Select Item..."}
                     />

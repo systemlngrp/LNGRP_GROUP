@@ -150,6 +150,7 @@ export function Materials() {
   const canManage = canManageMasterRecords(user?.role);
   const confirm = useConfirm();
   const navigate = useNavigate();
+  const returnToRef = useRef("");
   const [searchParams, setSearchParams] = useSearchParams();
   const [firms] = useData<Firm>("firms", []);
   const [selectedFirmId, setSelectedFirmId] = useState("");
@@ -608,9 +609,17 @@ export function Materials() {
     setOpeningReels([]);
     setOpeningReelSupplierId("");
     setOpeningReelsAreFirmSpecific(false);
+    if (searchParams.get("type") === "Other") {
+      setFormData((current) => syncReelDefaults("Other", { ...current, type: "Other" as MaterialType, name: "", uom: current.uom || "CM", materialGroupId: "", size: "", gsm: "", bf: "" }));
+    }
+    // Opened from another form's + button: go back there after saving.
+    const returnTo = searchParams.get("returnTo") || "";
+    returnToRef.current = returnTo.startsWith("/") ? returnTo : "";
     setIsFormOpen(true);
     const next = new URLSearchParams(searchParams);
     next.delete("new");
+    next.delete("type");
+    next.delete("returnTo");
     setSearchParams(next, { replace: true });
   }, [firms, isFormOpen, materials, reelErpStartNumber, reelGroup, searchParams, setSearchParams]);
 
@@ -1170,6 +1179,11 @@ export function Materials() {
         await setPackingSlips(packingSlips.filter((slip) => !(slip.materialId === editingId && slip.firmId === firmId && isOpeningReelPackingSlip(slip))));
       }
       resetForm(nextMaterials, reelGroupId);
+      if (returnToRef.current && !editingId) {
+        const target = returnToRef.current;
+        returnToRef.current = "";
+        navigate(`${target}${target.includes("?") ? "&" : "?"}createdMaterialId=${encodeURIComponent(materialId)}`);
+      }
     } catch (error) {
       console.error("Failed to save material:", error);
       alert(error instanceof Error ? error.message : "Failed to save material.");
