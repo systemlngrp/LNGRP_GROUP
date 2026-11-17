@@ -51,13 +51,13 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const filterMachineId = searchParams.get("machineId") || "";
   const fixedNormalizedMachineName = fixedMachineName ? normalizeMachineName(fixedMachineName) : "";
 
-  const [productions] = useData<Production>("productions", [], { firmScope: "all" });
+  const [productions, , productionsLoading] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
   const [plateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all", storageKey: "plate-job-master-all-firms" });
   const { itemsBySource } = useOrderItemCatalog();
-  const [machines] = useData<Machine>("machines", []);
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
-  const [settings] = useData<Setting>("settings", []);
+  const [machines, , machinesLoading] = useData<Machine>("machines", []);
+  const [processing, , processingLoading] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
+  const [settings, , settingsLoading] = useData<Setting>("settings", []);
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
@@ -306,6 +306,9 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     return map;
   }, [sortedGroupJobs]);
 
+  // Until jobs and machine entries are both in, every job would look pending at
+  // the first machine (a count of ~1,900 instead of a few hundred), so wait.
+  const coreDataLoading = productionsLoading || processingLoading || machinesLoading || settingsLoading;
   const showMachineFilter = !filterMachineId && !fixedNormalizedMachineName;
   const machineOptions = useMemo(
     () => baseMachineGroups.map((group) => ({ value: group.machineId, label: group.machineName })),
@@ -445,7 +448,9 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       </div>
 
       <div className="space-y-3">
-        {machineGroups.length === 0 ? (
+        {coreDataLoading ? (
+          <div role="status" className="rounded border border-black bg-white px-4 py-6 text-center text-sm font-black text-slate-600">Loading pending jobs…</div>
+        ) : machineGroups.length === 0 ? (
           <div className="overflow-x-auto rounded border border-black bg-white">
             <table className="min-w-full divide-y divide-black border-collapse">
               {tableHead}
