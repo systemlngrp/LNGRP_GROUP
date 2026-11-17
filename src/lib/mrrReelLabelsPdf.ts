@@ -95,9 +95,11 @@ export async function downloadMrrReelLabelsPdf({
   }
 
   const isA3 = paperSize === "A3";
-  // "A3" option = small reel label, the size of the old sheet script: 250 x 255 px per page (11 px margin).
+  // "A3" option = reel label, 350 x 350 px per page (about 92.6 x 92.6 mm). The layout is the old
+  // sheet script's 250 px design scaled up by LABEL_SCALE.
   const PX = 25.4 / 96;
-  const LABEL_PAGE: [number, number] = [250 * PX, 255 * PX];
+  const LABEL_PAGE: [number, number] = [350 * PX, 350 * PX];
+  const LABEL_SCALE = 350 / 250;
   const doc = isA3 ? new jsPDF({ orientation: "p", unit: "mm", format: LABEL_PAGE }) : new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -301,16 +303,17 @@ export async function downloadMrrReelLabelsPdf({
   // supplier, specs, then GSM / R/NO. / Weight / Supp-Reel with the QR in a box on the right.
   const drawLabelSmall = async (row: (typeof labels)[number]) => {
     const [pageW, pageH] = LABEL_PAGE;
-    const margin = 11 * PX;
-    const pad = 8 * PX;
+    const U = PX * LABEL_SCALE; // one design px of the 250 px layout, in mm
+    const margin = 11 * U;
+    const pad = 8 * U;
     const cardX = margin;
     const cardY = margin;
     const cardW = pageW - margin * 2;
     const cardH = pageH - margin * 2;
     const x0 = cardX + pad;
     const innerW = cardW - pad * 2;
-    const pt = (px: number) => px * 0.75; // CSS px -> font points
-    const lineMm = (fontPx: number, ratio = 1.2) => fontPx * PX * ratio;
+    const pt = (px: number) => px * 0.75 * LABEL_SCALE; // CSS px -> font points
+    const lineMm = (fontPx: number, ratio = 1.2) => fontPx * U * ratio;
 
     doc.setDrawColor(0);
     doc.setLineWidth(0.2);
@@ -318,10 +321,10 @@ export async function downloadMrrReelLabelsPdf({
 
     // Header: logo (50 px wide) and group name (12 px bold).
     let y = cardY + pad;
-    const logoW = 50 * PX;
+    const logoW = 50 * U;
     const logoH = logoW * 0.53;
     if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", x0, y, logoW, logoH, undefined, "FAST");
-    const nameX = x0 + (logoDataUrl ? logoW + 8 * PX : 0);
+    const nameX = x0 + (logoDataUrl ? logoW + 8 * U : 0);
     const nameW = x0 + innerW - nameX;
     const groupName = "LAXMI NARAYAN GROUP";
     let nameSize = pt(12);
@@ -330,14 +333,14 @@ export async function downloadMrrReelLabelsPdf({
     while (nameSize > 5 && doc.getTextWidth(groupName) > nameW) { nameSize -= 0.25; doc.setFontSize(nameSize); }
     doc.setTextColor(0);
     doc.text(groupName, nameX, y + logoH / 2 + nameSize * 0.3528 * 0.35);
-    y += Math.max(logoH, lineMm(12)) + 6 * PX;
+    y += Math.max(logoH, lineMm(12)) + 6 * U;
 
     // Doc / Date / Code (7 px), spread across the width.
     doc.setFont("helvetica", "normal");
     doc.setFontSize(pt(7));
     y += lineMm(7, 0.9);
     // Space-between like the script: Code at the right, Date before it, Doc gets the rest.
-    const gap = 2 * PX * 2;
+    const gap = 2 * U * 2;
     const codeText = `Code: ${firstNonEmpty(row.code)}`;
     const dateText = `Date: ${row.docDate}`;
     const codeW = doc.getTextWidth(codeText);
@@ -349,26 +352,27 @@ export async function downloadMrrReelLabelsPdf({
     const middleStart = x0 + docW + gap;
     const middleEnd = x0 + innerW - codeW - gap;
     doc.text(dateText, (middleStart + middleEnd) / 2, y, { align: "center" });
-    y += 2 * PX;
+    y += 2 * U;
 
     // Supplier (9 px bold) and specs (9 px).
     doc.setFont("helvetica", "bold");
     doc.setFontSize(pt(9));
     const supplierLines = doc.splitTextToSize(toTitleCase(row.supplierName), innerW).slice(0, 2);
-    y += 4 * PX + lineMm(9, 0.8);
+    y += 4 * U + lineMm(9, 0.8);
     doc.text(supplierLines, x0, y);
     y += (supplierLines.length - 1) * lineMm(9, 1.15) + lineMm(9, 1.15);
     doc.setFont("helvetica", "normal");
     const specText = `Size: ${firstNonEmpty(row.sizeCm)} CM X GSM: ${firstNonEmpty(row.gsm)} X BF: ${firstNonEmpty(row.bf)}`;
     doc.text(clipSingleLine(doc, specText, innerW), x0, y);
-    y += 6 * PX + 2 * PX;
+    y += 6 * U + 2 * U;
 
     // Details (10 px) left, QR box (90 px) right.
-    const qrBox = 90 * PX;
-    const qrBoxX = x0 + innerW - qrBox;
+    // The page is square, so the QR box grows into the space left below the header.
     const detailTop = y;
+    const qrBox = Math.max(90 * U, Math.min(innerW * 0.47, cardY + cardH - pad - detailTop));
+    const qrBoxX = x0 + innerW - qrBox;
     doc.setFontSize(pt(10));
-    const detailW = qrBoxX - x0 - 2 * PX;
+    const detailW = qrBoxX - x0 - 2 * U;
     [
       `GSM.: ${firstNonEmpty(row.gsm)}`,
       `R/NO.: ${row.reelNo}`,
@@ -381,7 +385,7 @@ export async function downloadMrrReelLabelsPdf({
     doc.rect(qrBoxX, detailTop, qrBox, qrBox);
     try {
       const qrDataUrl = await QRCode.toDataURL(row.qrPayload, { errorCorrectionLevel: "M", margin: 1, width: 600, color: { dark: "#000000", light: "#ffffff" } });
-      const qrSize = qrBox - 4 * PX;
+      const qrSize = qrBox - 4 * U;
       doc.addImage(qrDataUrl, "PNG", qrBoxX + (qrBox - qrSize) / 2, detailTop + (qrBox - qrSize) / 2, qrSize, qrSize, undefined, "FAST");
     } catch (error) {
       console.warn("QR generation failed", error);
