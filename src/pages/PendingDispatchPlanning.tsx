@@ -515,14 +515,16 @@ export function PendingDispatchPlanning() {
         };
       });
 
-      await setDispatchPlans([...dispatchPlans, ...newPlans]);
+      // Add to the latest list (not this screen's copy, which may be out of date):
+      // a stale copy would make the save also delete plans created meanwhile.
+      await setDispatchPlans((current) => [...current, ...newPlans]);
       
       setSelectedIds(new Set());
       setRowPlannedQty({});
       alert("Dispatch plans submitted successfully!");
     } catch (err) {
       console.error("Failed to submit dispatch plans:", err);
-      alert("Failed to submit dispatch plans. Please check the console for details.");
+      alert(`Dispatch plans were not saved.\n\n${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsSubmitting(false);
     }
