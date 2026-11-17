@@ -11,18 +11,25 @@ Each firm's Tally port comes from `firms.tallyPortNo`.
 
 ## Who gives the invoice number
 
-By default **Tally gives the number** (`INVOICE_NUMBER_SOURCE=tally`):
+By default the number **continues Tally's own Sales series** (`INVOICE_NUMBER_SOURCE=tally`).
+Tally does not number vouchers that arrive by XML import, even with Automatic numbering,
+so the script does it:
 
-1. The voucher is posted **without** a voucher number. Tally gives the next number of its
-   Sales series (Sales voucher type must be *Automatic* or *Automatic (Manual Override)*).
-2. The number Tally gave is read back and saved to `invoices.tallyInvNo`
-   (with `tallyInvDate`, `tallyInvId`). The app's own `invoiceNo` is only an internal reference.
+1. Just before posting, it reads every Sales voucher number of the financial year from Tally,
+   takes the series used most (e.g. `LNCB2/26-27/`) and uses its highest number + 1
+   (`LNCB2/26-27/2833` -> `LNCB2/26-27/2834`). Your Tally team can keep entering invoices in
+   Tally; the next app invoice simply takes the next free number.
+2. The number is saved to `invoices.tallyInvNo` (with `tallyInvDate`, `tallyInvId`).
+   The app's own `invoiceNo` is only an internal reference.
 3. Each voucher carries a hidden `REMOTEID` (`LNGRP-INV-<invoice id>`, not printed). If a run
    stops before saving the number, the next run finds the voucher by this id and saves its
    number instead of posting it again.
 4. After posting, Tally is checked for another Sales voucher with the same number in that
-   financial year. If found, the invoice is still marked posted, with a remark to fix it in Tally.
+   financial year (e.g. someone saved the same number at the same moment). If found, the
+   invoice is still marked posted, with a remark to fix it in Tally.
 5. Pending invoices are posted oldest invoice date first.
+6. Every 5 minutes, posted invoices whose Tally number is blank in the app are looked up in
+   Tally again; if a number has since been entered in Tally, it is filled in.
 
 To go back to the old behaviour (app number sent to Tally), put `INVOICE_NUMBER_SOURCE=app` in `.env`.
 
@@ -41,7 +48,7 @@ After a run stops on a problem invoice (missing ledger, Tally closed, ...) watch
 5 minutes before trying again (`TALLY_WATCH_RETRY_AFTER_ISSUE`, seconds). Fix the problem shown
 in the window / Billing Master remark and it will continue by itself.
 
-Optional `.env` settings: `INVOICE_NUMBER_SOURCE`, `TALLY_WATCH_INTERVAL`,
+Optional `.env` settings: `INVOICE_NUMBER_SOURCE`, `TALLY_BACKFILL_EVERY`, `TALLY_WATCH_INTERVAL`,
 `TALLY_WATCH_RETRY_AFTER_ISSUE`, `TALLY_SEND_REMOTE_ID`, `SALES_VOUCHER_TYPE_NAME`, `SALES_TCS_LEDGER_NAME`.
 
 ## Updating this computer from GitHub
