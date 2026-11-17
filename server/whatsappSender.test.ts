@@ -201,4 +201,16 @@ describe("WhatsApp complaint sender", () => {
     assert.doesNotMatch(String(request?.body), /filePathUrl/);
     assert.doesNotMatch(String(request?.body), /secret/);
   });
+
+  it("shows Sampling Plan Qty as a whole number and artwork as a link in QC messages", () => {
+    const template = "Qty {{samplingPlanQty}} | Art {{standardArtwork}}{{printingArtwork}}";
+    assert.equal(
+      resolveWhatsappPrintingTemplate(template, { samplingPlanQty: "2.00", standardArtwork: "https://drive.google.com/file/d/x/view" }),
+      "Qty 2 | Art https://drive.google.com/file/d/x/view"
+    );
+    assert.equal(
+      resolveWhatsappBoardlineTemplate(template, { samplingPlanQty: 4, printingArtwork: "abc.pdf" }),
+      "Qty 4 | Art https://system.lngrp.in/uploads/abc.pdf"
+    );
+  });
 });
