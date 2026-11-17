@@ -311,7 +311,7 @@ function calculatePrintingQcForm(form: Partial<PrintingQcCheck>, settings?: Sett
     lengthId,
     widthId,
     heightId,
-    standardBoxSize: buildBoxSize(lengthId, widthId, heightId),
+    standardBoxSize: buildBoxSize(lengthSpec, widthSpec, heightSpec) || String(form.standardBoxSize || ""),
     boxSizeAchieved: buildBoxSize(lengthId, widthId, heightId),
     samplingPlanQty,
     samplingCheckNo,
