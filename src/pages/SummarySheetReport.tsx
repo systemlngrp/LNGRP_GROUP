@@ -41,6 +41,8 @@ const SUMMARY_SECTIONS = [
   { label: "FINANCE & REMARKS", start: "Rate", end: "Timestamp" },
 ] as const;
 const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "companies", "firms", "npd", "pre_app_dispatches"];
+const SUMMARY_HIDDEN_COLUMNS_KEY = "summary-sheet-hidden-columns";
+
 const NUMERIC_COLUMNS = new Set([
   "Sl No", "Planned Qty", "Job Weight", "Meter", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.",
   "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Printing Wastage", "Realization / kg", "Actual Realization / kg",
@@ -161,7 +163,22 @@ export function SummarySheetReport() {
   const [partyFilter, setPartyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
-  const [visibleColumns, setVisibleColumns] = useState<number[]>(() => COLUMNS.map((_, index) => index));
+  // Hidden columns are remembered in this browser by column name, so a new
+  // column added later shows by default and the others stay as chosen.
+  const [visibleColumns, setVisibleColumns] = useState<number[]>(() => {
+    try {
+      const hidden = new Set<string>(JSON.parse(window.localStorage.getItem(SUMMARY_HIDDEN_COLUMNS_KEY) || "[]"));
+      return COLUMNS.map((_, index) => index).filter((index) => !hidden.has(COLUMNS[index]));
+    } catch {
+      return COLUMNS.map((_, index) => index);
+    }
+  });
+  useEffect(() => {
+    try {
+      const shown = new Set(visibleColumns);
+      window.localStorage.setItem(SUMMARY_HIDDEN_COLUMNS_KEY, JSON.stringify(COLUMNS.filter((_, index) => !shown.has(index))));
+    } catch { /* storage blocked */ }
+  }, [visibleColumns]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const queueCloseAction = (id: string, close: boolean) => {
