@@ -6,12 +6,15 @@ test("schedule date must be on/after the order date and on/before its earliest j
   assert.equal(scheduleDateRuleError({ orderDate: "2026-11-01", scheduledDate: "2026-11-01" }), "");
   assert.equal(scheduleDateRuleError({ orderDate: "2026-11-01", scheduledDate: "2026-11-05", earliestJobDate: "2026-11-05" }), "");
   assert.match(scheduleDateRuleError({ orderDate: "2026-11-02", scheduledDate: "2026-11-01" }), /cannot be before the Order Date 02-11-2026/);
-  assert.match(scheduleDateRuleError({ orderDate: "2026-11-01", scheduledDate: "2026-11-05", earliestJobDate: "2026-11-04" }), /cannot be after its job date 04-11-2026/);
+  assert.equal(scheduleDateRuleError({ orderDate: "2026-11-01", scheduledDate: "2026-11-05", earliestJobDate: "2026-11-03" }), "");
+  assert.match(scheduleDateRuleError({ orderDate: "2026-11-01", scheduledDate: "2026-11-05", earliestJobDate: "2026-11-02" }), /more than 2 days after its job date 02-11-2026/);
 });
 
-test("job date must be on/after the schedule date", () => {
+test("job date may be up to 2 days before the schedule date", () => {
   assert.equal(jobDateRuleError({ jobDate: "2026-11-05", scheduledDate: "2026-11-05" }), "");
-  assert.match(jobDateRuleError({ jobDate: "2026-11-04", scheduledDate: "2026-11-05" }), /cannot be before the order's Scheduled Date 05-11-2026/);
+  assert.equal(jobDateRuleError({ jobDate: "2026-11-04", scheduledDate: "2026-11-05" }), "");
+  assert.equal(jobDateRuleError({ jobDate: "2026-10-30", scheduledDate: "2026-11-01" }), "");
+  assert.match(jobDateRuleError({ jobDate: "2026-10-29", scheduledDate: "2026-11-01" }), /at most 2 days before the order's Scheduled Date 01-11-2026 \(earliest 30-10-2026\)/);
 });
 
 test("missing or non-ISO dates are not checked", () => {
