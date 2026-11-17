@@ -10555,9 +10555,11 @@ async function withNpdArtwork(db, check, field) {
     if (!erp)
         return check;
     try {
-        const [rows] = await db.query("SELECT artwork, artworkUpload FROM `npd` WHERE TRIM(erp) = ? AND (COALESCE(TRIM(artwork), '') <> '' OR COALESCE(TRIM(artworkUpload), '') <> '') LIMIT 1", [erp]);
+        // In the NPD sheet layout the Artwork link sits in `url`; `artwork` holds
+        // the Spec link (checked against the COA Item Master: 424 of 524 match).
+        const [rows] = await db.query("SELECT url FROM `npd` WHERE TRIM(erp) = ? AND COALESCE(TRIM(url), '') <> '' LIMIT 1", [erp]);
         const row = rows[0];
-        const artwork = String(row?.artwork || row?.artworkUpload || "").trim();
+        const artwork = String(row?.url || "").trim();
         return artwork ? { ...check, [field]: artwork } : check;
     }
     catch (error) {

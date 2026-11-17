@@ -11198,12 +11198,14 @@ async function withNpdArtwork(db: mysql.Pool, check: any, field: "standardArtwor
   const erp = String(check?.erp ?? "").trim();
   if (!erp) return check;
   try {
+    // In the NPD sheet layout the Artwork link sits in `url`; `artwork` holds
+    // the Spec link (checked against the COA Item Master: 424 of 524 match).
     const [rows] = await db.query(
-      "SELECT artwork, artworkUpload FROM `npd` WHERE TRIM(erp) = ? AND (COALESCE(TRIM(artwork), '') <> '' OR COALESCE(TRIM(artworkUpload), '') <> '') LIMIT 1",
+      "SELECT url FROM `npd` WHERE TRIM(erp) = ? AND COALESCE(TRIM(url), '') <> '' LIMIT 1",
       [erp]
     );
     const row = (rows as any[])[0];
-    const artwork = String(row?.artwork || row?.artworkUpload || "").trim();
+    const artwork = String(row?.url || "").trim();
     return artwork ? { ...check, [field]: artwork } : check;
   } catch (error) {
     console.warn("[WHATSAPP] Could not read NPD artwork:", (error as Error).message);
