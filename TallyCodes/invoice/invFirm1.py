@@ -28,6 +28,8 @@ def load_runtime_env():
         os.path.join(os.getcwd(), ".env"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
+        # Project root (e.g. D:\LNGRP\.env), the same .env the rest of the repo uses.
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"),
     ]
     ENV_SEARCH_PATHS = env_paths
     for env_path in env_paths:
