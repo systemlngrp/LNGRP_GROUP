@@ -1,3 +1,4 @@
+import { removeInterFirmSteps } from "./interFirmStepRemoval.js";
 import { syncLinkedPrintingOutput, withPrintingOutputTransaction } from "./printingOutput.js";
 import { createPrintingStereoDeleteHandler } from "./printingStereoDelete.js";
 import { migrateQcPeopleToUsers } from "./qcPeopleMigration.js";
@@ -14687,6 +14688,34 @@ app.get("/api/admin/document-number-problems", requireAuth, async (req, res) => 
     }
     catch (error) {
         return res.status(500).json({ error: error.message });
+    }
+});
+// Remove Corrugation Liner / Printing entries with their inter-firm MRR, gate entry and
+// invoice, then close the number gaps. apply=false (default) only previews.
+app.post("/api/admin/inter-firm/remove-steps", requireAuth, async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user || String(user.role || "").trim().toLowerCase() !== "admin")
+        return res.status(403).json({ error: "Admin only." });
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        const result = await removeInterFirmSteps(conn, Array.isArray(req.body?.processingIds) ? req.body.processingIds : [], req.body?.apply === true);
+        if (result.applied)
+            await conn.commit();
+        else
+            await conn.rollback();
+        console.log("[INTER-FIRM] remove-steps", { by: user.userId || user.name, applied: result.applied, deleted: result.deleted });
+        return res.json(result);
+    }
+    catch (error) {
+        await conn.rollback();
+        return res.status(400).json({ error: error.message });
+    }
+    finally {
+        conn.release();
     }
 });
 app.post("/api/admin/document-number-problems/repair", requireAuth, async (req, res) => {
