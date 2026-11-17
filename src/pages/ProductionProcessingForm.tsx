@@ -82,7 +82,7 @@ function LockedReportForm() {
   const alreadyCompletedQty = processing
     .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === normalizeMachineName(machineName))
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0);
-  // All Corrugation Liner entries of the job (In Progress and Job Complete) plus this one.
+  // All Corrugation Liner entries of the job (In Progress and Complete) plus this one.
   const fullCorrugationQty = processing
     .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner")
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0) + (isCorrugationLiner && isFullReport ? Number(qty || 0) : 0);
@@ -258,7 +258,7 @@ function LockedReportForm() {
                   className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 font-medium"
                 >
                   <option value="Part">In Progress</option>
-                  <option value="Full">Job Complete</option>
+                  <option value="Full">Complete</option>
                 </select>
               </div>
             ) : null}
@@ -375,7 +375,7 @@ function FullReportForm() {
   const showCorrugationWastage = isCorrugationLiner && isFullReport;
   const showPrintingWastage = isPrinting && isFullReport;
   // Same "No Hisab" kg calculation as the quick (locked) entry form.
-  // All Corrugation Liner entries of the job (In Progress and Job Complete) plus this one.
+  // All Corrugation Liner entries of the job (In Progress and Complete) plus this one.
   const fullCorrugationQty = processing
     .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner")
     .reduce((sum, entry) => sum + Number(entry.qty || 0), 0) + (isCorrugationLiner && isFullReport ? Number(qty || 0) : 0);
@@ -580,7 +580,7 @@ function FullReportForm() {
                   className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 font-medium"
                 >
                   <option value="Part">In Progress</option>
-                  <option value="Full">Job Complete</option>
+                  <option value="Full">Complete</option>
                 </select>
               </div>
             ) : null}

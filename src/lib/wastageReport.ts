@@ -13,7 +13,7 @@ export function buildProductionWastageRows(processing: ProductionProcessing[], p
   const from = filters.fromDate ? dateTime(filters.fromDate) : null; const to = filters.toDate ? dateTime(filters.toDate) : null;
   const sourceFilter = machineName(filters.machine); const needle = String(filters.searchTerm || "").trim().toLowerCase();
   const stepRows = processing.filter((entry) => ["corrugation liner", "printing"].includes(machineName(entry.machineName)));
-  // A step is reported once it has a Job Complete entry; its In Progress entries then count towards it too.
+  // A step is reported once it has a Complete entry; its In Progress entries then count towards it too.
   const completedSteps = new Set(stepRows.filter((entry) => entry.completionStatus === "Full").map((entry) => `${entry.productionId}|${machineName(entry.machineName)}`));
   const fullRows = stepRows
     .filter((entry) => completedSteps.has(`${entry.productionId}|${machineName(entry.machineName)}`))

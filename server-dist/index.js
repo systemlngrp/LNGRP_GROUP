@@ -3801,7 +3801,7 @@ async function automateInterFirmProduction(db, sourceId, sourceType = "Productio
         const automationWarnings = [];
         let qty = Number(sourceRecord.qty || sourceRecord.productionOutputQty || production.productionOutputQty || production.qty || 0);
         if (sourceType === "Production Processing") {
-            // A step can be reported in several entries (In Progress ... Job Complete).
+            // A step can be reported in several entries (In Progress ... Complete).
             // The transfer carries the job's total for this step, less whatever an
             // earlier, still-existing entry of the same step already transferred.
             const [stepRows] = await conn.query("SELECT id, machineName, qty FROM `production_processing` WHERE productionId = ?", [productionId]);
@@ -12519,7 +12519,7 @@ const createHandlers = (tableName) => {
                     }
                     const completionStatus = String(data.completionStatus || "").trim();
                     if (completionStatus !== "Part" && completionStatus !== "Full") {
-                        return res.status(400).json({ error: "Completion status must be In Progress or Job Complete for every machine report." });
+                        return res.status(400).json({ error: "Completion status must be In Progress or Complete for every machine report." });
                     }
                     const [machineRows] = await db.query("SELECT `name` FROM `machines` WHERE `id` = ? LIMIT 1", [data.machineId]);
                     const storedMachineName = String(machineRows[0]?.name || "").trim();
@@ -16646,7 +16646,7 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
             .filter((row) => Number.isFinite(row.time) && row.time > 0)
             .sort((a, b) => a.time - b.time)[0];
         if (!sourceFull)
-            throw new Error("Corrugation Liner must be marked Job Complete for the source job.");
+            throw new Error("Corrugation Liner must be marked Complete for the source job.");
         if (corrugationRows(targetProductionId).length > 0) {
             throw new Error("Corrugation Liner has already started for the target job.");
         }

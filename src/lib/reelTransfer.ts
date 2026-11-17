@@ -126,7 +126,7 @@ export function buildReelTransferContext(
   const formatKg = (value: number) => `${round2(value).toFixed(2)} KG`;
   const reasonByStatus: Record<ReelTransferEligibilityStatus, string> = {
     eligible: "Eligible",
-    corrugation_incomplete: "Transfer unavailable: Corrugation Liner must be marked Job Complete before reel balance can be transferred.",
+    corrugation_incomplete: "Transfer unavailable: Corrugation Liner must be marked Complete before reel balance can be transferred.",
     window_expired: `Transfer unavailable: the ${windowHours}-hour transfer window has expired since Corrugation Liner was completed.`,
     no_reel_balance: `Transfer unavailable: no remaining issued reel balance is available after returns (issued ${formatKg(totalIssuedKg)}, returned ${formatKg(totalReturnedKg)}).`,
     plan_quantity_missing: `Transfer unavailable: production/planned quantity is missing or zero (current value ${round2(planQty)}).`,

@@ -8,7 +8,7 @@ const production = { id: "p1", qty: 7160, totalPaperWeight: 716, actualPaperUsed
 const part = { id: "a", productionId: "p1", machineName: "Corrugation Liner", completionStatus: "Part", qty: 3580, date: "2026-11-17" } as any;
 const full = { id: "b", productionId: "p1", machineName: "Corrugation Liner", completionStatus: "Full", qty: 3580, warpageKg: 2, date: "2026-11-17" } as any;
 
-test("In Progress entries count once the step is Job Complete", () => {
+test("In Progress entries count once the step is Complete", () => {
   const withBoth = getProductionWastageTotals(production, [part, full]);
   const singleFull = getProductionWastageTotals(production, [{ ...full, qty: 7160 }]);
   assert.deepEqual(withBoth, singleFull);
@@ -29,6 +29,6 @@ test("wastage report uses the step total", () => {
 
 test("completion labels", () => {
   assert.equal(completionStatusLabel("Part"), "In Progress");
-  assert.equal(completionStatusLabel("Full"), "Job Complete");
-  assert.equal(completionStatusLabel(undefined), "Job Complete");
+  assert.equal(completionStatusLabel("Full"), "Complete");
+  assert.equal(completionStatusLabel(undefined), "Complete");
 });

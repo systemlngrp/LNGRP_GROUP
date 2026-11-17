@@ -38,7 +38,7 @@ export function getProductionWastageTotals(
   let fullCorrugationQty = 0;
 
   const jobRows = processingRows.filter((row) => row.productionId === production.id);
-  // Once a step is marked Job Complete, its In Progress entries count towards
+  // Once a step is marked Complete, its In Progress entries count towards
   // the step quantity too (they carry no wastage fields of their own).
   const completedSteps = new Set(
     jobRows.filter((row) => (row.completionStatus || "Full") === "Full").map((row) => normalizeMachineName(row.machineName))

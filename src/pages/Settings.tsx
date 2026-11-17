@@ -2091,7 +2091,7 @@ export function SettingsPage() {
             className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 shadow-sm bg-white"
           />
           <div className="rounded border border-black bg-slate-50 px-4 py-3 text-sm text-black leading-6">
-            Reels remain eligible for job-to-job transfer for this many hours after Corrugation Liner is marked Job Complete.
+            Reels remain eligible for job-to-job transfer for this many hours after Corrugation Liner is marked Complete.
           </div>
         </div>
 
