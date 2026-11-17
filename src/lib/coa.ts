@@ -34,13 +34,13 @@ export function defaultCoaLayout(): CoaTemplateLayout {
       row("header", [cell("h-sl", "SL. NO.", "static", "", "text", { background: "#b7b7b7", bold: true, align: "center" }), cell("h-param", "PARAMETERS", "static", "", "text", { colSpan: 2, background: "#b7b7b7", bold: true, align: "center" }), cell("h-standard", "STANDARD", "static", "", "text", { colSpan: 2, background: "#b7b7b7", bold: true, align: "center" }), cell("h-observation", "OBSERVATION", "static", "", "text", { colSpan: 1, background: "#b7b7b7", bold: true, align: "center" })]),
       row("colour", [cell("p1", "1", "static", "", "text", { bold: true, align: "center" }), cell("p1-label", "COLOUR OF THE CBB", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p1-standard", "AS PER STANDARD", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p1-observation", "AS PER STANDARD", "input", "", "text", { background: "#f4d7e5", align: "center" })]),
       row("printing", [cell("p2", "2", "static", "", "text", { bold: true, align: "center" }), cell("p2-label", "QUALITY OF PRINTING", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p2-standard", "AS PER STANDARD", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p2-observation", "AS PER STANDARD", "input", "", "text", { background: "#f4d7e5", align: "center" })]),
-      row("dimensions", [cell("p3", "3", "static", "", "text", { bold: true, align: "center" }), cell("p3-label", "INTERNAL BOX DIMENSION (LXB XH) (MM) (+3 MM)", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p3-standard-1", "", "input", "production.length", "number", { background: "#f4d7e5", align: "center" }), cell("p3-standard-2", "", "input", "production.breadth", "number", { background: "#f4d7e5", align: "center" }), cell("p3-observation-1", "", "input", "pdi.lengthId", "number", { background: "#f4d7e5", align: "center" }), cell("p3-observation-2", "", "input", "pdi.widthId", "number", { background: "#f4d7e5", align: "center" })]),
-      row("ply", [cell("p4", "4", "static", "", "text", { bold: true, align: "center" }), cell("p4-label", "PLY OF CFB", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p4-standard", "", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p4-observation", "", "input", "", "text", { background: "#f4d7e5", align: "center" })]),
-      row("joint", [cell("p5", "5", "static", "", "text", { bold: true, align: "center" }), cell("p5-label", "Manufacturing Joint Width", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p5-standard", "28 - 32 mm", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p5-observation", "", "input", "", "number", { background: "#f4d7e5", align: "center" })]),
-      row("flap-gap", [cell("p6", "6", "static", "", "text", { bold: true, align: "center" }), cell("p6-label", "Gap between closing Flap", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p6-standard", "Maximum 3 mm", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p6-observation", "", "input", "", "number", { background: "#f4d7e5", align: "center" })]),
-      row("flute", [cell("p7", "7", "static", "", "text", { bold: true, align: "center" }), cell("p7-label", "TYPE OF FLUTE", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p7-standard", "", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p7-observation", "", "input", "boardline.typeOfFlute", "text", { background: "#f4d7e5", align: "center" })]),
-      row("thickness", [cell("p8", "8", "static", "", "text", { bold: true, align: "center" }), cell("p8-label", "BOARD THICKNESS", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p8-standard", "", "input", "", "number", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p8-observation", "", "input", "boardline.boardThickness", "number", { background: "#f4d7e5", align: "center" })]),
-      row("moisture", [cell("p9", "9", "static", "", "text", { bold: true, align: "center" }), cell("p9-label", "MOISTURE OF COMPOSITE BOARD (%)", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p9-standard", "7-10%", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p9-observation", "", "input", "boardline.moisture", "number", { background: "#f4d7e5", align: "center" })]),
+      row("dimensions", [cell("p3", "3", "static", "", "text", { bold: true, align: "center" }), cell("p3-label", "INTERNAL BOX DIMENSION (LXB XH) (MM) (+3 MM)", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p3-standard-1", "", "input", "production.length", "number", { background: "#f4d7e5", align: "center" }), cell("p3-standard-2", "", "input", "production.breadth", "number", { background: "#f4d7e5", align: "center" }), cell("p3-observation-1", "", "input", "obs.length", "number", { background: "#f4d7e5", align: "center" }), cell("p3-observation-2", "", "input", "obs.breadth", "number", { background: "#f4d7e5", align: "center" })]),
+      row("ply", [cell("p4", "4", "static", "", "text", { bold: true, align: "center" }), cell("p4-label", "PLY OF CFB", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p4-standard", "", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p4-observation", "", "input", "obs.ply", "text", { background: "#f4d7e5", align: "center" })]),
+      row("joint", [cell("p5", "5", "static", "", "text", { bold: true, align: "center" }), cell("p5-label", "Manufacturing Joint Width", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p5-standard", "28 - 32 mm", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p5-observation", "", "input", "obs.jointWidth", "number", { background: "#f4d7e5", align: "center" })]),
+      row("flap-gap", [cell("p6", "6", "static", "", "text", { bold: true, align: "center" }), cell("p6-label", "Gap between closing Flap", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p6-standard", "Maximum 3 mm", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p6-observation", "", "input", "obs.flapGap", "number", { background: "#f4d7e5", align: "center" })]),
+      row("flute", [cell("p7", "7", "static", "", "text", { bold: true, align: "center" }), cell("p7-label", "TYPE OF FLUTE", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p7-standard", "", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p7-observation", "", "input", "obs.flute", "text", { background: "#f4d7e5", align: "center" })]),
+      row("thickness", [cell("p8", "8", "static", "", "text", { bold: true, align: "center" }), cell("p8-label", "BOARD THICKNESS", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p8-standard", "", "input", "", "number", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p8-observation", "", "input", "obs.boardThickness", "number", { background: "#f4d7e5", align: "center" })]),
+      row("moisture", [cell("p9", "9", "static", "", "text", { bold: true, align: "center" }), cell("p9-label", "MOISTURE OF COMPOSITE BOARD (%)", "static", "", "text", { colSpan: 2, bold: true, italic: true, align: "center" }), cell("p9-standard", "7-10%", "input", "", "text", { colSpan: 2, background: "#f4d7e5", align: "center" }), cell("p9-observation", "", "input", "obs.moisture", "number", { background: "#f4d7e5", align: "center" })]),
     ],
     footerRows: [
       row("remarks", [cell("remarks-label", "REMARKS:", "static", "", "text", { colSpan: 2, bold: true, align: "center" }), cell("remarks-value", "", "input", "pdi.remarks", "textarea", { colSpan: 2, background: "#f4d7e5" }), cell("acceptance", "ACCEPTED", "input", "", "text", { colSpan: 1, bold: true, align: "center" }), cell("checked-by", "CHECKED BY:", "input", "pdi.qcPerson", "text", { colSpan: 1, bold: true, align: "center" })]),
@@ -82,6 +82,50 @@ function boardThicknessStandard(flute: string) {
   return "";
 }
 
+// Same per job every time the form is opened: seeded from the job number.
+function seededRandom(seed: string) {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return () => {
+    h = (h + 0x6d2b79f5) | 0;
+    let t = Math.imul(h ^ (h >>> 15), 1 | h);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const BOARD_THICKNESS_MIN: Record<string, number> = { A: 5.2, C: 4.8, B: 3.2, "B+C": 7, E: 1.8 };
+
+/**
+ * Observation values following the COMMON COA sheet formulas:
+ * colour / printing = standard; L, B, H = whole number within standard +/- 2;
+ * ply and flute = standard; joint width 28-32; flap gap 1-3;
+ * board thickness = flute minimum to minimum + 0.3 (2 decimals); moisture 8-9.
+ */
+export function buildCoaObservations(seed: string, standards: { length?: unknown; breadth?: unknown; height?: unknown; ply?: unknown; flute?: unknown }) {
+  const random = seededRandom(seed || "coa");
+  const between = (min: number, max: number) => Math.floor(random() * (max - min + 1)) + min;
+  const dimension = (value: unknown) => {
+    const standard = Number(value);
+    return Number.isFinite(standard) && standard > 0 ? String(between(Math.round(standard) - 2, Math.round(standard) + 2)) : "";
+  };
+  const flute = text(standards.flute).toUpperCase().replace(/\s+/g, "");
+  const thicknessMin = BOARD_THICKNESS_MIN[flute];
+  return {
+    "obs.colour": "AS PER STANDARD",
+    "obs.printing": "AS PER STANDARD",
+    "obs.length": dimension(standards.length),
+    "obs.breadth": dimension(standards.breadth),
+    "obs.height": dimension(standards.height),
+    "obs.ply": sourceValue(standards.ply),
+    "obs.jointWidth": String(between(28, 32)),
+    "obs.flapGap": String(between(1, 3)),
+    "obs.flute": text(standards.flute),
+    "obs.boardThickness": thicknessMin === undefined ? "" : (thicknessMin + random() * 0.3).toFixed(2),
+    "obs.moisture": String(between(8, 9)),
+  };
+}
+
 export function resolveCoaSourceContext(production: Production, companies: Company[], firms: Firm[], orders: Order[], schedules: OrderSchedule[], invoices: Invoice[], invoiceLines: InvoiceLineItem[], pdis: PreDispatchInspection[], boardlineRows: BoardLineQcCheck[], printingRows: PrintingQcCheck[], items: AnyRecord[] = []): CoaSourceContext {
   const schedule = schedules.find((value) => id(value.id) === id(production.scheduleId));
   const order = orders.find((value) => id(value.id) === id(schedule?.orderId) || (id(value.companyId) === id((production as AnyRecord).companyId) && id(value.itemId) === id(production.itemId)));
@@ -118,7 +162,7 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     firmLogo: "",
     jobNo: text(production.transactionNo || production.jobCardNo),
     erpCode: text(production.erpCode || production.masterErp || order?.erpCode),
-    itemName: text((production as AnyRecord).itemName || order?.itemId),
+    itemName: text(job.itemName || item?.itemName || item?.name || (order as AnyRecord)?.itemName),
     "production.length": sourceValue((production as AnyRecord).length),
     "production.breadth": sourceValue((production as AnyRecord).breadth),
     "production.height": sourceValue(job.height),
@@ -162,6 +206,9 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     "printing.boxWeightGrams": sourceValue(printing?.boxWeightGrams),
     "printing.colour1Actual": sourceValue(printing?.colour1Actual),
     "printing.colour2Actual": sourceValue(printing?.colour2Actual),
+    ...buildCoaObservations(text(production.transactionNo || production.jobCardNo || production.id), {
+      length: job.length, breadth: job.breadth, height: job.height, ply: job.ply || item?.ply, flute,
+    }),
   };
 }
 
