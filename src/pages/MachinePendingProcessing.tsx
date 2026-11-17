@@ -387,8 +387,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     </thead>
   );
 
+  // Machines open collapsed; click a machine to see its jobs. When a search or
+  // filter is in use, the machines that still have matching jobs open by
+  // themselves so the results are visible.
   useEffect(() => {
-    if (filterMachineId || fixedNormalizedMachineName) return;
+    if (filterMachineId || fixedNormalizedMachineName || !hasActiveFilters) return;
     const machineIds = machineGroups.map((group) => group.machineId);
     setExpandedMachines((current) => {
       if (current.size === machineIds.length && machineIds.every((id) => current.has(id))) {
@@ -396,7 +399,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       }
       return new Set(machineIds);
     });
-  }, [filterMachineId, fixedNormalizedMachineName, machineGroups]);
+  }, [filterMachineId, fixedNormalizedMachineName, hasActiveFilters, machineGroups]);
 
   return (
     <div className="space-y-4">
