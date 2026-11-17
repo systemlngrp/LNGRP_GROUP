@@ -18,15 +18,22 @@ from urllib.parse import urlparse
 from urllib3.util import connection as urllib3_connection
 
 
+LOADED_ENV_PATH = ""
+ENV_SEARCH_PATHS = []
+
+
 def load_runtime_env():
+    global LOADED_ENV_PATH, ENV_SEARCH_PATHS
     env_paths = [
         os.path.join(os.getcwd(), ".env"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"),
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
     ]
+    ENV_SEARCH_PATHS = env_paths
     for env_path in env_paths:
         if os.path.exists(env_path):
             load_dotenv(env_path, override=True)
+            LOADED_ENV_PATH = env_path
             return
     load_dotenv(override=True)
 
@@ -34,12 +41,13 @@ def load_runtime_env():
 load_runtime_env()
 
 
+# Database details come only from .env (never written in this file: the repo is public).
 DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "193.203.184.152"),
-    "user": os.getenv("DB_USER", "u380633007_lnpidata"),
-    "password": os.getenv("DB_PASSWORD", "!Office1@"),
-    "database": os.getenv("DB_NAME", "u380633007_lnpidata"),
-    "port": int(os.getenv("DB_PORT", "3306")),
+    "host": os.getenv("DB_HOST", "").strip(),
+    "user": os.getenv("DB_USER", "").strip(),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME", "").strip(),
+    "port": int(os.getenv("DB_PORT", "3306") or 3306),
     "use_pure": True,
 }
 
@@ -192,6 +200,7 @@ def print_tally_sync_config_summary():
     print(f"DB User: {DB_CONFIG['user']}")
     print(f"DB Name: {DB_CONFIG['database']}")
     print(f"DB Port: {DB_CONFIG['port']}")
+    print(f"Settings file: {LOADED_ENV_PATH or '(no .env found)'}")
     print("Data source: MySQL (.env DB_* settings)")
     print("==========================================")
 
@@ -1091,7 +1100,15 @@ def resolve_tally_assigned_voucher(response_text, invoice_row, remote_id):
     return {key: value for key, value in result.items() if value}
 
 
+def missing_db_settings():
+    names = {"host": "DB_HOST", "user": "DB_USER", "password": "DB_PASSWORD", "database": "DB_NAME"}
+    return [env_name for key, env_name in names.items() if not DB_CONFIG.get(key)]
+
+
 def get_db_connection():
+    missing = missing_db_settings()
+    if missing:
+        raise RuntimeError("DB settings missing in .env: " + ", ".join(missing))
     return mysql.connector.connect(**DB_CONFIG)
 
 
@@ -3660,11 +3677,21 @@ def report_database_error(exc):
     print("==========================================")
     print(f"Could not connect to MySQL at {DB_CONFIG['host']}:{DB_CONFIG['port']}.")
     print(f"Connector message: {exc}")
-    print(
-        "Please check whether outbound access to MySQL port 3306 is "
-        "allowed from this machine, and whether the server is accepting "
-        "connections from your current IP."
-    )
+    errno = getattr(exc, "errno", None)
+    if errno in (1146, 1049):
+        # Connected fine, but the database/table is not there: wrong DB_NAME.
+        print(
+            f"Connected, but database '{DB_CONFIG['database']}' does not have the ERP tables. "
+            "Check DB_NAME (and DB_HOST/DB_USER) in .env."
+        )
+    elif errno in (1044, 1045):
+        print("Login refused. Check DB_USER and DB_PASSWORD in .env.")
+    else:
+        print(
+            "Please check whether outbound access to MySQL port 3306 is "
+            "allowed from this machine, and whether the server is accepting "
+            "connections from your current IP."
+        )
 
 
 def run_watch(interval_seconds, retry_after_issue_seconds):
@@ -3731,6 +3758,17 @@ def run_cli(argv=None):
 
     try:
         print_tally_sync_config_summary()
+        missing = missing_db_settings()
+        if missing:
+            print("==========================================")
+            print("DB settings missing in .env: " + ", ".join(missing))
+            print("==========================================")
+            print("Create a .env file (with DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT) in one of:")
+            for env_path in dict.fromkeys(ENV_SEARCH_PATHS):
+                print(f"  {env_path}")
+            append_failure_text_log("RUNTIME", "DB settings missing in .env: " + ", ".join(missing))
+            report_stopped()
+            sys.exit(1)
         if args.watch:
             run_watch(max(args.interval, 5.0), max(args.retry_after_issue, args.interval, 5.0))
         elif run_once():
