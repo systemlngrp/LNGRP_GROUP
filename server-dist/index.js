@@ -11215,17 +11215,20 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         else if (menu === WHATSAPP_LOADING_MENU) {
             const loadingCandidates = [];
             for (const tableName of ["loading_slips", "php_loading_slips", "plate_loading_slips"]) {
-                const [rows] = await db.query(`SELECT * FROM \`${tableName}\` ORDER BY COALESCE(updateTimestamp, timestamp, date) DESC LIMIT 1`);
+                // Loading slip tables have no `timestamp` column (that made this query fail with a 500).
+                const [rows] = await db.query(`SELECT * FROM \`${tableName}\` ORDER BY COALESCE(NULLIF(updateTimestamp, ''), date) DESC LIMIT 1`);
                 const row = rows[0];
                 if (row)
                     loadingCandidates.push({ tableName, row });
             }
-            loadingCandidates.sort((a, b) => String(b.row.updateTimestamp || b.row.timestamp || b.row.date || "").localeCompare(String(a.row.updateTimestamp || a.row.timestamp || a.row.date || "")));
+            const slipTime = (row) => { const t = Date.parse(String(row.updateTimestamp || row.date || "")); return Number.isFinite(t) ? t : 0; };
+            loadingCandidates.sort((a, b) => slipTime(b.row) - slipTime(a.row));
             const latest = loadingCandidates[0];
             hasCurrentData = Boolean(latest);
             if (latest) {
                 const slip = latest.row;
-                const parseRows = (value) => { try {
+                const parseRows = (value) => { if (Array.isArray(value))
+                    return value; try {
                     const parsed = JSON.parse(String(value || "[]"));
                     return Array.isArray(parsed) ? parsed : [];
                 }
@@ -11335,8 +11338,9 @@ app.post("/api/whatsapp-configs/:id/send-current", requireAuth, async (req, res)
         const attachmentsExpected = Boolean(currentAttachmentUrls.length || (currentComplaint && (String(currentComplaint.photo1 || "").trim() || String(currentComplaint.photo2 || "").trim())));
         return res.json(result.status === "Sent" ? { status: "Sent", templateFallback: sentTemplateFallback, attachmentsSent: attachmentsExpected && !warning, ...(warning ? { warning } : {}) } : { status: "Failed", error: result.error || "WhatsApp message could not be sent." });
     }
-    catch {
-        return res.status(500).json({ status: "Failed", error: "Current WhatsApp message could not be sent." });
+    catch (error) {
+        console.error("[whatsapp send-current]", configId, error);
+        return res.status(500).json({ status: "Failed", error: `Current WhatsApp message could not be sent: ${error instanceof Error ? error.message : String(error)}` });
     }
 });
 app.get("/api/reports/printing-shift", requireAuth, async (req, res) => {
