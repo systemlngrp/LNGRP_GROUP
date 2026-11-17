@@ -167,6 +167,24 @@ function isMigratedCompletedJobWithoutOrder(production) {
 function isProductionReadyForTally(production, actualPaperUsed = production.actualPaperUsed, hasCorrugatedSheetUsage = false) {
   return !production.cancelTimestamp && !production.tallyTimestamp && isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage) && hasWorkflowValue(production.prodFromFFG);
 }
+function localDateKey(value) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+function getJobDateKey(date) {
+  const raw = String(date ?? "").trim();
+  if (!raw) return "";
+  const plain = raw.match(/^(\d{4}-\d{2}-\d{2})(?:$|[ T]00:00(?::00(?:\.0+)?)?$)/);
+  if (plain) return plain[1];
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? raw.slice(0, 10) : localDateKey(parsed);
+}
+function isJobDueByToday(production, today = localDateKey(/* @__PURE__ */ new Date())) {
+  const jobDate = getJobDateKey(production.date);
+  return !jobDate || jobDate <= today;
+}
+function isProductionPendingMaterialIssue(production, actualPaperUsed = production.actualPaperUsed, hasCorrugatedSheetUsage = false) {
+  return isJobDueByToday(production) && isProductionPendingConsumption(production, actualPaperUsed, hasCorrugatedSheetUsage);
+}
 
 // src/lib/materialNumbering.ts
 var DEFAULT_NUMBER_START = 1;
@@ -1740,6 +1758,7 @@ function buildPendingTaskCounts(args) {
     args.productions.filter((production) => production.status !== "Cancelled" && !production.cancelTimestamp).map((production) => production.id)
   );
   const processingByProductionId = groupBy(args.processing || [], (row) => row.productionId);
+  const productionById = firstBy(args.productions, (production) => production.id);
   const plannedQtyByScheduleId = /* @__PURE__ */ new Map();
   args.dispatchPlans.forEach((plan) => {
     plannedQtyByScheduleId.set(plan.scheduleId, (plannedQtyByScheduleId.get(plan.scheduleId) || 0) + Number(plan.plannedQty || 0));
@@ -1801,10 +1820,10 @@ function buildPendingTaskCounts(args) {
       }).length;
     })(),
     "/production/pending-consumption": args.productions.filter(
-      (p) => isProductionPendingConsumption(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
+      (p) => isProductionPendingMaterialIssue(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
     "/production/pending-material-return": new Set(
-      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isCorrugationLinerComplete(args.processing || [], line.productionId)).map((line) => line.productionId)
+      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {}) && isCorrugationLinerComplete(args.processing || [], line.productionId)).map((line) => line.productionId)
     ).size,
     "/production/pending-job-transfer": (() => {
       const windowHours = Number(args.settings?.[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);

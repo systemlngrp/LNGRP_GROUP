@@ -37,7 +37,7 @@ import {
   getProductionActualPaperUsed,
   hasProductionCorrugatedSheetUsage,
 } from "../lib/productionMaterialUsage";
-import { isProductionPendingConsumption, isProductionPendingFFG } from "../lib/productionStageFilters";
+import { isProductionPendingConsumption, isProductionPendingFFG, isProductionPendingMaterialIssue } from "../lib/productionStageFilters";
 import { normalizeMachineName } from "../lib/productionMachineNames";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { isCorrugationLinerComplete, isMachineStepFull, usesPartFullProgress } from "../lib/productionProcessingProgress";
@@ -790,7 +790,7 @@ export function ProductionPendingConsumption() {
     <ProductionStageQueue
       title="Production: Pending Material Issue"
       emptyMessage="No jobs pending material issue."
-      predicate={isProductionPendingConsumption}
+      predicate={isProductionPendingMaterialIssue}
       enableIssueAction
       hideStatusColumn
       hideActualPaperUsedColumn

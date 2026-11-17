@@ -6,6 +6,7 @@ import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getPendingReturnJobReelLines } from "../lib/materialMovement";
 import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
+import { isJobDueByToday } from "../lib/productionStageFilters";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
@@ -38,8 +39,10 @@ export function PendingMaterialReturn() {
       return value;
     };
     // Job level: a job with any return entered is not pending (AppSheet logic).
+    // Only jobs dated today or earlier; future-dated jobs show from their job date.
+    const productionById = new Map(productions.map((production) => [production.id, production]));
     const returnable = getPendingReturnJobReelLines(issueReels, returnReels, productions)
-      .filter((line) => isLinerComplete(line.productionId));
+      .filter((line) => isJobDueByToday(productionById.get(line.productionId) || {}) && isLinerComplete(line.productionId));
     const byProduction = new Map<string, { reelIds: Set<string>; weight: number }>();
     returnable.forEach((line) => {
       const current = byProduction.get(line.productionId) || { reelIds: new Set<string>(), weight: 0 };

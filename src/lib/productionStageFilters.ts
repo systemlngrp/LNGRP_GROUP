@@ -47,3 +47,32 @@ export function isProductionReadyForTally(
   return !production.cancelTimestamp && !production.tallyTimestamp && isFgUnlocked(production, actualPaperUsed, hasCorrugatedSheetUsage) && hasWorkflowValue(production.prodFromFFG);
 }
 
+
+function localDateKey(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
+// Job date as YYYY-MM-DD (plain dates kept as-is; timestamps read in local time).
+export function getJobDateKey(date: unknown) {
+  const raw = String(date ?? "").trim();
+  if (!raw) return "";
+  const plain = raw.match(/^(\d{4}-\d{2}-\d{2})(?:$|[ T]00:00(?::00(?:\.0+)?)?$)/);
+  if (plain) return plain[1];
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? raw.slice(0, 10) : localDateKey(parsed);
+}
+
+// Pending Material Issue / Return list only jobs dated today or earlier;
+// future-dated jobs appear from their job date. Jobs without a date still show.
+export function isJobDueByToday(production: { date?: unknown }, today = localDateKey(new Date())) {
+  const jobDate = getJobDateKey(production.date);
+  return !jobDate || jobDate <= today;
+}
+
+export function isProductionPendingMaterialIssue(
+  production: Production,
+  actualPaperUsed = production.actualPaperUsed,
+  hasCorrugatedSheetUsage = false
+) {
+  return isJobDueByToday(production) && isProductionPendingConsumption(production, actualPaperUsed, hasCorrugatedSheetUsage);
+}
