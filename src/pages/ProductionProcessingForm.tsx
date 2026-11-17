@@ -23,6 +23,16 @@ const PRINTING_RETURNED_MESSAGE = "No issued material remains after returns for 
 
 type ShiftValue = "" | "Day" | "Night";
 
+/** Asks before saving Complete when the step total stays below the planned quantity. */
+function confirmCompleteBelowPlan(plannedQty: number, alreadyCompletedQty: number, qtyNow: number) {
+  const total = alreadyCompletedQty + qtyNow;
+  if (!(plannedQty > 0) || total >= plannedQty) return true;
+  return window.confirm(
+    `Total completed will be ${total.toLocaleString()}, less than the planned ${plannedQty.toLocaleString()}.\n\n` +
+    "Mark this job as Complete anyway? It will leave Pending Processing.\n\nPress Cancel to go back and choose In Progress."
+  );
+}
+
 function getAuditUser(user: { id?: string; name?: string } | null | undefined) {
   return {
     id: user?.id || "system",
@@ -53,7 +63,7 @@ function LockedReportForm() {
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [shift, setShift] = useState<ShiftValue>((initialShift as ShiftValue) || "");
   const [qty, setQty] = useState(initialQty);
-  const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
+  const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Full");
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
   const [productions] = useData<Production>("productions", []);
@@ -128,6 +138,10 @@ function LockedReportForm() {
     const qtyNumber = Number(qty);
     if (!Number.isFinite(qtyNumber) || qtyNumber <= 0) {
       alert("Please enter a quantity greater than 0.");
+      return;
+    }
+    if (requiresCompletionStatus && completionStatus === "Full" && selectedProduction &&
+        !confirmCompleteBelowPlan(plannedQty, alreadyCompletedQty, qtyNumber)) {
       return;
     }
 
@@ -336,7 +350,7 @@ function FullReportForm() {
   const [machineId, setMachineId] = useState(initialMachineId);
   const [shift, setShift] = useState<ShiftValue>((initialShift as ShiftValue) || "");
   const [qty, setQty] = useState<string>(initialQty);
-  const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Part");
+  const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Full");
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
   const allProductions = useMemo(() => {
@@ -457,6 +471,10 @@ function FullReportForm() {
     const qtyNumber = Number(qty);
     if (!Number.isFinite(qtyNumber) || qtyNumber <= 0) {
       alert("Please enter a quantity greater than 0.");
+      return;
+    }
+    if (requiresCompletionStatus && completionStatus === "Full" && qtyContext &&
+        !confirmCompleteBelowPlan(qtyContext.plannedQty, qtyContext.alreadyProcessedQty, qtyNumber)) {
       return;
     }
 
