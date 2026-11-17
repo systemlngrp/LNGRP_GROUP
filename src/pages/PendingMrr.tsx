@@ -196,7 +196,8 @@ export function PendingMrr() {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-black bg-white shadow-sm">
-        <table className="min-w-full border-collapse border border-black">
+        <div className="max-h-[calc(100vh-260px)] w-full overflow-auto">
+        <table className="w-full min-w-[1200px] border-collapse border border-black">
           <thead className="sticky top-0 z-30 bg-slate-100">
             <tr>
               {["Gate Entry No", "Firm", "Date", "Party", "Invoice No", "Invoice Value", "Truck No", "Photos", "Action"].map((heading) => (
@@ -216,16 +217,16 @@ export function PendingMrr() {
             ) : (
               sortedPendingEntries.map((entry) => (
                 <tr key={entry.id} className="hover:bg-slate-50">
-                  <td className="border border-black px-4 py-3 text-sm font-semibold text-black">{entry.gateEntryNo || "Syncing..."}</td>
+                  <td className="whitespace-nowrap border border-black px-4 py-3 text-sm font-semibold text-black">{entry.gateEntryNo || "Syncing..."}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{getFirmName(entry)}</td>
-                  <td className="border border-black px-4 py-3 text-sm text-black">{entry.date}</td>
+                  <td className="whitespace-nowrap border border-black px-4 py-3 text-sm text-black">{entry.date}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{getSupplierName(entry.supplierId)}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{entry.invoiceNo}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{Number(entry.invoiceValue || 0).toFixed(2)}</td>
-                  <td className="border border-black px-4 py-3 text-sm text-black">{entry.truckNo}</td>
+                  <td className="whitespace-nowrap border border-black px-4 py-3 text-sm text-black">{entry.truckNo}</td>
                   <td className="border border-black px-4 py-3 text-sm text-black">{getPhotoCount(entry.id)} Photos</td>
                   <td className="border border-black px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2 whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => navigate(`/material-in/form?gateEntryId=${entry.id}`)}
@@ -257,6 +258,7 @@ export function PendingMrr() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {selectedEntry ? (
