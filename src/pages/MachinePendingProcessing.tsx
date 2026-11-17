@@ -1,5 +1,5 @@
 import { displayJobNo } from "../lib/jobNumber";
-import React, { useMemo, useState, useEffect, useCallback, useDeferredValue } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useDeferredValue, useRef } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
@@ -387,13 +387,18 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     </thead>
   );
 
+  const filtersWereActiveRef = useRef(false);
   // Machines open collapsed; click a machine to see its jobs. When a search or
   // filter is in use, the machines that still have matching jobs open by
   // themselves so the results are visible.
   useEffect(() => {
     if (filterMachineId || fixedNormalizedMachineName) return;
+    const filtersWereActive = filtersWereActiveRef.current;
+    filtersWereActiveRef.current = hasActiveFilters;
     if (!hasActiveFilters) {
-      setExpandedMachines((current) => (current.size ? new Set() : current));
+      // Collapse only when filters were just cleared, not on every data refresh,
+      // so a machine the user opened by hand stays open.
+      if (filtersWereActive) setExpandedMachines(new Set());
       return;
     }
     const machineIds = machineGroups.map((group) => group.machineId);
