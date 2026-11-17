@@ -469,14 +469,8 @@ export function PendingDispatchPlanning() {
       return;
     }
 
+    // No FG stock or schedule qty limit: only a quantity is required.
     const violations: string[] = [];
-    plannedNowByItemId.forEach((plannedNow, itemId) => {
-      const available = Number(availableToPlanByItemId.get(itemId) || 0);
-      if (plannedNow > available + 1e-9) {
-        const itemName = npdItems.find((i) => i.id === itemId)?.name || "Unknown Item";
-        violations.push(`${itemName}: Trying to plan ${plannedNow.toLocaleString()} but only ${available.toLocaleString()} is available.`);
-      }
-    });
 
     // A schedule may be planned above its schedule qty; only a quantity is required.
     selectedIds.forEach((id) => {
@@ -487,7 +481,7 @@ export function PendingDispatchPlanning() {
     });
 
     if (violations.length > 0) {
-      alert(`Dispatch planning limit exceeded:\n\n${violations.join("\n")}`);
+      alert(`Please check:\n\n${violations.join("\n")}`);
       return;
     }
 
