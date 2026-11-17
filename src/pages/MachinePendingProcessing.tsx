@@ -1,5 +1,5 @@
 import { displayJobNo } from "../lib/jobNumber";
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useDeferredValue } from "react";
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
@@ -18,6 +18,8 @@ import { hasProductionMaterialUsage } from "../lib/productionMaterialUsage";
 import { resolveProductionErp, resolveProductionItem } from "../lib/productionErp";
 import { getProductionOriginSource } from "../lib/productionOrigin";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 
 interface PendingMachineJob {
   production: Production;
@@ -60,7 +62,6 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [companies] = useData<Company>("companies", [], { firmScope: "all" });
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
-  const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -232,8 +233,18 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       });
   }, [productions, phpJobs, plateJobs, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
 
+  // Issued-material checks are only needed for the Printing step; skip loading
+  // the material issue/return lists when no Printing jobs are pending here.
+  const needsMaterialUsage = useMemo(
+    () => baseMachineGroups.some((group) => normalizeMachineName(group.machineName) === "Printing"),
+    [baseMachineGroups]
+  );
+  const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage({ enabled: needsMaterialUsage });
+  // Typing in Search stays responsive: the long job list is re-filtered after the keystroke.
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+
   const machineGroups = useMemo(() => {
-    const words = searchWords(searchTerm);
+    const words = searchWords(deferredSearchTerm);
     return baseMachineGroups
       .filter(g => !machineFilter || g.machineId === machineFilter)
       .map(g => ({
@@ -263,7 +274,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         }).sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }))
       }))
       .filter(g => g.jobs.length > 0);
-  }, [baseMachineGroups, searchTerm, companyFilter, firmFilter, itemFilter, machineFilter, sourceFilter, fromDateFilter, toDateFilter]);
+  }, [baseMachineGroups, deferredSearchTerm, companyFilter, firmFilter, itemFilter, machineFilter, sourceFilter, fromDateFilter, toDateFilter]);
 
   // One sort for every machine table: all jobs are sorted together, then each
   // machine's table shows its own jobs in that order.
@@ -464,11 +475,10 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
               {(filterMachineId || fixedNormalizedMachineName || expandedMachines.has(group.machineId)) && (
                 <div className="p-4">
-                  <div className="overflow-x-auto rounded border border-black bg-white">
-                    <table className="min-w-full divide-y divide-black border-collapse">
-                      {tableHead}
-                      <tbody className="bg-white divide-y divide-black text-[11px] font-bold">
-                        {(sortedJobsByMachine.get(group.machineId) || group.jobs).map((job, idx) => {
+                  <MachineJobsTable
+                    jobs={sortedJobsByMachine.get(group.machineId) || group.jobs}
+                    tableHead={tableHead}
+                    renderRow={(job, idx) => {
                           const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Printing";
                           const materialIssueBlocked = requiresMaterialIssue &&
                             (materialUsageLoading || !hasProductionMaterialUsage(job.production, materialUsageMap));
@@ -528,10 +538,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                             </td>
                           </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -544,4 +552,24 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
 
 export function PendingPrinting() {
   return <MachinePendingProcessing fixedMachineName="Printing" title="Pending Printing" />;
+}
+
+// One machine's job table, 100 rows a page: a machine can have about 2,000
+// pending jobs, and drawing them all at once made the page slow.
+function MachineJobsTable({ jobs, tableHead, renderRow }: { jobs: PendingMachineJob[]; tableHead: React.ReactNode; renderRow: (job: PendingMachineJob, index: number) => React.ReactNode }) {
+  const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems } = useClientPagination(jobs, 100);
+  const offset = (page - 1) * pageSize;
+  return (
+    <>
+      <div className="overflow-x-auto rounded border border-black bg-white">
+        <table className="min-w-full divide-y divide-black border-collapse">
+          {tableHead}
+          <tbody className="bg-white divide-y divide-black text-[11px] font-bold">
+            {paginatedItems.map((job, index) => renderRow(job, offset + index))}
+          </tbody>
+        </table>
+      </div>
+      {totalItems > 25 ? <ClientPagination page={page} pageSize={pageSize} totalItems={totalItems} onPageChange={setPage} onPageSizeChange={setPageSize} pageSizeOptions={[50, 100, 250, 500]} /> : null}
+    </>
+  );
 }

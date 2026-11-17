@@ -11,16 +11,19 @@ import {
 } from "../types";
 import { buildProductionMaterialUsageMap } from "../lib/productionMaterialUsage";
 
-export function useProductionMaterialUsage() {
+export function useProductionMaterialUsage(options: { enabled?: boolean } = {}) {
+  // Pages that only sometimes need issued-material checks can skip the six
+  // material issue/return lists (several MB) until they do.
+  const materialEnabled = options.enabled !== false;
   const [productions, , productionsLoading] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs, , phpJobsLoading] = useData<Production>("php_job_master", [], { firmScope: "all" });
   const [plateJobs, , plateJobsLoading] = useData<Production>("plate_job_master", [], { firmScope: "all" });
-  const [materialIssues, , materialIssuesLoading] = useData<MaterialIssue>("material_issues", [], { firmScope: "all" });
-  const [materialIssueLines, , materialIssueLinesLoading] = useData<MaterialIssueLine>("material_issue_lines", [], { firmScope: "all" });
-  const [materialIssueReelLines, , materialIssueReelLinesLoading] = useData<MaterialIssueReelLine>("material_issue_reel_lines", [], { firmScope: "all" });
-  const [materialReturns, , materialReturnsLoading] = useData<MaterialReturn>("material_returns", [], { firmScope: "all" });
-  const [materialReturnLines, , materialReturnLinesLoading] = useData<MaterialReturnLine>("material_return_lines", [], { firmScope: "all" });
-  const [materialReturnReelLines, , materialReturnReelLinesLoading] = useData<MaterialReturnReelLine>("material_return_reel_lines", [], { firmScope: "all" });
+  const [materialIssues, , materialIssuesLoading] = useData<MaterialIssue>("material_issues", [], { firmScope: "all", enabled: materialEnabled });
+  const [materialIssueLines, , materialIssueLinesLoading] = useData<MaterialIssueLine>("material_issue_lines", [], { firmScope: "all", enabled: materialEnabled });
+  const [materialIssueReelLines, , materialIssueReelLinesLoading] = useData<MaterialIssueReelLine>("material_issue_reel_lines", [], { firmScope: "all", enabled: materialEnabled });
+  const [materialReturns, , materialReturnsLoading] = useData<MaterialReturn>("material_returns", [], { firmScope: "all", enabled: materialEnabled });
+  const [materialReturnLines, , materialReturnLinesLoading] = useData<MaterialReturnLine>("material_return_lines", [], { firmScope: "all", enabled: materialEnabled });
+  const [materialReturnReelLines, , materialReturnReelLinesLoading] = useData<MaterialReturnReelLine>("material_return_reel_lines", [], { firmScope: "all", enabled: materialEnabled });
 
   const usageMap = useMemo(
     () => buildProductionMaterialUsageMap(
