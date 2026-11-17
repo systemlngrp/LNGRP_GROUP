@@ -1,6 +1,6 @@
 // Reel colours come from Color Master (codes such as NS, LG, GY). Invoices may
 // print a name instead of the code; these names stand for a Color Master code.
-// LG = LG, GY, Yellow (Gold = GY); NS = NS, Natural, VK, Brown; Duplex stays Duplex.
+// LG = LG, GY, Yellow (Gold = GY); NS = NS, Natural, VK, Brown; WKL = WKL, Duplex, White Kraft Liner.
 export const REEL_COLOR_ALIASES: Record<string, string> = {
   GY: "LG",
   YELLOW: "LG",
@@ -9,7 +9,13 @@ export const REEL_COLOR_ALIASES: Record<string, string> = {
   NATURAL: "NS",
   VK: "NS",
   BROWN: "NS",
+  DUPLEX: "WKL",
 };
+
+// Names of more than one word that stand for a Color Master code.
+export const REEL_COLOR_PHRASES: Array<[RegExp, string]> = [
+  [/\bWHITE\s+KRAFT\s+LINER\b/, "WKL"],
+];
 
 const words = (value: unknown) => String(value ?? "").toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
 
@@ -24,6 +30,9 @@ export function resolveReelColor(value: unknown, masterNames: string[]): string 
   // Whole value equal to a master name (also covers names with spaces).
   const whole = masters.get(text.trim());
   if (whole) return whole;
+  for (const [pattern, code] of REEL_COLOR_PHRASES) {
+    if (pattern.test(text) && masters.has(code)) return masters.get(code)!;
+  }
   for (const word of words(text)) {
     const direct = masters.get(word);
     if (direct) return direct;
