@@ -46,7 +46,8 @@ export function PendingDispatchPlanning() {
   const [rowPlannedQty, setRowPlannedQty] = useState<Record<string, number | "">>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("scheduledDate");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  // Newest schedule date first by default.
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   // Same dates as before, but kept stable through the day so the schedule
   // list is not recalculated on every screen update.
@@ -327,7 +328,7 @@ export function PendingDispatchPlanning() {
       return;
     }
     setSortKey(key);
-    setSortDirection("asc");
+    setSortDirection(key === "scheduledDate" ? "desc" : "asc");
   };
 
   const renderSortHeader = (label: string, key: SortKey, align: "left" | "right" = "left") => (
