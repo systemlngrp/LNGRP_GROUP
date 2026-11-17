@@ -12504,7 +12504,7 @@ const createHandlers = (tableName) => {
                     }
                     const completionStatus = String(data.completionStatus || "").trim();
                     if (completionStatus !== "Part" && completionStatus !== "Full") {
-                        return res.status(400).json({ error: "Completion status must be Part or Full for every machine report." });
+                        return res.status(400).json({ error: "Completion status must be In Progress or Job Complete for every machine report." });
                     }
                     const [machineRows] = await db.query("SELECT `name` FROM `machines` WHERE `id` = ? LIMIT 1", [data.machineId]);
                     const storedMachineName = String(machineRows[0]?.name || "").trim();
@@ -16631,7 +16631,7 @@ app.post("/api/reel-transfers/execute", async (req, res) => {
             .filter((row) => Number.isFinite(row.time) && row.time > 0)
             .sort((a, b) => a.time - b.time)[0];
         if (!sourceFull)
-            throw new Error("Corrugation Liner must be marked Full for the source job.");
+            throw new Error("Corrugation Liner must be marked Job Complete for the source job.");
         if (corrugationRows(targetProductionId).length > 0) {
             throw new Error("Corrugation Liner has already started for the target job.");
         }

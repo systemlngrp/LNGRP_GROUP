@@ -122,7 +122,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
 
   const addScannedReel = (rawValue: string) => {
     if (!productionId) throw new Error("Select a job before scanning.");
-    if (!linerComplete) throw new Error("Complete Corrugation Liner as Full before returning reels.");
+    if (!linerComplete) throw new Error("Mark Corrugation Liner as Job Complete before returning reels.");
     const reelNo = parseQrReelNo(rawValue);
     if (!reelNo) throw new Error("Reel number is required in QR.");
     const matching = reelsForJob.find((row) => normalizeText(row.ourReelNo) === normalizeText(reelNo));
@@ -138,7 +138,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
   };
   const openScanner = async () => {
     if (!productionId) return setScannerError("Select a job before scanning.");
-    if (!linerComplete) return setScannerError("Complete Corrugation Liner as Full before returning reels.");
+    if (!linerComplete) return setScannerError("Mark Corrugation Liner as Job Complete before returning reels.");
     if (!navigator.mediaDevices?.getUserMedia) return setScannerError("Camera access is not supported on this browser/device.");
     const BarcodeDetectorCtor = (window as Window & { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
     if (!BarcodeDetectorCtor) return setScannerError("QR scanner is not supported on this browser.");
@@ -235,7 +235,7 @@ export function ReelReturnForm({ mode = "manual" }: { mode?: "manual" | "qr" }) 
     <div className="mb-4 flex flex-col items-start gap-3 border-b border-black pb-3 sm:flex-row sm:items-center md:mb-6"><div><h2 className="break-words text-lg font-bold uppercase tracking-tight md:text-xl">{mode === "qr" ? "QR Reel Return" : "Reel Return Form"}</h2></div>{returnTo ? <button type="button" onClick={() => navigate(returnTo)} className="inline-flex w-full items-center justify-center gap-1 rounded border border-black bg-white px-3 py-2 text-xs font-bold uppercase hover:bg-slate-100 sm:ml-auto sm:w-auto"><ArrowLeft size={15} /> Pending Returns</button> : null}</div>
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Field label="Date" required><input type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="w-full rounded border-2 border-black p-2" /></Field><Field label="Job No." required><Select required disabled={lockJob} options={jobOptions} value={productionId} onChange={handleJobChange} placeholder="Select Job..." /></Field><Field label="Remarks"><input value={remarks} onChange={(event) => setRemarks(event.target.value)} className="w-full rounded border-2 border-black p-2" /></Field></div>
-      {productionId && !linerComplete ? <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">Complete Corrugation Liner as Full before returning reels.</div> : null}
+      {productionId && !linerComplete ? <div className="rounded border border-amber-700 bg-amber-50 p-3 text-sm font-bold text-amber-800">Mark Corrugation Liner as Job Complete before returning reels.</div> : null}
       {mode === "qr" ? <div className="flex flex-col items-stretch gap-3 border-t border-black pt-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><h3 className="font-bold uppercase">Scan Issued Reels</h3></div><button type="button" onClick={() => void openScanner()} disabled={!productionId || !linerComplete || isProcessingScan || isSubmitting} className="inline-flex w-full items-center justify-center gap-2 rounded border-2 border-black bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50 sm:w-auto"><Camera size={17} /> Scan QR</button>{scannerError ? <p className="w-full break-words text-sm font-bold text-red-700">{scannerError}</p> : null}</div> : <div className="border-t border-black pt-4"><h3 className="font-bold uppercase">Select Issued Reels</h3></div>}
       <div className="space-y-3 md:hidden">
         {displayedRows.length === 0 ? <div className="rounded border border-dashed border-slate-400 bg-slate-50 p-6 text-center text-sm font-medium text-slate-500">{productionId ? (mode === "qr" ? "Scan a reel QR to add it." : "No issued reels remain available for this job.") : "Select a job first."}</div> : displayedRows.map((row) => {

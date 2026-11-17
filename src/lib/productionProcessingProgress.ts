@@ -74,3 +74,8 @@ export function jobIdsWithPrintingEntry(processing: ProductionProcessing[]) {
       .filter(Boolean),
   );
 }
+
+/** Display label for a stored completion status. Stored values stay "Part" / "Full". */
+export function completionStatusLabel(status?: string | null) {
+  return (status || "Full") === "Part" ? "In Progress" : "Job Complete";
+}

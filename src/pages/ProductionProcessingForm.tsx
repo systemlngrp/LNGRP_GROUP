@@ -251,8 +251,8 @@ function LockedReportForm() {
                   required
                   className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 font-medium"
                 >
-                  <option value="Part">Part</option>
-                  <option value="Full">Full</option>
+                  <option value="Part">In Progress</option>
+                  <option value="Full">Job Complete</option>
                 </select>
               </div>
             ) : null}
@@ -577,8 +577,8 @@ function FullReportForm() {
                   required
                   className="border-2 border-black rounded p-2 text-black focus:outline-none focus:border-indigo-600 font-medium"
                 >
-                  <option value="Part">Part</option>
-                  <option value="Full">Full</option>
+                  <option value="Part">In Progress</option>
+                  <option value="Full">Job Complete</option>
                 </select>
               </div>
             ) : null}

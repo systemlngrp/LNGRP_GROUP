@@ -10,7 +10,7 @@ import { TableControls } from "../components/TableControls";
 import { useNavigate } from "react-router-dom";
 import { formatDate } from "../lib/serial";
 import { normalizeMachineName } from "../lib/productionMachineNames";
-import { usesPartFullProgress } from "../lib/productionProcessingProgress";
+import { completionStatusLabel, usesPartFullProgress } from "../lib/productionProcessingProgress";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { CorrugationWastageFields } from "../components/CorrugationWastageFields";
@@ -183,7 +183,7 @@ export function ProductionProcessingMaster() {
   }, [productions, phpJobs, plateJobs]);
 
   // Search text of each report from its table columns (Date, Job No, Firm,
-  // Item Name, ERP, Box Type, Machine, Shift, Part / Full, Quantity), built once.
+  // Item Name, ERP, Box Type, Machine, Shift, Status, Quantity), built once.
   const searchTextById = useMemo(() => {
     const map = new Map<string, string>();
     processing.forEach((p) => {
@@ -199,7 +199,7 @@ export function ProductionProcessingMaster() {
         p.boxType,
         p.machineName,
         p.shift || "Day",
-        p.completionStatus || "Full",
+        completionStatusLabel(p.completionStatus),
         Number(p.qty || 0),
       ]));
     });
@@ -285,7 +285,7 @@ export function ProductionProcessingMaster() {
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Box Type" sortKey="boxType" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Machine" sortKey="machineName" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
-                <th className="px-6 py-3 text-center text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Part / Full" sortKey="completionStatus" sort={sort} onToggle={toggleSort} align="center" /></th>
+                <th className="px-6 py-3 text-center text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Status" sortKey="completionStatus" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Quantity" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black">Actions</th>
               </tr>
@@ -382,7 +382,7 @@ export function ProductionProcessingMaster() {
                                   : "border-emerald-300 bg-emerald-100 text-emerald-800"
                               }`}
                             >
-                              {completionStatus}
+                              {completionStatusLabel(completionStatus)}
                             </span>
                           );
                         })()}
