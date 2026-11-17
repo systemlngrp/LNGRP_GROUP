@@ -1168,7 +1168,9 @@ export function PendingInvoicing() {
           if (!slipIdsUpdated.has(draftSlip.id)) continue;
           const originalSlip = loadingSlips.find((slip) => slip.id === draftSlip.id) || draftSlip;
           try {
-            await postEntity("loading_slips", originalSlip);
+            // Send invoiceId explicitly: a missing field is left unchanged by the server, which kept
+            // the slip linked to the failed invoice and blocked deleting it (empty invoices left behind).
+            await postEntity("loading_slips", { ...toPersistableLoadingSlip(originalSlip), invoiceId: (originalSlip as any).invoiceId ?? null });
           } catch (rollbackError) {
             console.error("Failed to rollback loading slip:", rollbackError);
           }
@@ -1187,14 +1189,17 @@ export function PendingInvoicing() {
             console.error("Failed to rollback invoice line item:", rollbackError);
           }
         }
-        if (invoiceCreated) {
+        let leftInvoice = "";
+        if (invoiceCreated && !existingInvoice) {
           try {
             await deleteEntity("invoices", invoiceId);
           } catch (rollbackError) {
             console.error("Failed to rollback invoice:", rollbackError);
+            leftInvoice = ` The invoice header could not be removed (${(rollbackError as Error).message}); tell the admin before trying again.`;
           }
         }
-        throw saveError;
+        const failedStep = gatePassCreated ? "" : invoiceCreated && createdLineItemIds.length === lineItems.length && slipIdsUpdated.size === updatedSlips.length ? "gate pass" : !invoiceCreated ? "invoice" : createdLineItemIds.length < lineItems.length ? "invoice items" : "loading slips";
+        throw new Error(`${failedStep ? `Saving the ${failedStep} failed: ` : ""}${(saveError as Error).message}.${leftInvoice}`);
       }
 
       await Promise.all([
