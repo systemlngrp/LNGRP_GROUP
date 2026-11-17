@@ -2,7 +2,8 @@ import { FilterBox } from "../components/FilterBox";
 import { displayJobNo } from "../lib/jobNumber";
 import React, { useState, useMemo } from "react";
 import { useData } from "../hooks/useData";
-import { Production, OrderSchedule, Order, Company, SampleRequest, Setting } from "../types";
+import { Production, OrderSchedule, Order, Company, SampleRequest, Setting, FluteMaster } from "../types";
+import { buildFluteBatchMap, resolveFluteBatch } from "../lib/fluteBatch";
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -25,6 +26,8 @@ export function ProductionPlan() {
   const [companies, , companiesLoading] = useData<Company>("companies", []);
   const [sampleRequests, , sampleRequestsLoading] = useData<SampleRequest>("sample_requests", []);
   const [settings, , settingsLoading] = useData<Setting>("settings", []);
+  const [fluteMasters, , fluteMastersLoading] = useData<FluteMaster>("flute_masters", []);
+  const fluteBatchMap = useMemo(() => buildFluteBatchMap(fluteMasters), [fluteMasters]);
   // Only item names are shown here, so the light NPD catalog is enough. The
   // firm-wise stock list (~9 MB) reloaded on every save anywhere in the app.
   const npdItems = useNpdItemNames();
@@ -45,7 +48,8 @@ export function ProductionPlan() {
     ordersLoading ||
     companiesLoading ||
     sampleRequestsLoading ||
-    settingsLoading;
+    settingsLoading ||
+    fluteMastersLoading;
 
   const normalizeDate = (dStr: string) => {
     if (!dStr) return "";
@@ -105,12 +109,14 @@ export function ProductionPlan() {
         return {
           ...production,
           leastGsm: erpLeastGsmMap.get(String(production.erpCode || "").trim()) ?? production.leastGsm,
+          // Batch comes from the Flute Master, so a master change re-orders the plan.
+          fluteBatches: resolveFluteBatch(production.flute, fluteBatchMap, production.fluteBatches),
           productionPlanCompanyName: company.name,
           productionPlanCompanyId: company.companyId,
           itemName: npdItems.find((item) => item.id === String(production.itemId || "").trim())?.name || "",
         };
       });
-  }, [productions, selectedDate, companyFilter, itemFilter, npdItems, schedules, orders, companies, erpLeastGsmMap]);
+  }, [productions, selectedDate, companyFilter, itemFilter, npdItems, schedules, orders, companies, erpLeastGsmMap, fluteBatchMap]);
 
   const baseSortedList = useMemo(() => sortProductionPlanRows(filteredList), [filteredList]);
   const baseStatusRows = useMemo(
@@ -143,7 +149,7 @@ export function ProductionPlan() {
       case "erpCode": return p.erpCode || "";
       case "flute": return p.flute || "";
       case "remarks": return p.remarks || "";
-      case "fluteBatches": return p.fluteBatches || "";
+      case "fluteBatches": return Number(p.fluteBatches) || Number.MAX_SAFE_INTEGER;
       case "date": return p.date;
       case "value": return (Number(p.qty || 0) || 0) * (Number(p.rate || 0) || 0);
       case "isSample": return p.isSample ? "Yes" : "No";

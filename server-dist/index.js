@@ -939,7 +939,7 @@ const USER_ROLE_MAX_LENGTH = 20;
 // existing create rules; updates and deletes require the Master management role.
 const MASTER_RECORD_ENTITIES = new Set([
     "item_groups", "material_groups", "items", "materials", "suppliers", "states", "units",
-    "color_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "trucks",
+    "color_masters", "flute_masters", "gst_rate_masters", "expense_masters", "companies", "firms", "trucks",
     "machines", "npd", "php_item_master", "plate_item_master", "users", "services", "whatsapp_configs", "settings",
     "boardline_qc_checks", "printing_qc_checks", "pre_dispatch_inspections", "quality_complaints",
     "qc_printing_wastage_records", "qc_update_records", "qc_file_no_masters", "special_remark_records",
@@ -5584,6 +5584,8 @@ function entityPermissionKey(entity) {
             return "/masters/units";
         case "color_masters":
             return "/masters/colors";
+        case "flute_masters":
+            return "/masters/flutes";
         case "expense_masters":
             return "/masters/expenses";
         case "companies":
@@ -7076,6 +7078,26 @@ async function initDb(retries = 5) {
           \`updateTimestamp\` VARCHAR(255)
         )
       `);
+            // Flute Master: Flute -> Batch No, used for the Production Plan's Flute Batch order.
+            await db.query(`
+        CREATE TABLE IF NOT EXISTS \`flute_masters\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`flute\` VARCHAR(50) NOT NULL,
+          \`batchNo\` INT NOT NULL,
+          \`updatedBy\` VARCHAR(255),
+          \`updateTimestamp\` VARCHAR(255)
+        )
+      `);
+            try {
+                const [existingFluteRows] = await db.query("SELECT COUNT(*) as count FROM `flute_masters`");
+                if (Number(existingFluteRows[0]?.count || 0) === 0) {
+                    const timestamp = new Date().toISOString();
+                    await db.query("INSERT INTO `flute_masters` (`id`,`flute`,`batchNo`,`updatedBy`,`updateTimestamp`) VALUES (UUID(),'A',1,'System User',?), (UUID(),'B',2,'System User',?), (UUID(),'B+C',3,'System User',?), (UUID(),'C',4,'System User',?), (UUID(),'E',5,'System User',?)", [timestamp, timestamp, timestamp, timestamp, timestamp]);
+                }
+            }
+            catch (seedError) {
+                console.warn("[DB] Could not seed flute_masters table:", seedError.message);
+            }
             await db.query(`
         CREATE TABLE IF NOT EXISTS \`expense_masters\` (
           \`id\` VARCHAR(36) PRIMARY KEY,
@@ -14989,7 +15011,7 @@ app.post("/api/settings/clear-transactional-data", async (req, res) => {
         conn.release();
     }
 });
-const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs", "pre_app_dispatches"];
+const entities = ["item_groups", "material_groups", "items", "materials", "tally_change_log", "indents", "indent_lines", "purchase_orders", "purchase_order_lines", "gate_entries", "gate_entry_photos", "material_in_packing_slips", "material_issues", "material_issue_lines", "material_issue_reel_lines", "daily_consumptions", "daily_consumption_items", "material_returns", "material_return_lines", "material_return_reel_lines", "reel_transfers", "reel_transfer_lines", "suppliers", "states", "units", "color_masters", "flute_masters", "gst_rate_masters", "rapc_ranges", "expense_masters", "companies", "firms", "machines", "orders", "orders_schedule", "realization_rate_chart", "material_in", "users", "productions", "production_processing", "consumptions", "sample_requests", "boardline_qc_checks", "printing_qc_checks", "qc_printing_wastage_records", "quality_complaints", "qc_update_records", "qc_update_audit_logs", "qc_file_no_masters", "special_remark_records", "printing_stereo_records", "control_records", "qc_spec_card_movements", "qc_person_masters", "qc_block_records", "qc_block_location_masters", "pre_dispatch_inspections", "qc_sample_requirements", "php_plate_in_out_records", "trucks", "dispatch_plans", "loading_slips", "material_visit", "invoices", "invoice_line_items", "inter_firm_pending_invoices", "gate_passes", "services", "whatsapp_configs", "npd", "npd-firm-wise", "php_item_master", "plate_item_master", "php_job_master", "plate_job_master", "php_loading_slips", "plate_loading_slips", "settings", "fixed_monthly_expenses", "fixed_daily_expenses", "audit_dashboard_snapshots", "physical_stock_sessions", "reel_stock_taker_logs", "pre_app_dispatches"];
 app.get("/api/tally-sync-debug", (req, res) => {
     const providedSecret = String(req.header("x-tally-sync-secret") || "").trim();
     return res.json({

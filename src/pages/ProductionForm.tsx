@@ -25,6 +25,8 @@ import { getProductionMatchingFields } from "../lib/productionMatching";
 import { buildScheduleConsumptionByScheduleId } from "../lib/productionScheduleQty";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { calculateInternalUps } from "../lib/internalUps";
+import { buildFluteBatchMap, normalizeFlute } from "../lib/fluteBatch";
+import type { FluteMaster } from "../types";
 import {
   calculateProductionGsm,
   calculateProductionReel,
@@ -229,6 +231,8 @@ export function ProductionForm() {
   const [loadingSlips] = useData<LoadingSlip>("loading_slips", []);
   const [sampleRequests, setSampleRequests] = useData<SampleRequest>("sample_requests", []);
   const [settings] = useData<Setting>("settings", []);
+  const [fluteMasters] = useData<FluteMaster>("flute_masters", []);
+  const fluteBatchMap = useMemo(() => buildFluteBatchMap(fluteMasters), [fluteMasters]);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const npdItems = useNpdItems();
   const { resolveOrderItem } = useOrderItemCatalog();
@@ -534,15 +538,7 @@ export function ProductionForm() {
     const productionInMeter = ups > 0 ? ((cutting * qty) / 1000) / ups : 0;
     const plannedProductionInMeter =
       cutting > 0 && qty > 0 && ups > 0 ? parseFloat((((cutting * qty) / 1000) / ups).toFixed(2)) : "";
-    const normalizedFlute = formData.flute.toUpperCase().trim().replace(/\s+/g, "");
-    const fluteBatchMap: Record<string, string> = {
-      A: "1",
-      B: "2",
-      "B+C": "3",
-      C: "4",
-      E: "5",
-    };
-    const fluteBatches = fluteBatchMap[normalizedFlute] || "";
+    const fluteBatches = fluteBatchMap[normalizeFlute(formData.flute)] || "";
     const leastGsmValue = erpLeastGsmMap.get(selectedErp) ?? "";
     const printingColor = joinPrintingColors(formData.color1, formData.color2);
 
@@ -604,6 +600,7 @@ export function ProductionForm() {
     formData.plateWeight,
     formData.reelActualWithTrimming,
     erpLeastGsmMap,
+    fluteBatchMap,
     selectedErp,
   ]);
 
@@ -965,7 +962,7 @@ export function ProductionForm() {
               {showField("Planned Prod (Mtr)") ? <FormInput label="Planned Prod (Mtr)" value={formData.plannedProductionInMeter} readOnly type="number" helpText="Formula: ((Cutting Trim x Plan Qty) / 1000) / UPS. If Cutting Trim or Plan Qty is blank, this stays blank." /> : null}
               {showField("Actual Paper Used") ? <FormInput label="Actual Paper Used" value={formData.actualPaperUsed} readOnly type="number" step="0.00001" helpText="Workflow-managed field derived from Material Issue minus Material Return against the job." /> : null}
 
-              {showField("Flute Batches") ? <FormInput label="Flute Batches" value={formData.fluteBatches} readOnly helpText="Derived from Flute using this mapping: A=1, B=2, B+C=3, C=4, E=5. Any other value stays blank." /> : null}
+              {showField("Flute Batches") ? <FormInput label="Flute Batches" value={formData.fluteBatches} readOnly helpText="Taken from Master > Flute Master by the Flute. A flute not in the master stays blank." /> : null}
             </div>
           </div>
           {showField("Remarks") && <div className="max-w-4xl border-t border-black pt-4">

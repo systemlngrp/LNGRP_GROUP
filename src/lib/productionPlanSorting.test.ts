@@ -32,4 +32,12 @@ describe("sortProductionPlanRows", () => {
     ]);
     expect(result.map((item) => item.id)).toEqual(["JOB/26-27/11026", "JOB/26-27/11027"]);
   });
+
+  it("orders flute batches numerically with blank batches last", () => {
+    const result = sortProductionPlanRows([
+      row("blank", "Alpha", 100, 300, ""), row("ten", "Alpha", 100, 300, "10"),
+      row("two", "Alpha", 100, 300, "2"), row("one", "Alpha", 100, 300, "1"),
+    ]);
+    expect(result.map((item) => item.id)).toEqual(["one", "two", "ten", "blank"]);
+  });
 });
