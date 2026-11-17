@@ -1062,6 +1062,96 @@ def find_tally_vouchers_with_number(voucher_no, invoice_date, voucher_type=None)
     ]
 
 
+def fetch_tally_voucher_numbers_for_year(invoice_date, voucher_type=None):
+    """Voucher numbers of every voucher of this type in the invoice's financial year.
+
+    Returns a list of strings, or None if Tally could not answer.
+    """
+    from_date, to_date = financial_year_bounds(invoice_date)
+    if not from_date:
+        return None
+    tdl_type = str(voucher_type or VOUCHER_TYPE_NAME).replace('"', "")
+    xml = f"""
+<ENVELOPE>
+    <HEADER>
+        <VERSION>1</VERSION>
+        <TALLYREQUEST>Export</TALLYREQUEST>
+        <TYPE>Collection</TYPE>
+        <ID>LNGRPVchNumbersOfYear</ID>
+    </HEADER>
+    <BODY>
+        <DESC>
+            <STATICVARIABLES>
+                <SVFROMDATE>{from_date}</SVFROMDATE>
+                <SVTODATE>{to_date}</SVTODATE>
+                <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+            </STATICVARIABLES>
+            <TDL>
+                <TDLMESSAGE>
+                    <COLLECTION NAME="LNGRPVchNumbersOfYear" ISMODIFY="No">
+                        <TYPE>Voucher</TYPE>
+                        <FETCH>Date, VoucherNumber, VoucherTypeName</FETCH>
+                        <FILTER>LNGRPVchNumbersOfYearFilter</FILTER>
+                    </COLLECTION>
+                    <SYSTEM TYPE="Formulae" NAME="LNGRPVchNumbersOfYearFilter">$VoucherTypeName = {esc('"' + tdl_type + '"')}</SYSTEM>
+                </TDLMESSAGE>
+            </TDL>
+        </DESC>
+    </BODY>
+</ENVELOPE>
+"""
+    response_text = tally_request(xml, stage="Read last Sales invoice number")
+    if not response_text or response_text.startswith("Connection error"):
+        return None
+    try:
+        ET.fromstring(sanitize_tally_xml(response_text))
+    except Exception:
+        return None
+    return [
+        str(voucher.get("tallyInvNo") or "").strip()
+        for voucher in parse_tally_voucher_collection(response_text)
+        if str(voucher.get("tallyInvNo") or "").strip()
+    ]
+
+
+def next_tally_sales_number(invoice_date):
+    """Last Sales invoice number in Tally for this financial year, plus 1.
+
+    Tally does not number vouchers that arrive by XML import, so the script
+    continues Tally's own series: it reads every Sales voucher number of the
+    year, takes the series used most (e.g. "LNCB2/26-27/"), and returns its
+    highest number + 1 with the same zero padding (LNCB2/26-27/2833 -> 2834).
+    Returns (number, error_message).
+    """
+    numbers = fetch_tally_voucher_numbers_for_year(invoice_date)
+    if numbers is None:
+        return "", "Could not read the last Sales invoice number from Tally."
+    series = {}
+    for number in numbers:
+        match = re.match(r"^(.*?)(\d+)$", number)
+        if not match:
+            continue
+        prefix, digits = match.group(1), match.group(2)
+        entry = series.setdefault(prefix, {"count": 0, "max": -1, "width": 0})
+        entry["count"] += 1
+        if int(digits) > entry["max"]:
+            entry["max"] = int(digits)
+        entry["width"] = max(entry["width"], len(digits))
+    if not series:
+        return "", (
+            "No numbered Sales invoice in Tally for this financial year to continue from. "
+            "Enter the first invoice of the year in Tally by hand."
+        )
+    prefix, entry = max(series.items(), key=lambda item: (item[1]["count"], item[1]["max"]))
+    taken = {normalize_invoice_number(number) for number in numbers}
+    next_value = entry["max"] + 1
+    while True:
+        candidate = f"{prefix}{str(next_value).zfill(entry['width'])}"
+        if normalize_invoice_number(candidate) not in taken:
+            return candidate, ""
+        next_value += 1
+
+
 def resolve_tally_assigned_voucher(response_text, invoice_row, remote_id):
     """After a successful post in "tally" mode, find the number Tally gave.
 
@@ -2596,8 +2686,11 @@ def create_sales_voucher_xml(
         invoice_order_list_xml = ""
 
     if tally_assigns_number():
-        # No VOUCHERNUMBER: Tally gives the next number of its Sales series.
-        voucher_number_xml = ""
+        # Number = last Tally Sales number + 1, worked out just before posting.
+        next_no = str(invoice_row.get("_tallyVoucherNumber") or "").strip()
+        voucher_number_xml = (
+            f"\n                        <VOUCHERNUMBER>{esc(next_no)}</VOUCHERNUMBER>" if next_no else ""
+        )
         remote_id = invoice_remote_id(invoice_row)
         voucher_remote_id_attr = f' REMOTEID="{esc(remote_id)}"' if remote_id else ""
     else:
@@ -3340,8 +3433,13 @@ def post_tally_assigned_invoice(conn, context):
     if context["narration_text"]:
         print(f"Narration: {context['narration_text']}")
 
+    next_no, number_error = next_tally_sales_number(invoice_row.get("date"))
+    if not next_no:
+        raise RuntimeError(number_error)
+    print(f"Next Tally Sales number: {next_no}")
+
     tally_xml = create_sales_voucher_xml(
-        invoice_row,
+        {**invoice_row, "_tallyVoucherNumber": next_no},
         company_name,
         context["company_row"],
         context["item_lines"],
@@ -3353,7 +3451,7 @@ def post_tally_assigned_invoice(conn, context):
         print("Generated Tally XML:")
         print(tally_xml)
 
-    tally_response = post_to_tally(tally_xml, invoice_no=label, remote_id=remote_id)
+    tally_response = post_to_tally(tally_xml, invoice_no=f"{label} as {next_no}", remote_id=remote_id)
     print("Tally Response:")
     print(tally_response)
 
@@ -3366,7 +3464,8 @@ def post_tally_assigned_invoice(conn, context):
             TALLY_VOUCHER_DATE_CACHE.pop(cache_key, None)
 
     created = resolve_tally_assigned_voucher(tally_response, invoice_row, remote_id)
-    tally_no = created.get("tallyInvNo") or ""
+    # The number read back from Tally wins; if it cannot be read, it is the one we sent.
+    tally_no = created.get("tallyInvNo") or next_no
 
     if not tally_no:
         remark = (
@@ -3396,6 +3495,75 @@ def post_tally_assigned_invoice(conn, context):
     print(f"{label} -> Tally No. {tally_no or '(not read)'}: {remark}")
 
 
+BACKFILL_EVERY_SECONDS = float(os.getenv("TALLY_BACKFILL_EVERY", "300"))
+_LAST_BACKFILL_AT = {}
+
+
+def backfill_missing_tally_numbers(conn, source_firm_id, destination_firm_id, force=False):
+    """Posted invoices whose Tally number is blank in the app: read it from Tally.
+
+    Covers vouchers that reached Tally without a number (e.g. the number was
+    typed in Tally afterwards). Runs at most every BACKFILL_EVERY_SECONDS.
+    """
+    key = (source_firm_id, destination_firm_id)
+    now = time.time()
+    if not force and now - _LAST_BACKFILL_AT.get(key, 0) < BACKFILL_EVERY_SECONDS:
+        return
+    _LAST_BACKFILL_AT[key] = now
+
+    has_source = column_exists(conn, "invoices", "sourceFirmId")
+    has_destination = column_exists(conn, "invoices", "destinationFirmId")
+    if has_source and has_destination:
+        firm_filter = """
+            (
+                (sourceFirmId = %s AND destinationFirmId = %s)
+                OR (
+                    COALESCE(TRIM(sourceFirmId), '') = ''
+                    AND COALESCE(TRIM(destinationFirmId), '') = ''
+                    AND firmId = %s
+                )
+            )
+        """
+        params = (source_firm_id, destination_firm_id, source_firm_id)
+    else:
+        firm_filter = "firmId = %s"
+        params = (source_firm_id,)
+
+    cursor = get_db_cursor(conn, dictionary=True)
+    cursor.execute(
+        f"""
+        SELECT id, invoiceNo, tallyInvId
+        FROM invoices
+        WHERE {firm_filter}
+          AND COALESCE(tallyTimestamp, '') <> ''
+          AND COALESCE(TRIM(tallyInvNo), '') = ''
+          AND COALESCE(TRIM(tallyInvId), '') <> ''
+        LIMIT 100
+        """,
+        params,
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+
+    for row in rows:
+        voucher = fetch_tally_voucher_by_id(str(row["tallyInvId"]).strip())
+        tally_no = str(voucher.get("tallyInvNo") or "").strip()
+        if not tally_no:
+            continue
+        cursor = get_db_cursor(conn)
+        cursor.execute(
+            """
+            UPDATE invoices
+            SET tallyInvNo = %s, tallySyncRemark = %s
+            WHERE id = %s AND COALESCE(TRIM(tallyInvNo), '') = ''
+            """,
+            (tally_no, "Tally number filled in from Tally", row["id"]),
+        )
+        conn.commit()
+        cursor.close()
+        print(f"{invoice_label(row)}: Tally number {tally_no} filled in from Tally")
+
+
 def sync_invoices_to_tally(quiet_when_empty=False):
     global TALLY_UNAVAILABLE_ERROR
     TALLY_UNAVAILABLE_ERROR = ""
@@ -3408,6 +3576,11 @@ def sync_invoices_to_tally(quiet_when_empty=False):
     ensure_invoice_sync_columns(conn)
     unit1_firm = resolve_unit1_firm(conn)
     unit2_firm = resolve_unit2_firm(conn)
+    if tally_assigns_number():
+        try:
+            backfill_missing_tally_numbers(conn, unit1_firm["id"], unit2_firm["id"])
+        except Exception as exc:  # never let the fill-in step block posting
+            print(f"Could not fill in missing Tally numbers: {exc}")
     pending_invoice_rows = get_pending_invoice_rows(conn, unit1_firm["id"], unit2_firm["id"])
 
     if not pending_invoice_rows and quiet_when_empty:
@@ -3417,7 +3590,7 @@ def sync_invoices_to_tally(quiet_when_empty=False):
     try:
         print("==========================================")
         print(
-            "Numbering: Tally gives the invoice number"
+            "Numbering: last Tally Sales number + 1"
             if tally_assigns_number()
             else "Numbering: app invoice number is sent to Tally"
         )
