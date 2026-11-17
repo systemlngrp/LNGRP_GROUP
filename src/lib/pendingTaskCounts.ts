@@ -36,7 +36,7 @@ import { getRequiredMachinesForProduction, resolveProductionProcessingRoute } fr
 import { normalizeMachineName } from "./productionMachineNames";
 import { getCurrentProcessingMachine, isCorrugationLinerComplete, isMachineStepFull } from "./productionProcessingProgress";
 import { buildScheduleConsumptionByScheduleId } from "./productionScheduleQty";
-import { isProductionPendingConsumption, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
+import { isJobDueByToday, isProductionPendingMaterialIssue, isProductionPendingPH, isProductionReadyForTally } from "./productionStageFilters";
 import { withIndentTotals } from "./indentTotals";
 import { getPendingReturnJobReelLines } from "./materialMovement";
 import { buildReelTransferContext, DEFAULT_REEL_TRANSFER_WINDOW_HOURS, getCorrugationFullTime } from "./reelTransfer";
@@ -406,6 +406,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       .map((production) => production.id)
   );
   const processingByProductionId = groupBy(args.processing || [], (row) => row.productionId);
+  const productionById = firstBy(args.productions, (production) => production.id);
   const plannedQtyByScheduleId = new Map<unknown, number>();
   args.dispatchPlans.forEach((plan) => {
     plannedQtyByScheduleId.set(plan.scheduleId, (plannedQtyByScheduleId.get(plan.scheduleId) || 0) + Number(plan.plannedQty || 0));
@@ -471,11 +472,11 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
       }).length;
     })(),
     "/production/pending-consumption": args.productions.filter((p) =>
-      isProductionPendingConsumption(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
+      isProductionPendingMaterialIssue(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
     "/production/pending-material-return": new Set(
       getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions)
-        .filter((line) => activeProductionIds.has(line.productionId) && isCorrugationLinerComplete(args.processing || [], line.productionId))
+        .filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {}) && isCorrugationLinerComplete(args.processing || [], line.productionId))
         .map((line) => line.productionId)
     ).size,
     "/production/pending-job-transfer": (() => {
