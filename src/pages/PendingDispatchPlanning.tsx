@@ -376,7 +376,7 @@ export function PendingDispatchPlanning() {
       const effectivePlanned = getEffectivePlannedForSchedule(id);
       const balance = getScheduleAvailableQty(schedule, dispatchPlans);
       
-      const currentPlanned = rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : balance;
+      const currentPlanned = rowPlannedQty[id] ?? 0;
       return sum + Number(currentPlanned || 0);
     }, 0);
   }, [selectedIds, rowPlannedQty, schedules, effectivePlannedByScheduleId]);
@@ -393,7 +393,7 @@ export function PendingDispatchPlanning() {
       const effectivePlanned = getEffectivePlannedForSchedule(scheduleId);
       const schedulePendingQty = schedule ? getScheduleAvailableQty(schedule, dispatchPlans) : 0;
 
-      const plannedQty = rowPlannedQty[scheduleId] !== undefined ? rowPlannedQty[scheduleId] : schedulePendingQty;
+      const plannedQty = rowPlannedQty[scheduleId] ?? 0;
       map.set(itemId, (map.get(itemId) || 0) + Number(plannedQty || 0));
     });
     return map;
@@ -482,9 +482,9 @@ export function PendingDispatchPlanning() {
       const schedule = schedules.find((row) => row.id === id);
       if (!schedule) return;
       const unplanned = getScheduleAvailableQty(schedule, dispatchPlans);
-      const planned = Number(rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : unplanned) || 0;
+      const planned = Number(rowPlannedQty[id] ?? 0) || 0;
       if (planned <= 0) {
-        violations.push(`${schedule.scheduleNo || id}: Planned qty must be more than 0 (already fully planned, waiting for loading).`);
+        violations.push(`${schedule.scheduleNo || id}: Enter a Planned Qty more than 0.`);
       } else if (planned > unplanned + 1e-9) {
         violations.push(`${schedule.scheduleNo || id}: Trying to plan ${planned.toLocaleString()} but only ${unplanned.toLocaleString()} is not yet planned.`);
       }
@@ -517,7 +517,7 @@ export function PendingDispatchPlanning() {
           firmId: orderFirmId,
           orderFirmId,
           truckId: "",
-          plannedQty: Number(rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : Math.max(0, balance)),
+          plannedQty: Number(rowPlannedQty[id] ?? 0),
           status: "Planned",
           date: timestamp,
           updateTimestamp: timestamp,
@@ -554,8 +554,12 @@ export function PendingDispatchPlanning() {
   const statusBadge = (status: string) => status
     ? <span className={cn("inline-block whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-black uppercase", STATUS_BADGE[status])}>{status}</span>
     : <span>-</span>;
-  const plannedValue = (id: string, balance: number) => (rowPlannedQty[id] !== undefined ? rowPlannedQty[id] : balance);
-  const setPlanned = (id: string, value: string) => setRowPlannedQty((prev) => ({ ...prev, [id]: value === "" ? "" : Number(value) }));
+  const plannedValue = (id: string, _balance?: number) => rowPlannedQty[id] ?? "";
+  const setPlanned = (id: string, value: string) => {
+    setRowPlannedQty((prev) => ({ ...prev, [id]: value === "" ? "" : Number(value) }));
+    // Typing a quantity selects the row for planning.
+    if (Number(value) > 0) setSelectedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  };
   const pageAllSelected = paginatedSchedules.length > 0 && paginatedSchedules.every((schedule) => selectedIds.has(schedule.id));
   const rowInfo = (s: OrderSchedule) => {
     const order = lookup.orderById.get(s.orderId);
@@ -594,14 +598,10 @@ export function PendingDispatchPlanning() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4 md:gap-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
         <div className="rounded-lg border-2 border-black bg-gradient-to-br from-indigo-500 to-indigo-700 p-3 text-white">
           <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Pending Orders</div>
           <div className="text-2xl font-black">{metrics.pendingOrders.toLocaleString()}</div>
-        </div>
-        <div className="rounded-lg border-2 border-black bg-gradient-to-br from-rose-500 to-rose-700 p-3 text-white">
-          <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Overdue</div>
-          <div className="text-2xl font-black">{metrics.overdue.toLocaleString()}</div>
         </div>
         <div className="rounded-lg border-2 border-black bg-gradient-to-br from-emerald-500 to-emerald-700 p-3 text-white">
           <div className="text-[10px] font-black uppercase tracking-widest opacity-80">Pending Qty</div>
@@ -703,7 +703,6 @@ export function PendingDispatchPlanning() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-sm font-black">{s.scheduleNo || "-"}</span>
-                    {statusBadge(info.status)}
                   </div>
                   <div className="mt-0.5 text-[11px] font-semibold text-slate-600">{formatDate(s.scheduledDate)} · {info.order?.orderNo || "-"} · {info.firm}</div>
                   <div className="mt-1 break-words text-xs font-bold text-black">{info.company?.name || "-"}</div>
@@ -736,11 +735,13 @@ export function PendingDispatchPlanning() {
                 <th className="w-8 border border-black px-1 py-2 text-center">
                   <input type="checkbox" aria-label="Select all on this page" className="h-4 w-4" onChange={handleSelectAll} checked={pageAllSelected} />
                 </th>
-                <th className="w-[92px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Sch. Date / Status", "scheduledDate")}</th>
-                <th className="w-[132px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule / Order No", "scheduleNo")}</th>
+                <th className="w-[84px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule Date", "scheduledDate")}</th>
+                <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Schedule No", "scheduleNo")}</th>
+                <th className="w-[110px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Order No", "orderNo")}</th>
                 <th className="w-[52px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Firm", "firmName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Company", "companyName")}</th>
                 <th className="border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">{renderSortHeader("Item Name", "itemName")}</th>
+                <th className="w-[78px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">Planned Qty</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Order qty">Order Qty</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule qty">Schedule Qty</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Cancelled qty on the schedule">Cancel Qty</th>
@@ -750,32 +751,29 @@ export function PendingDispatchPlanning() {
                 <th className="w-[76px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule Qty − Cancel Qty − Loaded Qty">{renderSortHeader("Pending Qty", "pendingQty", "right")}</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Qty already on dispatch plans, less plan cancels">Already Planned Qty</th>
                 <th className="w-[70px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black text-right whitespace-normal" title="Schedule Qty − Cancel Qty − Already Planned Qty">Unplanned Qty</th>
-                <th className="w-[78px] border border-black px-1.5 py-2 text-[10px] font-bold uppercase leading-tight text-black">Planned Qty</th>
               </tr>
             </thead>
             <tbody className="bg-white">
               {filteredSchedules.length === 0 ? (
-                <tr><td colSpan={16} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
+                <tr><td colSpan={17} className="px-6 py-8 text-center font-medium text-black">No pending dispatch plans found.</td></tr>
               ) : paginatedSchedules.map((s) => {
                 const info = rowInfo(s);
                 const selected = selectedIds.has(s.id);
                 const num = "whitespace-nowrap border border-black px-1.5 py-1.5 text-right text-[11px] text-black";
                 return (
-                  <tr key={s.id} className={cn("hover:bg-slate-50", info.status === "Overdue" && "bg-red-50/60", selected && "bg-indigo-50")}>
+                  <tr key={s.id} className={cn("hover:bg-slate-50", selected && "bg-indigo-50")}>
                     <td className="w-8 border border-black px-1 py-1.5 text-center">
                       <input type="checkbox" aria-label={`Select ${s.scheduleNo || "schedule"}`} className="h-4 w-4 cursor-pointer" checked={selected} onChange={() => toggleSelect(s.id)} />
                     </td>
-                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-center">
-                      <div className={cn("text-[11px] font-bold", info.status === "Overdue" ? "text-red-600" : "text-black")}>{formatDate(s.scheduledDate)}</div>
-                      <div className="mt-0.5">{statusBadge(info.status)}</div>
-                    </td>
-                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">
-                      <div className="font-bold">{s.scheduleNo || "-"}</div>
-                      <div className="text-[10px] text-slate-600">{info.order?.orderNo || "-"}</div>
-                    </td>
+                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-center text-[11px] font-bold text-black">{formatDate(s.scheduledDate)}</td>
+                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] font-bold text-black">{s.scheduleNo || "-"}</td>
+                    <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">{info.order?.orderNo || "-"}</td>
                     <td className="whitespace-nowrap border border-black px-1.5 py-1.5 text-[11px] text-black">{info.firm}</td>
                     <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[130px] max-w-[200px] whitespace-normal break-words">{info.company?.name || "-"}</div></td>
                     <td className="border border-black px-1.5 py-1.5 text-[11px] leading-tight text-black"><div className="min-w-[140px] max-w-[220px] whitespace-normal break-words">{info.item?.name || "-"}</div></td>
+                    <td className="border border-black px-1 py-1">
+                      <input type="number" placeholder="0" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full min-w-[64px] rounded border border-slate-300 p-1 text-right text-[11px] font-bold focus:border-indigo-600 focus:outline-none" />
+                    </td>
                     <td className={num}>{info.orderQty.toLocaleString()}</td>
                     <td className={num}>{info.scheduleQty.toLocaleString()}</td>
                     <td className={num}>{info.cancelQty.toLocaleString()}</td>
@@ -785,9 +783,6 @@ export function PendingDispatchPlanning() {
                     <td className={cn(num, "font-bold text-indigo-700")}>{info.pendingQty.toLocaleString()}</td>
                     <td className={num}>{info.alreadyPlannedQty.toLocaleString()}</td>
                     <td className={cn(num, "font-bold text-slate-700")}>{info.balance.toLocaleString()}</td>
-                    <td className="border border-black px-1 py-1">
-                      <input type="number" value={plannedValue(s.id, info.balance)} onChange={(e) => setPlanned(s.id, e.target.value)} className="w-full min-w-[64px] rounded border border-slate-300 p-1 text-right text-[11px] font-bold focus:border-indigo-600 focus:outline-none" />
-                    </td>
                   </tr>
                 );
               })}
@@ -795,8 +790,9 @@ export function PendingDispatchPlanning() {
             {selectedIds.size > 0 && (
               <tfoot className="border-t-2 border-black bg-slate-100">
                 <tr className="font-black">
-                  <td colSpan={15} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
+                  <td colSpan={7} className="px-4 py-3 text-right text-xs uppercase text-slate-600">Total Planned for Submission:</td>
                   <td className="border border-black bg-indigo-50 px-4 py-3 text-right text-sm text-indigo-700">{totalSessionPlannedQty.toLocaleString()}</td>
+                  <td colSpan={9} />
                 </tr>
               </tfoot>
             )}
