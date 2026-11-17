@@ -12579,7 +12579,16 @@ const createHandlers = (tableName) => {
                     else {
                         printingWastageFields.forEach((field) => { data[field] = 0; });
                     }
-                    if (data.machineName === "Printing") {
+                    // Printing and Corrugation Liner need material / reels issued to the job.
+                    // Corrugation is checked for new entries only, so older entries can still be edited.
+                    const issueCheckStep = normalizeMachineName(String(data.machineName || ""));
+                    let needsIssuedMaterial = data.machineName === "Printing";
+                    if (!needsIssuedMaterial && issueCheckStep === "Corrugation Liner") {
+                        const [existingStepRows] = await db.query("SELECT `id` FROM `production_processing` WHERE `id` = ? LIMIT 1", [String(data.id || "")]);
+                        needsIssuedMaterial = existingStepRows.length === 0;
+                    }
+                    const issueStepLabel = issueCheckStep === "Corrugation Liner" ? "Corrugation Liner" : "Printing";
+                    if (needsIssuedMaterial) {
                         const [printingJobRows] = await db.query(`SELECT transactionNo, jobCardNo FROM productions WHERE id = ?
                UNION ALL SELECT transactionNo, jobCardNo FROM php_job_master WHERE id = ?
                UNION ALL SELECT transactionNo, jobCardNo FROM plate_job_master WHERE id = ? LIMIT 1`, [data.productionId, data.productionId, data.productionId]);
@@ -12624,8 +12633,8 @@ const createHandlers = (tableName) => {
                             const wasIssued = Number(usageRows[0]?.issuedQty || 0) > 0;
                             return res.status(409).json({
                                 error: wasIssued
-                                    ? "No issued material remains after returns for this job. Issue material before reporting Printing."
-                                    : "Issue material or sheet against this job before reporting Printing.",
+                                    ? `No issued material remains after returns for this job. Issue material before reporting ${issueStepLabel}.`
+                                    : `Issue material or reels against this job before reporting ${issueStepLabel}.`,
                             });
                         }
                     }

@@ -238,7 +238,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   // Issued-material checks are only needed for the Printing step; skip loading
   // the material issue/return lists when no Printing jobs are pending here.
   const needsMaterialUsage = useMemo(
-    () => baseMachineGroups.some((group) => normalizeMachineName(group.machineName) === "Printing"),
+    () => baseMachineGroups.some((group) => ["Printing", "Corrugation Liner"].includes(normalizeMachineName(group.machineName))),
     [baseMachineGroups]
   );
   const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage({ enabled: needsMaterialUsage });
@@ -252,6 +252,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       .map(g => ({
         ...g,
         jobs: g.jobs.filter(j => {
+          // Corrugation Liner lists only jobs with reels / material issued (net of returns).
+          if (normalizeMachineName(g.machineName) === "Corrugation Liner" && !materialUsageLoading && !hasProductionMaterialUsage(j.production, materialUsageMap)) return false;
           if (sourceFilter && j.source !== sourceFilter) return false;
           const jobDate = String(j.production.date || "").slice(0, 10);
           if (fromDateFilter && (!jobDate || jobDate < fromDateFilter)) return false;
@@ -276,7 +278,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         }).sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }))
       }))
       .filter(g => g.jobs.length > 0);
-  }, [baseMachineGroups, deferredSearchTerm, companyFilter, firmFilter, itemFilter, machineFilter, sourceFilter, fromDateFilter, toDateFilter]);
+  }, [baseMachineGroups, deferredSearchTerm, companyFilter, firmFilter, itemFilter, machineFilter, sourceFilter, fromDateFilter, toDateFilter, materialUsageLoading, materialUsageMap]);
 
   // One sort for every machine table: all jobs are sorted together, then each
   // machine's table shows its own jobs in that order.
@@ -510,7 +512,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                     jobs={sortedJobsByMachine.get(group.machineId) || group.jobs}
                     tableHead={tableHead}
                     renderRow={(job, idx) => {
-                          const requiresMaterialIssue = normalizeMachineName(group.machineName) === "Printing";
+                          const requiresMaterialIssue = ["Printing", "Corrugation Liner"].includes(normalizeMachineName(group.machineName));
                           const materialIssueBlocked = requiresMaterialIssue &&
                             (materialUsageLoading || !hasProductionMaterialUsage(job.production, materialUsageMap));
                           const materialIssueMessage = materialUsageLoading

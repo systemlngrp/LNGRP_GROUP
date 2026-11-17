@@ -18,8 +18,9 @@ import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, getAuto
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, type PrintingWastageDraft } from "../lib/printingWastage";
 
-const PRINTING_MATERIAL_MESSAGE = "Issue material or sheet against this job before reporting Printing.";
-const PRINTING_RETURNED_MESSAGE = "No issued material remains after returns for this job. Issue material before reporting Printing.";
+// Printing and Corrugation Liner can be reported only after material / reels are issued to the job.
+const materialNeededMessage = (step: string) => `Issue material or reels against this job before reporting ${step}.`;
+const materialReturnedMessage = (step: string) => `No issued material remains after returns for this job. Issue material before reporting ${step}.`;
 
 type ShiftValue = "" | "Day" | "Night";
 
@@ -85,9 +86,9 @@ function LockedReportForm() {
   const showCorrugationWastage = isCorrugationLiner && isFullReport;
   const showPrintingWastage = isPrinting && isFullReport;
   const { usageMap: materialUsageMap, issuedProductionIds, loading: materialUsageLoading } = useProductionMaterialUsage();
-  const materialIssueBlocked = isPrinting &&
+  const materialIssueBlocked = (isPrinting || isCorrugationLiner) &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
-  const materialIssueMessage = issuedProductionIds.has(productionId) ? PRINTING_RETURNED_MESSAGE : PRINTING_MATERIAL_MESSAGE;
+  const materialIssueMessage = issuedProductionIds.has(productionId) ? materialReturnedMessage(isCorrugationLiner ? "Corrugation Liner" : "Printing") : materialNeededMessage(isCorrugationLiner ? "Corrugation Liner" : "Printing");
   const plannedQty = Number(selectedProduction?.qty || 0);
   const alreadyCompletedQty = processing
     .filter((entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === normalizeMachineName(machineName))
@@ -404,9 +405,9 @@ function FullReportForm() {
       ...values,
     }).noHisabKg;
   }, [fullCorrugationQty, materialUsageMap, selectedProduction, showCorrugationWastage, wastageDraft]);
-  const materialIssueBlocked = isPrinting &&
+  const materialIssueBlocked = (isPrinting || isCorrugationLiner) &&
     (materialUsageLoading || !hasProductionMaterialUsage(productionId, materialUsageMap));
-  const materialIssueMessage = issuedProductionIds.has(productionId) ? PRINTING_RETURNED_MESSAGE : PRINTING_MATERIAL_MESSAGE;
+  const materialIssueMessage = issuedProductionIds.has(productionId) ? materialReturnedMessage(isCorrugationLiner ? "Corrugation Liner" : "Printing") : materialNeededMessage(isCorrugationLiner ? "Corrugation Liner" : "Printing");
 
   const qtyContext = useMemo(() => {
     if (!selectedProduction || !selectedMachine) {
