@@ -1384,7 +1384,12 @@ function jobIndexFor(jobs) {
   jobIndexCache.set(jobs, index);
   return index;
 }
-function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, alreadyLoaded, itemAliases = []) {
+function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, alreadyLoaded, itemAliases = [], corrugationQtyByJobId) {
+  const jobQty = (production) => {
+    if (source !== "FG") return Number(production.productionOutputQty || 0);
+    if (corrugationQtyByJobId) return corrugationQtyByJobId.get(String(production.id || "").trim()) || 0;
+    return Number(production.prodFromFFG || 0);
+  };
   const source = normalizeOrderItemSource(itemSource);
   const sourceJobs = source === "PHP" ? phpJobs : source === "PLATE" ? plateJobs : productions;
   const targetItemKeys = /* @__PURE__ */ new Set();
@@ -1400,14 +1405,10 @@ function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, p
     if (targetFirm && jobFirm && targetFirm !== jobFirm) return false;
     if (!targetFirm && jobFirm) return false;
     if (isClosedOrTallied(production)) return false;
-    const productionQty = Number(
-      source === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0
-    );
+    const productionQty = jobQty(production);
     return Number.isFinite(productionQty) && productionQty > 0;
   }).map((production) => {
-    const productionQty = Number(
-      source === "FG" ? production.prodFromFFG || 0 : production.productionOutputQty || 0
-    );
+    const productionQty = jobQty(production);
     const loaded = alreadyLoaded.get(normalizeKey(production.id)) || 0;
     return {
       jobId: production.id,
@@ -1451,7 +1452,8 @@ function getPendingLoadingPlanProjections(args) {
       args.phpJobs,
       args.plateJobs,
       loaded,
-      Array.from(itemKeys(item, order))
+      Array.from(itemKeys(item, order)),
+      args.corrugationQtyByJobId
     );
     return [{
       plan,

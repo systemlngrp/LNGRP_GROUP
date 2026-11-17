@@ -14,8 +14,11 @@ import {
   Truck,
   Firm,
   InterFirmPendingInvoice,
-  MaterialIn
+  MaterialIn,
+  ProductionProcessing,
 } from "../types";
+import { jobIdsWithPrintingEntry } from "../lib/productionProcessingProgress";
+import { jobsMissingPrinting } from "../lib/invoicePrintingCheck";
 import {
   FileText, 
   Search, 
@@ -128,6 +131,8 @@ export function PendingInvoicing() {
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [interFirmPending, , , interFirmApi] = useData<InterFirmPendingInvoice>("inter_firm_pending_invoices", [], { firmScope: "all", storageKey: "inter-firm-pending-all-firms" });
   const [materialIns] = useData<MaterialIn>("material_in", [], { firmScope: "all" });
+  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all", storageKey: "production-processing-all-firms", fields: ["id", "productionId", "machineName", "qty"] });
+  const printedJobIds = useMemo(() => jobIdsWithPrintingEntry(processing), [processing]);
 
   const mrrNumberById = useMemo(() => {
     const map = new Map<string, string>();
@@ -949,6 +954,16 @@ export function PendingInvoicing() {
     if (Math.abs(totalInvoicedNow - totalLoaded) > 0.01) {
       alert(`Total quantity in invoice (${totalInvoicedNow.toLocaleString()}) must match total loaded quantity (${totalLoaded.toLocaleString()}).`);
       return;
+    }
+
+    // A new invoice needs every loaded FG job to have a Printing entry
+    // (part or full) in Production Processing. Loading itself is not blocked.
+    if (!editInvoiceId) {
+      const missingPrinting = jobsMissingPrinting(invoiceModal.slips, printedJobIds);
+      if (missingPrinting.length > 0) {
+        alert(`Invoice cannot be saved. Printing is not updated in Production Processing for: ${missingPrinting.join(", ")}.`);
+        return;
+      }
     }
 
     // Item-wise validation: allocations must match item total
