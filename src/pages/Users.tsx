@@ -63,7 +63,7 @@ export function Users() {
   const { user: currentUser } = useAuth();
   const canManage = canManageMasterRecords(currentUser?.role);
   const [users, setUsers, usersLoading, userActions] = useData<User>("users", []);
-  const [settings, setSettings] = useData<Setting>("settings", []);
+  const [settings, , , settingsApi] = useData<Setting>("settings", []);
   const [newDesignation, setNewDesignation] = useState<string | null>(null);
   const [savingDesignation, setSavingDesignation] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -153,7 +153,15 @@ export function Users() {
       setSavingDesignation(true);
       try {
         const next = Array.from(new Set([...parseDesignations(current), name])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-        await setSettings([{ ...current, designations: JSON.stringify(next), updateTimestamp: new Date().toISOString() }, ...settings.slice(1)]);
+        // Send only the designation list: a full settings row from this
+        // screen could carry stale values (e.g. saved column layouts).
+        const response = await fetch("/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${window.localStorage.getItem("authToken") || ""}` },
+          body: JSON.stringify({ id: current.id, designations: JSON.stringify(next), updateTimestamp: new Date().toISOString() }),
+        });
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "Unable to add designation.");
+        await settingsApi.refresh({ force: true });
       } catch (error) {
         alert(error instanceof Error ? error.message : "Unable to add designation.");
         setSavingDesignation(false);
