@@ -66,9 +66,23 @@ export type CoaSourceContext = {
   pdi?: PreDispatchInspection;
   boardline?: BoardLineQcCheck;
   printing?: PrintingQcCheck;
+  item?: AnyRecord;
 };
 
-export function resolveCoaSourceContext(production: Production, companies: Company[], firms: Firm[], orders: Order[], schedules: OrderSchedule[], invoices: Invoice[], invoiceLines: InvoiceLineItem[], pdis: PreDispatchInspection[], boardlineRows: BoardLineQcCheck[], printingRows: PrintingQcCheck[]): CoaSourceContext {
+// Template used for any customer without its own active template.
+export const COMMON_COA_KEY = "COMMON";
+export const COMMON_COA_NAME = "COMMON (all other customers)";
+
+function boardThicknessStandard(flute: string) {
+  const value = flute.toUpperCase().replace(/\s+/g, "");
+  if (value === "A") return "Min 4.8 mm (A-Flute)";
+  if (value === "B+C") return "Min 7 mm (B+C-Flute)";
+  if (value === "B") return "Min 2.8 mm";
+  if (value === "C") return "Min 4.8 mm";
+  return "";
+}
+
+export function resolveCoaSourceContext(production: Production, companies: Company[], firms: Firm[], orders: Order[], schedules: OrderSchedule[], invoices: Invoice[], invoiceLines: InvoiceLineItem[], pdis: PreDispatchInspection[], boardlineRows: BoardLineQcCheck[], printingRows: PrintingQcCheck[], items: AnyRecord[] = []): CoaSourceContext {
   const schedule = schedules.find((value) => id(value.id) === id(production.scheduleId));
   const order = orders.find((value) => id(value.id) === id(schedule?.orderId) || (id(value.companyId) === id((production as AnyRecord).companyId) && id(value.itemId) === id(production.itemId)));
   const companyId = id((production as AnyRecord).companyId || order?.companyId);
@@ -83,11 +97,19 @@ export function resolveCoaSourceContext(production: Production, companies: Compa
   const pdi = pdis.filter((value) => id(value.productionId) === id(production.id) || text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.inspectionDate).localeCompare(id(a.updateTimestamp || a.inspectionDate)))[0];
   const boardline = boardlineRows.filter((value) => text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.timestamp).localeCompare(id(a.updateTimestamp || a.timestamp)))[0];
   const printing = printingRows.filter((value) => text(value.jobNo) === text(production.transactionNo)).sort((a, b) => id(b.updateTimestamp || b.timestamp).localeCompare(id(a.updateTimestamp || a.timestamp)))[0];
-  return { production, company, firm, order, invoice, invoiceLine, pdi, boardline, printing };
+  const itemKeys = [production.itemId, production.npdId].map(id).filter(Boolean);
+  const erp = text(production.erpCode || production.masterErp || order?.erpCode);
+  const item = items.find((value) => itemKeys.includes(id(value.id)) || itemKeys.includes(id(value.npdId)))
+    || (erp ? items.find((value) => text(value.erp) === erp) : undefined);
+  return { production, company, firm, order, invoice, invoiceLine, pdi, boardline, printing, item };
 }
 
 export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date().toISOString().slice(0, 10)): Record<string, string> {
-  const { production, company, firm, order, invoice, invoiceLine, pdi, boardline, printing } = context;
+  const { production, company, firm, order, invoice, invoiceLine, pdi, boardline, printing, item } = context;
+  const job = production as AnyRecord;
+  const flute = text(job.flute || item?.flute);
+  const layerGsm = ["l1", "f1", "l2", "f2", "l3"].map((key) => text(job[key] ?? item?.[key])).filter((value) => value && Number(value) !== 0).join(" / ");
+  const colours = [text(item?.printingColour1 || job.color1), text(item?.printingColour2 || job.color2)].filter(Boolean).join(" & ");
   return {
     coaDate,
     companyName: text(company?.name || (production as AnyRecord).companyName),
@@ -99,6 +121,24 @@ export function buildCoaSourceMap(context: CoaSourceContext, coaDate = new Date(
     itemName: text((production as AnyRecord).itemName || order?.itemId),
     "production.length": sourceValue((production as AnyRecord).length),
     "production.breadth": sourceValue((production as AnyRecord).breadth),
+    "production.height": sourceValue(job.height),
+    "production.boxSize": [job.length, job.breadth, job.height].map(text).filter(Boolean).join(" x "),
+    "pdi.boxSize": [pdi?.lengthId, pdi?.widthId, pdi?.heightId].map(text).filter(Boolean).join(" x "),
+    "production.ply": sourceValue(job.ply || item?.ply),
+    "production.flute": flute,
+    "production.gsm": sourceValue(job.gsm),
+    "production.layerGsm": layerGsm,
+    "production.date": text(job.date).slice(0, 10),
+    "item.colours": colours,
+    "item.csStandard": sourceValue(item?.csKgStd),
+    "item.bsStandard": sourceValue(item?.bsKgCm2Std),
+    "item.stackNorms": sourceValue(item?.stackHeight),
+    "item.weightPack": text(item?.weightPackDetails || item?.weightAndPackDetails || item?.materialWeightInsideInOneBox),
+    "item.compositeGsm": sourceValue(item?.gsmLeastCost || job.gsm),
+    "standard.boardThickness": boardThicknessStandard(flute),
+    "pdi.flapGapCheck": sourceValue((pdi as AnyRecord)?.flapGapCheck),
+    "pdi.jointCheck": sourceValue((pdi as AnyRecord)?.jointPastingDelaminationCheck),
+    "pdi.printingColorCheck": sourceValue((pdi as AnyRecord)?.printingColorCheck),
     invoiceNo: text(invoice?.invoiceNo),
     invoiceQty: sourceValue(invoiceLine?.qty || production.plannedQty || production.qty),
     batchNo: text((production as AnyRecord).batchNo || (production as AnyRecord).lotNo),
@@ -145,6 +185,17 @@ export function getCoaCellValue(templateCell: CoaTemplateLayout["parameterRows"]
   return templateCell.defaultValue || "";
 }
 
+// A template covers its own company plus any listed in layout.applyToCompanyIds.
+// Customers without one fall back to the active COMMON template.
+export function templateCoversCompany(template: CoaTemplate, companyId: string) {
+  const target = id(companyId);
+  if (!target) return false;
+  return id(template.companyId) === target || (template.layout?.applyToCompanyIds || []).some((value) => id(value) === target);
+}
+
 export function activeTemplateForCompany(templates: CoaTemplate[], companyId: string) {
-  return templates.filter((template) => template.status === "Active" && id(template.companyId) === id(companyId)).sort((a, b) => b.version - a.version)[0];
+  const active = templates.filter((template) => template.status === "Active").sort((a, b) => b.version - a.version);
+  return active.find((template) => id(template.companyId) === id(companyId))
+    || active.find((template) => templateCoversCompany(template, companyId))
+    || active.find((template) => id(template.companyId) === COMMON_COA_KEY);
 }
