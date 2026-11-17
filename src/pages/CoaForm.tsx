@@ -8,8 +8,9 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { activeTemplateForCompany, buildCoaSourceMap, buildInitialCellValues, getCoaCellValue, resolveCoaSourceContext, type CoaSourceContext, defaultCoaLayout } from "../lib/coa";
 import { printCoaRecord } from "../lib/coaPrint";
+import { getOrganizationLogoUrl } from "../lib/pdfLogo";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
-import type { BoardLineQcCheck, Company, CoaCellValue, CoaRecord, CoaTemplate, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production } from "../types";
+import type { BoardLineQcCheck, Company, CoaCellValue, CoaRecord, CoaTemplate, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production, Setting } from "../types";
 
 const field = "w-full rounded border-2 border-black bg-white px-3 py-2 text-sm";
 const text = (value: unknown) => String(value ?? "").trim();
@@ -34,6 +35,7 @@ export function CoaForm() {
   const [boardlineRows] = useData<BoardLineQcCheck>("boardline_qc_checks", [], { firmScope: "all" });
   const [printingRows] = useData<PrintingQcCheck>("printing_qc_checks", [], { firmScope: "all" });
   const [templates] = useData<CoaTemplate>("coa-templates", []);
+  const [settings] = useData<Setting>("settings", []);
   const npdItems = useNpdItemsWithoutStock();
   const [records, , , api] = useData<CoaRecord>("coa-records", []);
   const [productionId, setProductionId] = useState("");
@@ -76,7 +78,7 @@ export function CoaForm() {
   const preview = () => {
     const record = buildRecord();
     if (!record) return setMessage("Select a Job No. with a customer that has an active COA template.");
-    printCoaRecord(record, { name: record.firmName || activeFirm?.firmName || "", logo: activeFirm?.logo || "" });
+    printCoaRecord(record, { name: record.firmName || activeFirm?.firmName || "", logo: getOrganizationLogoUrl(settings[0]) });
   };
   const save = async () => {
     if (!production || !context?.company || !templateId) return setMessage("Select a Job No. with a customer that has an active COA template.");

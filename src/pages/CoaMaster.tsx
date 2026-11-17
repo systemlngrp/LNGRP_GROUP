@@ -7,7 +7,8 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { printCoaRecord } from "../lib/coaPrint";
-import type { CoaRecord, Firm } from "../types";
+import type { CoaRecord, Firm, Setting } from "../types";
+import { getOrganizationLogoUrl } from "../lib/pdfLogo";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
@@ -25,6 +26,7 @@ export function CoaMaster() {
   const canManage = canManageMasterRecords(user?.role);
   const [records, , loading, api] = useData<CoaRecord>("coa-records", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
+  const [settings] = useData<Setting>("settings", []);
   const [search, setSearch] = useState("");
   const [company, setCompany] = useState("");
   const [status, setStatus] = useState("");
@@ -65,7 +67,7 @@ export function CoaMaster() {
 
   const issuer = (record: CoaRecord) => {
     const firm = firms.find((value) => value.id === record.firmId);
-    return { name: record.firmName || firm?.firmName || activeFirm?.firmName || "", logo: firm?.logo || activeFirm?.logo || "" };
+    return { name: record.firmName || firm?.firmName || activeFirm?.firmName || "", logo: getOrganizationLogoUrl(settings[0]) };
   };
 
   const changeStatus = async (record: CoaRecord, action: "finalize" | "reopen") => {
