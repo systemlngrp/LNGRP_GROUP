@@ -16,5 +16,6 @@ export const NPD_SYNC_ALLOWED_TAB = String(process.env.NPD_SYNC_ALLOWED_TAB || "
 export const NPD_SYNC_LOG_PREFIX = "[NPD_SYNC]";
 export const TALLY_SYNC_SECRET = String(process.env.TALLY_SYNC_SECRET || "!Office1@").trim();
 export const GEMINI_API_KEY = String(process.env.GEMINI_API_KEY || "").trim();
-export const DEFAULT_GEMINI_MODEL = "gemini-3.6-flash";
+// Newest stable Gemini Flash model (Gemini API docs, Nov 2026).
+export const DEFAULT_GEMINI_MODEL = "gemini-3.8-flash";
 export const APP_BUILD_MARKER = "lngrp-erp-2026-09-08-npd-firm-wise-public-v2";

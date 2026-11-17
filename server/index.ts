@@ -395,7 +395,16 @@ async function migrateReelInventoryToUnitOne(db: mysql.Pool) {
 
 function resolveGeminiModel() {
   const configuredModel = String(process.env.GEMINI_MODEL || "").trim();
-  if (!configuredModel || configuredModel === "gemini-2.5-flash") return DEFAULT_GEMINI_MODEL;
+  if (!configuredModel) return DEFAULT_GEMINI_MODEL;
+  // An older Flash set in the server environment (e.g. gemini-2.5-flash, gemini-3.6-flash)
+  // must not hold the app back: use the newer default instead.
+  const flashVersion = (model: string) => {
+    const match = model.match(/^gemini-(\d+(?:\.\d+)?)-flash$/);
+    return match ? Number(match[1]) : NaN;
+  };
+  const configured = flashVersion(configuredModel);
+  const fallback = flashVersion(DEFAULT_GEMINI_MODEL);
+  if (Number.isFinite(configured) && Number.isFinite(fallback) && configured < fallback) return DEFAULT_GEMINI_MODEL;
   return configuredModel;
 }
 
