@@ -1807,6 +1807,8 @@ export interface WhatsappConfig {
   id: string;
   loginId: string;
   pass?: string;
+  /** Server flag: a real password is stored (the password itself never reaches the browser). */
+  passSaved?: "Yes" | "No";
   groupId: string;
   menu: string;
   message: string;

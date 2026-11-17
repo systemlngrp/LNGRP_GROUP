@@ -11820,7 +11820,7 @@ const createHandlers = (tableName) => {
                     return res.json(sanitized);
                 }
                 if (tableName === "whatsapp_configs") {
-                    const [whatsappRows] = await db.query("SELECT id, loginId, groupId, menu, message, active, updatedBy, updateTimestamp, CASE WHEN pass IS NULL OR pass = '' THEN '' ELSE '********' END AS pass FROM `whatsapp_configs` ORDER BY updateTimestamp DESC, loginId ASC");
+                    const [whatsappRows] = await db.query("SELECT id, loginId, groupId, menu, message, active, updatedBy, updateTimestamp, CASE WHEN pass IS NULL OR pass = '' THEN '' ELSE '********' END AS pass, CASE WHEN pass IS NULL OR TRIM(pass) = '' OR TRIM(pass) = '********' THEN 'No' ELSE 'Yes' END AS passSaved FROM `whatsapp_configs` ORDER BY updateTimestamp DESC, loginId ASC");
                     return res.json(whatsappRows.map((row) => normalizeFetchedRow(tableName, row)));
                 }
                 if (tableName === "materials" && requestFirmId) {
