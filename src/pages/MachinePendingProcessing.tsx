@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect, useCallback, useDeferredValue, use
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
-import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, CheckCircle2, X } from "lucide-react";
+import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, CheckCircle2, X, Filter } from "lucide-react";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
@@ -64,6 +64,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
+  // Filters stay folded until the Filter button is clicked (phones already fold them behind their own icon).
+  const [showFilters, setShowFilters] = useState(false);
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
@@ -428,17 +430,29 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       </div>
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              type="text"
+              placeholder="Search"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowFilters((value) => !value)}
+            aria-expanded={showFilters}
+            title={showFilters ? "Hide filters" : "Show filters"}
+            className={`relative hidden h-[38px] shrink-0 items-center gap-1.5 rounded border-2 px-3 text-xs font-black md:inline-flex ${showFilters ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black hover:bg-slate-100"}`}
+          >
+            <Filter size={15} /> Filter
+            {hasActiveFilters && !showFilters ? <span className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-red-600" aria-label="Filters in use" /> : null}
+          </button>
         </div>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6">
+        <div className={`grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6 ${showFilters ? "grid" : "grid md:hidden"}`}>
           {showMachineFilter ? (
             <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Machine</span><Select compact value={machineFilter} onChange={setMachineFilter} options={machineOptions} placeholder="All" /></div>
           ) : null}
@@ -451,7 +465,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
           </div>
         </div>
-        <div data-mf-actions="true" className="flex justify-end gap-2">
+        <div data-mf-actions="true" className={`flex justify-end gap-2 ${showFilters && hasActiveFilters ? "" : "md:hidden"}`}>
           {hasActiveFilters ? (
             <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
           ) : null}
