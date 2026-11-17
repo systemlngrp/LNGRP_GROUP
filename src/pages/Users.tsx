@@ -63,7 +63,9 @@ export function Users() {
   const { user: currentUser } = useAuth();
   const canManage = canManageMasterRecords(currentUser?.role);
   const [users, setUsers, usersLoading, userActions] = useData<User>("users", []);
-  const [settings] = useData<Setting>("settings", []);
+  const [settings, setSettings] = useData<Setting>("settings", []);
+  const [newDesignation, setNewDesignation] = useState<string | null>(null);
+  const [savingDesignation, setSavingDesignation] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -140,6 +142,27 @@ export function Users() {
     setShowPassword(false);
     setFormData({ userId: "", name: "", mobile: "", email: "", password: "", designation: "", role: roleOptions[0] || "Employee", status: "Active", menuAccess: ["/"] });
     setIsFormOpen(true);
+  };
+
+  const addDesignation = async () => {
+    const name = String(newDesignation || "").trim();
+    const current = settings[0];
+    if (!name || !current) return;
+    const existing = designationOptions.find((value) => value.toLowerCase() === name.toLowerCase());
+    if (!existing) {
+      setSavingDesignation(true);
+      try {
+        const next = Array.from(new Set([...parseDesignations(current), name])).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+        await setSettings([{ ...current, designations: JSON.stringify(next), updateTimestamp: new Date().toISOString() }, ...settings.slice(1)]);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Unable to add designation.");
+        setSavingDesignation(false);
+        return;
+      }
+      setSavingDesignation(false);
+    }
+    updateQcField("designation", existing || name);
+    setNewDesignation(null);
   };
 
   const updateQcField = (field: "name" | "designation", value: string) => {
@@ -421,19 +444,43 @@ export function Users() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex flex-col space-y-1">
                 <label className="font-bold text-black text-sm">Designation</label>
-                <select
-                  value={formData.designation}
-                  onChange={(e) => updateQcField("designation", e.target.value)}
-                  disabled={isViewMode}
-                  className="border-2 border-black rounded p-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-500"
-                >
-                  <option value="">{designationOptions.length === 0 ? "No designations configured" : "Select designation"}</option>
-                  {designationOptions.map((designation) => (
-                    <option key={designation} value={designation}>
-                      {designation}
-                    </option>
-                  ))}
-                </select>
+                {newDesignation !== null ? (
+                  <div className="flex gap-2">
+                    <input
+                      autoFocus
+                      value={newDesignation}
+                      onChange={(e) => setNewDesignation(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addDesignation(); } if (e.key === "Escape") setNewDesignation(null); }}
+                      placeholder="New designation"
+                      className="min-w-0 flex-1 border-2 border-black rounded p-3 text-black focus:outline-none focus:border-indigo-600"
+                    />
+                    <button type="button" onClick={() => void addDesignation()} disabled={savingDesignation || !newDesignation.trim()} className="rounded border-2 border-black bg-indigo-600 px-3 font-bold text-white disabled:opacity-50">
+                      {savingDesignation ? <Spinner size={16} className="text-white" /> : "Add"}
+                    </button>
+                    <button type="button" onClick={() => setNewDesignation(null)} className="rounded border-2 border-black bg-white px-3 font-bold">Cancel</button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.designation}
+                      onChange={(e) => updateQcField("designation", e.target.value)}
+                      disabled={isViewMode}
+                      className="min-w-0 flex-1 border-2 border-black rounded p-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600 disabled:bg-slate-100 disabled:text-slate-500"
+                    >
+                      <option value="">{designationOptions.length === 0 ? "No designations configured" : "Select designation"}</option>
+                      {designationOptions.map((designation) => (
+                        <option key={designation} value={designation}>
+                          {designation}
+                        </option>
+                      ))}
+                    </select>
+                    {!isViewMode && settings[0] ? (
+                      <button type="button" onClick={() => setNewDesignation("")} title="Add new designation" className="rounded border-2 border-black bg-indigo-600 px-3 text-white">
+                        <Plus size={18} />
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col space-y-1">
                 <label className="font-bold text-black text-sm">Role *</label>
