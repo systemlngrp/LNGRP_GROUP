@@ -11165,7 +11165,7 @@ async function processBoardlineWhatsappDelivery(db: mysql.Pool, checkId: string)
     }
 
     const [checkRows] = await db.query("SELECT * FROM `boardline_qc_checks` WHERE id = ? LIMIT 1", [checkId]);
-    const check = (checkRows as any[])[0] || {};
+    const check = await withNpdArtwork(db, (checkRows as any[])[0] || {}, "printingArtwork");
     const result = await sendWhatsappBoardlineMessage(
       { loginId: String(config.loginId || ""), pass: String(config.pass || ""), groupId: String(config.groupId || ""), message: String(config.message || "") },
       check,
@@ -11188,6 +11188,26 @@ async function processBoardlineWhatsappDelivery(db: mysql.Pool, checkId: string)
       console.warn("[WHATSAPP] Could not store Boardline delivery status:", (statusError as Error).message);
     }
     return delivery;
+  }
+}
+
+// QC checks saved before the artwork reached the form carry a blank artwork;
+// the WhatsApp message then falls back to the NPD item's artwork link (by ERP).
+async function withNpdArtwork(db: mysql.Pool, check: any, field: "standardArtwork" | "printingArtwork") {
+  if (String(check?.[field] ?? "").trim()) return check;
+  const erp = String(check?.erp ?? "").trim();
+  if (!erp) return check;
+  try {
+    const [rows] = await db.query(
+      "SELECT artwork, artworkUpload FROM `npd` WHERE TRIM(erp) = ? AND (COALESCE(TRIM(artwork), '') <> '' OR COALESCE(TRIM(artworkUpload), '') <> '') LIMIT 1",
+      [erp]
+    );
+    const row = (rows as any[])[0];
+    const artwork = String(row?.artwork || row?.artworkUpload || "").trim();
+    return artwork ? { ...check, [field]: artwork } : check;
+  } catch (error) {
+    console.warn("[WHATSAPP] Could not read NPD artwork:", (error as Error).message);
+    return check;
   }
 }
 
@@ -11216,7 +11236,7 @@ async function processPrintingWhatsappDelivery(db: mysql.Pool, checkId: string):
     }
 
     const [checkRows] = await db.query("SELECT * FROM `printing_qc_checks` WHERE id = ? LIMIT 1", [checkId]);
-    const check = (checkRows as any[])[0] || {};
+    const check = await withNpdArtwork(db, (checkRows as any[])[0] || {}, "standardArtwork");
     const result = await sendWhatsappPrintingMessage(
       { loginId: String(config.loginId || ""), pass: String(config.pass || ""), groupId: String(config.groupId || ""), message: String(config.message || "") },
       check,

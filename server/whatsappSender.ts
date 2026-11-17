@@ -256,11 +256,30 @@ export function resolveWhatsappTemplate(template: string, complaint: WhatsappCom
   return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
 }
 
+// Sampling Plan Qty is a count of boxes: show "2", never "2.00".
+export function formatSamplingPlanQty(value: unknown) {
+  const raw = text(value);
+  if (!raw) return "";
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? String(Math.round(numeric)) : raw;
+}
+
+// Artwork may be a full link (Google Drive etc.) or an uploaded file name;
+// file names become a link to the app's /uploads so the group can open it.
+export function formatArtworkLink(value: unknown, appPublicUrl = process.env.APP_PUBLIC_URL || "https://system.lngrp.in") {
+  const raw = text(value);
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw) || /\s/.test(raw)) return raw;
+  return buildPhotoUrl(raw, appPublicUrl);
+}
+
 export function resolveWhatsappBoardlineTemplate(template: string, record: WhatsappBoardlineRecord) {
   const values: Record<string, string> = Object.fromEntries(
     Object.entries(record).map(([key, value]) => [key, text(value)])
   );
   values.samplingCheckNo = text(record.samplingCheckNo) || text(record.checkNo);
+  values.samplingPlanQty = formatSamplingPlanQty(record.samplingPlanQty);
+  values.printingArtwork = formatArtworkLink(record.printingArtwork);
   return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
 }
 
@@ -276,6 +295,8 @@ export function resolveWhatsappPrintingTemplate(template: string, record: Whatsa
     Object.entries(record).map(([key, value]) => [key, text(value)])
   );
   values.samplingCheckNo = text(record.samplingCheckNo) || text(record.checkNo);
+  values.samplingPlanQty = formatSamplingPlanQty(record.samplingPlanQty);
+  values.standardArtwork = formatArtworkLink(record.standardArtwork);
   return text(template).replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
 }
 
