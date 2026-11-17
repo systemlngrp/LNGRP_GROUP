@@ -485,7 +485,7 @@ export function MaterialInMaster() {
                       <QrCode size={16} className="mr-1" /> Reel Labels
                     </button>
                     {reelLabelMenuId === entry.id ? (
-                      <div className="absolute left-0 top-full z-20 mt-2 w-28 rounded border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                      <div className="absolute left-0 top-full z-20 mt-2 w-40 rounded border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                         <button
                           type="button"
                           onClick={async () => {
@@ -504,7 +504,7 @@ export function MaterialInMaster() {
                           }}
                           className="block w-full px-3 py-2 text-left text-xs font-bold uppercase hover:bg-slate-100"
                         >
-                          A3
+                          Label 66×67 mm
                         </button>
                       </div>
                     ) : null}
@@ -624,7 +624,7 @@ export function MaterialInMaster() {
                             <QrCode size={16} className="mr-1" /> Reel Labels
                           </button>
                           {reelLabelMenuId === entry.id ? (
-                            <div className="absolute right-0 top-full z-20 mt-2 w-28 rounded border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                            <div className="absolute right-0 top-full z-20 mt-2 w-40 rounded border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                               <button
                                 type="button"
                                 onClick={async () => {
@@ -643,7 +643,7 @@ export function MaterialInMaster() {
                                 }}
                                 className="block w-full px-3 py-2 text-left text-xs font-bold uppercase hover:bg-slate-100"
                               >
-                                A3
+                                Label 66×67 mm
                               </button>
                             </div>
                           ) : null}

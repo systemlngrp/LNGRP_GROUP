@@ -384,7 +384,7 @@ export function MrrApprovals() {
               <QrCode size={icon} />
             </button>
             {reelLabelMenuId === m.id ? (
-              <div className="absolute right-0 top-full z-40 mt-1 w-24 overflow-hidden rounded-md border-2 border-black bg-white shadow-lg">
+              <div className="absolute right-0 top-full z-40 mt-1 w-36 overflow-hidden rounded-md border-2 border-black bg-white shadow-lg">
                 {(["A4", "A3"] as const).map((paper) => (
                   <button
                     key={paper}
@@ -395,7 +395,7 @@ export function MrrApprovals() {
                     }}
                     className="block w-full border-b border-slate-200 px-3 py-2 text-left text-xs font-bold last:border-b-0 hover:bg-slate-100"
                   >
-                    {paper}
+                    {paper === "A3" ? "Label 66×67 mm" : paper}
                   </button>
                 ))}
               </div>

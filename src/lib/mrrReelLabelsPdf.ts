@@ -95,10 +95,12 @@ export async function downloadMrrReelLabelsPdf({
   }
 
   const isA3 = paperSize === "A3";
-  const doc = isA3 ? new jsPDF("p", "mm", "a3") : new jsPDF("p", "mm", "a4");
+  // "A3" option = small reel label, the size of the old sheet script: 250 x 255 px per page (11 px margin).
+  const PX = 25.4 / 96;
+  const LABEL_PAGE: [number, number] = [250 * PX, 255 * PX];
+  const doc = isA3 ? new jsPDF({ orientation: "p", unit: "mm", format: LABEL_PAGE }) : new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const slotsPerPage = 1;
 
   let logoDataUrl = "";
   if (setting?.organizationLogo) {
@@ -295,156 +297,114 @@ export async function downloadMrrReelLabelsPdf({
     }
   };
 
-  const drawLabelA3 = async (row: (typeof labels)[number], slotX: number, slotY: number, slotW: number, slotH: number) => {
-    const pageMargin = 12;
-    const cardX = slotX + pageMargin;
-    const cardY = slotY + pageMargin;
-    const cardW = slotW - pageMargin * 2;
-    const cardH = slotH - pageMargin * 2;
+  // Same layout as the sheet script (MRR FORM): logo + LAXMI NARAYAN GROUP, Doc / Date / Code,
+  // supplier, specs, then GSM / R/NO. / Weight / Supp-Reel with the QR in a box on the right.
+  const drawLabelSmall = async (row: (typeof labels)[number]) => {
+    const [pageW, pageH] = LABEL_PAGE;
+    const margin = 11 * PX;
+    const pad = 8 * PX;
+    const cardX = margin;
+    const cardY = margin;
+    const cardW = pageW - margin * 2;
+    const cardH = pageH - margin * 2;
+    const x0 = cardX + pad;
+    const innerW = cardW - pad * 2;
+    const pt = (px: number) => px * 0.75; // CSS px -> font points
+    const lineMm = (fontPx: number, ratio = 1.2) => fontPx * PX * ratio;
 
     doc.setDrawColor(0);
-    doc.setLineWidth(0.25);
+    doc.setLineWidth(0.2);
     doc.rect(cardX, cardY, cardW, cardH);
 
-    const contentX = cardX + 10;
-    const contentY = cardY + 10;
-    const contentW = cardW - 20;
-
-    const logoW = Math.min(42, contentW * 0.2);
+    // Header: logo (50 px wide) and group name (12 px bold).
+    let y = cardY + pad;
+    const logoW = 50 * PX;
     const logoH = logoW * 0.53;
-    const titleX = contentX + logoW + 8;
-    const titleW = contentW - logoW - 8;
-
-    let y = contentY;
-
-    if (logoDataUrl) {
-      doc.addImage(logoDataUrl, "PNG", contentX, y, logoW, logoH, undefined, "FAST");
-    }
-
-    const orgTitle = toTitleCase(organizationName);
-    let titleFontSize = 22;
-    const titleMaxWidth = titleW;
+    if (logoDataUrl) doc.addImage(logoDataUrl, "PNG", x0, y, logoW, logoH, undefined, "FAST");
+    const nameX = x0 + (logoDataUrl ? logoW + 8 * PX : 0);
+    const nameW = x0 + innerW - nameX;
+    const groupName = "LAXMI NARAYAN GROUP";
+    let nameSize = pt(12);
     doc.setFont("helvetica", "bold");
-    while (titleFontSize > 13) {
-      doc.setFontSize(titleFontSize);
-      if (doc.getTextWidth(orgTitle) <= titleMaxWidth) break;
-      titleFontSize -= 1;
-    }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(titleFontSize);
+    doc.setFontSize(nameSize);
+    while (nameSize > 5 && doc.getTextWidth(groupName) > nameW) { nameSize -= 0.25; doc.setFontSize(nameSize); }
     doc.setTextColor(0);
-    doc.text(orgTitle, titleX + titleW / 2, y + logoH * 0.62, { align: "center" });
+    doc.text(groupName, nameX, y + logoH / 2 + nameSize * 0.3528 * 0.35);
+    y += Math.max(logoH, lineMm(12)) + 6 * PX;
 
-    y += Math.max(logoH, 12) + 7;
-
-    const infoSize = 12;
-    const infoCols = 3;
-    const infoColW = contentW / infoCols;
-    const infoLabelW = 10;
-    const infoY = y;
-
+    // Doc / Date / Code (7 px), spread across the width.
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(infoSize);
-    doc.setTextColor(70);
-    ["Doc", "Date", "Code"].forEach((label, i) => {
-      const colX = contentX + i * infoColW;
-      doc.text(`${label}:`, colX, infoY);
-    });
+    doc.setFontSize(pt(7));
+    y += lineMm(7, 0.9);
+    // Space-between like the script: Code at the right, Date before it, Doc gets the rest.
+    const gap = 2 * PX * 2;
+    const codeText = `Code: ${firstNonEmpty(row.code)}`;
+    const dateText = `Date: ${row.docDate}`;
+    const codeW = doc.getTextWidth(codeText);
+    const dateW = doc.getTextWidth(dateText);
+    const docText = clipSingleLine(doc, `Doc: ${row.docNo}`, Math.max(8, innerW - codeW - dateW - gap * 2));
+    const docW = doc.getTextWidth(docText);
+    doc.text(docText, x0, y);
+    doc.text(codeText, x0 + innerW, y, { align: "right" });
+    const middleStart = x0 + docW + gap;
+    const middleEnd = x0 + innerW - codeW - gap;
+    doc.text(dateText, (middleStart + middleEnd) / 2, y, { align: "center" });
+    y += 2 * PX;
 
+    // Supplier (9 px bold) and specs (9 px).
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(0);
-    const infoVals = [row.docNo, row.docDate, firstNonEmpty(row.code)];
-    infoVals.forEach((value, i) => {
-      const colX = contentX + i * infoColW;
-      const clipped = clipSingleLine(doc, value, infoColW - infoLabelW - 1);
-      doc.text(clipped, colX + infoLabelW, infoY);
-    });
-
-    y += 9;
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(17);
-    const supplierLines = doc.splitTextToSize(toTitleCase(row.supplierName), contentW - 6).slice(0, 2);
-    doc.text(supplierLines, cardX + cardW / 2, y, { align: "center" });
-    y += supplierLines.length * 7.2;
-
+    doc.setFontSize(pt(9));
+    const supplierLines = doc.splitTextToSize(toTitleCase(row.supplierName), innerW).slice(0, 2);
+    y += 4 * PX + lineMm(9, 0.8);
+    doc.text(supplierLines, x0, y);
+    y += (supplierLines.length - 1) * lineMm(9, 1.15) + lineMm(9, 1.15);
+    doc.setFont("helvetica", "normal");
     const specText = `Size: ${firstNonEmpty(row.sizeCm)} CM X GSM: ${firstNonEmpty(row.gsm)} X BF: ${firstNonEmpty(row.bf)}`;
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(13);
-    const specLines = doc.splitTextToSize(specText, contentW - 6).slice(0, 2);
-    doc.text(specLines, cardX + cardW / 2, y, { align: "center" });
-    y += specLines.length * 5.8 + 6;
+    doc.text(clipSingleLine(doc, specText, innerW), x0, y);
+    y += 6 * PX + 2 * PX;
 
-    const bodyTopY = y;
-    const qrAreaW = contentW * 0.45;
-    const leftAreaW = contentW - qrAreaW - 10;
-    const qrAreaX = contentX + leftAreaW + 10;
-    const qrAreaH = Math.max(100, cardY + cardH - bodyTopY - 14);
+    // Details (10 px) left, QR box (90 px) right.
+    const qrBox = 90 * PX;
+    const qrBoxX = x0 + innerW - qrBox;
+    const detailTop = y;
+    doc.setFontSize(pt(10));
+    const detailW = qrBoxX - x0 - 2 * PX;
+    [
+      `GSM.: ${firstNonEmpty(row.gsm)}`,
+      `R/NO.: ${row.reelNo}`,
+      `Weight.: ${formatWeight(row.weightKg)}`,
+      `Supp-Reel.: ${firstNonEmpty(row.suppReel)}`,
+    ].forEach((text, i) => {
+      doc.text(clipSingleLine(doc, text, detailW), x0, detailTop + lineMm(10, 0.85) + i * lineMm(10, 1.25));
+    });
 
-    const detailFont = 16;
-    const rowGap = 11;
-    const labelW = 36;
-    const detailStartY = bodyTopY + 2;
-
-    const drawDetail = (label: string, value: string, rowIndex: number) => {
-      const textY = detailStartY + rowIndex * rowGap;
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(detailFont);
-      doc.setTextColor(45);
-      doc.text(`${label}:`, contentX, textY);
-
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(0);
-      const maxW = leftAreaW - labelW - 2;
-      const clipped = clipSingleLine(doc, value, maxW);
-      doc.text(clipped, contentX + labelW, textY);
-    };
-
-    drawDetail("GSM.", firstNonEmpty(row.gsm), 0);
-    drawDetail("R/NO.", row.reelNo, 1);
-    drawDetail("Weight.", formatWeight(row.weightKg), 2);
-    drawDetail("Supp-Reel.", firstNonEmpty(row.suppReel), 3);
-
-    const qrAvailW = qrAreaW;
-    const qrAvailH = qrAreaH;
-    const qrSize = Math.max(36, Math.min(qrAvailW, qrAvailH));
-    const qrX = qrAreaX + (qrAreaW - qrSize) / 2;
-    const qrY = bodyTopY + (qrAreaH - qrSize) / 2;
-
+    doc.rect(qrBoxX, detailTop, qrBox, qrBox);
     try {
-      const qrDataUrl = await QRCode.toDataURL(row.qrPayload, {
-        errorCorrectionLevel: "M",
-        margin: 1,
-        width: 1000,
-        color: {
-          dark: "#000000",
-          light: "#ffffff",
-        },
-      });
-      doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize, undefined, "FAST");
-
+      const qrDataUrl = await QRCode.toDataURL(row.qrPayload, { errorCorrectionLevel: "M", margin: 1, width: 600, color: { dark: "#000000", light: "#ffffff" } });
+      const qrSize = qrBox - 4 * PX;
+      doc.addImage(qrDataUrl, "PNG", qrBoxX + (qrBox - qrSize) / 2, detailTop + (qrBox - qrSize) / 2, qrSize, qrSize, undefined, "FAST");
     } catch (error) {
       console.warn("QR generation failed", error);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.setTextColor(120, 0, 0);
-      doc.text("QR Not Available", qrAreaX + qrAreaW / 2, bodyTopY + qrAreaH / 2, { align: "center" });
+      doc.setFontSize(pt(8));
+      doc.setTextColor(176, 0, 32);
+      doc.text("QR Not Available", qrBoxX + qrBox / 2, detailTop + qrBox / 2, { align: "center" });
+      doc.setTextColor(0);
     }
   };
 
   for (let index = 0; index < labels.length; index += 1) {
     const row = labels[index];
     if (isA3) {
-      if (index % slotsPerPage === 0 && index > 0) doc.addPage();
-      await drawLabelA3(row, 0, 0, pageWidth, pageHeight);
+      if (index > 0) doc.addPage(LABEL_PAGE, "p");
+      await drawLabelSmall(row);
     } else {
       if (index > 0) doc.addPage();
       await drawLabelA4(row, 0, 0, pageWidth, pageHeight);
     }
   }
 
-  const suffix = isA3 ? "A3" : "A4";
+  const suffix = isA3 ? "Label" : "A4";
   doc.save(`${safeFileName(`MRR_Reel_Labels_${mrr.transactionNo}_${suffix}`)}.pdf`);
   return { count: labels.length, warnings };
 }
