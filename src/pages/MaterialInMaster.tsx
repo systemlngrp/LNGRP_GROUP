@@ -90,9 +90,16 @@ export function MaterialInMaster() {
     }
 
     try {
+      // The list does not load packing slips (too many rows); fetch this MRR's reels now.
+      const response = await fetch(`/api/material-in/${encodeURIComponent(mrr.id)}/packing-slips`, {
+        headers: { Authorization: `Bearer ${window.localStorage.getItem("authToken") || ""}` },
+        cache: "no-store",
+      });
+      const fetched = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(fetched)) throw new Error((fetched as any)?.error || `Could not load the reels of ${mrr.transactionNo}.`);
       const result = await downloadMrrReelLabelsPdf({
         mrr,
-        packingSlips,
+        packingSlips: fetched as MaterialInPackingSlip[],
         materials,
         suppliers,
         companies,

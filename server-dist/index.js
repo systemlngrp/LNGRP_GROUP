@@ -1496,6 +1496,23 @@ function extractJsonObject(text) {
         return candidate;
     return candidate.slice(start, end + 1);
 }
+// Packing slips (reels) of one MRR, for printing reel labels from the MRR list
+// without loading the whole packing-slip table.
+app.get("/api/material-in/:id/packing-slips", async (req, res) => {
+    const user = await getRequestUser(req);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    const db = await getPool();
+    if (!db)
+        return res.status(500).json({ error: "DB connection not available" });
+    try {
+        const [rows] = await db.query("SELECT * FROM `material_in_packing_slips` WHERE materialInId = ?", [String(req.params.id || "")]);
+        return res.json(rows.map((row) => normalizeFetchedRow("material_in_packing_slips", row)));
+    }
+    catch (error) {
+        return res.status(500).json({ error: error.message || "Unable to load packing slips." });
+    }
+});
 // Admin check for AI Fetch MRR: one tiny text request, reports time or the exact error.
 app.get("/api/admin/ai-check", async (req, res) => {
     const user = await getRequestUser(req);
