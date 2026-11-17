@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle, FileText, Plus, Trash2, Upload, Download, Wand2, X } from "lucide-react";
+import { resolveReelColor } from "../lib/reelColor";
 import { useConfirm } from "../components/ConfirmDialog";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
 import {
@@ -148,7 +149,6 @@ type ReelUploadRow = {
   invoiceRate?: number;
 };
 
-const AI_REEL_COLORS = ["Natural", "LG", "Duplex"] as const;
 
 function roundCurrencyValue(value: number) {
   return Number(Number(value || 0).toFixed(4));
@@ -744,14 +744,9 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const normalizeForAiMatch = (value?: string | number | null) =>
     normalizeMatchText(value).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 
-  const normalizeOriginalReelColor = (value?: string | number | null) => {
-    const text = String(value ?? "").trim();
-    if (!text) return "";
-    if (/(^|[^a-z0-9])ns([^a-z0-9]|$)/i.test(text) || /^natural$/i.test(text)) return "Natural";
-    if (/(^|[^a-z0-9])lg([^a-z0-9]|$)/i.test(text)) return "LG";
-    if (/(^|[^a-z0-9])duplex([^a-z0-9]|$)/i.test(text)) return "Duplex";
-    return "";
-  };
+  // Reel colour as its Color Master code (Natural -> NS, Gold -> GY); blank when not found.
+  const colorMasterNames = useMemo(() => colors.map((color) => String(color.name || "").trim()).filter(Boolean), [colors]);
+  const normalizeOriginalReelColor = (value?: string | number | null) => resolveReelColor(value, colorMasterNames);
 
   const getOriginalAiReelColor = (line: AiMrrLine) => {
     const candidates = [
@@ -939,7 +934,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
         return { line: lineForMatch, index, status: "missing", reason: "Reel Size, GSM, BF, and Color are required before matching." };
       }
       if (expectedType === "Reel" && !hasValidReelColor(lineForMatch)) {
-        return { line: lineForMatch, index, status: "missing", reason: "Original color not found in invoice." };
+        return { line: lineForMatch, index, status: "missing", reason: line.color ? `Color "${line.color}" is not in Color Master (${colorMasterNames.join(" / ") || "empty"}).` : "Original color not found in invoice." };
       }
       const material = findAiMaterial(lineForMatch);
       if (!material) {
@@ -956,7 +951,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       }
       return { line: lineForMatch, index, material, po, status: "matched", reason: expectedType === "Reel" ? "Matched by Size/GSM/BF/Color." : "Matched." };
     });
-  }, [aiDraft, materials, purchaseOrders, purchaseOrderLines, receivedQtyByPoLineId, aiMatchedSupplier?.id]);
+  }, [aiDraft, materials, purchaseOrders, purchaseOrderLines, receivedQtyByPoLineId, aiMatchedSupplier?.id, colorMasterNames]);
 
   const missingAiLineMatches = useMemo(
     () => aiLineMatches.filter((match) => match.status === "missing"),
@@ -1069,8 +1064,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   };
 
   const colorOptions = useMemo(
-    () => AI_REEL_COLORS.map((color) => ({ value: color, label: color })),
-    []
+    () => colorMasterNames.map((color) => ({ value: color, label: color })),
+    [colorMasterNames]
   );
   const getPurchaseOrderLine = (poLineId: string) =>
     purchaseOrderLines.find((line) => line.id === poLineId);
@@ -1851,7 +1846,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     const reelGroup = materialGroups.find((group) => normalizeMatchText(group.name) === "reel");
     const suggestedGroup = materialGroups.find((group) => normalizeForAiMatch(group.name) === normalizeForAiMatch(line.materialGroupName));
     const aiColorName = getOriginalAiReelColor(line);
-    const matchedColor = colors.find((color) => normalizeMatchText(color.name) === normalizeMatchText(aiColorName));
+    const matchedColor = colors.find((color) => normalizeMatchText(color.name) === normalizeMatchText(normalizeOriginalReelColor(aiColorName)));
     return {
       lineIndex: match.index,
       type,
@@ -1924,7 +1919,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     if (!form.materialGroupId) errors.materialGroupId = "Required";
     if (!form.uom.trim()) errors.uom = "Required";
     if (form.type === "Reel") {
-      if (!normalizeOriginalReelColor(form.color)) errors.color = "Use Natural, LG or Duplex";
+      if (!normalizeOriginalReelColor(form.color)) errors.color = "Pick a colour from Color Master";
       if (!Number.isFinite(size) || size <= 0) errors.size = "Required";
       if (!Number.isFinite(gsm) || gsm <= 0) errors.gsm = "Required";
       if (!Number.isFinite(bf) || bf <= 0) errors.bf = "Required";
