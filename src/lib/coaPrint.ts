@@ -8,8 +8,12 @@ const cellValue = (record: CoaRecord, cell: CoaTemplateCell) => {
 
 function renderRows(record: CoaRecord, rows: CoaTemplateRow[]) {
   return rows.map((row) => `<tr>${row.cells.map((cell) => {
+    // Data cells are tinted only while empty (a reminder to fill them);
+    // filled cells print white. Label/header cells keep their colour.
+    const value = String(cellValue(record, cell) ?? "").trim();
+    const background = cell.kind === "static" || !value ? cell.background : "";
     const styles = [
-      cell.background ? `background:${cell.background}` : "",
+      background ? `background:${background}` : "",
       cell.color ? `color:${cell.color}` : "",
       cell.bold ? "font-weight:700" : "",
       cell.italic ? "font-style:italic" : "",
