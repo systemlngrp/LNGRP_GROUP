@@ -15567,6 +15567,50 @@ app.post("/api/admin/inter-firm/remove-steps", requireAuth, async (req, res) => 
   }
 });
 
+// Move a purchase order that was raised under the wrong firm to another firm. The PO gets the
+// next number of the target firm's PO series (same counter as a new PO). Refused once any MRR
+// is linked to it. Dry run unless apply === true.
+app.post("/api/admin/purchase-orders/:id/move-firm", requireAuth, async (req, res) => {
+  const user = await getRequestUser(req);
+  if (!user || String(user.role || "").trim().toLowerCase() !== "admin") return res.status(403).json({ error: "Admin only." });
+  const poId = String(req.params.id || "").trim();
+  const targetFirmId = String(req.body?.firmId || "").trim();
+  const apply = req.body?.apply === true;
+  const db = await getPool();
+  if (!db) return res.status(500).json({ error: "DB connection not available" });
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [poRows] = await conn.query("SELECT id, poNo, firmId, poDate FROM `purchase_orders` WHERE id = ? FOR UPDATE", [poId]);
+    const po = (poRows as any[])[0];
+    if (!po) throw new Error("Purchase order not found.");
+    const [firmRows] = await conn.query("SELECT id FROM `firms` WHERE id = ? LIMIT 1", [targetFirmId]);
+    if (!(firmRows as any[]).length) throw new Error("Target firm not found.");
+    if (String(po.firmId || "") === targetFirmId) throw new Error("The purchase order is already in that firm.");
+    const [lineRows] = await conn.query("SELECT id FROM `purchase_order_lines` WHERE purchaseOrderId = ?", [poId]);
+    const linkIds = [poId, String(po.poNo || ""), ...(lineRows as any[]).map((row) => String(row.id))].filter(Boolean);
+    const [mrrRows] = await conn.query(
+      `SELECT transactionNo FROM \`material_in\` WHERE ${linkIds.map(() => "CAST(lines AS CHAR) LIKE ?").join(" OR ")} LIMIT 5`,
+      linkIds.map((value) => `%${value}%`)
+    );
+    if ((mrrRows as any[]).length) throw new Error(`MRRs are linked to this PO: ${(mrrRows as any[]).map((r) => r.transactionNo).join(", ")}.`);
+    const newPoNo = apply ? await generateFirmDocumentNo(conn, targetFirmId, "PO", String(po.poDate || "")) : `(next ${await getFirmDocumentPrefix(conn, targetFirmId)}/PO number)`;
+    if (apply) {
+      await conn.query("UPDATE `purchase_orders` SET firmId = ?, poNo = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [targetFirmId, newPoNo, String(user.userId || user.name || "admin"), new Date().toISOString(), poId]);
+      await conn.commit();
+    } else {
+      await conn.rollback();
+    }
+    console.log("[PO] move-firm", { by: user.userId || user.name, poId, from: po.firmId, to: targetFirmId, oldPoNo: po.poNo, newPoNo, applied: apply });
+    return res.json({ applied: apply, oldPoNo: po.poNo, newPoNo, fromFirmId: po.firmId, toFirmId: targetFirmId });
+  } catch (error) {
+    await conn.rollback();
+    return res.status(400).json({ error: (error as Error).message });
+  } finally {
+    conn.release();
+  }
+});
+
 app.post("/api/admin/document-number-problems/repair", requireAuth, async (req, res) => {
   try {
     const user = await getRequestUser(req);
