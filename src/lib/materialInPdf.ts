@@ -27,7 +27,25 @@ function getPageSize(doc: jsPDF) {
   };
 }
 
-export async function downloadMaterialInPdf({
+type MaterialInPdfInput = {
+  mrr: MaterialIn;
+  materials: Material[];
+  npdItems: Item[];
+  services?: Service[];
+  suppliers: Supplier[];
+  companies?: Company[];
+  setting?: Setting | null;
+  firms?: Firm[];
+  packingSlips?: MaterialInPackingSlip[];
+};
+
+export async function downloadMaterialInPdf(input: MaterialInPdfInput) {
+  const doc = await buildMaterialInPdf(input);
+  doc.save(`MRR_${input.mrr.transactionNo}.pdf`);
+}
+
+// Builds the MRR PDF without saving it, so a form can show it as a preview.
+export async function buildMaterialInPdf({
   mrr,
   materials,
   npdItems,
@@ -47,7 +65,7 @@ export async function downloadMaterialInPdf({
   setting?: Setting | null;
   firms?: Firm[];
   packingSlips?: MaterialInPackingSlip[];
-}) {
+}): Promise<jsPDF> {
   const doc = new jsPDF("p", "mm", "a4");
   const pageSize = getPageSize(doc);
   const margin = { left: 10, right: 10, top: 10, bottom: 14 };
@@ -355,5 +373,5 @@ export async function downloadMaterialInPdf({
     if (pageNumber === pageCount) doc.text(generatedText, margin.left, pageSize.height - 7);
   }
 
-  doc.save(`MRR_${mrr.transactionNo}.pdf`);
+  return doc;
 }

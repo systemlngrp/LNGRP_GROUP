@@ -38,7 +38,7 @@ import { applySupplyTypeTaxRates, calculateNetSupplierPayable, normalizeInvoiceC
 import { getGatePassLinesWithReturns } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
 import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/materialInPoMandatory";
-import { downloadMaterialInPdf } from "../lib/materialInPdf";
+import { buildMaterialInPdf, downloadMaterialInPdf } from "../lib/materialInPdf";
 import { formatOurReelNo as formatReelNo, getNextReelNumber } from "../lib/materialNumbering";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { MATERIAL_IN_SUB_TYPES, getMaterialInSubTypeLedger, isValidMaterialInSubType, normalizeMaterialInSubType } from "../lib/materialInSubTypes";
@@ -225,6 +225,11 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   // Preview before save: Save opens the preview; "Confirm & Save" submits the form.
   const formRef = useRef<HTMLFormElement | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  // MRR preview: the same PDF as the saved MRR, and a "Checked & Found Correct" tick before Save.
+  const [previewPdfUrl, setPreviewPdfUrl] = useState("");
+  const [previewPdfError, setPreviewPdfError] = useState("");
+  const [previewChecked, setPreviewChecked] = useState(false);
+  const previewConfirmedRef = useRef(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiFiles, setAiFiles] = useState<AiUploadFile[]>([]);
@@ -2289,37 +2294,92 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     }
     setRoundOff(nextRoundOff ? nextRoundOff : "");
   };
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firmId || !selectedFirm) {
-      alert("Please select a valid Firm.");
-      return;
+  // Draws the MRR PDF from what is on the form right now (nothing is saved).
+  const openMrrPreview = async () => {
+    setPreviewChecked(false);
+    setPreviewPdfError("");
+    setPreviewPdfUrl((old) => { if (old) URL.revokeObjectURL(old); return ""; });
+    setShowPreview(true);
+    try {
+      const draftId = editingEntry?.id || "mrr-preview";
+      const draftLines = buildLinesForSubmit();
+      const summary = summarizeMaterialInLines(
+        draftLines,
+        insurance,
+        otherCharges,
+        roundOff,
+        { expenseCGST: Number(expenseCGST || 0), expenseSGST: Number(expenseSGST || 0), expenseIGST: Number(expenseIGST || 0) },
+        { invoiceCurrency: normalizedInvoiceCurrency, exchangeRate: isUsdInvoice ? numericExchangeRate : undefined },
+      );
+      const draftTds = isDirectService ? normalizeTdsAmount(tdsAmount, summary.totalAmount) : undefined;
+      const draft = {
+        ...(editingEntry || {}),
+        id: draftId,
+        firmId,
+        firmName: selectedFirm?.firmName,
+        transactionNo: editingEntry?.transactionNo || "Number on save",
+        mrrType: isDirectService ? "Direct Service" : mrrType,
+        gateEntryNo: editingEntry?.gateEntryNo || linkedGateEntry?.gateEntryNo,
+        date,
+        invoiceNo,
+        invDate,
+        supplierId,
+        invoiceCurrency: normalizedInvoiceCurrency,
+        exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+        totalInvoiceValue: summary.totalInvoiceValue,
+        totalActualValue: summary.totalActualValue,
+        totalCgst: summary.totalCgst,
+        totalSgst: summary.totalSgst,
+        totalIgst: summary.totalIgst,
+        totalInvoiceValueAfterGst: summary.totalInvoiceValueAfterGst,
+        insurance: summary.insuranceValue,
+        otherCharges: summary.otherChargesValue,
+        expenseCGST: summary.expenseCGSTValue,
+        expenseSGST: summary.expenseSGSTValue,
+        expenseIGST: summary.expenseIGSTValue,
+        roundOff: summary.roundOffValue,
+        tdsAmount: draftTds,
+        netSupplierPayable: isDirectService ? calculateNetSupplierPayable(summary.totalAmount, draftTds || 0) : undefined,
+        totalAmount: summary.totalAmount,
+        lines: summary.lines,
+        status: editingEntry?.status || "Preview – not saved",
+      } as MaterialIn;
+      const draftSlips = mrrType === "Reel"
+        ? Object.values(packingSlipDrafts).flat().map((slip) => ({
+            id: slip.id,
+            materialInId: draftId,
+            materialLineId: slip.materialLineId,
+            materialId: slip.materialId,
+            supplierReelNo: slip.supplierReelNo,
+            ourReelNo: slip.ourReelNo,
+            weightKg: Number(slip.weightKg || 0),
+          })) as unknown as MaterialInPackingSlip[]
+        : [];
+      const doc = await buildMaterialInPdf({
+        mrr: draft,
+        materials,
+        npdItems,
+        services,
+        suppliers,
+        companies,
+        setting: settings[0] || null,
+        firms,
+        packingSlips: draftSlips,
+      });
+      setPreviewPdfUrl(URL.createObjectURL(doc.output("blob")));
+    } catch (error) {
+      console.error("MRR preview PDF failed:", error);
+      setPreviewPdfError("The PDF preview could not be drawn. Check the summary instead.");
     }
-    if (linkedGateEntry && firmId !== linkedGateEntry.firmId) {
-      alert("Linked MRR must use the Gate Entry firm.");
-      return;
-    }
-    if (!date || !invoiceNo || !invDate || !supplierId || lines.length === 0) return;
-    if (invDate > todayInputValue()) {
-      alert("Invoice Date cannot be a future date.");
-      return;
-    }
+  };
+  const closeMrrPreview = () => {
+    setShowPreview(false);
+    setPreviewChecked(false);
+    setPreviewPdfUrl((old) => { if (old) URL.revokeObjectURL(old); return ""; });
+  };
 
-    if (!editingEntry && gateEntryId && !linkedGateEntry) {
-      alert("Gate Entry could not be loaded. MRR cannot be created from this link.");
-      navigate("/material-receipt/pending-mrr", { replace: true });
-      return;
-    }
-
-    if (!editingEntry && linkedGateEntry && !canCreateMrrForGateEntry(linkedGateEntry)) {
-      alert(isGateEntryCancelled(linkedGateEntry)
-        ? "Gate Entry is cancelled. MRR cannot be created for this Gate Entry."
-        : "MRR has already been created for this Gate Entry.");
-      navigate("/material-receipt/pending-mrr", { replace: true });
-      return;
-    }
-
-    const linesForSubmit =
+  // Lines as they will be saved; shared by Save and the PDF preview.
+  const buildLinesForSubmit = (): MaterialLine[] =>
       isDirectService
         ? lines.map((line) => applySupplyTypeTaxRates(recalculateMaterialLine({
             ...line,
@@ -2379,6 +2439,45 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
             });
           });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Saving needs the preview ticked "Checked & Found Correct" (Enter in a field opens the preview instead).
+    if (!previewConfirmedRef.current) {
+      if (formRef.current && !formRef.current.reportValidity()) return;
+      void openMrrPreview();
+      return;
+    }
+    previewConfirmedRef.current = false;
+    if (!firmId || !selectedFirm) {
+      alert("Please select a valid Firm.");
+      return;
+    }
+    if (linkedGateEntry && firmId !== linkedGateEntry.firmId) {
+      alert("Linked MRR must use the Gate Entry firm.");
+      return;
+    }
+    if (!date || !invoiceNo || !invDate || !supplierId || lines.length === 0) return;
+    if (invDate > todayInputValue()) {
+      alert("Invoice Date cannot be a future date.");
+      return;
+    }
+
+    if (!editingEntry && gateEntryId && !linkedGateEntry) {
+      alert("Gate Entry could not be loaded. MRR cannot be created from this link.");
+      navigate("/material-receipt/pending-mrr", { replace: true });
+      return;
+    }
+
+    if (!editingEntry && linkedGateEntry && !canCreateMrrForGateEntry(linkedGateEntry)) {
+      alert(isGateEntryCancelled(linkedGateEntry)
+        ? "Gate Entry is cancelled. MRR cannot be created for this Gate Entry."
+        : "MRR has already been created for this Gate Entry.");
+      navigate("/material-receipt/pending-mrr", { replace: true });
+      return;
+    }
+
+    const linesForSubmit = buildLinesForSubmit();
 
     if (isUsdInvoice && (!numericExchangeRate || numericExchangeRate <= 0)) {
       alert("Exchange rate must be greater than 0 for USD invoices.");
@@ -3583,7 +3682,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             onClick={() => {
               // Run the browser's required-field checks first, then show the preview.
               if (formRef.current && !formRef.current.reportValidity()) return;
-              setShowPreview(true);
+              void openMrrPreview();
             }}
             className="flex items-center justify-center min-w-[150px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 transition disabled:opacity-50"
           >
@@ -3596,9 +3695,21 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             <div className="w-full max-w-5xl rounded-lg border-2 border-black bg-white shadow-xl">
               <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
                 <h3 className="text-lg font-black uppercase tracking-tight text-black">MRR Preview</h3>
-                <button type="button" onClick={() => setShowPreview(false)} className="rounded border-2 border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
+                <button type="button" onClick={closeMrrPreview} className="rounded border-2 border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
               </div>
-              <div className="space-y-4 p-4">
+              <div className="px-4 pt-4">
+                {previewPdfUrl ? (
+                  <>
+                    <iframe title="MRR PDF preview" src={previewPdfUrl} className="hidden h-[70vh] w-full rounded border-2 border-black bg-slate-100 md:block" />
+                    <a href={previewPdfUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded border-2 border-black px-3 py-1.5 text-xs font-bold text-black hover:bg-slate-100 md:mt-2">Open PDF preview in a new tab</a>
+                  </>
+                ) : previewPdfError ? (
+                  <div className="rounded border-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800">{previewPdfError}</div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-600"><Spinner size={18} /> Preparing the MRR PDF…</div>
+                )}
+              </div>
+              <div className={`space-y-4 p-4 ${previewPdfUrl ? "md:hidden" : ""}`}>
                 <div className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
                   {[
                     ["Firm", selectedFirm?.firmName || "-"],
@@ -3662,12 +3773,17 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                   {isDirectService ? <SummaryLine label="Net Supplier Payable" amount={displayNetSupplierPayable} tone="text-indigo-700" strong always /> : null}
                 </div>
               </div>
-              <div className="flex justify-end gap-3 border-t-2 border-black px-4 py-3">
-                <button type="button" onClick={() => setShowPreview(false)} className="rounded border-2 border-black px-5 py-2 font-bold text-black hover:bg-slate-50">Back to Edit</button>
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t-2 border-black px-4 py-3">
+                <label className={`mr-auto flex cursor-pointer items-center gap-2 rounded border-2 px-3 py-2 text-sm font-black ${previewChecked ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-amber-500 bg-amber-50 text-amber-900"}`}>
+                  <input type="checkbox" checked={previewChecked} onChange={(e) => setPreviewChecked(e.target.checked)} className="h-5 w-5 accent-emerald-600" />
+                  Checked &amp; Found Correct
+                </label>
+                <button type="button" onClick={closeMrrPreview} className="rounded border-2 border-black px-5 py-2 font-bold text-black hover:bg-slate-50">Back to Edit</button>
                 <button
                   type="button"
-                  disabled={isSubmitting}
-                  onClick={() => { setShowPreview(false); formRef.current?.requestSubmit(); }}
+                  disabled={isSubmitting || !previewChecked}
+                  title={previewChecked ? undefined : "Tick Checked & Found Correct first"}
+                  onClick={() => { previewConfirmedRef.current = true; closeMrrPreview(); formRef.current?.requestSubmit(); }}
                   className="min-w-[160px] rounded bg-indigo-600 px-5 py-2 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {editingEntry ? "Confirm & Update" : "Confirm & Save"}
