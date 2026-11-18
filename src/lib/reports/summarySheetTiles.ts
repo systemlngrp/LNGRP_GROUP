@@ -99,8 +99,8 @@ export function computeSummarySheetSections(
       id: "plan",
       title: "Production Plan",
       tiles: [
-        { id: "todayPlan", label: "Today's Plan", value: sum(todayRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#660000] text-white" },
-        { id: "tomorrowPlan", label: "Tomorrow's Plan", value: sum(tomorrowRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#ffe599] text-slate-950" },
+        { id: "todayPlan", label: "Today's Plan (Paper kg)", value: sum(todayRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#660000] text-white" },
+        { id: "tomorrowPlan", label: "Tomorrow's Plan (Paper kg)", value: sum(tomorrowRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#ffe599] text-slate-950" },
         { id: "todayPlanValue", label: "Plan Value", value: planValue(todayRows), format: "money", tone: "bg-[#45818e] text-white" },
         { id: "tomorrowPlanValue", label: "Tom. Plan Value", value: planValue(tomorrowRows), format: "money", tone: "bg-[#b4a7d6] text-slate-950" },
         { id: "tomorrowJobs", label: "Jobs Tomorrow", value: tomorrowRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
