@@ -15096,6 +15096,11 @@ const TRANSACTIONAL_RESET_TABLES = [
     "fixed_daily_expenses",
 ];
 app.post("/api/settings/clear-core-job-data", async (req, res) => {
+    // Data-wipe tools are switched off on the live system. They only run where
+    // the server is started with ENABLE_DATA_RESET_TOOLS=true (for example a test copy).
+    if (String(process.env.ENABLE_DATA_RESET_TOOLS || "").toLowerCase() !== "true") {
+        return res.status(404).json({ error: "Not found" });
+    }
     const user = await getRequestUser(req);
     if (!user)
         return res.status(401).json({ error: "Unauthorized" });
@@ -15151,6 +15156,11 @@ app.post("/api/settings/clear-core-job-data", async (req, res) => {
     }
 });
 app.post("/api/settings/clear-transactional-data", async (req, res) => {
+    // Data-wipe tools are switched off on the live system. They only run where
+    // the server is started with ENABLE_DATA_RESET_TOOLS=true (for example a test copy).
+    if (String(process.env.ENABLE_DATA_RESET_TOOLS || "").toLowerCase() !== "true") {
+        return res.status(404).json({ error: "Not found" });
+    }
     const user = await getRequestUser(req);
     if (!user)
         return res.status(401).json({ error: "Unauthorized" });

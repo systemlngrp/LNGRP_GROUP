@@ -1064,73 +1064,8 @@ export function SettingsPage() {
         </div>
       )}
 
-      {user?.role === "Admin" && (
-        <div className="max-w-3xl space-y-4 rounded border-2 border-red-700 bg-red-50 p-6">
-          <div>
-            <h3 className="text-sm font-black uppercase text-red-800">Clear Core Job Data</h3>
-            <p className="mt-1 text-sm text-black">Drops older core backup tables, creates one fresh timestamped backup, then clears orders, jobs, processing, issues/returns, QC, invoices, pending invoicing, Gate Entries and MRRs. Masters, dispatch and loading remain unchanged.</p>
-          </div>
-          <label className="block space-y-2">
-            <span className="text-xs font-black uppercase text-black">Type CLEAR CORE JOB DATA to confirm</span>
-            <input value={coreResetConfirmation} onChange={(event) => setCoreResetConfirmation(event.target.value)} disabled={coreResetting} className="w-full rounded border-2 border-black bg-white p-2 text-black" />
-          </label>
-          <button type="button" onClick={() => void clearCoreJobData()} disabled={coreResetting || coreResetConfirmation !== "CLEAR CORE JOB DATA"} className="rounded border-2 border-black bg-red-700 px-5 py-2 font-black text-white disabled:opacity-40">
-            {coreResetting ? "Backing up and clearing..." : "Backup and Clear Core Data"}
-          </button>
-          {coreResetResult && <p className="text-sm font-bold text-black">{coreResetResult}</p>}
-        </div>
-      )}
-
-      {user?.role === "Admin" && (
-        <div className="max-w-3xl space-y-4 rounded border-2 border-red-900 bg-red-100 p-6">
-          <div>
-            <h3 className="text-sm font-black uppercase text-red-950">Delete All Transactional Data</h3>
-            <p className="mt-1 text-sm leading-6 text-black">
-              Permanently deletes orders, MRRs, production, dispatch, loading, billing, inventory movements, QC records, stock history, audit snapshots, and related operational data. Master and configuration tables are preserved.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setTransactionalResetResult("");
-              setTransactionalResetConfirmation("");
-              setTransactionalResetDialogOpen(true);
-            }}
-            disabled={transactionalResetting}
-            className="rounded border-2 border-black bg-red-900 px-5 py-2 font-black text-white disabled:opacity-40"
-          >
-            {transactionalResetting ? "Deleting transactional data..." : "Delete All Transactional Data"}
-          </button>
-          {transactionalResetResult && <p className="text-sm font-bold text-black">{transactionalResetResult}</p>}
-        </div>
-      )}
-
-      {transactionalResetDialogOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/40 px-4" role="presentation">
-          <div role="alertdialog" aria-modal="true" aria-labelledby="transactional-reset-title" className="w-full max-w-lg space-y-4 rounded-lg border-2 border-red-900 bg-white p-6 text-black shadow-2xl">
-            <div>
-              <h3 id="transactional-reset-title" className="text-lg font-black uppercase text-red-900">Confirm permanent deletion</h3>
-              <p className="mt-2 text-sm font-semibold leading-6">This cannot be undone. All non-master transactional and operational data will be deleted.</p>
-            </div>
-            <label className="block space-y-2">
-              <span className="text-xs font-black uppercase">Type CLEAR ALL TRANSACTIONAL DATA to confirm</span>
-              <input
-                autoFocus
-                value={transactionalResetConfirmation}
-                onChange={(event) => setTransactionalResetConfirmation(event.target.value)}
-                disabled={transactionalResetting}
-                className="w-full rounded border-2 border-black bg-white p-2 text-black"
-              />
-            </label>
-            <div className="flex justify-end gap-3">
-              <button type="button" onClick={() => setTransactionalResetDialogOpen(false)} disabled={transactionalResetting} className="rounded border-2 border-black bg-white px-4 py-2 font-bold disabled:opacity-40">Cancel</button>
-              <button type="button" onClick={() => void clearAllTransactionalData()} disabled={transactionalResetting || transactionalResetConfirmation !== "CLEAR ALL TRANSACTIONAL DATA"} className="rounded border-2 border-black bg-red-900 px-4 py-2 font-black text-white disabled:opacity-40">
-                {transactionalResetting ? "Deleting..." : "Delete Permanently"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* The "Clear Core Job Data" and "Delete All Transactional Data" tools were
+          removed from the live app on 18-Nov-2026 (their server routes are off too). */}
 
       {isPankajUser && (
         <div className="bg-white p-6 rounded shadow-sm border border-black max-w-3xl space-y-4">

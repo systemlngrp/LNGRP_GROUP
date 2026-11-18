@@ -15851,6 +15851,11 @@ const TRANSACTIONAL_RESET_TABLES = [
 ] as const;
 
 app.post("/api/settings/clear-core-job-data", async (req, res) => {
+  // Data-wipe tools are switched off on the live system. They only run where
+  // the server is started with ENABLE_DATA_RESET_TOOLS=true (for example a test copy).
+  if (String(process.env.ENABLE_DATA_RESET_TOOLS || "").toLowerCase() !== "true") {
+    return res.status(404).json({ error: "Not found" });
+  }
   const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   if (user.role !== "Admin") return res.status(403).json({ error: "Only administrators can clear core job data." });
@@ -15905,6 +15910,11 @@ app.post("/api/settings/clear-core-job-data", async (req, res) => {
 });
 
 app.post("/api/settings/clear-transactional-data", async (req, res) => {
+  // Data-wipe tools are switched off on the live system. They only run where
+  // the server is started with ENABLE_DATA_RESET_TOOLS=true (for example a test copy).
+  if (String(process.env.ENABLE_DATA_RESET_TOOLS || "").toLowerCase() !== "true") {
+    return res.status(404).json({ error: "Not found" });
+  }
   const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   if (user.role !== "Admin") return res.status(403).json({ error: "Only administrators can clear transactional data." });
