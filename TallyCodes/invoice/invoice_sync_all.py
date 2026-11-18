@@ -24,9 +24,19 @@ def parse_args():
         help="firm to run (default: all)",
     )
     parser.add_argument("--watch", action="store_true", help="keep checking for new invoices")
+    parser.add_argument(
+        "--skip-master-validation",
+        action="store_true",
+        help="Firm-2 only: skip customer/ledger, stock-item, UOM, and part-number validation for one pass",
+    )
     parser.add_argument("--interval", type=float, default=20.0, help="seconds between checks")
     parser.add_argument("--retry-after-issue", type=float, default=20.0, help="seconds to retry after an issue")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.skip_master_validation and args.firm != "2":
+        parser.error("--skip-master-validation requires --firm 2")
+    if args.skip_master_validation and args.watch:
+        parser.error("--skip-master-validation is one-pass only; do not use --watch")
+    return args
 
 
 def run_one_firm(firm, args):
@@ -43,6 +53,13 @@ def run_one_firm(firm, args):
         if invoice_dir not in sys.path:
             sys.path.insert(0, invoice_dir)
         module = __import__(module_name)
+
+    if args.skip_master_validation:
+        module.invoice_engine.SKIP_TALLY_MASTER_VALIDATION = True
+        print(
+            "WARNING: skipping Tally customer/ledger, stock-item, UOM, and "
+            "part-number validation for this one pass."
+        )
 
     cli_args = []
     if args.watch:

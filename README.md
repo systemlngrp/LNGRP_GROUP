@@ -24,8 +24,8 @@ Firm-2 skips duplicate-invoice lookups before posting and continues numbering fr
 the current Tally Sales series. If a Firm-2 post times out or its result is uncertain,
 check Tally before retrying; the skipped duplicate check can otherwise allow a duplicate.
 
-For a one-time Firm-2 run without Tally master validation, run
-`python TallyCodes\invoice\invFirm2_fast_once.py`. It skips customer/sales-ledger,
+For a one-time Firm-2 EXE run without Tally master validation, use
+`LNGRP_Invoice_Sync.exe --firm 2 --skip-master-validation`. It skips customer/sales-ledger,
 stock-item, UOM, and part-number checks but still reads the next number from Tally
-and imports the voucher. Tally may reject invalid ledger/item names; check Tally
-before retrying after an uncertain import.
+and imports the voucher. This option is one-pass only. Tally may reject invalid
+ledger/item names; check Tally before retrying after an uncertain import.
