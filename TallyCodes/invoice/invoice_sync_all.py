@@ -58,8 +58,8 @@ def run_all(args):
     else:
         command = [sys.executable, os.path.abspath(__file__)]
 
-    processes = []
-    try:
+    while True:
+        cycle_had_issue = False
         for firm in ("1", "2", "3"):
             child_args = command + [
                 "--firm",
@@ -69,18 +69,19 @@ def run_all(args):
                 "--retry-after-issue",
                 str(args.retry_after_issue),
             ]
-            if args.watch:
-                child_args.append("--watch")
-            print(f"Starting {FIRM_NAMES[firm]}...")
-            processes.append(subprocess.Popen(child_args))
+            print(f"\nStarting {FIRM_NAMES[firm]} (one pass)...", flush=True)
+            result = subprocess.run(child_args, check=False)
+            if result.returncode:
+                print(f"{FIRM_NAMES[firm]} exited with code {result.returncode}.")
+                cycle_had_issue = True
 
-        for process in processes:
-            process.wait()
-    except KeyboardInterrupt:
-        for process in processes:
-            if process.poll() is None:
-                process.terminate()
-        raise
+        if not args.watch:
+            return
+
+        wait_seconds = args.retry_after_issue if cycle_had_issue else args.interval
+        import time
+
+        time.sleep(max(wait_seconds, 5.0))
 
 
 def main():

@@ -32,7 +32,7 @@ def load_runtime_env():
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"),
     ]
     if getattr(sys, "frozen", False):
-        env_paths.insert(0, os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), ".env"))
+        env_paths.insert(0, os.path.join(os.path.dirname(os.path.abspath(sys.executable)), ".env"))
     ENV_SEARCH_PATHS = env_paths
     for env_path in env_paths:
         if os.path.exists(env_path):
