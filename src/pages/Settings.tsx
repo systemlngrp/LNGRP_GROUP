@@ -10,6 +10,7 @@ import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { getFinancialYear } from "../lib/serial";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { PO_MANDATORY_MRR_TYPES, parsePoMandatoryMrrTypes } from "../lib/materialInPoMandatory";
+import { DEFAULT_PDI_CS_MARGIN_PERCENT, parsePdiCsMarginPercent } from "../lib/pdiResult";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useAuth } from "../auth/AuthContext";
 import { parseRealizationTargets } from "../lib/realizationTargets";
@@ -367,12 +368,22 @@ export function SettingsPage() {
   const [samplingPlanQtyDraft, setSamplingPlanQtyDraft] = useState({ divisor: "2000", minimum: "2", maximum: "4" });
   const [samplingPlanQtyError, setSamplingPlanQtyError] = useState("");
   const [qcBgsmToleranceDraft, setQcBgsmToleranceDraft] = useState("3");
+  const [pdiCsMarginDraft, setPdiCsMarginDraft] = useState(String(DEFAULT_PDI_CS_MARGIN_PERCENT));
+  const [pdiCsMarginError, setPdiCsMarginError] = useState("");
   const [qcBgsmToleranceError, setQcBgsmToleranceError] = useState("");
 
   const currentSetting = settings[0];
 
   useEffect(() => { setSamplingPlanQtyDraft({ divisor: String(currentSetting?.samplingPlanQtyDivisor || 2000), minimum: String(currentSetting?.samplingPlanQtyMin || 2), maximum: String(currentSetting?.samplingPlanQtyMax || 4) }); }, [currentSetting?.samplingPlanQtyDivisor, currentSetting?.samplingPlanQtyMin, currentSetting?.samplingPlanQtyMax]);
   useEffect(() => { setQcBgsmToleranceDraft(String(currentSetting?.qcBgsmTolerancePercent ?? 3)); }, [currentSetting?.qcBgsmTolerancePercent]);
+  useEffect(() => { setPdiCsMarginDraft(String(parsePdiCsMarginPercent(currentSetting))); }, [currentSetting?.pdiCsMarginPercent]);
+  const savePdiCsMargin = async () => {
+    const raw = pdiCsMarginDraft.trim();
+    const value = Number(raw);
+    if (!/^\d+(\.\d{1,2})?$/.test(raw) || !Number.isFinite(value) || value > 100) return setPdiCsMarginError("Enter a percentage from 0 to 100 (up to 2 decimals).");
+    setPdiCsMarginError("");
+    await handleChange({ pdiCsMarginPercent: value });
+  };
   const saveSamplingPlanQty = async () => { const divisor=Number(samplingPlanQtyDraft.divisor), minimum=Number(samplingPlanQtyDraft.minimum), maximum=Number(samplingPlanQtyDraft.maximum); if (!Number.isFinite(divisor)||divisor<=0) return setSamplingPlanQtyError("Divisor must be greater than zero."); if (!Number.isInteger(minimum)||minimum<=0) return setSamplingPlanQtyError("Minimum must be a positive whole number."); if (!Number.isInteger(maximum)||maximum<minimum) return setSamplingPlanQtyError("Maximum must be a whole number greater than or equal to minimum."); setSamplingPlanQtyError(""); await handleChange({ samplingPlanQtyDivisor: divisor, samplingPlanQtyMin: minimum, samplingPlanQtyMax: maximum }); };
   const saveQcBgsmTolerance = async () => { const value = Number(qcBgsmToleranceDraft); if (!Number.isFinite(value) || value < 0) return setQcBgsmToleranceError("Tolerance must be zero or greater."); setQcBgsmToleranceError(""); await handleChange({ qcBgsmTolerancePercent: value }); };
   const isPankajUser = String(user?.email || "").trim().toLowerCase() === GLOBAL_ITEM_RENAME_ALLOWED_EMAIL;
@@ -731,6 +742,7 @@ export function SettingsPage() {
         samplingPlanQtyMin: Number(currentSetting?.samplingPlanQtyMin || 2),
         samplingPlanQtyMax: Number(currentSetting?.samplingPlanQtyMax || 4),
         qcBgsmTolerancePercent: Number(currentSetting?.qcBgsmTolerancePercent ?? 3),
+        pdiCsMarginPercent: parsePdiCsMarginPercent(currentSetting),
         organizationLogo: currentSetting?.organizationLogo || "",
         updatedBy: "System User",
         updateTimestamp: timestamp,
@@ -2061,6 +2073,7 @@ export function SettingsPage() {
         </div>
 
         <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">Sampling Plan Quantity</h3><p className="text-sm leading-6 text-black">Plan Quantity is divided by the configured divisor, rounded up, and clamped between the minimum and maximum.</p><div className="grid grid-cols-1 gap-3 md:grid-cols-3"><label>Divisor<input type="number" min="1" step="any" value={samplingPlanQtyDraft.divisor} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, divisor: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Minimum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.minimum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, minimum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label><label>Maximum<input type="number" min="1" step="1" value={samplingPlanQtyDraft.maximum} onChange={(event) => setSamplingPlanQtyDraft((current) => ({ ...current, maximum: event.target.value }))} disabled={loading || saving} className="rounded border-2 border-black p-2" /></label></div>{samplingPlanQtyError && <div className="font-bold text-red-700">{samplingPlanQtyError}</div>}<button type="button" onClick={() => void saveSamplingPlanQty()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save</button></div>
+        <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">PDI CS Margin</h3><p className="text-sm leading-6 text-black">A PDI passes on CS when <span className="font-bold">CS Achieved</span> is at least <span className="font-bold">CS Std + this %</span> (item CS Std from the NPD master). Example: CS Std 120 and {pdiCsMarginDraft || 0}% → CS needed {Math.round(120 * (1 + (Number(pdiCsMarginDraft) || 0) / 100) * 100) / 100}. Saved PDIs keep their result until they are updated again; the PDI Report recalculates at once.</p><div className="max-w-xs"><label>Margin over CS Std (%)<input type="number" min="0" max="100" step="0.01" value={pdiCsMarginDraft} onChange={(event) => setPdiCsMarginDraft(event.target.value)} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label></div>{pdiCsMarginError && <div className="font-bold text-red-700">{pdiCsMarginError}</div>}<button type="button" onClick={() => void savePdiCsMargin()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save</button></div>
         <div className="space-y-3 border-t border-dashed border-black pt-4"><h3 className="text-xs font-black uppercase tracking-wide text-black">QC BGSM Formula</h3><p className="text-sm leading-6 text-black">BGSM minimum and maximum are calculated around Required B.GSM using this tolerance percentage.</p><div className="max-w-xs"><label>Tolerance (%)<input type="number" min="0" step="any" value={qcBgsmToleranceDraft} onChange={(event) => setQcBgsmToleranceDraft(event.target.value)} disabled={loading || saving} className="w-full rounded border-2 border-black p-2" /></label></div>{qcBgsmToleranceError && <div className="font-bold text-red-700">{qcBgsmToleranceError}</div>}<button type="button" onClick={() => void saveQcBgsmTolerance()} disabled={loading || saving} className="rounded bg-indigo-600 px-5 py-2 font-bold text-white">Save</button></div>
 
         <div className="flex flex-col space-y-2">

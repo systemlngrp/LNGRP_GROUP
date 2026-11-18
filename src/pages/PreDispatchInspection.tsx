@@ -6,12 +6,12 @@ import { useAuth } from "../auth/AuthContext";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { Select } from "../components/Select";
-import type { Firm, Item, Order, OrderSchedule, Production, PreDispatchInspection as Inspection, User } from "../types";
+import type { Firm, Item, Order, OrderSchedule, Production, PreDispatchInspection as Inspection, Setting, User } from "../types";
 import { isActiveQcPerson, qcPersonOptions } from "../utils/qcPeople";
 import { inspectionDraftForJob, inspectionNumberMessage, invalidInspectionNumberField, isPositiveDecimal } from "../lib/inspectionNumbers";
 import { normalizeQcResult } from "../lib/jobCellColors";
 import { canManageMasterRecords } from "../lib/masterPermissions";
-import { derivePdiResult, resolveCsStandard } from "../lib/pdiResult";
+import { derivePdiResult, parsePdiCsMarginPercent, resolveCsStandard } from "../lib/pdiResult";
 
 const input = "w-full rounded border-2 border-black bg-white px-3 py-2";
 const jobInformationInput = "w-full rounded border-2 border-black px-3 py-2 text-gray-900";
@@ -46,7 +46,7 @@ const inspectionItem = (record: Inspection, productions: Production[], items: It
   );
 };
 const inspectionCsStandard = (record: Inspection, productions: Production[], items: Item[]) => resolveCsStandard(inspectionItem(record, productions, items)?.csKgStd, record.csRequired);
-const inspectionResult = (record: Inspection, productions: Production[], items: Item[]) => derivePdiResult(record, inspectionCsStandard(record, productions, items));
+const inspectionResult = (record: Inspection, productions: Production[], items: Item[], csMarginPercent?: number) => derivePdiResult(record, inspectionCsStandard(record, productions, items), csMarginPercent);
 
 function useInspectionData() {
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
@@ -56,13 +56,15 @@ function useInspectionData() {
   const [orders] = useData<Order>("orders", [], { firmScope: "all" });
   const [schedules] = useData<OrderSchedule>("orders_schedule", [], { firmScope: "all" });
   const items = useNpdItemsWithoutStock();
+  const [settings] = useData<Setting>("settings", []);
+  const csMarginPercent = parsePdiCsMarginPercent(settings[0]);
   const normalizedRecords = records.map(record => ({ ...record, result: normalizeQcResult(record.result) }));
-  return { productions, records: normalizedRecords, loading, api, people, firms, orders, schedules, items };
+  return { productions, records: normalizedRecords, loading, api, people, firms, orders, schedules, items, csMarginPercent };
 }
 
 export function PreDispatchInspectionForm() {
   const navigate = useNavigate();
-  const { productions, records, api, people, firms, orders, schedules, items } = useInspectionData();
+  const { productions, records, api, people, firms, orders, schedules, items, csMarginPercent } = useInspectionData();
   const [form, setForm] = useState<Form>(blank);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
@@ -119,7 +121,7 @@ export function PreDispatchInspectionForm() {
       String(value.erp) === String(production?.erpCode || production?.masterErp || form.erpCode),
     );
     const csStandard = resolveCsStandard(selectedItem?.csKgStd, form.csRequired);
-    const item: Inspection = { ...form, id: old?.id || `PDI-${Date.now()}`, result: derivePdiResult(form, csStandard), inspectionDate: form.inspectionDate || new Date().toISOString(), updatedBy: "System User", updateTimestamp: new Date().toISOString() } as Inspection; setSaving(true); try { if (old) await api.saveItem(item); else await api.addItem(item); navigate("/quality/pre-dispatch-inspection", { state: { message: "Pre-Dispatch Inspection saved successfully." } }); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save inspection."); } finally { setSaving(false); }
+    const item: Inspection = { ...form, id: old?.id || `PDI-${Date.now()}`, result: derivePdiResult(form, csStandard, csMarginPercent), inspectionDate: form.inspectionDate || new Date().toISOString(), updatedBy: "System User", updateTimestamp: new Date().toISOString() } as Inspection; setSaving(true); try { if (old) await api.saveItem(item); else await api.addItem(item); navigate("/quality/pre-dispatch-inspection", { state: { message: "Pre-Dispatch Inspection saved successfully." } }); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save inspection."); } finally { setSaving(false); }
   };
   const readOnlyFields = [["Firm *", "firmName"], ["ERP *", "erpCode"], ["Party Name *", "partyName"], ["Item Name *", "itemName"], ["Planned Quantity *", "plannedQty"]] as const;
   const editableFields = [["Length (ID) *", "lengthId"], ["Width (ID) *", "widthId"], ["Height (ID) *", "heightId"], ["CS Achieved *", "csAchieved"], ["GSM Achieved *", "gsmAchieved"], ["Box Weight (Grams) *", "boxWeightGrams"]] as const;
@@ -130,17 +132,17 @@ export function PreDispatchInspection() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
   const navigate = useNavigate();
-  const { records, loading, people, firms, api, items, productions } = useInspectionData();
+  const { records, loading, people, firms, api, items, productions, csMarginPercent } = useInspectionData();
   const [filters, setFilters] = useState({ search: "", firmId: "", jobNo: "", erpCode: "", partyName: "", itemName: "", result: "", qcPerson: "", date: "" });
   const [editingRow, setEditingRow] = useState<Inspection | null>(null);
   const [editForm, setEditForm] = useState<Partial<Inspection>>({});
   const [editMessage, setEditMessage] = useState("");
   const [editSaving, setEditSaving] = useState(false);
   const activePeople = people.filter(isActiveQcPerson);
-  const filtered = useMemo(() => records.filter(r => { const q = filters.search.toLowerCase().trim(); const hay = String(r.jobNo + " " + r.erpCode + " " + r.partyName + " " + r.itemName + " " + r.qcPerson + " " + r.remarks).toLowerCase(); return (!q || hay.includes(q)) && (!filters.firmId || r.firmId === filters.firmId) && (!filters.jobNo || r.jobNo === filters.jobNo) && (!filters.erpCode || r.erpCode === filters.erpCode) && (!filters.partyName || r.partyName === filters.partyName) && (!filters.itemName || r.itemName === filters.itemName) && (!filters.result || inspectionResult(r, productions, items) === filters.result) && (!filters.qcPerson || r.qcPerson === filters.qcPerson) && (!filters.date || text(r.inspectionDate).slice(0, 10) === filters.date); }), [items, productions, records, filters]);
+  const filtered = useMemo(() => records.filter(r => { const q = filters.search.toLowerCase().trim(); const hay = String(r.jobNo + " " + r.erpCode + " " + r.partyName + " " + r.itemName + " " + r.qcPerson + " " + r.remarks).toLowerCase(); return (!q || hay.includes(q)) && (!filters.firmId || r.firmId === filters.firmId) && (!filters.jobNo || r.jobNo === filters.jobNo) && (!filters.erpCode || r.erpCode === filters.erpCode) && (!filters.partyName || r.partyName === filters.partyName) && (!filters.itemName || r.itemName === filters.itemName) && (!filters.result || inspectionResult(r, productions, items, csMarginPercent) === filters.result) && (!filters.qcPerson || r.qcPerson === filters.qcPerson) && (!filters.date || text(r.inspectionDate).slice(0, 10) === filters.date); }), [items, productions, records, filters, csMarginPercent]);
   const setFilter = (key: string, value: string) => setFilters(current => ({ ...current, [key]: value }));
   const filter = (key: keyof typeof filters, label: string, options: { value: string; label: string }[]) => <Select value={filters[key]} onChange={value => setFilter(key, value)} options={options} placeholder={label} compact />;
-  const today = new Date().toISOString().slice(0, 10); const tiles = { total: filtered.length, pending: filtered.filter(r => inspectionResult(r, productions, items) === "Pending").length, pass: filtered.filter(r => inspectionResult(r, productions, items) === "QC PASS").length, fail: filtered.filter(r => inspectionResult(r, productions, items) === "QC FAIL").length, today: filtered.filter(r => text(r.inspectionDate).slice(0, 10) === today).length };
+  const today = new Date().toISOString().slice(0, 10); const tiles = { total: filtered.length, pending: filtered.filter(r => inspectionResult(r, productions, items, csMarginPercent) === "Pending").length, pass: filtered.filter(r => inspectionResult(r, productions, items, csMarginPercent) === "QC PASS").length, fail: filtered.filter(r => inspectionResult(r, productions, items, csMarginPercent) === "QC FAIL").length, today: filtered.filter(r => text(r.inspectionDate).slice(0, 10) === today).length };
   const headers = ["Job No.", "Date", "Inspection Timestamp", "Firm", "ERP", "Party", "Item", "Planned Quantity", "Lot No.", "CS Required", "CS Standard", "Length (ID)", "Width (ID)", "Height (ID)", "CS Actual", "GSM Achieved", "Box Weight (Grams)", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Box Photo Front", "Box Photo Back", "Result", "QC Person", "Remarks", "Updated By", "Updated At", "Actions"];
   const csStandardForRecord = (record: Inspection) => inspectionCsStandard(record, productions, items as Item[]);
   const photoCell = (value: unknown) => {
@@ -153,7 +155,7 @@ export function PreDispatchInspection() {
   const updateEdit = (key: string, value: unknown) => setEditForm(current => ({ ...current, [key]: value }));
   const closeEdit = () => { setEditingRow(null); setEditForm({}); setEditMessage(""); };
   const uploadEdit = async (key: "frontPhoto" | "backPhoto", file?: File) => { if (!file) return; const reader = new FileReader(); reader.onload = async () => { try { const response = await fetch("/api/upload-artwork", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, base64: reader.result }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "Upload failed"); updateEdit(key, result.filename); } catch (error) { setEditMessage(error instanceof Error ? error.message : "Photo upload failed."); } }; reader.readAsDataURL(file); };
-  const saveEdit = async () => { if (!editingRow) return; const jobFields: Array<[string, unknown]> = [["Firm", editForm.firmName], ["ERP", editForm.erpCode], ["Party Name", editForm.partyName], ["Item Name", editForm.itemName]]; const missingJob = jobFields.find(([, value]) => !text(value)); if (missingJob) return setEditMessage(missingJob[0] + " is required."); const invalidNumber = invalidInspectionNumberField(editForm); if (invalidNumber) return setEditMessage(inspectionNumberMessage(invalidNumber)); const missingCheck = checks.find(check => !text(editForm[check])); if (missingCheck) return setEditMessage(checkLabels[missingCheck] + " is required."); if (!text(editForm.qcPerson)) return setEditMessage("QC Person is required."); if (!text(editForm.frontPhoto)) return setEditMessage("Box Photo Front is required."); if (!text(editForm.backPhoto)) return setEditMessage("Box Photo Back is required."); if (!text(editForm.remarks)) return setEditMessage("Remarks are required."); const updated: Inspection = { ...editingRow, ...editForm, id: editingRow.id, inspectionDate: editingRow.inspectionDate, result: derivePdiResult(editForm, csStandardForRecord(editingRow)), updatedBy: "System User", updateTimestamp: new Date().toISOString() } as Inspection; setEditSaving(true); try { await api.saveItem(updated); closeEdit(); } catch (error) { setEditMessage(error instanceof Error ? error.message : "Unable to save inspection."); } finally { setEditSaving(false); } };
+  const saveEdit = async () => { if (!editingRow) return; const jobFields: Array<[string, unknown]> = [["Firm", editForm.firmName], ["ERP", editForm.erpCode], ["Party Name", editForm.partyName], ["Item Name", editForm.itemName]]; const missingJob = jobFields.find(([, value]) => !text(value)); if (missingJob) return setEditMessage(missingJob[0] + " is required."); const invalidNumber = invalidInspectionNumberField(editForm); if (invalidNumber) return setEditMessage(inspectionNumberMessage(invalidNumber)); const missingCheck = checks.find(check => !text(editForm[check])); if (missingCheck) return setEditMessage(checkLabels[missingCheck] + " is required."); if (!text(editForm.qcPerson)) return setEditMessage("QC Person is required."); if (!text(editForm.frontPhoto)) return setEditMessage("Box Photo Front is required."); if (!text(editForm.backPhoto)) return setEditMessage("Box Photo Back is required."); if (!text(editForm.remarks)) return setEditMessage("Remarks are required."); const updated: Inspection = { ...editingRow, ...editForm, id: editingRow.id, inspectionDate: editingRow.inspectionDate, result: derivePdiResult(editForm, csStandardForRecord(editingRow), csMarginPercent), updatedBy: "System User", updateTimestamp: new Date().toISOString() } as Inspection; setEditSaving(true); try { await api.saveItem(updated); closeEdit(); } catch (error) { setEditMessage(error instanceof Error ? error.message : "Unable to save inspection."); } finally { setEditSaving(false); } };
   const readOnlyEditFields = [["Job No.", "jobNo"], ["Firm *", "firmName"], ["ERP *", "erpCode"], ["Party Name *", "partyName"], ["Item Name *", "itemName"], ["Planned Quantity *", "plannedQty"]] as const;
   const editFields = [["Length (ID) *", "lengthId"], ["Width (ID) *", "widthId"], ["Height (ID) *", "heightId"], ["CS Achieved *", "csAchieved"], ["GSM Achieved *", "gsmAchieved"], ["Box Weight (Grams) *", "boxWeightGrams"]] as const;
   const tile = (label: string, value: number, tone: string) => <div className={"rounded-lg border-2 border-black p-3 " + tone}><div className="text-[11px] font-black uppercase">{label}</div><div className="text-xl font-black tabular-nums">{value}</div></div>;
@@ -211,7 +213,7 @@ export function PreDispatchInspection() {
             {sorted.length === 0 ? (
               <tr><td colSpan={canManage ? headers.length : headers.length - 1} className="h-16" aria-label="No records" /></tr>
             ) : sorted.map(r => {
-              const result = inspectionResult(r, productions, items);
+              const result = inspectionResult(r, productions, items, csMarginPercent);
               return (
                 <tr key={r.id} className="hover:bg-slate-50">
                   <td className={cell + " font-bold"}>{r.jobNo || "-"}</td>

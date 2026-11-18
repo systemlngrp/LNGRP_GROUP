@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { derivePdiResult, resolveCsStandard } from "./pdiResult";
+import { derivePdiResult, parsePdiCsMarginPercent, requiredPdiCs, resolveCsStandard } from "./pdiResult";
 
 const checks = {
   printingArtworkCheck: "OK",
@@ -36,4 +36,15 @@ test("CS Achieved 0 means CS not tested: result follows the checks", () => {
   assert.equal(derivePdiResult({ ...checks, csAchieved: "0" }, "180"), "QC PASS");
   assert.equal(derivePdiResult({ ...checks, flapGapCheck: "NOT OK", csAchieved: "0" }, "180"), "QC FAIL");
   assert.equal(derivePdiResult({ ...checks, flapGapCheck: "", csAchieved: "0" }, "180"), "Pending");
+});
+
+test("CS margin comes from Settings: CS Std 120 needs 132 at 10%, 126 at 5%", () => {
+  const ok = { printingArtworkCheck: "OK", printingColorCheck: "OK", boxSquaringCheck: "OK", flapGapCheck: "OK", jointPastingDelaminationCheck: "OK" };
+  assert.equal(derivePdiResult({ ...ok, csAchieved: "127" }, "120"), "QC FAIL");
+  assert.equal(derivePdiResult({ ...ok, csAchieved: "127" }, "120", 5), "QC PASS");
+  assert.equal(derivePdiResult({ ...ok, csAchieved: "120" }, "120", 0), "QC PASS");
+  assert.equal(parsePdiCsMarginPercent({ pdiCsMarginPercent: "" }), 10);
+  assert.equal(parsePdiCsMarginPercent({ pdiCsMarginPercent: "5" }), 5);
+  assert.equal(parsePdiCsMarginPercent(null), 10);
+  assert.equal(requiredPdiCs("120", 10), 132);
 });
