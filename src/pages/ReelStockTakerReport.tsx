@@ -233,7 +233,8 @@ export function ReelStockTakerReport() {
     await saveScanEntry({
       row,
       reelNo,
-      physicalWeight: parsed.weight ?? 0,
+      // Short QR codes carry only the reel number: take the system weight as the physical weight.
+      physicalWeight: parsed.weight ?? Number(row?.availableWeight || 0),
     });
   };
 

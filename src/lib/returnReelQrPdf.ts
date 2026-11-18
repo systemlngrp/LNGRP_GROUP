@@ -84,17 +84,8 @@ export async function downloadReturnReelQrPdf({
   }
 
   const organizationName = firstNonEmpty(resolvePdfFirm({ firmId, firms })?.firmName, "LAXMI NARAYAN GROUP");
-  const qrPayload = JSON.stringify({
-    source: "RETURN",
-    returnNo,
-    date,
-    jobNo: jobNo || "",
-    reelNo,
-    weight: Number(weight || 0),
-    materialName: materialName || "",
-    materialCode: materialCode || "",
-    specs: specs || "",
-  });
+  // Short QR: only our reel number (scanners look the rest up from it).
+  const qrPayload = String(reelNo || "").trim();
 
   const [pageW, pageH] = LABEL_PAGE;
   const margin = 11 * U;

@@ -110,16 +110,8 @@ export function buildMrrReelLabelData({
       suppReel: toText(slip.supplierReelNo),
       weightKg,
     };
-    const defaultQrPayload = JSON.stringify({
-      source: "MRR",
-      reelNo,
-      ourReelNo: reelNo,
-      weight: weightKg,
-      weightKg,
-      mrrNo: toText(mrr.transactionNo),
-      date: toText(mrr.date),
-      materialCode: toText(material?.erpCode),
-    });
+    // Short QR: only our reel number (scanners look the rest up from it).
+    const defaultQrPayload = reelNo;
 
     labels.push({
       ...baseRow,

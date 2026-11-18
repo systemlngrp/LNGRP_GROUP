@@ -418,16 +418,7 @@ export function ReelwiseStockReport() {
         totalAmount: 0,
         lines: [],
       };
-      qrPayload = JSON.stringify({
-        source: "Opening",
-        reelNo: row.ourReelNo,
-        ourReelNo: row.ourReelNo,
-        weight: availableWeight.toFixed(2),
-        weightKg: availableWeight,
-        mrrNo: "Opening",
-        date: mrr.date,
-        materialCode: row.erp,
-      });
+      qrPayload = String(row.ourReelNo || "").trim(); // short QR: reel number only
     } else {
       const receiptId = `report-mrr-${row.slipId}`;
       const lineId = `report-line-${row.materialId}`;
@@ -462,10 +453,7 @@ export function ReelwiseStockReport() {
           value: Number(row.availableWeight || 0) * Number(row.rate || 0),
         }],
       };
-      qrPayload = JSON.stringify({
-        reelNo: row.ourReelNo,
-        weight: Number(row.availableWeight || 0).toFixed(2),
-      });
+      qrPayload = String(row.ourReelNo || "").trim(); // short QR: reel number only
     }
 
     try {

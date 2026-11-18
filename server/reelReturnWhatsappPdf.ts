@@ -34,7 +34,7 @@ export async function writeReelReturnWhatsappPdf(returnRecord: ReturnRecord, row
     doc.setFont("helvetica", "normal");
     doc.text(`Remarks: ${text(returnRecord.remarks)}`, 15, 92);
     try {
-      const payload = JSON.stringify({ source: "RETURN", returnNo: returnRecord.returnNo, date: returnRecord.date, jobNo: returnRecord.jobNo || row.jobNo, reelNo: row.ourReelNo, weight: Number(row.weightKg || 0) });
+      const payload = String(row.ourReelNo || "").trim(); // short QR: reel number only
       const qr = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 900 });
       const qrSize = Math.min(width - 30, height - 115);
       doc.addImage(qr, "PNG", (width - qrSize) / 2, 105, qrSize, qrSize, undefined, "FAST");
