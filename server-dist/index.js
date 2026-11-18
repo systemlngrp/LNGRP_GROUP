@@ -960,6 +960,52 @@ const MASTER_RECORD_ENTITIES = new Set([
     "dispatch_plans", "loading_slips", "material_visit", "invoices", "gate_entries", "gate_passes",
     "sample_requests", "physical_stock_sessions",
 ]);
+const PLAN_DATE_TEXT = /^\d{4}-\d{2}-\d{2}$/;
+/** Today's date in India (YYYY-MM-DD), whatever the server's clock zone. */
+function indiaTodayKey(now = new Date()) {
+    return new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+}
+/** "26-27" for a date in the Indian financial year 1-Apr-2026 .. 31-Mar-2027. */
+function financialYearLabel(dateKey) {
+    const year = Number(dateKey.slice(0, 4));
+    const month = Number(dateKey.slice(5, 7));
+    const start = month >= 4 ? year : year - 1;
+    return `${String(start % 100).padStart(2, "0")}-${String((start + 1) % 100).padStart(2, "0")}`;
+}
+/** Checks a Plan Date change made on Pending Job Closure; "" when allowed. Sets data.originalPlanDate the first time. */
+async function pendingClosurePlanDateError(db, data) {
+    const jobId = String(data.id || "").trim();
+    const nextDate = String(data.date ?? "").slice(0, 10);
+    if (!jobId)
+        return "Job not found.";
+    if (!PLAN_DATE_TEXT.test(nextDate))
+        return "Plan Date is mandatory.";
+    const [rows] = await db.query("SELECT `date`, `transactionNo`, `status`, `closeBy`, `closeDate`, `originalPlanDate` FROM `productions` WHERE id = ? LIMIT 1", [jobId]);
+    const stored = rows[0];
+    if (!stored)
+        return "Job not found.";
+    const storedDate = String(stored.date ?? "").slice(0, 10);
+    if (nextDate === storedDate)
+        return "";
+    if (String(stored.status || "").trim() === "Cancelled")
+        return "Plan Date cannot be changed for a cancelled job.";
+    if (String(stored.closeBy || "").trim().toLowerCase() === "yes" && String(stored.closeDate || "").trim())
+        return "Plan Date cannot be changed for a closed job.";
+    const today = indiaTodayKey();
+    if (nextDate < today)
+        return `Plan Date cannot be before today (${today.split("-").reverse().join("-")}).`;
+    const jobYear = String(stored.transactionNo || "").match(/(\d{2}-\d{2})\/\d+$/)?.[1];
+    if (jobYear && financialYearLabel(nextDate) !== jobYear)
+        return `Plan Date must stay in financial year ${jobYear} (the job number's year).`;
+    const [issueRows] = await db.query("SELECT COUNT(*) AS n FROM `material_issues` WHERE productionId = ?", [jobId]);
+    if (Number(issueRows[0]?.n || 0) > 0)
+        return "Plan Date cannot be changed after Material Issue is created for this job.";
+    if (!String(stored.originalPlanDate || "").trim())
+        data.originalPlanDate = storedDate;
+    else
+        delete data.originalPlanDate;
+    return "";
+}
 function hasPermission(user, required) {
     if (user.role === "Admin")
         return true;
@@ -9291,6 +9337,7 @@ async function initDb(retries = 5) {
                 { table: "material_in", column: "status", type: "VARCHAR(50) NOT NULL DEFAULT 'Pending PH'" },
                 { table: "productions", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
                 { table: "productions", column: "date", type: "VARCHAR(50) NOT NULL" },
+                { table: "productions", column: "originalPlanDate", type: "VARCHAR(10)" },
                 { table: "productions", column: "itemId", type: "VARCHAR(36) NOT NULL" },
                 { table: "productions", column: "npdId", type: "VARCHAR(36)" },
                 { table: "productions", column: "qty", type: "DECIMAL(15, 2) NOT NULL" },
@@ -13156,6 +13203,16 @@ const createHandlers = (tableName) => {
                             return res.status(400).json({ error: dateError });
                     }
                 }
+                // Plan Date changed from Pending Job Closure (planDateRule flag): not before today
+                // (India time), same financial year as the job number, open jobs only, no
+                // Material Issue yet. The first date is kept in originalPlanDate. The flag is
+                // not a column, so it is dropped before the row is written.
+                if (tableName === "productions" && data.planDateRule === "not-before-today") {
+                    const planError = await pendingClosurePlanDateError(db, data);
+                    if (planError)
+                        return res.status(400).json({ error: planError });
+                }
+                delete data.planDateRule;
                 if (tableName === "orders_schedule" && !String(data.scheduleNo || "").trim()) {
                     try {
                         const scheduleId = String(data.id || "").trim();
