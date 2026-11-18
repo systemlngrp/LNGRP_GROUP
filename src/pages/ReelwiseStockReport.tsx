@@ -477,7 +477,7 @@ export function ReelwiseStockReport() {
         companies,
         setting: settings[0] || null,
         firms,
-        paperSize: "A4",
+        paperSize: "A3", // 250 x 300 px reel label
         qrPayloadByPackingSlipId: {
           [slip.id]: qrPayload,
         },
