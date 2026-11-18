@@ -14,6 +14,7 @@ import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/re
 import { ClientPagination } from "../components/ClientPagination";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { displayJobNo } from "../lib/jobNumber";
 import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, Production, ProductionProcessing, Setting, Truck } from "../types";
 
 const COLUMNS = [
@@ -64,6 +65,13 @@ const displayDate = (value: unknown) => {
   const iso = isoDateText(value);
   const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+};
+
+// "26-27/11053" -> "26-27/0000011053" so serials sort as numbers within a financial year.
+const jobNoSortKey = (value: unknown) => {
+  const shown = displayJobNo(value);
+  const match = shown.match(/^(\d{2}-\d{2})\/(\d+)$/);
+  return match ? `${match[1]}/${match[2].padStart(10, "0")}` : shown;
 };
 
 const isZeroDisplay = (value: unknown) => {
@@ -254,6 +262,7 @@ export function SummarySheetReport() {
     const column = COLUMNS[columnIndex];
     if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? "Closed" : "";
     const value = row[column] ?? "";
+    if (column === "Job No.") return `${displayJobNo(value)} ${s(value)}`;
     return DATE_COLUMNS.has(column) ? displayDate(value) : value;
   }), [selectedColumns]);
   const selectedSections = useMemo(() => SUMMARY_SECTIONS.map((section) => {
@@ -266,6 +275,7 @@ export function SummarySheetReport() {
     const column = COLUMNS[columnIndex];
     const value = row[column] ?? "";
     if (DATE_COLUMNS.has(column)) return displayDate(value);
+    if (column === "Job No.") return displayJobNo(value); // without the firm / JOB prefix
     // Zero values show as an empty cell (0, "0", "0.00", "₹ 0", "0%"...).
     if (isZeroDisplay(value)) return "";
     return value;
@@ -313,14 +323,15 @@ export function SummarySheetReport() {
   }, [salesTargets, baseRows, closedFilter, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
-  // Opens sorted by Date, oldest first.
+  // Opens sorted by Job No., lowest first (financial year, then serial).
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
     const column = key as (typeof COLUMNS)[number];
     if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? isoDateText(row["Close Date"]) || "Yes" : "";
     const value = row[column] ?? "";
     if (DATE_COLUMNS.has(column)) return isoDateText(value);
+    if (column === "Job No.") return jobNoSortKey(value);
     return NUMERIC_COLUMNS.has(column) && s(value) !== "" ? n(value) : value;
-  }, [], { key: "Date", direction: "asc" });
+  }, [], { key: "Job No.", direction: "asc" });
 
   const pagedRows = useMemo(() => sortedRows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, sortedRows]);
   const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
