@@ -19280,18 +19280,30 @@ async function loadCatalogFgRowsCached(db: mysql.Pool) {
   return rows;
 }
 
+// Reports calculated on the server are cached briefly per request (cleared when the report code changes).
+const REPORT_RESULT_CACHE_TTL_MS = 30_000;
+const reportResultCache = new Map<string, { expiresAt: number; version: number; value: any }>();
 let reportModulePromise: Promise<any> | null = null;
+let reportModuleStamp = "";
+// The report code (report-compute.mjs) is reloaded when the file on disk changes, so a
+// deploy takes effect without restarting the server (a running server kept the old copy).
 function loadReportModule() {
-  if (!reportModulePromise) {
-    const candidates = [
-      new URL("./report-compute.mjs", import.meta.url).href,
-      new URL("../server-dist/report-compute.mjs", import.meta.url).href,
-    ];
+  const candidates = [
+    new URL("./report-compute.mjs", import.meta.url),
+    new URL("../server-dist/report-compute.mjs", import.meta.url),
+  ];
+  let stamp = "";
+  for (const candidate of candidates) {
+    try { const stat = fs.statSync(candidate); stamp = `${candidate.href}|${stat.mtimeMs}|${stat.size}`; break; } catch { /* try next */ }
+  }
+  if (!reportModulePromise || (stamp && stamp !== reportModuleStamp)) {
+    reportModuleStamp = stamp;
+    reportResultCache.clear();
     reportModulePromise = (async () => {
       let lastError: unknown;
       for (const candidate of candidates) {
         try {
-          return await import(candidate);
+          return await import(`${candidate.href}?v=${encodeURIComponent(stamp || String(Date.now()))}`);
         } catch (error) {
           lastError = error;
         }
@@ -19306,8 +19318,6 @@ function loadReportModule() {
 // Reports calculated on the server with the same code the page used to run in
 // the browser (src/lib/reports). Lists come from the shared snapshot cache, so
 // only changed tables are re-read.
-const REPORT_RESULT_CACHE_TTL_MS = 30_000;
-const reportResultCache = new Map<string, { expiresAt: number; version: number; value: any }>();
 app.post("/api/reports/:name", requireAuth, async (req, res) => {
   const startedAt = Date.now();
   const db = await getPool();
