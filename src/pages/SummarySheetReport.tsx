@@ -74,6 +74,13 @@ const jobNoSortKey = (value: unknown) => {
   return match ? `${match[1]}/${match[2].padStart(10, "0")}` : shown;
 };
 
+// "LNCB-2/JOB/26-27/11053" -> "11053" (other numbers are shown as they are).
+const jobSerial = (value: unknown) => {
+  const shown = displayJobNo(value);
+  const match = shown.match(/^\d{2}-\d{2}\/(\d+)$/);
+  return match ? match[1] : shown;
+};
+
 const isZeroDisplay = (value: unknown) => {
   if (typeof value === "number") return value === 0 || !Number.isFinite(value);
   const text = String(value ?? "").trim();
@@ -262,7 +269,7 @@ export function SummarySheetReport() {
     const column = COLUMNS[columnIndex];
     if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? "Closed" : "";
     const value = row[column] ?? "";
-    if (column === "Job No.") return `${displayJobNo(value)} ${s(value)}`;
+    if (column === "Job No.") return `${jobSerial(value)} ${s(value)}`;
     return DATE_COLUMNS.has(column) ? displayDate(value) : value;
   }), [selectedColumns]);
   const selectedSections = useMemo(() => SUMMARY_SECTIONS.map((section) => {
@@ -275,7 +282,7 @@ export function SummarySheetReport() {
     const column = COLUMNS[columnIndex];
     const value = row[column] ?? "";
     if (DATE_COLUMNS.has(column)) return displayDate(value);
-    if (column === "Job No.") return displayJobNo(value); // without the firm / JOB prefix
+    if (column === "Job No.") return jobSerial(value); // serial only: no firm / JOB / financial-year prefix
     // Zero values show as an empty cell (0, "0", "0.00", "₹ 0", "0%"...).
     if (isZeroDisplay(value)) return "";
     return value;
