@@ -423,10 +423,16 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     doc.setFontSize(9);
     doc.text(`Date: ${formatDate(new Date().toISOString())} - ${rows.length} jobs`, pageWidth / 2, 18, { align: "center" });
     const numberFrom = headers.indexOf("Plan Qty");
+    const pendingIndex = headers.indexOf("Pending");
+    const pendingTotal = rows.reduce((sum, row) => sum + Number(row[pendingIndex] || 0), 0);
+    const totalRow = headers.map((_, index) => (index === 0 ? "TOTAL" : index === pendingIndex ? pendingTotal.toLocaleString("en-IN") : ""));
     autoTable(doc, {
       startY: 22,
       head: [headers],
       body: rows.map((row) => row.map((cell) => (typeof cell === "number" ? cell.toLocaleString("en-IN") : String(cell)))),
+      foot: [totalRow],
+      showFoot: "lastPage",
+      footStyles: { fillColor: [226, 232, 240], textColor: 0, fontStyle: "bold" },
       styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
       headStyles: { fillColor: [6, 95, 70], textColor: 255, fontStyle: "bold" },
       columnStyles: Object.fromEntries([0, 1, 2, 3].map((i) => [numberFrom + i, { halign: "right" as const }])),
