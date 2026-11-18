@@ -854,12 +854,12 @@ export function PendingJobClosure() {
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.erpCode || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{company?.name || "-"}</td>
                       <td
-                        className={`px-2 py-2 text-xs text-black border border-black whitespace-nowrap ${editingProductionDateId === p.id ? "bg-[#fff9c4]" : hasMaterialIssue(p.id) ? "" : "cursor-pointer hover:bg-[#fff9c4]"}`}
+                        className={`px-2 py-2 text-xs text-black border border-black whitespace-nowrap ${editingProductionDateId === p.id ? "min-w-[160px] bg-[#fff9c4]" : hasMaterialIssue(p.id) ? "" : "cursor-pointer hover:bg-[#fff9c4]"}`}
                         title={editingProductionDateId === p.id ? "" : hasMaterialIssue(p.id) ? "Plan Date is locked after Material Issue" : "Click to change Plan Date (today or later)"}
                         onClick={() => { if (editingProductionDateId !== p.id && !hasMaterialIssue(p.id)) startEditingProductionDate(p); }}
                       >
                         {editingProductionDateId === p.id ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex w-[150px] flex-col gap-1">
                             <input
                               type="date"
                               autoFocus
@@ -868,10 +868,12 @@ export function PendingJobClosure() {
                               max={financialYearEnd(p.transactionNo) || undefined}
                               onChange={(e) => setProductionDateDraft(e.target.value)}
                               onKeyDown={(e) => { if (e.key === "Enter") void saveProductionDate(p.id); if (e.key === "Escape") cancelEditingProductionDate(); }}
-                              className="w-36 border-2 border-black rounded px-2 py-1 text-xs bg-[#fff9c4]"
+                              className="w-full border-2 border-black rounded px-2 py-1 text-xs bg-white"
                             />
-                            <button type="button" onClick={(e) => { e.stopPropagation(); void saveProductionDate(p.id); }} className="px-2 py-1 border border-black rounded text-[11px] font-bold bg-white hover:bg-slate-100">Save</button>
-                            <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditingProductionDate(); }} className="px-2 py-1 border border-black rounded text-[11px] font-bold bg-white hover:bg-slate-100">Cancel</button>
+                            <div className="grid grid-cols-2 gap-1">
+                              <button type="button" onClick={(e) => { e.stopPropagation(); void saveProductionDate(p.id); }} className="rounded border border-black bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700">Save</button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditingProductionDate(); }} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold text-black hover:bg-slate-100">Cancel</button>
+                            </div>
                           </div>
                         ) : (
                           <span className={hasMaterialIssue(p.id) ? "" : "underline decoration-dotted underline-offset-2"}>{formatDate(p.date)}</span>
