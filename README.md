@@ -20,3 +20,12 @@ sequentially to avoid competing Tally imports:
 Omit `--watch` to perform one sequential pass for all firms. It uses the `.env`
 database settings and `tallyPortNo` values from the database. Keep `.env` beside
 the executable; it contains private database settings and should not be shared.
+Firm-2 skips duplicate-invoice lookups before posting and continues numbering from
+the current Tally Sales series. If a Firm-2 post times out or its result is uncertain,
+check Tally before retrying; the skipped duplicate check can otherwise allow a duplicate.
+
+For a one-time Firm-2 run without Tally master validation, run
+`python TallyCodes\invoice\invFirm2_fast_once.py`. It skips customer/sales-ledger,
+stock-item, UOM, and part-number checks but still reads the next number from Tally
+and imports the voucher. Tally may reject invalid ledger/item names; check Tally
+before retrying after an uncertain import.

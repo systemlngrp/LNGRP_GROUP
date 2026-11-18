@@ -56,6 +56,7 @@ def preserve_actual_item_lines(item_lines, source_firm_id, destination_firm_id):
 invoice_engine.resolve_unit1_firm = resolve_source_unit2
 invoice_engine.resolve_unit2_firm = resolve_destination_lnki
 invoice_engine.map_unit1_to_unit2_invoice_lines = preserve_actual_item_lines
+invoice_engine.SKIP_ASSIGNED_NUMBER_DUPLICATE_CHECKS = True
 
 
 if __name__ == "__main__":

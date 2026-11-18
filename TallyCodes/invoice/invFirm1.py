@@ -90,7 +90,7 @@ TALLY_VOUCHER_DATE_CACHE = {}
 TALLY_VOUCHER_REFERENCE_CACHE = {}
 COLUMN_EXISTS_CACHE = {}
 TALLY_CONNECT_TIMEOUT = float(os.getenv("TALLY_CONNECT_TIMEOUT", "5"))
-TALLY_READ_TIMEOUT = float(os.getenv("TALLY_READ_TIMEOUT", "10"))
+TALLY_READ_TIMEOUT = float(os.getenv("TALLY_READ_TIMEOUT", "90"))
 TALLY_READ_RETRIES = int(os.getenv("TALLY_READ_RETRIES", "0"))
 TALLY_RETRY_DELAY = float(os.getenv("TALLY_RETRY_DELAY", "2"))
 TALLY_SLOW_REQUEST_SECONDS = float(os.getenv("TALLY_SLOW_REQUEST_SECONDS", "5"))
@@ -142,6 +142,8 @@ INVOICE_NUMBER_SOURCE = os.getenv("INVOICE_NUMBER_SOURCE", "tally").strip().lowe
 # same invoice is never posted twice.
 TALLY_SEND_REMOTE_ID = os.getenv("TALLY_SEND_REMOTE_ID", "1").strip() != "0"
 TALLY_REMOTE_ID_PREFIX = os.getenv("TALLY_REMOTE_ID_PREFIX", "LNGRP-INV-")
+SKIP_ASSIGNED_NUMBER_DUPLICATE_CHECKS = False
+SKIP_TALLY_MASTER_VALIDATION = False
 # Watch mode (--watch): how often to look for newly saved invoices, and how long to
 # wait before retrying after a run stopped on a problem invoice.
 WATCH_INTERVAL_SECONDS = float(os.getenv("TALLY_WATCH_INTERVAL", "20"))
@@ -2980,6 +2982,7 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
         "invoice_numbers_clear": set(),
         "invoice_numbers_existing": [],
         "npd_part_matches": set(),
+        "tally_master_validation_skipped": SKIP_TALLY_MASTER_VALIDATION,
     }
     halted_invoice_no = ""
     halted_remark = ""
@@ -3097,35 +3100,48 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
                 dispatch_details = get_invoice_dispatch_details(conn, invoice_id, item_lines)
             narration_text = build_invoice_narration(dispatch_details)
 
-            log_terminal("PRECHECK", f"{invoice_no}: checking saved Tally ID")
-            existing_tally_id = str(invoice_row.get("tallyInvId") or "").strip()
-            tally_reference = fetch_tally_voucher_by_id(existing_tally_id) if existing_tally_id else {}
-            if existing_tally_id and tally_reference:
-                remark = "Voucher already exists in Tally. Matched by saved Tally ID."
-                update_invoice_tally_status(
-                    conn,
-                    invoice_id,
-                    True,
-                    remark,
-                    invoice_row.get("updatedBy") or DEFAULT_UPDATED_BY,
-                    tally_reference.get("tallyInvNo")
-                    or (invoice_row.get("tallyInvNo") if tally_assigns_number() else invoice_no),
-                    format_iso_date(tally_reference.get("tallyInvDate")),
-                    existing_tally_id,
-                    invoice_row=invoice_row,
-                    company_name=company_name,
-                    stage="PRECHECK",
+            skip_duplicate_lookups = (
+                tally_assigns_number() and SKIP_ASSIGNED_NUMBER_DUPLICATE_CHECKS
+            )
+            voucher_by_number = {}
+            if skip_duplicate_lookups:
+                log_terminal(
+                    "PRECHECK",
+                    f"{invoice_no}: skipping duplicate-invoice lookups; Tally numbering will be used. "
+                    "If an earlier post succeeded but its result was not saved, rerunning may create a duplicate.",
                 )
-                precheck_summary["invoice_numbers_existing"].append(invoice_no)
-                log_terminal("PRECHECK", f"{invoice_no}: {remark}")
-                continue
+            else:
+                log_terminal("PRECHECK", f"{invoice_no}: checking saved Tally ID")
+                existing_tally_id = str(invoice_row.get("tallyInvId") or "").strip()
+                tally_reference = (
+                    fetch_tally_voucher_by_id(existing_tally_id) if existing_tally_id else {}
+                )
+                if existing_tally_id and tally_reference:
+                    remark = "Voucher already exists in Tally. Matched by saved Tally ID."
+                    update_invoice_tally_status(
+                        conn,
+                        invoice_id,
+                        True,
+                        remark,
+                        invoice_row.get("updatedBy") or DEFAULT_UPDATED_BY,
+                        tally_reference.get("tallyInvNo")
+                        or (invoice_row.get("tallyInvNo") if tally_assigns_number() else invoice_no),
+                        format_iso_date(tally_reference.get("tallyInvDate")),
+                        existing_tally_id,
+                        invoice_row=invoice_row,
+                        company_name=company_name,
+                        stage="PRECHECK",
+                    )
+                    precheck_summary["invoice_numbers_existing"].append(invoice_no)
+                    log_terminal("PRECHECK", f"{invoice_no}: {remark}")
+                    continue
 
-            if tally_assigns_number():
+            if not skip_duplicate_lookups and tally_assigns_number():
                 log_terminal("PRECHECK", f"{invoice_no}: checking whether this invoice was already posted")
                 voucher_by_number = find_tally_voucher_by_remote_id(
                     invoice_row.get("date"), invoice_remote_id(invoice_row)
                 )
-            else:
+            elif not skip_duplicate_lookups:
                 log_terminal("PRECHECK", f"{invoice_no}: checking existing invoice number in Tally")
                 voucher_by_number = fetch_tally_voucher_reference(
                     invoice_no,
@@ -3133,7 +3149,8 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
                     invoice_row.get("date"),
                     company_name,
                 )
-            raise_if_tally_unavailable()
+            if not skip_duplicate_lookups:
+                raise_if_tally_unavailable()
             if voucher_by_number and tally_assigns_number():
                 # Posted in an earlier run but the Tally number was not saved then.
                 # Mark it posted (never post again) and save whatever Tally reports.
@@ -3179,41 +3196,48 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
                 log_terminal("PRECHECK", f"{invoice_no}: {remark}")
                 continue
 
-            log_terminal("PRECHECK", f"{invoice_no}: validating ledgers and stock items in Tally")
-            tally_master_errors = validate_tally_masters(
-                company_name,
-                sales_ledger_name,
-                item_lines,
-                invoice_row,
-            )
-            raise_if_tally_unavailable()
-            if tally_master_errors:
-                remark = " | ".join(tally_master_errors[:10])
-                update_invoice_tally_status(
-                    conn,
-                    invoice_id,
-                    False,
-                    remark,
-                    invoice_row=invoice_row,
-                    company_name=company_name,
-                    stage="PRECHECK",
+            if SKIP_TALLY_MASTER_VALIDATION:
+                log_terminal(
+                    "PRECHECK",
+                    f"{invoice_no}: skipping Tally customer/ledger, stock-item, UOM, and part-number validation",
                 )
-                log_terminal("PRECHECK", remark)
-                halted_invoice_no = invoice_no
-                halted_remark = remark
-                break
+            else:
+                log_terminal("PRECHECK", f"{invoice_no}: validating ledgers and stock items in Tally")
+                tally_master_errors = validate_tally_masters(
+                    company_name,
+                    sales_ledger_name,
+                    item_lines,
+                    invoice_row,
+                )
+                raise_if_tally_unavailable()
+                if tally_master_errors:
+                    remark = " | ".join(tally_master_errors[:10])
+                    update_invoice_tally_status(
+                        conn,
+                        invoice_id,
+                        False,
+                        remark,
+                        invoice_row=invoice_row,
+                        company_name=company_name,
+                        stage="PRECHECK",
+                    )
+                    log_terminal("PRECHECK", remark)
+                    halted_invoice_no = invoice_no
+                    halted_remark = remark
+                    break
 
-            for line in item_lines:
-                item_name = str(line.get("itemName") or "").strip()
-                item_uom = normalize_uom(line.get("uom"))
-                if item_name:
-                    precheck_summary["stock_items_ok"].add(item_name)
-                if item_name and item_uom:
-                    precheck_summary["item_uom_ok"].add((item_name, item_uom))
-                if line.get("npdId"):
-                    npd_part_no = normalize_part_no(line.get("npdPartNo"))
-                    if item_name and npd_part_no:
-                        precheck_summary["npd_part_matches"].add((item_name, npd_part_no))
+            if not SKIP_TALLY_MASTER_VALIDATION:
+                for line in item_lines:
+                    item_name = str(line.get("itemName") or "").strip()
+                    item_uom = normalize_uom(line.get("uom"))
+                    if item_name:
+                        precheck_summary["stock_items_ok"].add(item_name)
+                    if item_name and item_uom:
+                        precheck_summary["item_uom_ok"].add((item_name, item_uom))
+                    if line.get("npdId"):
+                        npd_part_no = normalize_part_no(line.get("npdPartNo"))
+                        if item_name and npd_part_no:
+                            precheck_summary["npd_part_matches"].add((item_name, npd_part_no))
 
             precheck_summary["invoice_numbers_clear"].add(invoice_no)
             valid_contexts.append(
@@ -3248,22 +3272,31 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
     print("==========================================")
     print("Precheck Summary Before Posting")
     print("==========================================")
-    if precheck_summary["customers_ok"]:
+    master_validation_skipped = precheck_summary["tally_master_validation_skipped"]
+    if master_validation_skipped:
+        print(
+            "[WARNING] Tally master validation was skipped. Customer/sales ledgers, "
+            "stock items, UOMs, and part numbers were not checked."
+        )
+    elif precheck_summary["customers_ok"]:
         print(f"[OK] All Customers exist in Tally for {len(precheck_summary['customers_ok'])} customer ledger(s).")
     else:
         print("[INFO] No customer ledgers were cleared in precheck.")
 
-    if precheck_summary["stock_items_ok"]:
-        print(f"[OK] All Stock Items exist in Tally for {len(precheck_summary['stock_items_ok'])} unique item name(s).")
-    else:
-        print("[INFO] No stock items were cleared in precheck.")
+    if not master_validation_skipped:
+        if precheck_summary["stock_items_ok"]:
+            print(f"[OK] All Stock Items exist in Tally for {len(precheck_summary['stock_items_ok'])} unique item name(s).")
+        else:
+            print("[INFO] No stock items were cleared in precheck.")
 
-    if precheck_summary["item_uom_ok"]:
-        print(f"[OK] All Items exist with matching Unit for {len(precheck_summary['item_uom_ok'])} unique item/unit combination(s).")
-    else:
-        print("[INFO] No item/unit combinations were cleared in precheck.")
+        if precheck_summary["item_uom_ok"]:
+            print(f"[OK] All Items exist with matching Unit for {len(precheck_summary['item_uom_ok'])} unique item/unit combination(s).")
+        else:
+            print("[INFO] No item/unit combinations were cleared in precheck.")
 
-    if precheck_summary["invoice_numbers_clear"]:
+    if SKIP_ASSIGNED_NUMBER_DUPLICATE_CHECKS and tally_assigns_number():
+        print("[WARNING] Duplicate-invoice lookups were skipped; existing vouchers may not have been detected.")
+    elif precheck_summary["invoice_numbers_clear"]:
         print(f"[OK] There is no existing Invoice No. in Tally for {len(precheck_summary['invoice_numbers_clear'])} invoice(s) cleared for posting.")
     else:
         print("[INFO] No invoice numbers were cleared for posting.")
@@ -3271,13 +3304,14 @@ def prevalidate_pending_invoices(conn, pending_invoice_rows, source_firm_id, des
     if precheck_summary["invoice_numbers_existing"]:
         print(f"[INFO] Existing Invoice No. already found in Tally for {len(precheck_summary['invoice_numbers_existing'])} invoice(s).")
 
-    if precheck_summary["npd_part_matches"]:
-        print(
-            f"[OK] NPD Stock Items exist with matching Name and Part No for "
-            f"{len(precheck_summary['npd_part_matches'])} unique item/part combination(s)."
-        )
-    else:
-        print("[INFO] No NPD Part No comparisons were applicable in this precheck.")
+    if not master_validation_skipped:
+        if precheck_summary["npd_part_matches"]:
+            print(
+                f"[OK] NPD Stock Items exist with matching Name and Part No for "
+                f"{len(precheck_summary['npd_part_matches'])} unique item/part combination(s)."
+            )
+        else:
+            print("[INFO] No NPD Part No comparisons were applicable in this precheck.")
 
     if halted_invoice_no:
         print(
@@ -3403,27 +3437,27 @@ def post_tally_assigned_invoice(conn, context):
     remote_id = invoice_remote_id(invoice_row)
     tally_by = invoice_row.get("updatedBy") or DEFAULT_UPDATED_BY
 
-    # Final guard right before posting: if this invoice already reached Tally
-    # (earlier run, or the response was lost), sync that voucher instead.
-    already_posted = find_tally_voucher_by_remote_id(
-        invoice_row.get("date"), remote_id, force_refresh=True
-    )
-    if already_posted:
-        found_no = already_posted.get("tallyInvNo")
-        remark = (
-            "Already in Tally at final pre-post check (matched by hidden ERP id). Tally number saved."
-            if found_no
-            else "Already in Tally (matched by hidden ERP id) but its Tally number could not be read. "
-            "Check Tally and enter the number."
+    if not SKIP_ASSIGNED_NUMBER_DUPLICATE_CHECKS:
+        # If this invoice already reached Tally, sync it instead of posting again.
+        already_posted = find_tally_voucher_by_remote_id(
+            invoice_row.get("date"), remote_id, force_refresh=True
         )
-        update_invoice_tally_status(
-            conn, invoice_id, True, remark, tally_by, found_no,
-            format_iso_date(already_posted.get("tallyInvDate")),
-            already_posted.get("tallyInvId"),
-            invoice_row=invoice_row, company_name=company_name, stage="SYNC",
-        )
-        print(f"{label}: {remark}")
-        return
+        if already_posted:
+            found_no = already_posted.get("tallyInvNo")
+            remark = (
+                "Already in Tally at final pre-post check (matched by hidden ERP id). Tally number saved."
+                if found_no
+                else "Already in Tally (matched by hidden ERP id) but its Tally number could not be read. "
+                "Check Tally and enter the number."
+            )
+            update_invoice_tally_status(
+                conn, invoice_id, True, remark, tally_by, found_no,
+                format_iso_date(already_posted.get("tallyInvDate")),
+                already_posted.get("tallyInvId"),
+                invoice_row=invoice_row, company_name=company_name, stage="SYNC",
+            )
+            print(f"{label}: {remark}")
+            return
 
     for line in context["item_lines"]:
         print(
