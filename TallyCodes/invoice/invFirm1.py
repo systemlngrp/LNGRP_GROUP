@@ -31,6 +31,8 @@ def load_runtime_env():
         # Project root (e.g. D:\LNGRP\.env), the same .env the rest of the repo uses.
         os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"),
     ]
+    if getattr(sys, "frozen", False):
+        env_paths.insert(0, os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), ".env"))
     ENV_SEARCH_PATHS = env_paths
     for env_path in env_paths:
         if os.path.exists(env_path):
