@@ -1503,6 +1503,16 @@ function computeSummarySheetRows(lists, stockItems) {
     preAppByJob.set(key5, list);
   });
   const orderMap = new Map(orders.map((row) => [row.id, row]));
+  const latestWeightByJob = (rows2, pick) => {
+    const map = /* @__PURE__ */ new Map();
+    [...rows2 || []].sort((a, b) => s(a.updateTimestamp).localeCompare(s(b.updateTimestamp))).forEach((row) => {
+      const grams = pick(row);
+      if (grams > 0) map.set(s(row.jobNo).toLowerCase(), grams);
+    });
+    return map;
+  };
+  const boardlineGramsByJob = latestWeightByJob(lists.boardlineQc, (row) => n(row.sheetWeightGrams));
+  const printingGramsByJob = latestWeightByJob(lists.printingQc, (row) => n(row.boxWeightGrams));
   const firstScheduleById = firstById(schedules);
   const companyById = firstById(companies);
   const firmById = firstById(firms);
@@ -1585,6 +1595,8 @@ function computeSummarySheetRows(lists, stockItems) {
     const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
     const loadingStarted = dispatchedQty > 0;
     const stage = jobClosed ? "Job Closed" : !loadingStarted && pprUsed <= 0 && !hasPaperNotRequiredBypass(production) ? "Pending Material Issue" : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation" : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing" : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure" : "Pending Loading";
+    const boardGrams = boardlineGramsByJob.get(jobNo.toLowerCase()) || printingGramsByJob.get(jobNo.toLowerCase()) || 0;
+    const actualRealization = rate > 0 && boardGrams > 0 ? money(rate / (boardGrams / 1e3)) : "";
     const pdiResult = normalizeQcResult(findLatestInspection(lists.inspections || [], s(production.id), jobNo)?.result);
     const pdiReport = pdiResult === "QC PASS" || pdiResult === "QC FAIL" ? pdiResult : "";
     const hasPrinting = printing > 0;
@@ -1615,7 +1627,7 @@ function computeSummarySheetRows(lists, stockItems) {
       "Boardline Wastage": hasPrinting ? money(boardline - printing) : "",
       __boardlineWastageKg: money(wastage.corrugationKg),
       __overDispatched: overDispatched,
-      "Actual Realization / kg": n(production.realizationPerKg),
+      "Actual Realization / kg": actualRealization,
       "Dispatched Qty": money(dispatchedQty),
       "Dispatched Qty (3 slips)": money(dispatchedQty3),
       "Dispatch Date": invoiceDates[0] || "",
@@ -2820,7 +2832,9 @@ REPORT_DEFINITIONS["summary-sheet"] = {
     { key: "companies", entity: "companies", scope: "firm" },
     { key: "firms", entity: "firms", scope: "firm" },
     { key: "preAppDispatches", entity: "pre_app_dispatches", scope: "all" },
-    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" }
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" },
+    { key: "boardlineQc", entity: "boardline_qc_checks", scope: "all" },
+    { key: "printingQc", entity: "printing_qc_checks", scope: "all" }
   ],
   // Blank cells are left out to keep the download small (the page reads a missing value as blank).
   compute: (lists, _params, helpers) => computeSummarySheetRows(lists, (helpers.npdItems || []).map(normalizeNpdItem)).map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== "" && value !== null && value !== void 0)))

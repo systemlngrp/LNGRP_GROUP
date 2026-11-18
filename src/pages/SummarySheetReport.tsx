@@ -41,7 +41,7 @@ const SUMMARY_SECTIONS = [
   { label: "STOCK & STATUS", start: "FG Stock", end: "Remarks" },
   { label: "FINANCE & REMARKS", start: "Rate", end: "Timestamp" },
 ] as const;
-const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "companies", "firms", "npd", "pre_app_dispatches", "pre_dispatch_inspections"];
+const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "companies", "firms", "npd", "pre_app_dispatches", "pre_dispatch_inspections", "boardline_qc_checks", "printing_qc_checks"];
 const SUMMARY_HIDDEN_COLUMNS_KEY = "summary-sheet-hidden-columns";
 
 const NUMERIC_COLUMNS = new Set([
@@ -121,6 +121,8 @@ export function SummarySheetReport() {
   const [trucks] = useData<Truck>("trucks", [], { firmScope: "all", enabled: browserFallback });
   const [preAppDispatches] = useData<PreAppDispatch>("pre_app_dispatches", [], { firmScope: "all", enabled: browserFallback });
   const [inspections] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all", enabled: browserFallback });
+  const [boardlineQc] = useData<any>("boardline_qc_checks", [], { firmScope: "all", enabled: browserFallback });
+  const [printingQc] = useData<any>("printing_qc_checks", [], { firmScope: "all", enabled: browserFallback });
   const [companies] = useData<Company>("companies", [], { enabled: browserFallback });
   const [firms] = useData<Firm>("firms", []);
   const [settings] = useData<Setting>("settings", []);
@@ -226,8 +228,8 @@ export function SummarySheetReport() {
 
   const productionById = useMemo(() => new Map(productions.map((production) => [production.id, production])), [productions]);
   const clientBaseRows = useMemo<SummaryRow[]>(
-    () => (browserFallback ? computeSummarySheetRows({ productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms, preAppDispatches, inspections }, stockItems) : []),
-    [browserFallback, inspections, preAppDispatches, companies, firms, invoiceLines, invoices, orders, plans, processing, productions, schedules, slips, stockItems, trucks]
+    () => (browserFallback ? computeSummarySheetRows({ productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms, preAppDispatches, inspections, boardlineQc, printingQc }, stockItems) : []),
+    [browserFallback, boardlineQc, printingQc, inspections, preAppDispatches, companies, firms, invoiceLines, invoices, orders, plans, processing, productions, schedules, slips, stockItems, trucks]
   );
   const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
 
