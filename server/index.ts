@@ -16360,9 +16360,12 @@ app.post("/api/purchase-orders/create-from-indent-lines", async (req, res) => {
           il.cancelledQty,
           il.targetDeliveryDate,
           i.firmId,
+          i.indentType,
+          m.type AS materialType,
           COALESCE(pol_sum.poQtyCreated, 0) as poQtyCreated
         FROM indent_lines il
         JOIN indents i ON i.id = il.indentId
+        LEFT JOIN materials m ON m.id = il.materialId
         LEFT JOIN (
           SELECT pol.indentLineId, SUM(pol.qty) as poQtyCreated
           FROM purchase_order_lines pol
@@ -16376,6 +16379,15 @@ app.post("/api/purchase-orders/create-from-indent-lines", async (req, res) => {
     );
 
     const byId = new Map<string, any>((dbRows as any[]).map((r) => [String(r.indentLineId), r]));
+    // Reel POs always belong to Unit-I (owner of reel stock), whatever firm is active on screen.
+    const isReelRow = (row: any) => String(row?.indentType || "").trim() === "Reel" || String(row?.materialType || "").trim() === "Reel";
+    const reelRowCount = (dbRows as any[]).filter(isReelRow).length;
+    if (reelRowCount > 0) {
+      if (reelRowCount < (dbRows as any[]).length) return res.status(400).json({ error: "Create reel and non-reel POs separately: reel POs are always raised in Unit-I." });
+      const unitOne = await getUnitOneFirm(conn);
+      if (!unitOne?.id) return res.status(400).json({ error: "Unit-I is not configured in Firm Master. Reel POs are raised in Unit-I." });
+      purchaseFirmId = String(unitOne.id);
+    }
     if (!purchaseFirmId) purchaseFirmId = String((dbRows as any[])[0]?.firmId || "").trim();
     if (!purchaseFirmId) return res.status(400).json({ error: "Purchase firm is required." });
     await assertRequestFirm(db, purchaseFirmId);

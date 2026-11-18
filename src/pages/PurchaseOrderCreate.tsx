@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getFirmDisplayName } from "../lib/firmDisplay";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { useNavigate, useParams } from "react-router-dom";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, PurchaseOrder, PurchaseOrderLine, Supplier } from "../types";
@@ -46,9 +47,12 @@ export function PurchaseOrderCreate() {
   const [rowDrafts, setRowDrafts] = useState<Record<string, RowDraft>>({});
   const [poFirmId, setPoFirmId] = useState("");
 
+  // Reel indents are purchased in Unit-I only (owner of reel stock).
+  const reelUnitOneFirmId = indent?.indentType === "Reel" ? String(findUnitOneFirm(firms)?.id || "") : "";
   useEffect(() => {
+    if (reelUnitOneFirmId) { if (poFirmId !== reelUnitOneFirmId) setPoFirmId(reelUnitOneFirmId); return; }
     if (indent && !poFirmId) setPoFirmId(String(indent.firmId || ""));
-  }, [indent, poFirmId]);
+  }, [indent, poFirmId, reelUnitOneFirmId]);
 
   const supplierOptions = useMemo(
     () =>
@@ -346,7 +350,7 @@ export function PurchaseOrderCreate() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">Purchase Firm</label>
-            <select value={poFirmId} onChange={(e) => setPoFirmId(e.target.value)} className="w-full rounded border-2 border-black bg-white px-4 py-3 text-black">
+            <select value={poFirmId} onChange={(e) => setPoFirmId(e.target.value)} disabled={Boolean(reelUnitOneFirmId)} title={reelUnitOneFirmId ? "Reel POs are always raised in Unit-I." : undefined} className="w-full rounded border-2 border-black bg-white px-4 py-3 text-black disabled:bg-slate-100">
               <option value="">Select firm...</option>
               {firms.map((firm) => <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>)}
             </select>

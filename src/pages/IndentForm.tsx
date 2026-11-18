@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, User } from "../types";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
@@ -91,7 +92,11 @@ export function IndentForm() {
     const returnTo = `${location.pathname}${location.search}`;
     navigate(`/masters/materials?new=1&type=${encodeURIComponent(indentType)}&returnTo=${encodeURIComponent(returnTo)}`);
   };
-  const selectedFirm = firms.find((firm) => firm.id === selectedFirmId);
+  // Reel indents always belong to Unit-I, the owner of reel stock (and so do their POs).
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
+  const isReelLockedToUnitOne = indentType === "Reel" && Boolean(unitOneFirm);
+  const effectiveFirmId = isReelLockedToUnitOne ? String(unitOneFirm?.id || "") : selectedFirmId;
+  const selectedFirm = firms.find((firm) => firm.id === effectiveFirmId);
 
   const activeMaterials = useMemo(
     () => materials.filter((material) => material.active !== "No" && material.type === indentType),
@@ -162,7 +167,11 @@ export function IndentForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!selectedFirmId || !selectedFirm || !requestedBy.trim() || !requisitionDate) {
+    if (indentType === "Reel" && !unitOneFirm) {
+      alert("Unit-I is not configured in Firm Master. Reel indents are raised in Unit-I.");
+      return;
+    }
+    if (!effectiveFirmId || !selectedFirm || !requestedBy.trim() || !requisitionDate) {
       alert("Firm, Requested By and Requisition Date are required.");
       return;
     }
@@ -204,7 +213,7 @@ export function IndentForm() {
 
     const nextIndent: Indent = {
       id: indentId,
-      firmId: selectedFirmId,
+      firmId: effectiveFirmId,
       firmName: selectedFirm.firmName,
       requestedBy: requestedBy.trim(),
       requisitionDate,
@@ -248,8 +257,10 @@ export function IndentForm() {
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">Firm <span className="text-red-500">*</span></label>
             <select
-              value={selectedFirmId}
+              value={effectiveFirmId}
               onChange={(event) => setSelectedFirmId(event.target.value)}
+              disabled={isReelLockedToUnitOne}
+              title={isReelLockedToUnitOne ? "Reel indents are always raised in Unit-I." : undefined}
               required
               className="w-full rounded border-2 border-black bg-white px-4 py-3 font-bold text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
               aria-label="Firm"
@@ -259,6 +270,7 @@ export function IndentForm() {
                 <option key={firm.id} value={firm.id}>{getFirmDisplayName(firm)}</option>
               ))}
             </select>
+            {isReelLockedToUnitOne ? <p className="text-xs font-bold text-slate-600">Reel indents are always raised in Unit-I.</p> : null}
           </div>
           <div className="space-y-2">
             <label className="text-blue-700 font-bold">
