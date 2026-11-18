@@ -147,6 +147,7 @@ const PendingDispatchPlanning = lazy(() => import("./pages/PendingDispatchPlanni
 const PendingPhpPlanning = lazy(() => import("./pages/PendingLinkedProductionPlanning").then((module) => ({ default: module.PendingPhpPlanning })));
 const PendingPlatePlanning = lazy(() => import("./pages/PendingLinkedProductionPlanning").then((module) => ({ default: module.PendingPlatePlanning })));
 const DispatchPlansMaster = lazy(() => import("./pages/DispatchPlansMaster").then((module) => ({ default: module.DispatchPlansMaster })));
+const DispatchPlanByDate = lazy(() => import("./pages/DispatchPlanByDate").then((module) => ({ default: module.DispatchPlanByDate })));
 const PendingLoading = lazy(() => import("./pages/PendingLoading").then((module) => ({ default: module.PendingLoading })));
 const DirectLoadingSlip = lazy(() => import("./pages/DirectLoadingSlip").then((module) => ({ default: module.DirectLoadingSlip })));
 const LoadingMaster = lazy(() => import("./pages/LoadingMaster").then((module) => ({ default: module.LoadingMaster })));
@@ -448,6 +449,7 @@ export default function App() {
           {/* Dispatch */}
           <Route path="dispatch/pending-planning" element={<PendingDispatchPlanning />} />
           <Route path="dispatch/master" element={<DispatchPlansMaster />} />
+          <Route path="dispatch/plan" element={<DispatchPlanByDate />} />
 
           {/* Loading */}
           <Route path="loading/pending" element={<PendingLoading />} />

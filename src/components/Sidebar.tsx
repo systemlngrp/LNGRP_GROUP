@@ -361,6 +361,7 @@ export const NAVIGATION: NavGroup[] = [
       { name: "Operation Dashboard", href: "/operations-dashboard", icon: BarChart3 },
       { name: "Audit Dashboard", href: "/audit-dashboard", icon: BarChart3 },
       { name: "Production Plan", href: "/production/plan", icon: ClipboardList },
+      { name: "Dispatch Plan", href: "/dispatch/plan", icon: ClipboardList },
       { name: "Summary Sheet", href: "/reports/summary-sheet", icon: BarChart3 },
     ],
   },
