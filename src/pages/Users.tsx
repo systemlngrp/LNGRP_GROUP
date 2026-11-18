@@ -569,25 +569,6 @@ export function Users() {
               </div>
             </div>
 
-            {sortedMachines.length ? (
-              <div className="border-2 border-black rounded p-3 bg-slate-50">
-                <div className="font-black text-black text-sm uppercase">Machines</div>
-                <p className="mt-0.5 text-xs font-semibold text-slate-600">Production screens show only the ticked machines' tabs. None ticked = all machines. Admin always sees all.</p>
-                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
-                  {sortedMachines.map((machine) => (
-                    <label key={machine.id} className="flex items-center gap-2 rounded border border-black bg-white px-2 py-1.5 text-xs font-bold text-black">
-                      <input
-                        type="checkbox"
-                        checked={selectedMachineIds.includes(machine.id)}
-                        disabled={isViewMode}
-                        onChange={(e) => setSelectedMachineIds((current) => e.target.checked ? [...current, machine.id] : current.filter((id) => id !== machine.id))}
-                      />
-                      {normalizeMachineName(machine.name)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            ) : null}
 
             <div className="border-2 border-black rounded p-3 bg-slate-50">
               <div className="flex items-center justify-between">
@@ -681,6 +662,25 @@ export function Users() {
                                   );
                                 })}
                               </div>
+                              {parent.section === "Production Processing" && sortedMachines.length ? (
+                                <div className="mt-2 rounded border border-emerald-400 bg-emerald-50 p-2">
+                                  <div className="text-[11px] font-black uppercase text-emerald-900">Machine tabs</div>
+                                  <p className="text-[11px] font-semibold text-emerald-900">Tick the machines this user sees in Pending Production Processing, Production Processing Master and Manufacturing Journal. None ticked = all machines. Admin sees all.</p>
+                                  <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                    {sortedMachines.map((machine) => (
+                                      <label key={machine.id} className="flex min-w-0 items-start gap-2 rounded border border-emerald-300 bg-white p-2 text-xs font-bold text-black">
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedMachineIds.includes(machine.id)}
+                                          disabled={isViewMode}
+                                          onChange={(e) => setSelectedMachineIds((current) => e.target.checked ? [...current, machine.id] : current.filter((id) => id !== machine.id))}
+                                        />
+                                        <span className="min-w-0 break-words leading-tight">{normalizeMachineName(machine.name)}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
                           );
                         })}
