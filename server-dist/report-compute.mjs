@@ -1439,6 +1439,40 @@ function getProductionActualPaperUsed(production, usageMap) {
   return Number(production.actualPaperUsed || 0);
 }
 
+// src/lib/jobCellColors.ts
+var dateKey = (value) => {
+  const raw = String(value ?? "").trim().slice(0, 10);
+  const match = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw.match(/^(\d{4})-(\d{2})-(\d{2})$/) : raw.match(/^(\d{2})[-\/]?(\d{2})[-\/]?(\d{4})$/);
+  if (!match) return "";
+  const [year, month, day] = match[1].length === 4 ? [Number(match[1]), Number(match[2]), Number(match[3])] : [Number(match[3]), Number(match[2]), Number(match[1])];
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+};
+var normalizeQcResult = (value) => {
+  const normalized2 = String(value ?? "").trim().toLowerCase();
+  if (["qc pass", "pass"].includes(normalized2)) return "QC PASS";
+  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized2)) return "QC FAIL";
+  return String(value ?? "").trim();
+};
+
+// src/lib/pdiReportData.ts
+var text2 = (value) => String(value ?? "").trim();
+var normalized = (value) => text2(value).toLowerCase();
+function findLatestInspection(inspections, productionId, jobNo) {
+  const byProduction = productionId ? inspections.filter((inspection) => normalized(inspection.productionId) === normalized(productionId)) : [];
+  const matches = byProduction.length ? byProduction : jobNo ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo)) : [];
+  const latest2 = [...matches].sort(
+    (left, right) => text2(left.updateTimestamp || left.inspectionDate).localeCompare(text2(right.updateTimestamp || right.inspectionDate))
+  ).at(-1);
+  return latest2 ? { ...latest2, result: normalizeQcResult(latest2.result) } : void 0;
+}
+function photoPath(value) {
+  const raw = text2(value);
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return "/uploads/" + encodeURIComponent(raw.replace(/^\/?uploads\//i, ""));
+}
+
 // src/lib/reports/summarySheet.ts
 var n = (value) => {
   const result = Number(value);
@@ -1551,6 +1585,11 @@ function computeSummarySheetRows(lists, stockItems) {
     const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
     const loadingStarted = dispatchedQty > 0;
     const stage = jobClosed ? "Job Closed" : !loadingStarted && pprUsed <= 0 && !hasPaperNotRequiredBypass(production) ? "Pending Material Issue" : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation" : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing" : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure" : "Pending Loading";
+    const pdiResult = normalizeQcResult(findLatestInspection(lists.inspections || [], s(production.id), jobNo)?.result);
+    const pdiReport = pdiResult === "QC PASS" || pdiResult === "QC FAIL" ? pdiResult : "";
+    const hasPrinting = printing > 0;
+    const fgLeft = hasPrinting ? money(Math.max(0, printing - dispatchedQty)) : "";
+    const overDispatched = hasPrinting && dispatchedQty > printing ? 1 : "";
     const row = {
       "Job No.": jobNo,
       Date: isoDateText(production.date),
@@ -1561,7 +1600,7 @@ function computeSummarySheetRows(lists, stockItems) {
       "FG Stock": fgStock,
       "Job Weight": money(jobWeight),
       "Customer Complaint": "",
-      "PDI REPORT": "",
+      "PDI REPORT": pdiReport,
       "Realization / kg": realizationValue,
       Meter: linearMeter,
       "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).map((value) => String(Number(n(value).toFixed(2)))).join(" x "),
@@ -1573,7 +1612,9 @@ function computeSummarySheetRows(lists, stockItems) {
       "PPR Rqd.": n(production.totalPaperWeight),
       "PPR Used": pprUsed,
       "Paper Wastage": pprUsed && production.totalPaperWeight ? money(pprUsed - n(production.totalPaperWeight)) : "",
-      "Boardline Wastage": money(wastage.corrugationKg),
+      "Boardline Wastage": hasPrinting ? money(boardline - printing) : "",
+      __boardlineWastageKg: money(wastage.corrugationKg),
+      __overDispatched: overDispatched,
       "Actual Realization / kg": n(production.realizationPerKg),
       "Dispatched Qty": money(dispatchedQty),
       "Dispatched Qty (3 slips)": money(dispatchedQty3),
@@ -1613,13 +1654,13 @@ function computeSummarySheetRows(lists, stockItems) {
       "Loading Date 6": loadingRecords[5]?.date || "",
       "Loading Qty 6": loadingRecords[5]?.qty ?? "",
       "Vehicle 6": loadingRecords[5]?.vehicle || "",
-      "FG LEFT": money(Math.max(0, planned - dispatchedQty)),
+      "FG LEFT": fgLeft,
       Rate: rate,
       Status: stage,
       "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0),
       "Sale Value": money(dispatchedQty * rate),
       "Sale Value (3 slips)": money(dispatchedQty3 * rate),
-      "FINAL FG LEFT": money(Math.max(0, planned - dispatchedQty)),
+      "FINAL FG LEFT": fgLeft,
       "wip value": money(Math.max(0, planned - dispatchedQty) * rate),
       Remarks: s(production.remarks),
       "Dispatched From FG": dispatchedQty ? "Yes" : "",
@@ -2155,40 +2196,6 @@ function isCorrugationLinerComplete(processing, productionId) {
   return Boolean(productionId) && processing.some(
     (entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && isProcessingStepFull(entry)
   );
-}
-
-// src/lib/jobCellColors.ts
-var dateKey = (value) => {
-  const raw = String(value ?? "").trim().slice(0, 10);
-  const match = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw.match(/^(\d{4})-(\d{2})-(\d{2})$/) : raw.match(/^(\d{2})[-\/]?(\d{2})[-\/]?(\d{4})$/);
-  if (!match) return "";
-  const [year, month, day] = match[1].length === 4 ? [Number(match[1]), Number(match[2]), Number(match[3])] : [Number(match[3]), Number(match[2]), Number(match[1])];
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
-};
-var normalizeQcResult = (value) => {
-  const normalized2 = String(value ?? "").trim().toLowerCase();
-  if (["qc pass", "pass"].includes(normalized2)) return "QC PASS";
-  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized2)) return "QC FAIL";
-  return String(value ?? "").trim();
-};
-
-// src/lib/pdiReportData.ts
-var text2 = (value) => String(value ?? "").trim();
-var normalized = (value) => text2(value).toLowerCase();
-function findLatestInspection(inspections, productionId, jobNo) {
-  const byProduction = productionId ? inspections.filter((inspection) => normalized(inspection.productionId) === normalized(productionId)) : [];
-  const matches = byProduction.length ? byProduction : jobNo ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo)) : [];
-  const latest2 = [...matches].sort(
-    (left, right) => text2(left.updateTimestamp || left.inspectionDate).localeCompare(text2(right.updateTimestamp || right.inspectionDate))
-  ).at(-1);
-  return latest2 ? { ...latest2, result: normalizeQcResult(latest2.result) } : void 0;
-}
-function photoPath(value) {
-  const raw = text2(value);
-  if (!raw) return "";
-  if (/^https?:\/\//i.test(raw)) return raw;
-  return "/uploads/" + encodeURIComponent(raw.replace(/^\/?uploads\//i, ""));
 }
 
 // src/lib/samplingPlanQty.ts
@@ -2812,7 +2819,8 @@ REPORT_DEFINITIONS["summary-sheet"] = {
     { key: "trucks", entity: "trucks", scope: "all" },
     { key: "companies", entity: "companies", scope: "firm" },
     { key: "firms", entity: "firms", scope: "firm" },
-    { key: "preAppDispatches", entity: "pre_app_dispatches", scope: "all" }
+    { key: "preAppDispatches", entity: "pre_app_dispatches", scope: "all" },
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" }
   ],
   // Blank cells are left out to keep the download small (the page reads a missing value as blank).
   compute: (lists, _params, helpers) => computeSummarySheetRows(lists, (helpers.npdItems || []).map(normalizeNpdItem)).map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== "" && value !== null && value !== void 0)))

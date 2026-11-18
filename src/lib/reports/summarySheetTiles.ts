@@ -70,7 +70,7 @@ export function computeSummarySheetSections(
   const paperRequired = sum(usedRows, (row) => n(row["PPR Rqd."]));
   const paperUsed = sum(rangeRows, (row) => n(row["PPR Used"]));
   const paperWastagePercent = paperRequired > 0 ? (sum(usedRows, (row) => n(row["Paper Wastage"])) / paperRequired) * 100 : 0;
-  const boardlineWastage = sum(rangeRows, (row) => n(row["Boardline Wastage"]));
+  const boardlineWastage = sum(rangeRows, (row) => n(row.__boardlineWastageKg)); // kg (the column now shows boxes)
   const boardlineWastagePercent = paperUsed > 0 ? (boardlineWastage / paperUsed) * 100 : 0;
   const rangeSale = sum(rows.filter((row) => inRange(isoDateText(row["Dispatch Date"]))), (row) => n(row["Sale Value"]));
   // Delivery Book basis: first 3 loading slips per job (pre-app loadings included), month by first invoice date.
@@ -270,7 +270,7 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
       const pdi = s(row["PDI REPORT"]).toUpperCase();
       if (pdi === "QC PASS") return "bg-[#00ff00]";
       if (pdi === "QC FAIL") return "bg-[#ff0000] text-white";
-      return "bg-[#b7e1cd]";
+      return ""; // no PDI yet
     }
     case "Dispatch Date":
     case "Vehicle No":
@@ -279,9 +279,11 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
       return filled(value) && value !== 0 ? "bg-[#b7e1cd]" : "";
     case "FG LEFT":
       if (!filled(value)) return "";
+      if (row.__overDispatched) return "bg-[#ff0000] text-white"; // dispatched more than printed
       return num === 0 ? "bg-[#6aa84f] text-white" : num > 0 ? "bg-[#b4a7d6]" : "";
     case "FINAL FG LEFT":
       if (!filled(value)) return "";
+      if (row.__overDispatched) return "bg-[#ff0000] text-white"; // dispatched more than printed
       return num <= 25 ? "bg-[#b7e1cd]" : "bg-[#ffff00] text-[#ff0000]";
     case "Remarks": {
       const text = s(value);
