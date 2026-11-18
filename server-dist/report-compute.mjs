@@ -1544,12 +1544,14 @@ function computeSummarySheetRows(lists, stockItems) {
     dispatchByProduction.set(productionId, current);
   };
   const loadingByJob = buildJobLoadingRecords(productions, slips, plans, { includeOpeningStock: true });
+  const invoicedQtyByProduction = /* @__PURE__ */ new Map();
   loadingByJob.forEach((records, productionId) => records.forEach(({ slip, qty, itemIds }) => {
     addDispatch(productionId, qty, isoDateText(slip.date), slip);
     const dispatch = dispatchByProduction.get(productionId);
     invoiceLinesBySlip.get(slip.id)?.forEach((line) => {
       if (line.invoiceId && (!line.itemId || !itemIds.length || itemIds.includes(s(line.itemId).toLowerCase()))) {
         dispatch?.invoiceIds.add(line.invoiceId);
+        invoicedQtyByProduction.set(productionId, (invoicedQtyByProduction.get(productionId) || 0) + n(line.qty));
       }
     });
   }));
@@ -1595,6 +1597,10 @@ function computeSummarySheetRows(lists, stockItems) {
     const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
     const loadingStarted = dispatchedQty > 0;
     const stage = jobClosed ? "Job Closed" : !loadingStarted && pprUsed <= 0 && !hasPaperNotRequiredBypass(production) ? "Pending Material Issue" : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation" : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing" : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure" : "Pending Loading";
+    const totalDispatch = money(invoicedQtyByProduction.get(production.id) || 0);
+    const totalLoading = money(loadingRecords.reduce((sum, record) => sum + n(record.qty), 0));
+    const totalInvoiceValue = money(invoiceValues.slice(0, 6).reduce((sum, value) => sum + value, 0));
+    const invoiceNos = relatedInvoices.map((invoice) => s(invoice.invoiceNo || invoice.tallyInvNo)).filter(Boolean).join(", ");
     const boardGrams = boardlineGramsByJob.get(jobNo.toLowerCase()) || printingGramsByJob.get(jobNo.toLowerCase()) || 0;
     const actualRealization = rate > 0 && boardGrams > 0 ? money(rate / (boardGrams / 1e3)) : "";
     const pdiResult = normalizeQcResult(findLatestInspection(lists.inspections || [], s(production.id), jobNo)?.result);
@@ -1630,6 +1636,10 @@ function computeSummarySheetRows(lists, stockItems) {
       "Actual Realization / kg": actualRealization,
       "Dispatched Qty": money(dispatchedQty),
       "Dispatched Qty (3 slips)": money(dispatchedQty3),
+      "Total Dispatch": totalDispatch,
+      "Total Loading": totalLoading,
+      "Total Invoice Value": totalInvoiceValue,
+      "Invoice No": invoiceNos,
       "Dispatch Date": invoiceDates[0] || "",
       "Vehicle No": vehicle,
       "App Stock": fgStock,

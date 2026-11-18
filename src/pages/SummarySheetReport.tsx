@@ -24,7 +24,7 @@ const COLUMNS = [
   "Planned Qty", "Job Weight", "Meter", "Cutting Size", "UPS", "Sheets prdcd", "Plate per box",
   "Boardline Prod.", "Printing prod.", "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Printing Wastage",
   "Realization / kg", "Actual Realization / kg",
-  "Dispatched Qty", "Dispatched Qty (3 slips)", "Dispatch Date", "Vehicle No", "App Stock", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3",
+  "Dispatched Qty", "Dispatched Qty (3 slips)", "Total Dispatch", "Total Loading", "Total Invoice Value", "Invoice No", "Dispatch Date", "Vehicle No", "App Stock", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3",
   "Invoice No. 1", "Invoice Date 1", "Invoice No. 2", "Invoice Date 2", "Invoice No. 3", "Invoice Date 3",
   "Loading No 1", "Loading Date 1", "Loading Qty 1", "Vehicle 1", "Loading No 2", "Loading Date 2", "Loading Qty 2", "Vehicle 2", "Loading No 3", "Loading Date 3", "Loading Qty 3", "Vehicle 3",
   "Loading No 4", "Loading Date 4", "Loading Qty 4", "Vehicle 4", "Loading No 5", "Loading Date 5", "Loading Qty 5", "Vehicle 5",
@@ -47,7 +47,7 @@ const SUMMARY_HIDDEN_COLUMNS_KEY = "summary-sheet-hidden-columns";
 const NUMERIC_COLUMNS = new Set([
   "Sl No", "Planned Qty", "Job Weight", "Meter", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.",
   "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Printing Wastage", "Realization / kg", "Actual Realization / kg",
-  "Dispatched Qty", "Dispatched Qty (3 slips)", "Loading Qty 1", "Loading Qty 2", "Loading Qty 3", "Loading Qty 4", "Loading Qty 5", "Loading Qty 6", "FG Stock", "FG LEFT", "FINAL FG LEFT", "App Stock", "Rate",
+  "Dispatched Qty", "Dispatched Qty (3 slips)", "Total Dispatch", "Total Loading", "Total Invoice Value", "Loading Qty 1", "Loading Qty 2", "Loading Qty 3", "Loading Qty 4", "Loading Qty 5", "Loading Qty 6", "FG Stock", "FG LEFT", "FINAL FG LEFT", "App Stock", "Rate",
   "Sale Value", "Sale Value (3 slips)", "Value", "App sale value", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3", "wip value",
   "Pre-App Dispatched Qty", "Pre-App Sale Value", "Dispatched Qty incl. Pre-App", "Dispatched Qty incl. Pre-App (3 slips)", "Sale Value incl. Pre-App", "Sale Value incl. Pre-App (3 slips)",
 ]);
