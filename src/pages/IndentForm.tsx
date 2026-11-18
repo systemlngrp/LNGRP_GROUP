@@ -139,9 +139,8 @@ export function IndentForm() {
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((material) => ({
       value: material.id,
-      // Reel: ERP + size/GSM/BF, since many reels share a similar name.
-      // Other types: name only (the ERP shows in its own column); typing an ERP still finds it.
-      label: indentType === "Reel" && material.erpCode
+      // "ERP - Item name" for every type, so an item can be found by ERP or by name.
+      label: material.erpCode
         ? `${material.erpCode} - ${stripErpPrefix(material.name, material.erpCode)}`
         : stripErpPrefix(material.name, material.erpCode),
       searchText: `${material.erpCode || ""} ${material.name}`,
@@ -331,82 +330,82 @@ export function IndentForm() {
             <h3 className="text-sm font-bold uppercase tracking-tight text-blue-700">Items</h3>
           </div>
 
-          {/* Desktop: a header row over the lines (ERP, Item, Unit, Qty, Target Delivery, icons). Phones: each line is a card. */}
-          <div className={`hidden md:grid md:grid-cols-[110px_minmax(0,1fr)_70px_110px_150px_88px] gap-2 bg-indigo-700 px-3 py-2 text-sm font-bold text-white`}>
-            <div>ERP</div>
-            <div>Select Item <span className="text-red-200">*</span></div>
-            <div>Unit</div>
-            <div className="text-right">Qty <span className="text-red-200">*</span></div>
-            <div>Target Delivery</div>
-            <div />
-          </div>
-          <div className="divide-y divide-black">
-            {lines.map((line) => {
-              const material = activeMaterials.find((row) => row.id === line.materialId);
-              const unit = getIndentLineUom(indentType, material);
-              return (
-                <div key={line.id} className="grid grid-cols-2 gap-2 bg-white p-3 md:grid-cols-[110px_minmax(0,1fr)_70px_110px_150px_88px] md:items-center">
-                  <div className="hidden truncate font-semibold text-black md:block" title={material?.erpCode ? String(material.erpCode) : ""}>
-                    {material?.erpCode ? String(material.erpCode) : "—"}
-                  </div>
-                  <div className="col-span-2 min-w-0 md:col-span-1">
-                    <Select
-                      options={materialOptions}
-                      value={line.materialId}
-                      onChange={(value) => handleLineChange(line.id, "materialId", value)}
-                      onAdd={() => openNewMaterial(line.id)}
-                      wrapLabels
-                      placeholder={activeMaterials.length === 0 ? "No material available..." : "Select Item..."}
-                    />
-                  </div>
-                  {/* Phones: ERP and unit as one small line under the item. */}
-                  <div className="col-span-2 -mt-1 text-xs font-semibold text-slate-600 md:hidden">
-                    {material ? `ERP ${material.erpCode || "—"}${unit ? ` · ${unit}` : ""}` : null}
-                  </div>
-                  <div className="hidden truncate text-black md:block">{unit || "—"}</div>
-                  <label className="min-w-0">
-                    <span className="mb-1 block text-xs font-bold text-blue-700 md:hidden">Qty <span className="text-red-500">*</span></span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={line.qty}
-                      onChange={(e) => handleLineChange(line.id, "qty", e.target.value)}
-                      className="w-full rounded border border-slate-300 px-3 py-2 text-right text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                    />
-                  </label>
-                  <label className="min-w-0">
-                    <span className="mb-1 block text-xs font-bold text-blue-700 md:hidden">Target Delivery</span>
-                    <input
-                      type="date"
-                      value={line.targetDeliveryDate}
-                      onChange={(e) => handleLineChange(line.id, "targetDeliveryDate", e.target.value)}
-                      className="w-full min-w-0 rounded border border-slate-300 px-2 py-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
-                    />
-                  </label>
-                  <div className="col-span-2 flex items-center justify-end gap-1.5 md:col-span-1">
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRow(line.id)}
-                      className="indent-line-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-red-300 bg-white text-red-600 hover:bg-red-50 transition"
-                      title="Remove row"
-                      aria-label="Remove row"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddRowAfter(line.id)}
-                      className="indent-line-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-indigo-600 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
-                      title="Add row"
-                      aria-label="Add row"
-                    >
-                      <Plus size={18} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+          {/* Bordered table: Select Item (ERP - name), Unit, Qty, Target Delivery, actions. Scrolls sideways on phones. */}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] border-collapse">
+              <thead>
+                <tr className="bg-indigo-700 text-left text-sm font-bold text-white">
+                  <th className="border border-black px-3 py-2">Select Item <span className="text-red-200">*</span></th>
+                  <th className="w-[80px] border border-black px-3 py-2">Unit</th>
+                  <th className="w-[130px] border border-black px-3 py-2 text-right">Qty <span className="text-red-200">*</span></th>
+                  <th className="w-[170px] border border-black px-3 py-2">Target Delivery</th>
+                  <th className="w-[100px] border border-black px-3 py-2 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {lines.map((line) => {
+                  const material = activeMaterials.find((row) => row.id === line.materialId);
+                  const unit = getIndentLineUom(indentType, material);
+                  return (
+                    <tr key={line.id} className="align-middle">
+                      <td className="min-w-[320px] border border-black p-2">
+                        <Select
+                          options={materialOptions}
+                          value={line.materialId}
+                          onChange={(value) => handleLineChange(line.id, "materialId", value)}
+                          onAdd={() => openNewMaterial(line.id)}
+                          wrapLabels
+                          placeholder={activeMaterials.length === 0 ? "No material available..." : "Select Item (ERP or name)..."}
+                        />
+                      </td>
+                      <td className="border border-black px-3 py-2 text-black">{unit || "—"}</td>
+                      <td className="border border-black p-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          aria-label="Qty"
+                          value={line.qty}
+                          onChange={(e) => handleLineChange(line.id, "qty", e.target.value)}
+                          className="w-full rounded border border-slate-300 px-3 py-2 text-right text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                        />
+                      </td>
+                      <td className="border border-black p-2">
+                        <input
+                          type="date"
+                          aria-label="Target Delivery"
+                          value={line.targetDeliveryDate}
+                          onChange={(e) => handleLineChange(line.id, "targetDeliveryDate", e.target.value)}
+                          className="w-full min-w-0 rounded border border-slate-300 px-2 py-2 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                        />
+                      </td>
+                      <td className="border border-black p-2">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRow(line.id)}
+                            className="indent-line-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-red-300 bg-white text-red-600 hover:bg-red-50 transition"
+                            title="Remove row"
+                            aria-label="Remove row"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAddRowAfter(line.id)}
+                            className="indent-line-action inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border-2 border-indigo-600 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition"
+                            title="Add row"
+                            aria-label="Add row"
+                          >
+                            <Plus size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
         </>) : (
