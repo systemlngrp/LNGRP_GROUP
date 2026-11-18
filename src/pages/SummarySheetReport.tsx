@@ -66,6 +66,12 @@ const displayDate = (value: unknown) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
 };
 
+const isZeroDisplay = (value: unknown) => {
+  if (typeof value === "number") return value === 0 || !Number.isFinite(value);
+  const text = String(value ?? "").trim();
+  return /^[₹\s]*[-+]?0+(?:[.,]0+)?\s*%?$/.test(text);
+};
+
 export function SummarySheetReport() {
   // Rows are calculated on the server; if it cannot, the lists are loaded and
   // calculated here as before. Jobs stay loaded for Close / Unclose.
@@ -259,7 +265,10 @@ export function SummarySheetReport() {
     if (columnIndex === 0) return rowIndex + 1;
     const column = COLUMNS[columnIndex];
     const value = row[column] ?? "";
-    return DATE_COLUMNS.has(column) ? displayDate(value) : value;
+    if (DATE_COLUMNS.has(column)) return displayDate(value);
+    // Zero values show as an empty cell (0, "0", "0.00", "₹ 0", "0%"...).
+    if (isZeroDisplay(value)) return "";
+    return value;
   };
   const filterOptions = useMemo(() => ({
     statuses: [...new Set(productions.filter((p) => p.status !== "Cancelled").map((p) => s(p.status)).filter(Boolean))].sort(),
