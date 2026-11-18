@@ -238,7 +238,11 @@ export function SummarySheetReport() {
       if (!production) return baseRow;
       return {
         ...baseRow,
-        Status: s(production.status),
+        // Stage comes from the report (worked out from the data); only closing / unclosing
+        // here is applied at once. The saved status text is not used.
+        Status: s(production.closeBy).toLowerCase() === "yes" && s(production.closeDate)
+          ? "Job Closed"
+          : s(baseRow.Status) === "Job Closed" ? "Pending Loading" : s(baseRow.Status),
         "Job Closed": s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "",
         "Close Date": isoDateText(production.closeDate),
         Remarks: s(production.remarks),
