@@ -257,7 +257,7 @@ export function Layout() {
                    <FullscreenViewControl />
                  </span>
                  {/* Pages can place their own header buttons here (React portal). */}
-                 <div id="page-header-actions" className="hidden items-center gap-2 md:flex" />
+                 <div id="page-header-actions" className="flex shrink-0 items-center gap-2 empty:hidden" />
                  <MobileAddButton label={mobileHeader.addLabel} onPress={mobileHeader.pressAdd} />
                </div>
                {/* On phones the user's name, role and Logout are at the bottom of the left menu. */}
