@@ -143,7 +143,7 @@ export function PreDispatchInspection() {
   const setFilter = (key: string, value: string) => setFilters(current => ({ ...current, [key]: value }));
   const filter = (key: keyof typeof filters, label: string, options: { value: string; label: string }[]) => <Select value={filters[key]} onChange={value => setFilter(key, value)} options={options} placeholder={label} compact />;
   const today = new Date().toISOString().slice(0, 10); const tiles = { total: filtered.length, pending: filtered.filter(r => inspectionResult(r, productions, items, csMarginPercent) === "Pending").length, pass: filtered.filter(r => inspectionResult(r, productions, items, csMarginPercent) === "QC PASS").length, fail: filtered.filter(r => inspectionResult(r, productions, items, csMarginPercent) === "QC FAIL").length, today: filtered.filter(r => text(r.inspectionDate).slice(0, 10) === today).length };
-  const headers = ["Job No.", "Date", "Inspection Timestamp", "Firm", "ERP", "Party", "Item", "Planned Quantity", "Lot No.", "CS Required", "CS Standard", "Length (ID)", "Width (ID)", "Height (ID)", "CS Actual", "GSM Achieved", "Box Weight (Grams)", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Box Photo Front", "Box Photo Back", "Result", "QC Person", "Remarks", "Updated By", "Updated At", "Actions"];
+  const headers = ["Job No.", "Date", "Inspection Timestamp", "Firm", "ERP", "Party", "Item", "Planned Quantity", "CS Standard", "Length (ID)", "Width (ID)", "Height (ID)", "CS Actual", "GSM Achieved", "Box Weight (Grams)", "Printing Artwork Check", "Printing Color Check", "Box Squaring Check", "Flap Gap Check", "Joint Pasting / Delamination Check", "Box Photo Front", "Box Photo Back", "Result", "QC Person", "Remarks", "Updated By", "Updated At", "Actions"];
   const csStandardForRecord = (record: Inspection) => inspectionCsStandard(record, productions, items as Item[]);
   const photoCell = (value: unknown) => {
     const raw = text(value);
@@ -187,7 +187,7 @@ export function PreDispatchInspection() {
         </div>
         <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select value={filters.firmId} onChange={value => setFilter("firmId", value)} options={firmOptions} placeholder="All" compact /></div>
-          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job No.</span>{filter("jobNo", "All", optionsFor(records.map(r => r.jobNo)))}</div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job No.</span>{filter("jobNo", "All", [...new Set(records.map(r => text(r.jobNo)).filter(Boolean))].sort().map(value => ({ value, label: displayJobNo(value) })))}</div>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">ERP</span>{filter("erpCode", "All", optionsFor(records.map(r => r.erpCode)))}</div>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Party</span>{filter("partyName", "All", optionsFor(records.map(r => r.partyName)))}</div>
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span>{filter("itemName", "All", optionsFor(records.map(r => r.itemName)))}</div>
@@ -215,7 +215,7 @@ export function PreDispatchInspection() {
               const result = inspectionResult(r, productions, items, csMarginPercent);
               return (
                 <tr key={r.id} className="hover:bg-slate-50">
-                  <td className={cell + " font-bold"}>{r.jobNo || "-"}</td>
+                  <td className={cell + " font-bold whitespace-nowrap"} title={r.jobNo || ""}>{displayJobNo(r.jobNo) || "-"}</td>
                   <td className={cell}>{text(r.inspectionDate).slice(0, 10) ? text(r.inspectionDate).slice(0, 10).split("-").reverse().join("-") : "-"}</td>
                   <td className={cell}>{formatTimestamp(r.inspectionDate) || "-"}</td>
                   <td className={cell}>{firmLabel(r)}</td>
@@ -223,8 +223,6 @@ export function PreDispatchInspection() {
                   <td className={cell}>{r.partyName || "-"}</td>
                   <td className={cell + " min-w-[200px] max-w-[300px] whitespace-normal break-words"}>{r.itemName || "-"}</td>
                   <td className={cell}>{r.plannedQty ?? "-"}</td>
-                  <td className={cell}>{r.lotNo || "-"}</td>
-                  <td className={cell}>{text(r.csRequired) || "-"}</td>
                   <td className={cell}>{text(csStandardForRecord(r)) || "-"}</td>
                   <td className={cell}>{text(r.lengthId) || "-"}</td>
                   <td className={cell}>{text(r.widthId) || "-"}</td>
@@ -252,7 +250,7 @@ export function PreDispatchInspection() {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
           <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-xl border-2 border-black bg-white shadow-2xl sm:rounded-xl">
             <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
-              <div className="text-base font-black">Edit PDI — {editingRow.jobNo}</div>
+              <div className="text-base font-black">Edit PDI — {displayJobNo(editingRow.jobNo)}</div>
               <button type="button" onClick={closeEdit} aria-label="Close" className="inline-flex h-9 w-9 items-center justify-center rounded-md border-2 border-black bg-white"><X size={18} /></button>
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
