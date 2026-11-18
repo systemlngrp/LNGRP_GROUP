@@ -332,15 +332,17 @@ export function SummarySheetReport() {
   }, [salesTargets, baseRows, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
-  // Opens sorted by Job No., lowest first (financial year, then serial).
+  // Opens sorted by Date (oldest first), and by Job No. (lowest first) within a date.
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
     const column = key as (typeof COLUMNS)[number];
     if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? isoDateText(row["Close Date"]) || "Yes" : "";
     const value = row[column] ?? "";
+    // Date sorts by date, then job no. within the same date.
+    if (column === "Date") return `${isoDateText(value)}|${jobNoSortKey(row["Job No."])}`;
     if (DATE_COLUMNS.has(column)) return isoDateText(value);
     if (column === "Job No.") return jobNoSortKey(value);
     return NUMERIC_COLUMNS.has(column) && s(value) !== "" ? n(value) : value;
-  }, [], { key: "Job No.", direction: "asc" });
+  }, [], { key: "Date", direction: "asc" });
 
   // Open filter: every row on one page (no pagination). Closed / All Closure: paged as before.
   const showAllRows = closedFilter === "Open";
