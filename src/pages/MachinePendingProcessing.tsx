@@ -548,9 +548,43 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                             : issuedProductionIds.has(job.production.id)
                               ? "No issued material remains after returns."
                               : "Issue material or sheet first.";
+                          const openReportForm = () => {
+                                  const now = new Date();
+                                  const hour = now.getHours();
+                                  const shift = (hour >= 8 && hour < 20) ? "Day" : "Night";
+                                  const params = new URLSearchParams({
+                                    productionId: job.production.id,
+                                    machineId: group.machineId,
+                                    lockMachine: "1",
+                                    lockJob: "1",
+                                    jobNo: String(job.production.jobCardNo || job.production.transactionNo || ""),
+                                    machineName: group.machineName,
+                                    ...(job.pendingQty > 0 ? { qty: String(job.pendingQty) } : {}),
+                                    shift,
+                                    erp: job.erpCode,
+                                    itemName: job.itemName,
+                                                                      ...(fixedNormalizedMachineName ? { returnTo: "/production/pending-printing" } : {}),
+                                  });
+                                  navigate(`/production-processing/form?${params.toString()}`);
+                          };
                           return (
                           <tr key={`${job.production.id}-${idx}`} className="divide-x divide-black align-middle hover:bg-slate-50">
-                            <td className="px-3 py-2 whitespace-nowrap">{displayJobNo(job.production.transactionNo)}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {/* Job No opens the report form. While issued material is still being checked it opens
+                                  anyway (the server still refuses a Corrugation Liner report without reels); when the
+                                  job really has no issued material it says why instead of doing nothing. */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (materialIssueBlocked && !materialUsageLoading) { alert(`${displayJobNo(job.production.transactionNo)}: ${materialIssueMessage}`); return; }
+                                  openReportForm();
+                                }}
+                                title={materialIssueBlocked && !materialUsageLoading ? materialIssueMessage : "Open report form"}
+                                className="font-bold text-indigo-700 underline decoration-dotted underline-offset-2 hover:text-indigo-900"
+                              >
+                                {displayJobNo(job.production.transactionNo)}
+                              </button>
+                            </td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.source}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{formatDate(job.production.date)}</td>
                             <td className="px-3 py-2 whitespace-nowrap">{job.erpCode || "-"}</td>
@@ -569,25 +603,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
                               <button
                                 disabled={materialIssueBlocked}
                                 title={materialIssueBlocked ? materialIssueMessage : "Report production"}
-                                onClick={() => {
-                                  const now = new Date();
-                                  const hour = now.getHours();
-                                  const shift = (hour >= 8 && hour < 20) ? "Day" : "Night";
-                                  const params = new URLSearchParams({
-                                    productionId: job.production.id,
-                                    machineId: group.machineId,
-                                    lockMachine: "1",
-                                    lockJob: "1",
-                                    jobNo: String(job.production.jobCardNo || job.production.transactionNo || ""),
-                                    machineName: group.machineName,
-                                    ...(job.pendingQty > 0 ? { qty: String(job.pendingQty) } : {}),
-                                    shift,
-                                    erp: job.erpCode,
-                                    itemName: job.itemName,
-                                                                      ...(fixedNormalizedMachineName ? { returnTo: "/production/pending-printing" } : {}),
-                                  });
-                                  navigate(`/production-processing/form?${params.toString()}`);
-                                }}
+                                onClick={openReportForm}
                                 className="inline-flex items-center gap-1 bg-indigo-600 text-white px-3 py-1 rounded text-[10px] font-black uppercase hover:bg-indigo-700 transition shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] active:shadow-none disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
                               >
                                 <ClipboardList size={12} />
