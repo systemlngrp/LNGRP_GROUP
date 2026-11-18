@@ -15590,7 +15590,7 @@ app.post("/api/admin/purchase-orders/:id/move-firm", requireAuth, async (req, re
     const [lineRows] = await conn.query("SELECT id FROM `purchase_order_lines` WHERE purchaseOrderId = ?", [poId]);
     const linkIds = [poId, String(po.poNo || ""), ...(lineRows as any[]).map((row) => String(row.id))].filter(Boolean);
     const [mrrRows] = await conn.query(
-      `SELECT transactionNo FROM \`material_in\` WHERE ${linkIds.map(() => "CAST(lines AS CHAR) LIKE ?").join(" OR ")} LIMIT 5`,
+      `SELECT transactionNo FROM \`material_in\` WHERE ${linkIds.map(() => "CAST(`lines` AS CHAR) LIKE ?").join(" OR ")} LIMIT 5`,
       linkIds.map((value) => `%${value}%`)
     );
     if ((mrrRows as any[]).length) throw new Error(`MRRs are linked to this PO: ${(mrrRows as any[]).map((r) => r.transactionNo).join(", ")}.`);
