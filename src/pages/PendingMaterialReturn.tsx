@@ -5,21 +5,19 @@ import { Camera, RotateCcw, Search } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getPendingReturnJobReelLines } from "../lib/materialMovement";
-import { isCorrugationLinerComplete } from "../lib/productionProcessingProgress";
 import { isJobDueByToday } from "../lib/productionStageFilters";
 import { ClientPagination } from "../components/ClientPagination";
 import { Select } from "../components/Select";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { SortHeader, useTableSort } from "../lib/tableSort";
-import type { MaterialIssueReelLine, MaterialReturnReelLine, Production, ProductionProcessing } from "../types";
+import type { MaterialIssueReelLine, MaterialReturnReelLine, Production } from "../types";
 
 export function PendingMaterialReturn() {
   const navigate = useNavigate();
   const [productions] = useData<Production>("productions", [], { firmScope: "all" });
   const [issueReels] = useData<MaterialIssueReelLine>("material-issue-reel-lines", [], { firmScope: "all" });
   const [returnReels] = useData<MaterialReturnReelLine>("material-return-reel-lines", [], { firmScope: "all" });
-  const [processing] = useData<ProductionProcessing>("production_processing", [], { firmScope: "all" });
   const { findItemAcrossSources } = useOrderItemCatalog();
   const [searchTerm, setSearchTerm] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
@@ -28,21 +26,11 @@ export function PendingMaterialReturn() {
   const [toDateFilter, setToDateFilter] = useState("");
 
   const rows = useMemo(() => {
-    // Same check as before, done once per job instead of once per reel line.
-    const linerCompleteByJob = new Map<string, boolean>();
-    const isLinerComplete = (productionId: string) => {
-      let value = linerCompleteByJob.get(productionId);
-      if (value === undefined) {
-        value = isCorrugationLinerComplete(processing, productionId);
-        linerCompleteByJob.set(productionId, value);
-      }
-      return value;
-    };
     // Job level: a job with any return entered is not pending (AppSheet logic).
     // Only jobs dated today or earlier; future-dated jobs show from their job date.
     const productionById = new Map(productions.map((production) => [production.id, production]));
     const returnable = getPendingReturnJobReelLines(issueReels, returnReels, productions)
-      .filter((line) => isJobDueByToday(productionById.get(line.productionId) || {}) && isLinerComplete(line.productionId));
+      .filter((line) => isJobDueByToday(productionById.get(line.productionId) || {})); // no Corrugation Liner requirement
     const byProduction = new Map<string, { reelIds: Set<string>; weight: number }>();
     returnable.forEach((line) => {
       const current = byProduction.get(line.productionId) || { reelIds: new Set<string>(), weight: 0 };
@@ -69,7 +57,7 @@ export function PendingMaterialReturn() {
         };
       })
       .sort((a, b) => String(b.production.date || "").localeCompare(String(a.production.date || "")));
-  }, [findItemAcrossSources, issueReels, processing, productions, returnReels]);
+  }, [findItemAcrossSources, issueReels, productions, returnReels]);
 
   const companyOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.company).filter((value) => value && value !== "-")))

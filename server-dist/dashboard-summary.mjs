@@ -1020,11 +1020,6 @@ function isMachineStepFull(processing, productionId, machineName) {
     (entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === normalizedName && isProcessingStepFull(entry)
   );
 }
-function isCorrugationLinerComplete(processing, productionId) {
-  return Boolean(productionId) && processing.some(
-    (entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && isProcessingStepFull(entry)
-  );
-}
 function getCurrentProcessingMachine(processing, productionId, requiredMachines) {
   const orderedMachines = Array.from(
     new Set(requiredMachines.map((machineName) => normalizeMachineName(machineName)).filter(Boolean))
@@ -1829,7 +1824,7 @@ function buildPendingTaskCounts(args) {
       (p) => isProductionPendingMaterialIssue(p, getProductionActualPaperUsed(p, productionUsageMap), hasProductionCorrugatedSheetUsage(p, productionCorrugatedSheetUsageMap))
     ).length,
     "/production/pending-material-return": new Set(
-      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {}) && isCorrugationLinerComplete(args.processing || [], line.productionId)).map((line) => line.productionId)
+      getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions).filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {})).map((line) => line.productionId)
     ).size,
     "/production/pending-job-transfer": (() => {
       const windowHours = Number(args.settings?.[0]?.reelTransferWindowHours || DEFAULT_REEL_TRANSFER_WINDOW_HOURS);
