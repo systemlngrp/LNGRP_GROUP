@@ -9,7 +9,7 @@ import { Select } from "../components/Select";
 import type { Firm, Item, Order, OrderSchedule, Production, PreDispatchInspection as Inspection, Setting, User } from "../types";
 import { isActiveQcPerson, qcPersonOptions } from "../utils/qcPeople";
 import { inspectionDraftForJob, inspectionNumberMessage, invalidInspectionNumberField, isPositiveDecimal } from "../lib/inspectionNumbers";
-import { normalizeQcResult } from "../lib/jobCellColors";
+import { normalizeQcResult, pdiResultCellClass } from "../lib/jobCellColors";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { derivePdiResult, parsePdiCsMarginPercent, resolveCsStandard } from "../lib/pdiResult";
 
@@ -166,7 +166,6 @@ export function PreDispatchInspection() {
   const sorted = [...filtered].sort((a, b) => text(b.updateTimestamp || b.inspectionDate).localeCompare(text(a.updateTimestamp || a.inspectionDate)));
   const firmLabel = (r: Inspection) => { const firm = firms.find(f => f.id === r.firmId); return firm ? (text(firm.shortName) || text(firm.firmName)) : (text(r.firmName) || "-"); };
   const cell = "border border-black px-2 py-1.5 text-sm";
-  const resultTone = (value: string) => value === "QC PASS" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : value === "QC FAIL" ? "bg-red-100 text-red-700 border-red-300" : "bg-amber-50 text-amber-900 border-amber-300";
   return (
     <div className="space-y-4 text-black">
       <div className="flex items-center justify-between gap-3">
@@ -236,7 +235,7 @@ export function PreDispatchInspection() {
                   {checks.map(check => <td key={check} className={cell}>{text(r[check]) || "-"}</td>)}
                   <td className={cell}>{photoCell(r.frontPhoto)}</td>
                   <td className={cell}>{photoCell(r.backPhoto)}</td>
-                  <td className={cell}><span className={"inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold " + resultTone(result)}>{result}</span></td>
+                  <td className={cell + " whitespace-nowrap text-center " + (pdiResultCellClass(result) || "font-bold")}>{result}</td>
                   <td className={cell}>{r.qcPerson || "-"}</td>
                   <td className={cell + " min-w-[160px] whitespace-normal break-words"}>{r.remarks || "-"}</td>
                   <td className={cell}>{r.updatedBy || "-"}</td>
