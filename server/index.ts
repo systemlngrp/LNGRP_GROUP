@@ -1596,6 +1596,14 @@ Return only valid JSON with this exact shape:
   "mrrSubType": "Other RM, Spare parts, Others, or blank",
   "invoiceCurrency": "INR or USD",
   "exchangeRate": null,
+  "insurance": 0,
+  "otherCharges": 0,
+  "taxableValue": 0,
+  "cgstAmount": 0,
+  "sgstAmount": 0,
+  "igstAmount": 0,
+  "roundOff": 0,
+  "grandTotal": 0,
   "lines": [
     {
       "itemName": "",
@@ -1619,7 +1627,7 @@ Return only valid JSON with this exact shape:
     }
   ]
 }
-Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, find the color printed on the invoice or packing slip (search item descriptions, color fields, PO/order text, and packing slip rows) and return it as one of these codes: return "LG" when the printed color is LG, GY, Yellow or Gold; return "NS" when the printed color is NS, Natural, VK or Brown; return "WKL" when the printed color is WKL, Duplex or White Kraft Liner. Put the color exactly as printed in colorAsPrinted. Do not guess a color from the paper type (the word kraft alone is not a color). If no color is printed, or the printed color is not in these lists, return color as blank and still fill colorAsPrinted with what is printed (blank if nothing). For non-reel MRRs, populate the parent-level mrrSubType only when the invoice explicitly identifies one of Other RM, Spare parts, or Others; otherwise leave it blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
+Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, find the color printed on the invoice or packing slip (search item descriptions, color fields, PO/order text, and packing slip rows) and return it as one of these codes: return "LG" when the printed color is LG, GY, Yellow or Gold; return "NS" when the printed color is NS, Natural, VK or Brown; return "WKL" when the printed color is WKL, Duplex or White Kraft Liner. Put the color exactly as printed in colorAsPrinted. Do not guess a color from the paper type (the word kraft alone is not a color). If no color is printed, or the printed color is not in these lists, return color as blank and still fill colorAsPrinted with what is printed (blank if nothing). For non-reel MRRs, populate the parent-level mrrSubType only when the invoice explicitly identifies one of Other RM, Spare parts, or Others; otherwise leave it blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. Invoice charges: put the insurance amount (before GST) only in insurance. Add every other extra charge printed on the invoice (freight, cartage, transport, loading, unloading, packing, forwarding, handling, etc.) together into otherCharges (before GST). Never add charges into item lines and never create item lines for charges. Return the invoice's printed taxable value in taxableValue, the printed GST totals in cgstAmount, sgstAmount and igstAmount, the round-off exactly as printed with its sign (negative when the invoice rounds down) in roundOff, and the final invoice amount in grandTotal. If a value is not printed, return 0. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
   }];
 
   for (const photo of photos) {

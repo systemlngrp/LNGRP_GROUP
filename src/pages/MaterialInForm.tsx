@@ -86,6 +86,14 @@ type AiMrrDraft = {
   mrrSubType?: string;
   invoiceCurrency?: InvoiceCurrency | string;
   exchangeRate?: number | null;
+  insurance?: number | null;
+  otherCharges?: number | null;
+  taxableValue?: number | null;
+  cgstAmount?: number | null;
+  sgstAmount?: number | null;
+  igstAmount?: number | null;
+  roundOff?: number | null;
+  grandTotal?: number | null;
   lines?: AiMrrLine[];
 };
 
@@ -2212,7 +2220,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
           ? { invoiceRateUsd: invoiceRate }
           : { invoiceRate, rate: invoiceRate, value: qty * invoiceRate }),
         actualQty: qty,
-        gstRate: resolveMaterialGstRate(match.line.materialId),
+        gstRate: resolveMaterialGstRate(material.id), // Material Master GST (reels 18%)
         cgstRate: 0,
         sgstRate: 0,
         igstRate: 0,
@@ -2246,6 +2254,37 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     setLines(nextLines);
     setPackingSlipDrafts(nextPackingDrafts);
     resetLineDrafts();
+
+    // Invoice charges: insurance and other charges from the invoice, GST on them at 18%
+    // (same as reels; CGST 9% + SGST 9%, or IGST 18% for an inter-state supplier), and the round-off.
+    const aiNumber = (value: unknown) => { const num = Number(value); return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0; };
+    const nextInsurance = Math.max(0, aiNumber(aiDraft.insurance));
+    const nextOtherCharges = Math.max(0, aiNumber(aiDraft.otherCharges));
+    const chargesBase = nextInsurance + nextOtherCharges;
+    const supplierInterState = String((aiMatchedSupplier as { gstSupplyType?: string }).gstSupplyType || "INTRA_STATE") === "INTER_STATE";
+    const halfGst = Math.round(chargesBase * 0.09 * 100) / 100;
+    const nextExpenseTaxes = chargesBase > 0
+      ? (supplierInterState ? { expenseCGST: "" as const, expenseSGST: "" as const, expenseIGST: Math.round(chargesBase * 0.18 * 100) / 100 } : { expenseCGST: halfGst, expenseSGST: halfGst, expenseIGST: "" as const })
+      : { expenseCGST: "" as const, expenseSGST: "" as const, expenseIGST: "" as const };
+    setInsurance(nextInsurance > 0 ? nextInsurance : "");
+    setOtherCharges(nextOtherCharges > 0 ? nextOtherCharges : "");
+    setExpenseCGST(nextExpenseTaxes.expenseCGST);
+    setExpenseSGST(nextExpenseTaxes.expenseSGST);
+    setExpenseIGST(nextExpenseTaxes.expenseIGST);
+    // Round-off: as printed; when not printed, the small difference (up to 1) between the invoice
+    // grand total and the MRR total, so the MRR total matches the invoice.
+    let nextRoundOff = aiNumber(aiDraft.roundOff);
+    const grandTotal = aiNumber(aiDraft.grandTotal);
+    if (!nextRoundOff && grandTotal > 0) {
+      const computed = summarizeMaterialInLines(nextLines, nextInsurance, nextOtherCharges, 0, {
+        expenseCGST: Number(nextExpenseTaxes.expenseCGST || 0),
+        expenseSGST: Number(nextExpenseTaxes.expenseSGST || 0),
+        expenseIGST: Number(nextExpenseTaxes.expenseIGST || 0),
+      }, { invoiceCurrency: nextCurrency, exchangeRate: nextCurrency === "USD" ? Number(nextExchangeRate || 0) : undefined });
+      const difference = Math.round((grandTotal - Number(computed.totalAmount || 0)) * 100) / 100;
+      if (Math.abs(difference) <= 1) nextRoundOff = difference;
+    }
+    setRoundOff(nextRoundOff ? nextRoundOff : "");
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
