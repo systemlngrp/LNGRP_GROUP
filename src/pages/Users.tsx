@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
-import { Setting, User } from "../types";
+import { Machine, Setting, User } from "../types";
+import { isUserAssignedToMachine } from "../lib/userMachineAccess";
+import { normalizeMachineName } from "../lib/productionMachineNames";
 import { Plus, Edit, Trash2, Search, Eye, EyeOff, Eraser } from "lucide-react";
 import { Spinner } from "../components/Spinner";
 import { NAVIGATION } from "../components/Sidebar";
@@ -64,6 +66,11 @@ export function Users() {
   const canManage = canManageMasterRecords(currentUser?.role);
   const [users, setUsers, usersLoading, userActions] = useData<User>("users", []);
   const [settings, , , settingsApi] = useData<Setting>("settings", []);
+  const [machines, , , machinesApi] = useData<Machine>("machines", []);
+  // Machines this user works on: production screens then show only these machines' tabs.
+  // Stored as the machine's operators (same list as Machine Master).
+  const [selectedMachineIds, setSelectedMachineIds] = useState<string[]>([]);
+  const sortedMachines = useMemo(() => [...machines].sort((a, b) => normalizeMachineName(a.name).localeCompare(normalizeMachineName(b.name))), [machines]);
   const [newDesignation, setNewDesignation] = useState<string | null>(null);
   const [savingDesignation, setSavingDesignation] = useState(false);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -141,6 +148,7 @@ export function Users() {
     setEditingId(null);
     setShowPassword(false);
     setFormData({ userId: "", name: "", mobile: "", email: "", password: "", designation: "", role: roleOptions[0] || "Employee", status: "Active", menuAccess: ["/"] });
+    setSelectedMachineIds([]);
     setIsFormOpen(true);
   };
 
@@ -188,6 +196,7 @@ export function Users() {
 
   const loadUserForm = (user: User) => {
     setEditingId(user.id);
+    setSelectedMachineIds(machines.filter((machine) => isUserAssignedToMachine(machine, user)).map((machine) => machine.id));
     setShowPassword(false);
     setFormData({
       userId: user.userId,
@@ -280,6 +289,26 @@ export function Users() {
       };
 
       await userActions.saveItem(nextUser);
+      // Update the operators of each machine whose tick changed (only those columns are sent).
+      const asList = (value: unknown) => (Array.isArray(value) ? value.map(String) : []);
+      const changedMachines = machines.flatMap((machine) => {
+        const wasAssigned = isUserAssignedToMachine(machine, { id: nextUser.id, name: editingId ? users.find((u) => u.id === editingId)?.name : nextUser.name });
+        const nowAssigned = selectedMachineIds.includes(machine.id);
+        if (wasAssigned === nowAssigned) return [];
+        const otherIds = asList(machine.assignedOperatorIds).filter((id) => id !== nextUser.id);
+        const names = asList(machine.assignedOperatorNames);
+        const otherNames = names.filter((name, index) => asList(machine.assignedOperatorIds)[index] !== nextUser.id && name.trim().toLowerCase() !== String(nextUser.name || "").trim().toLowerCase());
+        return [{ id: machine.id, name: machine.name, assignedOperatorIds: nowAssigned ? [...otherIds, nextUser.id] : otherIds, assignedOperatorNames: nowAssigned ? [...otherNames, String(nextUser.name || "")] : otherNames, updateTimestamp: new Date().toISOString() }];
+      });
+      for (const patch of changedMachines) {
+        const response = await fetch("/api/machines", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${window.localStorage.getItem("authToken") || ""}` },
+          body: JSON.stringify(patch),
+        });
+        if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || "User saved, but machine access could not be updated.");
+      }
+      if (changedMachines.length) await machinesApi.refresh({ force: true });
       await userActions.refresh();
       setIsFormOpen(false);
     } catch (error) {
@@ -539,6 +568,26 @@ export function Users() {
                 </button>
               </div>
             </div>
+
+            {sortedMachines.length ? (
+              <div className="border-2 border-black rounded p-3 bg-slate-50">
+                <div className="font-black text-black text-sm uppercase">Machines</div>
+                <p className="mt-0.5 text-xs font-semibold text-slate-600">Production screens show only the ticked machines' tabs. None ticked = all machines. Admin always sees all.</p>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+                  {sortedMachines.map((machine) => (
+                    <label key={machine.id} className="flex items-center gap-2 rounded border border-black bg-white px-2 py-1.5 text-xs font-bold text-black">
+                      <input
+                        type="checkbox"
+                        checked={selectedMachineIds.includes(machine.id)}
+                        disabled={isViewMode}
+                        onChange={(e) => setSelectedMachineIds((current) => e.target.checked ? [...current, machine.id] : current.filter((id) => id !== machine.id))}
+                      />
+                      {normalizeMachineName(machine.name)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <div className="border-2 border-black rounded p-3 bg-slate-50">
               <div className="flex items-center justify-between">

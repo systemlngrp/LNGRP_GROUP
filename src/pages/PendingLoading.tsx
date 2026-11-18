@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useData } from "../hooks/useData";
 import {
   DispatchPlan,
@@ -26,14 +26,15 @@ import {
   X,
   Check,
   ChevronRight,
-  ChevronDown,
   Plus,
   Trash2,
 } from "lucide-react";
 import { Spinner } from "../components/Spinner";
+import { ClientPagination } from "../components/ClientPagination";
+import { useClientPagination } from "../hooks/useClientPagination";
 import { formatDate } from "../lib/serial";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
-import { SortHeader, sortRows, useTableSort } from "../lib/tableSort";
+import { SortHeader, useTableSort } from "../lib/tableSort";
 import { cn } from "../lib/utils";
 import { useNpdItemsWithStatus } from "../hooks/useNpdItems";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -51,6 +52,13 @@ import {
   getPendingLoadingPlanProjections,
   loadedQtyByJobId,
 } from "../lib/pendingLoadingEligibility";
+
+// "DP/26-27/04512" -> "26-27/04512": the prefix is the same on every row.
+function shortDocNo(value?: string) {
+  const text = String(value || "").trim();
+  const match = text.match(/(\d{2}-\d{2}\/[^/]+)$/);
+  return match ? match[1] : text || "-";
+}
 
 interface PendingPlan extends DispatchPlan {
   firmId: string;
@@ -71,6 +79,7 @@ interface GroupedPlan {
   itemSource: OrderItemSource;
   itemId: string;
   itemName: string;
+  erp: string;
   plans: PendingPlan[];
   eligibleJobs: EligibleLoadingJob[];
 }
@@ -126,8 +135,6 @@ export function PendingLoading() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [companyFilter, setCompanyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
-  const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set());
-  const didInitExpand = useRef(false);
   const [loadingModal, setLoadingModal] = useState<LoadingModalState | null>(null);
   const [loadedQuantities, setLoadedQuantities] = useState<Record<string, number>>({});
   const [jobSplitQtys, setJobSplitQtys] = useState<Record<string, Record<string, number | "">>>({});
@@ -207,6 +214,8 @@ export function PendingLoading() {
         projection.order?.orderNo || "N/A",
         getFirmDisplayNameById(projection.firmId, firms),
         projection.plan.planNo,
+        formatDate(projection.plan.date),
+        String(projection.item?.erp || projection.order?.erpCode || ""),
         Number(projection.plan.plannedQty || 0),
         Number(projection.plan.loadedQty || 0),
         projection.pendingQty,
@@ -234,6 +243,7 @@ export function PendingLoading() {
           itemSource,
           itemId,
           itemName: item?.name || "Item unavailable",
+          erp: String(item?.erp || order?.erpCode || "").trim(),
           plans: [],
           eligibleJobs,
         });
@@ -288,33 +298,27 @@ export function PendingLoading() {
     };
   }, [planProjections, firms]);
 
-  // One sort for every plan table: each item's plans are sorted inside their own table.
-  const { sort: planSort, toggle: togglePlanSort } = useTableSort<never>([], () => null);
-  const sortedGroupedData = useMemo(() => {
-    if (!planSort) return groupedData;
-    const getPlanValue = (plan: GroupedPlan["plans"][number]) => {
-      switch (planSort.key) {
-        case "orderNo": return plan.orderNo;
-        case "firmName": return plan.firmName;
-        case "planNo": return plan.planNo || "";
-        case "plannedQty": return Number(plan.plannedQty || 0);
-        case "loadedQty": return Number(plan.loadedQty || 0);
-        case "pendingQty": return plan.pendingQty;
-        default: return "";
-      }
-    };
-    return groupedData.map((company) => ({
-      ...company,
-      items: company.items.map((itemGroup) => ({ ...itemGroup, plans: sortRows(itemGroup.plans, getPlanValue, planSort.direction) })),
-    }));
-  }, [groupedData, planSort]);
-
-  useEffect(() => {
-    if (didInitExpand.current) return;
-    if (groupedData.length === 0) return;
-    didInitExpand.current = true;
-    setExpandedCompanies(new Set(groupedData.map((group) => group.groupKey)));
-  }, [groupedData]);
+  // One flat table: a row per dispatch plan, latest plan date on top.
+  const planRows = useMemo(
+    () => groupedData.flatMap((company) => company.items.flatMap((group) => group.plans.map((plan) => ({ plan, group })))),
+    [groupedData],
+  );
+  const { sorted: sortedPlanRows, sort: planSort, toggle: togglePlanSort } = useTableSort(planRows, ({ plan, group }, key) => {
+    switch (key) {
+      case "date": return String(plan.date || "").slice(0, 10);
+      case "planNo": return plan.planNo || "";
+      case "orderNo": return plan.orderNo;
+      case "firmName": return plan.firmName;
+      case "companyName": return group.companyName;
+      case "itemName": return group.itemName;
+      case "itemSource": return group.itemSource;
+      case "plannedQty": return Number(plan.plannedQty || 0);
+      case "loadedQty": return Number(plan.loadedQty || 0);
+      case "pendingQty": return plan.pendingQty;
+      default: return "";
+    }
+  }, [], { key: "date", direction: "desc" });
+  const { page: planPage, setPage: setPlanPage, pageSize: planPageSize, setPageSize: setPlanPageSize, totalItems: planTotal, paginatedItems: pagedPlanRows } = useClientPagination(sortedPlanRows, 100);
 
   const currentAdjustmentByJobId = useMemo(() => {
     const map = new Map<string, number>();
@@ -783,13 +787,26 @@ export function PendingLoading() {
   const listFiltered = Boolean(searchTerm.trim() || firmFilter || sourceFilter || companyFilter || itemFilter);
   const clearListFilters = () => { setSearchTerm(""); setFirmFilter(""); setSourceFilter(""); setCompanyFilter(""); setItemFilter(""); };
   const listTotals = useMemo(() => {
-    let items = 0; let plans = 0; let pending = 0;
+    let items = 0; let plans = 0; let pending = 0; let planned = 0; let loaded = 0;
+    const companyNames = new Set<string>();
     groupedData.forEach((company) => company.items.forEach((itemGroup) => {
       items += 1;
-      itemGroup.plans.forEach((plan) => { plans += 1; pending += plan.pendingQty; });
+      companyNames.add(itemGroup.companyName);
+      itemGroup.plans.forEach((plan) => { plans += 1; pending += plan.pendingQty; planned += Number(plan.plannedQty || 0); loaded += Number(plan.loadedQty || 0); });
     }));
-    return { companies: groupedData.length, items, plans, pending };
+    return { companies: companyNames.size, items, plans, pending, planned, loaded };
   }, [groupedData]);
+  const renderLoadButton = (group: GroupedPlan) => (
+    <button
+      type="button"
+      onClick={() => handleOpenLoad(group.firmId, group.companyId, group.itemSource, group.itemId, group.itemName, group.plans)}
+      disabled={!group.loadable}
+      title={group.unavailableReason ? `${group.unavailableReason}. Loading is unavailable until this link is repaired.` : "Make loading slip for this item"}
+      className="inline-flex items-center gap-1 rounded border-2 border-black bg-indigo-700 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white hover:bg-indigo-800 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      <TruckIcon size={13} /> Load
+    </button>
+  );
   const renderCancelControl = (plan: PendingPlan) => cancelingPlanId === plan.id ? (
     <div className="flex items-center justify-center gap-1">
       <input
@@ -844,146 +861,99 @@ export function PendingLoading() {
         </div>
       </div>
 
-      {groupedData.length > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
-          <span>{listTotals.companies} {listTotals.companies === 1 ? "company" : "companies"} · {listTotals.items} {listTotals.items === 1 ? "item" : "items"} · {listTotals.plans} {listTotals.plans === 1 ? "plan" : "plans"} · Pending <span className="text-indigo-700">{listTotals.pending.toLocaleString()}</span></span>
-          <span className="flex gap-2">
-            <button type="button" onClick={() => setExpandedCompanies(new Set(groupedData.map((group) => group.groupKey)))} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold hover:bg-slate-100">Expand all</button>
-            <button type="button" onClick={() => setExpandedCompanies(new Set())} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold hover:bg-slate-100">Collapse all</button>
-          </span>
+      {planRows.length > 0 ? (
+        <div className="text-xs font-bold text-slate-700">
+          {listTotals.plans} {listTotals.plans === 1 ? "plan" : "plans"} · {listTotals.companies} {listTotals.companies === 1 ? "company" : "companies"} · Pending <span className="text-indigo-700">{listTotals.pending.toLocaleString()}</span>
         </div>
       ) : null}
 
-      {pageLoading && groupedData.length === 0 ? (
+      {pageLoading && planRows.length === 0 ? (
         <div className="flex justify-center p-12">
           <Spinner />
         </div>
-      ) : groupedData.length === 0 ? (
+      ) : planRows.length === 0 ? (
         <div className="rounded-lg border-2 border-dashed border-slate-300 bg-white p-12 text-center">
           <Package className="mx-auto mb-4 h-12 w-12 text-slate-300" />
           <p className="font-medium text-slate-500">No eligible pending loading plans found.</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {sortedGroupedData.map((company) => {
-            const open = expandedCompanies.has(company.groupKey);
-            const companyPending = company.items.reduce((sum, itemGroup) => sum + itemGroup.plans.reduce((total, plan) => total + plan.pendingQty, 0), 0);
-            return (
-            <div key={company.groupKey} className="overflow-hidden rounded-lg border-2 border-black bg-white">
-              <button
-                type="button"
-                aria-expanded={open}
-                onClick={() => {
-                  setExpandedCompanies((current) => {
-                    const next = new Set(current);
-                    if (next.has(company.groupKey)) next.delete(company.groupKey);
-                    else next.add(company.groupKey);
-                    return next;
-                  });
-                }}
-                className={cn("flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors sm:px-4", open ? "bg-indigo-700 text-white" : "bg-white text-black hover:bg-indigo-50")}
-              >
-                <span className={cn("shrink-0 rounded p-1.5", open ? "bg-white/15" : "bg-indigo-100 text-indigo-700")}><TruckIcon size={18} /></span>
-                <span className="min-w-0 flex-1">
-                  <span className="block break-words text-sm font-black uppercase leading-tight sm:text-base">{company.companyName}</span>
-                  <span className={cn("mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] font-bold", open ? "text-indigo-100" : "text-slate-600")}>
-                    <span>{company.firmName}</span>
-                    <span>·</span>
-                    <span>{company.items.length} {company.items.length === 1 ? "item" : "items"}</span>
-                    <span>·</span>
-                    <span>Pending {companyPending.toLocaleString()}</span>
-                  </span>
-                </span>
-                <ChevronDown size={20} className={cn("shrink-0 transition-transform duration-200", open ? "rotate-180" : "")} />
-              </button>
-
-              {open ? (
-                <div className="space-y-3 border-t-2 border-black bg-slate-50 p-2 sm:p-3">
-                  {company.items.map((itemGroup) => {
-                    const itemPending = itemGroup.plans.reduce((total, plan) => total + plan.pendingQty, 0);
-                    return (
-                    <div key={`${itemGroup.itemSource}::${itemGroup.itemId}`} className="overflow-hidden rounded border border-slate-400 bg-white">
-                      <div className="flex flex-col gap-2 border-l-4 border-indigo-600 bg-indigo-50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex min-w-0 items-start gap-2">
-                          <Package size={18} className="mt-0.5 shrink-0 text-indigo-600" />
-                          <div className="min-w-0">
-                            <div className="break-words text-sm font-black uppercase leading-tight text-black">{itemGroup.itemName}</div>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-600">
-                              <span className="rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-[10px] font-black uppercase text-indigo-700">{itemGroup.itemSource}</span>
-                              <span>{itemGroup.plans.length} {itemGroup.plans.length === 1 ? "plan" : "plans"}</span>
-                              <span>· Pending <span className="text-indigo-700">{itemPending.toLocaleString()}</span></span>
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenLoad(itemGroup.firmId, company.companyId, itemGroup.itemSource, itemGroup.itemId, itemGroup.itemName, itemGroup.plans)}
-                          disabled={!itemGroup.loadable}
-                          title={itemGroup.unavailableReason}
-                          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded border-2 border-black bg-indigo-700 px-5 py-2 text-xs font-black uppercase tracking-widest text-white transition hover:bg-indigo-800 active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto"
-                        >
-                          <TruckIcon size={16} /> Load Item
-                        </button>
-                      </div>
-                      {itemGroup.unavailableReason ? <p className="mx-3 mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">{itemGroup.unavailableReason}. Loading is unavailable until this link is repaired.</p> : null}
-
-                      {/* Phones: one compact card per plan. */}
-                      <div className="divide-y divide-slate-300 md:hidden">
-                        {itemGroup.plans.map((plan) => (
-                          <div key={plan.id} className="space-y-2 p-3">
-                            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
-                              <span className="font-black text-black">{plan.planNo || "-"}</span>
-                              <span className="font-semibold text-slate-600">{plan.orderNo} · {plan.firmName}</span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-1 text-center">
-                              {([["Planned", Number(plan.plannedQty || 0), "text-black"], ["Loaded", Number(plan.loadedQty || 0), "text-emerald-700"], ["Pending", plan.pendingQty, "text-indigo-700"]] as const).map(([label, value, tone]) => (
-                                <div key={label} className="rounded border border-slate-300 bg-slate-50 px-1 py-1">
-                                  <div className="text-[9px] font-black uppercase text-slate-500">{label}</div>
-                                  <div className={cn("text-sm font-black", tone)}>{value.toLocaleString()}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <div className="flex justify-end">{renderCancelControl(plan)}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="hidden overflow-x-auto md:block">
-                        <table data-disable-table-pagination className="w-full border-collapse">
-                          <thead className="bg-slate-100">
-                            <tr>
-                              <th className="border-y border-r border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Order No"} sortKey="orderNo" sort={planSort} onToggle={togglePlanSort} /></th>
-                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Firm"} sortKey="firmName" sort={planSort} onToggle={togglePlanSort} /></th>
-                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Plan No"} sortKey="planNo" sort={planSort} onToggle={togglePlanSort} /></th>
-                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Planned"} sortKey="plannedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
-                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700"><SortHeader label={"Loaded"} sortKey="loadedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
-                              <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-indigo-700"><SortHeader label={"Pending"} sortKey="pendingQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
-                              <th className="border-y border-l border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-slate-700">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white">
-                            {itemGroup.plans.map((plan) => (
-                              <tr key={plan.id} className="hover:bg-slate-50">
-                                <td className="whitespace-nowrap border-y border-r border-slate-300 px-3 py-2 text-xs font-medium text-black">{plan.orderNo}</td>
-                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs font-medium text-black">{plan.firmName}</td>
-                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs font-bold text-black">{plan.planNo || "-"}</td>
-                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs text-black">{Number(plan.plannedQty || 0).toLocaleString()}</td>
-                                <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs font-bold text-emerald-700">{Number(plan.loadedQty || 0).toLocaleString()}</td>
-                                <td className="whitespace-nowrap border border-slate-300 bg-indigo-50/40 px-3 py-2 text-right text-xs font-black text-indigo-700">{plan.pendingQty.toLocaleString()}</td>
-                                <td className="whitespace-nowrap border-y border-l border-slate-300 px-3 py-2 text-center">{renderCancelControl(plan)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                    );
-                  })}
+        <div className="space-y-2">
+          {/* Phones: one compact card per plan. */}
+          <div className="space-y-2 md:hidden">
+            {pagedPlanRows.map(({ plan, group }) => (
+              <div key={plan.id} className="space-y-2 rounded border-2 border-black bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
+                  <span className="font-black text-black">{plan.planNo || "-"} · {formatDate(plan.date)}</span>
+                  <span className="font-semibold text-slate-600">{plan.orderNo} · {plan.firmName}</span>
                 </div>
-              ) : null}
-            </div>
-            );
-          })}
+                <div className="text-xs font-black uppercase leading-tight text-black">{group.companyName}</div>
+                <div className="text-[11px] font-bold text-slate-600">{group.itemName}{group.erp ? <span className="text-slate-400"> · {group.erp}</span> : null} <span className="ml-1 rounded border border-indigo-300 px-1 text-[9px] font-black text-indigo-700">{group.itemSource}</span></div>
+                <div className="grid grid-cols-3 gap-1 text-center">
+                  {([["Planned", Number(plan.plannedQty || 0), "text-black"], ["Loaded", Number(plan.loadedQty || 0), "text-emerald-700"], ["Pending", plan.pendingQty, "text-indigo-700"]] as const).map(([label, value, tone]) => (
+                    <div key={label} className="rounded border border-slate-300 bg-slate-50 px-1 py-1">
+                      <div className="text-[9px] font-black uppercase text-slate-500">{label}</div>
+                      <div className={cn("text-sm font-black", tone)}>{value.toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  {renderCancelControl(plan)}
+                  {renderLoadButton(group)}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto rounded border-2 border-black bg-white md:block">
+            <table className="w-full border-collapse text-xs [&_th]:whitespace-normal [&_th]:px-2 [&_th]:text-[10px] [&_th]:leading-tight [&_td]:px-2">
+              <thead className="bg-indigo-700">
+                <tr>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Plan Date" sortKey="date" sort={planSort} onToggle={togglePlanSort} /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Plan No" sortKey="planNo" sort={planSort} onToggle={togglePlanSort} /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Order No" sortKey="orderNo" sort={planSort} onToggle={togglePlanSort} /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Firm" sortKey="firmName" sort={planSort} onToggle={togglePlanSort} /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Company" sortKey="companyName" sort={planSort} onToggle={togglePlanSort} /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Item" sortKey="itemName" sort={planSort} onToggle={togglePlanSort} /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Planned" sortKey="plannedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Loaded" sortKey="loadedQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                  <th className="border border-slate-300 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white"><SortHeader label="Pending" sortKey="pendingQty" sort={planSort} onToggle={togglePlanSort} align="right" /></th>
+                  <th className="border border-slate-300 px-2 py-2 text-[10px] font-black uppercase tracking-wider text-white">Action</th>
+                  
+                </tr>
+              </thead>
+              <tbody className="bg-white">
+                {pagedPlanRows.map(({ plan, group }) => (
+                  <tr key={plan.id} className={cn("hover:bg-slate-50", group.loadable ? "" : "bg-red-50/40 text-slate-500")}>
+                    <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs font-bold text-black">{formatDate(plan.date)}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs font-bold text-black" title={plan.planNo}>{shortDocNo(plan.planNo)}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs text-black" title={plan.orderNo}>{shortDocNo(plan.orderNo)}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-xs text-black">{plan.firmName}</td>
+                    <td className="min-w-[120px] max-w-[160px] border border-slate-300 px-2 py-2 text-xs font-bold text-black" title={group.companyName}><span className="line-clamp-2">{group.companyName}</span></td>
+                    <td className="min-w-[180px] max-w-[260px] border border-slate-300 px-2 py-2 text-xs text-black" title={group.itemName}><span className="line-clamp-2">{group.itemSource !== "FG" ? <span className="mr-1 rounded border border-indigo-300 bg-indigo-50 px-1 text-[9px] font-black uppercase text-indigo-700">{group.itemSource}</span> : null}{group.itemName}{group.erp ? <span className="font-semibold text-slate-400"> · {group.erp}</span> : null}</span></td>
+                    <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs text-black">{Number(plan.plannedQty || 0).toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs font-bold text-emerald-700">{Number(plan.loadedQty || 0).toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-slate-300 bg-indigo-50/40 px-3 py-2 text-right text-xs font-black text-indigo-700">{plan.pendingQty.toLocaleString()}</td>
+                    <td className="whitespace-nowrap border border-slate-300 px-2 py-2">
+                      <div className="flex flex-col items-center gap-1">
+                        {renderLoadButton(group)}
+                        {renderCancelControl(plan)}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="bg-slate-100">
+                <tr>
+                  <td colSpan={6} className="border border-slate-300 px-3 py-2 text-right text-[10px] font-black uppercase tracking-wider text-slate-700">Total</td>
+                  <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs font-black text-black">{listTotals.planned.toLocaleString()}</td>
+                  <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs font-black text-emerald-700">{listTotals.loaded.toLocaleString()}</td>
+                  <td className="whitespace-nowrap border border-slate-300 px-3 py-2 text-right text-xs font-black text-indigo-700">{listTotals.pending.toLocaleString()}</td>
+                  <td className="border border-slate-300" />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {planTotal > 25 ? <ClientPagination page={planPage} pageSize={planPageSize} totalItems={planTotal} onPageChange={setPlanPage} onPageSizeChange={setPlanPageSize} pageSizeOptions={[50, 100, 250, 500]} /> : null}
         </div>
       )}
 

@@ -87,15 +87,7 @@ async function drawReelLabel(doc, mrr, row, paperSize) {
     const qrTop = gridY + 22;
     const qrSize = Math.min(cardW - 24, cardH - (qrTop - margin) - 22);
     try {
-        const payload = JSON.stringify({
-            source: "MRR",
-            mrrNo: mrr.transactionNo,
-            date: mrr.date,
-            reelNo: row.ourReelNo,
-            supplierReelNo: row.supplierReelNo,
-            weightKg: Number(row.weightKg || 0),
-            materialCode: row.materialCode,
-        });
+        const payload = String(row.ourReelNo || "").trim(); // short QR: reel number only
         const qr = await QRCode.toDataURL(payload, { errorCorrectionLevel: "M", margin: 1, width: 1000 });
         doc.addImage(qr, "PNG", centerX - qrSize / 2, qrTop, qrSize, qrSize, undefined, "FAST");
         doc.setFont("helvetica", "normal");

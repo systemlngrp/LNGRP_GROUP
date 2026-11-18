@@ -476,7 +476,7 @@ export function buildPendingTaskCounts(args: BuildPendingTaskCountsArgs): Record
     ).length,
     "/production/pending-material-return": new Set(
       getPendingReturnJobReelLines(args.materialIssueReelLines, args.materialReturnReelLines, args.productions)
-        .filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {}) && isCorrugationLinerComplete(args.processing || [], line.productionId))
+        .filter((line) => activeProductionIds.has(line.productionId) && isJobDueByToday(productionById.get(line.productionId) || {}))
         .map((line) => line.productionId)
     ).size,
     "/production/pending-job-transfer": (() => {

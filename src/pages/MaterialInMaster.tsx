@@ -504,7 +504,7 @@ export function MaterialInMaster() {
                           }}
                           className="block w-full px-3 py-2 text-left text-xs font-bold uppercase hover:bg-slate-100"
                         >
-                          Label 350×350
+                          Label 250×300
                         </button>
                       </div>
                     ) : null}
@@ -643,7 +643,7 @@ export function MaterialInMaster() {
                                 }}
                                 className="block w-full px-3 py-2 text-left text-xs font-bold uppercase hover:bg-slate-100"
                               >
-                                Label 350×350
+                                Label 250×300
                               </button>
                             </div>
                           ) : null}

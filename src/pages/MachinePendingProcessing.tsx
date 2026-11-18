@@ -19,6 +19,9 @@ import { resolveProductionErp, resolveProductionItem } from "../lib/productionEr
 import { getProductionOriginSource } from "../lib/productionOrigin";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { ClientPagination } from "../components/ClientPagination";
+import { MachineTabs } from "../components/MachineTabs";
+import { useAuth } from "../auth/AuthContext";
+import { getUserVisibleMachineNames } from "../lib/userMachineAccess";
 import { useClientPagination } from "../hooks/useClientPagination";
 
 interface PendingMachineJob {
@@ -47,6 +50,7 @@ interface MachineGroup {
 export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMachineName?: string; title?: string } = {}) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const filterMachineId = searchParams.get("machineId") || "";
   const fixedNormalizedMachineName = fixedMachineName ? normalizeMachineName(fixedMachineName) : "";
@@ -125,7 +129,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   }, [scheduleById, orderById, companyNameById]);
 
   // Every pending job per machine, before the page filters (filter options come from these).
-  const baseMachineGroups = useMemo(() => {
+  const allMachineGroups = useMemo(() => {
     const groups: Map<string, MachineGroup> = new Map();
     const machineSequence = new Map<string, number>();
     Object.values(mandatoryMachinesMapping).forEach((machineNames) => {
@@ -235,6 +239,13 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
       });
   }, [productions, phpJobs, plateJobs, phpJobIds, plateJobIds, itemsBySource, machines, processing, mandatoryMachinesMapping, filterMachineId, fixedNormalizedMachineName, resolveCompanyName, scheduleById, orderById, firmNameById]);
 
+  // Users ticked on machines (Machine Master / Users master) only see those machines.
+  const visibleMachineNames = useMemo(() => getUserVisibleMachineNames(user, machines), [machines, user]);
+  const baseMachineGroups = useMemo(
+    () => visibleMachineNames ? allMachineGroups.filter((group) => visibleMachineNames.has(normalizeMachineName(group.machineName))) : allMachineGroups,
+    [allMachineGroups, visibleMachineNames]
+  );
+
   // Issued-material checks are only needed for the Printing step; skip loading
   // the material issue/return lists when no Printing jobs are pending here.
   const needsMaterialUsage = useMemo(
@@ -245,10 +256,10 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   // Typing in Search stays responsive: the long job list is re-filtered after the keystroke.
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
-  const machineGroups = useMemo(() => {
+  // Every filter except the machine tab (tab counts come from this).
+  const filteredMachineGroups = useMemo(() => {
     const words = searchWords(deferredSearchTerm);
     return baseMachineGroups
-      .filter(g => !machineFilter || g.machineId === machineFilter)
       .map(g => ({
         ...g,
         jobs: g.jobs.filter(j => {
@@ -278,7 +289,19 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
         }).sort((a, b) => b.production.transactionNo.localeCompare(a.production.transactionNo, undefined, { numeric: true, sensitivity: "base" }))
       }))
       .filter(g => g.jobs.length > 0);
-  }, [baseMachineGroups, deferredSearchTerm, companyFilter, firmFilter, itemFilter, machineFilter, sourceFilter, fromDateFilter, toDateFilter, materialUsageLoading, materialUsageMap]);
+  }, [baseMachineGroups, deferredSearchTerm, companyFilter, firmFilter, itemFilter, sourceFilter, fromDateFilter, toDateFilter, materialUsageLoading, materialUsageMap]);
+  const machineGroups = useMemo(
+    () => machineFilter ? filteredMachineGroups.filter((g) => g.machineId === machineFilter) : filteredMachineGroups,
+    [filteredMachineGroups, machineFilter]
+  );
+  const machineTabs = useMemo(() => {
+    const countById = new Map(filteredMachineGroups.map((g) => [g.machineId, g.jobs.length]));
+    return baseMachineGroups.map((g) => ({ value: g.machineId, label: g.machineName, count: countById.get(g.machineId) || 0 }));
+  }, [baseMachineGroups, filteredMachineGroups]);
+  // A tab that is no longer available (e.g. its last job finished) falls back to All.
+  useEffect(() => {
+    if (machineFilter && !baseMachineGroups.some((g) => g.machineId === machineFilter)) setMachineFilter("");
+  }, [baseMachineGroups, machineFilter]);
 
   // One sort for every machine table: all jobs are sorted together, then each
   // machine's table shows its own jobs in that order.
@@ -313,7 +336,8 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
   // Until jobs and machine entries are both in, every job would look pending at
   // the first machine (a count of ~1,900 instead of a few hundred), so wait.
   const coreDataLoading = productionsLoading || processingLoading || machinesLoading || settingsLoading;
-  const showMachineFilter = !filterMachineId && !fixedNormalizedMachineName;
+  const showMachineTabs = !filterMachineId && !fixedNormalizedMachineName;
+  const showMachineFilter = false; // replaced by the machine tabs
   const machineOptions = useMemo(
     () => baseMachineGroups.map((group) => ({ value: group.machineId, label: group.machineName })),
     [baseMachineGroups]
@@ -359,11 +383,11 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     return machines.find(m => m.id === filterMachineId)?.name || "";
   }, [filterMachineId, machines]);
 
-  const hasActiveFilters = Boolean(searchTerm.trim() || machineFilter || firmFilter || companyFilter || itemFilter || sourceFilter || fromDateFilter || toDateFilter);
+  const hasPanelFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || sourceFilter || fromDateFilter || toDateFilter);
+  const hasActiveFilters = hasPanelFilters || Boolean(machineFilter);
 
   const clearFilters = () => {
     setSearchTerm("");
-    setMachineFilter("");
     setFirmFilter("");
     setCompanyFilter("");
     setItemFilter("");
@@ -451,7 +475,7 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             className={`relative hidden h-[38px] shrink-0 items-center gap-1.5 rounded border-2 px-3 text-xs font-black md:inline-flex ${showFilters ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black hover:bg-slate-100"}`}
           >
             <Filter size={15} /> Filter
-            {hasActiveFilters && !showFilters ? <span className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-red-600" aria-label="Filters in use" /> : null}
+            {hasPanelFilters && !showFilters ? <span className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-red-600" aria-label="Filters in use" /> : null}
           </button>
         </div>
         <div className={`grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6 ${showFilters ? "grid" : "grid md:hidden"}`}>
@@ -467,13 +491,17 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Job To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
           </div>
         </div>
-        <div data-mf-actions="true" className={`flex justify-end gap-2 ${showFilters && hasActiveFilters ? "" : "md:hidden"}`}>
-          {hasActiveFilters ? (
+        <div data-mf-actions="true" className={`flex justify-end gap-2 ${showFilters && hasPanelFilters ? "" : "md:hidden"}`}>
+          {hasPanelFilters ? (
             <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
           ) : null}
           <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
+
+      {showMachineTabs && !coreDataLoading ? (
+        <MachineTabs tabs={machineTabs} value={machineFilter} onChange={setMachineFilter} allCount={filteredMachineGroups.reduce((sum, g) => sum + g.jobs.length, 0)} />
+      ) : null}
 
       <div className="space-y-3">
         {coreDataLoading ? (

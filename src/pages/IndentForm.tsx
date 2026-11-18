@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { Firm, Indent, IndentLine, Material, User } from "../types";
+import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 
@@ -91,7 +92,27 @@ export function IndentForm() {
     const returnTo = `${location.pathname}${location.search}`;
     navigate(`/masters/materials?new=1&type=${encodeURIComponent(indentType)}&returnTo=${encodeURIComponent(returnTo)}`);
   };
-  const selectedFirm = firms.find((firm) => firm.id === selectedFirmId);
+  // The firm decides the indent type: Unit-I offers Reel (default) and Other; any other
+  // firm offers Other only, because reel indents always belong to Unit-I (owner of reel stock).
+  const unitOneFirm = useMemo(() => findUnitOneFirm(firms), [firms]);
+  const effectiveFirmId = selectedFirmId;
+  const isUnitOneSelected = Boolean(unitOneFirm && selectedFirmId === unitOneFirm.id);
+  const indentTypeOptions: Indent["indentType"][] = isUnitOneSelected ? ["Reel", "Other"] : ["Other"];
+  const handleFirmChange = (firmId: string) => {
+    setSelectedFirmId(firmId);
+    const nextType: Indent["indentType"] = unitOneFirm && firmId === unitOneFirm.id ? "Reel" : "Other";
+    if (nextType !== indentType) {
+      setIndentType(nextType);
+      setLines([createEmptyLine()]);
+    }
+  };
+  // A restored draft (or firms loading late) must still follow the rule.
+  useEffect(() => {
+    if (!selectedFirmId || !firms.length || isUnitOneSelected || indentType !== "Reel") return;
+    setIndentType("Other");
+    setLines([createEmptyLine()]);
+  }, [firms.length, indentType, isUnitOneSelected, selectedFirmId]);
+  const selectedFirm = firms.find((firm) => firm.id === effectiveFirmId);
 
   const activeMaterials = useMemo(
     () => materials.filter((material) => material.active !== "No" && material.type === indentType),
@@ -162,7 +183,11 @@ export function IndentForm() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!selectedFirmId || !selectedFirm || !requestedBy.trim() || !requisitionDate) {
+    if (indentType === "Reel" && !isUnitOneSelected) {
+      alert("Reel indents can only be raised in Unit-I.");
+      return;
+    }
+    if (!effectiveFirmId || !selectedFirm || !requestedBy.trim() || !requisitionDate) {
       alert("Firm, Requested By and Requisition Date are required.");
       return;
     }
@@ -204,7 +229,7 @@ export function IndentForm() {
 
     const nextIndent: Indent = {
       id: indentId,
-      firmId: selectedFirmId,
+      firmId: effectiveFirmId,
       firmName: selectedFirm.firmName,
       requestedBy: requestedBy.trim(),
       requisitionDate,
@@ -224,7 +249,7 @@ export function IndentForm() {
       await setIndentLines([...indentLines, ...nextLines]);
       setRequestedBy(requestedByOptions[0]?.value || "System");
       setRequisitionDate(new Date().toISOString().split("T")[0]);
-      setIndentType("Reel");
+      setIndentType(isUnitOneSelected ? "Reel" : "Other");
       setLines([createEmptyLine()]);
       alert("Indent saved successfully.");
     } catch (error) {
@@ -249,7 +274,7 @@ export function IndentForm() {
             <label className="text-blue-700 font-bold">Firm <span className="text-red-500">*</span></label>
             <select
               value={selectedFirmId}
-              onChange={(event) => setSelectedFirmId(event.target.value)}
+              onChange={(event) => handleFirmChange(event.target.value)}
               required
               className="w-full rounded border-2 border-black bg-white px-4 py-3 font-bold text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
               aria-label="Firm"
@@ -286,6 +311,7 @@ export function IndentForm() {
           </div>
         </div>
 
+        {selectedFirmId ? (<>
         <div className="space-y-2">
           <label className="text-blue-700 font-bold">
             Indent Type <span className="text-red-500">*</span>
@@ -296,8 +322,7 @@ export function IndentForm() {
             required
             className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
           >
-            <option value="Reel">Reel</option>
-            <option value="Other">Other</option>
+            {indentTypeOptions.map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
         </div>
 
@@ -384,6 +409,9 @@ export function IndentForm() {
             })}
           </div>
         </div>
+        </>) : (
+          <p className="rounded border border-dashed border-slate-400 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-600">Select a firm to choose the indent type and add items.</p>
+        )}
 
         <div className="flex justify-end">
           <button

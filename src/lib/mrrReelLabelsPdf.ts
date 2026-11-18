@@ -95,11 +95,11 @@ export async function downloadMrrReelLabelsPdf({
   }
 
   const isA3 = paperSize === "A3";
-  // "A3" option = reel label, 350 x 350 px per page (about 92.6 x 92.6 mm). The layout is the old
-  // sheet script's 250 px design scaled up by LABEL_SCALE.
+  // "A3" option = reel label, 250 x 300 px per page (about 66 x 79 mm), the old sheet script's
+  // 250 px design (LABEL_SCALE 1); the QR box grows into the extra height.
   const PX = 25.4 / 96;
-  const LABEL_PAGE: [number, number] = [350 * PX, 350 * PX];
-  const LABEL_SCALE = 350 / 250;
+  const LABEL_PAGE: [number, number] = [250 * PX, 300 * PX];
+  const LABEL_SCALE = 1;
   const doc = isA3 ? new jsPDF({ orientation: "p", unit: "mm", format: LABEL_PAGE }) : new jsPDF("p", "mm", "a4");
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

@@ -67,11 +67,11 @@ export async function downloadReturnReelQrPdf({
   firmId,
   firms = [],
 }: ReturnReelQrPdfArgs) {
-  // 350 x 350 px label page (about 92.6 mm square), same size and style as the MRR reel label.
+  // 250 x 300 px label page (about 66 x 79 mm), same size and style as the MRR reel label.
   const PX = 25.4 / 96;
-  const LABEL_SCALE = 350 / 250;
+  const LABEL_SCALE = 1;
   const U = PX * LABEL_SCALE; // one design px of the 250 px layout, in mm
-  const LABEL_PAGE: [number, number] = [350 * PX, 350 * PX];
+  const LABEL_PAGE: [number, number] = [250 * PX, 300 * PX];
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: LABEL_PAGE });
 
   let logoDataUrl = "";
@@ -84,17 +84,8 @@ export async function downloadReturnReelQrPdf({
   }
 
   const organizationName = firstNonEmpty(resolvePdfFirm({ firmId, firms })?.firmName, "LAXMI NARAYAN GROUP");
-  const qrPayload = JSON.stringify({
-    source: "RETURN",
-    returnNo,
-    date,
-    jobNo: jobNo || "",
-    reelNo,
-    weight: Number(weight || 0),
-    materialName: materialName || "",
-    materialCode: materialCode || "",
-    specs: specs || "",
-  });
+  // Short QR: only our reel number (scanners look the rest up from it).
+  const qrPayload = String(reelNo || "").trim();
 
   const [pageW, pageH] = LABEL_PAGE;
   const margin = 11 * U;
