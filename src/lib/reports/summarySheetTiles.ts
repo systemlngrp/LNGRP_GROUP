@@ -31,7 +31,7 @@ export type SalesTargetFigures = {
   source?: string;
 };
 
-export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[] };
+export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[]; columns?: number };
 
 const blank = (id: string, label: string, tone: string, format: SummaryTile["format"] = "qty"): SummaryTile => ({ id, label, value: null, format, tone });
 
@@ -98,14 +98,17 @@ export function computeSummarySheetSections(
     {
       id: "plan",
       title: "Production Plan",
+      // Two rows of four: Today / Tom (tomorrow) x Plan (paper kg), Liner (linear meter), Plan Value, Jobs.
+      columns: 4,
       tiles: [
-        { id: "todayPlan", label: "Today's Plan (Paper kg)", value: sum(todayRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#660000] text-white" },
-        { id: "tomorrowPlan", label: "Tomorrow's Plan (Paper kg)", value: sum(tomorrowRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#ffe599] text-slate-950" },
-        { id: "todayPlanValue", label: "Plan Value", value: planValue(todayRows), format: "money", tone: "bg-[#45818e] text-white" },
-        { id: "tomorrowPlanValue", label: "Tom. Plan Value", value: planValue(tomorrowRows), format: "money", tone: "bg-[#b4a7d6] text-slate-950" },
-        { id: "tomorrowJobs", label: "Jobs Tomorrow", value: tomorrowRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
-        { id: "todayMeter", label: "Today's Linear Meter", value: sum(todayRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#8e7cc3] text-white" },
-        blank("todayReelIssue", "Today's Reel Issue", "bg-[#00ffff] text-[#ff0000]"),
+        { id: "todayPlan", label: "Today Plan", value: sum(todayRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#660000] text-white", note: "Total paper weight (kg) of jobs dated today" },
+        { id: "todayMeter", label: "Today Liner", value: sum(todayRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#8e7cc3] text-white", note: "Linear meter of jobs dated today" },
+        { id: "todayPlanValue", label: "Today Plan Value", value: planValue(todayRows), format: "money", tone: "bg-[#45818e] text-white", note: "Planned qty x rate" },
+        { id: "todayJobs", label: "Today Jobs", value: todayRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
+        { id: "tomorrowPlan", label: "Tom Plan", value: sum(tomorrowRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#ffe599] text-slate-950", note: "Total paper weight (kg) of jobs dated tomorrow" },
+        { id: "tomorrowMeter", label: "Tom Liner", value: sum(tomorrowRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#d9d2e9] text-slate-950", note: "Linear meter of jobs dated tomorrow" },
+        { id: "tomorrowPlanValue", label: "Tom Plan Value", value: planValue(tomorrowRows), format: "money", tone: "bg-[#b4a7d6] text-slate-950", note: "Planned qty x rate" },
+        { id: "tomorrowJobs", label: "Tom Jobs", value: tomorrowRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
       ],
     },
     {
