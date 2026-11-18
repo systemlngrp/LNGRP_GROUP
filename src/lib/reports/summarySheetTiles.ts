@@ -209,6 +209,8 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
   const value = row[column];
   const num = n(value);
   switch (column) {
+    // Job No. is coloured like Date..Planned Qty (by job date).
+    case "Job No.":
     case "Date":
     case "Party Name":
     case "Item Name":
