@@ -1,4 +1,6 @@
 import { displayJobNo } from "../lib/jobNumber";
+import { MachineTabs } from "../components/MachineTabs";
+import { getUserVisibleMachineNames } from "../lib/userMachineAccess";
 import React, { useEffect, useMemo, useState } from "react";
 import { Select } from "../components/Select";
 import { ClientPagination } from "../components/ClientPagination";
@@ -58,6 +60,7 @@ export function ProductionProcessingMaster() {
   const firmSelectOptions = useMemo(() => firms.map((firm) => ({ value: firm.id, label: getFirmDisplayName(firm) })).sort((a, b) => a.label.localeCompare(b.label)), [firms]);
   const [searchTerm, setSearchTerm] = useState("");
   const [firmFilter, setFirmFilter] = useState("");
+  const [machineTab, setMachineTab] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -206,10 +209,14 @@ export function ProductionProcessingMaster() {
     return map;
   }, [firms, jobById, processing]);
 
-  const filtered = useMemo(() => {
+  // Users ticked on machines only see those machines' reports.
+  const visibleMachineNames = useMemo(() => getUserVisibleMachineNames(user, machines), [machines, user]);
+  // Every filter except the machine tab (tab counts come from this).
+  const filteredAllMachines = useMemo(() => {
     const words = searchWords(searchTerm);
     return processing
       .filter((p) => {
+        if (visibleMachineNames && !visibleMachineNames.has(normalizeMachineName(p.machineName))) return false;
         const production = jobById.get(p.productionId);
         const firmId = String(production?.firmId || production?.orderFirmId || "");
         if (firmFilter && firmId !== firmFilter) return false;
@@ -220,7 +227,18 @@ export function ProductionProcessingMaster() {
         return matchesSearch && matchesFrom && matchesTo;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [firmFilter, fromDate, jobById, processing, searchTerm, searchTextById, toDate]);
+  }, [firmFilter, fromDate, jobById, processing, searchTerm, searchTextById, toDate, visibleMachineNames]);
+  const machineTabs = useMemo(() => {
+    const counts = new Map<string, number>();
+    filteredAllMachines.forEach((p) => { const name = normalizeMachineName(p.machineName); if (name) counts.set(name, (counts.get(name) || 0) + 1); });
+    const names = new Set<string>(counts.keys());
+    machines.forEach((m) => { const name = normalizeMachineName(m.name); if (name && (!visibleMachineNames || visibleMachineNames.has(name)) && processing.some((p) => normalizeMachineName(p.machineName) === name)) names.add(name); });
+    return Array.from(names).sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name, count: counts.get(name) || 0 }));
+  }, [filteredAllMachines, machines, processing, visibleMachineNames]);
+  const filtered = useMemo(
+    () => machineTab ? filteredAllMachines.filter((p) => normalizeMachineName(p.machineName) === machineTab) : filteredAllMachines,
+    [filteredAllMachines, machineTab]
+  );
 
   // The table draws 100 reports per page; filters cover every report.
   const { sorted: sortedReports, sort, toggle: toggleSort } = useTableSort(filtered, (p: ProductionProcessing, key) => {
@@ -231,7 +249,7 @@ export function ProductionProcessingMaster() {
     return (p as any)[key];
   }, [jobById, firms]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedReports } = useClientPagination(sortedReports, 100);
-  useEffect(() => { setPage(1); }, [firmFilter, fromDate, searchTerm, toDate, setPage]);
+  useEffect(() => { setPage(1); }, [firmFilter, fromDate, machineTab, searchTerm, toDate, setPage]);
 
   return (
     <div className="space-y-4">
@@ -271,6 +289,8 @@ export function ProductionProcessingMaster() {
           <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
+
+      <MachineTabs tabs={machineTabs} value={machineTab} onChange={setMachineTab} allCount={filteredAllMachines.length} />
 
       <div className="rounded border border-black bg-white">
         <div className="overflow-x-auto">
