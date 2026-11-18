@@ -404,6 +404,11 @@ export function OrdersPendingScheduling() {
           <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Firm</span><Select compact value={firmFilter} onChange={setFirmFilter} options={firmOptions} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
+          {/* Downloads cover every row that matches the search and filters, in the table's order. */}
+          <div className="flex items-end gap-2">
+            <button type="button" onClick={handleExportExcel} disabled={sortedPending.length === 0} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold disabled:opacity-40">Excel</button>
+            <button type="button" onClick={handleExportPDF} disabled={sortedPending.length === 0} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold disabled:opacity-40">PDF</button>
+          </div>
         </div>
         <div data-mf-actions="true" className="flex justify-end gap-2">
           {filtersActive ? (
@@ -462,11 +467,6 @@ export function OrdersPendingScheduling() {
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
         />
-        {/* Downloads cover every row that matches the search and filters, in the table's order. */}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={handleExportExcel} disabled={sortedPending.length === 0} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold disabled:opacity-40">Excel</button>
-          <button type="button" onClick={handleExportPDF} disabled={sortedPending.length === 0} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold disabled:opacity-40">PDF</button>
-        </div>
         {/* Modal scheduler */}
         {modalOpen && modalOrderId && (() => {
           const modalOrder = orders.find((o) => o.id === modalOrderId);
