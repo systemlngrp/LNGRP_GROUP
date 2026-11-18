@@ -2,6 +2,9 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useData } from "../hooks/useData";
 import { Firm, Order, OrderSchedule } from "../types";
 import { Trash2, Search, Plus, X } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { formatDate } from "../lib/utils";
 import { Spinner } from "../components/Spinner";
 
 import { Select } from "../components/Select";
@@ -99,6 +102,100 @@ export function OrdersPendingScheduling() {
       default: return "";
     }
   });
+
+  const exportHeaders = ["S.No", "Order No", "Order Date", "Firm", "Company", "Item", "ERP", "Order Qty", "Scheduled Qty", "Pending Scheduling", "Unit", "Approved By", "Approval Reason"];
+  const exportRows = () => sortedPending.map(({ order, item, firmName, companyName, scheduledQty, pendingQty }, index) => [
+    index + 1,
+    order.orderNo || "",
+    formatDate(order.orderDate),
+    firmName,
+    companyName,
+    item?.name || "",
+    String((item as any)?.erp || order.erpCode || ""),
+    Number(order.qty || 0),
+    scheduledQty,
+    pendingQty,
+    item?.uom || "",
+    String(order.approvedEmail || ""),
+    String(order.approvalReason || ""),
+  ]);
+  const exportTotals = () => sortedPending.reduce(
+    (sum, row) => ({ qty: sum.qty + Number(row.order.qty || 0), scheduled: sum.scheduled + row.scheduledQty, pending: sum.pending + row.pendingQty }),
+    { qty: 0, scheduled: 0, pending: 0 },
+  );
+  const exportFileDate = new Date().toISOString().slice(0, 10);
+
+  const handleExportExcel = async () => {
+    if (!sortedPending.length) return;
+    const XLSX = await import("xlsx-js-style");
+    const totals = exportTotals();
+    const lastCol = exportHeaders.length - 1;
+    const aoa: (string | number)[][] = [
+      ["Pending Scheduling"],
+      [`Date: ${formatDate(exportFileDate)}`],
+      exportHeaders,
+      ...exportRows(),
+      ["TOTAL", "", "", "", "", "", "", totals.qty, totals.scheduled, totals.pending, "", "", ""],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } }, { s: { r: 1, c: 0 }, e: { r: 1, c: lastCol } }];
+    ws["!cols"] = exportHeaders.map((h) => ({ wch: h === "Item" ? 40 : h === "Company" ? 30 : h === "Approval Reason" ? 30 : h === "Approved By" ? 24 : Math.max(8, h.length + 2) }));
+    const border = { style: "thin", color: { rgb: "000000" } };
+    const style = (bold: boolean) => ({ font: { name: "Arial", sz: 9, bold }, border: { top: border, bottom: border, left: border, right: border }, alignment: { vertical: "center", wrapText: true } });
+    const setStyle = (r: number, c: number, value: any) => {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      if (!ws[ref]) ws[ref] = { t: "s", v: "" };
+      ws[ref].s = value;
+    };
+    setStyle(0, 0, { font: { name: "Arial", sz: 14, bold: true }, alignment: { horizontal: "center" } });
+    setStyle(1, 0, { font: { name: "Arial", sz: 10, bold: true }, alignment: { horizontal: "center" } });
+    const lastRow = aoa.length - 1;
+    for (let r = 2; r <= lastRow; r += 1) {
+      for (let c = 0; c <= lastCol; c += 1) setStyle(r, c, style(r === 2 || r === lastRow));
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Pending Scheduling");
+    XLSX.writeFile(wb, `Pending_Scheduling_${exportFileDate}.xlsx`);
+  };
+
+  const handleExportPDF = () => {
+    if (!sortedPending.length) return;
+    const totals = exportTotals();
+    const doc = new jsPDF("landscape", "mm", "a4");
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("Pending Scheduling", pageWidth / 2, 12, { align: "center" });
+    doc.setFontSize(8);
+    doc.text(`Date: ${formatDate(exportFileDate)}   ·   ${sortedPending.length} ${sortedPending.length === 1 ? "order" : "orders"}`, pageWidth / 2, 18, { align: "center" });
+    const qty = (value: number) => formatQty(value);
+    autoTable(doc, {
+      head: [exportHeaders.slice(0, 11)],
+      body: exportRows().map((row) => [...row.slice(0, 7), qty(row[7] as number), qty(row[8] as number), qty(row[9] as number), row[10]].map(String)),
+      foot: [[{ content: "TOTAL", colSpan: 7, styles: { halign: "right" } }, { content: qty(totals.qty), styles: { halign: "right" } }, { content: qty(totals.scheduled), styles: { halign: "right" } }, { content: qty(totals.pending), styles: { halign: "right" } }, ""]],
+      startY: 22,
+      margin: { left: 8, right: 8 },
+      theme: "grid",
+      showFoot: "lastPage",
+      styles: { font: "helvetica", fontSize: 7, cellPadding: 1, valign: "middle", textColor: 0, lineColor: 0, lineWidth: 0.15, overflow: "linebreak" },
+      headStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold", halign: "center" },
+      footStyles: { fillColor: [255, 255, 255], textColor: 0, fontStyle: "bold" },
+      columnStyles: {
+        0: { cellWidth: 9, halign: "right" },
+        1: { cellWidth: 26 },
+        2: { cellWidth: 18 },
+        3: { cellWidth: 16 },
+        4: { cellWidth: 46 },
+        5: { cellWidth: 70 },
+        6: { cellWidth: 16 },
+        7: { halign: "right" },
+        8: { halign: "right" },
+        9: { halign: "right", fontStyle: "bold" },
+        10: { cellWidth: 12, halign: "center" },
+      },
+    });
+    doc.save(`Pending_Scheduling_${exportFileDate}.pdf`);
+  };
 
   const firmOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -365,6 +462,11 @@ export function OrdersPendingScheduling() {
           onPageChange={setPage}
           onPageSizeChange={setPageSize}
         />
+        {/* Downloads cover every row that matches the search and filters, in the table's order. */}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={handleExportExcel} disabled={sortedPending.length === 0} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold disabled:opacity-40">Excel</button>
+          <button type="button" onClick={handleExportPDF} disabled={sortedPending.length === 0} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold disabled:opacity-40">PDF</button>
+        </div>
         {/* Modal scheduler */}
         {modalOpen && modalOrderId && (() => {
           const modalOrder = orders.find((o) => o.id === modalOrderId);
