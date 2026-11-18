@@ -29,7 +29,7 @@ import {
   ColorMaster,
 } from "../types";
 import { useAuth } from "../auth/AuthContext";
-import { generateTransactionNo } from "../lib/serial";
+import { formatDate, generateTransactionNo } from "../lib/serial";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
@@ -222,6 +222,9 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const [currentPoLineId, setCurrentPoLineId] = useState("");
   const [packingSlipDrafts, setPackingSlipDrafts] = useState<Record<string, PackingSlipDraft[]>>({});
   const hasAutoFilledServiceReturnRef = useRef(false);
+  // Preview before save: Save opens the preview; "Confirm & Save" submits the form.
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiFiles, setAiFiles] = useState<AiUploadFile[]>([]);
@@ -2681,7 +2684,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       <h2 className="text-xl font-bold text-black mb-6 uppercase tracking-tight border-b border-black pb-2">
         {isDirectService ? (editingEntry ? "Edit Direct Service MRR" : "Direct Service Form") : editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
       </h2>
-      <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col space-y-4">
         {linkedGateEntry ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded border border-emerald-700 bg-emerald-50 p-4">
             <div className="flex flex-col space-y-1">
@@ -3575,13 +3578,104 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             Cancel
           </button>
           <button
-            type="submit"
+            type="button"
             disabled={isSubmitting || lines.length === 0}
+            onClick={() => {
+              // Run the browser's required-field checks first, then show the preview.
+              if (formRef.current && !formRef.current.reportValidity()) return;
+              setShowPreview(true);
+            }}
             className="flex items-center justify-center min-w-[150px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={24} className="text-white" /> : editingEntry ? "Update" : "Save"}
+            {isSubmitting ? <Spinner size={24} className="text-white" /> : editingEntry ? "Preview & Update" : "Preview & Save"}
           </button>
         </div>
+
+        {showPreview ? (
+          <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="MRR preview">
+            <div className="w-full max-w-5xl rounded-lg border-2 border-black bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
+                <h3 className="text-lg font-black uppercase tracking-tight text-black">MRR Preview</h3>
+                <button type="button" onClick={() => setShowPreview(false)} className="rounded border-2 border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
+              </div>
+              <div className="space-y-4 p-4">
+                <div className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    ["Firm", selectedFirm?.firmName || "-"],
+                    ["MRR Type", `${mrrType || "-"}${mrrSubType ? ` / ${mrrSubType}` : ""}`],
+                    ["MRR Date", date ? formatDate(date) : "-"],
+                    ["Supplier", getPartyName(supplierId) || "-"],
+                    ["Invoice No", invoiceNo || "-"],
+                    ["Invoice Date", invDate ? formatDate(invDate) : "-"],
+                    ...(linkedGateEntry ? [["Gate Entry", String(linkedGateEntry.gateEntryNo || "-")]] : []),
+                    ...(isUsdInvoice ? [["Currency", `USD @ ${numericExchangeRate}`]] : []),
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex gap-2"><span className="w-28 shrink-0 font-bold text-slate-600">{label}</span><span className="min-w-0 break-words font-bold text-black">{value}</span></div>
+                  ))}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[820px] border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-indigo-700 text-left text-xs font-bold uppercase text-white">
+                        {["#", "Item", "PO No", "Inv Qty", "Actual Qty", "UOM", "Rate", "Value", "GST %", "Reels"].map((heading) => <th key={heading} className="border border-black px-2 py-2">{heading}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((line, index) => {
+                        const reels = packingSlipDrafts[line.id] || [];
+                        const reelWeight = reels.reduce((sum, reel) => sum + Number(reel.weightKg || 0), 0);
+                        const rate = Number(line.invoiceRate ?? line.rate ?? 0);
+                        const lineValue = Number(line.value ?? Number(line.invoiceQty || line.qty || 0) * rate);
+                        const qtyMismatch = mrrType === "Reel" && reels.length > 0 && Math.abs(reelWeight - Number(line.actualQty ?? line.qty ?? 0)) > 0.01;
+                        return (
+                          <tr key={line.id}>
+                            <td className="border border-black px-2 py-1.5">{index + 1}</td>
+                            <td className="border border-black px-2 py-1.5 font-bold">{line.itemName || line.serviceName || "-"}</td>
+                            <td className="border border-black px-2 py-1.5 whitespace-nowrap">{line.poNo || "-"}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{Number(line.invoiceQty ?? line.qty ?? 0).toLocaleString()}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{Number(line.actualQty ?? line.qty ?? 0).toLocaleString()}</td>
+                            <td className="border border-black px-2 py-1.5">{line.uom || "-"}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{rate.toFixed(2)}</td>
+                            <td className="border border-black px-2 py-1.5 text-right font-bold">{lineValue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{Number(line.gstRate || 0)}</td>
+                            <td className={`border border-black px-2 py-1.5 text-right ${qtyMismatch ? "bg-red-50 font-bold text-red-700" : ""}`} title={qtyMismatch ? "Reel weights do not add up to the actual qty" : undefined}>
+                              {mrrType === "Reel" ? `${reels.length} / ${reelWeight.toLocaleString()} kg` : "-"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="ml-auto w-full max-w-md space-y-1 rounded border border-black bg-white p-3 text-sm font-bold text-black">
+                  <SummaryLine label="Pre-GST Invoice Value" amount={totalInvoiceValue} tone="text-amber-700" strong />
+                  <SummaryLine label="CGST" amount={totalCgst} />
+                  <SummaryLine label="SGST" amount={totalSgst} />
+                  <SummaryLine label="IGST" amount={totalIgst} />
+                  <SummaryLine label="Insurance" amount={insuranceValue} />
+                  <SummaryLine label="Other Charges" amount={otherChargesValue} />
+                  <SummaryLine label="Expense CGST" amount={expenseCGSTValue} />
+                  <SummaryLine label="Expense SGST" amount={expenseSGSTValue} />
+                  <SummaryLine label="Expense IGST" amount={expenseIGSTValue} />
+                  <SummaryLine label="Round Off" amount={roundOffValue} />
+                  <SummaryLine label="Gross Total Amount" amount={totalAmount} tone="text-emerald-700" strong always />
+                  {isDirectService ? <SummaryLine label="Net Supplier Payable" amount={displayNetSupplierPayable} tone="text-indigo-700" strong always /> : null}
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 border-t-2 border-black px-4 py-3">
+                <button type="button" onClick={() => setShowPreview(false)} className="rounded border-2 border-black px-5 py-2 font-bold text-black hover:bg-slate-50">Back to Edit</button>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => { setShowPreview(false); formRef.current?.requestSubmit(); }}
+                  className="min-w-[160px] rounded bg-indigo-600 px-5 py-2 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {editingEntry ? "Confirm & Update" : "Confirm & Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
       </form>
     </div>
