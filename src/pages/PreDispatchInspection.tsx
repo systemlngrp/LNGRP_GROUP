@@ -1,6 +1,6 @@
 import { displayJobNo } from "../lib/jobNumber";
 import { PhotoUploadField } from "../components/PhotoUploadField";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Edit, ExternalLink, Plus, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
@@ -103,6 +103,16 @@ export function PreDispatchInspectionForm() {
     setUnlockedNumericJobFields(new Set([...numericJobFields].filter(key => !isPositiveDecimal(selectedForm[key]))));
     setMessage(resolvedFirm ? "" : "Warning: Firm could not be resolved from the Original Order or Job No. prefix. Please verify it before saving.");
   };
+  // ?productionId= from the Summary Sheet ("Add") opens the form with that job selected.
+  const presetJobDone = useRef(false);
+  useEffect(() => {
+    let preset = "";
+    try { preset = new URLSearchParams(window.location.hash.split("?")[1] || "").get("productionId") || ""; } catch { preset = ""; }
+    if (presetJobDone.current || !preset || !productions.some((p) => p.id === preset)) return;
+    presetJobDone.current = true;
+    selectJob(preset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productions, records]);
   // Photo upload progress (PhotoUploadField optimises and uploads; Save waits for it).
   const [photoUploading, setPhotoUploading] = useState<Record<string, boolean>>({});
   const photosUploading = Object.values(photoUploading).some(Boolean);

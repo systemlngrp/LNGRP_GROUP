@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Edit, Search } from "lucide-react";
 import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
@@ -13,6 +13,8 @@ import { SortHeader, useTableSort } from "../lib/tableSort";
 import { normalizeProductionJobNumber } from "../lib/jobNumber";
 import { calculateSamplingPlanQty } from "../lib/samplingPlanQty";
 import { createQcGroupKey, getChunkFilledFields, getChunkTimestamp, getQcGroupKey, nextQcChunkNo, type QcChunkStatus } from "../lib/qcChunks";
+// ?param= from the URL (HashRouter: the query sits after "#/path?").
+const hashParam = (name: string) => { try { return new URLSearchParams(window.location.hash.split("?")[1] || "").get(name) || ""; } catch { return ""; } };
 
 type FieldType = "text" | "number" | "textarea" | "datetime-local";
 
@@ -525,6 +527,15 @@ export function PrintingQcForm() {
     });
   };
 
+  // ?productionId= from the Summary Sheet ("Add") opens the form with that job selected.
+  const presetJobDone = useRef(false);
+  useEffect(() => {
+    const preset = hashParam("productionId");
+    if (presetJobDone.current || !preset || !productionById.has(preset)) return;
+    presetJobDone.current = true;
+    handleJobSelect(preset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productionById]);
   const handleJobSelect = (productionId: string) => {
     setSelectedProductionId(productionId);
     const production = productionById.get(productionId);
@@ -864,7 +875,7 @@ export function PrintingQcMaster() {
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
   const [searchTerm, setSearchTerm] = useState("");
-  const [jobFilter, setJobFilter] = useState("");
+  const [jobFilter, setJobFilter] = useState(() => hashParam("job")); // ?job= from the Summary Sheet
   const [partyFilter, setPartyFilter] = useState("");
   const [qcPersonFilter, setQcPersonFilter] = useState("");
   const [warningFilter, setWarningFilter] = useState("All");

@@ -1512,6 +1512,9 @@ function computeSummarySheetRows(lists, stockItems) {
     return map;
   };
   const boardlineGramsByJob = latestWeightByJob(lists.boardlineQc, (row) => n(row.sheetWeightGrams));
+  const jobKey = (value) => s(value).toUpperCase();
+  const boardQcJobs = new Set((lists.boardlineQc || []).map((row) => jobKey(row.jobNo)).filter(Boolean));
+  const printQcJobs = new Set((lists.printingQc || []).map((row) => jobKey(row.jobNo)).filter(Boolean));
   const printingGramsByJob = latestWeightByJob(lists.printingQc, (row) => n(row.boxWeightGrams));
   const firstScheduleById = firstById(schedules);
   const companyById = firstById(companies);
@@ -1748,6 +1751,8 @@ function computeSummarySheetRows(lists, stockItems) {
       row["Sale Value incl. Pre-App (3 slips)"] = money(dispatchedQty3 * rate);
       row["Invoice Date 1 incl. Pre-App"] = invoiceDates[0] || "";
     }
+    row["Board QC"] = boardQcJobs.has(jobKey(jobNo)) || s(production.jobCardNo) && boardQcJobs.has(jobKey(production.jobCardNo)) ? "Done" : "";
+    row["Print QC"] = printQcJobs.has(jobKey(jobNo)) || s(production.jobCardNo) && printQcJobs.has(jobKey(production.jobCardNo)) ? "Done" : "";
     row["Job Closed"] = s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "";
     row["Close Date"] = isoDateText(production.closeDate);
     row.__productionId = production.id;
