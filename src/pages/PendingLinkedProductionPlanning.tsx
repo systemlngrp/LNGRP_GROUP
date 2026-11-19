@@ -507,16 +507,12 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   };
 
   const title = source === "PHP" ? "Pending PHP Planning" : "Pending Plate Planning";
-  const description = source === "PHP"
-    ? "Create PHP jobs from direct PHP orders or scheduled FG orders using ERP matching and Sets/Pcs per box."
-    : "Create Plate jobs from direct Plate orders or scheduled FG orders using ERP matching and Sets/Pcs per box.";
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-black text-black tracking-tight uppercase">{title}</h2>
-          <p className="text-sm font-medium text-slate-600 uppercase">{description}</p>
         </div>
         <div className="flex items-center gap-3">
           {selectedIds.size > 0 && (
