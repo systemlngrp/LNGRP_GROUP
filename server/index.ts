@@ -19996,7 +19996,7 @@ entities.forEach(entity => {
 
 
 const QC_REPORT_COLUMN_RULES = {
-  "qc-view": { count: 57, permission: "/quality/qc-view", setting: "qcViewVisibleColumns" },
+  "qc-view": { count: 58, permission: "/quality/qc-view", setting: "qcViewVisibleColumns" },
   "pdi-report": { count: 34, permission: "/quality/pdi-report", setting: "pdiReportVisibleColumns" },
   "production-master": { count: 80, permission: "/production/master", setting: "productionMasterVisibleColumns" },
 } as const;

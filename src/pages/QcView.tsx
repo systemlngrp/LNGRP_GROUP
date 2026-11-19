@@ -23,7 +23,7 @@ import { SortHeader, useTableSort, type SortState } from "../lib/tableSort";
 
 const GROUPS = [
   { label: "PROGRAM", group: "bg-[#24165f] text-white", head: "bg-[#0b4773] text-white", columns: ["SL No.", "Job No.", "Date", "Party Name", "Item Name", "ERP Code", "Plan Quantity", "Item Status"] },
-  { label: "RECORD KEEPING", group: "bg-[#075985] text-white", head: "bg-[#0b4773] text-white", columns: ["Artwork", "Spec", "File No.", "Index No", "Sample No.", "Block Location", "Block No.", "Sample Location", "Sample No. (Control)"] },
+  { label: "RECORD KEEPING", group: "bg-[#075985] text-white", head: "bg-[#0b4773] text-white", columns: ["Artwork", "Spec", "File No.", "Index No", "Sample Zone No", "Sample No.", "Block Location", "Block No.", "Sample Location", "Sample No. (Control)"] },
   { label: "QC REMARKS", group: "bg-[#b80000] text-white", head: "bg-[#f59e0b] text-black", columns: ["Boardline AUTO-CORRECTION Message", "Previous Customer Complaint", "PDI RESULT", "QC Remarks"] },
   { label: "PROCESS REPORT", group: "bg-[#1724dc] text-white", head: "bg-[#bfd4f4] text-black", columns: ["Boardline Production", "Printing Production", "Loaded Quantity"] },
   { label: "BOX SPECIFICATION", group: "bg-[#0f766e] text-white", head: "bg-[#ccfbf1] text-black", columns: ["Length", "Width", "Height", "L-OD", "W-OD", "H-OD", "FLAP", "Ply", "No. Of parts"] },

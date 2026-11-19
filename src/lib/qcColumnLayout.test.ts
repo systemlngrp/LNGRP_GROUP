@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { parseQcColumnSelection, QC_REPORT_COLUMN_COUNTS, validQcColumnSelection } from "./qcColumnLayout";
 
 test("QC report layouts remain separate and parse in display order", () => {
-  assert.equal(QC_REPORT_COLUMN_COUNTS["qc-view"], 57);
+  assert.equal(QC_REPORT_COLUMN_COUNTS["qc-view"], 58);
   assert.equal(QC_REPORT_COLUMN_COUNTS["pdi-report"], 34);
   assert.deepEqual(parseQcColumnSelection("[3,1]", 5), [1, 3]);
 });
@@ -19,6 +19,10 @@ test("versioned QC layouts ignore legacy selections and accept current selection
   assert.deepEqual(parseQcColumnSelection("[0,1,18]", 57, 2), Array.from({ length: 57 }, (_, index) => index));
   assert.deepEqual(parseQcColumnSelection(JSON.stringify({ schemaVersion: 2, columns: [3, 1] }), 34, 2), [1, 3]);
   assert.deepEqual(parseQcColumnSelection(JSON.stringify({ schemaVersion: 2, columns: [3, 1] }), 57, 2), [1, 3]);
+});
+
+test("QC View v2 layout moves to v3 with Sample Zone No shown after Index No", () => {
+  assert.deepEqual(parseQcColumnSelection(JSON.stringify({ schemaVersion: 2, columns: [0, 11, 12, 56] }), 58, 3, "qc-view"), [0, 11, 12, 13, 57]);
 });
 
 test("save selection rejects empty, duplicate, and out-of-range columns", () => {

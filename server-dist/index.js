@@ -19163,7 +19163,7 @@ entities.forEach(entity => {
 // The generic upsert should handle it if the client sends stringified JSON or if mysql2 handles it.
 // mysql2 handles objects/arrays as JSON if specified in the query.
 const QC_REPORT_COLUMN_RULES = {
-    "qc-view": { count: 57, permission: "/quality/qc-view", setting: "qcViewVisibleColumns" },
+    "qc-view": { count: 58, permission: "/quality/qc-view", setting: "qcViewVisibleColumns" },
     "pdi-report": { count: 34, permission: "/quality/pdi-report", setting: "pdiReportVisibleColumns" },
     "production-master": { count: 80, permission: "/production/master", setting: "productionMasterVisibleColumns" },
 };
