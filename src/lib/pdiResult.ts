@@ -23,9 +23,28 @@ export function resolveCsStandard(itemValue: unknown, legacyValue?: unknown): nu
   return positiveNumber(itemValue) ?? positiveNumber(legacyValue);
 }
 
+/** Default margin over CS Std that CS Achieved must reach (Settings → PDI CS Margin). */
+export const DEFAULT_PDI_CS_MARGIN_PERCENT = 10;
+
+/** Margin % from Settings; blank or invalid → 10. */
+export function parsePdiCsMarginPercent(setting?: { pdiCsMarginPercent?: unknown } | null): number {
+  const raw = text(setting?.pdiCsMarginPercent);
+  if (!raw) return DEFAULT_PDI_CS_MARGIN_PERCENT;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : DEFAULT_PDI_CS_MARGIN_PERCENT;
+}
+
+/** CS a box must reach to pass: CS Std + margin %. */
+export function requiredPdiCs(csStandard: unknown, marginPercent: number = DEFAULT_PDI_CS_MARGIN_PERCENT): number | undefined {
+  const standard = positiveNumber(csStandard);
+  if (standard === undefined) return undefined;
+  return Math.round(standard * (1 + marginPercent / 100) * 100) / 100;
+}
+
 export function derivePdiResult(
   value: Pick<Partial<PreDispatchInspection>, PdiCheckKey | "csAchieved">,
   csStandard: unknown,
+  marginPercent: number = DEFAULT_PDI_CS_MARGIN_PERCENT,
 ): "Pending" | "QC PASS" | "QC FAIL" {
   const checks = PDI_CHECK_KEYS.map((key) => text(value[key]).toUpperCase());
   if (checks.some((result) => result === "NOT OK")) return "QC FAIL";
@@ -35,7 +54,7 @@ export function derivePdiResult(
   if (csNotTested) return checks.every((result) => result === "OK") ? "QC PASS" : "Pending";
   const actual = positiveNumber(value.csAchieved);
   const standard = positiveNumber(csStandard);
-  const csPasses = actual !== undefined && standard !== undefined && actual + Math.abs(standard) * 1e-9 >= standard * 1.1;
+  const csPasses = actual !== undefined && standard !== undefined && actual + Math.abs(standard) * 1e-9 >= standard * (1 + marginPercent / 100);
   if (actual !== undefined && standard !== undefined && !csPasses) return "QC FAIL";
 
   if (checks.every((result) => result === "OK") && actual !== undefined && standard !== undefined) {

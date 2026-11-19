@@ -40,6 +40,7 @@ export function PendingDispatchPlanning() {
   const [selectedFirmId, setSelectedFirmId] = useState<string>("");
   const [itemFilter, setItemFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [ffgFilter, setFfgFilter] = useState(""); // "positive" = FFG stock greater than 0
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -252,6 +253,7 @@ export function PendingDispatchPlanning() {
         (!selectedFirmId || String(s.firmId || order?.firmId || "") === selectedFirmId) &&
         (!itemFilter || (resolveOrderItem(order)?.name || "") === itemFilter) &&
         (!statusFilter || dueStatus(s.scheduledDate) === statusFilter) &&
+        (ffgFilter !== "positive" || (ffgStockByItemId.get(itemIdByScheduleId.get(s.id) || "") ?? 0) > 0) &&
         (!fromDate || day >= fromDate) && (!toDate || day <= toDate);
     });
 
@@ -311,7 +313,7 @@ export function PendingDispatchPlanning() {
 
       return sortDirection === "asc" ? compare : -compare;
     });
-  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, loadedQtyByScheduleId, resolveOrderItem, lookup]);
+  }, [basePendingSchedules, selectedCompanyId, selectedFirmId, itemFilter, statusFilter, ffgFilter, ffgStockByItemId, itemIdByScheduleId, fromDate, toDate, todayIso, orders, companies, firms, searchTerm, sortDirection, sortKey, effectivePlannedByScheduleId, loadedQtyByScheduleId, resolveOrderItem, lookup]);
 
   const {
     page,
@@ -532,9 +534,9 @@ export function PendingDispatchPlanning() {
 
   const LABEL = "mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600";
   const DATE_INPUT = "h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold";
-  const hasFilters = Boolean(searchTerm.trim() || selectedFirmId || selectedCompanyId || itemFilter || statusFilter || fromDate || toDate);
+  const hasFilters = Boolean(searchTerm.trim() || selectedFirmId || selectedCompanyId || itemFilter || statusFilter || ffgFilter || fromDate || toDate);
   const clearFilters = () => {
-    setSearchTerm(""); setSelectedFirmId(""); setSelectedCompanyId(""); setItemFilter(""); setStatusFilter(""); setFromDate(""); setToDate("");
+    setSearchTerm(""); setSelectedFirmId(""); setSelectedCompanyId(""); setItemFilter(""); setStatusFilter(""); setFfgFilter(""); setFromDate(""); setToDate("");
     setSelectedIds(new Set());
   };
   const changeFilter = (setter: (value: string) => void) => (value: string) => { setter(value); setSelectedIds(new Set()); };
@@ -613,6 +615,7 @@ export function PendingDispatchPlanning() {
           <div className="min-w-0"><span className={LABEL}>Status</span><Select compact value={statusFilter} onChange={changeFilter(setStatusFilter)} options={filterOptions.statuses} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Company</span><Select compact value={selectedCompanyId} onChange={changeFilter(setSelectedCompanyId)} options={filterOptions.companies} placeholder="All" /></div>
           <div className="col-span-2 min-w-0 md:col-span-1"><span className={LABEL}>Item</span><Select compact value={itemFilter} onChange={changeFilter(setItemFilter)} options={filterOptions.items} placeholder="All" /></div>
+          <div className="min-w-0"><span className={LABEL}>FFG Stock</span><Select compact value={ffgFilter} onChange={changeFilter(setFfgFilter)} options={[{ value: "positive", label: "Greater than 0" }]} placeholder="All" /></div>
           <div data-date-pair="true" className="col-span-2 grid min-w-0 grid-cols-2 gap-2 sm:min-w-[280px]">
             <label className="min-w-0"><span className={LABEL}>Schedule From</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => changeFilter(setFromDate)(e.target.value)} className={DATE_INPUT} /></label>
             <label className="min-w-0"><span className={LABEL}>Schedule To</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => changeFilter(setToDate)(e.target.value)} className={DATE_INPUT} /></label>

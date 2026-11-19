@@ -9,12 +9,13 @@ import type { PreAppDispatch, SummaryRow } from "../lib/reports/summarySheet";
 import { useServerReport } from "../hooks/useServerReport";
 import { computeSummarySheetSections, type SalesTargetFigures, monthStartKey, localDayKey, summarySheetCellClass } from "../lib/reports/summarySheetTiles";
 import type { SummarySheetExtras, SummaryTile, SummaryTileSection } from "../lib/reports/summarySheetTiles";
-import { jobNumberCellClass, realizationCellClass } from "../lib/jobCellColors";
+import { realizationCellClass } from "../lib/jobCellColors";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { ClientPagination } from "../components/ClientPagination";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
-import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, Production, ProductionProcessing, Setting, Truck } from "../types";
+import { displayJobNo } from "../lib/jobNumber";
+import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, PreDispatchInspection, Production, ProductionProcessing, Setting, Truck } from "../types";
 
 const COLUMNS = [
   // Keep the report readable in the same order users work through a job:
@@ -23,7 +24,7 @@ const COLUMNS = [
   "Planned Qty", "Job Weight", "Meter", "Cutting Size", "UPS", "Sheets prdcd", "Plate per box",
   "Boardline Prod.", "Printing prod.", "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Printing Wastage",
   "Realization / kg", "Actual Realization / kg",
-  "Dispatched Qty", "Dispatched Qty (3 slips)", "Dispatch Date", "Vehicle No", "App Stock", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3",
+  "Dispatched Qty", "Dispatched Qty (3 slips)", "Total Dispatch", "Total Loading", "Total Invoice Value", "Invoice No", "Dispatch Date", "Vehicle No", "App Stock", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3",
   "Invoice No. 1", "Invoice Date 1", "Invoice No. 2", "Invoice Date 2", "Invoice No. 3", "Invoice Date 3",
   "Loading No 1", "Loading Date 1", "Loading Qty 1", "Vehicle 1", "Loading No 2", "Loading Date 2", "Loading Qty 2", "Vehicle 2", "Loading No 3", "Loading Date 3", "Loading Qty 3", "Vehicle 3",
   "Loading No 4", "Loading Date 4", "Loading Qty 4", "Vehicle 4", "Loading No 5", "Loading Date 5", "Loading Qty 5", "Vehicle 5",
@@ -40,13 +41,13 @@ const SUMMARY_SECTIONS = [
   { label: "STOCK & STATUS", start: "FG Stock", end: "Remarks" },
   { label: "FINANCE & REMARKS", start: "Rate", end: "Timestamp" },
 ] as const;
-const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "companies", "firms", "npd", "pre_app_dispatches"];
+const SUMMARY_SHEET_TABLES = ["productions", "production_processing", "orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "trucks", "companies", "firms", "npd", "pre_app_dispatches", "pre_dispatch_inspections", "boardline_qc_checks", "printing_qc_checks"];
 const SUMMARY_HIDDEN_COLUMNS_KEY = "summary-sheet-hidden-columns";
 
 const NUMERIC_COLUMNS = new Set([
   "Sl No", "Planned Qty", "Job Weight", "Meter", "UPS", "Sheets prdcd", "Plate per box", "Boardline Prod.", "Printing prod.",
   "PPR Rqd.", "PPR Used", "Paper Wastage", "Boardline Wastage", "Printing Wastage", "Realization / kg", "Actual Realization / kg",
-  "Dispatched Qty", "Dispatched Qty (3 slips)", "Loading Qty 1", "Loading Qty 2", "Loading Qty 3", "Loading Qty 4", "Loading Qty 5", "Loading Qty 6", "FG Stock", "FG LEFT", "FINAL FG LEFT", "App Stock", "Rate",
+  "Dispatched Qty", "Dispatched Qty (3 slips)", "Total Dispatch", "Total Loading", "Total Invoice Value", "Loading Qty 1", "Loading Qty 2", "Loading Qty 3", "Loading Qty 4", "Loading Qty 5", "Loading Qty 6", "FG Stock", "FG LEFT", "FINAL FG LEFT", "App Stock", "Rate",
   "Sale Value", "Sale Value (3 slips)", "Value", "App sale value", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3", "wip value",
   "Pre-App Dispatched Qty", "Pre-App Sale Value", "Dispatched Qty incl. Pre-App", "Dispatched Qty incl. Pre-App (3 slips)", "Sale Value incl. Pre-App", "Sale Value incl. Pre-App (3 slips)",
 ]);
@@ -64,6 +65,26 @@ const displayDate = (value: unknown) => {
   const iso = isoDateText(value);
   const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+};
+
+// "26-27/11053" -> "26-27/0000011053" so serials sort as numbers within a financial year.
+const jobNoSortKey = (value: unknown) => {
+  const shown = displayJobNo(value);
+  const match = shown.match(/^(\d{2}-\d{2})\/(\d+)$/);
+  return match ? `${match[1]}/${match[2].padStart(10, "0")}` : shown;
+};
+
+// "LNCB-2/JOB/26-27/11053" -> "11053" (other numbers are shown as they are).
+const jobSerial = (value: unknown) => {
+  const shown = displayJobNo(value);
+  const match = shown.match(/^\d{2}-\d{2}\/(\d+)$/);
+  return match ? match[1] : shown;
+};
+
+const isZeroDisplay = (value: unknown) => {
+  if (typeof value === "number") return value === 0 || !Number.isFinite(value);
+  const text = String(value ?? "").trim();
+  return /^[₹\s]*[-+]?0+(?:[.,]0+)?\s*%?$/.test(text);
 };
 
 export function SummarySheetReport() {
@@ -99,6 +120,9 @@ export function SummarySheetReport() {
   const [invoiceLines] = useData<InvoiceLineItem>("invoice_line_items", [], { firmScope: "all", storageKey: "summary-sheet-invoice-lines", enabled: browserFallback });
   const [trucks] = useData<Truck>("trucks", [], { firmScope: "all", enabled: browserFallback });
   const [preAppDispatches] = useData<PreAppDispatch>("pre_app_dispatches", [], { firmScope: "all", enabled: browserFallback });
+  const [inspections] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all", enabled: browserFallback });
+  const [boardlineQc] = useData<any>("boardline_qc_checks", [], { firmScope: "all", enabled: browserFallback });
+  const [printingQc] = useData<any>("printing_qc_checks", [], { firmScope: "all", enabled: browserFallback });
   const [companies] = useData<Company>("companies", [], { enabled: browserFallback });
   const [firms] = useData<Firm>("firms", []);
   const [settings] = useData<Setting>("settings", []);
@@ -159,7 +183,7 @@ export function SummarySheetReport() {
   }, []);
   const [firmFilter, setFirmFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [closedFilter, setClosedFilter] = useState("");
+  const [closedFilter, setClosedFilter] = useState("Open"); // opens with open jobs only
   const [partyFilter, setPartyFilter] = useState("");
   const [itemFilter, setItemFilter] = useState("");
   const [erpFilter, setErpFilter] = useState("");
@@ -179,6 +203,23 @@ export function SummarySheetReport() {
       window.localStorage.setItem(SUMMARY_HIDDEN_COLUMNS_KEY, JSON.stringify(COLUMNS.filter((_, index) => !shown.has(index))));
     } catch { /* storage blocked */ }
   }, [visibleColumns]);
+  const [phoneTable, setPhoneTable] = useState(false); // phones: job cards by default, full table on request
+  // Phone = narrow screen, or a touch phone opened as "Desktop site" (wide layout on a small screen).
+  const detectPhone = () => {
+    if (typeof window === "undefined") return false;
+    const narrow = window.matchMedia("(max-width: 767px)").matches;
+    const touchPhone = window.matchMedia("(pointer: coarse)").matches && Math.min(window.screen.width, window.screen.height) < 768;
+    return narrow || touchPhone;
+  };
+  const [isPhone, setIsPhone] = useState(detectPhone);
+  useEffect(() => {
+    const update = () => setIsPhone(detectPhone());
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => { window.removeEventListener("resize", update); window.removeEventListener("orientationchange", update); };
+  }, []);
+  const showCards = isPhone && !phoneTable; // compact phone table (key columns + eye for details)
+  const [detailRow, setDetailRow] = useState<SummaryRow | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const queueCloseAction = (id: string, close: boolean) => {
@@ -204,8 +245,8 @@ export function SummarySheetReport() {
 
   const productionById = useMemo(() => new Map(productions.map((production) => [production.id, production])), [productions]);
   const clientBaseRows = useMemo<SummaryRow[]>(
-    () => (browserFallback ? computeSummarySheetRows({ productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms, preAppDispatches }, stockItems) : []),
-    [browserFallback, preAppDispatches, companies, firms, invoiceLines, invoices, orders, plans, processing, productions, schedules, slips, stockItems, trucks]
+    () => (browserFallback ? computeSummarySheetRows({ productions, processing, orders, schedules, plans, slips, invoices, invoiceLines, trucks, companies, firms, preAppDispatches, inspections, boardlineQc, printingQc }, stockItems) : []),
+    [browserFallback, boardlineQc, printingQc, inspections, preAppDispatches, companies, firms, invoiceLines, invoices, orders, plans, processing, productions, schedules, slips, stockItems, trucks]
   );
   const baseRows = browserFallback ? clientBaseRows : (serverReport.result || []);
 
@@ -217,7 +258,11 @@ export function SummarySheetReport() {
       if (!production) return baseRow;
       return {
         ...baseRow,
-        Status: s(production.status),
+        // Stage comes from the report (worked out from the data); only closing / unclosing
+        // here is applied at once. The saved status text is not used.
+        Status: s(production.closeBy).toLowerCase() === "yes" && s(production.closeDate)
+          ? "Job Closed"
+          : s(baseRow.Status) === "Job Closed" ? "Pending Loading" : s(baseRow.Status),
         "Job Closed": s(production.closeBy).toLowerCase() === "yes" ? "Yes" : "",
         "Close Date": isoDateText(production.closeDate),
         Remarks: s(production.remarks),
@@ -248,6 +293,7 @@ export function SummarySheetReport() {
     const column = COLUMNS[columnIndex];
     if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? "Closed" : "";
     const value = row[column] ?? "";
+    if (column === "Job No.") return `${jobSerial(value)} ${s(value)}`;
     return DATE_COLUMNS.has(column) ? displayDate(value) : value;
   }), [selectedColumns]);
   const selectedSections = useMemo(() => SUMMARY_SECTIONS.map((section) => {
@@ -259,14 +305,18 @@ export function SummarySheetReport() {
     if (columnIndex === 0) return rowIndex + 1;
     const column = COLUMNS[columnIndex];
     const value = row[column] ?? "";
-    return DATE_COLUMNS.has(column) ? displayDate(value) : value;
+    if (DATE_COLUMNS.has(column)) return displayDate(value);
+    if (column === "Job No.") return jobSerial(value); // serial only: no firm / JOB / financial-year prefix
+    // Zero values show as an empty cell (0, "0", "0.00", "₹ 0", "0%"...).
+    if (isZeroDisplay(value)) return "";
+    return value;
   };
   const filterOptions = useMemo(() => ({
-    statuses: [...new Set(productions.filter((p) => p.status !== "Cancelled").map((p) => s(p.status)).filter(Boolean))].sort(),
+    statuses: ["Pending Material Issue", "Pending Corrugation", "Pending Printing", "Pending Loading", "Pending Job Closure", "Job Closed"].filter((stage) => baseRows.some((r) => s(r.Status) === stage)),
     parties: [...new Set(rows.map((r) => s(r["Party Name"])).filter(Boolean))].sort(),
     items: [...new Set(rows.map((r) => s(r["Item Name"])).filter(Boolean))].sort(),
     erps: [...new Set(rows.map((r) => s(r.ERP)).filter(Boolean))].sort(),
-  }), [productions, rows]);
+  }), [baseRows, productions, rows]);
   // Header tiles like the Google Summary Sheet (rows 1-5): live job status,
   // firm filter only; range tiles use From-To (default this month).
   const tileRange = useMemo(() => ({ from: from || monthStartKey(), to: to || localDayKey(0) }), [from, to]);
@@ -279,10 +329,8 @@ export function SummarySheetReport() {
       const production = productionById.get(s(row.__productionId));
       if (production?.status === "Cancelled") return false;
       if (firmFilter && s(row.__firmName).toLowerCase() !== firmFilter.toLowerCase()) return false;
-      if (statusFilter && s(production?.status ?? row.Status) !== statusFilter) return false;
-      const closed = s(production?.closeBy).toLowerCase() === "yes" && s(production?.closeDate);
-      if (closedFilter === "Closed" && !closed) return false;
-      if (closedFilter === "Open" && closed) return false;
+      if (statusFilter && s(row.Status) !== statusFilter) return false;
+      // Tiles ignore the Open/Closed filter (it now opens on "Open"), so they show what they showed before.
       if (partyFilter && s(row["Party Name"]) !== partyFilter) return false;
       if (itemFilter && s(row["Item Name"]) !== itemFilter) return false;
       if (erpFilter && s(row.ERP) !== erpFilter) return false;
@@ -301,25 +349,33 @@ export function SummarySheetReport() {
     });
     const wip = productions.length ? { qty: wipJobs.reduce((sum, row) => sum + n(row["Planned Qty"]), 0), jobs: wipJobs.length } : null;
     return computeSummarySheetSections(tileRows, cancelledDates, tileRange, extrasReport.result || null, filters, Boolean(from || to), wip, new Date(), salesTargets);
-  }, [salesTargets, baseRows, closedFilter, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
+  }, [salesTargets, baseRows, erpFilter, extrasReport.result, firmFilter, firms, from, itemFilter, partyFilter, productionById, productions, statusFilter, tileRange, to]);
   useEffect(() => setPage(1), [closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, search, statusFilter, to, pageSize]);
   // Column sort over every searched row before paging (keys are column names); Sl No is not sortable.
+  // Opens sorted by Date (oldest first), and by Job No. (lowest first) within a date.
   const { sorted: sortedRows, sort, toggle: toggleSort } = useTableSort(rows, (row, key) => {
     const column = key as (typeof COLUMNS)[number];
     if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? isoDateText(row["Close Date"]) || "Yes" : "";
     const value = row[column] ?? "";
+    // Date sorts by date, then job no. within the same date.
+    if (column === "Date") return `${isoDateText(value)}|${jobNoSortKey(row["Job No."])}`;
     if (DATE_COLUMNS.has(column)) return isoDateText(value);
+    if (column === "Job No.") return jobNoSortKey(value);
     return NUMERIC_COLUMNS.has(column) && s(value) !== "" ? n(value) : value;
-  });
-  const pagedRows = useMemo(() => sortedRows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, sortedRows]);
+  }, [], { key: "Date", direction: "asc" });
+
+  // Open filter: every row on one page (no pagination). Closed / All Closure: paged as before.
+  const showAllRows = closedFilter === "Open";
+  const pagedRows = useMemo(() => showAllRows ? sortedRows : sortedRows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, showAllRows, sortedRows]);
+  const rowOffset = showAllRows ? 0 : (page - 1) * pageSize;
   const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
   return <div className="space-y-4 pb-8">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3">
       <h2 className="text-xl font-bold uppercase">Summary Sheet</h2>
-      <div data-header-action="true" className="flex flex-wrap items-end justify-end gap-2">
-        <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
-        <label className="text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
+      <div data-header-action="true" className="grid w-full grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+        <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
+        <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         {(from || to) ? <button type="button" onClick={() => { setFrom(""); setTo(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold hover:bg-slate-100">Clear Dates</button> : null}
       </div>
     </div>
@@ -336,8 +392,23 @@ export function SummarySheetReport() {
       headerSlot,
     ) : null}
     {showTiles ? <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
-    <div className="relative z-40 grid grid-cols-1 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
-<div className="overflow-auto rounded border-2 border-black bg-white"><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={COLUMNS[columnIndex]} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; const rowColorClass = column === "Job No." ? jobNumberCellClass(row.Date, row["PDI REPORT"]) : column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : valueForColumn(row, columnIndex, (page - 1) * pageSize + index)}</td>; })}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div><ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />
+    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
+{isPhone ? <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-700">{rows.length.toLocaleString("en-IN")} jobs</span><button type="button" onClick={() => setPhoneTable((value) => !value)} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold">{phoneTable ? "Short table" : "Show full table"}</button></div> : null}
+{showCards ? <div className="overflow-x-auto rounded border-2 border-black bg-white" data-disable-table-pagination="true"><table className="w-full border-collapse text-[11px]"><thead><tr className="bg-[#0b4773] text-left text-white">{["Job", "Party / Item", "Status", "Plan", "Disp.", "FG Left", ""].map((heading) => <th key={heading} className={`border border-black px-1.5 py-1.5 font-black ${["Plan", "Disp.", "FG Left"].includes(heading) ? "text-right" : ""}`}>{heading}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const dispatched = valueForColumn(row, COLUMNS.indexOf("Dispatched Qty"), 0); return <tr key={`${row["Job No."]}-m-${index}`} className="align-top">
+  <td className={`border border-black px-1.5 py-1 font-black ${summarySheetCellClass("Job No.", row)}`}><div className="whitespace-nowrap">{valueForColumn(row, COLUMNS.indexOf("Job No."), 0)}</div><div className="whitespace-nowrap text-[9px] font-semibold">{displayDate(row.Date)}</div></td>
+  <td className="border border-black px-1.5 py-1"><div className="line-clamp-2 font-bold">{s(row["Party Name"]) || "—"}</div><div className="line-clamp-2 text-[10px] text-slate-600">{s(row["Item Name"]) || "—"}</div></td>
+  <td className="border border-black px-1.5 py-1 text-[9.5px] font-bold uppercase leading-tight">{s(row.Status) || "—"}</td>
+  <td className={`border border-black px-1.5 py-1 text-right font-bold ${summarySheetCellClass("Planned Qty", row)}`}>{s(valueForColumn(row, COLUMNS.indexOf("Planned Qty"), 0))}</td>
+  <td className={`border border-black px-1.5 py-1 text-right font-bold ${summarySheetCellClass("Dispatched Qty", row)}`}>{s(dispatched) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted">{dispatched}</a> : ""}</td>
+  <td className={`border border-black px-1.5 py-1 text-right font-bold ${summarySheetCellClass("FG LEFT", row)}`}>{s(valueForColumn(row, COLUMNS.indexOf("FG LEFT"), 0))}</td>
+  <td className="border border-black px-1 py-1 text-center"><button type="button" onClick={() => setDetailRow(row)} title="View all details" aria-label="View all details" className="inline-flex h-7 w-7 items-center justify-center rounded border border-black bg-white text-indigo-700"><Eye size={14} /></button></td>
+</tr>; }) : <tr><td colSpan={7} className="p-6 text-center text-sm">No summary rows found.</td></tr>}</tbody></table></div> : null}
+{detailRow ? (() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(detailRow["Job No."])); const closed = s(detailRow["Job Closed"]) === "Yes"; return <div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/50 sm:items-center" role="dialog" aria-modal="true" aria-label="Job details" onClick={() => setDetailRow(null)}><div className="max-h-[88vh] w-full max-w-lg overflow-hidden rounded-t-xl border-2 border-black bg-white sm:rounded-xl" onClick={(event) => event.stopPropagation()}>
+  <div className="flex items-center justify-between gap-2 border-b-2 border-black px-3 py-2"><div className="min-w-0"><div className="text-sm font-black">Job {valueForColumn(detailRow, COLUMNS.indexOf("Job No."), 0)} · {displayDate(detailRow.Date)}</div><div className="truncate text-xs font-bold text-slate-600">{s(detailRow["Party Name"])}</div></div><button type="button" onClick={() => setDetailRow(null)} className="rounded border-2 border-black px-3 py-1 text-xs font-bold">Close</button></div>
+  <div className="max-h-[66vh] overflow-y-auto"><table className="w-full border-collapse text-xs"><tbody>{selectedColumns.filter((columnIndex) => columnIndex > 0 && COLUMNS[columnIndex] !== "Job Closed").map((columnIndex) => { const column = COLUMNS[columnIndex]; const value = s(valueForColumn(detailRow, columnIndex, 0)); return <tr key={column}><th className="w-[45%] border border-slate-300 bg-slate-50 px-2 py-1 text-left text-[10px] font-black uppercase text-slate-600">{column}</th><td className={`border border-slate-300 px-2 py-1 font-semibold ${summarySheetCellClass(column, detailRow)}`}>{value || "—"}</td></tr>; })}</tbody></table></div>
+  {production ? <div className="flex justify-end gap-2 border-t-2 border-black px-3 py-2">{closed ? <button type="button" onClick={() => { uncloseJob(production.id); setDetailRow(null); }} className="rounded bg-amber-600 px-3 py-1.5 text-xs font-bold text-white">Unclose Job</button> : <button type="button" onClick={() => { closeJob(production.id); setDetailRow(null); }} className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">Close Job</button>}</div> : null}
+</div></div>; })() : null}
+<div className={`${showCards ? "hidden" : ""} overflow-auto rounded border-2 border-black bg-white`} {...(showAllRows ? { "data-disable-table-pagination": "true" } : {})}><table className="min-w-[1200px] border-collapse text-[11px]"><thead><tr>{selectedSections.map((section) => <th key={section.label} colSpan={section.columns.length} className="whitespace-nowrap border border-black bg-[#24165f] px-2 py-2 text-center font-black text-white">{section.label}</th>)}</tr><tr className="bg-[#0b4773] text-white">{selectedColumns.map((columnIndex) => <th key={`${COLUMNS[columnIndex]}-${columnIndex}`} className={`whitespace-nowrap border border-black px-2 py-2 font-black ${columnAlignment(COLUMNS[columnIndex])}`}>{columnIndex === 0 ? COLUMNS[columnIndex] : <SortHeader label={COLUMNS[columnIndex]} sortKey={COLUMNS[columnIndex]} sort={sort} onToggle={toggleSort} align={NUMERIC_COLUMNS.has(COLUMNS[columnIndex]) ? "right" : CENTER_COLUMNS.has(COLUMNS[columnIndex]) ? "center" : "left"} />}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => <tr key={`${row["Job No."]}-${index}`}>{selectedColumns.map((columnIndex) => { const column = COLUMNS[columnIndex]; const target = findRealizationTargetForDate(realizationTargets, row.Date)?.value; const rowColorClass = column === "Realization / kg" ? realizationCellClass(row[column], target) : summarySheetCellClass(column, row); return <td key={`${column}-${columnIndex}`} className={`${column === "Remarks" ? "min-w-[180px] max-w-[280px] whitespace-normal break-words" : "whitespace-nowrap"} border border-black px-2 py-2 ${columnAlignment(column)} ${rowColorClass}`}>{column === "Job Closed" ? s(row["Job Closed"]) === "Yes" ? <div><button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) uncloseJob(production.id); }} className="rounded bg-amber-600 px-2 py-1 font-bold text-white">Unclose Job</button></div> : <button type="button" onClick={() => { const production = productions.find((p) => s(p.transactionNo || p.jobCardNo) === s(row["Job No."])); if (production) closeJob(production.id); }} className="rounded bg-emerald-600 px-2 py-1 font-bold text-white">Close Job</button> : column === "Dispatched Qty" && s(valueForColumn(row, columnIndex, rowOffset + index)) ? <a href={`#/quality/pdi-report?job=${encodeURIComponent(s(row["Job No."]))}`} target="_blank" rel="noopener noreferrer" title="Open PDI report for this job" className="font-bold underline decoration-dotted underline-offset-2">{valueForColumn(row, columnIndex, rowOffset + index)}</a> : valueForColumn(row, columnIndex, rowOffset + index)}</td>; })}</tr>) : <tr><td colSpan={selectedColumns.length || 1} className="bg-[#eaf2f8] p-8 text-center">No summary rows found.</td></tr>}</tbody></table></div>{showAllRows ? null : <ClientPagination page={page} pageSize={pageSize} totalItems={rows.length} onPageChange={setPage} onPageSizeChange={setPageSize} />}
   </div>;
 }
 
@@ -356,7 +427,7 @@ function SummaryTileGroup({ section }: { section: SummaryTileSection }) {
       <div className="flex items-center justify-between border-b-2 border-black bg-[#0c343d] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white">
         <span>{section.title}</span>
       </div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))]">
+      <div className={section.columns === 4 ? "grid grid-cols-2 sm:grid-cols-4" : "grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(128px,1fr))]"}>
         {section.tiles.map((tile) => (
           <div
             key={tile.id}

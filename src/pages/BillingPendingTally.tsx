@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useTransition, useDeferredValue } from "react";
 import { useConfirm } from "../components/ConfirmDialog";
 import { useData } from "../hooks/useData";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
@@ -56,6 +56,9 @@ export function BillingPendingTally() {
   const [invoices, setInvoices, isLoading] = useData<Invoice>("invoices", []);
   const [firms] = useData<{ id: string; firmName?: string; shortName?: string }>("firms", [], { firmScope: "all", storageKey: "firms-all" });
   const [firmTab, setFirmTab] = useState("");
+  // Switching firm tabs redraws the list in the background; the spinner shows meanwhile.
+  const [tabSwitching, startTabSwitch] = useTransition();
+  const changeFirmTab = (id: string) => startTabSwitch(() => setFirmTab(id));
   const [lineItems] = useData<InvoiceLineItem>("invoice_line_items", []);
   const [companies] = useData<Company>("companies", []);
   const { findItem, findItemAcrossSources, resolveOrderItem } = useOrderItemCatalog();
@@ -232,8 +235,10 @@ export function BillingPendingTally() {
 
   const firmTabCounts = useMemo(() => countByFirm(invoiceRows, (inv: any) => inv.firmId), [invoiceRows]);
 
+  // Typing stays smooth: the list is re-filtered just after each keystroke.
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const processedInvoices = useMemo(() => {
-    const words = searchWords(searchTerm);
+    const words = searchWords(deferredSearchTerm);
     return invoiceRows
       .filter(inv => {
         if (firmTab && String(inv.firmId || "") !== firmTab) return false;
@@ -251,7 +256,7 @@ export function BillingPendingTally() {
         return matchesTableSearch(inv.searchText, words);
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [invoiceRows, companyFilter, itemFilter, searchTerm, fromDate, toDate]);
+  }, [invoiceRows, firmTab, companyFilter, itemFilter, deferredSearchTerm, fromDate, toDate]);
 
   // The table draws 100 invoices per page; filters still cover every invoice.
   const { sorted: sortedInvoices, sort, toggle: toggleSort } = useTableSort(processedInvoices, (inv, key) => {
@@ -266,7 +271,7 @@ export function BillingPendingTally() {
     }
   });
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedInvoices } = useClientPagination(sortedInvoices, 100);
-  useEffect(() => { setPage(1); }, [companyFilter, itemFilter, searchTerm, fromDate, toDate, setPage]);
+  useEffect(() => { setPage(1); }, [firmTab, companyFilter, itemFilter, deferredSearchTerm, fromDate, toDate, setPage]);
 
   const companyOptions = useMemo(() => Array.from(new Map(processedInvoices.map((inv) => [inv.companyId, { value: inv.companyId, label: inv.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [processedInvoices]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); processedInvoices.forEach((inv) => inv.details.forEach((line: any) => { const key = line.itemId || `${line.itemName || ""}::${line.erp || ""}`; if (!key || map.has(key)) return; const name = line.itemName || ""; const erp = line.erp || ""; map.set(key, { value: key, label: erp && name && !name.toLowerCase().includes(String(erp).toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }); })); return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)); }, [processedInvoices]);
@@ -357,7 +362,7 @@ export function BillingPendingTally() {
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Pending Tally Posting</h2>
       </div>
 
-      <FirmTabs firms={firms} counts={firmTabCounts} value={firmTab} onChange={setFirmTab} />
+      <FirmTabs firms={firms} counts={firmTabCounts} value={firmTab} onChange={changeFirmTab} />
 
       <div data-mf-panel="true" className="space-y-3 rounded border border-black bg-white p-3">
         <div className="relative w-full"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="Search" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full rounded border-2 border-black bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-600 focus:outline-none focus:ring-1 focus:ring-indigo-600" /></div>
@@ -375,6 +380,12 @@ export function BillingPendingTally() {
         </div>
       </div>
 
+      <div className="relative space-y-4" aria-busy={tabSwitching || (isLoading && invoiceRows.length === 0)}>
+      {tabSwitching || (isLoading && invoiceRows.length === 0) ? (
+        <div role="status" className="absolute inset-0 z-40 flex items-start justify-center rounded bg-white/70 pt-16">
+          <div className="flex items-center gap-2 rounded border-2 border-black bg-white px-4 py-2 text-sm font-black text-slate-700 shadow"><Spinner size={18} /> {isLoading && invoiceRows.length === 0 ? "Loading invoices…" : "Loading…"}</div>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-700">
         <span>Pending invoices: <span className="text-indigo-700">{processedInvoices.length.toLocaleString()}</span></span>
         <span>Total <span className="text-indigo-700">{formatInr.format(pendingTotal)}</span></span>
@@ -495,6 +506,7 @@ export function BillingPendingTally() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
       <ClientPagination
         page={page}

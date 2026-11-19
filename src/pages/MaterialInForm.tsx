@@ -29,7 +29,7 @@ import {
   ColorMaster,
 } from "../types";
 import { useAuth } from "../auth/AuthContext";
-import { generateTransactionNo } from "../lib/serial";
+import { formatDate, generateTransactionNo } from "../lib/serial";
 import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
@@ -38,7 +38,7 @@ import { applySupplyTypeTaxRates, calculateNetSupplierPayable, normalizeInvoiceC
 import { getGatePassLinesWithReturns } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
 import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/materialInPoMandatory";
-import { downloadMaterialInPdf } from "../lib/materialInPdf";
+import { buildMaterialInPdf, downloadMaterialInPdf } from "../lib/materialInPdf";
 import { formatOurReelNo as formatReelNo, getNextReelNumber } from "../lib/materialNumbering";
 import { findUnitOneFirm } from "../lib/unitOneFirm";
 import { MATERIAL_IN_SUB_TYPES, getMaterialInSubTypeLedger, isValidMaterialInSubType, normalizeMaterialInSubType } from "../lib/materialInSubTypes";
@@ -86,6 +86,14 @@ type AiMrrDraft = {
   mrrSubType?: string;
   invoiceCurrency?: InvoiceCurrency | string;
   exchangeRate?: number | null;
+  insurance?: number | null;
+  otherCharges?: number | null;
+  taxableValue?: number | null;
+  cgstAmount?: number | null;
+  sgstAmount?: number | null;
+  igstAmount?: number | null;
+  roundOff?: number | null;
+  grandTotal?: number | null;
   lines?: AiMrrLine[];
 };
 
@@ -214,6 +222,14 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const [currentPoLineId, setCurrentPoLineId] = useState("");
   const [packingSlipDrafts, setPackingSlipDrafts] = useState<Record<string, PackingSlipDraft[]>>({});
   const hasAutoFilledServiceReturnRef = useRef(false);
+  // Preview before save: Save opens the preview; "Confirm & Save" submits the form.
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+  // MRR preview: the same PDF as the saved MRR, and a "Checked & Found Correct" tick before Save.
+  const [previewPdfUrl, setPreviewPdfUrl] = useState("");
+  const [previewPdfError, setPreviewPdfError] = useState("");
+  const [previewChecked, setPreviewChecked] = useState(false);
+  const previewConfirmedRef = useRef(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [aiFiles, setAiFiles] = useState<AiUploadFile[]>([]);
@@ -2212,7 +2228,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
           ? { invoiceRateUsd: invoiceRate }
           : { invoiceRate, rate: invoiceRate, value: qty * invoiceRate }),
         actualQty: qty,
-        gstRate: resolveMaterialGstRate(match.line.materialId),
+        gstRate: resolveMaterialGstRate(material.id), // Material Master GST (reels 18%)
         cgstRate: 0,
         sgstRate: 0,
         igstRate: 0,
@@ -2246,38 +2262,124 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     setLines(nextLines);
     setPackingSlipDrafts(nextPackingDrafts);
     resetLineDrafts();
+
+    // Invoice charges: insurance and other charges from the invoice, GST on them at 18%
+    // (same as reels; CGST 9% + SGST 9%, or IGST 18% for an inter-state supplier), and the round-off.
+    const aiNumber = (value: unknown) => { const num = Number(value); return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0; };
+    const nextInsurance = Math.max(0, aiNumber(aiDraft.insurance));
+    const nextOtherCharges = Math.max(0, aiNumber(aiDraft.otherCharges));
+    const chargesBase = nextInsurance + nextOtherCharges;
+    const supplierInterState = String((aiMatchedSupplier as { gstSupplyType?: string }).gstSupplyType || "INTRA_STATE") === "INTER_STATE";
+    const halfGst = Math.round(chargesBase * 0.09 * 100) / 100;
+    const nextExpenseTaxes = chargesBase > 0
+      ? (supplierInterState ? { expenseCGST: "" as const, expenseSGST: "" as const, expenseIGST: Math.round(chargesBase * 0.18 * 100) / 100 } : { expenseCGST: halfGst, expenseSGST: halfGst, expenseIGST: "" as const })
+      : { expenseCGST: "" as const, expenseSGST: "" as const, expenseIGST: "" as const };
+    setInsurance(nextInsurance > 0 ? nextInsurance : "");
+    setOtherCharges(nextOtherCharges > 0 ? nextOtherCharges : "");
+    setExpenseCGST(nextExpenseTaxes.expenseCGST);
+    setExpenseSGST(nextExpenseTaxes.expenseSGST);
+    setExpenseIGST(nextExpenseTaxes.expenseIGST);
+    // Round-off: as printed; when not printed, the small difference (up to 1) between the invoice
+    // grand total and the MRR total, so the MRR total matches the invoice.
+    let nextRoundOff = aiNumber(aiDraft.roundOff);
+    const grandTotal = aiNumber(aiDraft.grandTotal);
+    if (!nextRoundOff && grandTotal > 0) {
+      const computed = summarizeMaterialInLines(nextLines, nextInsurance, nextOtherCharges, 0, {
+        expenseCGST: Number(nextExpenseTaxes.expenseCGST || 0),
+        expenseSGST: Number(nextExpenseTaxes.expenseSGST || 0),
+        expenseIGST: Number(nextExpenseTaxes.expenseIGST || 0),
+      }, { invoiceCurrency: nextCurrency, exchangeRate: nextCurrency === "USD" ? Number(nextExchangeRate || 0) : undefined });
+      const difference = Math.round((grandTotal - Number(computed.totalAmount || 0)) * 100) / 100;
+      if (Math.abs(difference) <= 1) nextRoundOff = difference;
+    }
+    setRoundOff(nextRoundOff ? nextRoundOff : "");
   };
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firmId || !selectedFirm) {
-      alert("Please select a valid Firm.");
-      return;
+  // Draws the MRR PDF from what is on the form right now (nothing is saved).
+  const openMrrPreview = async () => {
+    setPreviewChecked(false);
+    setPreviewPdfError("");
+    setPreviewPdfUrl((old) => { if (old) URL.revokeObjectURL(old); return ""; });
+    setShowPreview(true);
+    try {
+      const draftId = editingEntry?.id || "mrr-preview";
+      const draftLines = buildLinesForSubmit();
+      const summary = summarizeMaterialInLines(
+        draftLines,
+        insurance,
+        otherCharges,
+        roundOff,
+        { expenseCGST: Number(expenseCGST || 0), expenseSGST: Number(expenseSGST || 0), expenseIGST: Number(expenseIGST || 0) },
+        { invoiceCurrency: normalizedInvoiceCurrency, exchangeRate: isUsdInvoice ? numericExchangeRate : undefined },
+      );
+      const draftTds = isDirectService ? normalizeTdsAmount(tdsAmount, summary.totalAmount) : undefined;
+      const draft = {
+        ...(editingEntry || {}),
+        id: draftId,
+        firmId,
+        firmName: selectedFirm?.firmName,
+        transactionNo: editingEntry?.transactionNo || "Number on save",
+        mrrType: isDirectService ? "Direct Service" : mrrType,
+        gateEntryNo: editingEntry?.gateEntryNo || linkedGateEntry?.gateEntryNo,
+        date,
+        invoiceNo,
+        invDate,
+        supplierId,
+        invoiceCurrency: normalizedInvoiceCurrency,
+        exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
+        totalInvoiceValue: summary.totalInvoiceValue,
+        totalActualValue: summary.totalActualValue,
+        totalCgst: summary.totalCgst,
+        totalSgst: summary.totalSgst,
+        totalIgst: summary.totalIgst,
+        totalInvoiceValueAfterGst: summary.totalInvoiceValueAfterGst,
+        insurance: summary.insuranceValue,
+        otherCharges: summary.otherChargesValue,
+        expenseCGST: summary.expenseCGSTValue,
+        expenseSGST: summary.expenseSGSTValue,
+        expenseIGST: summary.expenseIGSTValue,
+        roundOff: summary.roundOffValue,
+        tdsAmount: draftTds,
+        netSupplierPayable: isDirectService ? calculateNetSupplierPayable(summary.totalAmount, draftTds || 0) : undefined,
+        totalAmount: summary.totalAmount,
+        lines: summary.lines,
+        status: editingEntry?.status || "Preview – not saved",
+      } as MaterialIn;
+      const draftSlips = mrrType === "Reel"
+        ? Object.values(packingSlipDrafts).flat().map((slip) => ({
+            id: slip.id,
+            materialInId: draftId,
+            materialLineId: slip.materialLineId,
+            materialId: slip.materialId,
+            supplierReelNo: slip.supplierReelNo,
+            ourReelNo: slip.ourReelNo,
+            weightKg: Number(slip.weightKg || 0),
+          })) as unknown as MaterialInPackingSlip[]
+        : [];
+      const doc = await buildMaterialInPdf({
+        mrr: draft,
+        materials,
+        npdItems,
+        services,
+        suppliers,
+        companies,
+        setting: settings[0] || null,
+        firms,
+        packingSlips: draftSlips,
+      });
+      setPreviewPdfUrl(URL.createObjectURL(doc.output("blob")));
+    } catch (error) {
+      console.error("MRR preview PDF failed:", error);
+      setPreviewPdfError("The PDF preview could not be drawn. Check the summary instead.");
     }
-    if (linkedGateEntry && firmId !== linkedGateEntry.firmId) {
-      alert("Linked MRR must use the Gate Entry firm.");
-      return;
-    }
-    if (!date || !invoiceNo || !invDate || !supplierId || lines.length === 0) return;
-    if (invDate > todayInputValue()) {
-      alert("Invoice Date cannot be a future date.");
-      return;
-    }
+  };
+  const closeMrrPreview = () => {
+    setShowPreview(false);
+    setPreviewChecked(false);
+    setPreviewPdfUrl((old) => { if (old) URL.revokeObjectURL(old); return ""; });
+  };
 
-    if (!editingEntry && gateEntryId && !linkedGateEntry) {
-      alert("Gate Entry could not be loaded. MRR cannot be created from this link.");
-      navigate("/material-receipt/pending-mrr", { replace: true });
-      return;
-    }
-
-    if (!editingEntry && linkedGateEntry && !canCreateMrrForGateEntry(linkedGateEntry)) {
-      alert(isGateEntryCancelled(linkedGateEntry)
-        ? "Gate Entry is cancelled. MRR cannot be created for this Gate Entry."
-        : "MRR has already been created for this Gate Entry.");
-      navigate("/material-receipt/pending-mrr", { replace: true });
-      return;
-    }
-
-    const linesForSubmit =
+  // Lines as they will be saved; shared by Save and the PDF preview.
+  const buildLinesForSubmit = (): MaterialLine[] =>
       isDirectService
         ? lines.map((line) => applySupplyTypeTaxRates(recalculateMaterialLine({
             ...line,
@@ -2337,6 +2439,45 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               exchangeRate: isUsdInvoice ? numericExchangeRate : undefined,
             });
           });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Saving needs the preview ticked "Checked & Found Correct" (Enter in a field opens the preview instead).
+    if (!previewConfirmedRef.current) {
+      if (formRef.current && !formRef.current.reportValidity()) return;
+      void openMrrPreview();
+      return;
+    }
+    previewConfirmedRef.current = false;
+    if (!firmId || !selectedFirm) {
+      alert("Please select a valid Firm.");
+      return;
+    }
+    if (linkedGateEntry && firmId !== linkedGateEntry.firmId) {
+      alert("Linked MRR must use the Gate Entry firm.");
+      return;
+    }
+    if (!date || !invoiceNo || !invDate || !supplierId || lines.length === 0) return;
+    if (invDate > todayInputValue()) {
+      alert("Invoice Date cannot be a future date.");
+      return;
+    }
+
+    if (!editingEntry && gateEntryId && !linkedGateEntry) {
+      alert("Gate Entry could not be loaded. MRR cannot be created from this link.");
+      navigate("/material-receipt/pending-mrr", { replace: true });
+      return;
+    }
+
+    if (!editingEntry && linkedGateEntry && !canCreateMrrForGateEntry(linkedGateEntry)) {
+      alert(isGateEntryCancelled(linkedGateEntry)
+        ? "Gate Entry is cancelled. MRR cannot be created for this Gate Entry."
+        : "MRR has already been created for this Gate Entry.");
+      navigate("/material-receipt/pending-mrr", { replace: true });
+      return;
+    }
+
+    const linesForSubmit = buildLinesForSubmit();
 
     if (isUsdInvoice && (!numericExchangeRate || numericExchangeRate <= 0)) {
       alert("Exchange rate must be greater than 0 for USD invoices.");
@@ -2642,7 +2783,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       <h2 className="text-xl font-bold text-black mb-6 uppercase tracking-tight border-b border-black pb-2">
         {isDirectService ? (editingEntry ? "Edit Direct Service MRR" : "Direct Service Form") : editingEntry ? "Edit MRR" : "Material Receipt Report (MRR) Form"}
       </h2>
-      <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col space-y-4">
         {linkedGateEntry ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 rounded border border-emerald-700 bg-emerald-50 p-4">
             <div className="flex flex-col space-y-1">
@@ -3536,13 +3677,121 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             Cancel
           </button>
           <button
-            type="submit"
+            type="button"
             disabled={isSubmitting || lines.length === 0}
+            onClick={() => {
+              // Run the browser's required-field checks first, then show the preview.
+              if (formRef.current && !formRef.current.reportValidity()) return;
+              void openMrrPreview();
+            }}
             className="flex items-center justify-center min-w-[150px] bg-indigo-600 text-white px-6 py-3 rounded font-bold hover:bg-indigo-700 transition disabled:opacity-50"
           >
-            {isSubmitting ? <Spinner size={24} className="text-white" /> : editingEntry ? "Update" : "Save"}
+            {isSubmitting ? <Spinner size={24} className="text-white" /> : editingEntry ? "Preview & Update" : "Preview & Save"}
           </button>
         </div>
+
+        {showPreview ? (
+          <div className="fixed inset-0 z-[120] flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label="MRR preview">
+            <div className="w-full max-w-5xl rounded-lg border-2 border-black bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
+                <h3 className="text-lg font-black uppercase tracking-tight text-black">MRR Preview</h3>
+                <button type="button" onClick={closeMrrPreview} className="rounded border-2 border-black px-3 py-1 text-xs font-bold hover:bg-slate-100">Close</button>
+              </div>
+              <div className="px-4 pt-4">
+                {previewPdfUrl ? (
+                  <>
+                    <iframe title="MRR PDF preview" src={previewPdfUrl} className="hidden h-[70vh] w-full rounded border-2 border-black bg-slate-100 md:block" />
+                    <a href={previewPdfUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded border-2 border-black px-3 py-1.5 text-xs font-bold text-black hover:bg-slate-100 md:mt-2">Open PDF preview in a new tab</a>
+                  </>
+                ) : previewPdfError ? (
+                  <div className="rounded border-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-800">{previewPdfError}</div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-600"><Spinner size={18} /> Preparing the MRR PDF…</div>
+                )}
+              </div>
+              <div className={`space-y-4 p-4 ${previewPdfUrl ? "md:hidden" : ""}`}>
+                <div className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    ["Firm", selectedFirm?.firmName || "-"],
+                    ["MRR Type", `${mrrType || "-"}${mrrSubType ? ` / ${mrrSubType}` : ""}`],
+                    ["MRR Date", date ? formatDate(date) : "-"],
+                    ["Supplier", getPartyName(supplierId) || "-"],
+                    ["Invoice No", invoiceNo || "-"],
+                    ["Invoice Date", invDate ? formatDate(invDate) : "-"],
+                    ...(linkedGateEntry ? [["Gate Entry", String(linkedGateEntry.gateEntryNo || "-")]] : []),
+                    ...(isUsdInvoice ? [["Currency", `USD @ ${numericExchangeRate}`]] : []),
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex gap-2"><span className="w-28 shrink-0 font-bold text-slate-600">{label}</span><span className="min-w-0 break-words font-bold text-black">{value}</span></div>
+                  ))}
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[820px] border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-indigo-700 text-left text-xs font-bold uppercase text-white">
+                        {["#", "Item", "PO No", "Inv Qty", "Actual Qty", "UOM", "Rate", "Value", "GST %", "Reels"].map((heading) => <th key={heading} className="border border-black px-2 py-2">{heading}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((line, index) => {
+                        const reels = packingSlipDrafts[line.id] || [];
+                        const reelWeight = reels.reduce((sum, reel) => sum + Number(reel.weightKg || 0), 0);
+                        const rate = Number(line.invoiceRate ?? line.rate ?? 0);
+                        const lineValue = Number(line.value ?? Number(line.invoiceQty || line.qty || 0) * rate);
+                        const qtyMismatch = mrrType === "Reel" && reels.length > 0 && Math.abs(reelWeight - Number(line.actualQty ?? line.qty ?? 0)) > 0.01;
+                        return (
+                          <tr key={line.id}>
+                            <td className="border border-black px-2 py-1.5">{index + 1}</td>
+                            <td className="border border-black px-2 py-1.5 font-bold">{line.itemName || line.serviceName || "-"}</td>
+                            <td className="border border-black px-2 py-1.5 whitespace-nowrap">{line.poNo || "-"}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{Number(line.invoiceQty ?? line.qty ?? 0).toLocaleString()}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{Number(line.actualQty ?? line.qty ?? 0).toLocaleString()}</td>
+                            <td className="border border-black px-2 py-1.5">{line.uom || "-"}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{rate.toFixed(2)}</td>
+                            <td className="border border-black px-2 py-1.5 text-right font-bold">{lineValue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                            <td className="border border-black px-2 py-1.5 text-right">{Number(line.gstRate || 0)}</td>
+                            <td className={`border border-black px-2 py-1.5 text-right ${qtyMismatch ? "bg-red-50 font-bold text-red-700" : ""}`} title={qtyMismatch ? "Reel weights do not add up to the actual qty" : undefined}>
+                              {mrrType === "Reel" ? `${reels.length} / ${reelWeight.toLocaleString()} kg` : "-"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="ml-auto w-full max-w-md space-y-1 rounded border border-black bg-white p-3 text-sm font-bold text-black">
+                  <SummaryLine label="Pre-GST Invoice Value" amount={totalInvoiceValue} tone="text-amber-700" strong />
+                  <SummaryLine label="CGST" amount={totalCgst} />
+                  <SummaryLine label="SGST" amount={totalSgst} />
+                  <SummaryLine label="IGST" amount={totalIgst} />
+                  <SummaryLine label="Insurance" amount={insuranceValue} />
+                  <SummaryLine label="Other Charges" amount={otherChargesValue} />
+                  <SummaryLine label="Expense CGST" amount={expenseCGSTValue} />
+                  <SummaryLine label="Expense SGST" amount={expenseSGSTValue} />
+                  <SummaryLine label="Expense IGST" amount={expenseIGSTValue} />
+                  <SummaryLine label="Round Off" amount={roundOffValue} />
+                  <SummaryLine label="Gross Total Amount" amount={totalAmount} tone="text-emerald-700" strong always />
+                  {isDirectService ? <SummaryLine label="Net Supplier Payable" amount={displayNetSupplierPayable} tone="text-indigo-700" strong always /> : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-3 border-t-2 border-black px-4 py-3">
+                <label className={`mr-auto flex cursor-pointer items-center gap-2 rounded border-2 px-3 py-2 text-sm font-black ${previewChecked ? "border-emerald-600 bg-emerald-50 text-emerald-800" : "border-amber-500 bg-amber-50 text-amber-900"}`}>
+                  <input type="checkbox" checked={previewChecked} onChange={(e) => setPreviewChecked(e.target.checked)} className="h-5 w-5 accent-emerald-600" />
+                  Checked &amp; Found Correct
+                </label>
+                <button type="button" onClick={closeMrrPreview} className="rounded border-2 border-black px-5 py-2 font-bold text-black hover:bg-slate-50">Back to Edit</button>
+                <button
+                  type="button"
+                  disabled={isSubmitting || !previewChecked}
+                  title={previewChecked ? undefined : "Tick Checked & Found Correct first"}
+                  onClick={() => { previewConfirmedRef.current = true; closeMrrPreview(); formRef.current?.requestSubmit(); }}
+                  className="min-w-[160px] rounded bg-indigo-600 px-5 py-2 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {editingEntry ? "Confirm & Update" : "Confirm & Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
       </form>
     </div>

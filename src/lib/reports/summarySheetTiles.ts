@@ -31,7 +31,7 @@ export type SalesTargetFigures = {
   source?: string;
 };
 
-export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[] };
+export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[]; columns?: number };
 
 const blank = (id: string, label: string, tone: string, format: SummaryTile["format"] = "qty"): SummaryTile => ({ id, label, value: null, format, tone });
 
@@ -70,7 +70,7 @@ export function computeSummarySheetSections(
   const paperRequired = sum(usedRows, (row) => n(row["PPR Rqd."]));
   const paperUsed = sum(rangeRows, (row) => n(row["PPR Used"]));
   const paperWastagePercent = paperRequired > 0 ? (sum(usedRows, (row) => n(row["Paper Wastage"])) / paperRequired) * 100 : 0;
-  const boardlineWastage = sum(rangeRows, (row) => n(row["Boardline Wastage"]));
+  const boardlineWastage = sum(rangeRows, (row) => n(row.__boardlineWastageKg)); // kg (the column now shows boxes)
   const boardlineWastagePercent = paperUsed > 0 ? (boardlineWastage / paperUsed) * 100 : 0;
   const rangeSale = sum(rows.filter((row) => inRange(isoDateText(row["Dispatch Date"]))), (row) => n(row["Sale Value"]));
   // Delivery Book basis: first 3 loading slips per job (pre-app loadings included), month by first invoice date.
@@ -98,14 +98,17 @@ export function computeSummarySheetSections(
     {
       id: "plan",
       title: "Production Plan",
+      // Two rows of four: Today / Tom (tomorrow) x Plan (paper kg), Liner (linear meter), Plan Value, Jobs.
+      columns: 4,
       tiles: [
-        { id: "todayPlan", label: "Today's Plan", value: sum(todayRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#660000] text-white" },
-        { id: "tomorrowPlan", label: "Tomorrow's Plan", value: sum(tomorrowRows, (row) => n(row["Planned Qty"])), format: "qty", tone: "bg-[#ffe599] text-slate-950" },
-        { id: "todayPlanValue", label: "Plan Value", value: planValue(todayRows), format: "money", tone: "bg-[#45818e] text-white" },
-        { id: "tomorrowPlanValue", label: "Tom. Plan Value", value: planValue(tomorrowRows), format: "money", tone: "bg-[#b4a7d6] text-slate-950" },
-        { id: "tomorrowJobs", label: "Jobs Tomorrow", value: tomorrowRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
-        { id: "todayMeter", label: "Today's Linear Meter", value: sum(todayRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#8e7cc3] text-white" },
-        blank("todayReelIssue", "Today's Reel Issue", "bg-[#00ffff] text-[#ff0000]"),
+        { id: "todayPlan", label: "Today Plan", value: sum(todayRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#660000] text-white", note: "Total paper weight (kg) of jobs dated today" },
+        { id: "todayMeter", label: "Today Liner", value: sum(todayRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#8e7cc3] text-white", note: "Linear meter of jobs dated today" },
+        { id: "todayPlanValue", label: "Today Plan Value", value: planValue(todayRows), format: "money", tone: "bg-[#45818e] text-white", note: "Planned qty x rate" },
+        { id: "todayJobs", label: "Today Jobs", value: todayRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
+        { id: "tomorrowPlan", label: "Tom Plan", value: sum(tomorrowRows, (row) => n(row["PPR Rqd."])), format: "qty", tone: "bg-[#ffe599] text-slate-950", note: "Total paper weight (kg) of jobs dated tomorrow" },
+        { id: "tomorrowMeter", label: "Tom Liner", value: sum(tomorrowRows, (row) => n(row.Meter)), format: "qty", tone: "bg-[#d9d2e9] text-slate-950", note: "Linear meter of jobs dated tomorrow" },
+        { id: "tomorrowPlanValue", label: "Tom Plan Value", value: planValue(tomorrowRows), format: "money", tone: "bg-[#b4a7d6] text-slate-950", note: "Planned qty x rate" },
+        { id: "tomorrowJobs", label: "Tom Jobs", value: tomorrowRows.length, format: "count", tone: "bg-[#00ffff] text-[#ff0000]" },
       ],
     },
     {
@@ -209,6 +212,8 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
   const value = row[column];
   const num = n(value);
   switch (column) {
+    // Job No. is coloured like Date..Planned Qty (by job date).
+    case "Job No.":
     case "Date":
     case "Party Name":
     case "Item Name":
@@ -265,7 +270,7 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
       const pdi = s(row["PDI REPORT"]).toUpperCase();
       if (pdi === "QC PASS") return "bg-[#00ff00]";
       if (pdi === "QC FAIL") return "bg-[#ff0000] text-white";
-      return "bg-[#b7e1cd]";
+      return ""; // no PDI yet
     }
     case "Dispatch Date":
     case "Vehicle No":
@@ -274,9 +279,11 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
       return filled(value) && value !== 0 ? "bg-[#b7e1cd]" : "";
     case "FG LEFT":
       if (!filled(value)) return "";
+      if (row.__overDispatched) return "bg-[#ff0000] text-white"; // dispatched more than printed
       return num === 0 ? "bg-[#6aa84f] text-white" : num > 0 ? "bg-[#b4a7d6]" : "";
     case "FINAL FG LEFT":
       if (!filled(value)) return "";
+      if (row.__overDispatched) return "bg-[#ff0000] text-white"; // dispatched more than printed
       return num <= 25 ? "bg-[#b7e1cd]" : "bg-[#ffff00] text-[#ff0000]";
     case "Remarks": {
       const text = s(value);

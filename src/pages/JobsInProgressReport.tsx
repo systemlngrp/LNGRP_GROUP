@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { DateRangeFilter, ReportFilterBox, SelectFilter, toFilterOptions } from "../components/ReportFilterBox";
-import { Search } from "lucide-react";
+import { Download, FileText, Search } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { exportsAllowed } from "../lib/exportPolicy";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { formatDate } from "../lib/serial";
@@ -66,9 +69,53 @@ export function JobsInProgressReport() {
     { label: "Balance", value: summary.balance, card: "border-rose-300 bg-rose-50", labelText: "text-rose-700", valueText: "text-rose-900" },
   ];
 
+  // Excel / PDF of the rows in view (filters, search and sort applied), with a TOTAL row.
+  const allowExports = exportsAllowed();
+  const exportData = () => {
+    const body = sortedRows.map((row) => [row.planQty, row.jobNo, formatDate(row.jobDate), row.erp, row.company, row.itemName, row.corrugation, row.fg, row.invoiced, row.loading, row.balance]);
+    const sum = (index: number) => roundQuantity(body.reduce((total, row) => total + Number(row[index] || 0), 0));
+    return { body, totals: [sum(0), "TOTAL", "", "", "", "", sum(6), sum(7), sum(8), sum(9), sum(10)] };
+  };
+  const exportName = () => `Jobs_in_Progress_${new Date().toISOString().slice(0, 10)}`;
+  const handleExcel = async () => {
+    const { body, totals } = exportData();
+    if (!body.length) { alert("No jobs to download."); return; }
+    const XLSX = await import("xlsx-js-style");
+    const ws = XLSX.utils.aoa_to_sheet([["Jobs in Progress"], [`Date: ${formatDate(new Date().toISOString())}`], columns, ...body, totals]);
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: columns.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: columns.length - 1 } }];
+    ws["!cols"] = columns.map((heading) => ({ wch: heading === "Item Name" ? 40 : heading === "Company" ? 30 : Math.max(10, heading.length + 2) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Jobs in Progress");
+    XLSX.writeFile(wb, `${exportName()}.xlsx`);
+  };
+  const handlePdf = () => {
+    const { body, totals } = exportData();
+    if (!body.length) { alert("No jobs to download."); return; }
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("Jobs in Progress", pageWidth / 2, 12, { align: "center" });
+    doc.setFontSize(9);
+    doc.text(`Date: ${formatDate(new Date().toISOString())} - ${body.length} jobs`, pageWidth / 2, 18, { align: "center" });
+    const cell = (value: unknown) => (typeof value === "number" ? value.toLocaleString("en-IN") : String(value ?? ""));
+    autoTable(doc, {
+      startY: 22,
+      head: [columns],
+      body: body.map((row) => row.map(cell)),
+      foot: [totals.map(cell)],
+      showFoot: "lastPage",
+      styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+      headStyles: { fillColor: [67, 56, 202], textColor: 255, fontStyle: "bold" },
+      footStyles: { fillColor: [226, 232, 240], textColor: 0, fontStyle: "bold" },
+      columnStyles: Object.fromEntries([0, 6, 7, 8, 9, 10].map((index) => [index, { halign: "right" as const }])),
+    });
+    doc.save(`${exportName()}.pdf`);
+  };
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Jobs in Progress</h2></div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black pb-3"><h2 className="text-xl font-bold uppercase tracking-tight text-black">Jobs in Progress</h2>{allowExports ? <div className="flex items-center gap-2"><button type="button" onClick={() => void handleExcel()} disabled={!sortedRows.length} title="Download Excel" className="inline-flex items-center gap-2 rounded border border-emerald-700 px-3 py-1.5 text-sm font-bold uppercase tracking-tight text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"><Download size={16} /><span>Excel</span></button><button type="button" onClick={handlePdf} disabled={!sortedRows.length} title="Download PDF" className="inline-flex items-center gap-2 rounded border border-red-700 px-3 py-1.5 text-sm font-bold uppercase tracking-tight text-red-700 hover:bg-red-50 disabled:opacity-40"><FileText size={16} /><span>PDF</span></button></div> : null}</div>
       <div className="grid gap-3 md:grid-cols-5">{summaryCards.map((card) => <div key={card.label} className={`rounded border p-4 ${card.card}`}><div className={`text-xs font-black uppercase ${card.labelText}`}>{card.label}</div><div className={`mt-1 text-2xl font-black ${card.valueText}`}>{card.label === "Jobs" ? card.value : formatQty(card.value)}</div></div>)}</div>
       <ReportFilterBox search={searchTerm} onSearch={setSearchTerm} hasFilters={Boolean(searchTerm.trim() || dateFrom || dateTo || companyFilter || itemFilter)} onClear={handleClear}>
         <SelectFilter label="Company" value={companyFilter} onChange={setCompanyFilter} options={companyOptions} wide />

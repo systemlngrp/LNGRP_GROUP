@@ -85,6 +85,7 @@ export function buildPdiReportRow(
   inspection?: PreDispatchInspection,
   printing?: PrintingQcCheck,
   previousCustomerComplaint?: string,
+  csMarginPercent?: number,
 ): PdiReportRow {
   const requiredLength = item?.lengthId;
   const requiredWidth = item?.breadthId;
@@ -126,7 +127,7 @@ export function buildPdiReportRow(
     "Remarks [IF ANY]": text(inspection?.remarks),
     "Box Photo [FRONT]": photoPath(inspection?.frontPhoto),
     "Box Photo [BACK]": photoPath(inspection?.backPhoto),
-    Result: inspection ? derivePdiResult(inspection, standardCs) : normalizeQcResult(inspection?.result),
+    Result: inspection ? derivePdiResult(inspection, standardCs, csMarginPercent) : normalizeQcResult(inspection?.result),
     "QC Person Name": text(inspection?.qcPerson),
     "PDI TIME": text(inspection?.inspectionDate),
     Ply: displayNumber(item?.ply),

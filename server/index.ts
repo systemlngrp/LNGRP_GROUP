@@ -1000,6 +1000,42 @@ const MASTER_RECORD_ENTITIES = new Set([
   "sample_requests", "physical_stock_sessions",
 ]);
 
+const PLAN_DATE_TEXT = /^\d{4}-\d{2}-\d{2}$/;
+/** Today's date in India (YYYY-MM-DD), whatever the server's clock zone. */
+function indiaTodayKey(now = new Date()) {
+  return new Date(now.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+}
+/** "26-27" for a date in the Indian financial year 1-Apr-2026 .. 31-Mar-2027. */
+function financialYearLabel(dateKey: string) {
+  const year = Number(dateKey.slice(0, 4));
+  const month = Number(dateKey.slice(5, 7));
+  const start = month >= 4 ? year : year - 1;
+  return `${String(start % 100).padStart(2, "0")}-${String((start + 1) % 100).padStart(2, "0")}`;
+}
+/** Checks a Plan Date change made on Pending Job Closure; "" when allowed. Sets data.originalPlanDate the first time. */
+async function pendingClosurePlanDateError(db: any, data: any): Promise<string> {
+  const jobId = String(data.id || "").trim();
+  const nextDate = String(data.date ?? "").slice(0, 10);
+  if (!jobId) return "Job not found.";
+  if (!PLAN_DATE_TEXT.test(nextDate)) return "Plan Date is mandatory.";
+  const [rows] = await db.query("SELECT `date`, `transactionNo`, `status`, `closeBy`, `closeDate`, `originalPlanDate` FROM `productions` WHERE id = ? LIMIT 1", [jobId]);
+  const stored = (rows as any[])[0];
+  if (!stored) return "Job not found.";
+  const storedDate = String(stored.date ?? "").slice(0, 10);
+  if (nextDate === storedDate) return "";
+  if (String(stored.status || "").trim() === "Cancelled") return "Plan Date cannot be changed for a cancelled job.";
+  if (String(stored.closeBy || "").trim().toLowerCase() === "yes" && String(stored.closeDate || "").trim()) return "Plan Date cannot be changed for a closed job.";
+  const today = indiaTodayKey();
+  if (nextDate < today) return `Plan Date cannot be before today (${today.split("-").reverse().join("-")}).`;
+  const jobYear = String(stored.transactionNo || "").match(/(\d{2}-\d{2})\/\d+$/)?.[1];
+  if (jobYear && financialYearLabel(nextDate) !== jobYear) return `Plan Date must stay in financial year ${jobYear} (the job number's year).`;
+  const [issueRows] = await db.query("SELECT COUNT(*) AS n FROM `material_issues` WHERE productionId = ?", [jobId]);
+  if (Number((issueRows as any[])[0]?.n || 0) > 0) return "Plan Date cannot be changed after Material Issue is created for this job.";
+  if (!String(stored.originalPlanDate || "").trim()) data.originalPlanDate = storedDate;
+  else delete data.originalPlanDate;
+  return "";
+}
+
 function hasPermission(user: AuthUser, required: string) {
   if (user.role === "Admin") return true;
   if (user.status !== "Active") return false;
@@ -1596,6 +1632,14 @@ Return only valid JSON with this exact shape:
   "mrrSubType": "Other RM, Spare parts, Others, or blank",
   "invoiceCurrency": "INR or USD",
   "exchangeRate": null,
+  "insurance": 0,
+  "otherCharges": 0,
+  "taxableValue": 0,
+  "cgstAmount": 0,
+  "sgstAmount": 0,
+  "igstAmount": 0,
+  "roundOff": 0,
+  "grandTotal": 0,
   "lines": [
     {
       "itemName": "",
@@ -1619,7 +1663,7 @@ Return only valid JSON with this exact shape:
     }
   ]
 }
-Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, find the color printed on the invoice or packing slip (search item descriptions, color fields, PO/order text, and packing slip rows) and return it as one of these codes: return "LG" when the printed color is LG, GY, Yellow or Gold; return "NS" when the printed color is NS, Natural, VK or Brown; return "WKL" when the printed color is WKL, Duplex or White Kraft Liner. Put the color exactly as printed in colorAsPrinted. Do not guess a color from the paper type (the word kraft alone is not a color). If no color is printed, or the printed color is not in these lists, return color as blank and still fill colorAsPrinted with what is printed (blank if nothing). For non-reel MRRs, populate the parent-level mrrSubType only when the invoice explicitly identifies one of Other RM, Spare parts, or Others; otherwise leave it blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
+Use Reel only for paper reel/roll items with reel, roll, kraft, paper, GSM, BF, deckle, or size indicators. For Reel lines, if the item text contains patterns like Size 178 / GSM 140 / BF 18 or 99 CM X GSM: 120 X BF: 18, populate numeric size, gsm, and bf exactly from that text. For Reel color, find the color printed on the invoice or packing slip (search item descriptions, color fields, PO/order text, and packing slip rows) and return it as one of these codes: return "LG" when the printed color is LG, GY, Yellow or Gold; return "NS" when the printed color is NS, Natural, VK or Brown; return "WKL" when the printed color is WKL, Duplex or White Kraft Liner. Put the color exactly as printed in colorAsPrinted. Do not guess a color from the paper type (the word kraft alone is not a color). If no color is printed, or the printed color is not in these lists, return color as blank and still fill colorAsPrinted with what is printed (blank if nothing). For non-reel MRRs, populate the parent-level mrrSubType only when the invoice explicitly identifies one of Other RM, Spare parts, or Others; otherwise leave it blank. For Reel lines, extract every visible individual reel row under that item/spec into reels with supplierReelNo and weightKg; include supplierPoNo per reel when visible, otherwise blank. Keep qty as the total invoice weight for the item/spec. If individual reel rows are not visible, use reels: []. Use Other for consumables, spares, chemicals, packing material, and non-reel goods. Invoice charges: put the insurance amount (before GST) only in insurance. Add every other extra charge printed on the invoice (freight, cartage, transport, loading, unloading, packing, forwarding, handling, etc.) together into otherCharges (before GST). Never add charges into item lines and never create item lines for charges. Return the invoice's printed taxable value in taxableValue, the printed GST totals in cgstAmount, sgstAmount and igstAmount, the round-off exactly as printed with its sign (negative when the invoice rounds down) in roundOff, and the final invoice amount in grandTotal. If a value is not printed, return 0. Dates must be ISO YYYY-MM-DD when visible. Numbers must be numeric. If unsure, leave fields blank or null and lower confidence.`
   }];
 
   for (const photo of photos) {
@@ -9207,6 +9251,7 @@ await db.query(`
           \`qcViewVisibleColumns\` LONGTEXT,
           \`productionMasterVisibleColumns\` LONGTEXT,
           \`poMandatoryMrrTypes\` LONGTEXT,
+          \`pdiCsMarginPercent\` DECIMAL(6,2) DEFAULT 10,
           \`realizationPerKgTargets\` LONGTEXT,
           \`invoiceNumberSeries\` LONGTEXT,
           \`mandatoryMachinesByType\` LONGTEXT,
@@ -9838,6 +9883,7 @@ await db.query(`
         { table: "material_in", column: "status", type: "VARCHAR(50) NOT NULL DEFAULT 'Pending PH'" },
         { table: "productions", column: "transactionNo", type: "VARCHAR(100) NOT NULL" },
         { table: "productions", column: "date", type: "VARCHAR(50) NOT NULL" },
+        { table: "productions", column: "originalPlanDate", type: "VARCHAR(10)" },
         { table: "productions", column: "itemId", type: "VARCHAR(36) NOT NULL" },
         { table: "productions", column: "npdId", type: "VARCHAR(36)" },
         { table: "productions", column: "qty", type: "DECIMAL(15, 2) NOT NULL" },
@@ -10369,6 +10415,7 @@ await db.query(`
         { table: "settings", column: "designations", type: "LONGTEXT" },
         { table: "settings", column: "roles", type: "LONGTEXT" },
         { table: "settings", column: "poMandatoryMrrTypes", type: "LONGTEXT" },
+        { table: "settings", column: "pdiCsMarginPercent", type: "DECIMAL(6,2) DEFAULT 10" },
         { table: "settings", column: "samplingPlanQtyDivisor", type: "DECIMAL(15,2) DEFAULT 2000" },
         { table: "settings", column: "samplingPlanQtyMin", type: "INT DEFAULT 2" },
         { table: "settings", column: "samplingPlanQtyMax", type: "INT DEFAULT 4" },
@@ -13789,6 +13836,16 @@ const createHandlers = (tableName: string) => {
           }
         }
 
+        // Plan Date changed from Pending Job Closure (planDateRule flag): not before today
+        // (India time), same financial year as the job number, open jobs only, no
+        // Material Issue yet. The first date is kept in originalPlanDate. The flag is
+        // not a column, so it is dropped before the row is written.
+        if (tableName === "productions" && data.planDateRule === "not-before-today") {
+          const planError = await pendingClosurePlanDateError(db, data);
+          if (planError) return res.status(400).json({ error: planError });
+        }
+        delete data.planDateRule;
+
         if (tableName === "orders_schedule" && !String(data.scheduleNo || "").trim()) {
           try {
             const scheduleId = String(data.id || "").trim();
@@ -15843,6 +15900,11 @@ const TRANSACTIONAL_RESET_TABLES = [
 ] as const;
 
 app.post("/api/settings/clear-core-job-data", async (req, res) => {
+  // Data-wipe tools are switched off on the live system. They only run where
+  // the server is started with ENABLE_DATA_RESET_TOOLS=true (for example a test copy).
+  if (String(process.env.ENABLE_DATA_RESET_TOOLS || "").toLowerCase() !== "true") {
+    return res.status(404).json({ error: "Not found" });
+  }
   const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   if (user.role !== "Admin") return res.status(403).json({ error: "Only administrators can clear core job data." });
@@ -15897,6 +15959,11 @@ app.post("/api/settings/clear-core-job-data", async (req, res) => {
 });
 
 app.post("/api/settings/clear-transactional-data", async (req, res) => {
+  // Data-wipe tools are switched off on the live system. They only run where
+  // the server is started with ENABLE_DATA_RESET_TOOLS=true (for example a test copy).
+  if (String(process.env.ENABLE_DATA_RESET_TOOLS || "").toLowerCase() !== "true") {
+    return res.status(404).json({ error: "Not found" });
+  }
   const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   if (user.role !== "Admin") return res.status(403).json({ error: "Only administrators can clear transactional data." });
@@ -19262,18 +19329,30 @@ async function loadCatalogFgRowsCached(db: mysql.Pool) {
   return rows;
 }
 
+// Reports calculated on the server are cached briefly per request (cleared when the report code changes).
+const REPORT_RESULT_CACHE_TTL_MS = 30_000;
+const reportResultCache = new Map<string, { expiresAt: number; version: number; value: any }>();
 let reportModulePromise: Promise<any> | null = null;
+let reportModuleStamp = "";
+// The report code (report-compute.mjs) is reloaded when the file on disk changes, so a
+// deploy takes effect without restarting the server (a running server kept the old copy).
 function loadReportModule() {
-  if (!reportModulePromise) {
-    const candidates = [
-      new URL("./report-compute.mjs", import.meta.url).href,
-      new URL("../server-dist/report-compute.mjs", import.meta.url).href,
-    ];
+  const candidates = [
+    new URL("./report-compute.mjs", import.meta.url),
+    new URL("../server-dist/report-compute.mjs", import.meta.url),
+  ];
+  let stamp = "";
+  for (const candidate of candidates) {
+    try { const stat = fs.statSync(candidate); stamp = `${candidate.href}|${stat.mtimeMs}|${stat.size}`; break; } catch { /* try next */ }
+  }
+  if (!reportModulePromise || (stamp && stamp !== reportModuleStamp)) {
+    reportModuleStamp = stamp;
+    reportResultCache.clear();
     reportModulePromise = (async () => {
       let lastError: unknown;
       for (const candidate of candidates) {
         try {
-          return await import(candidate);
+          return await import(`${candidate.href}?v=${encodeURIComponent(stamp || String(Date.now()))}`);
         } catch (error) {
           lastError = error;
         }
@@ -19288,8 +19367,6 @@ function loadReportModule() {
 // Reports calculated on the server with the same code the page used to run in
 // the browser (src/lib/reports). Lists come from the shared snapshot cache, so
 // only changed tables are re-read.
-const REPORT_RESULT_CACHE_TTL_MS = 30_000;
-const reportResultCache = new Map<string, { expiresAt: number; version: number; value: any }>();
 app.post("/api/reports/:name", requireAuth, async (req, res) => {
   const startedAt = Date.now();
   const db = await getPool();

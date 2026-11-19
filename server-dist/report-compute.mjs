@@ -1340,6 +1340,139 @@ function buildJobLoadingRecords(productions, slips, plans, options = {}) {
   ]));
 }
 
+// src/lib/productionMaterialUsage.ts
+function hasPaperNotRequiredBypass(production) {
+  return Boolean(production.paperNotRequired) && String(production.paperNotRequiredReason || "").trim().length > 0;
+}
+function normalizeMaterialText(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+function isCorrugatedSheetMaterial(material) {
+  const normalizedName = normalizeMaterialText(material?.name);
+  return normalizedName.includes("corrugated sheet");
+}
+function buildProductionMaterialUsageMap(materialIssues, materialIssueLines, materialReturns, materialReturnLines, materialIssueReelLines = [], materialReturnReelLines = [], productions = []) {
+  const productionIds = new Set(productions.map((production) => production.id));
+  const productionIdByJobNo = /* @__PURE__ */ new Map();
+  productions.forEach((production) => {
+    for (const value of [production.transactionNo, production.jobCardNo]) {
+      const jobNo = String(value || "").trim().toLowerCase();
+      if (jobNo && !productionIdByJobNo.has(jobNo)) productionIdByJobNo.set(jobNo, production.id);
+    }
+  });
+  const resolveProductionId = (productionId, jobNo) => {
+    const id = String(productionId || "").trim();
+    if (id && (productions.length === 0 || productionIds.has(id))) return id;
+    return productionIdByJobNo.get(String(jobNo || "").trim().toLowerCase());
+  };
+  const issueProductionMap = new Map(
+    materialIssues.filter((issue) => issue.issueType === "Job").map((issue) => [issue.id, resolveProductionId(issue.productionId, issue.jobNo)]).filter((entry) => Boolean(entry[1]))
+  );
+  const returnProductionMap = new Map(
+    materialReturns.filter((entry) => entry.returnType === "Job").map((entry) => [entry.id, resolveProductionId(entry.productionId, entry.jobNo)]).filter((entry) => Boolean(entry[1]))
+  );
+  const totals = /* @__PURE__ */ new Map();
+  const existingIssueLineIds = new Set(materialIssueLines.map((line) => line.id));
+  const existingReturnLineIds = new Set(materialReturnLines.map((line) => line.id));
+  materialIssueLines.forEach((line) => {
+    const productionId = issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.qty || 0));
+  });
+  materialReturnLines.forEach((line) => {
+    const productionId = returnProductionMap.get(line.materialReturnId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
+  });
+  materialIssueReelLines.forEach((line) => {
+    if (existingIssueLineIds.has(line.materialIssueLineId)) return;
+    const productionId = resolveProductionId(line.productionId, line.jobNo) || issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.weightKg || 0));
+  });
+  materialReturnReelLines.forEach((line) => {
+    if (existingReturnLineIds.has(line.materialReturnLineId)) return;
+    const productionId = resolveProductionId(line.productionId, line.jobNo) || returnProductionMap.get(line.materialReturnId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.weightKg || 0));
+  });
+  totals.forEach((value, key5) => {
+    totals.set(key5, Math.max(0, Number(value.toFixed(5))));
+  });
+  return totals;
+}
+function buildProductionCorrugatedSheetUsageMap(materials, materialIssues, materialIssueLines, materialReturns, materialReturnLines) {
+  const materialMap = new Map(materials.map((material) => [material.id, material]));
+  const issueProductionMap = new Map(
+    materialIssues.filter((issue) => issue.issueType === "Job" && issue.productionId).map((issue) => [issue.id, issue.productionId])
+  );
+  const returnProductionMap = new Map(
+    materialReturns.filter((entry) => entry.returnType === "Job" && entry.productionId).map((entry) => [entry.id, entry.productionId])
+  );
+  const totals = /* @__PURE__ */ new Map();
+  materialIssueLines.forEach((line) => {
+    const material = materialMap.get(line.materialId);
+    if (!isCorrugatedSheetMaterial(material)) return;
+    const productionId = issueProductionMap.get(line.materialIssueId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.qty || 0));
+  });
+  materialReturnLines.forEach((line) => {
+    const material = materialMap.get(line.materialId);
+    if (!isCorrugatedSheetMaterial(material)) return;
+    const productionId = returnProductionMap.get(line.materialReturnId);
+    if (!productionId) return;
+    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
+  });
+  totals.forEach((value, key5) => {
+    totals.set(key5, Math.max(0, Number(value.toFixed(5))));
+  });
+  return totals;
+}
+function hasProductionCorrugatedSheetUsage(production, usageMap) {
+  return Number(usageMap?.get(production.id) || 0) > 0;
+}
+function getProductionActualPaperUsed(production, usageMap) {
+  if (usageMap?.has(production.id)) {
+    return usageMap.get(production.id) || 0;
+  }
+  return Number(production.actualPaperUsed || 0);
+}
+
+// src/lib/jobCellColors.ts
+var dateKey = (value) => {
+  const raw = String(value ?? "").trim().slice(0, 10);
+  const match = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw.match(/^(\d{4})-(\d{2})-(\d{2})$/) : raw.match(/^(\d{2})[-\/]?(\d{2})[-\/]?(\d{4})$/);
+  if (!match) return "";
+  const [year, month, day] = match[1].length === 4 ? [Number(match[1]), Number(match[2]), Number(match[3])] : [Number(match[3]), Number(match[2]), Number(match[1])];
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
+};
+var normalizeQcResult = (value) => {
+  const normalized2 = String(value ?? "").trim().toLowerCase();
+  if (["qc pass", "pass"].includes(normalized2)) return "QC PASS";
+  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized2)) return "QC FAIL";
+  return String(value ?? "").trim();
+};
+
+// src/lib/pdiReportData.ts
+var text2 = (value) => String(value ?? "").trim();
+var normalized = (value) => text2(value).toLowerCase();
+function findLatestInspection(inspections, productionId, jobNo) {
+  const byProduction = productionId ? inspections.filter((inspection) => normalized(inspection.productionId) === normalized(productionId)) : [];
+  const matches = byProduction.length ? byProduction : jobNo ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo)) : [];
+  const latest2 = [...matches].sort(
+    (left, right) => text2(left.updateTimestamp || left.inspectionDate).localeCompare(text2(right.updateTimestamp || right.inspectionDate))
+  ).at(-1);
+  return latest2 ? { ...latest2, result: normalizeQcResult(latest2.result) } : void 0;
+}
+function photoPath(value) {
+  const raw = text2(value);
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return "/uploads/" + encodeURIComponent(raw.replace(/^\/?uploads\//i, ""));
+}
+
 // src/lib/reports/summarySheet.ts
 var n = (value) => {
   const result = Number(value);
@@ -1370,6 +1503,16 @@ function computeSummarySheetRows(lists, stockItems) {
     preAppByJob.set(key5, list);
   });
   const orderMap = new Map(orders.map((row) => [row.id, row]));
+  const latestWeightByJob = (rows2, pick) => {
+    const map = /* @__PURE__ */ new Map();
+    [...rows2 || []].sort((a, b) => s(a.updateTimestamp).localeCompare(s(b.updateTimestamp))).forEach((row) => {
+      const grams = pick(row);
+      if (grams > 0) map.set(s(row.jobNo).toLowerCase(), grams);
+    });
+    return map;
+  };
+  const boardlineGramsByJob = latestWeightByJob(lists.boardlineQc, (row) => n(row.sheetWeightGrams));
+  const printingGramsByJob = latestWeightByJob(lists.printingQc, (row) => n(row.boxWeightGrams));
   const firstScheduleById = firstById(schedules);
   const companyById = firstById(companies);
   const firmById = firstById(firms);
@@ -1401,12 +1544,14 @@ function computeSummarySheetRows(lists, stockItems) {
     dispatchByProduction.set(productionId, current);
   };
   const loadingByJob = buildJobLoadingRecords(productions, slips, plans, { includeOpeningStock: true });
+  const invoicedQtyByProduction = /* @__PURE__ */ new Map();
   loadingByJob.forEach((records, productionId) => records.forEach(({ slip, qty, itemIds }) => {
     addDispatch(productionId, qty, isoDateText(slip.date), slip);
     const dispatch = dispatchByProduction.get(productionId);
     invoiceLinesBySlip.get(slip.id)?.forEach((line) => {
       if (line.invoiceId && (!line.itemId || !itemIds.length || itemIds.includes(s(line.itemId).toLowerCase()))) {
         dispatch?.invoiceIds.add(line.invoiceId);
+        invoicedQtyByProduction.set(productionId, (invoicedQtyByProduction.get(productionId) || 0) + n(line.qty));
       }
     });
   }));
@@ -1448,6 +1593,21 @@ function computeSummarySheetRows(lists, stockItems) {
     const wastage = getProductionWastageTotals(production, productionRows);
     const realizationRaw = String(production.realizationPerKg ?? "").trim();
     const realizationValue = realizationRaw === "" || !Number.isFinite(Number(realizationRaw)) ? "" : Number(realizationRaw);
+    const isComplete = (pattern, producedQty) => productionRows.some((entry) => pattern.test(entry.machineName) && s(entry.completionStatus || "Full") === "Full") || planned > 0 && producedQty >= planned;
+    const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
+    const loadingStarted = dispatchedQty > 0;
+    const stage = jobClosed ? "Job Closed" : !loadingStarted && pprUsed <= 0 && !hasPaperNotRequiredBypass(production) ? "Pending Material Issue" : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation" : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing" : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure" : "Pending Loading";
+    const totalDispatch = money(invoicedQtyByProduction.get(production.id) || 0);
+    const totalLoading = money(loadingRecords.reduce((sum, record) => sum + n(record.qty), 0));
+    const totalInvoiceValue = money(invoiceValues.slice(0, 6).reduce((sum, value) => sum + value, 0));
+    const invoiceNos = relatedInvoices.map((invoice) => s(invoice.invoiceNo || invoice.tallyInvNo)).filter(Boolean).join(", ");
+    const boardGrams = boardlineGramsByJob.get(jobNo.toLowerCase()) || printingGramsByJob.get(jobNo.toLowerCase()) || 0;
+    const actualRealization = rate > 0 && boardGrams > 0 ? money(rate / (boardGrams / 1e3)) : "";
+    const pdiResult = normalizeQcResult(findLatestInspection(lists.inspections || [], s(production.id), jobNo)?.result);
+    const pdiReport = pdiResult === "QC PASS" || pdiResult === "QC FAIL" ? pdiResult : "";
+    const hasPrinting = printing > 0;
+    const fgLeft = hasPrinting ? money(Math.max(0, printing - dispatchedQty)) : "";
+    const overDispatched = hasPrinting && dispatchedQty > printing ? 1 : "";
     const row = {
       "Job No.": jobNo,
       Date: isoDateText(production.date),
@@ -1458,10 +1618,10 @@ function computeSummarySheetRows(lists, stockItems) {
       "FG Stock": fgStock,
       "Job Weight": money(jobWeight),
       "Customer Complaint": "",
-      "PDI REPORT": "",
+      "PDI REPORT": pdiReport,
       "Realization / kg": realizationValue,
       Meter: linearMeter,
-      "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).join(" x "),
+      "Cutting Size": [production.length, production.breadth].filter((value) => n(value) > 0).map((value) => String(Number(n(value).toFixed(2)))).join(" x "),
       UPS: n(production.ups),
       "Sheets prdcd": n(production.productionOutputQty),
       "Plate per box": n(production.setsPerBox),
@@ -1470,10 +1630,16 @@ function computeSummarySheetRows(lists, stockItems) {
       "PPR Rqd.": n(production.totalPaperWeight),
       "PPR Used": pprUsed,
       "Paper Wastage": pprUsed && production.totalPaperWeight ? money(pprUsed - n(production.totalPaperWeight)) : "",
-      "Boardline Wastage": money(wastage.corrugationKg),
-      "Actual Realization / kg": n(production.realizationPerKg),
+      "Boardline Wastage": hasPrinting ? money(boardline - printing) : "",
+      __boardlineWastageKg: money(wastage.corrugationKg),
+      __overDispatched: overDispatched,
+      "Actual Realization / kg": actualRealization,
       "Dispatched Qty": money(dispatchedQty),
       "Dispatched Qty (3 slips)": money(dispatchedQty3),
+      "Total Dispatch": totalDispatch,
+      "Total Loading": totalLoading,
+      "Total Invoice Value": totalInvoiceValue,
+      "Invoice No": invoiceNos,
       "Dispatch Date": invoiceDates[0] || "",
       "Vehicle No": vehicle,
       "App Stock": fgStock,
@@ -1510,13 +1676,13 @@ function computeSummarySheetRows(lists, stockItems) {
       "Loading Date 6": loadingRecords[5]?.date || "",
       "Loading Qty 6": loadingRecords[5]?.qty ?? "",
       "Vehicle 6": loadingRecords[5]?.vehicle || "",
-      "FG LEFT": money(Math.max(0, planned - dispatchedQty)),
+      "FG LEFT": fgLeft,
       Rate: rate,
-      Status: s(production.status),
+      Status: stage,
       "Printing Wastage": productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.misprinting), 0),
       "Sale Value": money(dispatchedQty * rate),
       "Sale Value (3 slips)": money(dispatchedQty3 * rate),
-      "FINAL FG LEFT": money(Math.max(0, planned - dispatchedQty)),
+      "FINAL FG LEFT": fgLeft,
       "wip value": money(Math.max(0, planned - dispatchedQty) * rate),
       Remarks: s(production.remarks),
       "Dispatched From FG": dispatchedQty ? "Yes" : "",
@@ -2038,105 +2204,6 @@ function computeAuditDashboard(lists, npdItems) {
   return { appValues: computeAuditAppValues(lists, npdItems), negativeOpeningNpdRows: computeNegativeOpeningNpdRows(npdItems) };
 }
 
-// src/lib/productionMaterialUsage.ts
-function hasPaperNotRequiredBypass(production) {
-  return Boolean(production.paperNotRequired) && String(production.paperNotRequiredReason || "").trim().length > 0;
-}
-function normalizeMaterialText(value) {
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-function isCorrugatedSheetMaterial(material) {
-  const normalizedName = normalizeMaterialText(material?.name);
-  return normalizedName.includes("corrugated sheet");
-}
-function buildProductionMaterialUsageMap(materialIssues, materialIssueLines, materialReturns, materialReturnLines, materialIssueReelLines = [], materialReturnReelLines = [], productions = []) {
-  const productionIds = new Set(productions.map((production) => production.id));
-  const productionIdByJobNo = /* @__PURE__ */ new Map();
-  productions.forEach((production) => {
-    for (const value of [production.transactionNo, production.jobCardNo]) {
-      const jobNo = String(value || "").trim().toLowerCase();
-      if (jobNo && !productionIdByJobNo.has(jobNo)) productionIdByJobNo.set(jobNo, production.id);
-    }
-  });
-  const resolveProductionId = (productionId, jobNo) => {
-    const id = String(productionId || "").trim();
-    if (id && (productions.length === 0 || productionIds.has(id))) return id;
-    return productionIdByJobNo.get(String(jobNo || "").trim().toLowerCase());
-  };
-  const issueProductionMap = new Map(
-    materialIssues.filter((issue) => issue.issueType === "Job").map((issue) => [issue.id, resolveProductionId(issue.productionId, issue.jobNo)]).filter((entry) => Boolean(entry[1]))
-  );
-  const returnProductionMap = new Map(
-    materialReturns.filter((entry) => entry.returnType === "Job").map((entry) => [entry.id, resolveProductionId(entry.productionId, entry.jobNo)]).filter((entry) => Boolean(entry[1]))
-  );
-  const totals = /* @__PURE__ */ new Map();
-  const existingIssueLineIds = new Set(materialIssueLines.map((line) => line.id));
-  const existingReturnLineIds = new Set(materialReturnLines.map((line) => line.id));
-  materialIssueLines.forEach((line) => {
-    const productionId = issueProductionMap.get(line.materialIssueId);
-    if (!productionId) return;
-    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.qty || 0));
-  });
-  materialReturnLines.forEach((line) => {
-    const productionId = returnProductionMap.get(line.materialReturnId);
-    if (!productionId) return;
-    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
-  });
-  materialIssueReelLines.forEach((line) => {
-    if (existingIssueLineIds.has(line.materialIssueLineId)) return;
-    const productionId = resolveProductionId(line.productionId, line.jobNo) || issueProductionMap.get(line.materialIssueId);
-    if (!productionId) return;
-    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.weightKg || 0));
-  });
-  materialReturnReelLines.forEach((line) => {
-    if (existingReturnLineIds.has(line.materialReturnLineId)) return;
-    const productionId = resolveProductionId(line.productionId, line.jobNo) || returnProductionMap.get(line.materialReturnId);
-    if (!productionId) return;
-    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.weightKg || 0));
-  });
-  totals.forEach((value, key5) => {
-    totals.set(key5, Math.max(0, Number(value.toFixed(5))));
-  });
-  return totals;
-}
-function buildProductionCorrugatedSheetUsageMap(materials, materialIssues, materialIssueLines, materialReturns, materialReturnLines) {
-  const materialMap = new Map(materials.map((material) => [material.id, material]));
-  const issueProductionMap = new Map(
-    materialIssues.filter((issue) => issue.issueType === "Job" && issue.productionId).map((issue) => [issue.id, issue.productionId])
-  );
-  const returnProductionMap = new Map(
-    materialReturns.filter((entry) => entry.returnType === "Job" && entry.productionId).map((entry) => [entry.id, entry.productionId])
-  );
-  const totals = /* @__PURE__ */ new Map();
-  materialIssueLines.forEach((line) => {
-    const material = materialMap.get(line.materialId);
-    if (!isCorrugatedSheetMaterial(material)) return;
-    const productionId = issueProductionMap.get(line.materialIssueId);
-    if (!productionId) return;
-    totals.set(productionId, (totals.get(productionId) || 0) + Number(line.qty || 0));
-  });
-  materialReturnLines.forEach((line) => {
-    const material = materialMap.get(line.materialId);
-    if (!isCorrugatedSheetMaterial(material)) return;
-    const productionId = returnProductionMap.get(line.materialReturnId);
-    if (!productionId) return;
-    totals.set(productionId, (totals.get(productionId) || 0) - Number(line.qty || 0));
-  });
-  totals.forEach((value, key5) => {
-    totals.set(key5, Math.max(0, Number(value.toFixed(5))));
-  });
-  return totals;
-}
-function hasProductionCorrugatedSheetUsage(production, usageMap) {
-  return Number(usageMap?.get(production.id) || 0) > 0;
-}
-function getProductionActualPaperUsed(production, usageMap) {
-  if (usageMap?.has(production.id)) {
-    return usageMap.get(production.id) || 0;
-  }
-  return Number(production.actualPaperUsed || 0);
-}
-
 // src/lib/productionProcessingProgress.ts
 function isProcessingStepFull(entry) {
   return !entry.completionStatus || entry.completionStatus === "Full";
@@ -2151,40 +2218,6 @@ function isCorrugationLinerComplete(processing, productionId) {
   return Boolean(productionId) && processing.some(
     (entry) => entry.productionId === productionId && normalizeMachineName(entry.machineName) === "Corrugation Liner" && isProcessingStepFull(entry)
   );
-}
-
-// src/lib/jobCellColors.ts
-var dateKey = (value) => {
-  const raw = String(value ?? "").trim().slice(0, 10);
-  const match = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw.match(/^(\d{4})-(\d{2})-(\d{2})$/) : raw.match(/^(\d{2})[-\/]?(\d{2})[-\/]?(\d{4})$/);
-  if (!match) return "";
-  const [year, month, day] = match[1].length === 4 ? [Number(match[1]), Number(match[2]), Number(match[3])] : [Number(match[3]), Number(match[2]), Number(match[1])];
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? `${year.toString().padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}` : "";
-};
-var normalizeQcResult = (value) => {
-  const normalized2 = String(value ?? "").trim().toLowerCase();
-  if (["qc pass", "pass"].includes(normalized2)) return "QC PASS";
-  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized2)) return "QC FAIL";
-  return String(value ?? "").trim();
-};
-
-// src/lib/pdiReportData.ts
-var text2 = (value) => String(value ?? "").trim();
-var normalized = (value) => text2(value).toLowerCase();
-function findLatestInspection(inspections, productionId, jobNo) {
-  const byProduction = productionId ? inspections.filter((inspection) => normalized(inspection.productionId) === normalized(productionId)) : [];
-  const matches = byProduction.length ? byProduction : jobNo ? inspections.filter((inspection) => normalized(inspection.jobNo) === normalized(jobNo)) : [];
-  const latest2 = [...matches].sort(
-    (left, right) => text2(left.updateTimestamp || left.inspectionDate).localeCompare(text2(right.updateTimestamp || right.inspectionDate))
-  ).at(-1);
-  return latest2 ? { ...latest2, result: normalizeQcResult(latest2.result) } : void 0;
-}
-function photoPath(value) {
-  const raw = text2(value);
-  if (!raw) return "";
-  if (/^https?:\/\//i.test(raw)) return raw;
-  return "/uploads/" + encodeURIComponent(raw.replace(/^\/?uploads\//i, ""));
 }
 
 // src/lib/samplingPlanQty.ts
@@ -2808,7 +2841,10 @@ REPORT_DEFINITIONS["summary-sheet"] = {
     { key: "trucks", entity: "trucks", scope: "all" },
     { key: "companies", entity: "companies", scope: "firm" },
     { key: "firms", entity: "firms", scope: "firm" },
-    { key: "preAppDispatches", entity: "pre_app_dispatches", scope: "all" }
+    { key: "preAppDispatches", entity: "pre_app_dispatches", scope: "all" },
+    { key: "inspections", entity: "pre_dispatch_inspections", scope: "all" },
+    { key: "boardlineQc", entity: "boardline_qc_checks", scope: "all" },
+    { key: "printingQc", entity: "printing_qc_checks", scope: "all" }
   ],
   // Blank cells are left out to keep the download small (the page reads a missing value as blank).
   compute: (lists, _params, helpers) => computeSummarySheetRows(lists, (helpers.npdItems || []).map(normalizeNpdItem)).map((row) => Object.fromEntries(Object.entries(row).filter(([, value]) => value !== "" && value !== null && value !== void 0)))

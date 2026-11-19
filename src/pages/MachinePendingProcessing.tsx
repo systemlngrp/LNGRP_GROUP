@@ -3,7 +3,10 @@ import React, { useMemo, useState, useEffect, useCallback, useDeferredValue, use
 import { useData } from "../hooks/useData";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { Company, Firm, Order, OrderSchedule, Production, Machine, ProductionProcessing, Setting } from "../types";
-import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, CheckCircle2, X, Filter } from "lucide-react";
+import { Hammer, Search, ChevronRight, ChevronDown, ClipboardList, CheckCircle2, X, Filter, Download, FileText } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { exportsAllowed } from "../lib/exportPolicy";
 import { parseMandatoryMachinesByType } from "../lib/mandatoryMachines";
 import { Select } from "../components/Select";
 import { formatDate } from "../lib/serial";
@@ -383,6 +386,60 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
     return machines.find(m => m.id === filterMachineId)?.name || "";
   }, [filterMachineId, machines]);
 
+  // Excel / PDF of the tab in view (All = every machine, with a Machine column), as filtered and sorted.
+  const allowExports = exportsAllowed();
+  const exportTitle = machineFilter ? (machineGroups.find((g) => g.machineId === machineFilter)?.machineName || "Pending Processing") : "All Machines";
+  const buildExportRows = () => {
+    const machineNameById = new Map(machineGroups.map((g) => [g.machineId, g.machineName]));
+    const withMachine = !machineFilter;
+    const headers = [...(withMachine ? ["Machine"] : []), "Job No", "Source", "Date", "ERP", "Firm", "Company", "Item", "Plan Qty", "FFG", "Reported", "Pending"];
+    const rows = sortedGroupJobs.map(({ machineId, job }) => [
+      ...(withMachine ? [machineNameById.get(machineId) || ""] : []),
+      displayJobNo(job.production.transactionNo), job.source, formatDate(job.production.date), job.erpCode || "", job.firmName || "",
+      job.companyName || "", job.itemName || "", Number(job.requiredQty || 0), Number(job.ffgQty || 0), Number(job.reportedQty || 0), Number(job.pendingQty || 0),
+    ]);
+    return { headers, rows };
+  };
+  const exportFileName = () => `Pending_Processing_${exportTitle.replace(/[^A-Za-z0-9]+/g, "_")}_${new Date().toISOString().slice(0, 10)}`;
+  const handleExportExcel = async () => {
+    const { headers, rows } = buildExportRows();
+    if (!rows.length) { alert("No jobs to download in this tab."); return; }
+    const XLSX = await import("xlsx-js-style");
+    const ws = XLSX.utils.aoa_to_sheet([[`Pending Processing - ${exportTitle}`], [`Date: ${formatDate(new Date().toISOString())}`], headers, ...rows]);
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }];
+    ws["!cols"] = headers.map((header) => ({ wch: header === "Item" ? 40 : header === "Company" ? 30 : Math.max(9, header.length + 2) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, exportTitle.slice(0, 31));
+    XLSX.writeFile(wb, `${exportFileName()}.xlsx`);
+  };
+  const handleExportPdf = () => {
+    const { headers, rows } = buildExportRows();
+    if (!rows.length) { alert("No jobs to download in this tab."); return; }
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text(`Pending Processing - ${exportTitle}`, pageWidth / 2, 12, { align: "center" });
+    doc.setFontSize(9);
+    doc.text(`Date: ${formatDate(new Date().toISOString())} - ${rows.length} jobs`, pageWidth / 2, 18, { align: "center" });
+    const numberFrom = headers.indexOf("Plan Qty");
+    const pendingIndex = headers.indexOf("Pending");
+    const pendingTotal = rows.reduce((sum, row) => sum + Number(row[pendingIndex] || 0), 0);
+    const totalRow = headers.map((_, index) => (index === 0 ? "TOTAL" : index === pendingIndex ? pendingTotal.toLocaleString("en-IN") : ""));
+    autoTable(doc, {
+      startY: 22,
+      head: [headers],
+      body: rows.map((row) => row.map((cell) => (typeof cell === "number" ? cell.toLocaleString("en-IN") : String(cell)))),
+      foot: [totalRow],
+      showFoot: "lastPage",
+      footStyles: { fillColor: [226, 232, 240], textColor: 0, fontStyle: "bold" },
+      styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+      headStyles: { fillColor: [6, 95, 70], textColor: 255, fontStyle: "bold" },
+      columnStyles: Object.fromEntries([0, 1, 2, 3].map((i) => [numberFrom + i, { halign: "right" as const }])),
+    });
+    doc.save(`${exportFileName()}.pdf`);
+  };
+
   const hasPanelFilters = Boolean(searchTerm.trim() || firmFilter || companyFilter || itemFilter || sourceFilter || fromDateFilter || toDateFilter);
   const hasActiveFilters = hasPanelFilters || Boolean(machineFilter);
 
@@ -477,6 +534,16 @@ export function MachinePendingProcessing({ fixedMachineName, title }: { fixedMac
             <Filter size={15} /> Filter
             {hasPanelFilters && !showFilters ? <span className="absolute -right-1.5 -top-1.5 h-3 w-3 rounded-full border-2 border-white bg-red-600" aria-label="Filters in use" /> : null}
           </button>
+          {allowExports ? (
+            <>
+              <button type="button" onClick={() => void handleExportExcel()} title={`Download Excel: ${exportTitle}`} className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded border-2 border-emerald-700 bg-white px-3 text-xs font-black text-emerald-700 hover:bg-emerald-50">
+                <Download size={15} /> Excel
+              </button>
+              <button type="button" onClick={handleExportPdf} title={`Download PDF: ${exportTitle}`} className="inline-flex h-[38px] shrink-0 items-center gap-1.5 rounded border-2 border-red-700 bg-white px-3 text-xs font-black text-red-700 hover:bg-red-50">
+                <FileText size={15} /> PDF
+              </button>
+            </>
+          ) : null}
         </div>
         <div className={`grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-6 ${showFilters ? "grid" : "grid md:hidden"}`}>
           {showMachineFilter ? (

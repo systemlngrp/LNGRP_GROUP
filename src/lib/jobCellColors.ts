@@ -43,6 +43,14 @@ export const jobNumberCellClass = (date: unknown, result: unknown, now = new Dat
   return jobDateCellClass(date, now);
 };
 
+/** PDI Result cell: QC PASS green, QC FAIL red (PDI Master and PDI Report). */
+export const pdiResultCellClass = (result: unknown): string => {
+  const normalized = normalizeQcResult(result);
+  if (normalized === "QC PASS") return "bg-[#006100] text-white font-bold";
+  if (normalized === "QC FAIL") return "bg-[#cc0000] text-white font-bold";
+  return "";
+};
+
 export const qcResultCellClass = (result: unknown): string => ["QC PASS", "QC FAIL"].includes(normalizeQcResult(result)) ? "bg-[#006100] text-white font-bold" : "";
 
 export const realizationCellClass = (value: unknown, target: unknown): string => {

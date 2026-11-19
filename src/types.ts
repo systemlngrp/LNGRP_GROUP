@@ -1931,6 +1931,8 @@ export interface Setting {
   qcViewVisibleColumns?: string;
   productionMasterVisibleColumns?: string;
   poMandatoryMrrTypes?: string;
+  /** PDI passes when CS Achieved >= CS Std x (1 + this % / 100). Blank = 10. */
+  pdiCsMarginPercent?: number | string | null;
   realizationPerKgTargets?: string;
   invoiceNumberSeries?: string;
   mandatoryMachinesByType?: string;

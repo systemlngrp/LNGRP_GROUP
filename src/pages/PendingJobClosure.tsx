@@ -20,6 +20,19 @@ import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/j
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 
+// Plan Date edits (Pending Job Closure): never before today in India, and kept in
+// the job number's financial year. The server checks the same rules.
+const indiaToday = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+const financialYearOf = (dateKey: string) => {
+  const year = Number(dateKey.slice(0, 4));
+  const start = Number(dateKey.slice(5, 7)) >= 4 ? year : year - 1;
+  return `${String(start % 100).padStart(2, "0")}-${String((start + 1) % 100).padStart(2, "0")}`;
+};
+const financialYearEnd = (jobNo: unknown) => {
+  const match = String(jobNo ?? "").match(/(\d{2})-(\d{2})\/\d+$/);
+  return match ? `20${match[2]}-03-31` : "";
+};
+
 function firstById<T extends { id: string }>(rows: T[]) {
   const map = new Map<string, T>();
   rows.forEach((row) => { if (!map.has(row.id)) map.set(row.id, row); });
@@ -139,23 +152,41 @@ export function PendingJobClosure() {
     }
     const nextDate = productionDateDraft.trim();
     if (!nextDate) {
-      alert("Production Date is mandatory.");
+      alert("Plan Date is mandatory.");
+      return;
+    }
+    const job = productions.find((row) => row.id === id);
+    if (!job) return cancelEditingProductionDate();
+    if (nextDate === String(job.date || "").slice(0, 10)) return cancelEditingProductionDate();
+    const today = indiaToday();
+    if (nextDate < today) {
+      alert(`Plan Date cannot be before today (${formatDate(today)}).`);
+      return;
+    }
+    const jobYear = String(job.transactionNo || "").match(/(\d{2}-\d{2})\/\d+$/)?.[1];
+    if (jobYear && financialYearOf(nextDate) !== jobYear) {
+      alert(`Plan Date must stay in financial year ${jobYear} (the job number's year).`);
       return;
     }
     const timestamp = new Date().toISOString();
-    await setProductions((prev) =>
-      prev.map((row) =>
-        row.id === id
-          ? {
-              ...row,
-              date: nextDate,
-              updateTimestamp: timestamp,
-              updatedBy: user?.name || "System User",
-            }
-          : row
-      )
-    );
-    cancelEditingProductionDate();
+    try {
+      await setProductions((prev) =>
+        prev.map((row) =>
+          row.id === id
+            ? ({
+                ...row,
+                date: nextDate,
+                planDateRule: "not-before-today",
+                updateTimestamp: timestamp,
+                updatedBy: user?.name || "System User",
+              } as Production)
+            : row
+        )
+      );
+      cancelEditingProductionDate();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not change the Plan Date.");
+    }
   };
 
   const processingTotalsMap = useMemo(() => {
@@ -671,8 +702,10 @@ export function PendingJobClosure() {
                             <input
                               type="date"
                               value={productionDateDraft}
+                              min={indiaToday()}
+                              max={financialYearEnd(p.transactionNo) || undefined}
                               onChange={(e) => setProductionDateDraft(e.target.value)}
-                              className="min-w-[140px] border border-black rounded px-2 py-1 text-xs bg-white"
+                              className="min-w-[140px] border border-black rounded px-2 py-1 text-xs bg-[#fff9c4]"
                             />
                             <button
                               onClick={() => void saveProductionDate(p.id)}
@@ -820,7 +853,32 @@ export function PendingJobClosure() {
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{order?.orderNo || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{p.erpCode || "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{company?.name || "-"}</td>
-                      <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{formatDate(p.date)}</td>
+                      <td
+                        className={`px-2 py-2 text-xs text-black border border-black whitespace-nowrap ${editingProductionDateId === p.id ? "min-w-[160px] bg-[#fff9c4]" : hasMaterialIssue(p.id) ? "" : "cursor-pointer hover:bg-[#fff9c4]"}`}
+                        title={editingProductionDateId === p.id ? "" : hasMaterialIssue(p.id) ? "Plan Date is locked after Material Issue" : "Click to change Plan Date (today or later)"}
+                        onClick={() => { if (editingProductionDateId !== p.id && !hasMaterialIssue(p.id)) startEditingProductionDate(p); }}
+                      >
+                        {editingProductionDateId === p.id ? (
+                          <div className="flex w-[150px] flex-col gap-1">
+                            <input
+                              type="date"
+                              autoFocus
+                              value={productionDateDraft}
+                              min={indiaToday()}
+                              max={financialYearEnd(p.transactionNo) || undefined}
+                              onChange={(e) => setProductionDateDraft(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") void saveProductionDate(p.id); if (e.key === "Escape") cancelEditingProductionDate(); }}
+                              className="w-full border-2 border-black rounded px-2 py-1 text-xs bg-white"
+                            />
+                            <div className="grid grid-cols-2 gap-1">
+                              <button type="button" onClick={(e) => { e.stopPropagation(); void saveProductionDate(p.id); }} className="rounded border border-black bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-emerald-700">Save</button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditingProductionDate(); }} className="rounded border border-black bg-white px-2 py-1 text-[11px] font-bold text-black hover:bg-slate-100">Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className={hasMaterialIssue(p.id) ? "" : "underline decoration-dotted underline-offset-2"}>{formatDate(p.date)}</span>
+                        )}
+                      </td>
                       <td className="px-4 py-4 text-xs text-black border border-black min-w-[150px]">{item?.name || "Unknown"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{(item as any)?.isSample ? "Yes" : "-"}</td>
                       <td className="px-4 py-4 text-xs text-black border border-black whitespace-nowrap">{getProductionEffectiveType(p, item) || "-"}</td>
@@ -947,30 +1005,7 @@ export function PendingJobClosure() {
                           >
                             <ClipboardList size={16} />
                           </button>
-                          {editingProductionDateId === p.id ? (
-                            <>
-                              <input
-                                type="date"
-                                value={productionDateDraft}
-                                onChange={(e) => setProductionDateDraft(e.target.value)}
-                                className="w-36 border border-black rounded px-2 py-1 text-xs bg-white"
-                              />
-                              <button
-                                onClick={() => void saveProductionDate(p.id)}
-                                title="Save production date"
-                                className="text-slate-700 hover:text-slate-900 transition-all px-2 py-1 border border-black rounded text-[11px] font-bold bg-white"
-                              >
-                                Save
-                              </button>
-                              <button
-                                onClick={cancelEditingProductionDate}
-                                title="Cancel date edit"
-                                className="text-slate-700 hover:text-slate-900 transition-all px-2 py-1 border border-black rounded text-[11px] font-bold bg-white"
-                              >
-                                Cancel
-                              </button>
-                            </>
-                          ) : (
+                          {editingProductionDateId === p.id ? null : (
                             <button
                               onClick={() => startEditingProductionDate(p)}
                               disabled={hasMaterialIssue(p.id)}
