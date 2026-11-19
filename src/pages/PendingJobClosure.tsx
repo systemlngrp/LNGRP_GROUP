@@ -19,6 +19,9 @@ import { getProductionEffectiveType, getRequiredMachinesForProduction, resolvePr
 import { buildJobClosureStatusMap, formatJobCloseBlockedMessage } from "../lib/jobClosureValidation";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { exportsAllowed } from "../lib/exportPolicy";
 
 // Plan Date edits (Pending Job Closure): never before today in India, and kept in
 // the job number's financial year. The server checks the same rules.
@@ -476,7 +479,7 @@ export function PendingJobClosure() {
   const companyOptions = useMemo(() => Array.from(new Map(pendingClosureRows.map((row) => { const schedule = scheduleById.get(row.scheduleId); const order = orderById.get(schedule?.orderId as string); const company = companyById.get(order?.companyId as string); return [order?.companyId || "", { value: order?.companyId || "", label: company?.name || "" }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [companyById, pendingClosureRows, orderById, scheduleById]);
   const itemOptions = useMemo(() => Array.from(new Map(pendingClosureRows.map((row) => { const item = resolveProductionItem(row); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [pendingClosureRows, findItemAcrossSources]);
 
-  const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, (p, key) => {
+  const columnValue = (p: Production, key: string): unknown => {
     const schedule = scheduleById.get(p.scheduleId);
     const order = orderById.get(schedule?.orderId as string);
     const item = resolveProductionItem(p);
@@ -542,7 +545,114 @@ export function PendingJobClosure() {
       case "actualPaper": return Number(p.actualPaperUsed || 0);
       default: return "";
     }
-  }, [scheduleById, orderById, companyById, firms, jobClosureStatusMap, loadedQtyByProductionId, processingTotalsMap, erpLeastGsmMap, findItemAcrossSources], { key: "date", direction: "desc" });
+  };
+  const { sorted: sortedList, sort, toggle: toggleSort } = useTableSort(filteredList, columnValue, [scheduleById, orderById, companyById, firms, jobClosureStatusMap, loadedQtyByProductionId, processingTotalsMap, erpLeastGsmMap, findItemAcrossSources], { key: "date", direction: "desc" });
+
+  // Red row: job has mandatory machines and none of them is reported yet (Pending 0/N).
+  const isMandatoryNone = (p: Production) => {
+    const status = jobClosureStatusMap.get(p.id);
+    return (status?.required?.length || 0) > 0 && Number(status?.done || 0) === 0;
+  };
+
+  const allowExports = exportsAllowed();
+  const EXPORT_COLUMNS: { key: string; label: string; num?: boolean; total?: boolean; pdf?: boolean }[] = [
+    { key: "jobNo", label: "Job No", pdf: true }, { key: "firm", label: "Firm", pdf: true }, { key: "orderNo", label: "Order No", pdf: true },
+    { key: "erp", label: "ERP Code", pdf: true }, { key: "company", label: "Company", pdf: true }, { key: "date", label: "Plan Date", pdf: true },
+    { key: "item", label: "Item Name", pdf: true }, { key: "sample", label: "Sample" }, { key: "type", label: "Type", pdf: true },
+    { key: "mandatory", label: "Mandatory", pdf: true }, { key: "qty", label: "Planned Qty", num: true, total: true, pdf: true },
+    { key: "ups", label: "UPS" }, { key: "loaded", label: "Loaded Qty", num: true, total: true, pdf: true },
+    { key: "paper", label: "Paper", num: true, total: true, pdf: true }, { key: "liner", label: "Liner", num: true, total: true, pdf: true },
+    { key: "printing", label: "Print", num: true, total: true, pdf: true }, { key: "pasting", label: "Paste", num: true, total: true, pdf: true },
+    { key: "stitching", label: "Stitch", num: true, total: true, pdf: true }, { key: "punching", label: "Punch", num: true, total: true, pdf: true },
+    { key: "gluing", label: "Glue", num: true, total: true, pdf: true },
+    { key: "length", label: "L" }, { key: "breadth", label: "B" }, { key: "height", label: "H" },
+    { key: "lOd", label: "L (OD)" }, { key: "wOd", label: "W (OD)" }, { key: "hOd", label: "H (OD)" },
+    { key: "ply", label: "Ply" }, { key: "flute", label: "Flute" }, { key: "l1", label: "L1" }, { key: "f1", label: "F1" },
+    { key: "l2", label: "L2" }, { key: "f2", label: "F2" }, { key: "l3", label: "L3" }, { key: "gsm", label: "GSM" },
+    { key: "leastGsm", label: "Least GSM" }, { key: "color1", label: "Color 1" }, { key: "color2", label: "Color 2" },
+    { key: "printingColor", label: "Printing Color" }, { key: "totalWt", label: "Total Wt" }, { key: "realKg", label: "Real/KG" },
+    { key: "reelCalc", label: "Reel (Calc)" }, { key: "reelTrim", label: "Reel Trim" }, { key: "cuttingTrim", label: "Cutting Trim" },
+    { key: "plannedProd", label: "Planned Prod (M)" }, { key: "sheetWt", label: "Sheet Wt" }, { key: "fluteBatch", label: "Flute Batch" },
+    { key: "rate", label: "Rate" }, { key: "value", label: "Value", num: true, total: true, pdf: true },
+    { key: "ffg", label: "Production FFG", num: true, total: true, pdf: true }, { key: "actualPaper", label: "Actual Paper (KG)", num: true, total: true, pdf: true },
+  ];
+  const exportCell = (p: Production, column: { key: string; num?: boolean }): string | number => {
+    if (column.key === "jobNo") return displayJobNo(p.transactionNo);
+    if (column.key === "date") return formatDate(p.date);
+    if (column.key === "mandatory") {
+      const status = jobClosureStatusMap.get(p.id);
+      const required = status?.required || [];
+      const missing = status?.missing || [];
+      if (!required.length) return "";
+      return missing.length === 0 ? `Done ${status?.done || 0}/${required.length}` : `Pending ${status?.done || 0}/${required.length} - Missing: ${missing.join(", ")}`;
+    }
+    const value = columnValue(p, column.key);
+    if (column.num) { const n = Number(value || 0); return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0; }
+    return value === undefined || value === null ? "" : String(value);
+  };
+  const buildExport = (pdfOnly: boolean) => {
+    const columns = EXPORT_COLUMNS.filter((column) => !pdfOnly || column.pdf);
+    const rows = sortedList.map((p) => columns.map((column) => exportCell(p, column)));
+    const red = sortedList.map((p) => isMandatoryNone(p));
+    const totals: (string | number)[] = columns.map((column, index) => column.total ? Math.round(rows.reduce((sum, row) => sum + Number(row[index] || 0), 0) * 100) / 100 : "");
+    totals[0] = "TOTAL";
+    return { columns, rows, red, totals };
+  };
+  const exportFileName = () => `Pending_Job_Closure_${new Date().toISOString().slice(0, 10)}`;
+  const handleExportExcel = async () => {
+    const { columns, rows, red, totals } = buildExport(false);
+    if (!rows.length) { alert("No jobs to download."); return; }
+    const XLSX = await import("xlsx-js-style");
+    const headers = columns.map((column) => column.label);
+    const ws = XLSX.utils.aoa_to_sheet([["Pending Job Closure"], [`Date: ${formatDate(new Date().toISOString())} - ${rows.length} jobs`], headers, ...rows, totals]);
+    ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } }];
+    ws["!cols"] = columns.map((column) => ({ wch: column.key === "item" ? 40 : column.key === "company" ? 30 : column.key === "mandatory" ? 34 : Math.max(9, column.label.length + 2) }));
+    const border = { top: { style: "thin" }, bottom: { style: "thin" }, left: { style: "thin" }, right: { style: "thin" } };
+    const setStyle = (r: number, style: any) => {
+      for (let c = 0; c < headers.length; c += 1) {
+        const ref = XLSX.utils.encode_cell({ r, c });
+        if (!ws[ref]) ws[ref] = { t: "s", v: "" };
+        ws[ref].s = { ...style, border };
+      }
+    };
+    ws["A1"].s = { font: { bold: true, sz: 14 }, alignment: { horizontal: "center" } };
+    setStyle(2, { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "065F46" } } });
+    red.forEach((isRed, index) => setStyle(3 + index, isRed ? { fill: { fgColor: { rgb: "FECACA" } }, font: { color: { rgb: "7F1D1D" } } } : {}));
+    setStyle(3 + rows.length, { font: { bold: true }, fill: { fgColor: { rgb: "E2E8F0" } } });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Pending Job Closure");
+    XLSX.writeFile(wb, `${exportFileName()}.xlsx`);
+  };
+  const handleExportPdf = () => {
+    const { columns, rows, red, totals } = buildExport(true);
+    if (!rows.length) { alert("No jobs to download."); return; }
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("Pending Job Closure", pageWidth / 2, 12, { align: "center" });
+    doc.setFontSize(9);
+    doc.text(`Date: ${formatDate(new Date().toISOString())} - ${rows.length} jobs`, pageWidth / 2, 18, { align: "center" });
+    const fmt = (cell: string | number) => (typeof cell === "number" ? cell.toLocaleString("en-IN") : String(cell));
+    autoTable(doc, {
+      startY: 22,
+      head: [columns.map((column) => column.label)],
+      body: rows.map((row) => row.map(fmt)),
+      foot: [totals.map(fmt)],
+      showFoot: "lastPage",
+      footStyles: { fillColor: [226, 232, 240], textColor: 0, fontStyle: "bold" },
+      styles: { fontSize: 7, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+      headStyles: { fillColor: [6, 95, 70], textColor: 255, fontStyle: "bold" },
+      columnStyles: Object.fromEntries(columns.map((column, index) => [index, column.num ? { halign: "right" as const } : column.key === "item" ? { cellWidth: 45 } : {}])),
+      didParseCell: (data) => {
+        if (data.section === "body" && red[data.row.index]) {
+          data.cell.styles.fillColor = [254, 202, 202];
+          data.cell.styles.textColor = [127, 29, 29];
+        }
+      },
+    });
+    doc.save(`${exportFileName()}.pdf`);
+  };
 
   const {
     page,
@@ -611,6 +721,12 @@ export function PendingJobClosure() {
           {hasActiveFilters ? (
             <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
           ) : null}
+          {allowExports ? (
+            <>
+              <button type="button" onClick={() => void handleExportExcel()} className="h-[34px] rounded border-2 border-black bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700">Excel</button>
+              <button type="button" onClick={handleExportPdf} className="h-[34px] rounded border-2 border-black bg-rose-600 px-3 text-xs font-bold text-white hover:bg-rose-700">PDF</button>
+            </>
+          ) : null}
           <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
       </div>
@@ -632,7 +748,7 @@ export function PendingJobClosure() {
                 const mandatory = getMandatoryStatus(p, item);
                 
                 return (
-                  <div key={p.id} className={`${isHighGsm ? "bg-amber-50" : "bg-white"} border-2 border-black p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded relative`}>
+                  <div key={p.id} className={`${isMandatoryNone(p) ? "bg-red-100 border-red-600 text-red-900" : isHighGsm ? "bg-amber-50 border-black" : "bg-white border-black"} border-2 p-4 space-y-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded relative`}>
                        <div className="flex justify-between items-center">
                           <div className="font-bold text-sm">Job: {displayJobNo(p.transactionNo)}</div>
                       </div>
@@ -846,7 +962,7 @@ export function PendingJobClosure() {
                       ? "Actual Paper Used is required to enable job closer"
                       : undefined;                  
                     return (
-                    <tr key={p.id} className={`${isHighGsm ? "bg-amber-50" : "hover:bg-slate-50"} divide-x divide-black transition-colors`}>
+                    <tr key={p.id} className={`${isMandatoryNone(p) ? "bg-red-100 *:bg-red-100! *:text-red-900!" : isHighGsm ? "bg-amber-50" : "hover:bg-slate-50"} divide-x divide-black transition-colors`}>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{srNo}</td>
                       <td className="px-4 py-4 text-xs font-bold text-black border border-black whitespace-nowrap">{displayJobNo(p.transactionNo)}</td>
                       <td className="px-4 py-4 text-xs font-semibold text-black border border-black whitespace-nowrap">{getFirmDisplayNameById(String(schedule?.firmId || p.firmId || p.orderFirmId || order?.firmId || ""), firms)}</td>
