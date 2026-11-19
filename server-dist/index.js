@@ -9866,6 +9866,7 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "qcViewVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "productionMasterVisibleColumns", type: "LONGTEXT" },
                 { table: "settings", column: "summarySheetDateRange", type: "LONGTEXT" },
+                { table: "settings", column: "summarySheetUserColumns", type: "LONGTEXT" },
                 { table: "settings", column: "salesTargetSnapshot", type: "LONGTEXT" },
                 { table: "settings", column: "realizationPerKgTargets", type: "LONGTEXT" },
                 { table: "settings", column: "invoiceNumberSeries", type: "LONGTEXT" },
@@ -18509,15 +18510,29 @@ app.post("/api/reports/:name", requireAuth, async (req, res) => {
         const definition = module.REPORT_DEFINITIONS?.[name];
         if (!definition)
             return res.status(404).json({ error: "Unknown report" });
-        if (user.role === "TruckDriver" || !hasPermission(user, definition.permission))
+        if (user.role === "TruckDriver")
             return res.status(403).json({ error: "Forbidden" });
+        // Users other than Admin see the Summary Sheet as "Dashboard": only the columns Admin chose,
+        // no tiles. Admin's setup is the access (no separate menu permission needed).
+        let shapeResult = (value) => value;
+        if (user.role !== "Admin" && (name === "summary-sheet" || name === "summary-sheet-tiles")) {
+            if (name === "summary-sheet-tiles")
+                return res.status(403).json({ error: "Forbidden" });
+            const userColumns = (await loadSummarySheetUserColumns(db))[user.id];
+            if (!userColumns?.length)
+                return res.status(403).json({ error: "Dashboard is not set up for this user." });
+            shapeResult = (value) => limitSummarySheetRows(value, userColumns);
+        }
+        else if (!hasPermission(user, definition.permission)) {
+            return res.status(403).json({ error: "Forbidden" });
+        }
         const authUserId = String(req.authUserId || "");
         const firmId = getRequestFirmId(req);
         const params = (req.body && typeof req.body === "object") ? req.body : {};
         const cacheKey = JSON.stringify([name, firmId, params]);
         const cached = reportResultCache.get(cacheKey);
         if (cached && cached.expiresAt > Date.now() && cached.version === realtimeDataVersion) {
-            return res.json({ result: cached.value, cached: true });
+            return res.json({ result: shapeResult(cached.value), cached: true });
         }
         // Build in the background and wait at most ~25s, so the request never
         // hits the hosting proxy's 60s limit. The client polls on 202.
@@ -18536,7 +18551,7 @@ app.post("/api/reports/:name", requireAuth, async (req, res) => {
         if (!outcome.done)
             return res.status(202).json({ pending: true });
         console.info(`[REPORT] ${name} served in ${Date.now() - startedAt}ms`);
-        return res.json({ result: outcome.result, generatedAt: new Date().toISOString() });
+        return res.json({ result: shapeResult(outcome.result), generatedAt: new Date().toISOString() });
     }
     catch (error) {
         console.error("[REPORT] failed:", error);
@@ -19081,6 +19096,90 @@ app.get("/api/php-plate-receipts", async (req, res) => {
     catch (error) {
         console.error("[php-plate-receipts] failed", error.message);
         return res.status(500).json({ error: "Failed to load PHP / Plate receipts" });
+    }
+});
+// Summary Sheet for users other than Admin ("Dashboard"): Admin picks the columns
+// each user sees. Stored in settings.summarySheetUserColumns as { userId: [column names] }.
+// A user without a setup gets no Dashboard and no Summary Sheet data.
+async function loadSummarySheetUserColumns(db) {
+    try {
+        const [rows] = await db.query("SELECT `summarySheetUserColumns` FROM `settings` LIMIT 1");
+        const raw = rows[0]?.summarySheetUserColumns;
+        const parsed = raw ? JSON.parse(String(raw)) : {};
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+            return {};
+        const result = {};
+        for (const [userId, columns] of Object.entries(parsed)) {
+            if (Array.isArray(columns) && columns.length)
+                result[userId] = columns.map((column) => String(column)).filter(Boolean);
+        }
+        return result;
+    }
+    catch {
+        return {};
+    }
+}
+// Fields every Dashboard row keeps (filters, Open/Closed, Close / Unclose) besides the chosen columns.
+const SUMMARY_SHEET_USER_BASE_FIELDS = new Set(["Job No.", "Date", "Status", "Party Name", "Item Name", "ERP", "Job Closed", "Close Date", "__productionId", "__firmName", "__overDispatched"]);
+function limitSummarySheetRows(rows, columns) {
+    if (!Array.isArray(rows))
+        return rows;
+    const allowed = new Set([...SUMMARY_SHEET_USER_BASE_FIELDS, ...columns]);
+    return rows.map((row) => {
+        const next = {};
+        for (const key of Object.keys(row || {}))
+            if (allowed.has(key))
+                next[key] = row[key];
+        return next;
+    });
+}
+app.get("/api/summary-sheet-user-columns", async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "DB connection not available" });
+    res.setHeader("Cache-Control", "no-store");
+    const all = await loadSummarySheetUserColumns(db);
+    if (user.role === "Admin")
+        return res.json({ admin: true, users: all });
+    return res.json({ admin: false, columns: all[user.id] || null });
+});
+app.put("/api/summary-sheet-user-columns", async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (user.role !== "Admin")
+        return res.status(403).json({ error: "Only Admin can set Dashboard columns." });
+    const userIds = Array.isArray(req.body?.userIds) ? req.body.userIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
+    const columns = Array.isArray(req.body?.columns) ? Array.from(new Set(req.body.columns.map((column) => String(column || "").trim()).filter(Boolean))) : [];
+    if (!userIds.length)
+        return res.status(400).json({ error: "Select at least one user." });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ error: "DB connection not available" });
+        const all = await loadSummarySheetUserColumns(db);
+        for (const id of userIds) {
+            if (columns.length)
+                all[id] = columns;
+            else
+                delete all[id];
+        }
+        const value = JSON.stringify(all);
+        const [rows] = await db.query("SELECT id FROM `settings` LIMIT 1");
+        const id = rows[0]?.id;
+        if (id)
+            await db.query("UPDATE `settings` SET `summarySheetUserColumns` = ? WHERE id = ?", [value, id]);
+        else
+            await db.query("INSERT INTO `settings` (`id`, `summarySheetUserColumns`) VALUES (?, ?)", [crypto.randomUUID(), value]);
+        reportResultCache.clear();
+        return res.json({ ok: true, users: all });
+    }
+    catch (error) {
+        console.error("[summary-sheet-user-columns] save failed", error.message);
+        return res.status(500).json({ error: "Unable to save Dashboard columns." });
     }
 });
 app.get("/api/summary-sheet-dates", async (req, res) => {

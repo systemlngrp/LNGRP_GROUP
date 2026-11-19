@@ -15,6 +15,9 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useTableSearch } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 import { displayJobNo } from "../lib/jobNumber";
+import { useAuth } from "../auth/AuthContext";
+import { refreshSummarySheetUserColumns, useSummarySheetUserColumns } from "../hooks/useSummarySheetUserColumns";
+import { MultiSelect } from "../components/MultiSelect";
 import type { Company, DispatchPlan, Firm, Invoice, InvoiceLineItem, LoadingSlip, Order, OrderSchedule, PreDispatchInspection, Production, ProductionProcessing, Setting, Truck } from "../types";
 
 const COLUMNS = [
@@ -90,9 +93,17 @@ const isZeroDisplay = (value: unknown) => {
 export function SummarySheetReport() {
   // Rows are calculated on the server; if it cannot, the lists are loaded and
   // calculated here as before. Jobs stay loaded for Close / Unclose.
-  const serverReport = useServerReport<SummaryRow[]>("summary-sheet", {}, SUMMARY_SHEET_TABLES, true, { minRefreshMs: 60_000 });
-  const browserFallback = serverReport.failed;
-  const extrasReport = useServerReport<SummarySheetExtras>("summary-sheet-tiles", {}, ["orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "npd", "materials", "material_in", "material_issue_lines", "material_firm_openings", "php_job_master", "plate_job_master"], true, { minRefreshMs: 60_000 });
+  // Admin sees the full Summary Sheet. Everyone else sees it as "Dashboard": only the
+  // filters and the table, with the columns Admin chose for them (no tiles, no column menu).
+  const { user } = useAuth();
+  const isAdmin = user?.role === "Admin";
+  const userSetup = useSummarySheetUserColumns(!isAdmin);
+  const userColumnNames = isAdmin ? null : userSetup.columns;
+  const reportAllowed = isAdmin || Boolean(userColumnNames?.length);
+  const serverReport = useServerReport<SummaryRow[]>("summary-sheet", {}, SUMMARY_SHEET_TABLES, reportAllowed, { minRefreshMs: 60_000 });
+  // Only Admin may fall back to working the report out in the browser (that downloads every table).
+  const browserFallback = isAdmin && serverReport.failed;
+  const extrasReport = useServerReport<SummarySheetExtras>("summary-sheet-tiles", {}, ["orders", "orders_schedule", "dispatch_plans", "loading_slips", "invoices", "invoice_line_items", "npd", "materials", "material_in", "material_issue_lines", "material_firm_openings", "php_job_master", "plate_job_master"], isAdmin, { minRefreshMs: 60_000 });
   // Live job status / closure / remarks: only these columns are downloaded
   // (the full jobs list is ~11 MB). The full list loads only to save a
   // Close / Unclose, or when the browser has to calculate the report itself.
@@ -218,7 +229,7 @@ export function SummarySheetReport() {
     window.addEventListener("orientationchange", update);
     return () => { window.removeEventListener("resize", update); window.removeEventListener("orientationchange", update); };
   }, []);
-  const showCards = isPhone && !phoneTable; // compact phone table (key columns + eye for details)
+  const showCards = isAdmin && isPhone && !phoneTable; // compact phone table (key columns + eye for details)
   const [detailRow, setDetailRow] = useState<SummaryRow | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -285,7 +296,14 @@ export function SummarySheetReport() {
     });
   }, [baseRows, closedFilter, erpFilter, firmFilter, from, itemFilter, partyFilter, productionById, statusFilter, to]);
 
-  const selectedColumns = useMemo(() => visibleColumns.filter((index) => index >= 0 && index < COLUMNS.length), [visibleColumns]);
+  const selectedColumns = useMemo(() => {
+    if (!isAdmin) {
+      const allowed = new Set(userColumnNames || []);
+      return COLUMNS.map((_, index) => index).filter((index) => index === 0 || allowed.has(COLUMNS[index]));
+    }
+    return visibleColumns.filter((index) => index >= 0 && index < COLUMNS.length);
+  }, [isAdmin, userColumnNames, visibleColumns]);
+  const [userColumnsOpen, setUserColumnsOpen] = useState(false);
   // Search matches the shown columns as the cells display them (Sl No skipped;
   // Job Closed only by its "Yes (date)" text, not the button).
   const rows = useTableSearch(filteredRows, search, (row) => selectedColumns.map((columnIndex) => {
@@ -386,16 +404,24 @@ export function SummarySheetReport() {
   const rowOffset = showAllRows ? 0 : (page - 1) * pageSize;
   const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
+  if (!isAdmin && (userSetup.loaded && !userColumnNames || serverReport.failed)) {
+    return <div className="space-y-4 pb-8">
+      <h2 className="border-b border-black pb-3 text-xl font-bold uppercase">Dashboard</h2>
+      <div className="rounded border-2 border-black bg-amber-50 p-6 text-center text-sm font-bold text-amber-900">
+        {serverReport.failed && userColumnNames ? "Dashboard could not be loaded. Please try again in a minute." : "Dashboard is not set up for you yet. Please contact Admin."}
+      </div>
+    </div>;
+  }
   return <div className="space-y-4 pb-8">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3">
-      <h2 className="text-xl font-bold uppercase">Summary Sheet</h2>
+      <h2 className="text-xl font-bold uppercase">{isAdmin ? "Summary Sheet" : "Dashboard"}</h2>
       <div data-header-action="true" className="grid w-full grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         {(from || to) ? <button type="button" onClick={() => { setFrom(""); setTo(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold hover:bg-slate-100">Clear Dates</button> : null}
       </div>
     </div>
-    {headerSlot ? createPortal(
+    {isAdmin && headerSlot ? createPortal(
       <button
         type="button"
         onClick={() => setShowTiles((value) => !value)}
@@ -407,9 +433,10 @@ export function SummarySheetReport() {
       </button>,
       headerSlot,
     ) : null}
-    {showTiles ? <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
-    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button><details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details></div>
-{isPhone ? <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-700">{rows.length.toLocaleString("en-IN")} jobs</span><button type="button" onClick={() => setPhoneTable((value) => !value)} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold">{phoneTable ? "Short table" : "Show full table"}</button></div> : null}
+    {isAdmin && showTiles ? <div className="grid grid-cols-1 items-start gap-2 lg:grid-cols-2">{tiles.map((section) => <SummaryTileGroup key={section.id} section={section} />)}</div> : null}
+    <div data-mf-panel="true" className="relative z-40 grid grid-cols-2 gap-2 rounded border border-black bg-white p-3 md:grid-cols-4 xl:grid-cols-6"><div className="relative col-span-2 xl:col-span-2"><Search className="absolute left-2 top-2.5 text-slate-500" size={16} /><input className="w-full rounded border border-black py-2 pl-8 pr-2" placeholder="Search" value={search} onChange={(event) => setSearch(event.target.value)} /></div><select className="rounded border border-black p-2" value={firmFilter} onChange={(event) => setFirmFilter(event.target.value)}><option value="">All Firms</option>{firms.map((firm) => <option key={firm.id} value={firm.firmName}>{getFirmDisplayName(firm)}</option>)}</select><select className="rounded border border-black p-2" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All Statuses</option>{filterOptions.statuses.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={closedFilter} onChange={(event) => setClosedFilter(event.target.value)}><option value="">All Closure</option><option value="Open">Open</option><option value="Closed">Closed</option></select><select className="rounded border border-black p-2" value={partyFilter} onChange={(event) => setPartyFilter(event.target.value)}><option value="">All Parties</option>{filterOptions.parties.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={itemFilter} onChange={(event) => setItemFilter(event.target.value)}><option value="">All Items</option>{filterOptions.items.map((v) => <option key={v}>{v}</option>)}</select><select className="rounded border border-black p-2" value={erpFilter} onChange={(event) => setErpFilter(event.target.value)}><option value="">All ERP</option>{filterOptions.erps.map((v) => <option key={v}>{v}</option>)}</select><button type="button" onClick={clearFilters} className="rounded border border-black px-3 py-2 font-bold">Clear Filters</button>{isAdmin ? <button type="button" onClick={() => setUserColumnsOpen(true)} className="rounded border border-black bg-indigo-700 px-3 py-2 font-bold text-white hover:bg-indigo-800">User Columns</button> : null}{isAdmin ? <details className="relative"><summary className="cursor-pointer rounded border border-black px-3 py-2 font-bold">Columns ({selectedColumns.length}/{COLUMNS.length})</summary><div className="absolute right-0 z-50 mt-1 max-h-96 w-72 overflow-auto rounded border-2 border-black bg-white p-3 shadow-lg"><div className="sticky -top-3 z-10 -mx-3 -mt-3 mb-2 flex gap-2 border-b border-black bg-white px-3 py-2"><button type="button" onClick={() => setVisibleColumns(COLUMNS.map((_, index) => index))} className="flex-1 rounded border-2 border-black bg-indigo-700 px-2 py-1 text-xs font-bold text-white hover:bg-indigo-800">Reset Columns</button><button type="button" onClick={() => setVisibleColumns([0, 1])} className="flex-1 rounded border-2 border-black bg-white px-2 py-1 text-xs font-bold hover:bg-slate-100">Hide All</button></div>{COLUMNS.map((column, index) => <label key={`${column}-${index}`} className="flex items-center gap-2 py-1 text-xs"><input type="checkbox" checked={selectedColumns.includes(index)} onChange={() => toggleColumn(index)} /><span>{column}</span></label>)}</div></details> : null}</div>
+    {isAdmin && userColumnsOpen ? <SummaryUserColumnsDialog onClose={() => setUserColumnsOpen(false)} /> : null}
+{isPhone && isAdmin ? <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold text-slate-700">{rows.length.toLocaleString("en-IN")} jobs</span><button type="button" onClick={() => setPhoneTable((value) => !value)} className="rounded border-2 border-black bg-white px-3 py-1.5 text-xs font-bold">{phoneTable ? "Short table" : "Show full table"}</button></div> : null}
 {showCards ? <div className="overflow-x-auto rounded border-2 border-black bg-white" data-disable-table-pagination="true"><table className="w-full border-collapse text-[11px]"><thead><tr className="bg-[#0b4773] text-left text-white">{["Job", "Party / Item", "Status", "Plan", "Disp.", "FG Left", ""].map((heading) => <th key={heading} className={`border border-black px-1.5 py-1.5 font-black ${["Plan", "Disp.", "FG Left"].includes(heading) ? "text-right" : ""}`}>{heading}</th>)}</tr></thead><tbody>{pagedRows.length ? pagedRows.map((row, index) => { const dispatched = valueForColumn(row, COLUMNS.indexOf("Dispatched Qty"), 0); return <tr key={`${row["Job No."]}-m-${index}`} className="align-top">
   <td className={`border border-black px-1.5 py-1 font-black ${summarySheetCellClass("Job No.", row)}`}><div className="whitespace-nowrap">{valueForColumn(row, COLUMNS.indexOf("Job No."), 0)}</div><div className="whitespace-nowrap text-[9px] font-semibold">{displayDate(row.Date)}</div></td>
   <td className="border border-black px-1.5 py-1"><div className="line-clamp-2 font-bold">{s(row["Party Name"]) || "—"}</div><div className="line-clamp-2 text-[10px] text-slate-600">{s(row["Item Name"]) || "—"}</div></td>
@@ -458,4 +485,90 @@ function SummaryTileGroup({ section }: { section: SummaryTileSection }) {
       </div>
     </section>
   );
+}
+
+/** Admin: choose which Summary Sheet columns each user sees on their "Dashboard". */
+function SummaryUserColumnsDialog({ onClose }: { onClose: () => void }) {
+  const [users] = useData<any>("users", [], { firmScope: "all" });
+  const setup = useSummarySheetUserColumns();
+  const [userIds, setUserIds] = useState<string[]>([]);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const choosable = COLUMNS.slice(1); // Sl No is always shown
+  const userOptions = useMemo(() => users
+    .filter((entry: any) => entry?.id && entry.role !== "Admin" && entry.role !== "TruckDriver")
+    .map((entry: any) => ({ value: String(entry.id), label: `${entry.name || entry.userId || entry.id}${entry.userId && entry.name ? ` (${entry.userId})` : ""}${entry.status === "Inactive" ? " – Inactive" : ""}`, searchText: `${entry.name || ""} ${entry.userId || ""} ${entry.mobile || ""}` }))
+    .sort((a: any, b: any) => a.label.localeCompare(b.label)), [users]);
+  const userLabel = (id: string) => userOptions.find((option: any) => option.value === id)?.label || id;
+  const configured = Object.entries(setup.users || {}).sort((a, b) => userLabel(a[0]).localeCompare(userLabel(b[0])));
+  // Picking users loads the first one's setup, so it can be checked and changed.
+  const chooseUsers = (ids: string[]) => {
+    setUserIds(ids);
+    setMessage("");
+    if (ids.length && !userIds.length) setColumns(setup.users?.[ids[0]] || []);
+    if (!ids.length) setColumns([]);
+  };
+  const toggle = (column: string) => setColumns((current) => current.includes(column) ? current.filter((entry) => entry !== column) : [...current, column]);
+  const save = async (nextColumns: string[]) => {
+    if (!userIds.length) { setMessage("Select at least one user."); return; }
+    setSaving(true);
+    setMessage("");
+    try {
+      const token = localStorage.getItem("authToken") || "";
+      const response = await fetch("/api/summary-sheet-user-columns", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userIds, columns: COLUMNS.filter((column) => nextColumns.includes(column)) }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Unable to save.");
+      await refreshSummarySheetUserColumns();
+      setColumns(nextColumns);
+      setMessage(nextColumns.length ? `Saved for ${userIds.length} user${userIds.length > 1 ? "s" : ""}.` : `Dashboard removed for ${userIds.length} user${userIds.length > 1 ? "s" : ""}.`);
+    } catch (error) {
+      setMessage((error as Error).message || "Unable to save.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 p-3" onClick={onClose}>
+    <div className="flex max-h-[92vh] w-full max-w-4xl flex-col rounded border-2 border-black bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+      <div className="flex items-center justify-between border-b-2 border-black px-4 py-3">
+        <div><div className="text-lg font-black uppercase">User Columns (Dashboard)</div><div className="text-xs font-semibold text-slate-600">Users see only the filters and the table, with the columns ticked here. No setup = no Dashboard.</div></div>
+        <button type="button" onClick={onClose} className="rounded border-2 border-black px-3 py-1 text-sm font-bold hover:bg-slate-100">Close</button>
+      </div>
+      <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-4 md:grid-cols-[1fr_260px]">
+        <div className="min-w-0 space-y-3">
+          <div><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Users</span><MultiSelect value={userIds} onChange={chooseUsers} options={userOptions} placeholder="Select users..." /></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-black uppercase text-slate-700">Columns: {columns.length} shown / {choosable.length - columns.length} hidden</span>
+            <button type="button" onClick={() => setColumns([...choosable])} className="rounded border-2 border-black px-2 py-1 text-xs font-bold hover:bg-slate-100">Select all</button>
+            <button type="button" onClick={() => setColumns([])} className="rounded border-2 border-black px-2 py-1 text-xs font-bold hover:bg-slate-100">Clear</button>
+          </div>
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+            {choosable.map((column) => {
+              const shown = columns.includes(column);
+              return <label key={column} className={`flex cursor-pointer items-center justify-between gap-2 rounded border px-2 py-1.5 text-xs ${shown ? "border-emerald-600 bg-emerald-50" : "border-slate-300 bg-white"}`}>
+                <span className="flex min-w-0 items-center gap-2"><input type="checkbox" checked={shown} onChange={() => toggle(column)} className="accent-emerald-600" /><span className="truncate font-semibold">{column}</span></span>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black uppercase ${shown ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"}`}>{shown ? "Shown" : "Hidden"}</span>
+              </label>;
+            })}
+          </div>
+          {columns.length && !columns.includes("Job Closed") ? <div className="text-[11px] font-semibold text-slate-600">Tip: tick "Job Closed" if these users should be able to Close / Unclose jobs.</div> : null}
+        </div>
+        <div className="min-w-0">
+          <div className="mb-1 text-[10px] font-black uppercase tracking-wide text-slate-600">Users with a Dashboard ({configured.length})</div>
+          <div className="space-y-1">
+            {configured.length ? configured.map(([id, list]) => <button key={id} type="button" onClick={() => { setUserIds([id]); setColumns(list); setMessage(""); }} className={`flex w-full items-center justify-between gap-2 rounded border px-2 py-1.5 text-left text-xs hover:bg-slate-50 ${userIds.length === 1 && userIds[0] === id ? "border-indigo-700 bg-indigo-50" : "border-slate-300"}`}><span className="truncate font-bold">{userLabel(id)}</span><span className="shrink-0 font-black text-emerald-700">{list.length} cols</span></button>) : <div className="text-xs text-slate-500">No user has a Dashboard yet.</div>}
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t-2 border-black px-4 py-3">
+        {message ? <span className="mr-auto text-xs font-bold text-slate-700">{message}</span> : null}
+        <button type="button" disabled={saving || !userIds.length} onClick={() => void save([])} className="rounded border-2 border-red-700 px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-40">Remove Dashboard</button>
+        <button type="button" disabled={saving || !userIds.length || !columns.length} onClick={() => void save(columns)} className="rounded border-2 border-black bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-40">{saving ? "Saving…" : `Save for ${userIds.length || 0} user${userIds.length === 1 ? "" : "s"}`}</button>
+      </div>
+    </div>
+  </div>;
 }

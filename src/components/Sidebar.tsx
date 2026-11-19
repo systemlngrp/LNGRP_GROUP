@@ -30,6 +30,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { cn } from "../lib/utils";
+import { useSummarySheetUserColumns } from "../hooks/useSummarySheetUserColumns";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -486,7 +487,17 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
   // Menu items show no counts: the menu no longer asks the server for pending
   // counts (that ran ~25 count queries on every change across the app).
 
+  // Users other than Admin see the Summary Sheet as "Dashboard", and only once Admin has set their columns.
+  const summarySheetSetup = useSummarySheetUserColumns(Boolean(user) && user?.role !== "Admin" && user?.role !== "TruckDriver");
   const navigation = useMemo<NavGroup[]>(() => {
+    if (user?.role !== "Admin" && user?.role !== "TruckDriver" && user?.role !== "Operator") {
+      const renameEntries = (entries: NavEntry[]): NavEntry[] => entries.flatMap<NavEntry>((entry) => {
+        if (isNavSubGroup(entry)) return [{ ...entry, items: renameEntries(entry.items) }];
+        if (entry.href !== "/reports/summary-sheet") return [entry];
+        return summarySheetSetup.columns ? [{ ...entry, name: "Dashboard" }] : [];
+      });
+      return NAVIGATION_FOR_STANDARD_USERS.map((group) => ({ ...group, items: renameEntries(group.items) }));
+    }
     if (user?.role === "TruckDriver") {
       return [
         {
@@ -509,7 +520,7 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
         ],
       },
     ];
-  }, [user?.role]);
+  }, [user?.role, summarySheetSetup.columns]);
 
   const getVisibleEntries = useCallback(
     (entries: NavEntry[]): NavEntry[] =>
@@ -520,10 +531,12 @@ export function Sidebar({ isOpen, onClose, isCollapsed }: SidebarProps) {
           return visible;
         }
 
-        if (entry.disabled || hasAccess(entry.href)) visible.push(entry);
+        // A Dashboard setup by Admin also gives access to it (no separate menu permission needed).
+        const dashboardGranted = entry.href === "/reports/summary-sheet" && user?.role !== "Admin" && Boolean(summarySheetSetup.columns);
+        if (entry.disabled || hasAccess(entry.href) || dashboardGranted) visible.push(entry);
         return visible;
       }, []),
-    [hasAccess]
+    [hasAccess, summarySheetSetup.columns, user?.role]
   );
   const filteredNavigation = useMemo<NavGroup[]>(() => {
     const q = menuSearchTerm.trim().toLowerCase();
