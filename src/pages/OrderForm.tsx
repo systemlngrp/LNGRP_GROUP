@@ -755,6 +755,10 @@ export function OrderForm() {
 
       {isFormOpen && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-lg border border-slate-200 space-y-6 max-w-4xl mx-auto">
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => { setIsFormOpen(false); resetForm(); navigate("/orders/master"); }} className="bg-white text-black border border-slate-300 px-6 py-2 rounded-md font-semibold">Cancel</button>
+            <button type="submit" disabled={isSubmitting} className="bg-emerald-600 text-white px-6 py-2 rounded-md font-semibold shadow">{isSubmitting ? <Spinner /> : "Save"}</button>
+          </div>
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Firm <span className="text-red-500">*</span></label>
@@ -875,10 +879,6 @@ export function OrderForm() {
             </div>
           </div>
 
-          <div className="flex gap-3 pt-2">
-            <button type="submit" disabled={isSubmitting} className="bg-emerald-600 text-white px-6 py-2 rounded-md font-semibold shadow">{isSubmitting ? <Spinner /> : "Save"}</button>
-            <button type="button" onClick={() => { setIsFormOpen(false); resetForm(); navigate("/orders/master"); }} className="bg-white text-black border border-slate-300 px-6 py-2 rounded-md font-semibold">Cancel</button>
-          </div>
         </form>
       )}
 
