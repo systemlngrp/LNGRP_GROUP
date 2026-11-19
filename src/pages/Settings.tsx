@@ -1113,7 +1113,7 @@ export function SettingsPage() {
           <div>
             <h3 className="text-sm font-black uppercase text-indigo-900">Order PO Update Access</h3>
             <p className="mt-1 text-sm leading-6 text-black">
-              Selected users (and Admins) can change an order's <span className="font-bold">PO Type</span> and <span className="font-bold">PO Number</span> from Orders Master at any stage. Ref No. needs a PO Number; Verbal keeps the order's Verbal number or gets the next one of its financial year.
+              Selected users (and Admins) can change an order's <span className="font-bold">PO Type</span> (Verbal / Ref No.) from Orders Master at any stage. The PO Number is not edited; switching to Verbal gives the next Verbal number of the order's financial year.
             </p>
           </div>
           <div className="max-h-64 space-y-2 overflow-y-auto rounded border border-black bg-white p-3">

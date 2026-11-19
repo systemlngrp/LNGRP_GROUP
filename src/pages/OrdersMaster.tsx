@@ -66,7 +66,6 @@ export function OrdersMaster() {
   const [poOverrides, setPoOverrides] = useState<Record<string, { poType: string; poNumber: string }>>({});
   const savePo = async () => {
     if (!poEdit) return;
-    if (poEdit.poType === "Ref No." && !poEdit.poNumber.trim()) { setPoError("Enter the PO Number."); return; }
     setPoSaving(true); setPoError("");
     try {
       const token = localStorage.getItem("authToken") || "";
@@ -475,7 +474,7 @@ export function OrdersMaster() {
                   <td className="border border-black px-3 py-2">
                     <div className="flex items-start justify-between gap-2">
                       <div><div className="whitespace-nowrap font-semibold">{poOverrides[row.order.id]?.poNumber ?? row.order.poNumber}</div><div className="text-[10px] font-bold uppercase text-slate-500">{poOverrides[row.order.id]?.poType ?? row.order.poType ?? ""}</div></div>
-                      {canUpdatePo ? <button type="button" title="Update PO Type / PO Number" aria-label="Update PO" onClick={() => { const current = poOverrides[row.order.id]; setPoError(""); setPoEdit({ order: row.order, poType: ((current?.poType ?? row.order.poType) === "Ref No." ? "Ref No." : "Verbal"), poNumber: String(current?.poNumber ?? row.order.poNumber ?? "") }); }} className="rounded border border-slate-400 p-1 text-slate-600 hover:bg-slate-100"><Pencil size={13} /></button> : null}
+                      {canUpdatePo ? <button type="button" title="Update PO Type" aria-label="Update PO" onClick={() => { const current = poOverrides[row.order.id]; setPoError(""); setPoEdit({ order: row.order, poType: ((current?.poType ?? row.order.poType) === "Ref No." ? "Ref No." : "Verbal"), poNumber: String(current?.poNumber ?? row.order.poNumber ?? "") }); }} className="rounded border border-slate-400 p-1 text-slate-600 hover:bg-slate-100"><Pencil size={13} /></button> : null}
                     </div>
                   </td>
                   <td className="border border-black px-3 py-2 text-right">{formatAmount(toNumber(row.order.qty))}</td>
@@ -496,15 +495,13 @@ export function OrdersMaster() {
       {poEdit ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4" onClick={() => { if (!poSaving) setPoEdit(null); }}>
           <div className="w-full max-w-md rounded border-2 border-black bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <h3 className="text-lg font-black uppercase">Update PO</h3>
+            <h3 className="text-lg font-black uppercase">Update PO Type</h3>
             <p className="mt-1 text-sm text-slate-600">Order <span className="font-bold text-black">{poEdit.order.orderNo}</span></p>
             <div className="mt-4 text-sm font-bold">PO Type</div>
             <div className="mt-1 flex gap-2">
-              {(["Verbal", "Ref No."] as const).map((type) => <button key={type} type="button" onClick={() => setPoEdit((current) => current ? { ...current, poType: type, poNumber: type === "Ref No." && current.poType !== "Ref No." ? "" : current.poNumber } : current)} className={`rounded border-2 px-4 py-2 text-sm font-bold ${poEdit.poType === type ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white"}`}>{type}</button>)}
+              {(["Verbal", "Ref No."] as const).map((type) => <button key={type} type="button" onClick={() => setPoEdit((current) => current ? { ...current, poType: type } : current)} className={`rounded border-2 px-4 py-2 text-sm font-bold ${poEdit.poType === type ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white"}`}>{type}</button>)}
             </div>
-            <label className="mt-4 block text-sm font-bold">PO Number {poEdit.poType === "Ref No." ? <span className="text-red-600">*</span> : null}
-              <input value={poEdit.poType === "Verbal" && poEdit.order.poType !== "Verbal" ? "" : poEdit.poNumber} disabled={poEdit.poType === "Verbal"} placeholder={poEdit.poType === "Verbal" ? (poEdit.order.poType === "Verbal" ? "" : "Next Verbal number is given on save") : "Customer's PO number"} onChange={(event) => setPoEdit((current) => current ? { ...current, poNumber: event.target.value } : current)} className="mt-1 w-full rounded border-2 border-black px-3 py-2 text-sm font-normal disabled:bg-slate-100" />
-            </label>
+            <p className="mt-3 text-xs text-slate-600">{poEdit.poType === "Verbal" && poEdit.order.poType !== "Verbal" ? "Switching to Verbal gives the order the next Verbal PO number of its financial year." : "The PO Number stays as it is."}</p>
             {poError ? <div className="mt-3 rounded border border-red-600 bg-red-50 p-2 text-sm font-bold text-red-700">{poError}</div> : null}
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" disabled={poSaving} onClick={() => setPoEdit(null)} className="rounded border-2 border-black px-4 py-2 text-sm font-bold disabled:opacity-50">Cancel</button>

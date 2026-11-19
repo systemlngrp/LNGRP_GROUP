@@ -15398,7 +15398,7 @@ app.post("/api/invoices/:id/manual-tally", async (req, res) => {
         return res.status(500).json({ error: "Unable to post the invoice." });
     }
 });
-// Orders Master: change an order's PO Type / PO Number at any stage. Admin, and the
+// Orders Master: change an order's PO Type at any stage. Admin, and the
 // users ticked in Settings (orderPoUpdateUsers), only.
 app.post("/api/orders/:id/po", async (req, res) => {
     const user = await getRequestUser(req).catch(() => null);
@@ -15427,12 +15427,13 @@ app.post("/api/orders/:id/po", async (req, res) => {
         let poNumber = String(req.body?.poNumber || "").trim();
         if (poType !== "Verbal" && poType !== "Ref No.")
             return res.status(400).json({ error: "PO Type must be Verbal or Ref No." });
-        if (poType === "Ref No." && !poNumber)
-            return res.status(400).json({ error: "PO Number is required for Ref No." });
         const [orderRows] = await db.query("SELECT id, orderDate, poType, poNumber FROM `orders` WHERE id = ? LIMIT 1", [orderId]);
         const order = orderRows[0];
         if (!order)
             return res.status(404).json({ error: "Order not found." });
+        // PO Type only: Ref No. keeps the order's PO Number as it is.
+        if (poType === "Ref No.")
+            poNumber = String(order.poNumber || "").trim();
         if (poType === "Verbal") {
             // Keep the order's own Verbal number; otherwise the next Verbal number of its financial year.
             if (order.poType === "Verbal" && String(order.poNumber || "").trim())
