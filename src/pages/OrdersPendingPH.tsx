@@ -9,7 +9,7 @@ import { Order } from "../types";
 import { formatDate } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
-import { CheckCircle, XCircle, Edit, Search } from "lucide-react";
+import { CheckCircle, XCircle, Search } from "lucide-react";
 import { Firm } from "../types";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { TableActionCell } from "../components/TableActionCell";
@@ -362,15 +362,6 @@ export function OrdersPendingPH() {
                       className="text-emerald-600 hover:text-emerald-800 transition-colors"
                     >
                       <CheckCircle size={20} />
-                    </button>
-                    <button 
-                      data-action="edit"
-                      onClick={() => navigate(`/orders/form?edit=${o.id}`)} 
-                      title="Edit"
-                      aria-label="Edit"
-                      className="text-slate-600 hover:text-slate-900 transition-colors"
-                    >
-                      <Edit size={20} />
                     </button>
                     <button
                       data-action="reject"
