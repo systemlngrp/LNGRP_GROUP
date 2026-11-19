@@ -1,7 +1,7 @@
 import { displayJobNo } from "../lib/jobNumber";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Eye, Save } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Select } from "../components/Select";
 import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
@@ -67,6 +67,17 @@ export function CoaForm() {
     const nextTemplate = nextContext.company ? activeTemplateForCompany(templates, nextContext.company.id) : undefined;
     setEditingRecord(null); setProductionId(nextProductionId); setTemplateId(nextTemplate?.id || ""); setLayout(nextTemplate?.layout || defaultCoaLayout()); setHeaderData(buildCoaSourceMap(nextContext)); setCellValues(nextTemplate ? buildInitialCellValues(nextTemplate.layout, buildCoaSourceMap(nextContext)) : {}); setMessage(nextTemplate ? "" : "No active COA template is configured for this customer company.");
   };
+  // ?productionId= (PDI Report → Generate COA) opens the form with that job selected.
+  const [searchParams] = useSearchParams();
+  const presetDone = useRef(false);
+  useEffect(() => {
+    const preset = searchParams.get("productionId");
+    if (id || presetDone.current || !preset || productionId) return;
+    if (!productions.some((value) => value.id === preset) || !companies.length || !templates.length) return;
+    presetDone.current = true;
+    selectJob(preset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, searchParams, productions, companies, templates, productionId]);
   const updateHeader = (key: string, value: string) => setHeaderData((current) => ({ ...current, [key]: value }));
   const updateCell = (cellId: string, value: string) => setCellValues((current) => ({ ...current, [cellId]: { ...(current[cellId] || {}), value, source: "manual" } }));
   const buildRecord = (): CoaRecord | null => {

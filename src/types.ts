@@ -1956,6 +1956,8 @@ export interface Setting {
   poMandatoryMrrTypes?: string;
   /** PDI passes when CS Achieved >= CS Std x (1 + this % / 100). Blank = 10. */
   pdiCsMarginPercent?: number | string | null;
+  /** JSON { "<ply>": <tolerance mm> } for PDI Achieved L/W/H (PDI Report). */
+  pdiPlyTolerance?: string | null;
   realizationPerKgTargets?: string;
   invoiceNumberSeries?: string;
   mandatoryMachinesByType?: string;

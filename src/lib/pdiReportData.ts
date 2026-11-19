@@ -64,10 +64,31 @@ export function findLatestInspection(
   return latest ? { ...latest, result: normalizeQcResult(latest.result) } : undefined;
 }
 
-export function dimensionRange(required: unknown, ply: unknown): { min: string | number; max: string | number } {
+/** PDI dimension tolerance (mm) per ply, from Settings (default: 3 ply = 3, 5 ply = 5). */
+export type PlyTolerances = Map<number, number>;
+export const DEFAULT_PLY_TOLERANCES: Record<string, number> = { "3": 3, "5": 5 };
+export function parsePdiPlyTolerances(setting?: { pdiPlyTolerance?: unknown } | null): PlyTolerances {
+  let raw: unknown = DEFAULT_PLY_TOLERANCES;
+  try {
+    const saved = text(setting?.pdiPlyTolerance);
+    if (saved) raw = JSON.parse(saved);
+  } catch { /* keep the default */ }
+  const map: PlyTolerances = new Map();
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    Object.entries(raw as Record<string, unknown>).forEach(([ply, tolerance]) => {
+      const p = Number(ply); const t = Number(tolerance);
+      if (Number.isFinite(p) && p > 0 && Number.isFinite(t) && t >= 0) map.set(p, t);
+    });
+  }
+  return map;
+}
+
+/** Required ± tolerance for the ply (a ply not set in Settings uses its ply number, as before). */
+export function dimensionRange(required: unknown, ply: unknown, tolerances?: PlyTolerances): { min: string | number; max: string | number } {
   if (!text(required) || !text(ply)) return { min: "", max: "" };
   const size = Number(required);
-  const tolerance = Number(ply);
+  const plyNumber = Number(ply);
+  const tolerance = tolerances?.get(plyNumber) ?? plyNumber;
   if (!Number.isFinite(size) || !Number.isFinite(tolerance)) return { min: "", max: "" };
   return { min: size - tolerance, max: size + tolerance };
 }
@@ -86,13 +107,14 @@ export function buildPdiReportRow(
   printing?: PrintingQcCheck,
   previousCustomerComplaint?: string,
   csMarginPercent?: number,
+  plyTolerances?: PlyTolerances,
 ): PdiReportRow {
   const requiredLength = item?.lengthId;
   const requiredWidth = item?.breadthId;
   const requiredHeight = item?.heightId;
-  const lengthRange = dimensionRange(requiredLength, item?.ply);
-  const widthRange = dimensionRange(requiredWidth, item?.ply);
-  const heightRange = dimensionRange(requiredHeight, item?.ply);
+  const lengthRange = dimensionRange(requiredLength, item?.ply, plyTolerances);
+  const widthRange = dimensionRange(requiredWidth, item?.ply, plyTolerances);
+  const heightRange = dimensionRange(requiredHeight, item?.ply, plyTolerances);
   const achievedCs = text(inspection?.csAchieved);
   const standardCs = resolveCsStandard(item?.csKgStd, inspection?.csRequired);
 

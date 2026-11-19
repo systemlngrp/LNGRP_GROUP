@@ -9885,6 +9885,7 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "roles", type: "LONGTEXT" },
                 { table: "settings", column: "poMandatoryMrrTypes", type: "LONGTEXT" },
                 { table: "settings", column: "pdiCsMarginPercent", type: "DECIMAL(6,2) DEFAULT 10" },
+                { table: "settings", column: "pdiPlyTolerance", type: "TEXT" },
                 { table: "settings", column: "samplingPlanQtyDivisor", type: "DECIMAL(15,2) DEFAULT 2000" },
                 { table: "settings", column: "samplingPlanQtyMin", type: "INT DEFAULT 2" },
                 { table: "settings", column: "samplingPlanQtyMax", type: "INT DEFAULT 4" },
