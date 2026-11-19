@@ -1046,7 +1046,7 @@ export function SettingsPage() {
           <div>
             <h3 className="text-sm font-black uppercase text-indigo-900">Global Table Resize Access</h3>
             <p className="mt-1 text-sm leading-6 text-black">
-              Selected users can resize table columns. Their saved widths are shared with every user of the system. Admins always retain access.
+              Selected users (and Admins) set the shared default column widths that every user sees. All other users can still resize columns for themselves only; double-clicking a column edge takes them back to the shared widths.
             </p>
           </div>
           <div className="max-h-64 space-y-2 overflow-y-auto rounded border border-black bg-white p-3">

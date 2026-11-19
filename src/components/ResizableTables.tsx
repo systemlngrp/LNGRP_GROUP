@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { getDataAuthHeaders, useData } from "../hooks/useData";
@@ -832,6 +832,7 @@ function addResizeHandles(
   sharedWidths: SharedTableWidths,
   canResize: boolean,
   onResize: (key: string, widths: number[]) => void,
+  onReset?: (key: string) => void,
 ) {
   table.classList.add("app-enhanced-table");
 
@@ -860,7 +861,7 @@ function addResizeHandles(
       // Handles removed by a re-render: install them again with the current widths.
       const currentWidths = Array.from(table.querySelectorAll<HTMLTableColElement>("colgroup[data-resizable-columns] col"))
         .map((column) => Number.parseFloat(column.style.width) || MIN_COLUMN_WIDTH);
-      installResizeHandles(table, headerRow, currentWidths, getActionColumnIndexes(table, columnCount), key, onResize);
+      installResizeHandles(table, headerRow, currentWidths, getActionColumnIndexes(table, columnCount), key, onResize, onReset);
     }
     return;
   }
@@ -883,7 +884,7 @@ function addResizeHandles(
     if (widths.length >= columnCount) applyColumnWidths(table, widths, actionColumns);
     if (!canResize) removeResizeHandles(table);
     else if (!table.querySelector(".app-table-column-resizer")) {
-      installResizeHandles(table, headerRow, widths, actionColumns, key, onResize);
+      installResizeHandles(table, headerRow, widths, actionColumns, key, onResize, onReset);
     }
     return;
   }
@@ -893,7 +894,7 @@ function addResizeHandles(
   applyColumnContentRules(table, columnCount, actionColumns);
   const widths = withColumnMinimums(table, getActionColumnWidths(table, getColumnWidths(table, headerRow, columnCount, sharedWidths), actionColumns));
   applyColumnWidths(table, widths, actionColumns);
-  if (canResize) installResizeHandles(table, headerRow, widths, actionColumns, key, onResize);
+  if (canResize) installResizeHandles(table, headerRow, widths, actionColumns, key, onResize, onReset);
 }
 
 function installResizeHandles(
@@ -903,6 +904,7 @@ function installResizeHandles(
   actionColumns: Set<number>,
   key: string,
   onResize: (key: string, widths: number[]) => void,
+  onReset?: (key: string) => void,
 ) {
   let columnIndex = 0;
   Array.from(headerRow.cells).forEach((cell) => {
@@ -921,6 +923,15 @@ function installResizeHandles(
     handle.className = "app-table-column-resizer";
     handle.setAttribute("role", "separator");
     handle.setAttribute("aria-label", `Resize ${cell.textContent?.trim() || "table"} column`);
+    if (onReset) {
+      handle.title = "Drag to resize. Double-click to reset this table's widths.";
+      handle.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        try { window.localStorage.removeItem(`${STORAGE_PREFIX}${key}`); } catch { /* storage blocked */ }
+        onReset(key);
+      });
+    }
     handle.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1090,10 +1101,47 @@ export function ResizableTables() {
   const setting = settings[0];
   const sharedWidths = parseSharedTableWidths(setting?.tableColumnWidths);
   const resizeUsers = parseResizeUsers(setting?.tableColumnResizeUsers);
-  const canResize = user?.role === "Admin" || resizeUsers.has(String(user?.id || ""));
+  // Admin and the users ticked in Settings change the shared widths (the default for
+  // everybody). Every other user can resize too; those widths are kept for that user only.
+  const canEditShared = user?.role === "Admin" || resizeUsers.has(String(user?.id || ""));
+  const canResize = Boolean(user) && user?.role !== "TruckDriver";
+  const [personalWidths, setPersonalWidths] = useState<SharedTableWidths>({});
+  const [personalVersion, setPersonalVersion] = useState(0);
+  useEffect(() => {
+    if (!user || canEditShared) { setPersonalWidths({}); return; }
+    let cancelled = false;
+    fetch("/api/my-table-column-widths", { headers: getDataAuthHeaders() })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        setPersonalWidths(parseSharedTableWidths(JSON.stringify(payload.widths || {})));
+        setPersonalVersion((version) => version + 1);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [user?.id, canEditShared]);
+  const effectiveWidths: SharedTableWidths = canEditShared ? sharedWidths : { ...sharedWidths, ...personalWidths };
+
+  const savePersonalWidths = async (key: string, widths: number[] | null) => {
+    setPersonalWidths((current) => {
+      const next = { ...current };
+      if (widths) next[key] = widths; else delete next[key];
+      return next;
+    });
+    setPersonalVersion((version) => version + 1);
+    try {
+      await fetch("/api/my-table-column-widths", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...getDataAuthHeaders() },
+        body: JSON.stringify({ key, widths }),
+      });
+    } catch (error) {
+      console.warn("Failed to save your table width:", error);
+    }
+  };
 
   const saveSharedWidths = async (key: string, widths: number[]) => {
-    if (!canResize) return;
+    if (!canEditShared) return;
     try {
       const response = await fetch("/api/table-column-widths", {
         method: "POST",
@@ -1113,7 +1161,11 @@ export function ResizableTables() {
 
     const enhance = () => {
       const tables = Array.from(content.querySelectorAll<HTMLTableElement>("table"));
-      tables.forEach((table, index) => addResizeHandles(table, location.pathname, index, sharedWidths, canResize, (key, widths) => { void saveSharedWidths(key, widths); }));
+      tables.forEach((table, index) => addResizeHandles(
+        table, location.pathname, index, effectiveWidths, canResize,
+        (key, widths) => { void (canEditShared ? saveSharedWidths(key, widths) : savePersonalWidths(key, widths)); },
+        canEditShared ? undefined : (key) => { void savePersonalWidths(key, null); },
+      ));
     };
 
     enhance();
@@ -1179,7 +1231,7 @@ export function ResizableTables() {
       if (timer !== null) clearTimeout(timer);
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [canResize, location.pathname, setting?.tableColumnWidths]);
+  }, [canResize, canEditShared, location.pathname, setting?.tableColumnWidths, personalVersion]);
 
   return null;
 }

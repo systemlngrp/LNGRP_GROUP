@@ -20119,6 +20119,68 @@ app.get("/api/sales-targets", async (req, res) => {
   }
 });
 
+// Each user's own table column widths (resized by that user only). Kept in a small
+// table of their own, so nobody else downloads them and a resize reloads nothing for others.
+let userTableWidthsReady = false;
+async function ensureUserTableWidths(db: mysql.Pool) {
+  if (userTableWidthsReady) return;
+  await db.query("CREATE TABLE IF NOT EXISTS `user_table_column_widths` (`userId` VARCHAR(64) NOT NULL PRIMARY KEY, `widths` LONGTEXT, `updateTimestamp` VARCHAR(50)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+  userTableWidthsReady = true;
+}
+async function readUserTableWidths(db: mysql.Pool, userId: string): Promise<Record<string, number[]>> {
+  await ensureUserTableWidths(db);
+  const [rows] = await db.query("SELECT widths FROM `user_table_column_widths` WHERE userId = ? LIMIT 1", [userId]);
+  try {
+    const parsed = JSON.parse(String((rows as any[])[0]?.widths || "{}"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+app.get("/api/my-table-column-widths", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ widths: await readUserTableWidths(db, String(user.id)) });
+  } catch (error) {
+    console.error("[my-table-column-widths] read failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to read column widths." });
+  }
+});
+// Body { key, widths } saves one table; widths null removes it (back to the shared widths).
+app.post("/api/my-table-column-widths", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  if (user.role === "TruckDriver") return res.status(403).json({ error: "Forbidden" });
+  const key = String(req.body?.key || "").trim();
+  const widths = req.body?.widths;
+  const removing = widths === null;
+  if (!key || key.length > 500 || (!removing && (!Array.isArray(widths) || widths.length === 0 || widths.length > 300 ||
+      !widths.every((value: unknown) => Number.isFinite(Number(value)) && Number(value) >= 40 && Number(value) <= 10000)))) {
+    return res.status(400).json({ error: "Invalid table column widths." });
+  }
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    const all = await readUserTableWidths(db, String(user.id));
+    if (removing) delete all[key]; else all[key] = (widths as unknown[]).map((value) => Math.round(Number(value)));
+    // Keep at most 400 tables per user.
+    const keys = Object.keys(all);
+    if (keys.length > 400) keys.slice(0, keys.length - 400).forEach((old) => delete all[old]);
+    await db.query(
+      "INSERT INTO `user_table_column_widths` (userId, widths, updateTimestamp) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE widths = VALUES(widths), updateTimestamp = VALUES(updateTimestamp)",
+      [String(user.id), JSON.stringify(all), new Date().toISOString()],
+    );
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("[my-table-column-widths] save failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to save column widths." });
+  }
+});
+
 app.post("/api/table-column-widths", async (req, res) => {
   const user = await getRequestUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
