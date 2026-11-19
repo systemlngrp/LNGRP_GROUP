@@ -11,6 +11,7 @@ import { User } from "../types";
 import { getFinancialYear } from "../lib/serial";
 import * as XLSX from "xlsx";
 import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
+import { useAuth } from "../auth/AuthContext";
 import {
   getOrderItemDisplayName,
   getOrderItemSourceLabel,
@@ -66,7 +67,12 @@ export function OrderForm() {
     const rateNumber = Number(rate || 0);
     return Number.isFinite(qtyNumber) && Number.isFinite(rateNumber) ? qtyNumber * rateNumber : 0;
   })();
+  // Order By is always the logged-in user (an edited order keeps its original Order By).
+  const { user: currentUser } = useAuth();
   const [orderBy, setOrderBy] = useState("");
+  useEffect(() => {
+    if (!editingId && currentUser?.id) setOrderBy(String(currentUser.id));
+  }, [currentUser?.id, editingId]);
   const [remarks, setRemarks] = useState("");
   const location = useLocation();
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -544,7 +550,7 @@ export function OrderForm() {
     setErpCode("");
     setQty("");
     setRate("");
-    setOrderBy("");
+    setOrderBy(currentUser?.id ? String(currentUser.id) : "");
     setRemarks("");
   };
 
@@ -869,7 +875,12 @@ export function OrderForm() {
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1">Order By <span className="text-red-500">*</span></label>
               <div className="w-full">
-                <Select value={orderBy} onChange={setOrderBy} options={userOptions} placeholder="Select user..." required />
+                <input
+                  value={users.find((entry) => entry.id === orderBy)?.name || (orderBy && orderBy === String(currentUser?.id || "") ? currentUser?.name || "" : "") || (orderBy ? "—" : "")}
+                  readOnly
+                  className="w-full border border-slate-300 rounded-md p-3 bg-slate-50 text-slate-700"
+                  title="Filled with the logged-in user"
+                />
               </div>
             </div>
 
