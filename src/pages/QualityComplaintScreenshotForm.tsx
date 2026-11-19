@@ -1,4 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
+import { optimizeImageForUpload } from "../lib/imageOptimize";
 import { Upload } from "lucide-react";
 import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
@@ -65,11 +66,15 @@ export function QualityComplaintScreenshotForm() {
 
   const uploadPhoto = async (photoKey: PhotoKey, file?: File) => {
     if (!file) return;
-    if (file.size > 10 * 1024 * 1024) return setMessage("Photo must be 10 MB or smaller.");
     setMessage("");
     setUploading((current) => ({ ...current, [photoKey]: true }));
     try {
-      const response = await fetch("/api/upload-artwork", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, base64: await fileDataUrl(file) }) });
+      const response = await fetch("/api/upload-artwork", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(await (async () => {
+        // Shrunk on the device first (1600 px JPEG, usually 200-400 KB), so large phone photos upload quickly.
+        const optimized = await optimizeImageForUpload(file);
+        if (optimized.bytes > 10 * 1024 * 1024) throw new Error("Photo must be 10 MB or smaller.");
+        return { filename: optimized.filename, base64: optimized.dataUrl };
+      })()) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Photo upload failed.");
       update(photoKey, result.filename || "");

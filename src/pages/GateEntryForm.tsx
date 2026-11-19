@@ -1,4 +1,5 @@
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { optimizeImageForUpload } from "../lib/imageOptimize";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Camera, Loader2, Trash2 } from "lucide-react";
 import { Select } from "../components/Select";
@@ -181,32 +182,26 @@ export function GateEntryForm() {
   const handlePhotoUpload = async (index: number, file?: File | null) => {
     if (!file) return;
     updateSlot(index, { uploading: true });
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        const token = window.localStorage.getItem("authToken");
-        const response = await fetch("/api/upload-artwork", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ base64: reader.result, filename: file.name }),
-        });
-        if (!response.ok) throw new Error("Upload failed");
-        const result = await response.json();
-        updateSlot(index, { filename: result.filename, uploading: false });
-      } catch (error) {
-        console.error("Failed to upload gate entry photo:", error);
-        updateSlot(index, { uploading: false, filename: "" });
-        alert("Failed to upload photo.");
-      }
-    };
-    reader.onerror = () => {
-      updateSlot(index, { uploading: false });
-      alert("Failed to read photo.");
-    };
-    reader.readAsDataURL(file);
+    try {
+      // Photos are shrunk on the device first (1600 px JPEG); PDFs are sent as they are.
+      const optimized = await optimizeImageForUpload(file);
+      const token = window.localStorage.getItem("authToken");
+      const response = await fetch("/api/upload-artwork", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ base64: optimized.dataUrl, filename: optimized.filename }),
+      });
+      if (!response.ok) throw new Error("Upload failed");
+      const result = await response.json();
+      updateSlot(index, { filename: result.filename, uploading: false });
+    } catch (error) {
+      console.error("Failed to upload gate entry photo:", error);
+      updateSlot(index, { uploading: false, filename: "" });
+      alert("Failed to upload photo. Check the internet and try again.");
+    }
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -354,7 +349,7 @@ export function GateEntryForm() {
                   </div>
                   <label className="flex w-full min-w-0 min-h-[56px] cursor-pointer overflow-hidden items-center gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-left transition hover:border-indigo-400 hover:bg-indigo-50/40 md:min-h-[84px] md:flex-col md:justify-center md:gap-1 md:rounded-xl md:border-dashed md:px-2 md:py-2 md:text-center">
                     {slot.uploading ? (
-                      <Loader2 className="animate-spin text-indigo-700" size={22} />
+                      <span className="inline-flex items-center gap-2 text-sm font-bold text-indigo-700 md:flex-col md:gap-1 md:text-xs"><Loader2 className="animate-spin" size={22} />Uploading…</span>
                     ) : (
                       <Camera size={22} className="shrink-0 text-slate-500" />
                     )}

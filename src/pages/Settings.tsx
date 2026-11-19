@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { optimizeImageForUpload } from "../lib/imageOptimize";
 import { getFirmDisplayName } from "../lib/firmDisplay";
 import { useData } from "../hooks/useData";
 import { Firm, Machine, OrderItemSource, Setting, User } from "../types";
@@ -811,10 +812,12 @@ export function SettingsPage() {
     }
 
     setUploadingLogo(true);
+    // Very large logos are shrunk (longest side 800 px) and kept as PNG so transparency stays.
+    const optimizedLogo = await optimizeImageForUpload(file, 800, 0.92, "png");
     const reader = new FileReader();
     reader.onload = async () => {
       try {
-        const base64 = reader.result as string;
+        const base64 = optimizedLogo.dataUrl;
         const token = window.localStorage.getItem("authToken");
         const response = await fetch("/api/upload-artwork", {
           method: "POST",
@@ -822,7 +825,7 @@ export function SettingsPage() {
             "Content-Type": "application/json",
             ...(token ? { "Authorization": `Bearer ${token}` } : {})
           },
-          body: JSON.stringify({ base64, filename: file.name }),
+          body: JSON.stringify({ base64, filename: optimizedLogo.filename }),
         });
 
         if (!response.ok) {

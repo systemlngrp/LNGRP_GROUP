@@ -34,7 +34,7 @@ const loadBitmap = async (file: File): Promise<ImageBitmap | HTMLImageElement> =
   }
 };
 
-export async function optimizeImageForUpload(file: File, maxSide = 1600, quality = 0.8): Promise<OptimizedImage> {
+export async function optimizeImageForUpload(file: File, maxSide = 1600, quality = 0.8, format: "jpeg" | "png" = "jpeg"): Promise<OptimizedImage> {
   const original = async (): Promise<OptimizedImage> => ({ dataUrl: await readAsDataUrl(file), filename: file.name || "photo", bytes: file.size, originalBytes: file.size, optimized: false });
   if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/svg+xml") return original();
   try {
@@ -48,14 +48,16 @@ export async function optimizeImageForUpload(file: File, maxSide = 1600, quality
     canvas.height = Math.max(1, Math.round(height * scale));
     const context = canvas.getContext("2d");
     if (!context) return original();
-    context.fillStyle = "#ffffff"; // transparent PNGs get a white background in JPEG
-    context.fillRect(0, 0, canvas.width, canvas.height);
+    if (format === "jpeg") {
+      context.fillStyle = "#ffffff"; // transparent PNGs get a white background in JPEG
+      context.fillRect(0, 0, canvas.width, canvas.height);
+    }
     context.drawImage(source as CanvasImageSource, 0, 0, canvas.width, canvas.height);
     if ("close" in source && typeof source.close === "function") source.close();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, `image/${format}`, quality));
     if (!blob || blob.size >= file.size) return original(); // already small: keep the original
     const baseName = (file.name || "photo").replace(/\.[^.]+$/, "") || "photo";
-    return { dataUrl: await readAsDataUrl(blob), filename: `${baseName}.jpg`, bytes: blob.size, originalBytes: file.size, optimized: true };
+    return { dataUrl: await readAsDataUrl(blob), filename: `${baseName}.${format === "png" ? "png" : "jpg"}`, bytes: blob.size, originalBytes: file.size, optimized: true };
   } catch {
     return original();
   }
