@@ -2,6 +2,7 @@ import { SheetMasterPage } from "./SheetMasterPage";
 import { PLATE_ITEM_MASTER_COLUMNS } from "../lib/sheetMasterConfigs";
 import { useData } from "../hooks/useData";
 import { buildFirmWisePhpPlateInventoryRows } from "../lib/phpPlateInventory";
+import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
 import type { Firm, LoadingSlip, Production } from "../types";
 
 const HIDDEN_PLATE_ITEM_MASTER_COLUMNS = new Set(["syncInItemMaster", "hostingerSync"]);
@@ -13,8 +14,9 @@ export function PlateItemMaster() {
   // Only the fields used for the stock total (see buildFirmWisePhpPlateInventoryRows).
   const [commonLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { fields: ["interFirmFlow", "sourceFirmId", "firmId", "destinationFirmId", "status", "lines"] });
   const [firms] = useData<Firm>("firms", []);
-  const firmColumns = firms.flatMap((firm) => [{ key: `firm_${firm.id}_production`, label: `${firm.firmName} Production` }, { key: `firm_${firm.id}_invoiced`, label: `${firm.firmName} Invoiced` }, { key: `firm_${firm.id}_balance`, label: `${firm.firmName} Balance` }]);
-  const firmRows = buildFirmWisePhpPlateInventoryRows(rows, jobs, [...standaloneLoadingSlips, ...commonLoadingSlips], firms, "PLATE").map((row) => Object.fromEntries([...Object.entries(row), ...firms.flatMap((firm) => { const stock = row.firmStocks?.[firm.id] || {}; return [[`firm_${firm.id}_production`, stock.production], [`firm_${firm.id}_invoiced`, stock.invoiced], [`firm_${firm.id}_balance`, stock.balance]]; })]));
+  const phpPlateReceipts = usePhpPlateReceipts();
+  const firmColumns = firms.flatMap((firm) => [{ key: `firm_${firm.id}_receipt`, label: `${firm.firmName} Purchase` }, { key: `firm_${firm.id}_production`, label: `${firm.firmName} Production` }, { key: `firm_${firm.id}_invoiced`, label: `${firm.firmName} Invoiced` }, { key: `firm_${firm.id}_balance`, label: `${firm.firmName} Balance` }]);
+  const firmRows = buildFirmWisePhpPlateInventoryRows(rows, jobs, [...standaloneLoadingSlips, ...commonLoadingSlips], firms, "PLATE", phpPlateReceipts).map((row) => Object.fromEntries([...Object.entries(row), ...firms.flatMap((firm) => { const stock: any = row.firmStocks?.[firm.id] || {}; return [[`firm_${firm.id}_receipt`, stock.receipt], [`firm_${firm.id}_production`, stock.production], [`firm_${firm.id}_invoiced`, stock.invoiced], [`firm_${firm.id}_balance`, stock.balance]]; })]));
 
   return (
     <SheetMasterPage

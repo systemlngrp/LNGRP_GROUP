@@ -38,6 +38,7 @@ import { canManageMasterRecords } from "../lib/masterPermissions";
 import { isDirectLoadingSlip, resolveLoadingSlipLineContext, summarizeLoadingSlip } from "../lib/loadingSlipContext";
 import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
+import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
 
 function getSlipNoSortValue(slipNo: string) {
   const value = String(slipNo || "").trim();
@@ -46,6 +47,7 @@ function getSlipNoSortValue(slipNo: string) {
 }
 
 export function LoadingMaster() {
+  const phpPlateReceipts = usePhpPlateReceipts();
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
   const confirm = useConfirm();
@@ -379,6 +381,7 @@ export function LoadingMaster() {
       phpLoadingSlips,
       plateLoadingSlips,
       parentFgLoadingId: original.id,
+      receipts: phpPlateReceipts,
     });
     if (shortages.length > 0) {
       alert(buildPhpPlateStockAlertMessage(shortages));

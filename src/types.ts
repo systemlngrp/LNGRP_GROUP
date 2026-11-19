@@ -131,6 +131,8 @@ export interface MaterialLine {
   itemId: string;
   itemName?: string;
   npdId?: string;
+  /** FG Purchase / Rejection In lines: which master the item is from (FG = NPD, PHP, PLATE). */
+  itemSource?: "FG" | "PHP" | "PLATE";
   lineType?: "Material" | "Service";
   serviceId?: string;
   serviceName?: string;

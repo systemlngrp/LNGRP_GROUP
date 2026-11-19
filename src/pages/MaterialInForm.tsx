@@ -34,6 +34,7 @@ import { Spinner } from "../components/Spinner";
 import { Select } from "../components/Select";
 import * as XLSX from "xlsx";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
+import { normalizeOrderCatalogItem, type OrderCatalogItem } from "../lib/orderItems";
 import { applySupplyTypeTaxRates, calculateNetSupplierPayable, normalizeInvoiceCurrency, normalizeTdsAmount, recalculateMaterialLine, summarizeMaterialInLines, validateTdsAmount } from "../lib/materialInTaxes";
 import { getGatePassLinesWithReturns } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
@@ -175,6 +176,11 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const [gateEntries, setGateEntries] = useData<GateEntry>("gate-entries", []);
   const [gatePasses] = useData<GatePass>("gate_passes", []);
   const [materials, setMaterials] = useData<Material>("materials", []);
+  // FG / PHP / Plate lines take GST % from their own master (NPD, PHP or Plate Item Master).
+  const resolveCatalogGstRate = (item: any) => {
+    const rate = Number(item?.gstRate ?? item?.raw?.gstRate ?? item?.raw?.gst);
+    return Number.isFinite(rate) && rate >= 0 ? rate : 0;
+  };
   const resolveMaterialGstRate = (materialId: string) => {
     const rate = Number(materials.find((material) => material.id === materialId)?.gstRate);
     return Number.isFinite(rate) && rate >= 0 ? rate : 0;
@@ -184,6 +190,13 @@ export function MaterialInForm({ directService = false }: { directService?: bool
   const [units] = useData<UnitMaster>("units", []);
   const [colors] = useData<ColorMaster>("color_masters", []);
   const npdItems = useNpdItemsWithoutStock();
+  // FG Purchase can also buy PHP / Plate items (each line keeps its itemSource, like the Order Form).
+  const [phpItemRows] = useData<any>("php_item_master", [], { firmScope: "all" });
+  const [plateItemRows] = useData<any>("plate_item_master", [], { firmScope: "all" });
+  const phpPlateItems = useMemo(() => ({
+    PHP: phpItemRows.map((row) => normalizeOrderCatalogItem(row, "PHP")).filter(Boolean) as OrderCatalogItem[],
+    PLATE: plateItemRows.map((row) => normalizeOrderCatalogItem(row, "PLATE")).filter(Boolean) as OrderCatalogItem[],
+  }), [phpItemRows, plateItemRows]);
   const [suppliers] = useData<Supplier>("suppliers", []);
   const [companies] = useData<Company>("companies", []);
   const [gstRateMasters] = useData<GstRateMaster>("gst_rate_masters", []);
@@ -215,6 +228,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
   const [lines, setLines] = useState<MaterialLine[]>([]);
   const [currentItemId, setCurrentItemId] = useState("");
+  const [currentItemSource, setCurrentItemSource] = useState<"FG" | "PHP" | "PLATE">("FG");
   const [currentSourceGatePassLineId, setCurrentSourceGatePassLineId] = useState("");
   const [currentQty, setCurrentQty] = useState<number | "">("");
   const [currentReceiptQty, setCurrentReceiptQty] = useState<number | "">("");
@@ -334,6 +348,16 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
   const materialOptions = useMemo(
     () => {
+      if (isFgType && mrrType === "FG Purchase" && currentItemSource !== "FG") {
+        return phpPlateItems[currentItemSource]
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((item) => ({
+            value: item.id,
+            label: `${item.name}${item.erp ? ` (${item.erp})` : ""}`,
+            searchText: `${item.name} ${item.erp}`,
+          }));
+      }
       if (isFgType) {
         return npdItems
           .sort((a, b) => a.name.localeCompare(b.name))
@@ -351,7 +375,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
           label: `${material.name}${material.erpCode ? ` (${material.erpCode})` : ""}`,
         }));
     },
-    [materials, npdItems, mrrType, isFgType]
+    [materials, npdItems, mrrType, isFgType, currentItemSource, phpPlateItems]
   );
 
   const serviceOptions = useMemo(
@@ -602,8 +626,10 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     hasAutoFilledServiceReturnRef.current = true;
   }, [editingEntry, isInterState, linkedGateEntry, linkedSourceGatePass, pendingGatePassLines, services]);
 
-  const getMaterial = (materialId: string) => {
+  const getMaterial = (materialId: string, itemSource?: string) => {
     if (isServiceReturn) return services.find((service) => service.id === materialId);
+    const source = String(itemSource || "").toUpperCase();
+    if (isFgType && (source === "PHP" || source === "PLATE")) return phpPlateItems[source].find((item) => item.id === materialId);
     if (isFgType) return npdItems.find((item) => item.id === materialId);
     return materials.find((material) => material.id === materialId);
   };
@@ -614,6 +640,11 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     }
 
     if (isFgType) {
+      const source = String(line.itemSource || "").toUpperCase();
+      if (source === "PHP" || source === "PLATE") {
+        const name = line.itemName || phpPlateItems[source].find((item) => item.id === line.itemId)?.name || "Unknown";
+        return `${source === "PHP" ? "PHP" : "Plate"} – ${name}`;
+      }
       return line.itemName || npdItems.find((item) => item.id === line.itemId)?.name || "Unknown";
     }
 
@@ -674,23 +705,25 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     return Boolean(selectedPartyName && orderPartyName && selectedPartyName === orderPartyName);
   };
 
-  const getMaterialErpCode = (materialId: string) => {
-    const item = getMaterial(materialId);
+  const getMaterialErpCode = (materialId: string, itemSource?: string) => {
+    const item = getMaterial(materialId, itemSource);
     if (!item) return "";
     if ("erpCode" in item) return normalizeMatchText((item as Material).erpCode);
     if ("erp" in item) return normalizeMatchText((item as Item).erp);
     return "";
   };
 
-  const poLineMatchesMaterial = (line: PurchaseOrderLine, materialId: string) => {
+  const poLineMatchesMaterial = (line: PurchaseOrderLine, materialId: string, itemSource?: string) => {
     if (line.materialId === materialId) return true;
+    // PHP / Plate items match their own PO line only (an ERP code can repeat across masters).
+    if (["PHP", "PLATE"].includes(String(itemSource || "").toUpperCase())) return false;
 
     const materialErpCode = getMaterialErpCode(materialId);
     const lineErpCode = normalizeMatchText(line.erpCode);
     return Boolean(materialErpCode && lineErpCode && materialErpCode === lineErpCode);
   };
 
-  const getEligiblePoLinesForMaterial = (materialId: string, partyId?: string) => {
+  const getEligiblePoLinesForMaterial = (materialId: string, partyId?: string, itemSource?: string) => {
     const orderMatchesParty = partyId
       ? (order: PurchaseOrder) => isApprovedOrderForParty(order, partyId)
       : isApprovedOrderForSelectedSupplier;
@@ -702,7 +735,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
           .filter(
             (line) =>
               line.purchaseOrderId === order.id &&
-              poLineMatchesMaterial(line, materialId) &&
+              poLineMatchesMaterial(line, materialId, itemSource) &&
               getPoLinePendingQty(line) > 0
           )
           .map((line) => ({ order, line, pendingQty: getPoLinePendingQty(line) }))
@@ -727,8 +760,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       );
   };
 
-  const getApprovedPoOptionsForMaterial = (materialId: string) =>
-    getEligiblePoLinesForMaterial(materialId).map(({ order, line, pendingQty }) => ({
+  const getApprovedPoOptionsForMaterial = (materialId: string, itemSource?: string) =>
+    getEligiblePoLinesForMaterial(materialId, undefined, itemSource).map(({ order, line, pendingQty }) => ({
       value: line.id,
       label: `${order.poNo} | Pending ${pendingQty.toLocaleString()} @ ${Number(line.rate || 0).toFixed(2)}`,
     }));
@@ -1203,6 +1236,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
   const handleMrrTypeChange = (value: any) => {
     setMrrType(value);
+    setCurrentItemSource("FG");
     if (value !== "Others") setMrrSubType("");
     if (value === "Reel") {
       if (!unitOneFirm) {
@@ -1321,7 +1355,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     }
     if ((mrrType === "Others" || mrrType === "FG Purchase") && (!resolvedInvoiceRateInput || resolvedInvoiceRateInput <= 0)) return;
 
-    const material = getMaterial(currentItemId);
+    const lineItemSource = isFgType && mrrType === "FG Purchase" ? currentItemSource : isFgType ? "FG" : undefined;
+    const material = getMaterial(currentItemId, lineItemSource);
     if (!material) return;
     if (mrrType === "Others" && (currentQty === "" || Number(currentQty) <= 0)) return;
     if (isFgType && (currentReceiptQty === "" || Number(currentReceiptQty) <= 0)) return;
@@ -1335,6 +1370,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       id: crypto.randomUUID(),
       itemId: currentItemId,
       itemName: material.name,
+      ...(lineItemSource ? { itemSource: lineItemSource } : {}),
+      ...(lineItemSource === "FG" ? { npdId: currentItemId } : {}),
       qty,
       uom: mrrType === "Reel" ? "KG" : ("uom" in material ? material.uom || "" : ""),
       poId: selectedPo?.id,
@@ -1350,7 +1387,8 @@ export function MaterialInForm({ directService = false }: { directService?: bool
         ? { invoiceRateUsd: resolvedInvoiceRateInput }
         : { invoiceRate: resolvedInvoiceRateInput, rate: resolvedInvoiceRateInput, value: qty * resolvedInvoiceRateInput }),
       actualQty: qty,
-      gstRate: resolveMaterialGstRate(material.id),
+      // Item master GST %, else the linked PO line's GST %.
+      gstRate: lineItemSource ? (resolveCatalogGstRate(material) || Number(selectedPoLine?.gstRate || 0) || 0) : resolveMaterialGstRate(material.id),
       cgstRate: 0,
       sgstRate: 0,
       igstRate: 0,
@@ -3236,11 +3274,30 @@ export function MaterialInForm({ directService = false }: { directService?: bool
             {isDirectService ? "Add Service" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
           </h3>
           <div className="flex flex-wrap gap-4 items-end mb-4 bg-slate-50 p-4 rounded border border-black">
+            {mrrType === "FG Purchase" && !isServiceReturn && !isDirectService ? (
+              <div className="flex flex-col space-y-1 w-full md:w-auto">
+                <label className="text-sm font-bold text-black">Item Source <span className="text-red-600">*</span></label>
+                <div className="flex gap-1" role="radiogroup" aria-label="Item Source">
+                  {(["FG", "PHP", "PLATE"] as const).map((source) => (
+                    <button
+                      key={source}
+                      type="button"
+                      role="radio"
+                      aria-checked={currentItemSource === source}
+                      onClick={() => { if (currentItemSource !== source) { setCurrentItemSource(source); setCurrentItemId(""); setCurrentPoLineId(""); } }}
+                      className={`h-[42px] rounded border-2 px-3 text-sm font-bold ${currentItemSource === source ? "border-indigo-700 bg-indigo-700 text-white" : "border-black bg-white text-black hover:bg-slate-50"}`}
+                    >
+                      {source === "PLATE" ? "Plate" : source}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className={`flex flex-col space-y-1 w-full ${isDirectService ? "md:min-w-[280px] md:flex-1" : "md:w-80"}`}>
               <label className="text-sm font-bold text-black">
                 {activeItemLabel} <span className="text-red-600">*</span>
               </label>
-              <Select key={activeItemSelectKey} options={activeItemOptions} value={currentItemId} onChange={setCurrentItemId} placeholder={activeItemPlaceholder} />
+              <Select key={`${activeItemSelectKey}-${currentItemSource}`} options={activeItemOptions} value={currentItemId} onChange={setCurrentItemId} placeholder={activeItemPlaceholder} />
             </div>
             {isServiceReturn ? (
               <div className="flex flex-col space-y-1 w-full md:w-80">
@@ -3288,7 +3345,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                   Our PO No. {isPoMandatoryForCurrentMrrType ? <span className="text-red-600">*</span> : null}
                 </label>
                 <Select
-                  options={currentItemId ? getApprovedPoOptionsForMaterial(currentItemId) : []}
+                  options={currentItemId ? getApprovedPoOptionsForMaterial(currentItemId, isFgType ? currentItemSource : undefined) : []}
                   value={currentPoLineId}
                   onChange={handleCurrentPoLineChange}
                   placeholder="Select PO line..."
@@ -3352,7 +3409,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                           {showPoLineSelection ? (
                             <td className="px-4 py-3 text-sm text-black border border-black min-w-[220px]">
                               <Select
-                                options={getApprovedPoOptionsForMaterial(line.itemId)}
+                                options={getApprovedPoOptionsForMaterial(line.itemId, line.itemSource)}
                                 value={line.poLineId || ""}
                                 onChange={(value) => updateLine(line.id, { poLineId: value })}
                                 placeholder="Select PO line..."

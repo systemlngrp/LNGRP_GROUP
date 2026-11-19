@@ -17,6 +17,19 @@ function toNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+/** PHP / Plate qty bought through FG Purchase MRRs (GET /api/php-plate-receipts). */
+export type PhpPlateReceipt = { source: string; itemId: string; firmId: string; qty: number };
+
+function receiptQty(receipts: PhpPlateReceipt[], row: MasterRow, source: Extract<OrderItemSource, "PHP" | "PLATE">, firmId?: string) {
+  const keys = rowKeys(row);
+  return receipts.reduce((sum, receipt) => {
+    if (String(receipt.source || "").toUpperCase() !== source) return sum;
+    if (!keys.includes(normalize(receipt.itemId))) return sum;
+    if (firmId !== undefined && String(receipt.firmId || "").trim() !== firmId) return sum;
+    return sum + toNumber(receipt.qty);
+  }, 0);
+}
+
 function rowKeys(row: MasterRow) {
   return [...new Set([row.id, row.itemId].map((value) => normalize(value)).filter(Boolean))];
 }
@@ -33,7 +46,7 @@ function jobMatchesRow(job: Production, row: MasterRow, source: Extract<OrderIte
   return jobSource === source && keys.includes(normalize(job.itemId));
 }
 
-export function buildPhpPlateInventoryRows(masterRows: MasterRow[], jobs: Production[], loadingSlips: LoadingSlip[], source: Extract<OrderItemSource, "PHP" | "PLATE">) {
+export function buildPhpPlateInventoryRows(masterRows: MasterRow[], jobs: Production[], loadingSlips: LoadingSlip[], source: Extract<OrderItemSource, "PHP" | "PLATE">, receipts: PhpPlateReceipt[] = []) {
   return masterRows.map((row) => {
     const output = jobs.reduce((sum, job) => {
       if (job.status === "Cancelled" || job.cancelTimestamp) return sum;
@@ -53,17 +66,19 @@ export function buildPhpPlateInventoryRows(masterRows: MasterRow[], jobs: Produc
     }, 0);
 
     const openingQty = toNumber(row.openingQty);
+    const receiptQtyTotal = receiptQty(receipts, row, source);
     return {
       ...row,
       openingQty,
+      receiptQty: receiptQtyTotal,
       output,
       loadedQty,
-      balance: openingQty + output - loadedQty,
+      balance: openingQty + receiptQtyTotal + output - loadedQty,
     };
   });
 }
 
-export function buildFirmWisePhpPlateInventoryRows(masterRows: MasterRow[], jobs: Production[], loadingSlips: LoadingSlip[], firms: Firm[], source: Extract<OrderItemSource, "PHP" | "PLATE">) {
+export function buildFirmWisePhpPlateInventoryRows(masterRows: MasterRow[], jobs: Production[], loadingSlips: LoadingSlip[], firms: Firm[], source: Extract<OrderItemSource, "PHP" | "PLATE">, receipts: PhpPlateReceipt[] = []) {
   return masterRows.map((row) => {
     const firmStocks: Record<string, { opening: number; receipt: number; production: number; invoiced: number; balance: number }> = {};
     for (const firm of firms) {
@@ -84,7 +99,8 @@ export function buildFirmWisePhpPlateInventoryRows(masterRows: MasterRow[], jobs
         return sum + slip.lines.reduce((lineSum, line) => slipLineMatchesRow(line, row, source) ? lineSum + toNumber(line.loadedQty) : lineSum, 0);
       }, 0);
       const opening = String((row as any).firmId || "").trim() === firmId ? toNumber(row.openingQty) : 0;
-      firmStocks[firmId] = { opening, receipt: 0, production, invoiced, balance: opening + production - invoiced };
+      const receipt = receiptQty(receipts, row, source, firmId);
+      firmStocks[firmId] = { opening, receipt, production, invoiced, balance: opening + receipt + production - invoiced };
     }
     return { ...row, firmStocks };
   });

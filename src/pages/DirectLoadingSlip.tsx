@@ -6,10 +6,12 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { upsertFgLinkedChildSlip } from "../lib/linkedLoadingSlipSync";
 import { buildPhpPlateStockAlertMessage, getPhpPlateStockShortages } from "../lib/phpPlateStockValidation";
 import { DirectLoadingSlipModal } from "../components/DirectLoadingSlipModal";
+import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
 
 // Direct Loading Slip as its own form page (moved out of Loading Master).
 // Saving works exactly as the Loading Master button did.
 export function DirectLoadingSlip() {
+  const phpPlateReceipts = usePhpPlateReceipts();
   const navigate = useNavigate();
   const [loadingSlips, setLoadingSlips] = useData<LoadingSlip>("loading_slips", [], { firmScope: "all", storageKey: "loading-slips-all-firms" });
   const [trucks] = useData<Truck>("trucks", []);
@@ -50,6 +52,7 @@ export function DirectLoadingSlip() {
         phpLoadingSlips,
         plateLoadingSlips,
         parentFgLoadingId: newSlip.id,
+        receipts: phpPlateReceipts,
       });
       if (shortages.length > 0) {
         alert(buildPhpPlateStockAlertMessage(shortages));

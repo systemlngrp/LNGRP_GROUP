@@ -46,6 +46,7 @@ import { useAuth } from "../auth/AuthContext";
 import { usePageDataStatus } from "../components/DataLoadingBoundary";
 import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
 import { corrugationLinerQtyByJobId } from "../lib/productionProcessingProgress";
+import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
 import {
   EligibleLoadingJob,
   getLoadingJobNumber,
@@ -107,6 +108,7 @@ function createEmptyPackingRows(): PackingDetail[] {
 }
 
 export function PendingLoading() {
+  const phpPlateReceipts = usePhpPlateReceipts();
   const { setActiveFirm } = useAuth();
   const { loading: pageLoading } = usePageDataStatus();
   const [plans, updatePlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
@@ -717,6 +719,7 @@ export function PendingLoading() {
         phpLoadingSlips,
         plateLoadingSlips,
         parentFgLoadingId: newSlip.id,
+        receipts: phpPlateReceipts,
       });
       if (shortages.length > 0) {
         alert(buildPhpPlateStockAlertMessage(shortages));

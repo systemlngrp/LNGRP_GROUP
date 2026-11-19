@@ -1,4 +1,4 @@
-import { buildPhpPlateInventoryRows } from "./phpPlateInventory";
+import { buildPhpPlateInventoryRows, type PhpPlateReceipt } from "./phpPlateInventory";
 import { LinkedLoadingDetail, LoadingSlip, OrderItemSource, Production } from "../types";
 
 type LinkedSource = Extract<OrderItemSource, "PHP" | "PLATE">;
@@ -65,9 +65,10 @@ function buildBalanceMap(
   source: LinkedSource,
   masterRows: MasterRow[],
   jobs: Production[],
-  loadingSlips: LoadingSlip[]
+  loadingSlips: LoadingSlip[],
+  receipts: PhpPlateReceipt[] = []
 ) {
-  const rows = buildPhpPlateInventoryRows(masterRows, jobs, loadingSlips, source);
+  const rows = buildPhpPlateInventoryRows(masterRows, jobs, loadingSlips, source, receipts);
   return new Map(
     rows.map((row) => {
       const itemId = String(row.id || row.itemId || "").trim();
@@ -83,12 +84,13 @@ function getSourceShortages(args: {
   jobs: Production[];
   loadingSlips: LoadingSlip[];
   parentFgLoadingId?: string;
+  receipts?: PhpPlateReceipt[];
 }) {
-  const { source, details, masterRows, jobs, loadingSlips, parentFgLoadingId } = args;
+  const { source, details, masterRows, jobs, loadingSlips, parentFgLoadingId, receipts = [] } = args;
   if (!details.length) return [];
 
   const requiredByItem = buildRequiredQtyByItem(details);
-  const balanceByItem = buildBalanceMap(source, masterRows, jobs, loadingSlips);
+  const balanceByItem = buildBalanceMap(source, masterRows, jobs, loadingSlips, receipts);
   const existingLinkedQtyByItem = getExistingLinkedQtyByItem(loadingSlips, source, parentFgLoadingId);
 
   return Array.from(requiredByItem.entries())
@@ -122,8 +124,11 @@ export function getPhpPlateStockShortages(args: {
   phpLoadingSlips: LoadingSlip[];
   plateLoadingSlips: LoadingSlip[];
   parentFgLoadingId?: string;
+  /** PHP / Plate bought through FG Purchase MRRs (usePhpPlateReceipts). */
+  receipts?: PhpPlateReceipt[];
 }) {
   const {
+    receipts = [],
     phpDetails = [],
     plateDetails = [],
     phpMasterRows,
@@ -144,6 +149,7 @@ export function getPhpPlateStockShortages(args: {
       jobs: phpJobs,
       loadingSlips: [...phpLoadingSlips, ...fgLoadingSlips],
       parentFgLoadingId,
+      receipts,
     }),
     ...getSourceShortages({
       source: "PLATE",
@@ -152,6 +158,7 @@ export function getPhpPlateStockShortages(args: {
       jobs: plateJobs,
       loadingSlips: [...plateLoadingSlips, ...fgLoadingSlips],
       parentFgLoadingId,
+      receipts,
     }),
   ];
 }
