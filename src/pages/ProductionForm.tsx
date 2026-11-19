@@ -753,6 +753,25 @@ export function ProductionForm() {
 
       <div className="bg-white p-4 rounded shadow-sm border border-black w-full">
         <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-5 text-[15px]">
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                !selectedSchedule ||
+                !formData.date ||
+                currentQty <= 0 ||
+                reelActualTrimMissing ||
+                hasMissingMandatoryLayerFields ||
+                quantityDeviationError ||
+                maximumAllowedProductionError ||
+                gsmValidationError
+              }
+              className="flex items-center justify-center min-w-[120px] bg-emerald-600 text-white px-6 py-2 rounded text-[15px] font-bold hover:bg-emerald-700 transition disabled:opacity-50 border border-black shadow"
+            >
+              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
+            </button>
+          </div>
           {selectedSchedule && selectedOrder && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-black p-4 rounded">
               <InfoTile label="Schedule No" value={selectedSchedule.scheduleNo || "-"} />
@@ -801,6 +820,14 @@ export function ProductionForm() {
               value={productionInProgress}
               suffix={selectedItem?.uom || ""}
               helpText="For the selected item, this sums production rows where Production from FFG is blank and Cancel Timestamp is blank."
+            />}
+
+            {/* Shown with Maximum Allowed Production (same setting). */}
+            {showField("Maximum Allowed Production") && selectedSchedule && <ReadOnlyNumberField
+              label="Schedule Qty"
+              value={Number(selectedSchedule.qty || 0)}
+              suffix={selectedItem?.uom || ""}
+              helpText="Quantity of the selected schedule."
             />}
 
             {showField("Maximum Allowed Production") && <ReadOnlyNumberField
@@ -977,25 +1004,6 @@ export function ProductionForm() {
             </ProductionFieldRow>
           </div>}
 
-          <div className="pt-2">
-            <button
-              type="submit"
-              disabled={
-                isSubmitting ||
-                !selectedSchedule ||
-                !formData.date ||
-                currentQty <= 0 ||
-                reelActualTrimMissing ||
-                hasMissingMandatoryLayerFields ||
-                quantityDeviationError ||
-                maximumAllowedProductionError ||
-                gsmValidationError
-              }
-              className="flex items-center justify-center min-w-[120px] bg-emerald-600 text-white px-6 py-2 rounded text-[15px] font-bold hover:bg-emerald-700 transition disabled:opacity-50 border border-black shadow"
-            >
-              {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
-            </button>
-          </div>
         </form>
       </div>
 
