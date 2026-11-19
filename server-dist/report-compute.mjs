@@ -1545,14 +1545,22 @@ function computeSummarySheetRows(lists, stockItems) {
   };
   const loadingByJob = buildJobLoadingRecords(productions, slips, plans, { includeOpeningStock: true });
   const invoicedQtyByProduction = /* @__PURE__ */ new Map();
+  const dispatchQtyByJobInvoice = /* @__PURE__ */ new Map();
   loadingByJob.forEach((records, productionId) => records.forEach(({ slip, qty, itemIds }) => {
     addDispatch(productionId, qty, isoDateText(slip.date), slip);
     const dispatch = dispatchByProduction.get(productionId);
+    const invoicedOnSlip = /* @__PURE__ */ new Set();
     invoiceLinesBySlip.get(slip.id)?.forEach((line) => {
       if (line.invoiceId && (!line.itemId || !itemIds.length || itemIds.includes(s(line.itemId).toLowerCase()))) {
         dispatch?.invoiceIds.add(line.invoiceId);
         invoicedQtyByProduction.set(productionId, (invoicedQtyByProduction.get(productionId) || 0) + n(line.qty));
+        invoicedOnSlip.add(line.invoiceId);
       }
+    });
+    invoicedOnSlip.forEach((invoiceId) => {
+      const byInvoice = dispatchQtyByJobInvoice.get(productionId) || /* @__PURE__ */ new Map();
+      byInvoice.set(invoiceId, (byInvoice.get(invoiceId) || 0) + n(qty));
+      dispatchQtyByJobInvoice.set(productionId, byInvoice);
     });
   }));
   return productions.filter((production) => production.status !== "Cancelled").map((production) => {
@@ -1597,7 +1605,10 @@ function computeSummarySheetRows(lists, stockItems) {
     const jobClosed = s(production.closeBy).toLowerCase() === "yes" && Boolean(s(production.closeDate));
     const loadingStarted = dispatchedQty > 0;
     const stage = jobClosed ? "Job Closed" : !loadingStarted && pprUsed <= 0 && !hasPaperNotRequiredBypass(production) ? "Pending Material Issue" : !loadingStarted && !isComplete(/corrugation/i, productionRows.filter((entry) => /corrugation/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0)) ? "Pending Corrugation" : !loadingStarted && !isComplete(/printing/i, printing) ? "Pending Printing" : planned > 0 && dispatchedQty >= planned ? "Pending Job Closure" : "Pending Loading";
-    const totalDispatch = money(invoicedQtyByProduction.get(production.id) || 0);
+    const jobDispatchByInvoice = dispatchQtyByJobInvoice.get(production.id) || /* @__PURE__ */ new Map();
+    const dispatchQtys = relatedInvoices.map((invoice) => money(jobDispatchByInvoice.get(invoice.id) || 0));
+    const totalDispatchQty = money(dispatchQtys.reduce((sum, value) => sum + value, 0));
+    const totalDispatch = totalDispatchQty;
     const totalLoading = money(loadingRecords.reduce((sum, record) => sum + n(record.qty), 0));
     const totalInvoiceValue = money(invoiceValues.slice(0, 6).reduce((sum, value) => sum + value, 0));
     const invoiceNos = relatedInvoices.map((invoice) => s(invoice.invoiceNo || invoice.tallyInvNo)).filter(Boolean).join(", ");
@@ -1606,8 +1617,8 @@ function computeSummarySheetRows(lists, stockItems) {
     const pdiResult = normalizeQcResult(findLatestInspection(lists.inspections || [], s(production.id), jobNo)?.result);
     const pdiReport = pdiResult === "QC PASS" || pdiResult === "QC FAIL" ? pdiResult : "";
     const hasPrinting = printing > 0;
-    const fgLeft = hasPrinting ? money(Math.max(0, printing - dispatchedQty)) : "";
-    const overDispatched = hasPrinting && dispatchedQty > printing ? 1 : "";
+    const fgLeft = hasPrinting ? money(Math.max(0, printing - totalDispatchQty)) : "";
+    const overDispatched = hasPrinting && totalDispatchQty > printing ? 1 : "";
     const row = {
       "Job No.": jobNo,
       Date: isoDateText(production.date),
@@ -1652,6 +1663,24 @@ function computeSummarySheetRows(lists, stockItems) {
       "Invoice Date 2": invoiceDates[1] || "",
       "Invoice No. 3": s(relatedInvoices[2]?.invoiceNo || relatedInvoices[2]?.tallyInvNo),
       "Invoice Date 3": invoiceDates[2] || "",
+      "Invoice No. 4": s(relatedInvoices[3]?.invoiceNo || relatedInvoices[3]?.tallyInvNo),
+      "Invoice No. 5": s(relatedInvoices[4]?.invoiceNo || relatedInvoices[4]?.tallyInvNo),
+      "Invoice No. 6": s(relatedInvoices[5]?.invoiceNo || relatedInvoices[5]?.tallyInvNo),
+      "Invoice Value 4": invoiceValues[3] ?? "",
+      "Invoice Value 5": invoiceValues[4] ?? "",
+      "Invoice Value 6": invoiceValues[5] ?? "",
+      "Dispatch Qty 1": dispatchQtys[0] ?? "",
+      "Dispatch Date 1": invoiceDates[0] || "",
+      "Dispatch Qty 2": dispatchQtys[1] ?? "",
+      "Dispatch Date 2": invoiceDates[1] || "",
+      "Dispatch Qty 3": dispatchQtys[2] ?? "",
+      "Dispatch Date 3": invoiceDates[2] || "",
+      "Dispatch Qty 4": dispatchQtys[3] ?? "",
+      "Dispatch Date 4": invoiceDates[3] || "",
+      "Dispatch Qty 5": dispatchQtys[4] ?? "",
+      "Dispatch Date 5": invoiceDates[4] || "",
+      "Dispatch Qty 6": dispatchQtys[5] ?? "",
+      "Dispatch Date 6": invoiceDates[5] || "",
       "Loading No 1": loadingRecords[0]?.slipNo || "",
       "Loading Date 1": loadingRecords[0]?.date || "",
       "Loading Qty 1": loadingRecords[0]?.qty ?? "",

@@ -265,6 +265,7 @@ export function summarySheetCellClass(column: string, row: SummaryRow, now = new
       if (num < 50) return "bg-[#d9ead3]";
       if (between(num, 50, 55)) return "bg-[#b6d7a8]";
       return "bg-[#00ff00] text-[#0000ff]";
+    case "Total Dispatch":
     case "Dispatched Qty": {
       if (!filled(value) || num === 0) return "";
       const pdi = s(row["PDI REPORT"]).toUpperCase();
