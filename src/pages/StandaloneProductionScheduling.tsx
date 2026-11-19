@@ -10,7 +10,7 @@ import { getProductionMatchingFields } from "../lib/productionMatching";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { Select } from "../components/Select";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
-import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
+import { compareJobDateDesc, resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
@@ -157,7 +157,7 @@ export function StandaloneProductionScheduling({ source }: StandaloneProductionS
           job.methodology,
         ], words);
       })
-      .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
+      .sort(compareJobDateDesc);
   }, [activeSourceFilter, firmFilter, firms, fromDate, itemFilter, itemsBySource, jobs, orders, schedules, searchTerm, toDate]);
 
   const { sorted: sortedJobs, sort, toggle: toggleSort } = useTableSort(filteredJobs, (job: JobRow, key) => {

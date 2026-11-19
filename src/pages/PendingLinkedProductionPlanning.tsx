@@ -195,7 +195,7 @@ function PendingLinkedProductionPlanning({ source }: PendingLinkedProductionPlan
   const [rowPlannedQty, setRowPlannedQty] = useState<Record<string, number | "">>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>("scheduledDate");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const [fgProductions] = useData<Production>("productions", []);
   const [phpJobMaster, setPhpJobMaster] = useData<Production>(getJobMasterEntityName("PHP"), []);

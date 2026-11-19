@@ -15,3 +15,13 @@ export function resolvePhpPlateFirmId(
 export function workflowDate(value: Pick<Production, "scheduledDate" | "date">): string {
   return String(value.scheduledDate || value.date || "").slice(0, 10);
 }
+
+// Default order for PHP & Plate tables: job date newest first, then job no (highest first).
+export function compareJobDateDesc(
+  a: { date?: string; transactionNo?: string },
+  b: { date?: string; transactionNo?: string },
+): number {
+  const byDate = String(b.date || "").slice(0, 10).localeCompare(String(a.date || "").slice(0, 10));
+  if (byDate) return byDate;
+  return String(b.transactionNo || "").localeCompare(String(a.transactionNo || ""), undefined, { numeric: true, sensitivity: "base" });
+}

@@ -7,7 +7,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../types";
 import { getFirmDisplayName } from "../lib/firmDisplay";
-import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
+import { compareJobDateDesc, resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 import { Select } from "../components/Select";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -91,7 +91,7 @@ export function StandaloneProductionSequencing({ source }: Props) {
         if (!words.length) return true;
         return matchesTableSearch([job.jobSource, job.transactionNo, item?.name || job.itemId, job.scheduledDate, job.shift, job.methodology], words);
       })
-      .sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || String(a.transactionNo || "").localeCompare(String(b.transactionNo || "")));
+      .sort(compareJobDateDesc);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSourceFilter, firmFilter, fromDate, itemFilter, itemsBySource, methodologyFilter, orders, queueJobs, schedules, searchTerm, shiftFilter, toDate]);
 

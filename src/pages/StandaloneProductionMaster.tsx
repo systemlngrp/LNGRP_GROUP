@@ -12,7 +12,7 @@ import { useOrderItemCatalog } from "../hooks/useOrderItemCatalog";
 import { getOrderItemSourceLabel } from "../lib/orderItems";
 import { resolvePhpPlateFgLink } from "../lib/phpPlateFgLink";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
-import { resolvePhpPlateFirmId } from "../lib/phpPlateFirm";
+import { compareJobDateDesc, resolvePhpPlateFirmId } from "../lib/phpPlateFirm";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
@@ -194,7 +194,7 @@ export function StandaloneProductionMaster({ source }: StandaloneProductionMaste
         return words.every((word) => text.includes(word));
       })
       .map((row) => row.production)
-      .sort((a, b) => new Date(b.updateTimestamp || b.date || 0).getTime() - new Date(a.updateTimestamp || a.date || 0).getTime());
+      .sort(compareJobDateDesc);
   }, [companyFilter, firmFilter, fromDate, itemFilter, methodologyFilter, productionFilterRows, searchTerm, searchTextByRow, statusFilter, toDate]);
   const cellsByProduction = useMemo(() => new Map(productionFilterRows.map((row) => [row.production, row.cells] as const)), [productionFilterRows]);
   // Sort keys are the column index in MASTER_COLUMNS (cells hold the shown values).

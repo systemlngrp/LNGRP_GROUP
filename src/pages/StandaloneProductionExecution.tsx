@@ -11,7 +11,7 @@ import { Firm, Order, OrderItemSource, OrderSchedule, Production } from "../type
 import { Select } from "../components/Select";
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
-import { resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
+import { compareJobDateDesc, resolvePhpPlateFirmId, workflowDate } from "../lib/phpPlateFirm";
 import { SortHeader, useTableSort } from "../lib/tableSort";
 
 const getJobMasterEntityName = (source: Extract<OrderItemSource, "PHP" | "PLATE">) =>
@@ -151,7 +151,7 @@ export function StandaloneProductionExecution({ source }: Props) {
           resolvePhpPlateFgLink(job, fgProductions, job.jobSource).fgValue,
         ], words);
       })
-      .sort((a, b) => String(a.scheduledDate || "").localeCompare(String(b.scheduledDate || "")) || Number(a.sequence || 0) - Number(b.sequence || 0));
+      .sort((a, b) => compareJobDateDesc(a, b) || Number(a.sequence || 0) - Number(b.sequence || 0));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSourceFilter, fgProductions, firmFilter, firms, fromDate, itemFilter, itemsBySource, methodologyFilter, orders, queueJobs, schedules, searchTerm, shiftFilter, toDate]);
 
