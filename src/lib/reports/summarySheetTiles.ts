@@ -31,7 +31,7 @@ export type SalesTargetFigures = {
   source?: string;
 };
 
-export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[]; columns?: number };
+export type SummaryTileSection = { id: string; title: string; tiles: SummaryTile[]; columns?: 4 | 5 };
 
 const blank = (id: string, label: string, tone: string, format: SummaryTile["format"] = "qty"): SummaryTile => ({ id, label, value: null, format, tone });
 
@@ -114,11 +114,15 @@ export function computeSummarySheetSections(
     {
       id: "production",
       title: "Production Summary",
+      // Row 1: today's Boardline, three printers, WIP; row 2 starts with reel consumption.
+      columns: 5,
       tiles: [
-        { id: "todayBoardline", label: "Today's Boardline Production", value: sum(todayRows, (row) => n(row["Boardline Prod."])), format: "qty", tone: "bg-[#9900ff] text-white" },
-        { id: "todayPrinting", label: "Today's BOBST Prod.", value: sum(todayRows, (row) => n(row["Printing prod."])), format: "qty", tone: "bg-[#0000ff] text-white" },
-        { id: "wip", label: "WIP (Boardline − Printing)", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950" },
-        { id: "rangePaper", label: "Paper Used / Reel Issue (Kg)", value: paperUsed, format: "qty", tone: "bg-[#00ffff] text-slate-950" },
+        { id: "todayBoardline", label: "Today BoardLine", value: sum(todayRows, (row) => n(row["Boardline Prod."])), format: "qty", tone: "bg-[#9900ff] text-white" },
+        { id: "todayBobst", label: "Today Bobst Printer", value: sum(todayRows, (row) => n(row.__printBobst)), format: "qty", tone: "bg-[#0000ff] text-white", note: "Printing reports on Bobst Printer (older reports with no printer count here)" },
+        { id: "todayBigPrinter", label: "Today Big Printer", value: sum(todayRows, (row) => n(row.__printBig)), format: "qty", tone: "bg-[#3d85c6] text-white" },
+        { id: "todaySmallPrinter", label: "Today Small Printer", value: sum(todayRows, (row) => n(row.__printSmall)), format: "qty", tone: "bg-[#6fa8dc] text-slate-950" },
+        { id: "wip", label: "Today WIP", value: sum(openRows, (row) => Math.max(0, n(row["Boardline Prod."]) - n(row["Printing prod."]))), format: "qty", tone: "bg-[#00ffff] text-slate-950", note: "Open jobs: total Boardline − total Printing" },
+        { id: "rangePaper", label: "Total Reel Consumption (Kg)", value: paperUsed, format: "qty", tone: "bg-[#00ffff] text-slate-950", note: "Reel issue − reel return" },
         { id: "rangeJobs", label: "Jobs", value: rangeRows.length, format: "count", tone: "bg-[#ffe599] text-slate-950" },
         { id: "rangeClosed", label: "Closed Jobs", value: rangeRows.filter((row) => s(row["Job Closed"]) === "Yes").length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },
         { id: "rangeCancelled", label: "Cancel Jobs", value: cancelledJobDates.filter(inRange).length, format: "count", tone: "bg-[#d9ead3] text-slate-950" },

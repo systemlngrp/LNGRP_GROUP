@@ -1450,8 +1450,8 @@ var dateKey = (value) => {
 };
 var normalizeQcResult = (value) => {
   const normalized2 = String(value ?? "").trim().toLowerCase();
-  if (["qc pass", "pass"].includes(normalized2)) return "QC PASS";
-  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized2)) return "QC FAIL";
+  if (["qc pass", "pdi pass", "pass"].includes(normalized2)) return "QC PASS";
+  if (["qc fail", "pdi fail", "fail", "qc hold", "hold"].includes(normalized2)) return "QC FAIL";
   return String(value ?? "").trim();
 };
 
@@ -1578,6 +1578,9 @@ function computeSummarySheetRows(lists, stockItems) {
     const productionRows = processingByJob.get(production.id) || [];
     const boardline = productionRows.filter((entry) => /corrugation|pasting|stitching|slotting|punching|gluing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0);
     const printing = productionRows.filter((entry) => /printing/i.test(entry.machineName)).reduce((sum, entry) => sum + n(entry.qty), 0);
+    const printedOn = (name) => productionRows.filter((entry) => /printing/i.test(entry.machineName) && s(entry.printingMachine) === name).reduce((sum, entry) => sum + n(entry.qty), 0);
+    const printBig = printedOn("Big Printer");
+    const printSmall = printedOn("Small Printer");
     const dispatch = dispatchByProduction.get(production.id) || { qty: 0, date: "", slips: [], invoiceIds: /* @__PURE__ */ new Set() };
     const relatedInvoices = Array.from(dispatch.invoiceIds).map((id) => invoiceMap.get(id)).filter(Boolean);
     relatedInvoices.sort((a, b) => isoDateText(a.tallyInvDate || a.date).localeCompare(isoDateText(b.tallyInvDate || b.date)));
@@ -1641,6 +1644,9 @@ function computeSummarySheetRows(lists, stockItems) {
       "Plate per box": n(production.setsPerBox),
       "Boardline Prod.": boardline,
       "Printing prod.": printing,
+      __printBobst: Math.max(0, printing - printBig - printSmall),
+      __printBig: printBig,
+      __printSmall: printSmall,
       "PPR Rqd.": n(production.totalPaperWeight),
       "PPR Used": pprUsed,
       "Paper Wastage": pprUsed && production.totalPaperWeight ? money(pprUsed - n(production.totalPaperWeight)) : "",

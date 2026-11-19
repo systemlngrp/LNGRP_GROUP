@@ -491,7 +491,7 @@ function SummaryTileGroup({ section }: { section: SummaryTileSection }) {
       <div className="flex items-center justify-between border-b-2 border-black bg-[#0c343d] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white">
         <span>{section.title}</span>
       </div>
-      <div className={section.columns === 4 ? "grid grid-cols-2 sm:grid-cols-4" : "grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(128px,1fr))]"}>
+      <div className={section.columns === 4 ? "grid grid-cols-2 sm:grid-cols-4" : section.columns === 5 ? "grid grid-cols-2 sm:grid-cols-5" : "grid grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(128px,1fr))]"}>
         {section.tiles.map((tile) => (
           <div
             key={tile.id}

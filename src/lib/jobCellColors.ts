@@ -18,8 +18,8 @@ const localDateKey = (date: Date) =>
 
 export const normalizeQcResult = (value: unknown): string => {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (["qc pass", "pass"].includes(normalized)) return "QC PASS";
-  if (["qc fail", "fail", "qc hold", "hold"].includes(normalized)) return "QC FAIL";
+  if (["qc pass", "pdi pass", "pass"].includes(normalized)) return "QC PASS";
+  if (["qc fail", "pdi fail", "fail", "qc hold", "hold"].includes(normalized)) return "QC FAIL";
   return String(value ?? "").trim();
 };
 
