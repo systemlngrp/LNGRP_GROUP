@@ -180,7 +180,7 @@ export function DispatchPlanByDate() {
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-2">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Dispatch Plan</h2>
-        <div className="flex flex-wrap items-center gap-3">
+        <div data-header-action="true" className="flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2">
             <label className="text-sm font-bold uppercase text-black" htmlFor="dispatch-plan-date">Plan Date:</label>
             <input

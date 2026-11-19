@@ -17,6 +17,7 @@ import { useNpdItemNames } from "../hooks/useNpdItems";
 import { sortProductionPlanRows } from "../lib/productionPlanSorting";
 import { findRealizationTargetForDate, parseRealizationTargets } from "../lib/realizationTargets";
 import { resolveProductionPlanCompany } from "../lib/productionPlanCompany";
+import { MultiSelect } from "../components/MultiSelect";
 import { buildSampleJobNumbers, deriveProductionPlanStatuses } from "../lib/productionPlanStatus";
 
 export function ProductionPlan() {
@@ -39,7 +40,7 @@ export function ProductionPlan() {
 
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [searchTerm, setSearchTerm] = useState("");
-  const [companyFilter, setCompanyFilter] = useState("");
+  const [companyFilter, setCompanyFilter] = useState<string[]>([]);
   const [itemFilter, setItemFilter] = useState("");
   const allowExports = exportsAllowed();
   const isLoading =
@@ -97,7 +98,7 @@ export function ProductionPlan() {
         const order = orders.find(o => o.id === schedule?.orderId);
         const resolvedCompany = resolveProductionPlanCompany(p, schedule, order, companies);
         
-        if (companyFilter && resolvedCompany.companyId !== companyFilter && resolvedCompany.name !== companyFilter) return false;
+        if (companyFilter.length && !companyFilter.some((selected) => selected === resolvedCompany.companyId || selected === resolvedCompany.name)) return false;
         const itemKey = item?.id || `${item?.name || ""}::${p.erpCode || ""}`;
         if (itemFilter && itemKey !== itemFilter) return false;
         return true;
@@ -135,10 +136,18 @@ export function ProductionPlan() {
   ]);
   const sortedList = statusRows;
 
-  const companyOptions = useMemo(() => Array.from(new Map(statusRows.map((row) => [
-    row.productionPlanCompanyId || row.productionPlanCompanyName,
-    { value: row.productionPlanCompanyId || row.productionPlanCompanyName, label: row.productionPlanCompanyName },
-  ])).values()).filter((option) => option.value && option.label && option.label !== "-").sort((a, b) => a.label.localeCompare(b.label)), [statusRows]);
+  // Company list = every company planned on the selected date (not narrowed by the company filter itself).
+  const companyOptions = useMemo(() => {
+    const map = new Map<string, { value: string; label: string }>();
+    productions.filter((p) => normalizeDate(p.date) === selectedDate).forEach((p) => {
+      const schedule = schedules.find((s) => s.id === p.scheduleId);
+      const order = orders.find((o) => o.id === schedule?.orderId);
+      const company = resolveProductionPlanCompany(p, schedule, order, companies);
+      const value = company.companyId || company.name;
+      if (value && company.name && company.name !== "-") map.set(value, { value, label: company.name });
+    });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [productions, selectedDate, schedules, orders, companies]);
   const itemOptions = useMemo(() => Array.from(new Map(statusRows.map((row) => { const item = npdItems.find((i) => i.id === String(row.itemId || "").trim()); const erp = String(row.erpCode || ""); const name = item?.name || ""; const key = item?.id || `${name}::${erp}`; return [key, { value: key, label: erp && name && !name.toLowerCase().includes(erp.toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }]; })).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [statusRows, npdItems]);
   // Column sort over every searched row before paging; no sort keeps the plan's own order.
   const { sorted: columnSortedRows, sort, toggle: toggleSort } = useTableSort(statusRows, (p, key) => {
@@ -340,7 +349,7 @@ export function ProductionPlan() {
     <div className="space-y-3">
       <div className="flex justify-between items-center pb-2 border-b border-black">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production Plan</h2>
-        <div className="flex items-center gap-4">
+        <div data-header-action="true" className="flex flex-wrap items-center justify-end gap-3">
           <div className="flex items-center gap-2">
             <label className="text-sm font-bold text-black uppercase">Plan Date:</label>
             <input
@@ -399,11 +408,11 @@ export function ProductionPlan() {
       <FilterBox
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
-        active={Boolean(searchTerm || companyFilter || itemFilter)}
-        onClear={() => { setSearchTerm(""); setCompanyFilter(""); setItemFilter(""); }}
+        active={Boolean(searchTerm || companyFilter.length || itemFilter)}
+        onClear={() => { setSearchTerm(""); setCompanyFilter([]); setItemFilter(""); }}
         columns="grid-cols-1 md:grid-cols-2"
       >
-        <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><Select compact value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
+        <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Company</span><MultiSelect value={companyFilter} onChange={setCompanyFilter} options={companyOptions} placeholder="All" /></div>
         <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Item</span><Select compact value={itemFilter} onChange={setItemFilter} options={itemOptions} placeholder="All" /></div>
       </FilterBox>
 
