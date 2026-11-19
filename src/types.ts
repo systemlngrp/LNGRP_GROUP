@@ -1387,6 +1387,9 @@ export interface PreDispatchInspection {
   remarks?: string;
   frontPhoto?: string;
   backPhoto?: string;
+  lengthPhoto?: string;
+  widthPhoto?: string;
+  heightPhoto?: string;
   result: "Pending" | "QC PASS" | "QC FAIL" | string;
   qcPerson?: string;
   inspectionDate: string;

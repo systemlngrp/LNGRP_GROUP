@@ -8900,6 +8900,9 @@ async function initDb(retries = 5) {
                 { table: "pre_dispatch_inspections", column: "remarks", type: "TEXT" },
                 { table: "pre_dispatch_inspections", column: "frontPhoto", type: "TEXT" },
                 { table: "pre_dispatch_inspections", column: "backPhoto", type: "TEXT" },
+                { table: "pre_dispatch_inspections", column: "lengthPhoto", type: "TEXT" },
+                { table: "pre_dispatch_inspections", column: "widthPhoto", type: "TEXT" },
+                { table: "pre_dispatch_inspections", column: "heightPhoto", type: "TEXT" },
                 { table: "pre_dispatch_inspections", column: "result", type: "VARCHAR(20) NOT NULL DEFAULT 'Pending'" },
                 { table: "pre_dispatch_inspections", column: "qcPerson", type: "VARCHAR(255)" },
                 { table: "pre_dispatch_inspections", column: "inspectionDate", type: "VARCHAR(50)" },
@@ -12166,6 +12169,16 @@ const createHandlers = (tableName) => {
             let materialOpening = null;
             let whatsappDelivery;
             try {
+                // One PDI per job: a new PDI for a job that already has one updates that record.
+                if (tableName === "pre_dispatch_inspections" && data && !Array.isArray(data) && String(data.productionId || "").trim()) {
+                    const [existingPdi] = await db.query("SELECT id FROM `pre_dispatch_inspections` WHERE productionId = ? ORDER BY updateTimestamp DESC LIMIT 1", [String(data.productionId).trim()]);
+                    const existingId = String(existingPdi[0]?.id || "");
+                    if (existingId && existingId !== String(data.id || "")) {
+                        const [sameId] = await db.query("SELECT id FROM `pre_dispatch_inspections` WHERE id = ? LIMIT 1", [String(data.id || "")]);
+                        if (!sameId.length)
+                            data.id = existingId;
+                    }
+                }
                 // Closing / unclosing a job (Closer + Close Date) is for Admin only.
                 if (tableName === "productions" && requestUser?.role !== "Admin") {
                     const incoming = (Array.isArray(data) ? data : [data]).filter((row) => row && typeof row === "object");
