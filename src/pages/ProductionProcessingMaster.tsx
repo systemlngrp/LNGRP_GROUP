@@ -23,6 +23,7 @@ import { FirmFilterNoLabel as FirmFilter } from "../components/FirmFilterNoLabel
 import { getFirmDisplayName, getFirmDisplayNameById } from "../lib/firmDisplay";
 import { rowSearchText, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
+import { PRINTING_MACHINES } from "../lib/printingMachines";
 
 type EditDraft = {
   date: string;
@@ -30,6 +31,7 @@ type EditDraft = {
   machineId: string;
   shift: "" | "Day" | "Night";
   qty: string;
+  printingMachine: string;
   wastage: CorrugationWastageDraft;
   printingWastage: PrintingWastageDraft;
 };
@@ -40,6 +42,7 @@ const blankDraft: EditDraft = {
   machineId: "",
   shift: "",
   qty: "",
+  printingMachine: "",
   wastage: { ...EMPTY_CORRUGATION_WASTAGE_DRAFT },
   printingWastage: { ...EMPTY_PRINTING_WASTAGE_DRAFT },
 };
@@ -63,6 +66,7 @@ export function ProductionProcessingMaster() {
   const [machineTab, setMachineTab] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [printerFilter, setPrinterFilter] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EditDraft>(blankDraft);
@@ -92,6 +96,7 @@ export function ProductionProcessingMaster() {
       machineId: item.machineId || "",
       shift: (item.shift as "Day" | "Night") || "Day",
       qty: String(item.qty || ""),
+      printingMachine: item.printingMachine || "",
       wastage: wastageDraftFromEntry(item),
       printingWastage: printingWastageDraftFromEntry(item),
     });
@@ -117,8 +122,12 @@ export function ProductionProcessingMaster() {
       return;
     }
 
-    const auditUserName = user?.name || "System User";
     const normalizedMachineName = normalizeMachineName(selectedMachine.name);
+    if (normalizedMachineName === "Printing" && !editDraft.printingMachine) {
+      alert("Please select the Printing Machine before saving.");
+      return;
+    }
+    const auditUserName = user?.name || "System User";
     const timestamp = new Date().toISOString();
 
     try {
@@ -140,6 +149,7 @@ export function ProductionProcessingMaster() {
                   : {}),
                 shift: editDraft.shift as "Day" | "Night",
                 qty: qtyNumber,
+                printingMachine: normalizedMachineName === "Printing" ? editDraft.printingMachine : "",
                 ...ZERO_CORRUGATION_WASTAGE_VALUES,
                 ...ZERO_PRINTING_WASTAGE_VALUES,
                 ...(normalizedMachineName === "Corrugation Liner" && savesWastage
@@ -201,6 +211,7 @@ export function ProductionProcessingMaster() {
         p.erp,
         p.boxType,
         p.machineName,
+        p.printingMachine,
         p.shift || "Day",
         completionStatusLabel(p.completionStatus),
         Number(p.qty || 0),
@@ -220,6 +231,7 @@ export function ProductionProcessingMaster() {
         const production = jobById.get(p.productionId);
         const firmId = String(production?.firmId || production?.orderFirmId || "");
         if (firmFilter && firmId !== firmFilter) return false;
+        if (printerFilter && p.printingMachine !== printerFilter) return false;
         const text = searchTextById.get(p.id) || "";
         const matchesSearch = words.every((word) => text.includes(word));
         const matchesFrom = !fromDate || String(p.date || "") >= fromDate;
@@ -227,7 +239,7 @@ export function ProductionProcessingMaster() {
         return matchesSearch && matchesFrom && matchesTo;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [firmFilter, fromDate, jobById, processing, searchTerm, searchTextById, toDate, visibleMachineNames]);
+  }, [firmFilter, fromDate, jobById, printerFilter, processing, searchTerm, searchTextById, toDate, visibleMachineNames]);
   const machineTabs = useMemo(() => {
     const counts = new Map<string, number>();
     filteredAllMachines.forEach((p) => { const name = normalizeMachineName(p.machineName); if (name) counts.set(name, (counts.get(name) || 0) + 1); });
@@ -249,7 +261,7 @@ export function ProductionProcessingMaster() {
     return (p as any)[key];
   }, [jobById, firms]);
   const { page, setPage, pageSize, setPageSize, totalItems, paginatedItems: pagedReports } = useClientPagination(sortedReports, 100);
-  useEffect(() => { setPage(1); }, [firmFilter, fromDate, machineTab, searchTerm, toDate, setPage]);
+  useEffect(() => { setPage(1); }, [firmFilter, fromDate, machineTab, printerFilter, searchTerm, toDate, setPage]);
 
   return (
     <div className="space-y-4">
@@ -281,10 +293,11 @@ export function ProductionProcessingMaster() {
             <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">From Date</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold" /></label>
             <label className="block min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">To Date</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className="h-[34px] w-full rounded border-2 border-black px-2 text-xs font-semibold" /></label>
           </div>
+          <div className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Printing Machine</span><Select compact value={printerFilter} onChange={setPrinterFilter} options={PRINTING_MACHINES.map((name) => ({ value: name, label: name }))} placeholder="All" /></div>
         </div>
         <div data-mf-actions="true" className="flex justify-end gap-2">
-          {searchTerm.trim() || firmFilter || fromDate || toDate ? (
-            <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
+          {searchTerm.trim() || firmFilter || fromDate || toDate || printerFilter ? (
+            <button type="button" onClick={() => { setSearchTerm(""); setFirmFilter(""); setFromDate(""); setToDate(""); setPrinterFilter(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
           ) : null}
           <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
         </div>
@@ -304,6 +317,7 @@ export function ProductionProcessingMaster() {
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="ERP" sortKey="erp" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Box Type" sortKey="boxType" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Machine" sortKey="machineName" sort={sort} onToggle={toggleSort} align="left" /></th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Printing Machine" sortKey="printingMachine" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Shift" sortKey="shift" sort={sort} onToggle={toggleSort} align="left" /></th>
                 <th className="px-6 py-3 text-center text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Status" sortKey="completionStatus" sort={sort} onToggle={toggleSort} align="center" /></th>
                 <th className="px-6 py-3 text-right text-xs font-bold text-black uppercase tracking-wider border border-black"><SortHeader label="Quantity" sortKey="qty" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -313,7 +327,7 @@ export function ProductionProcessingMaster() {
             <tbody className="bg-white divide-y divide-black">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
+                  <td colSpan={12} className="px-6 py-8 text-center text-slate-500 font-medium border border-black">No reporting records found.</td>
                 </tr>
               ) : (
                 pagedReports.map((item) => {
@@ -375,6 +389,18 @@ export function ProductionProcessingMaster() {
                         ) : (
                           item.machineName
                         )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-black border border-black">
+                        {isEditing && editMachineName === "Printing" ? (
+                          <select
+                            value={editDraft.printingMachine}
+                            onChange={(e) => setEditDraft((prev) => ({ ...prev, printingMachine: e.target.value }))}
+                            className={`w-40 rounded border px-2 py-1.5 text-xs font-semibold outline-none ${editDraft.printingMachine ? "border-black bg-white" : "border-red-600 bg-red-50"}`}
+                          >
+                            <option value="">Select printer...</option>
+                            {PRINTING_MACHINES.map((name) => <option key={name} value={name}>{name}</option>)}
+                          </select>
+                        ) : isEditing ? "-" : (item.printingMachine || "-")}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-black border border-black">
                         {isEditing ? (

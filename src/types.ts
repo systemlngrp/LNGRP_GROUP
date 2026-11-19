@@ -634,6 +634,8 @@ export interface ProductionProcessing {
   operatorName: string;
   date: string;
   completionStatus?: "Part" | "Full";
+  /** Printing entries: which printer (Bobst / Big / Small Printer). */
+  printingMachine?: string;
   tallyPostingStatus?: string;
   tallyTimestamp?: string;
   tallyPostingError?: string;

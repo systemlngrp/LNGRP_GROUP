@@ -17,6 +17,7 @@ import { CorrugationWastageFields } from "../components/CorrugationWastageFields
 import { buildCorrugationWastageValues, EMPTY_CORRUGATION_WASTAGE_DRAFT, getAutomaticNoHisabKg, type CorrugationWastageDraft } from "../lib/corrugationWastage";
 import { PrintingWastageFields } from "../components/PrintingWastageFields";
 import { buildPrintingWastageValues, EMPTY_PRINTING_WASTAGE_DRAFT, type PrintingWastageDraft } from "../lib/printingWastage";
+import { PRINTING_MACHINES } from "../lib/printingMachines";
 
 // Printing and Corrugation Liner can be reported only after material / reels are issued to the job.
 const materialNeededMessage = (step: string) => `Issue material or reels against this job before reporting ${step}.`;
@@ -67,6 +68,7 @@ function LockedReportForm() {
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Full");
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
+  const [printingMachine, setPrintingMachine] = useState(""); // which printer (Printing machine only, mandatory)
   const [productions] = useData<Production>("productions", []);
   const [processing] = useData<ProductionProcessing>("production_processing", []);
   const [phpJobs, setPhpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
@@ -130,6 +132,7 @@ function LockedReportForm() {
     if (isMandatoryField("production_processing_form", "qty") && !qty) missing.push("Quantity");
     if (!productionId) missing.push("Job No");
     if (!machineId) missing.push("Machine");
+    if (isPrinting && !printingMachine) missing.push("Printing Machine");
 
     if (missing.length) {
       alert(`Please fill mandatory fields: ${missing.join(", ")}`);
@@ -169,6 +172,7 @@ function LockedReportForm() {
       erp: erp || undefined,
       ...(showCorrugationWastage ? buildCorrugationWastageValues(wastageDraft, selectedProduction) : {}),
       ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
+      ...(isPrinting ? { printingMachine } : {}),
     };
 
     setIsSubmitting(true);
@@ -294,6 +298,15 @@ function LockedReportForm() {
                 />
               </div>
             ) : null}
+            {isPrinting ? (
+              <div className="order-6 space-y-1">
+                <label className="block text-sm font-bold text-black">Printing Machine <span className="text-red-600">*</span></label>
+                <select value={printingMachine} onChange={(event) => setPrintingMachine(event.target.value)} className={`w-full rounded border-2 px-3 py-2 text-sm font-semibold ${printingMachine ? "border-black bg-white" : "border-red-600 bg-red-50"}`}>
+                  <option value="">Select printer...</option>
+                  {PRINTING_MACHINES.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </div>
+            ) : null}
             {showPrintingWastage ? (
               <div className="order-7 space-y-2 rounded border-2 border-black bg-slate-50 p-3 md:col-span-2">
                 <h4 className="text-xs font-black uppercase text-indigo-700">Printing Wastage</h4>
@@ -354,6 +367,7 @@ function FullReportForm() {
   const [completionStatus, setCompletionStatus] = useState<"Part" | "Full">("Full");
   const [wastageDraft, setWastageDraft] = useState<CorrugationWastageDraft>({ ...EMPTY_CORRUGATION_WASTAGE_DRAFT });
   const [printingWastageDraft, setPrintingWastageDraft] = useState<PrintingWastageDraft>({ ...EMPTY_PRINTING_WASTAGE_DRAFT });
+  const [printingMachine, setPrintingMachine] = useState(""); // which printer (Printing machine only, mandatory)
   const allProductions = useMemo(() => {
     const linkedPhpIds = new Set(productions.map((row) => String(row.phpScheduledJobId || "")).filter(Boolean));
     const linkedPlateIds = new Set(productions.map((row) => String(row.plateScheduledJobId || "")).filter(Boolean));
@@ -461,6 +475,7 @@ function FullReportForm() {
     if (isMandatoryField("production_processing_form", "machineId") && !machineId) missing.push("Machine");
     if (isMandatoryField("production_processing_form", "shift") && !shift) missing.push("Shift");
     if (isMandatoryField("production_processing_form", "qty") && !qty) missing.push("Quantity");
+    if (isPrinting && !printingMachine) missing.push("Printing Machine");
 
     if (missing.length) {
       alert(`Please fill mandatory fields: ${missing.join(", ")}`);
@@ -504,6 +519,7 @@ function FullReportForm() {
         interFirmFlow: selectedProduction.interFirmFlow,
         ...(showCorrugationWastage ? { ...buildCorrugationWastageValues(wastageDraft, selectedProduction), noHisabKg: automaticNoHisab } : {}),
         ...(showPrintingWastage ? buildPrintingWastageValues(printingWastageDraft) : {}),
+        ...(isPrinting ? { printingMachine } : {}),
       };
 
       await setProcessing((prev) => [...prev, newEntry]);
@@ -619,6 +635,15 @@ function FullReportForm() {
                   onChange={(key, value) => setWastageDraft((current) => ({ ...current, [key]: value }))}
                   automaticNoHisabKg={automaticNoHisab}
                 />
+              </div>
+            ) : null}
+            {isPrinting ? (
+              <div className="order-6 space-y-1">
+                <label className="block text-sm font-bold text-black">Printing Machine <span className="text-red-600">*</span></label>
+                <select value={printingMachine} onChange={(event) => setPrintingMachine(event.target.value)} className={`w-full rounded border-2 px-3 py-2 text-sm font-semibold ${printingMachine ? "border-black bg-white" : "border-red-600 bg-red-50"}`}>
+                  <option value="">Select printer...</option>
+                  {PRINTING_MACHINES.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
               </div>
             ) : null}
             {showPrintingWastage ? (

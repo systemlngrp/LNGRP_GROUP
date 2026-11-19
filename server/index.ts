@@ -10433,6 +10433,7 @@ await db.query(`
         { table: "settings", column: "pdiCsMarginPercent", type: "DECIMAL(6,2) DEFAULT 10" },
         { table: "settings", column: "pdiPlyTolerance", type: "TEXT" },
         { table: "settings", column: "orderPoUpdateUsers", type: "TEXT" },
+        { table: "production_processing", column: "printingMachine", type: "VARCHAR(100)" },
         { table: "settings", column: "samplingPlanQtyDivisor", type: "DECIMAL(15,2) DEFAULT 2000" },
         { table: "settings", column: "samplingPlanQtyMin", type: "INT DEFAULT 2" },
         { table: "settings", column: "samplingPlanQtyMax", type: "INT DEFAULT 4" },
