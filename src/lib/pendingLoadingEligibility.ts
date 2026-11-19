@@ -23,6 +23,7 @@ export type EligibleLoadingJob = {
   productionQty: number;
   alreadyLoaded: number;
   yetToLoad: number;
+  atJobWorker?: number;
 };
 
 export type PendingLoadingPlanProjection = {
@@ -164,6 +165,8 @@ export function eligibleLoadingJobs(
   alreadyLoaded: Map<string, number>,
   itemAliases: string[] = [],
   corrugationQtyByJobId?: Map<string, number>,
+  /** Qty of each job still at a job worker (open Job Work gate passes): not loadable. */
+  atJobWorkerByJobId?: Map<string, number>,
 ) {
   // FG jobs: loadable qty = boxes made on Corrugation Liner (jobs without a
   // Corrugation Liner entry are not listed). PHP / Plate keep their output qty.
@@ -200,12 +203,14 @@ export function eligibleLoadingJobs(
     .map((production) => {
       const productionQty = jobQty(production);
       const loaded = alreadyLoaded.get(normalizeKey(production.id)) || 0;
+      const atJobWorker = atJobWorkerByJobId?.get(String(production.id || "").trim()) || 0;
       return {
         jobId: production.id,
         jobNo: getLoadingJobNumber(production),
         productionQty,
         alreadyLoaded: loaded,
-        yetToLoad: Math.max(0, productionQty - loaded),
+        atJobWorker,
+        yetToLoad: Math.max(0, productionQty - loaded - atJobWorker),
       };
     })
     .filter((job) => Boolean(job.jobNo) && job.yetToLoad > 0)
@@ -237,6 +242,7 @@ export function getPendingLoadingPlanProjections(args: {
   plateJobs: Production[];
   loadingSlips: LoadingSlip[];
   corrugationQtyByJobId?: Map<string, number>;
+  atJobWorkerByJobId?: Map<string, number>;
   resolveOrderItem?: (order?: Order) => LoadingCatalogItem | undefined;
   findItemAcrossSources?: (
     itemId: string,
@@ -273,6 +279,7 @@ export function getPendingLoadingPlanProjections(args: {
       loaded,
       Array.from(itemKeys(item, order)),
       args.corrugationQtyByJobId,
+      args.atJobWorkerByJobId,
     );
 
 

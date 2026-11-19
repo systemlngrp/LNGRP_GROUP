@@ -36,7 +36,7 @@ import * as XLSX from "xlsx";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { normalizeOrderCatalogItem, type OrderCatalogItem } from "../lib/orderItems";
 import { applySupplyTypeTaxRates, calculateNetSupplierPayable, normalizeInvoiceCurrency, normalizeTdsAmount, recalculateMaterialLine, summarizeMaterialInLines, validateTdsAmount } from "../lib/materialInTaxes";
-import { getGatePassLinesWithReturns } from "../lib/gatePassState";
+import { getGatePassLinesWithReturns, isJobWorkGatePass } from "../lib/gatePassState";
 import { canCreateMrrForGateEntry, isGateEntryCancelled } from "../lib/gateEntryState";
 import { parsePoMandatoryMrrTypes, supportsPoMandatorySetting } from "../lib/materialInPoMandatory";
 import { buildMaterialInPdf, downloadMaterialInPdf } from "../lib/materialInPdf";
@@ -299,10 +299,13 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
   const isReturnableReceiptFlow = Boolean(
     (linkedGateEntry?.purpose === "Returnable Receipt" && linkedGateEntry?.sourceGatePassId) ||
-    editingEntry?.mrrType === "Service Return"
+    editingEntry?.mrrType === "Service Return" ||
+    editingEntry?.mrrType === "Job Work Return"
   );
+  // Goods back from a Job Work pass: MRR type "Job Work Return" (returned qty + the job worker's bill).
+  const isJobWorkReturn = isJobWorkGatePass(linkedSourceGatePass) || editingEntry?.mrrType === "Job Work Return" || mrrType === "Job Work Return";
   const isFgType = mrrType === "Rejection In" || mrrType === "FG Purchase";
-  const isServiceReturn = isReturnableReceiptFlow || mrrType === "Service Return";
+  const isServiceReturn = isReturnableReceiptFlow || mrrType === "Service Return" || mrrType === "Job Work Return";
   const isDirectService = !linkedGateEntry && (directServiceRequested || mrrType === "Direct Service" || editingEntry?.mrrType === "Direct Service");
   const poMandatoryMrrTypes = useMemo(() => new Set(parsePoMandatoryMrrTypes(settings[0])), [settings]);
   const supportsPoSettingForCurrentMrrType = supportsPoMandatorySetting(mrrType);
@@ -447,9 +450,9 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     setInvDate(linkedGateEntry.date || "");
     setSupplierId(linkedGateEntry.supplierId || "");
     if (linkedGateEntry.purpose === "Returnable Receipt" && linkedGateEntry.sourceGatePassId) {
-      setMrrType("Service Return");
+      setMrrType(isJobWorkGatePass(linkedSourceGatePass) ? "Job Work Return" : "Service Return");
     }
-  }, [editingEntry, linkedGateEntry]);
+  }, [editingEntry, linkedGateEntry, linkedSourceGatePass]);
 
   useEffect(() => {
     hasAutoFilledServiceReturnRef.current = false;
@@ -573,10 +576,10 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
     const matchedService = resolveServiceForGatePassLine(sourceLine);
 
-    setCurrentItemId(matchedService?.id || "");
+    setCurrentItemId(isJobWorkReturn ? "" : matchedService?.id || "");
     setCurrentQty(Number(sourceLine.pendingQty || 0));
-    setCurrentInvoiceRate(Number(sourceLine.rate || 0));
-  }, [currentSourceGatePassLineId, isServiceReturn, pendingGatePassLines, services]);
+    setCurrentInvoiceRate(isJobWorkReturn ? "" : Number(sourceLine.rate || 0));
+  }, [currentSourceGatePassLineId, isServiceReturn, isJobWorkReturn, pendingGatePassLines, services]);
 
   useEffect(() => {
     if (editingEntry) return;
@@ -584,18 +587,22 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     if (!linkedGateEntry || linkedGateEntry.purpose !== "Returnable Receipt" || !linkedGateEntry.sourceGatePassId) return;
     if (!pendingGatePassLines.length) return;
 
+    const jobWork = isJobWorkGatePass(linkedSourceGatePass);
     const autoLines = pendingGatePassLines.map((sourceLine) => {
-      const matchedService = resolveServiceForGatePassLine(sourceLine);
+      // Job Work: the service (job work charge) and its rate come from the job worker's bill.
+      const matchedService = jobWork ? undefined : resolveServiceForGatePassLine(sourceLine);
       const qty = Number(sourceLine.pendingQty || 0);
-      const invoiceRate = Number(sourceLine.rate || 0);
+      const invoiceRate = jobWork ? 0 : Number(sourceLine.rate || 0);
+      const fallbackId = jobWork ? "" : sourceLine.itemId || sourceLine.id;
+      const fallbackName = jobWork ? "" : sourceLine.itemName || sourceLine.itemDescription;
 
       return applySupplyTypeTaxRates({
         id: crypto.randomUUID(),
-        itemId: matchedService?.id || sourceLine.itemId || sourceLine.id,
-        itemName: matchedService?.name || sourceLine.itemName || sourceLine.itemDescription,
+        itemId: matchedService?.id || fallbackId,
+        itemName: matchedService?.name || fallbackName,
         lineType: "Service",
-        serviceId: matchedService?.id || sourceLine.itemId || sourceLine.id,
-        serviceName: matchedService?.name || sourceLine.itemName || sourceLine.itemDescription,
+        serviceId: matchedService?.id || fallbackId,
+        serviceName: matchedService?.name || fallbackName,
         sourceGatePassId: linkedSourceGatePass?.id,
         sourceGatePassNo: linkedSourceGatePass?.gatePassNo,
         sourceGatePassLineId: sourceLine.id,
@@ -620,9 +627,9 @@ export function MaterialInForm({ directService = false }: { directService?: bool
     setLines(autoLines);
     resetLineDrafts();
     setCurrentSourceGatePassLineId(firstSourceLine?.id || "");
-    setCurrentItemId(firstMatchedService?.id || "");
+    setCurrentItemId(jobWork ? "" : firstMatchedService?.id || "");
     setCurrentQty(Number(firstSourceLine?.pendingQty || 0));
-    setCurrentInvoiceRate(Number(firstSourceLine?.rate || 0));
+    setCurrentInvoiceRate(jobWork ? "" : Number(firstSourceLine?.rate || 0));
     hasAutoFilledServiceReturnRef.current = true;
   }, [editingEntry, isInterState, linkedGateEntry, linkedSourceGatePass, pendingGatePassLines, services]);
 
@@ -2549,6 +2556,28 @@ export function MaterialInForm({ directService = false }: { directService?: bool
       }
     }
 
+    // Job Work Return: the job worker's bill is entered with the goods (bill now only).
+    if (isJobWorkReturn) {
+      const label = (line: MaterialLine) => line.sourceGatePassItemDescription || line.itemName || "the job";
+      for (const line of linesForSubmit) {
+        if (!String(line.serviceId || "").trim()) { alert(`Select the Job Work service for ${label(line)}.`); return; }
+        if (!(Number(line.invoiceQty ?? line.qty ?? 0) > 0)) { alert(`Billed Qty must be greater than 0 for ${label(line)}.`); return; }
+      }
+      const shortLines = linesForSubmit
+        .map((line) => {
+          const pending = Number(pendingGatePassLines.find((entry) => entry.id === line.sourceGatePassLineId)?.pendingQty || 0);
+          return { line, pending, short: Math.max(0, Math.round((pending - Number(line.actualQty ?? line.qty ?? 0)) * 100) / 100) };
+        })
+        .filter((entry) => entry.short > 0);
+      const undecided = shortLines.find((entry) => !entry.line.jobWorkStatus);
+      if (undecided) { alert(`${label(undecided.line)}: returned qty is less than pending. Choose In Progress or Complete.`); return; }
+      const closing = shortLines.filter((entry) => entry.line.jobWorkStatus === "Complete");
+      if (closing.length && !window.confirm(closing.map((entry) => `${label(entry.line)}: pending ${entry.pending.toLocaleString("en-IN")}, received ${Number(entry.line.actualQty ?? entry.line.qty ?? 0).toLocaleString("en-IN")}. ${entry.short.toLocaleString("en-IN")} short will be closed as not returned.`).join("\n") + "\n\nContinue?")) return;
+      const jobWorker = suppliers.find((entry) => entry.id === supplierId);
+      if (String(jobWorker?.gstNo || "").trim() && linesForSubmit.some((line) => Number(line.gstRate || 0) <= 0)
+        && !window.confirm("GST % is 0 but this job worker is GST registered. Continue?")) return;
+    }
+
     if (mrrType === "Reel") {
       for (const line of lines) {
         const slips = packingSlipDrafts[line.id] || [];
@@ -3171,7 +3200,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
               MRR Type <span className="text-red-500">*</span>
             </label>
             {linkedGateEntry?.purpose === "Returnable Receipt" ? (
-              <input value="Service Return" disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
+              <input value={isJobWorkReturn ? "Job Work Return" : "Service Return"} disabled className="border-2 border-black rounded p-2 text-black bg-slate-50 w-full font-semibold opacity-80" />
             ) : (
               // Material type as buttons so the selected type is clear at a glance.
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="MRR Type">
@@ -3271,7 +3300,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
 
         <div className="mt-6 border-t border-black pt-4">
           <h3 className="text-lg font-bold text-black mb-4 uppercase">
-            {isDirectService ? "Add Service" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
+            {isDirectService ? "Add Service" : isJobWorkReturn ? "Job Work Return (job worker's bill)" : isServiceReturn ? "Service Return Lines" : isFgType ? "FG Items" : (mrrType === "Reel" ? "Reel Items" : "Line Items")}
           </h3>
           <div className="flex flex-wrap gap-4 items-end mb-4 bg-slate-50 p-4 rounded border border-black">
             {mrrType === "FG Purchase" && !isServiceReturn && !isDirectService ? (
@@ -3377,14 +3406,15 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                       {isServiceReturn ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Returned Item</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Our PO No.</th> : null}
                       {showPoLineSelection ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">PO Rate</th> : null}
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? "Quantity" : isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? "Quantity" : isJobWorkReturn ? "Billed Qty" : isServiceReturn ? "Return Qty" : isFgType ? "Item Receipt" : "Invoice Qty"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isDirectService ? `Service Amount (${isUsdInvoice ? "USD" : "INR"})` : isUsdInvoice ? "Invoice Rate (USD)" : "Invoice Rate (INR)"}</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">GST %</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Pre-GST Invoice Value (INR)</th>
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">CGST %</th> : null}
                       {!isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">SGST %</th> : null}
                       {isInterState ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">IGST %</th> : null}
-                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isServiceReturn ? "Accepted Qty" : "Kanta Weight"}</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">{isJobWorkReturn ? "Returned Qty" : isServiceReturn ? "Accepted Qty" : "Kanta Weight"}</th>
+                      {isJobWorkReturn ? <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Pending / Status</th> : null}
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">UOM</th>
                       <th className="px-4 py-3 text-left text-xs font-bold text-black uppercase border border-black">Item Value</th>
                       <th className="px-4 py-3 text-right border border-black"></th>
@@ -3405,7 +3435,7 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                               />
                             ) : materialName}
                           </td>
-                          {isServiceReturn ? <td className="px-4 py-3 text-sm text-black border border-black">{line.sourceGatePassItemDescription || "-"}</td> : null}
+                          {isServiceReturn ? <td className="px-4 py-3 text-sm text-black border border-black">{isJobWorkReturn && linkedSourceGatePass?.jobNo ? <div className="text-xs font-black text-indigo-800">Job {linkedSourceGatePass.jobNo}</div> : null}{line.sourceGatePassItemDescription || "-"}</td> : null}
                           {showPoLineSelection ? (
                             <td className="px-4 py-3 text-sm text-black border border-black min-w-[220px]">
                               <Select
@@ -3481,6 +3511,27 @@ export function MaterialInForm({ directService = false }: { directService?: bool
                               />
                             )}
                           </td>
+                          {isJobWorkReturn ? (() => {
+                            const pending = Number(pendingGatePassLines.find((entry) => entry.id === line.sourceGatePassLineId)?.pendingQty || 0);
+                            const returned = Number(line.actualQty ?? line.qty ?? 0);
+                            const short = Math.max(0, Math.round((pending - returned) * 100) / 100);
+                            return (
+                              <td className="px-4 py-3 text-sm text-black border border-black min-w-[170px]">
+                                <div className="text-xs font-semibold text-slate-600">Pending: {pending.toLocaleString("en-IN")}</div>
+                                {short > 0 ? (
+                                  <select
+                                    value={line.jobWorkStatus || ""}
+                                    onChange={(e) => updateLine(line.id, { jobWorkStatus: (e.target.value || undefined) as MaterialLine["jobWorkStatus"] })}
+                                    className={`mt-1 w-full rounded border px-2 py-1 text-xs font-bold ${line.jobWorkStatus ? "border-slate-400" : "border-red-600 bg-red-50"}`}
+                                  >
+                                    <option value="">Short {short.toLocaleString("en-IN")} – choose…</option>
+                                    <option value="In Progress">In Progress (more coming)</option>
+                                    <option value="Complete">Complete (close the pass)</option>
+                                  </select>
+                                ) : <div className="mt-1 text-xs font-black text-emerald-700">Complete</div>}
+                              </td>
+                            );
+                          })() : null}
                           <td className="px-4 py-3 text-sm text-black border border-black">{line.uom}</td>
                           <td className="px-4 py-3 text-sm font-medium text-black border border-black">{Number(line.actualValue || line.value || 0).toFixed(2)}</td>
                           <td className="px-4 py-3 text-right border border-black">

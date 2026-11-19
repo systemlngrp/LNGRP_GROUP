@@ -47,6 +47,7 @@ import { usePageDataStatus } from "../components/DataLoadingBoundary";
 import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
 import { corrugationLinerQtyByJobId } from "../lib/productionProcessingProgress";
 import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
+import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
 import {
   EligibleLoadingJob,
   getLoadingJobNumber,
@@ -109,6 +110,8 @@ function createEmptyPackingRows(): PackingDetail[] {
 
 export function PendingLoading() {
   const phpPlateReceipts = usePhpPlateReceipts();
+  // Qty of each job still at a job worker (Job Work gate pass) cannot be loaded.
+  const atJobWorkerByJobId = useQtyAtJobWorker();
   const { setActiveFirm } = useAuth();
   const { loading: pageLoading } = usePageDataStatus();
   const [plans, updatePlans] = useData<DispatchPlan>("dispatch_plans", [], { firmScope: "all", storageKey: "dispatch-plans-all-firms" });
@@ -194,10 +197,11 @@ export function PendingLoading() {
       plateJobs,
       loadingSlips,
       corrugationQtyByJobId,
+      atJobWorkerByJobId,
       resolveOrderItem,
       findItemAcrossSources,
     }),
-    [companies, corrugationQtyByJobId, findItemAcrossSources, firms, loadingSlips, orders, phpJobs, plateJobs, plans, productions, resolveOrderItem, schedules],
+    [atJobWorkerByJobId, companies, corrugationQtyByJobId, findItemAcrossSources, firms, loadingSlips, orders, phpJobs, plateJobs, plans, productions, resolveOrderItem, schedules],
   );
 
   const groupedData = useMemo(() => {
@@ -375,7 +379,8 @@ export function PendingLoading() {
     const ffg = jobSource === "FG" ? corrugationQtyByJobId.get(jobId) || 0 : Number(production?.productionOutputQty || 0);
     const alreadyLoaded = getAlreadyLoadedForJob(jobId);
     const currentAdjustments = currentAdjustmentByJobId.get(jobId) || 0;
-    return Math.max(0, ffg - alreadyLoaded - currentAdjustments + currentRowQty);
+    const atJobWorker = atJobWorkerByJobId.get(jobId) || 0;
+    return Math.max(0, ffg - alreadyLoaded - atJobWorker - currentAdjustments + currentRowQty);
   };
 
   const getModalKey = (companyId: string, itemSource: OrderItemSource, itemId: string) => `${companyId}::${itemSource}::${itemId}`;
@@ -429,7 +434,7 @@ export function PendingLoading() {
   const modalHasErrors = useMemo(() => {
     if (!loadingModal) return false;
     return !getModalValidation(loadingModal).isValid;
-  }, [jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
+  }, [atJobWorkerByJobId, jobSplitQtys, loadedQuantities, loadingModal, openingStockQtys, currentAdjustmentByJobId, existingLoadedByJobId, productionMap, corrugationQtyByJobId, modalTruckId, modalManualTruckNo, packingDetails, extraItemsQty, npdItems, npdStockLoading, itemsBySource.FG, firms]);
 
   const handleOpenLoad = (firmId: string, companyId: string, itemSource: OrderItemSource, itemId: string, itemName: string, itemPlans: PendingPlan[]) => {
     const firm = firms.find((row) => row.id === firmId);
@@ -1081,7 +1086,7 @@ export function PendingLoading() {
                                     <td className="px-4 py-3 text-xs font-black text-black">{job.jobNo}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.productionQty.toLocaleString()}</td>
                                     <td className="px-4 py-3 text-right text-xs text-slate-600 font-medium">{job.alreadyLoaded.toLocaleString()}</td>
-                                    <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{job.yetToLoad.toLocaleString()}</td>
+                                    <td className="px-4 py-3 text-right text-xs font-black text-emerald-700">{job.yetToLoad.toLocaleString()}{job.atJobWorker ? <div className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-black text-amber-900" title="Sent on a Job Work gate pass and not yet returned">At Job Worker: {job.atJobWorker.toLocaleString()}</div> : null}</td>
                                     <td className="px-4 py-2 text-right bg-indigo-50/30">
                                       <input
                                         type="number"

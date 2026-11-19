@@ -28,6 +28,10 @@ export function GatePassMaster() {
   const [invoices] = useData<Invoice>("invoices", []);
   const [settings] = useData<Setting>("settings", []);
   const [materialIn] = useData<MaterialIn>("material-in", []);
+  // Receiver and firm details for the returnable delivery challan.
+  const [suppliersForChallan] = useData<any>("suppliers", []);
+  const [companiesForChallan] = useData<any>("companies", []);
+  const [firmsForChallan] = useData<any>("firms", [], { firmScope: "all" });
 
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
@@ -143,6 +147,11 @@ export function GatePassMaster() {
         invoiceDisplayNo: isReturnableGatePass(gatePass) ? undefined : getLinkedInvoice(gatePass)?.tallyInvNo || "-",
         destination: isReturnableGatePass(gatePass) ? undefined : getLinkedInvoice(gatePass)?.destination,
         transporter: isReturnableGatePass(gatePass) ? undefined : getLinkedInvoice(gatePass)?.transporter,
+        firms: firmsForChallan,
+        recipient: (() => {
+          const party = suppliersForChallan.find((row: any) => row.id === gatePass.recipientId) || companiesForChallan.find((row: any) => row.id === gatePass.recipientId);
+          return party ? { name: party.name, address: party.address, gstNo: party.gstNo } : null;
+        })(),
       });
     } catch (error) {
       console.error("Failed to generate Gate Pass PDF:", error);

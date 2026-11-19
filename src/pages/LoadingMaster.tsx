@@ -37,6 +37,7 @@ import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { isDirectLoadingSlip, resolveLoadingSlipLineContext, summarizeLoadingSlip } from "../lib/loadingSlipContext";
 import { getJobLoadingSlipLimitError } from "../lib/loadingValidation";
+import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
 import { getFirmDisplayNameById } from "../lib/firmDisplay";
 import { usePhpPlateReceipts } from "../hooks/usePhpPlateReceipts";
 
@@ -47,6 +48,8 @@ function getSlipNoSortValue(slipNo: string) {
 }
 
 export function LoadingMaster() {
+  // Jobs with qty still at a job worker: their loaded qty may not be raised here.
+  const atJobWorkerByJobId = useQtyAtJobWorker();
   const phpPlateReceipts = usePhpPlateReceipts();
   const { user } = useAuth();
   const canManage = canManageMasterRecords(user?.role);
@@ -303,6 +306,23 @@ export function LoadingMaster() {
     const lines = getSlipLines(draft);
     const allocationLimitError = getJobLoadingSlipLimitError(lines.flatMap((line) => line.allocations || []), loadingSlips, draft.id);
     if (allocationLimitError) errors.push(allocationLimitError);
+    const original = loadingSlips.find((slip) => slip.id === draft.id);
+    const jobTotals = (slipLines: Array<{ allocations?: LoadingSlipAllocation[] }>) => {
+      const totals = new Map<string, { qty: number; jobNo: string }>();
+      slipLines.flatMap((line) => line.allocations || []).forEach((allocation) => {
+        if (allocation.sourceType !== "job") return;
+        const current = totals.get(allocation.jobId) || { qty: 0, jobNo: allocation.jobNo };
+        totals.set(allocation.jobId, { qty: current.qty + Number(allocation.qty || 0), jobNo: allocation.jobNo });
+      });
+      return totals;
+    };
+    const before = jobTotals(original?.lines || []);
+    jobTotals(lines).forEach(({ qty, jobNo }, jobId) => {
+      const atWorker = atJobWorkerByJobId.get(jobId) || 0;
+      if (atWorker > 0 && qty > (before.get(jobId)?.qty || 0) + 0.0001) {
+        errors.push(`Job ${jobNo}: ${atWorker.toLocaleString()} pcs are at the job worker (Job Work gate pass). Loaded qty for this job cannot be increased until they return.`);
+      }
+    });
     lines.forEach((line, index) => {
       const loadedQty = Number(line.loadedQty || 0);
       if (loadedQty < 0) errors.push(`Line ${index + 1}: Loaded qty cannot be negative.`);

@@ -9792,6 +9792,13 @@ async function initDb(retries = 5) {
                 { table: "gate_passes", column: "lines", type: "JSON NOT NULL" },
                 { table: "gate_passes", column: "updatedBy", type: "VARCHAR(255)" },
                 { table: "gate_passes", column: "updateTimestamp", type: "VARCHAR(255)" },
+                { table: "gate_passes", column: "firmId", type: "VARCHAR(36)" },
+                { table: "gate_passes", column: "purpose", type: "VARCHAR(30)" },
+                { table: "gate_passes", column: "process", type: "VARCHAR(255)" },
+                { table: "gate_passes", column: "expectedReturnDate", type: "VARCHAR(50)" },
+                { table: "gate_passes", column: "productionId", type: "VARCHAR(36)" },
+                { table: "gate_passes", column: "jobNo", type: "VARCHAR(100)" },
+                { table: "gate_passes", column: "valuePercent", type: "DECIMAL(7,2)" },
                 { table: "invoice_line_items", column: "invoiceId", type: "VARCHAR(36) NOT NULL" },
                 { table: "invoice_line_items", column: "loadingSlipId", type: "VARCHAR(36)" },
                 { table: "invoice_line_items", column: "itemId", type: "VARCHAR(36) NOT NULL" },
@@ -19352,6 +19359,55 @@ async function readUserTableWidths(db, userId) {
         return {};
     }
 }
+// Qty of each job still at a job worker: open Job Work gate passes minus the
+// qty received back on "Job Work Return" MRRs (a line marked Complete is closed).
+// Loading slips may not load that qty (src/lib/pendingLoadingEligibility.ts).
+app.get("/api/job-work-at-worker", async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ error: "DB connection not available" });
+        const [passes] = await db.query("SELECT id, productionId, `lines`, clearOffReason, clearedOffAt FROM `gate_passes` WHERE gatePassType = 'Returnable' AND purpose = 'Job Work'");
+        const passRows = passes.filter((row) => !(String(row.clearOffReason || "").trim() && String(row.clearedOffAt || "").trim()));
+        const byJob = {};
+        if (passRows.length) {
+            const [receipts] = await db.query("SELECT sourceGatePassId, `lines`, status FROM `material_in` WHERE mrrType = 'Job Work Return' AND sourceGatePassId IN (?)", [passRows.map((row) => row.id)]);
+            const parse = (value) => { try {
+                const parsed = typeof value === "string" ? JSON.parse(value) : value;
+                return Array.isArray(parsed) ? parsed : [];
+            }
+            catch {
+                return [];
+            } };
+            const returnLines = receipts
+                .filter((row) => !["cancelled", "canceled"].includes(String(row.status || "").trim().toLowerCase()))
+                .flatMap((row) => parse(row.lines).map((line) => ({ ...line, passId: String(row.sourceGatePassId || "") })));
+            for (const pass of passRows) {
+                for (const line of parse(pass.lines)) {
+                    const jobId = String(line.productionId || pass.productionId || "").trim();
+                    if (!jobId)
+                        continue;
+                    const mine = returnLines.filter((entry) => entry.passId === String(pass.id) && String(entry.sourceGatePassLineId || "") === String(line.id || ""));
+                    if (mine.some((entry) => entry.jobWorkStatus === "Complete"))
+                        continue;
+                    const returned = mine.reduce((sum, entry) => sum + Number(entry.actualQty ?? entry.qty ?? 0), 0);
+                    const pending = Math.round((Number(line.qty || 0) - returned) * 100) / 100;
+                    if (pending > 0)
+                        byJob[jobId] = Math.round(((byJob[jobId] || 0) + pending) * 100) / 100;
+                }
+            }
+        }
+        res.setHeader("Cache-Control", "no-store");
+        return res.json({ byJob });
+    }
+    catch (error) {
+        console.error("[job-work-at-worker] failed", error.message);
+        return res.status(500).json({ error: "Unable to read job work status." });
+    }
+});
 app.get("/api/my-table-column-widths", async (req, res) => {
     const user = await getRequestUser(req).catch(() => null);
     if (!user)

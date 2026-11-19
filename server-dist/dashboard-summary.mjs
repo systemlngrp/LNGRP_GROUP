@@ -877,52 +877,6 @@ function getPendingDailyConsumables(firms, productions, issues, today = (/* @__P
   return pending.sort((a, b) => b.date.localeCompare(a.date) || a.firmName.localeCompare(b.firmName));
 }
 
-// src/lib/gatePassState.ts
-function round23(value) {
-  return Number(Number(value || 0).toFixed(2));
-}
-function isReturnableGatePass(gatePass) {
-  return (gatePass.gatePassType || "Non-Returnable") === "Returnable";
-}
-function getReturnableReceiptLines(materialIn, gatePassId, excludeMaterialInId) {
-  return materialIn.filter((entry) => entry.id !== excludeMaterialInId).filter((entry) => entry.mrrType === "Service Return" && entry.sourceGatePassId === gatePassId).flatMap((entry) => entry.lines || []);
-}
-function getReturnedQtyForGatePassLine(materialIn, gatePassId, gatePassLineId, excludeMaterialInId) {
-  return round23(
-    getReturnableReceiptLines(materialIn, gatePassId, excludeMaterialInId).filter((line) => line.sourceGatePassLineId === gatePassLineId).reduce((sum, line) => sum + Number(line.actualQty ?? line.qty ?? 0), 0)
-  );
-}
-function getGatePassLinesWithReturns(gatePass, materialIn, excludeMaterialInId) {
-  return (gatePass.lines || []).map((line) => {
-    const returnedQty = isReturnableGatePass(gatePass) ? getReturnedQtyForGatePassLine(materialIn, gatePass.id, line.id, excludeMaterialInId) : 0;
-    const pendingQty = round23(Number(line.qty || 0) - returnedQty);
-    return {
-      ...line,
-      returnedQty,
-      pendingQty: pendingQty > 0 ? pendingQty : 0
-    };
-  });
-}
-function deriveGatePassState(gatePass, materialIn) {
-  if (!isReturnableGatePass(gatePass)) return "Closed";
-  if (gatePass.clearOffReason && gatePass.clearedOffAt) return "Cleared Off";
-  const lines = getGatePassLinesWithReturns(gatePass, materialIn);
-  const totalQty = round23(lines.reduce((sum, line) => sum + Number(line.qty || 0), 0));
-  const returnedQty = round23(lines.reduce((sum, line) => sum + Number(line.returnedQty || 0), 0));
-  if (returnedQty <= 0) return "Open";
-  if (returnedQty >= totalQty) return "Closed";
-  return "Partially Returned";
-}
-function hasSavedReturnableReceiptGateEntry(gatePass, gateEntries) {
-  const gatePassId = String(gatePass.id || "").trim();
-  if (!gatePassId) return false;
-  return gateEntries.some((entry) => {
-    const purpose = String(entry.purpose || "").trim();
-    const sourceGatePassId = String(entry.sourceGatePassId || "").trim();
-    return purpose === "Returnable Receipt" && sourceGatePassId === gatePassId;
-  });
-}
-
 // src/lib/gateEntryState.ts
 function hasGateEntryMrr(entry) {
   return Boolean(
@@ -934,6 +888,57 @@ function isGateEntryCancelled(entry) {
 }
 function canCreateMrrForGateEntry(entry) {
   return Boolean(entry) && !isGateEntryCancelled(entry) && !hasGateEntryMrr(entry);
+}
+
+// src/lib/gatePassState.ts
+var RETURN_MRR_TYPES = /* @__PURE__ */ new Set(["Service Return", "Job Work Return"]);
+function round23(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+function isReturnableGatePass(gatePass) {
+  return (gatePass.gatePassType || "Non-Returnable") === "Returnable";
+}
+function getReturnableReceiptLines(materialIn, gatePassId, excludeMaterialInId) {
+  return materialIn.filter((entry) => entry.id !== excludeMaterialInId).filter((entry) => RETURN_MRR_TYPES.has(String(entry.mrrType || "")) && entry.sourceGatePassId === gatePassId).filter((entry) => !["cancelled", "canceled"].includes(String(entry.status || "").trim().toLowerCase())).flatMap((entry) => entry.lines || []);
+}
+function getReturnedQtyForGatePassLine(materialIn, gatePassId, gatePassLineId, excludeMaterialInId) {
+  return round23(
+    getReturnableReceiptLines(materialIn, gatePassId, excludeMaterialInId).filter((line) => line.sourceGatePassLineId === gatePassLineId).reduce((sum, line) => sum + Number(line.actualQty ?? line.qty ?? 0), 0)
+  );
+}
+function getGatePassLinesWithReturns(gatePass, materialIn, excludeMaterialInId) {
+  const receiptLines = isReturnableGatePass(gatePass) ? getReturnableReceiptLines(materialIn, gatePass.id, excludeMaterialInId) : [];
+  return (gatePass.lines || []).map((line) => {
+    const returnedQty = isReturnableGatePass(gatePass) ? getReturnedQtyForGatePassLine(materialIn, gatePass.id, line.id, excludeMaterialInId) : 0;
+    const closedComplete = receiptLines.some((entry) => entry.sourceGatePassLineId === line.id && entry.jobWorkStatus === "Complete");
+    const openQty = Math.max(0, round23(Number(line.qty || 0) - returnedQty));
+    return {
+      ...line,
+      returnedQty,
+      pendingQty: closedComplete ? 0 : openQty,
+      shortQty: closedComplete ? openQty : 0,
+      closedComplete
+    };
+  });
+}
+function deriveGatePassState(gatePass, materialIn) {
+  if (!isReturnableGatePass(gatePass)) return "Closed";
+  if (gatePass.clearOffReason && gatePass.clearedOffAt) return "Cleared Off";
+  const lines = getGatePassLinesWithReturns(gatePass, materialIn);
+  const pendingQty = round23(lines.reduce((sum, line) => sum + Number(line.pendingQty || 0), 0));
+  const returnedQty = round23(lines.reduce((sum, line) => sum + Number(line.returnedQty || 0), 0));
+  if (pendingQty <= 0) return "Closed";
+  if (returnedQty <= 0) return "Open";
+  return "Partially Returned";
+}
+function hasSavedReturnableReceiptGateEntry(gatePass, gateEntries) {
+  const gatePassId = String(gatePass.id || "").trim();
+  if (!gatePassId) return false;
+  return gateEntries.some((entry) => {
+    const purpose = String(entry.purpose || "").trim();
+    const sourceGatePassId = String(entry.sourceGatePassId || "").trim();
+    return purpose === "Returnable Receipt" && sourceGatePassId === gatePassId && canCreateMrrForGateEntry(entry);
+  });
 }
 
 // src/lib/mandatoryMachines.ts
@@ -1401,7 +1406,7 @@ function jobIndexFor(jobs) {
   jobIndexCache.set(jobs, index);
   return index;
 }
-function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, alreadyLoaded, itemAliases = [], corrugationQtyByJobId) {
+function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, plateJobs, alreadyLoaded, itemAliases = [], corrugationQtyByJobId, atJobWorkerByJobId) {
   const jobQty = (production) => {
     if (source !== "FG") return Number(production.productionOutputQty || 0);
     if (corrugationQtyByJobId) return corrugationQtyByJobId.get(String(production.id || "").trim()) || 0;
@@ -1427,12 +1432,14 @@ function eligibleLoadingJobs(itemSource, itemId, firmId, productions, phpJobs, p
   }).map((production) => {
     const productionQty = jobQty(production);
     const loaded = alreadyLoaded.get(normalizeKey(production.id)) || 0;
+    const atJobWorker = atJobWorkerByJobId?.get(String(production.id || "").trim()) || 0;
     return {
       jobId: production.id,
       jobNo: getLoadingJobNumber(production),
       productionQty,
       alreadyLoaded: loaded,
-      yetToLoad: Math.max(0, productionQty - loaded)
+      atJobWorker,
+      yetToLoad: Math.max(0, productionQty - loaded - atJobWorker)
     };
   }).filter((job) => Boolean(job.jobNo) && job.yetToLoad > 0).sort(
     (a, b) => b.jobNo.localeCompare(a.jobNo, void 0, { numeric: true, sensitivity: "base" })
@@ -1470,7 +1477,8 @@ function getPendingLoadingPlanProjections(args) {
       args.plateJobs,
       loaded,
       Array.from(itemKeys(item, order)),
-      args.corrugationQtyByJobId
+      args.corrugationQtyByJobId,
+      args.atJobWorkerByJobId
     );
     return [{
       plan,

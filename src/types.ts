@@ -162,6 +162,8 @@ export interface MaterialLine {
   cgstRate?: number;
   sgstRate?: number;
   igstRate?: number;
+  /** Job Work Return line: "Complete" closes the pass line even when short. */
+  jobWorkStatus?: "In Progress" | "Complete";
   taxableAmount?: number;
   gstAmount?: number;
   cgst?: number;
@@ -773,7 +775,7 @@ export interface MaterialIn {
   firmId?: string;
   firmName?: string;
   transactionNo: string;
-  mrrType?: "Reel" | "Others" | "Rejection In" | "FG Purchase" | "Service Return" | "Direct Service";
+  mrrType?: "Reel" | "Others" | "Rejection In" | "FG Purchase" | "Service Return" | "Job Work Return" | "Direct Service";
   mrrSubType?: "Other RM" | "Spare parts" | "Others" | string;
   tallyLedgerName?: string;
   gateEntryId?: string;
@@ -1798,7 +1800,16 @@ export interface GatePassLine {
   loadingSlipIds: string[];
   loadingSlipNos: string[];
   remarks?: string;
+  /** Job Work pass line: the job sent out (one job per pass). */
+  productionId?: string;
+  jobNo?: string;
+  erpCode?: string;
+  hsnCode?: string;
+  orderRate?: number;
+  valuePercent?: number;
 }
+
+export type ReturnableGatePassPurpose = "Job Work" | "Repair" | "Sample" | "Other";
 
 export interface GatePass {
   id: string;
@@ -1807,6 +1818,13 @@ export interface GatePass {
   gatePassNo: string;
   date: string;
   gatePassType?: "Non-Returnable" | "Returnable";
+  /** Returnable passes: why the goods go out. Job Work passes carry one job. */
+  purpose?: ReturnableGatePassPurpose;
+  process?: string;
+  expectedReturnDate?: string;
+  productionId?: string;
+  jobNo?: string;
+  valuePercent?: number;
   invoiceId?: string;
   invoiceNo?: string;
   companyId?: string;

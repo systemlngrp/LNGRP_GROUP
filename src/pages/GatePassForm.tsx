@@ -5,7 +5,13 @@ import { Select } from "../components/Select";
 import { Spinner } from "../components/Spinner";
 import { useData } from "../hooks/useData";
 import { buildGatePassFromInvoice } from "../lib/gatePasses";
-import { Company, GatePass, GatePassLine, Invoice, InvoiceLineItem, LoadingSlip, Supplier, Truck, UnitMaster, User } from "../types";
+import { Company, GatePass, GatePassLine, Invoice, InvoiceLineItem, LoadingSlip, Production, ReturnableGatePassPurpose, Supplier, Truck, UnitMaster, User } from "../types";
+import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
+import { displayJobNo } from "../lib/jobNumber";
+
+const PURPOSES: ReturnableGatePassPurpose[] = ["Job Work", "Repair", "Sample", "Other"];
+const JOB_WORK_PROCESSES = ["Printing", "Lamination", "Die Cutting", "Pasting", "Stitching", "Punching", "Other"];
+const round2 = (value: number) => Math.round(Number(value || 0) * 100) / 100;
 import { formatDate } from "../lib/serial";
 
 type InvoiceSlipRow = LoadingSlip & {
@@ -47,6 +53,13 @@ export function GatePassForm() {
   const [trucks] = useData<Truck>("trucks", []);
   const [users] = useData<User>("users", []);
   const [units] = useData<UnitMaster>("units", []);
+  // Job Work: open jobs (only the fields the pass needs) and their items.
+  const [jobs] = useData<Production>("productions", [], {
+    firmScope: "all",
+    storageKey: "gate-pass-job-work-jobs",
+    fields: ["transactionNo", "jobCardNo", "itemId", "npdId", "erpCode", "companyName", "rate", "qty", "uom", "status", "closeBy", "closeDate", "firmId", "date"],
+  });
+  const npdItems = useNpdItemsWithoutStock();
 
   const editingGatePass = gatePasses.find((row) => row.id === editId) || null;
   const gatePassType = (editingGatePass?.gatePassType || (invoiceIdFromQuery ? "Non-Returnable" : "Returnable")) as "Non-Returnable" | "Returnable";
@@ -61,6 +74,15 @@ export function GatePassForm() {
   const [sentByUserId, setSentByUserId] = useState("");
   const [returnableLines, setReturnableLines] = useState<GatePassLine[]>([createBlankLine()]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Purpose and the Job Work fields (entered by the user; nothing is pre-filled).
+  const [purpose, setPurpose] = useState<ReturnableGatePassPurpose | "">("");
+  const [jobId, setJobId] = useState("");
+  const [process, setProcess] = useState("");
+  const [qtySent, setQtySent] = useState<number | "">("");
+  const [valuePercent, setValuePercent] = useState<number | "">("");
+  const [hsnCode, setHsnCode] = useState("");
+  const [expectedReturnDate, setExpectedReturnDate] = useState("");
+  const isJobWork = isReturnable && purpose === "Job Work";
 
   useEffect(() => {
     if (editingGatePass) {
@@ -71,6 +93,13 @@ export function GatePassForm() {
       setRemarks(editingGatePass.remarks || "");
       setRecipientId(editingGatePass.recipientId || "");
       setSentByUserId(editingGatePass.sentByUserId || "");
+      setPurpose(editingGatePass.purpose || (editingGatePass.gatePassType === "Returnable" ? "Other" : ""));
+      setJobId(editingGatePass.productionId || editingGatePass.lines?.[0]?.productionId || "");
+      setProcess(editingGatePass.process || "");
+      setQtySent(editingGatePass.purpose === "Job Work" ? Number(editingGatePass.lines?.[0]?.qty || 0) || "" : "");
+      setValuePercent(editingGatePass.valuePercent ?? editingGatePass.lines?.[0]?.valuePercent ?? "");
+      setHsnCode(editingGatePass.lines?.[0]?.hsnCode || "");
+      setExpectedReturnDate(editingGatePass.expectedReturnDate || "");
       setReturnableLines(
         editingGatePass.lines?.length
           ? editingGatePass.lines.map((line) => ({
@@ -94,7 +123,31 @@ export function GatePassForm() {
     setRecipientId("");
     setSentByUserId("");
     setReturnableLines([createBlankLine()]);
+    setPurpose("");
+    setJobId("");
+    setProcess("");
+    setQtySent("");
+    setValuePercent("");
+    setHsnCode("");
+    setExpectedReturnDate("");
   }, [editingGatePass, invoiceIdFromQuery]);
+
+  const selectedJob = jobs.find((job) => job.id === jobId) || null;
+  const selectedJobItem = useMemo(() => {
+    if (!selectedJob) return undefined;
+    return npdItems.find((item) => String(item.id) === String(selectedJob.npdId || selectedJob.itemId))
+      || npdItems.find((item) => String(item.erp || "") === String(selectedJob.erpCode || ""));
+  }, [npdItems, selectedJob]);
+  const jobOrderRate = Number(selectedJob?.rate || 0);
+  const jobWorkValue = round2(Number(qtySent || 0) * jobOrderRate * Number(valuePercent || 0) / 100);
+  const jobOptions = useMemo(() => jobs
+    .filter((job) => job.status !== "Cancelled" && !(String(job.closeBy || "").toLowerCase() === "yes" && String(job.closeDate || "").trim()))
+    .filter((job) => String(job.transactionNo || job.jobCardNo || "").trim())
+    .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
+    .map((job) => {
+      const jobNo = String(job.transactionNo || job.jobCardNo || "");
+      return { value: job.id, label: `${displayJobNo(jobNo)} | ${job.companyName || "-"} | ${job.erpCode || "-"}`, searchText: `${jobNo} ${displayJobNo(jobNo)} ${job.companyName || ""} ${job.erpCode || ""}` };
+    }), [jobs]);
 
   const selectedInvoice = invoices.find((invoice) => invoice.id === selectedInvoiceId) || null;
   const selectedCompany = companies.find((company) => company.id === selectedInvoice?.companyId);
@@ -201,7 +254,26 @@ export function GatePassForm() {
     const recipientSupplier = suppliers.find((row) => row.id === recipientId);
     const recipientCompany = companies.find((row) => row.id === recipientId);
     const sentByUser = users.find((row) => row.id === sentByUserId);
-    const normalizedLines = returnableLines
+    const jobNo = String(selectedJob?.transactionNo || selectedJob?.jobCardNo || "");
+    const jobWorkLine: GatePassLine | null = isJobWork && selectedJob ? {
+      id: editingGatePass?.lines?.[0]?.id || crypto.randomUUID(),
+      itemId: String(selectedJob.npdId || selectedJob.itemId || ""),
+      itemName: selectedJobItem?.name || String(selectedJob.erpCode || jobNo),
+      itemDescription: selectedJobItem?.name || String(selectedJob.erpCode || jobNo),
+      qty: Number(qtySent || 0),
+      uom: String(selectedJob.uom || "PCS") || "PCS",
+      rate: round2(jobOrderRate * Number(valuePercent || 0) / 100),
+      amount: jobWorkValue,
+      loadingSlipIds: [],
+      loadingSlipNos: [],
+      productionId: selectedJob.id,
+      jobNo,
+      erpCode: String(selectedJob.erpCode || ""),
+      hsnCode: hsnCode.trim(),
+      orderRate: jobOrderRate,
+      valuePercent: Number(valuePercent || 0),
+    } : null;
+    const normalizedLines = isJobWork ? (jobWorkLine ? [jobWorkLine] : []) : returnableLines
       .map((line) => {
         const qty = Number(line.qty || 0);
         const itemDescription = String(line.itemDescription || line.itemName || "").trim();
@@ -220,13 +292,20 @@ export function GatePassForm() {
       })
       .filter((line) => line.itemDescription && Number(line.qty || 0) > 0);
 
-    if ((!recipientSupplier && !recipientCompany) || !sentByUser || normalizedLines.length === 0) return null;
+    if ((!recipientSupplier && !recipientCompany) || !sentByUser || normalizedLines.length === 0 || !purpose) return null;
 
     return {
       id: editingGatePass?.id || crypto.randomUUID(),
       gatePassNo: editingGatePass?.gatePassNo || "",
       date,
       gatePassType: "Returnable",
+      purpose: purpose || undefined,
+      process: isJobWork ? process.trim() : undefined,
+      expectedReturnDate: expectedReturnDate || undefined,
+      productionId: isJobWork ? selectedJob?.id : undefined,
+      jobNo: isJobWork ? jobNo : undefined,
+      valuePercent: isJobWork ? Number(valuePercent || 0) : undefined,
+      firmId: isJobWork ? selectedJob?.firmId || undefined : editingGatePass?.firmId,
       invoiceId: undefined,
       invoiceNo: undefined,
       companyId: undefined,
@@ -245,7 +324,7 @@ export function GatePassForm() {
       clearedOffAt: editingGatePass?.clearedOffAt,
       clearedOffBy: editingGatePass?.clearedOffBy,
       totalQty: normalizedLines.reduce((sum, line) => sum + Number(line.qty || 0), 0),
-      totalAmount: 0,
+      totalAmount: round2(normalizedLines.reduce((sum, line) => sum + Number(line.amount || 0), 0)),
       lines: normalizedLines,
       updatedBy: "System User",
       updateTimestamp: new Date().toISOString(),
@@ -256,9 +335,17 @@ export function GatePassForm() {
     event.preventDefault();
     setIsSubmitting(true);
     try {
+      if (isReturnable && !purpose) { alert("Please select the Purpose."); return; }
+      if (isJobWork) {
+        if (!jobId) { alert("Please select the Job No."); return; }
+        if (!process.trim()) { alert("Please enter the Process."); return; }
+        if (!(Number(qtySent) > 0)) { alert("Qty Sent must be greater than 0."); return; }
+        if (!(Number(valuePercent) > 0 && Number(valuePercent) <= 100)) { alert("Value % must be between 1 and 100."); return; }
+        if (!(jobOrderRate > 0)) { alert("This job has no order rate, so the challan value cannot be worked out."); return; }
+      }
       const payload = isReturnable ? buildReturnableGatePass() : previewGatePass;
       if (!payload) {
-        alert(isReturnable ? "Please fill recipient, sent by, and valid item rows." : "Please select invoice and loading slips.");
+        alert(isReturnable ? (isJobWork ? "Please fill Job Worker and Sent By." : "Please fill recipient, sent by, and valid item rows.") : "Please select invoice and loading slips.");
         return;
       }
       await setGatePasses((prev) => editingGatePass ? prev.map((row) => row.id === editingGatePass.id ? payload : row) : [payload, ...prev]);
@@ -289,7 +376,13 @@ export function GatePassForm() {
 
               {isReturnable ? (
                 <>
-                  <Field label="Recipient" required>
+                  <Field label="Purpose" required>
+                    <select value={purpose} onChange={(e) => setPurpose(e.target.value as ReturnableGatePassPurpose)} className="w-full rounded border border-black px-3 py-2 text-sm">
+                      <option value="">Select Purpose</option>
+                      {PURPOSES.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={isJobWork ? "Job Worker" : "Recipient"} required>
                     <Select value={recipientId} onChange={setRecipientId} options={recipientOptions} placeholder="Select party..." />
                   </Field>
                   <Field label="Sent By" required>
@@ -327,7 +420,49 @@ export function GatePassForm() {
               </Field>
             </div>
 
-            {isReturnable ? (
+            {isJobWork ? (
+              <div className="space-y-4 rounded border-2 border-indigo-700 bg-indigo-50/40 p-4">
+                <div className="text-sm font-black uppercase text-indigo-900">Job Work</div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field label="Job No." required>
+                    <Select value={jobId} onChange={setJobId} options={jobOptions} placeholder="Select job..." />
+                  </Field>
+                  <Field label="Process" required>
+                    <input list="job-work-processes" value={process} onChange={(e) => setProcess(e.target.value)} className="w-full rounded border border-black px-3 py-2 text-sm" placeholder="e.g. Printing" />
+                    <datalist id="job-work-processes">{JOB_WORK_PROCESSES.map((option) => <option key={option} value={option} />)}</datalist>
+                  </Field>
+                  <Field label="Item">
+                    <input value={selectedJob ? (selectedJobItem?.name || "-") : ""} readOnly className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm" />
+                  </Field>
+                  <Field label="ERP">
+                    <input value={selectedJob ? String(selectedJob.erpCode || "-") : ""} readOnly className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm" />
+                  </Field>
+                  <Field label="Qty Sent" required>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min="0" step="0.01" value={qtySent} onChange={(e) => setQtySent(e.target.value === "" ? "" : Number(e.target.value))} className="w-full rounded border border-black px-3 py-2 text-right text-sm" />
+                      <span className="text-sm font-bold">{selectedJob?.uom || "PCS"}</span>
+                    </div>
+                    {selectedJob ? <div className="mt-1 text-xs text-slate-600">Job qty: {Number(selectedJob.qty || 0).toLocaleString("en-IN")}</div> : null}
+                  </Field>
+                  <Field label="Value %" required>
+                    <input type="number" min="1" max="100" step="0.01" value={valuePercent} onChange={(e) => setValuePercent(e.target.value === "" ? "" : Number(e.target.value))} className="w-full rounded border border-black px-3 py-2 text-right text-sm" />
+                    <div className="mt-1 text-xs text-slate-600">Stage of the job: % of the order rate used as the challan value.</div>
+                  </Field>
+                  <Field label="Order Rate">
+                    <input value={selectedJob ? jobOrderRate.toFixed(2) : ""} readOnly className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-right text-sm" />
+                  </Field>
+                  <Field label="Challan Value (Qty × Rate × %)">
+                    <input value={selectedJob && qtySent && valuePercent ? jobWorkValue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""} readOnly className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-right text-sm font-bold" />
+                  </Field>
+                  <Field label="HSN Code">
+                    <input value={hsnCode} onChange={(e) => setHsnCode(e.target.value)} className="w-full rounded border border-black px-3 py-2 text-sm" />
+                  </Field>
+                  <Field label="Expected Return Date">
+                    <input type="date" value={expectedReturnDate} min={date || undefined} onChange={(e) => setExpectedReturnDate(e.target.value)} className="w-full rounded border border-black px-3 py-2 text-sm" />
+                  </Field>
+                </div>
+              </div>
+            ) : isReturnable ? (
               <div className="space-y-3">
                 <div className="text-sm font-bold uppercase text-slate-500">Items</div>
                 <div className="hidden grid-cols-[40px_minmax(0,1fr)_120px_140px_84px] gap-2 border-b border-black pb-1 text-xs font-black uppercase text-slate-600 md:grid">

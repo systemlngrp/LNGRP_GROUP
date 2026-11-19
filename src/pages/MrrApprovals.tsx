@@ -316,7 +316,7 @@ export function MrrApprovals() {
   };
 
   const getItemSpecs = (line: MaterialIn["lines"][0], mrrType?: MaterialIn["mrrType"]) => {
-    const isServiceReturn = mrrType === "Service Return" || line.lineType === "Service";
+    const isServiceReturn = mrrType === "Service Return" || mrrType === "Job Work Return" || line.lineType === "Service";
     if (isServiceReturn) {
       const baseLabel = line.sourceGatePassItemDescription?.trim() || line.itemName?.trim() || line.itemId;
       const resolvedServiceName = services.find((service) => service.id === (line.serviceId || line.itemId))?.name?.trim() || line.serviceName?.trim();

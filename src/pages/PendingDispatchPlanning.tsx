@@ -16,6 +16,7 @@ import { ClientPagination } from "../components/ClientPagination";
 import { useClientPagination } from "../hooks/useClientPagination";
 import { useAuth } from "../auth/AuthContext";
 import { buildInvoicedQtyByScheduleId, buildLoadedQtyByScheduleId, getDispatchPlanPendingQty, getEffectiveDispatchPlanQty, getScheduleAvailableQty, getScheduleDispatchPendingQty } from "../lib/dispatchPlanBalances";
+import { useQtyAtJobWorker } from "../hooks/useQtyAtJobWorker";
 
 type SortKey = "scheduledDate" | "scheduleNo" | "orderNo" | "firmName" | "companyName" | "itemName" | "pendingQty";
 
@@ -198,6 +199,17 @@ export function PendingDispatchPlanning() {
   const loadedQtyByScheduleId = useMemo(() => buildLoadedQtyByScheduleId(dispatchPlans, loadingSlips), [dispatchPlans, loadingSlips]);
   const invoicedQtyByScheduleId = useMemo(() => buildInvoicedQtyByScheduleId(dispatchPlans, loadingSlips, invoiceLineItems), [dispatchPlans, loadingSlips, invoiceLineItems]);
   // FFG stock of the item: opening + receipt + production − loaded (same as FG Balance below).
+  // Info only (planning is not blocked): qty of this item's jobs still at a job worker.
+  const atJobWorkerByJobId = useQtyAtJobWorker();
+  const atJobWorkerByItemId = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!atJobWorkerByJobId.size) return map;
+    productions.forEach((production) => {
+      const qty = atJobWorkerByJobId.get(String(production.id || "")) || 0;
+      if (qty > 0) map.set(String(production.itemId || ""), (map.get(String(production.itemId || "")) || 0) + qty);
+    });
+    return map;
+  }, [atJobWorkerByJobId, productions]);
   const ffgStockByItemId = useMemo(() => {
     const map = new Map<string, number>();
     npdItems.forEach((item) => {
@@ -566,6 +578,7 @@ export function PendingDispatchPlanning() {
       pendingQty: getPendingQty(s),
       orderQty: Number(order?.qty || 0) || 0,
       ffgStock: ffgStockByItemId.get(itemIdByScheduleId.get(s.id) || "") ?? null,
+      atJobWorker: atJobWorkerByItemId.get(itemIdByScheduleId.get(s.id) || "") || 0,
       invoicedQty: invoicedQtyByScheduleId.get(String(s.id || "")) || 0,
       scheduleQty: Number(s.qty || 0) || 0,
       cancelQty: Number(s.canceledQty || 0) || 0,
@@ -772,7 +785,7 @@ export function PendingDispatchPlanning() {
                     <td className={num}>{info.orderQty.toLocaleString()}</td>
                     <td className={num}>{info.scheduleQty.toLocaleString()}</td>
                     <td className={num}>{info.cancelQty.toLocaleString()}</td>
-                    <td className={cn(num, info.ffgStock !== null && info.ffgStock <= 0 && "text-red-600")}>{info.ffgStock === null ? "-" : info.ffgStock.toLocaleString()}</td>
+                    <td className={cn(num, info.ffgStock !== null && info.ffgStock <= 0 && "text-red-600")}>{info.ffgStock === null ? "-" : info.ffgStock.toLocaleString()}{info.atJobWorker ? <div className="mt-0.5 whitespace-nowrap rounded bg-amber-100 px-1 text-[9px] font-black text-amber-900" title="Part of this stock is at a job worker (Job Work gate pass) and cannot be loaded yet">At Job Worker: {info.atJobWorker.toLocaleString()}</div> : null}</td>
                     <td className={num}>{info.dispatchedQty.toLocaleString()}</td>
                     <td className={num}>{info.invoicedQty.toLocaleString()}</td>
                     <td className={cn(num, "font-bold text-indigo-700")}>{info.pendingQty.toLocaleString()}</td>
