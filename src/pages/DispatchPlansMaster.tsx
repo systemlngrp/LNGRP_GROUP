@@ -179,10 +179,12 @@ export function DispatchPlansMaster() {
       return {
         plan, companyName, itemName, itemErp, itemKey,
         orderNo: String(order?.orderNo || ""),
+        poNumber: String(order?.poNumber || "").trim(),
+        orderRate: Number(order?.rate || 0),
         pending, day, firmId, firmName,
-        // Visible columns: Plan No, Plan Date, Firm, Company, Order No, Item, Planned, Invoice Qty, Cancl, Pending, Status.
+        // Visible columns: Plan No, Plan Date, Firm, Company, Order No, PO No, Item, Order Rate, Planned, Invoice Qty, Cancl, Pending, Status.
         searchText: rowSearchText([
-          plan.planNo, formatDate(plan.date), firmName, company?.name, order?.orderNo, item?.name,
+          plan.planNo, formatDate(plan.date), firmName, company?.name, order?.orderNo, order?.poNumber, item?.name, order?.rate,
           Number(plan.plannedQty || 0), Number(plan.loadedQty || 0), Number(plan.canceledQty || 0), pending, plan.status,
         ]),
       };
@@ -240,6 +242,8 @@ export function DispatchPlansMaster() {
       case "companyName": return row?.companyName || "";
       case "orderNo": return row?.orderNo || "";
       case "itemName": return row?.itemName || "";
+      case "poNumber": return row?.poNumber || "";
+      case "orderRate": return Number(row?.orderRate || 0);
       case "plannedQty": return Number(plan.plannedQty || 0);
       case "loadedQty": return Number(plan.loadedQty || 0);
       case "canceledQty": return Number(plan.canceledQty || 0);
@@ -327,7 +331,7 @@ export function DispatchPlansMaster() {
                 <span className="text-sm font-black">{p.planNo || "-"}</span>
                 {statusBadge(p.status)}
               </div>
-              <div className="mt-0.5 text-[11px] font-semibold text-slate-700">{formatDate(p.date)} · {row?.firmName || "-"} · {row?.orderNo || "-"}</div>
+              <div className="mt-0.5 text-[11px] font-semibold text-slate-700">{formatDate(p.date)} · {row?.firmName || "-"} · {row?.orderNo || "-"}{row?.poNumber ? ` · PO ${row.poNumber}` : ""}{row?.orderRate ? ` · ₹${row.orderRate.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}</div>
               <div className="mt-1 break-words text-xs font-bold">{row?.companyName || "-"}</div>
               <div className="break-words text-xs">{row?.itemName || "-"}</div>
               <div className="mt-2 grid grid-cols-4 gap-1 text-center">
@@ -354,7 +358,9 @@ export function DispatchPlansMaster() {
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Firm"} sortKey="firmName" sort={sort} onToggle={toggleSort} /></th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Company"} sortKey="companyName" sort={sort} onToggle={toggleSort} /></th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Order No"} sortKey="orderNo" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"PO No"} sortKey="poNumber" sort={sort} onToggle={toggleSort} /></th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Item"} sortKey="itemName" sort={sort} onToggle={toggleSort} /></th>
+                <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Order Rate"} sortKey="orderRate" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Planned"} sortKey="plannedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Invoice Qty"} sortKey="loadedQty" sort={sort} onToggle={toggleSort} align="right" /></th>
                 <th className="border border-black px-3 py-3 text-xs font-bold uppercase text-black"><SortHeader label={"Cancl"} sortKey="canceledQty" sort={sort} onToggle={toggleSort} align="right" /></th>
@@ -366,7 +372,7 @@ export function DispatchPlansMaster() {
             <tbody className="bg-white text-black">
               {paginatedPlans.length === 0 ? (
                 <tr>
-                  <td colSpan={canManage ? 12 : 11} className="px-6 py-8 text-center font-medium text-black">No dispatch plans found.</td>
+                  <td colSpan={canManage ? 14 : 13} className="px-6 py-8 text-center font-medium text-black">No dispatch plans found.</td>
                 </tr>
               ) : (
                 paginatedPlans.map((p) => {
@@ -379,7 +385,9 @@ export function DispatchPlansMaster() {
                       <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{row?.firmName || "-"}</td>
                       <td className="border border-black px-3 py-2 text-xs text-black">{row?.companyName || "-"}</td>
                       <td className="whitespace-nowrap border border-black px-3 py-2 text-xs font-bold text-black">{row?.orderNo || "-"}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-xs text-black">{row?.poNumber || "-"}</td>
                       <td className="border border-black px-3 py-2 text-xs text-black">{row?.itemName || "-"}</td>
+                      <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-black">{row?.orderRate ? row.orderRate.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}</td>
                       <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-black">{qty(p.plannedQty)}</td>
                       <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-black">{qty(p.loadedQty)}</td>
                       <td className="whitespace-nowrap border border-black px-3 py-2 text-right text-xs font-bold text-black">{qty(p.canceledQty)}</td>
