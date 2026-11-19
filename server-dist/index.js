@@ -18959,6 +18959,18 @@ entities.forEach(entity => {
                     return res.status(403).json({ error: "Forbidden" });
                 return next();
             }
+            if (entity === "php_job_master" || entity === "plate_job_master") {
+                // PHP / Plate jobs are created and updated from the PHP & Plate production screens.
+                const phpPlateMenus = entity === "php_job_master"
+                    ? ["/production/php/pending-planning", "/production/php/master"]
+                    : ["/production/plate/pending-planning", "/production/plate/master"];
+                phpPlateMenus.push("/production/php-plate/scheduling", "/production/php-plate/sequencing", "/production/php-plate/pending-production");
+                if (!phpPlateMenus.some((menu) => hasPermission(user, menu))) {
+                    console.warn("[AUTHZ] Permission denied", { entity, method: req.method, userId: user.id, role: user.role, required: phpPlateMenus.join(" | ") });
+                    return res.status(403).json({ error: "Forbidden" });
+                }
+                return next();
+            }
             if (!required) {
                 if (user.role !== "Admin")
                     return res.status(403).json({ error: "Forbidden" });
