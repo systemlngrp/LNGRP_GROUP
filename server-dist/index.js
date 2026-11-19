@@ -12166,6 +12166,29 @@ const createHandlers = (tableName) => {
             let materialOpening = null;
             let whatsappDelivery;
             try {
+                // Closing / unclosing a job (Closer + Close Date) is for Admin only.
+                if (tableName === "productions" && requestUser?.role !== "Admin") {
+                    const incoming = (Array.isArray(data) ? data : [data]).filter((row) => row && typeof row === "object");
+                    const touching = incoming.filter((row) => "closeBy" in row || "closeDate" in row);
+                    const ids = touching.map((row) => String(row.id || "").trim()).filter(Boolean);
+                    const storedById = new Map();
+                    if (ids.length) {
+                        const [storedRows] = await db.query("SELECT id, closeBy, closeDate FROM `productions` WHERE id IN (?)", [ids]);
+                        storedRows.forEach((row) => storedById.set(String(row.id), row));
+                    }
+                    const norm = (value) => String(value ?? "").trim().toLowerCase();
+                    const day = (value) => String(value ?? "").trim().slice(0, 10);
+                    const changesClosure = touching.some((row) => {
+                        const stored = storedById.get(String(row.id || "").trim()) || {};
+                        if ("closeBy" in row && norm(row.closeBy) !== norm(stored.closeBy))
+                            return true;
+                        if ("closeDate" in row && day(row.closeDate) !== day(stored.closeDate))
+                            return true;
+                        return false;
+                    });
+                    if (changesClosure)
+                        return res.status(403).json({ error: "Only Admin can close or unclose a job." });
+                }
                 // Material receipts: the invoice date cannot be in the future (India
                 // date). Only checked when the date is new or changed, so saving an
                 // existing record for approvals is never blocked.

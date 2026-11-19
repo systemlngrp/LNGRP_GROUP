@@ -749,13 +749,10 @@ export function ProductionForm() {
       )}
       <div className="flex justify-between items-center pb-4 border-b border-black">
         <h2 className="text-xl font-bold text-black uppercase tracking-tight">Production Form</h2>
-      </div>
-
-      <div className="bg-white p-4 rounded shadow-sm border border-black w-full">
-        <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-5 text-[15px]">
-          <div className="flex justify-end">
-            <button
+        <button
               type="submit"
+              form="production-plan-form"
+              data-header-action="true"
               disabled={
                 isSubmitting ||
                 !selectedSchedule ||
@@ -771,7 +768,10 @@ export function ProductionForm() {
             >
               {isSubmitting ? <Spinner size={20} className="text-white" /> : "Save"}
             </button>
-          </div>
+      </div>
+
+      <div className="bg-white p-4 rounded shadow-sm border border-black w-full">
+        <form id="production-plan-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-5 text-[15px]">
           {selectedSchedule && selectedOrder && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-black p-4 rounded">
               <InfoTile label="Schedule No" value={selectedSchedule.scheduleNo || "-"} />

@@ -65,6 +65,7 @@ const PRODUCTION_MASTER_COLUMN_LABELS = [
 export function ProductionMaster() {
   const confirm = useConfirm();
   const { user } = useAuth();
+  const isAdmin = user?.role === "Admin"; // only Admin closes / uncloses jobs
   const canManage = canManageMasterRecords(user?.role);
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all", storageKey: "php-job-master-all-firms" });
@@ -375,6 +376,7 @@ export function ProductionMaster() {
   };
 
   const handleCloseJob = async (id: string) => {
+    if (!isAdmin) { alert("Only Admin can close a job."); return; }
     const target = productions.find((p) => p.id === id);
     if (!target || target.status === "Completed" || target.status === "Cancelled") return;
 
@@ -871,7 +873,7 @@ export function ProductionMaster() {
                         >
                           <FileText size={14} className="mr-1" /> Job Card
                         </button>
-                        {canManage && p.status !== "Completed" && p.status !== "Cancelled" && mandatoryCloseDataComplete ? (
+                        {isAdmin && canManage && p.status !== "Completed" && p.status !== "Cancelled" && mandatoryCloseDataComplete ? (
                           <button
                             onClick={() => handleCloseJob(p.id)}
                             className={`flex-1 font-bold inline-flex items-center justify-center p-2 border border-black text-xs ${
@@ -1012,8 +1014,10 @@ export function ProductionMaster() {
                   const closureStatus = jobClosureStatusMap.get(p.id);
                   const mandatoryCloseDataComplete = closureStatus?.canClose === true;
                   const baseCloseFieldsDisabled = !Number(p.actualPaperUsed || 0) || !Number(p.prodFromFFG || 0);
-                  const closeFieldsDisabled = baseCloseFieldsDisabled || !mandatoryCloseDataComplete;
-                  const closeFieldsDisabledTitle = !mandatoryCloseDataComplete
+                  const closeFieldsDisabled = !isAdmin || baseCloseFieldsDisabled || !mandatoryCloseDataComplete;
+                  const closeFieldsDisabledTitle = !isAdmin
+                    ? "Only Admin can close a job"
+                    : !mandatoryCloseDataComplete
                     ? "Complete all mandatory machine processing data to enable job closer"
                     : baseCloseFieldsDisabled
                       ? "Actual Paper and Production FFG are required to enable job closer"
@@ -1215,7 +1219,7 @@ export function ProductionMaster() {
                           >
                             <FileText size={16} />
                           </button>
-                          {canManage && p.status !== "Completed" && p.status !== "Cancelled" && mandatoryCloseDataComplete ? (
+                          {isAdmin && canManage && p.status !== "Completed" && p.status !== "Cancelled" && mandatoryCloseDataComplete ? (
                             <button
                               onClick={() => handleCloseJob(p.id)}
                               title={closingId === p.id ? "Click to confirm close" : "Close job"}

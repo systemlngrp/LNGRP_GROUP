@@ -49,6 +49,7 @@ function fmtCard(value: unknown) {
 export function PendingJobClosure() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isAdmin = user?.role === "Admin"; // only Admin closes / uncloses jobs
   const [productions, setProductions] = useData<Production>("productions", [], { firmScope: "all" });
   const [phpJobs] = useData<Production>("php_job_master", [], { firmScope: "all" });
   const [plateJobs] = useData<Production>("plate_job_master", [], { firmScope: "all" });
@@ -336,6 +337,7 @@ export function PendingJobClosure() {
   };
 
   const handleCloseJob = async (id: string) => {
+    if (!isAdmin) { alert("Only Admin can close a job."); return; }
     const target = productions.find((p) => p.id === id);
     if (!target || target.status === "Completed" || target.status === "Cancelled") return;
 
@@ -846,7 +848,7 @@ export function PendingJobClosure() {
                             Change Date
                           </button>
                         )}
-                        {mandatoryCloseDataComplete ? (
+                        {isAdmin && mandatoryCloseDataComplete ? (
                           <button
                             onClick={() => handleCloseJob(p.id)}
                             className={`flex-1 font-bold inline-flex items-center justify-center p-2 border border-black text-xs ${
@@ -955,8 +957,10 @@ export function PendingJobClosure() {
                   const closureStatus = jobClosureStatusMap.get(p.id);
                   const mandatoryCloseDataComplete = closureStatus?.canClose === true;
                   const baseCloseFieldsDisabled = !Number(p.actualPaperUsed || 0);
-                  const closeFieldsDisabled = baseCloseFieldsDisabled || !mandatoryCloseDataComplete;
-                  const closeFieldsDisabledTitle = !mandatoryCloseDataComplete
+                  const closeFieldsDisabled = !isAdmin || baseCloseFieldsDisabled || !mandatoryCloseDataComplete;
+                  const closeFieldsDisabledTitle = !isAdmin
+                    ? "Only Admin can close a job"
+                    : !mandatoryCloseDataComplete
                     ? "Complete all mandatory machine processing data to enable job closer"
                     : baseCloseFieldsDisabled
                       ? "Actual Paper Used is required to enable job closer"
@@ -1131,7 +1135,7 @@ export function PendingJobClosure() {
                               Date
                             </button>
                           )}
-                          {p.status !== "Completed" && p.status !== "Cancelled" && mandatoryCloseDataComplete ? (
+                          {isAdmin && p.status !== "Completed" && p.status !== "Cancelled" && mandatoryCloseDataComplete ? (
                             <button
                               onClick={() => handleCloseJob(p.id)}
                               title={closingId === p.id ? "Click to confirm close" : "Close job"}
