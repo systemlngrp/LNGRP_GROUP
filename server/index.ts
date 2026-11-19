@@ -16094,6 +16094,44 @@ app.get("/api/tally-sync/invoices/:id/context", tallySyncSecretGuard, async (req
   }
 });
 
+// Pending Tally Posting: when the Tally sync missed an invoice (network error), the
+// Tally invoice no. is entered by hand and the invoice is marked posted.
+app.post("/api/invoices/:id/manual-tally", async (req, res) => {
+  const user = await getRequestUser(req).catch(() => null);
+  if (!user) return res.status(401).json({ error: "Unauthorized" });
+  const allowed = user.role === "Admin" || String(user.email || "").trim().toLowerCase() === "pankaj@bizskilledu.com";
+  if (!allowed) return res.status(403).json({ error: "Only Admin can post an invoice to Tally by hand." });
+  const invoiceId = String(req.params.id || "").trim();
+  const tallyInvNo = String(req.body?.tallyInvNo || "").trim();
+  const tallyInvDate = String(req.body?.tallyInvDate || "").trim().slice(0, 10);
+  if (!invoiceId) return res.status(400).json({ error: "Invoice ID is required." });
+  if (!tallyInvNo) return res.status(400).json({ error: "Tally Invoice No. is required." });
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(tallyInvDate)) return res.status(400).json({ error: "Tally Invoice Date is required." });
+  try {
+    const db = await getPool();
+    if (!db) return res.status(503).json({ error: "DB connection not available" });
+    const [rows] = await db.query("SELECT id, firmId, tallyTimestamp FROM `invoices` WHERE id = ? LIMIT 1", [invoiceId]);
+    const invoice = (rows as any[])[0];
+    if (!invoice) return res.status(404).json({ error: "Invoice not found." });
+    if (String(invoice.tallyTimestamp || "").trim()) return res.status(409).json({ error: "This invoice is already posted to Tally." });
+    const [duplicates] = await db.query(
+      "SELECT id, invoiceNo FROM `invoices` WHERE LOWER(TRIM(tallyInvNo)) = LOWER(?) AND id <> ? AND COALESCE(firmId, '') = COALESCE(?, '') LIMIT 1",
+      [tallyInvNo, invoiceId, invoice.firmId || ""],
+    );
+    if ((duplicates as any[])[0]) return res.status(409).json({ error: `Tally Invoice No. ${tallyInvNo} is already used on invoice ${(duplicates as any[])[0].invoiceNo || ""}.` });
+    const who = String(user.name || user.email || "User");
+    const now = new Date().toISOString();
+    await db.query(
+      "UPDATE `invoices` SET `tallyTimestamp` = ?, `tallyBy` = ?, `tallySyncRemark` = ?, `tallyInvNo` = ?, `tallyInvDate` = ?, `updatedBy` = ?, `updateTimestamp` = ? WHERE id = ?",
+      [now.slice(0, 19).replace("T", " "), who, `Posted manually by ${who}`, tallyInvNo, tallyInvDate, who, now, invoiceId],
+    );
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("[manual-tally] failed", (error as Error).message);
+    return res.status(500).json({ error: "Unable to post the invoice." });
+  }
+});
+
 app.post("/api/tally-sync/invoices/:id/status", tallySyncSecretGuard, async (req, res) => {
   try {
     const db = await getPool();

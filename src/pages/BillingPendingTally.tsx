@@ -78,7 +78,14 @@ export function BillingPendingTally() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const currentUserEmail = String(user?.email || "").trim().toLowerCase();
-  const canPostTally = currentUserEmail === "pankaj@bizskilledu.com";
+  // Admin (and Pankaj) can post by hand when the Tally sync missed an invoice.
+  const canPostTally = currentUserEmail === "pankaj@bizskilledu.com" || user?.role === "Admin";
+  const [postTarget, setPostTarget] = useState<{ id: string; invoiceNo: string; date: string } | null>(null);
+  const [manualTallyNo, setManualTallyNo] = useState("");
+  const [manualTallyDate, setManualTallyDate] = useState("");
+  const [manualError, setManualError] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
+  const [postedIds, setPostedIds] = useState<Set<string>>(new Set());
   const tableColumnCount = canPostTally ? 8 : 7;
   const toggleRow = (id: string) => {
     const next = new Set(expandedRows);
@@ -190,7 +197,7 @@ export function BillingPendingTally() {
   // Company, PO Numbers, Total Amount, Tally Sync Remark), built once per data change.
   const invoiceRows = useMemo(() => {
     return invoices
-      .filter(inv => !inv.tallyTimestamp)
+      .filter(inv => !inv.tallyTimestamp && !postedIds.has(inv.id))
       .map(inv => {
         const company = lookup.companyById.get(inv.companyId);
         const invLines = lookup.linesByInvoice.get(inv.id) || [];
@@ -231,7 +238,7 @@ export function BillingPendingTally() {
           inv.tallySyncRemark || "-",
         ]),
       }));
-  }, [invoices, companies, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, lookup, resolveOrderItem]);
+  }, [postedIds, invoices, companies, lineItems, findItem, findItemAcrossSources, slips, dispatchPlans, orders, interFirmPending, allFirmOrders, lookup, resolveOrderItem]);
 
   const firmTabCounts = useMemo(() => countByFirm(invoiceRows, (inv: any) => inv.firmId), [invoiceRows]);
 
@@ -275,6 +282,37 @@ export function BillingPendingTally() {
 
   const companyOptions = useMemo(() => Array.from(new Map(processedInvoices.map((inv) => [inv.companyId, { value: inv.companyId, label: inv.companyName }])).values()).filter((option) => option.value && option.label).sort((a, b) => a.label.localeCompare(b.label)), [processedInvoices]);
   const itemOptions = useMemo(() => { const map = new Map<string, { value: string; label: string; searchText: string }>(); processedInvoices.forEach((inv) => inv.details.forEach((line: any) => { const key = line.itemId || `${line.itemName || ""}::${line.erp || ""}`; if (!key || map.has(key)) return; const name = line.itemName || ""; const erp = line.erp || ""; map.set(key, { value: key, label: erp && name && !name.toLowerCase().includes(String(erp).toLowerCase()) ? `${name} - ${erp}` : name || erp, searchText: `${name} ${erp}` }); })); return Array.from(map.values()).filter((option) => option.label).sort((a, b) => a.label.localeCompare(b.label)); }, [processedInvoices]);
+
+  const openManualPost = (inv: { id: string; invoiceNo?: string; date?: string }) => {
+    setPostTarget({ id: inv.id, invoiceNo: String(inv.invoiceNo || ""), date: String(inv.date || "").slice(0, 10) });
+    setManualTallyNo("");
+    setManualTallyDate(String(inv.date || "").slice(0, 10));
+    setManualError("");
+  };
+  const saveManualPost = async () => {
+    if (!postTarget) return;
+    if (!manualTallyNo.trim()) { setManualError("Enter the Tally Invoice No."); return; }
+    if (!manualTallyDate) { setManualError("Enter the Tally Invoice Date."); return; }
+    setManualSaving(true);
+    setManualError("");
+    try {
+      const token = localStorage.getItem("authToken") || "";
+      const response = await fetch(`/api/invoices/${encodeURIComponent(postTarget.id)}/manual-tally`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ tallyInvNo: manualTallyNo.trim(), tallyInvDate: manualTallyDate }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "Unable to post the invoice.");
+      setPostedIds((current) => new Set(current).add(postTarget.id));
+      setPostTarget(null);
+      window.dispatchEvent(new Event("sync-data-invoices"));
+    } catch (error) {
+      setManualError((error as Error).message || "Unable to post the invoice.");
+    } finally {
+      setManualSaving(false);
+    }
+  };
 
   const handleMarkPosted = async (id: string) => {
     if (!await confirm("Mark this invoice as Posted to Tally?")) return;
@@ -349,10 +387,10 @@ export function BillingPendingTally() {
     <button
       type="button"
       disabled={!!processingId}
-      onClick={() => handleMarkPosted(inv.id)}
+      onClick={() => openManualPost(inv)}
       className="flex items-center justify-center gap-2 rounded bg-emerald-600 px-4 py-1.5 text-xs font-black uppercase text-white hover:bg-emerald-700 disabled:opacity-50"
     >
-      {processingId === inv.id ? <Spinner size={12} /> : <><CheckCircle size={14} /> Post</>}
+      <CheckCircle size={14} /> Post to Tally
     </button>
   );
 
@@ -485,10 +523,10 @@ export function BillingPendingTally() {
                         <div className="flex items-center justify-center gap-2">
                           <button 
                             disabled={!!processingId}
-                            onClick={() => handleMarkPosted(inv.id)}
-                            className="bg-emerald-600 text-white px-4 py-1.5 rounded text-xs font-black uppercase hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50"
+                            onClick={() => openManualPost(inv)}
+                            className="bg-emerald-600 text-white px-4 py-1.5 rounded text-xs font-black uppercase hover:bg-emerald-700 flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
                           >
-                            {processingId === inv.id ? <Spinner size={12} /> : <><CheckCircle size={14} /> Post</>}
+                            <CheckCircle size={14} /> Post to Tally
                           </button>
                         </div>
                       </td>
@@ -516,6 +554,25 @@ export function BillingPendingTally() {
         onPageSizeChange={setPageSize}
         pageSizeOptions={[100, 250, 500]}
       />
+      {postTarget ? (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4" onClick={() => { if (!manualSaving) setPostTarget(null); }}>
+          <div className="w-full max-w-md rounded border-2 border-black bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <h3 className="text-lg font-black uppercase">Post to Tally</h3>
+            <p className="mt-1 text-sm text-slate-600">Invoice <span className="font-bold text-black">{postTarget.invoiceNo}</span>. Enter the number Tally gave this invoice; it is then closed as posted.</p>
+            <label className="mt-4 block text-sm font-bold">Tally Invoice No. <span className="text-red-600">*</span>
+              <input autoFocus value={manualTallyNo} onChange={(event) => setManualTallyNo(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void saveManualPost(); }} className="mt-1 w-full rounded border-2 border-black px-3 py-2 text-sm font-normal" />
+            </label>
+            <label className="mt-3 block text-sm font-bold">Tally Invoice Date <span className="text-red-600">*</span>
+              <input type="date" value={manualTallyDate} onChange={(event) => setManualTallyDate(event.target.value)} className="mt-1 w-full rounded border-2 border-black px-3 py-2 text-sm font-normal" />
+            </label>
+            {manualError ? <div className="mt-3 rounded border border-red-600 bg-red-50 p-2 text-sm font-bold text-red-700">{manualError}</div> : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" disabled={manualSaving} onClick={() => setPostTarget(null)} className="rounded border-2 border-black px-4 py-2 text-sm font-bold disabled:opacity-50">Cancel</button>
+              <button type="button" disabled={manualSaving} onClick={() => void saveManualPost()} className="inline-flex items-center gap-2 rounded bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">{manualSaving ? <Spinner size={14} /> : <CheckCircle size={14} />} Save &amp; Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
