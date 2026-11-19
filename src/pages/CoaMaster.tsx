@@ -7,7 +7,8 @@ import { useData } from "../hooks/useData";
 import { useAuth } from "../auth/AuthContext";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import { printCoaRecord } from "../lib/coaPrint";
-import type { CoaRecord, Firm, Setting } from "../types";
+import type { CoaRecord, Firm, PreDispatchInspection, Production, Setting } from "../types";
+import { pdiStatusByProduction } from "../lib/coaPdiGate";
 import { getOrganizationLogoUrl } from "../lib/pdfLogo";
 import { matchesTableSearch, searchWords } from "../lib/tableSearch";
 import { SortHeader, useTableSort } from "../lib/tableSort";
@@ -27,6 +28,13 @@ export function CoaMaster() {
   const [records, , loading, api] = useData<CoaRecord>("coa-records", []);
   const [firms] = useData<Firm>("firms", [], { firmScope: "all" });
   const [settings] = useData<Setting>("settings", []);
+  const [inspections, , inspectionsLoading] = useData<PreDispatchInspection>("pre_dispatch_inspections", [], { firmScope: "all", storageKey: "coa-master-pdis", fields: ["productionId", "jobNo", "result", "updateTimestamp", "inspectionDate"] });
+  // COAs of jobs whose latest PDI is not PASS are hidden.
+  const pdiPassedProductions = useMemo(() => {
+    const jobs = records.map((record) => ({ id: record.productionId, transactionNo: record.jobNo }));
+    const status = pdiStatusByProduction(jobs, inspections);
+    return new Set(jobs.filter((job) => status.get(String(job.id)) === "PASS").map((job) => String(job.id)));
+  }, [inspections, records]);
   const [search, setSearch] = useState("");
   const [company, setCompany] = useState("");
   const [status, setStatus] = useState("");
@@ -44,6 +52,7 @@ export function CoaMaster() {
   const visibleRecords = useMemo(() => {
     const words = searchWords(search);
     return records.filter((record) => {
+      if (inspectionsLoading || !pdiPassedProductions.has(String(record.productionId))) return false;
       if (company && record.companyName !== company) return false;
       if (status && record.status !== status) return false;
       if (templateVersion && String(record.templateVersion) !== templateVersion) return false;
@@ -53,7 +62,7 @@ export function CoaMaster() {
       if (toDate && text(record.coaDate).slice(0, 10) > toDate) return false;
       return matchesTableSearch([record.coaNo, record.companyName, record.jobNo, record.erpCode, record.itemName, displayDate(record.coaDate), record.coaDate, `v${record.templateVersion}`, record.status, record.updatedBy || record.createdBy], words);
     });
-  }, [company, firmFilter, fromDate, itemFilter, records, search, status, templateVersion, toDate]);
+  }, [company, firmFilter, fromDate, inspectionsLoading, itemFilter, pdiPassedProductions, records, search, status, templateVersion, toDate]);
   const { sorted: sortedRecords, sort, toggle: toggleSort } = useTableSort(visibleRecords, (record: CoaRecord, key) => {
     if (key === "companyName") return record.companyName || "-";
     if (key === "jobNo") return record.jobNo || "-";

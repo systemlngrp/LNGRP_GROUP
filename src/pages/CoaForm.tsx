@@ -10,6 +10,7 @@ import { activeTemplateForCompany, buildCoaSourceMap, buildInitialCellValues, ge
 import { printCoaRecord } from "../lib/coaPrint";
 import { getOrganizationLogoUrl } from "../lib/pdfLogo";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
+import { COA_PDI_MESSAGE, pdiStatusByProduction } from "../lib/coaPdiGate";
 import type { BoardLineQcCheck, Company, CoaCellValue, CoaRecord, CoaTemplate, Firm, Invoice, InvoiceLineItem, Order, OrderSchedule, PreDispatchInspection, PrintingQcCheck, Production, Setting } from "../types";
 
 const field = "w-full rounded border-2 border-black bg-white px-3 py-2 text-sm";
@@ -47,22 +48,28 @@ export function CoaForm() {
   const [loadedId, setLoadedId] = useState("");
   const [message, setMessage] = useState("");
   const production = productions.find((value) => value.id === productionId);
+  // COA only for jobs whose latest PDI is PASS.
+  const pdiStatus = useMemo(() => pdiStatusByProduction(productions, pdis), [pdis, productions]);
+  const pdiPassed = (jobId: string) => pdiStatus.get(jobId) === "PASS";
   const context = useMemo<CoaSourceContext | undefined>(() => production ? resolveCoaSourceContext(production, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows, npdItems as any[]) : undefined, [boardlineRows, companies, firms, invoiceLines, invoices, npdItems, orders, pdis, printingRows, production, schedules]);
   const sourceMap = useMemo(() => context ? buildCoaSourceMap(context, headerData.coaDate || new Date().toISOString().slice(0, 10)) : {}, [context, headerData.coaDate]);
   const activeTemplate = context?.company ? activeTemplateForCompany(templates, context.company.id) : undefined;
-  const jobOptions = productions.filter((value) => value.status !== "Cancelled").map((value) => ({ value: value.id, label: displayJobNo(text(value.transactionNo || value.jobCardNo)), searchText: `${value.transactionNo || value.jobCardNo} ${displayJobNo(value.transactionNo || value.jobCardNo)} ${value.companyName || ""} ${value.erpCode || value.masterErp || ""}` }));
+  const jobOptions = productions.filter((value) => value.status !== "Cancelled" && pdiPassed(value.id)).map((value) => ({ value: value.id, label: displayJobNo(text(value.transactionNo || value.jobCardNo)), searchText: `${value.transactionNo || value.jobCardNo} ${displayJobNo(value.transactionNo || value.jobCardNo)} ${value.companyName || ""} ${value.erpCode || value.masterErp || ""}` }));
   const isReadOnly = editingRecord?.status === "Final" && !canManage;
 
   useEffect(() => {
     if (!id || loadedId === id || !records.length) return;
     const record = records.find((value) => value.id === id);
     if (!record) return setMessage("COA record not found.");
+    if (!pdis.length || !productions.length) return; // wait for the PDIs before checking
+    if (!pdiPassed(record.productionId)) { setLoadedId(id); return setMessage(`PDI of job ${record.jobNo || ""} is not PASS. ${COA_PDI_MESSAGE}`); }
     setLoadedId(id); setEditingRecord(record); setProductionId(record.productionId); setTemplateId(record.templateId); setLayout(record.templateSnapshot || defaultCoaLayout()); setHeaderData(record.headerData || {}); setCellValues(record.cellValues || {});
-  }, [id, loadedId, records]);
+  }, [id, loadedId, records, pdis, productions, pdiStatus]);
 
   const selectJob = (nextProductionId: string) => {
     const nextProduction = productions.find((value) => value.id === nextProductionId);
     if (!nextProduction) return;
+    if (!pdiPassed(nextProductionId)) return setMessage(`Job ${displayJobNo(text(nextProduction.transactionNo || nextProduction.jobCardNo))}: ${COA_PDI_MESSAGE}`);
     const nextContext = resolveCoaSourceContext(nextProduction, companies, firms, orders, schedules, invoices, invoiceLines, pdis, boardlineRows, printingRows, npdItems as any[]);
     const nextTemplate = nextContext.company ? activeTemplateForCompany(templates, nextContext.company.id) : undefined;
     setEditingRecord(null); setProductionId(nextProductionId); setTemplateId(nextTemplate?.id || ""); setLayout(nextTemplate?.layout || defaultCoaLayout()); setHeaderData(buildCoaSourceMap(nextContext)); setCellValues(nextTemplate ? buildInitialCellValues(nextTemplate.layout, buildCoaSourceMap(nextContext)) : {}); setMessage(nextTemplate ? "" : "No active COA template is configured for this customer company.");
@@ -73,11 +80,11 @@ export function CoaForm() {
   useEffect(() => {
     const preset = searchParams.get("productionId");
     if (id || presetDone.current || !preset || productionId) return;
-    if (!productions.some((value) => value.id === preset) || !companies.length || !templates.length) return;
+    if (!productions.some((value) => value.id === preset) || !companies.length || !templates.length || !pdis.length) return;
     presetDone.current = true;
     selectJob(preset);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, searchParams, productions, companies, templates, productionId]);
+  }, [id, searchParams, productions, companies, templates, productionId, pdis]);
   const updateHeader = (key: string, value: string) => setHeaderData((current) => ({ ...current, [key]: value }));
   const updateCell = (cellId: string, value: string) => setCellValues((current) => ({ ...current, [cellId]: { ...(current[cellId] || {}), value, source: "manual" } }));
   const buildRecord = (): CoaRecord | null => {
@@ -94,6 +101,7 @@ export function CoaForm() {
   const save = async () => {
     if (!production || !context?.company || !templateId) return setMessage("Select a Job No. with a customer that has an active COA template.");
     if (isReadOnly) return setMessage("Final COAs cannot be edited by this user.");
+    if (!pdiPassed(production.id)) return setMessage(COA_PDI_MESSAGE);
     const record = buildRecord();
     if (!record) return setMessage("Unable to build COA record.");
     try { if (editingRecord) await api.saveItem(record); else await api.addItem(record); navigate("/quality/coa/master", { replace: true }); } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save COA."); }

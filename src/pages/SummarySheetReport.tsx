@@ -335,7 +335,7 @@ export function SummarySheetReport() {
     if (column === "Print QC") return s(row["Print QC"]) ? link(`#/quality/printing-qc/master?job=${encodeURIComponent(jobNo)}`, "Open", true, "Printing QC checks of this job") : link(`#/quality/printing-qc/form?productionId=${encodeURIComponent(productionId)}`, "Add", false, "Add a Printing QC check for this job");
     // PDI: the cell colour shows the result (green PASS / red FAIL); the button just says Open.
     if (column === "PDI REPORT") return s(row["PDI REPORT"]) ? link(`#/quality/pdi-report?job=${encodeURIComponent(jobNo)}`, "Open", true, `PDI: ${s(row["PDI REPORT"])} – open the PDI report of this job`) : link(`#/quality/pre-dispatch-inspection/form?productionId=${encodeURIComponent(productionId)}`, "Add", false, "Add the PDI for this job");
-    if (column === "COA") { const coa = coaIdByProduction.get(productionId); return coa ? link(`#/quality/coa/form/${encodeURIComponent(coa.id)}`, "Open", true, "Open the COA of this job") : link(`#/quality/coa/form?productionId=${encodeURIComponent(productionId)}`, "Add", false, "Generate the COA for this job"); }
+    if (column === "COA") { if (s(row["PDI REPORT"]) !== "QC PASS") return s(row["PDI REPORT"]) === "QC FAIL" ? <span className="font-bold text-red-600">No COA</span> : ""; const coa = coaIdByProduction.get(productionId); return coa ? link(`#/quality/coa/form/${encodeURIComponent(coa.id)}`, "Open", true, "Open the COA of this job") : link(`#/quality/coa/form?productionId=${encodeURIComponent(productionId)}`, "Add", false, "Generate the COA for this job"); }
     return null;
   };
   const DOCUMENT_COLUMNS = new Set(["Board QC", "Print QC", "PDI REPORT", "COA"]);
