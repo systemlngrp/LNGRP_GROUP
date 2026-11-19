@@ -43,7 +43,10 @@ python invFirm1.py --watch      # keep running; checks for new invoices every 20
 python invFirm1.py --watch --interval 30
 ```
 
-`start_invoice_watch.bat` opens all three firms in watch mode.
+For a one-time run without Tally master validation, run the matching `invFirm*_fast_once.py`
+script. These runs skip customer/ledger, stock-item, UOM, and part-number validation; Tally
+numbering and voucher import are still required.
+
 After a run stops on a problem invoice (missing ledger, Tally closed, ...) watch mode waits
 5 minutes before trying again (`TALLY_WATCH_RETRY_AFTER_ISSUE`, seconds). Fix the problem shown
 in the window / Billing Master remark and it will continue by itself.

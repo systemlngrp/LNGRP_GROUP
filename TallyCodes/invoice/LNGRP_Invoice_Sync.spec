@@ -1,12 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules
+
 
 a = Analysis(
     ['invoice_sync_all.py'],
     pathex=[],
     binaries=[],
     datas=[('.env', '.')],
-    hiddenimports=['invFirm1', 'invFirm2', 'invFirm3'],
+    hiddenimports=(
+        ['invFirm1', 'invFirm2', 'invFirm3']
+        + collect_submodules('mysql.connector.locales')
+        + collect_submodules('mysql.connector.plugins')
+    ),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
