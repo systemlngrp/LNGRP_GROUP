@@ -446,6 +446,14 @@ export function SettingsPage() {
     }
   }, [currentSetting?.tableColumnResizeUsers]);
 
+  const allowedPoUpdateUsers = useMemo(() => {
+    try {
+      const parsed = JSON.parse(currentSetting?.orderPoUpdateUsers || "[]");
+      return Array.isArray(parsed) ? Array.from(new Set(parsed.map((value) => String(value || "").trim()).filter(Boolean))) : [];
+    } catch {
+      return [] as string[];
+    }
+  }, [currentSetting?.orderPoUpdateUsers]);
   const selectableTableResizeUsers = useMemo(() => users
     .filter((row) => String(row.status || "Active") !== "Inactive")
     .sort((a, b) => String(a.name || a.userId || "").localeCompare(String(b.name || b.userId || ""))), [users]);
@@ -1097,6 +1105,42 @@ export function SettingsPage() {
             })}
           </div>
           <p className="text-xs text-slate-600">Selected users: {allowedTableResizeUsers.length}</p>
+        </div>
+      )}
+
+      {user?.role === "Admin" && (
+        <div className="max-w-3xl space-y-4 rounded border-2 border-indigo-700 bg-indigo-50 p-6">
+          <div>
+            <h3 className="text-sm font-black uppercase text-indigo-900">Order PO Update Access</h3>
+            <p className="mt-1 text-sm leading-6 text-black">
+              Selected users (and Admins) can change an order's <span className="font-bold">PO Type</span> and <span className="font-bold">PO Number</span> from Orders Master at any stage. Ref No. needs a PO Number; Verbal keeps the order's Verbal number or gets the next one of its financial year.
+            </p>
+          </div>
+          <div className="max-h-64 space-y-2 overflow-y-auto rounded border border-black bg-white p-3">
+            {selectableTableResizeUsers.length === 0 ? (
+              <div className="text-sm text-slate-500">No active users found.</div>
+            ) : selectableTableResizeUsers.map((row) => {
+              const checked = allowedPoUpdateUsers.includes(String(row.id));
+              return (
+                <label key={row.id} className="flex items-center gap-3 text-sm text-black">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={loading || saving}
+                    onChange={(event) => {
+                      const id = String(row.id);
+                      const next = event.target.checked ? Array.from(new Set([...allowedPoUpdateUsers, id])) : allowedPoUpdateUsers.filter((value) => value !== id);
+                      void handleChange({ orderPoUpdateUsers: JSON.stringify(next) });
+                    }}
+                    className="h-4 w-4 border-black"
+                  />
+                  <span className="font-semibold">{row.name || row.userId}</span>
+                  <span className="text-slate-500">({row.userId})</span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-slate-600">Selected users: {allowedPoUpdateUsers.length}</p>
         </div>
       )}
 

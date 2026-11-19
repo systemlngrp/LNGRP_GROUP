@@ -9886,6 +9886,7 @@ async function initDb(retries = 5) {
                 { table: "settings", column: "poMandatoryMrrTypes", type: "LONGTEXT" },
                 { table: "settings", column: "pdiCsMarginPercent", type: "DECIMAL(6,2) DEFAULT 10" },
                 { table: "settings", column: "pdiPlyTolerance", type: "TEXT" },
+                { table: "settings", column: "orderPoUpdateUsers", type: "TEXT" },
                 { table: "settings", column: "samplingPlanQtyDivisor", type: "DECIMAL(15,2) DEFAULT 2000" },
                 { table: "settings", column: "samplingPlanQtyMin", type: "INT DEFAULT 2" },
                 { table: "settings", column: "samplingPlanQtyMax", type: "INT DEFAULT 4" },
@@ -15395,6 +15396,62 @@ app.post("/api/invoices/:id/manual-tally", async (req, res) => {
     catch (error) {
         console.error("[manual-tally] failed", error.message);
         return res.status(500).json({ error: "Unable to post the invoice." });
+    }
+});
+// Orders Master: change an order's PO Type / PO Number at any stage. Admin, and the
+// users ticked in Settings (orderPoUpdateUsers), only.
+app.post("/api/orders/:id/po", async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    try {
+        const db = await getPool();
+        if (!db)
+            return res.status(503).json({ error: "DB connection not available" });
+        if (user.role !== "Admin") {
+            const [settingRows] = await db.query("SELECT orderPoUpdateUsers FROM `settings` LIMIT 1");
+            let allowed = [];
+            try {
+                const parsed = JSON.parse(String(settingRows[0]?.orderPoUpdateUsers || "[]"));
+                if (Array.isArray(parsed))
+                    allowed = parsed.map((value) => String(value));
+            }
+            catch {
+                allowed = [];
+            }
+            if (!allowed.includes(String(user.id)))
+                return res.status(403).json({ error: "You are not allowed to update PO details." });
+        }
+        const orderId = String(req.params.id || "").trim();
+        const poType = String(req.body?.poType || "").trim();
+        let poNumber = String(req.body?.poNumber || "").trim();
+        if (poType !== "Verbal" && poType !== "Ref No.")
+            return res.status(400).json({ error: "PO Type must be Verbal or Ref No." });
+        if (poType === "Ref No." && !poNumber)
+            return res.status(400).json({ error: "PO Number is required for Ref No." });
+        const [orderRows] = await db.query("SELECT id, orderDate, poType, poNumber FROM `orders` WHERE id = ? LIMIT 1", [orderId]);
+        const order = orderRows[0];
+        if (!order)
+            return res.status(404).json({ error: "Order not found." });
+        if (poType === "Verbal") {
+            // Keep the order's own Verbal number; otherwise the next Verbal number of its financial year.
+            if (order.poType === "Verbal" && String(order.poNumber || "").trim())
+                poNumber = String(order.poNumber).trim();
+            else {
+                const dateKey = String(order.orderDate || "").slice(0, 10);
+                const fy = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? financialYearLabel(dateKey) : financialYearLabel(new Date().toISOString().slice(0, 10));
+                const [verbalRows] = await db.query("SELECT poNumber FROM `orders` WHERE poType = 'Verbal' AND poNumber LIKE ? AND id <> ?", [`${fy}/%`, orderId]);
+                const max = verbalRows.reduce((top, row) => { const value = parseInt(String(row.poNumber || "").split("/")[1] || "0", 10); return Number.isFinite(value) && value > top ? value : top; }, 0);
+                poNumber = `${fy}/${max + 1}`;
+            }
+        }
+        const who = String(user.name || user.email || "User");
+        await db.query("UPDATE `orders` SET poType = ?, poNumber = ?, updatedBy = ?, updateTimestamp = ? WHERE id = ?", [poType, poNumber, who, new Date().toISOString(), orderId]);
+        return res.json({ ok: true, poType, poNumber });
+    }
+    catch (error) {
+        console.error("[order-po] failed", error.message);
+        return res.status(500).json({ error: "Unable to update the PO details." });
     }
 });
 app.post("/api/tally-sync/invoices/:id/status", tallySyncSecretGuard, async (req, res) => {

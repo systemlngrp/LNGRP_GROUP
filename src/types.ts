@@ -1958,6 +1958,8 @@ export interface Setting {
   pdiCsMarginPercent?: number | string | null;
   /** JSON { "<ply>": <tolerance mm> } for PDI Achieved L/W/H (PDI Report). */
   pdiPlyTolerance?: string | null;
+  /** JSON array of user ids who may change an order's PO Type / PO Number in Orders Master. */
+  orderPoUpdateUsers?: string | null;
   realizationPerKgTargets?: string;
   invoiceNumberSeries?: string;
   mandatoryMachinesByType?: string;
