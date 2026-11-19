@@ -716,8 +716,7 @@ export function PendingJobClosure() {
             <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Plan From Date</span><input type="date" value={fromDateFilter} max={toDateFilter || undefined} onChange={(e) => setFromDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
           <label className="min-w-0"><span className="mb-0.5 block text-[10px] font-black uppercase tracking-wide text-slate-600">Plan To Date</span><input type="date" value={toDateFilter} min={fromDateFilter || undefined} onChange={(e) => setToDateFilter(e.target.value)} className="h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold" /></label>
           </div>
-        </div>
-        <div data-mf-actions="true" className="flex justify-end gap-2">
+          <div data-mf-actions="true" className="col-span-2 flex min-w-0 items-end justify-end gap-2 md:col-span-1">
           {hasActiveFilters ? (
             <button type="button" onClick={clearFilters} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold text-black hover:bg-slate-100">Clear</button>
           ) : null}
@@ -728,6 +727,7 @@ export function PendingJobClosure() {
             </>
           ) : null}
           <button type="button" data-mf-apply="true" className="h-[34px] rounded border-2 border-indigo-700 bg-indigo-700 px-4 text-xs font-bold text-white md:hidden">Apply</button>
+          </div>
         </div>
       </div>
 
