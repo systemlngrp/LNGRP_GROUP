@@ -30,7 +30,11 @@ export function PhotoUploadField({ label, required, value, onChange, onUploading
   const lastFileRef = useRef<File | null>(null);
   const busy = stage === "optimising" || stage === "uploading";
 
-  useEffect(() => { onUploadingChange?.(busy); }, [busy, onUploadingChange]);
+  // Report only when busy changes (the parent often passes a new function on every render;
+  // depending on it re-ran this on every render and looped).
+  const onUploadingChangeRef = useRef(onUploadingChange);
+  onUploadingChangeRef.current = onUploadingChange;
+  useEffect(() => { onUploadingChangeRef.current?.(busy); }, [busy]);
   useEffect(() => () => { if (localPreview) URL.revokeObjectURL(localPreview); }, [localPreview]);
 
   const uploadFile = async (file: File) => {
