@@ -28,6 +28,7 @@ export interface Material {
   openingRate?: number;
   openingValue?: number;
   gstRate?: number;
+  hsnCode?: string | null;
   remarks?: string;
   active?: "Yes" | "No";
   tallyStock?: number | null;

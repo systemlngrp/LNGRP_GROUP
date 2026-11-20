@@ -140,6 +140,7 @@ function createInitialFormState(materials: Material[], reelGroupId = "", reelSta
     openingRate: "",
     openingValue: "",
     gstRate: "0",
+    hsnCode: "",
     remarks: "",
     active: "Yes" as ActiveValue,
   };
@@ -506,6 +507,7 @@ export function Materials() {
         showSpecs ? material.bf : "",
         `${gstRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}%`,
         gstRate,
+        material.hsnCode,
         showSpecs ? material.color : "",
         ...firmValues,
         material.uom,
@@ -863,6 +865,7 @@ export function Materials() {
       openingRate: "",
       openingValue: "",
       gstRate: formatOptionalNumber(material.gstRate) || "0",
+      hsnCode: String(material.hsnCode || ""),
       remarks: material.remarks || "",
       active: material.active === "No" ? "No" : "Yes",
     });
@@ -1124,6 +1127,7 @@ export function Materials() {
         openingRate: existing?.openingRate,
         openingValue: existing?.openingValue,
         gstRate,
+        hsnCode: String(formData.hsnCode || "").trim() || null,
         remarks: String(formData.remarks || "").trim() || undefined,
         active: formData.active,
         updatedBy: "System User",
@@ -1283,6 +1287,7 @@ export function Materials() {
       "Unit": "",
       "Opening Stock": "",
       "Opening Rate": "",
+      "HSN/SAC": "",
     }];
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
@@ -1530,9 +1535,10 @@ export function Materials() {
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const headerRow = (XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" })[0] || []) as unknown[];
         const expectedHeaders = ["Firm Name / Short Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"];
+        const optionalHeaders = ["HSN/SAC"];
         const legacyFirmHeader = "Firm Name";
         const uploadedHeaders = headerRow.map((value) => String(value).trim()).filter(Boolean);
-        const unsupportedHeaders = uploadedHeaders.filter((header) => !expectedHeaders.includes(header) && header !== legacyFirmHeader);
+        const unsupportedHeaders = uploadedHeaders.filter((header) => !expectedHeaders.includes(header) && !optionalHeaders.includes(header) && header !== legacyFirmHeader);
         const missingHeaders = expectedHeaders.filter((header) => header === "Firm Name / Short Name"
           ? !uploadedHeaders.includes(header) && !uploadedHeaders.includes(legacyFirmHeader)
           : !uploadedHeaders.includes(header));
@@ -1582,6 +1588,7 @@ export function Materials() {
         "ERP Code": material.erpCode || "",
         "Item Name": material.name || "",
         "GST Rate (%)": Number(material.gstRate ?? 0),
+        "HSN/SAC": material.hsnCode || "",
         UOM: material.uom || "-",
         Active: material.active || "Yes",
       };
@@ -1738,6 +1745,16 @@ export function Materials() {
                   onChange={(value) => setFormData((prev) => ({ ...prev, gstRate: value }))}
                   options={gstRateOptions}
                   placeholder="Select GST Rate"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-blue-700 font-bold">HSN/SAC</label>
+                <input
+                  value={formData.hsnCode}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, hsnCode: e.target.value.slice(0, 20) }))}
+                  className="w-full rounded border-2 border-black px-4 py-3 text-black focus:outline-none focus:border-indigo-600 focus:ring-1 focus:ring-indigo-600"
+                  placeholder="e.g. 32151990"
                 />
               </div>
 
@@ -2164,13 +2181,14 @@ export function Materials() {
                     </th>}
                     {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="BF" sortKey="bf" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="GST Rate (%)" sortKey="gstRate" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="HSN/SAC" sortKey="hsnCode" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
                     {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Color" sortKey="color" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
                     {displayFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={7} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="UOM" sortKey="uom" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
                     <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
                   </tr>
                   <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
-                    {Array.from({ length: typeFilter === "Other" ? 6 : 10 }).map((_, index) => <th key={`spacer-${index}`} />)}
+                    {Array.from({ length: typeFilter === "Other" ? 7 : 11 }).map((_, index) => <th key={`spacer-${index}`} />)}
                     {displayFirms.map((firm) => ["Opening Qty", "Opening Rate", "Receipts Qty", "Issues Qty", ...(showReturnsColumn ? ["Returns Qty"] : []), "Closing Stock Qty", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap"><SortHeader label={label} sortKey={`firm::${firm.id}::${FIRM_STOCK_FIELDS[label]}`} sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>))}
                     <th /><th />
                   </tr>
@@ -2178,7 +2196,7 @@ export function Materials() {
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={(typeFilter === "Other" ? 8 : 12) + displayFirms.length * firmColumnCount} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={(typeFilter === "Other" ? 9 : 13) + displayFirms.length * firmColumnCount} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2196,6 +2214,7 @@ export function Materials() {
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.gsm ?? "-"}</td>}
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.bf ?? "-"}</td>}
                           <td className="px-4 py-3 text-black text-xs font-semibold">{Number(material.gstRate ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%</td>
+                          <td className="px-4 py-3 text-black text-xs font-semibold">{material.hsnCode || "-"}</td>
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs font-bold">{material.color || "-"}</td>}
                           {getMaterialFirmStocks(material).filter(({ firm }) => displayFirms.some((displayFirm) => String(displayFirm.id) === String(firm.id))).map(({ firm, values: firmValues }) => <React.Fragment key={`${material.id}-${firm.id}`}>
                             {[firmValues.openingQty, firmValues.openingRate, firmValues.receiptQty, firmValues.issueQty, ...(showReturnsColumn ? [firmValues.returnQty] : []), firmValues.balance, firmValues.closingValue].map((value, fieldIndex) => <td key={fieldIndex} className={`px-4 py-3 text-xs font-bold whitespace-nowrap ${fieldIndex === 0 ? "bg-slate-50" : fieldIndex === 1 ? "text-cyan-700 bg-cyan-50/30" : fieldIndex === 2 ? "text-emerald-700 bg-emerald-50/30" : fieldIndex === 3 ? "text-rose-700 bg-rose-50/30" : fieldIndex === 4 && showReturnsColumn ? "text-indigo-700 bg-indigo-50/30" : fieldIndex === (showReturnsColumn ? 5 : 4) ? "text-slate-900 bg-amber-50/50" : "text-violet-700 bg-violet-50/30"}`}>{Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: fieldIndex === 1 || fieldIndex >= (showReturnsColumn ? 5 : 4) ? 2 : 0, maximumFractionDigits: 2 })}</td>)}

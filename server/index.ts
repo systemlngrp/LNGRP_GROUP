@@ -9664,6 +9664,7 @@ await db.query(`
         { table: "materials", column: "tallyTimestamp", type: "VARCHAR(255)" },
         { table: "materials", column: "tallyMaterialId", type: "VARCHAR(255)" },
         { table: "materials", column: "tallySyncRemark", type: "TEXT" },
+        { table: "materials", column: "hsnCode", type: "VARCHAR(20)" },
         { table: "indents", column: "firmId", type: "VARCHAR(36)" },
         { table: "indents", column: "firmName", type: "VARCHAR(255)" },
         { table: "indents", column: "indentNo", type: "VARCHAR(30)" },
@@ -16117,12 +16118,12 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
     const materialByName = new Map((materialRows as any[]).filter((row) => String(row.name || "").trim()).map((row) => [normalizeKey(row.name), row]));
     const groupByName = new Map((groupRows as any[]).map((row) => [normalizeKey(row.name), row]));
 
-    type OtherMaterialBulkRow = { rowNumber: number; firmId: string; firmName: string; erpCode: string; itemName: string; itemGroup: string; unit: string; openingStock: number; openingRate: number };
+    type OtherMaterialBulkRow = { rowNumber: number; firmId: string; firmName: string; erpCode: string; itemName: string; itemGroup: string; unit: string; openingStock: number; openingRate: number; hsnCode: string };
     const normalizedRows: OtherMaterialBulkRow[] = [];
     const masterSignatureByErp = new Map<string, string>();
     const masterSignatureByName = new Map<string, string>();
     const openingRowByKey = new Map<string, OtherMaterialBulkRow>();
-    const allowedFields = new Set(["rowNumber", "Firm Name", "Firm Name / Short Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate"]);
+    const allowedFields = new Set(["rowNumber", "Firm Name", "Firm Name / Short Name", "ERP Code", "Item Name", "Item Group", "Unit", "Opening Stock", "Opening Rate", "HSN/SAC"]);
 
     inputRows.forEach((raw: any, index: number) => {
       const rowNumber = Number(raw?.rowNumber) || index + 2;
@@ -16135,6 +16136,7 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
       const unit = String(raw?.["Unit"] ?? "").trim();
       const rawOpeningStock = String(raw?.["Opening Stock"] ?? "").trim();
       const rawOpeningRate = String(raw?.["Opening Rate"] ?? "").trim();
+      const hsnCode = String(raw?.["HSN/SAC"] ?? "").trim().slice(0, 20);
       const openingStock = Number(rawOpeningStock);
       const openingRate = Number(rawOpeningRate);
       if (!firmName) fail(`Row ${rowNumber}: Firm Name or Short Name is required.`);
@@ -16156,7 +16158,7 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
       }
       masterSignatureByErp.set(erpCode, masterSignature);
       masterSignatureByName.set(nameKey, masterSignature);
-      const normalizedRow = { rowNumber, firmId: String(firm.id), firmName, erpCode, itemName, itemGroup, unit, openingStock: Number(openingStock.toFixed(2)), openingRate: Number(openingRate.toFixed(2)) };
+      const normalizedRow = { rowNumber, firmId: String(firm.id), firmName, erpCode, itemName, itemGroup, unit, openingStock: Number(openingStock.toFixed(2)), openingRate: Number(openingRate.toFixed(2)), hsnCode };
       const openingKey = `${erpCode}::${normalizedRow.firmId}`;
       const priorOpeningRow = openingRowByKey.get(openingKey);
       if (priorOpeningRow && (priorOpeningRow.openingStock !== normalizedRow.openingStock || priorOpeningRow.openingRate !== normalizedRow.openingRate)) {
@@ -16189,14 +16191,14 @@ app.post("/api/materials/other-materials/bulk", async (req, res) => {
       const materialId = String(existingMaterial?.id || crypto.randomUUID());
       if (existingMaterial) {
         await conn.query(
-          `UPDATE \`materials\` SET type = 'Other', erpCode = ?, name = ?, uom = ?, materialGroupId = ?, color = NULL, size = NULL, gsm = NULL, bf = NULL, updatedBy = ?, updateTimestamp = ? WHERE id = ?`,
-          [row.erpCode, row.itemName, row.unit, group.id, actor, timestamp, materialId]
+          `UPDATE \`materials\` SET type = 'Other', erpCode = ?, name = ?, uom = ?, materialGroupId = ?, color = NULL, size = NULL, gsm = NULL, bf = NULL, hsnCode = COALESCE(NULLIF(?, ''), hsnCode), updatedBy = ?, updateTimestamp = ? WHERE id = ?`,
+          [row.erpCode, row.itemName, row.unit, group.id, row.hsnCode, actor, timestamp, materialId]
         );
         updatedMaterials += 1;
       } else {
         await conn.query(
-          `INSERT INTO \`materials\` (id, type, erpCode, name, uom, materialGroupId, active, updatedBy, updateTimestamp) VALUES (?, 'Other', ?, ?, ?, ?, 'Yes', ?, ?)`,
-          [materialId, row.erpCode, row.itemName, row.unit, group.id, actor, timestamp]
+          `INSERT INTO \`materials\` (id, type, erpCode, name, uom, materialGroupId, hsnCode, active, updatedBy, updateTimestamp) VALUES (?, 'Other', ?, ?, ?, ?, ?, 'Yes', ?, ?)`,
+          [materialId, row.erpCode, row.itemName, row.unit, group.id, row.hsnCode || null, actor, timestamp]
         );
         createdMaterials += 1;
       }
