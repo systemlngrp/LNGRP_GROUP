@@ -481,6 +481,10 @@ export function Materials() {
   const displayFirms = useMemo(() => typeFilter === "Reel" ? visibleFirms.filter((firm) => String(firm.id) === String(unitOneFirm?.id || "")) : visibleFirms, [typeFilter, unitOneFirm?.id, visibleFirms]);
   const showReturnsColumn = typeFilter !== "Other";
   const firmColumnCount = showReturnsColumn ? 7 : 6;
+  const showGroupColumn = typeFilter !== "Reel";
+  const groupNameById = useMemo(() => new Map(materialGroups.map((group) => [String(group.id), group.name])), [materialGroups]);
+  // Columns before the firm blocks: SL, Type, ERP, Name, [Group], [Size, GSM, BF], GST, HSN, [Color].
+  const leadingColumnCount = 6 + (showGroupColumn ? 1 : 0) + (typeFilter !== "Other" ? 4 : 0);
   const getMaterialFirmStocks = (material: MaterialDisplayRow) => {
     return visibleFirms.map((firm) => ({
       firm,
@@ -504,6 +508,7 @@ export function Materials() {
         isVirtualReceiptItem ? "FG" : material.type,
         material.erpCode,
         material.name,
+        groupNameById.get(String(material.materialGroupId || "")) || "",
         showSpecs ? material.size : "",
         showSpecs ? material.gsm : "",
         showSpecs ? material.bf : "",
@@ -515,7 +520,7 @@ export function Materials() {
         material.uom,
       ];
     },
-    [typeFilter, displayFirms, showReturnsColumn, visibleFirms, movementSummaryMap, materialFirmOpenings, unitOneFirm],
+    [typeFilter, displayFirms, showReturnsColumn, visibleFirms, movementSummaryMap, materialFirmOpenings, unitOneFirm, groupNameById],
   );
 
   const metrics = useMemo(() => {
@@ -560,9 +565,9 @@ export function Materials() {
   const FIRM_STOCK_FIELDS: Record<string, keyof ReturnType<typeof getMaterialStockValues>> = {
     "Opening Qty": "openingQty",
     "Opening Rate": "openingRate",
-    "Receipts Qty": "receiptQty",
-    "Issues Qty": "issueQty",
-    "Returns Qty": "returnQty",
+    "Receipt Qty": "receiptQty",
+    "Issued Qty": "issueQty",
+    "Return Qty": "returnQty",
     "Closing Stock Qty": "balance",
     "Closing Value": "closingValue",
   };
@@ -575,9 +580,10 @@ export function Materials() {
     switch (key) {
       case "type": return material.isVirtualReceiptItem ? "FG" : material.type;
       case "gstRate": return Number(material.gstRate ?? 0);
+      case "group": return groupNameById.get(String(material.materialGroupId || "")) || "";
       default: return (material as any)[key];
     }
-  }, [movementSummaryMap, materialFirmOpenings, unitOneFirm, visibleFirms]);
+  }, [movementSummaryMap, materialFirmOpenings, unitOneFirm, visibleFirms, groupNameById]);
   useEffect(() => { setColumnSort(null); }, [typeFilter, setColumnSort]);
   // Size / GSM keep the page's own sort (with its tie-breaks); every other column uses the table sort. Only one is active at a time.
   const materialSort: SortState = columnSort ?? (sortKey !== "updated" ? { key: sortKey, direction: sortDirection } : null);
@@ -1668,6 +1674,7 @@ export function Materials() {
         Type: isVirtualReceiptItem ? "FG" : material.type,
         "ERP Code": material.erpCode || "",
         "Item Name": material.name || "",
+        Group: groupNameById.get(String(material.materialGroupId || "")) || "",
         "GST Rate (%)": Number(material.gstRate ?? 0),
         "HSN/SAC": material.hsnCode || "",
         UOM: material.uom || "-",
@@ -1683,9 +1690,9 @@ export function Materials() {
         const prefix = firm.firmName;
         row[`${prefix} - Opening Qty`] = Number(values.openingQty || 0);
         row[`${prefix} - Opening Rate`] = Number(values.openingRate || 0);
-        row[`${prefix} - Receipts Qty`] = Number(values.receiptQty || 0);
-        row[`${prefix} - Issues Qty`] = Number(values.issueQty || 0);
-        if (material.type === "Reel") row[`${prefix} - Returns Qty`] = Number(values.returnQty || 0);
+        row[`${prefix} - Receipt Qty`] = Number(values.receiptQty || 0);
+        row[`${prefix} - Issued Qty`] = Number(values.issueQty || 0);
+        if (material.type === "Reel") row[`${prefix} - Return Qty`] = Number(values.returnQty || 0);
         row[`${prefix} - Closing Stock Qty`] = Number(values.balance || 0);
         row[`${prefix} - Closing Value`] = Number(values.closingValue || 0);
       });
@@ -2259,34 +2266,33 @@ export function Materials() {
               <table className="min-w-full border-collapse">
                 <thead className="sticky top-0 z-20">
                   <tr className="bg-indigo-700 text-white divide-x divide-indigo-800">
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">SL</th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Type" sortKey="type" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="ERP Code" sortKey="erpCode" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Item Name" sortKey="name" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
-                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">SL</th>
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Type" sortKey="type" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="ERP Code" sortKey="erpCode" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Item Name" sortKey="name" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    {showGroupColumn && <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Group" sortKey="group" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
+                    {typeFilter !== "Other" && <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
                       <SortHeader label="Size" sortKey="size" sort={materialSort} onToggle={toggleMaterialSort} align="left" />
                     </th>}
-                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
+                    {typeFilter !== "Other" && <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">
                       <SortHeader label="GSM" sortKey="gsm" sort={materialSort} onToggle={toggleMaterialSort} align="left" />
                     </th>}
-                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="BF" sortKey="bf" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="GST Rate (%)" sortKey="gstRate" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="HSN/SAC" sortKey="hsnCode" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
-                    {typeFilter !== "Other" && <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Color" sortKey="color" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
-                    {displayFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={7} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="UOM" sortKey="uom" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
-                    <th className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
+                    {typeFilter !== "Other" && <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="BF" sortKey="bf" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="GST Rate (%)" sortKey="gstRate" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="HSN/SAC" sortKey="hsnCode" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    {typeFilter !== "Other" && <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="Color" sortKey="color" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>}
+                    {displayFirms.map((firm) => <th key={`firm-head-${firm.id}`} colSpan={firmColumnCount} className="sticky top-0 z-20 bg-indigo-700 px-4 py-2 text-center text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">{firm.firmName}</th>)}
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap"><SortHeader label="UOM" sortKey="uom" sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>
+                    <th rowSpan={2} className="sticky top-0 z-20 bg-indigo-700 px-4 py-3 text-left text-[11px] font-black uppercase tracking-wider border-b-2 border-black whitespace-nowrap">Actions</th>
                   </tr>
                   <tr className="bg-indigo-600 text-white divide-x divide-indigo-800">
-                    {Array.from({ length: typeFilter === "Other" ? 7 : 11 }).map((_, index) => <th key={`spacer-${index}`} />)}
-                    {displayFirms.map((firm) => ["Opening Qty", "Opening Rate", "Receipts Qty", "Issues Qty", ...(showReturnsColumn ? ["Returns Qty"] : []), "Closing Stock Qty", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap"><SortHeader label={label} sortKey={`firm::${firm.id}::${FIRM_STOCK_FIELDS[label]}`} sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>))}
-                    <th /><th />
+                    {displayFirms.map((firm) => ["Opening Qty", "Opening Rate", "Receipt Qty", "Issued Qty", ...(showReturnsColumn ? ["Return Qty"] : []), "Closing Stock Qty", "Closing Value"].map((label) => <th key={`${firm.id}-${label}`} className="px-3 py-2 text-[10px] font-black uppercase whitespace-nowrap"><SortHeader label={label} sortKey={`firm::${firm.id}::${FIRM_STOCK_FIELDS[label]}`} sort={materialSort} onToggle={toggleMaterialSort} align="left" /></th>))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black">
                   {filteredMaterials.length === 0 ? (
                     <tr>
-                      <td colSpan={(typeFilter === "Other" ? 9 : 13) + displayFirms.length * firmColumnCount} className="px-6 py-10 text-center text-slate-500 font-medium italic">
+                      <td colSpan={leadingColumnCount + 2 + displayFirms.length * firmColumnCount} className="px-6 py-10 text-center text-slate-500 font-medium italic">
                         No materials matching your search criteria.
                       </td>
                     </tr>
@@ -2300,6 +2306,7 @@ export function Materials() {
                           <td className="px-4 py-3 text-black text-[10px] font-bold uppercase">{isVirtualReceiptItem ? "FG" : material.type}</td>
                           <td className="px-4 py-3 text-black text-xs font-black tracking-tight">{material.erpCode || ""}</td>
                           <td className="px-4 py-3 text-black text-xs font-bold min-w-[300px]">{material.name}</td>
+                          {showGroupColumn && <td className="px-4 py-3 text-black text-xs font-semibold whitespace-nowrap">{groupNameById.get(String(material.materialGroupId || "")) || "-"}</td>}
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.size ?? "-"}</td>}
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.gsm ?? "-"}</td>}
                           {typeFilter !== "Other" && <td className="px-4 py-3 text-black text-xs">{material.bf ?? "-"}</td>}
