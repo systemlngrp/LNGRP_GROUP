@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getFirmDisplayName } from "../lib/firmDisplay";
-import { Eye, EyeOff, Search } from "lucide-react";
+import { Download, Eye, EyeOff, FileText, Search } from "lucide-react";
+import { downloadSummaryExcel, downloadSummaryPdf, type SummaryExportInput } from "../lib/summarySheetExport";
 import { useData } from "../hooks/useData";
 import { useNpdItems } from "../hooks/useNpdItems";
 import { computeSummarySheetRows, isoDateText, n, s } from "../lib/reports/summarySheet";
@@ -66,6 +67,15 @@ const DATE_COLUMNS = new Set([
   "Date", "Dispatch Date", "Invoice Date 1", "Invoice Date 2", "Invoice Date 3", "Loading Date 1", "Loading Date 2", "Loading Date 3", "Loading Date 4", "Loading Date 5", "Loading Date 6", "Close Date", "Timestamp",
   "Dispatch Date 1", "Dispatch Date 2", "Dispatch Date 3", "Dispatch Date 4", "Dispatch Date 5", "Dispatch Date 6",
   "Pre-App Invoice Date", "Invoice Date 1 incl. Pre-App",
+]);
+// Columns added up in the TOTAL row of the downloads (quantities and values, not rates).
+const TOTAL_COLUMNS = new Set([
+  "Planned Qty", "Job Weight", "Meter", "Sheets prdcd", "Boardline Prod.", "Printing prod.", "PPR Rqd.", "PPR Used",
+  "Paper Wastage", "Boardline Wastage", "Printing Wastage",
+  "Total Dispatch", "Dispatch Qty 1", "Dispatch Qty 2", "Dispatch Qty 3", "Dispatch Qty 4", "Dispatch Qty 5", "Dispatch Qty 6",
+  "Total Loading", "Loading Qty 1", "Loading Qty 2", "Loading Qty 3", "Loading Qty 4", "Loading Qty 5", "Loading Qty 6",
+  "Total Invoice Value", "Invoice Value 1", "Invoice Value 2", "Invoice Value 3", "Invoice Value 4", "Invoice Value 5", "Invoice Value 6",
+  "FG Stock", "FG LEFT", "Sale Value", "wip value",
 ]);
 const columnAlignment = (column: string) => NUMERIC_COLUMNS.has(column) ? "text-right" : CENTER_COLUMNS.has(column) ? "text-center" : "text-left";
 const displayDate = (value: unknown) => {
@@ -422,6 +432,63 @@ export function SummarySheetReport() {
   }, [hasMoreRows, visibleCount]);
   const pagedRows = useMemo(() => showAllRows ? sortedRows.slice(0, visibleCount) : sortedRows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, showAllRows, sortedRows, visibleCount]);
   const rowOffset = showAllRows ? 0 : (page - 1) * pageSize;
+  // Downloads: every filtered / searched / sorted row (not only the ones drawn), shown columns only.
+  const [exporting, setExporting] = useState<"" | "excel" | "pdf">("");
+  const buildExport = (): SummaryExportInput => {
+    const exportColumns = selectedColumns.filter((index) => index > 0).map((index) => COLUMNS[index] as string);
+    const exportRows = sortedRows;
+    const shown = (row: SummaryRow, column: string, rowIndex: number): string => {
+      if (column === "Job Closed") return s(row["Job Closed"]) === "Yes" ? `Yes${s(row["Close Date"]) ? ` (${displayDate(row["Close Date"])})` : ""}` : "";
+      if (column === "COA") return coaIdByProduction.has(s(row.__productionId)) ? "Yes" : "";
+      return s(valueForColumn(row, COLUMNS.indexOf(column as (typeof COLUMNS)[number]), rowIndex));
+    };
+    const label = (value: string) => value || "All";
+    const range = from || to ? `${from ? displayDate(from) : "start"} to ${to ? displayDate(to) : "today"}` : "All dates";
+    return {
+      title: isAdmin ? "Summary Sheet" : "Dashboard",
+      fileLabel: (from || to ? `${from || "start"}_to_${to || localDayKey(0)}` : `all_${localDayKey(0)}`).replace(/\//g, "-"),
+      subtitle: [
+        `Dates: ${range}`,
+        `Firm: ${label(firmFilter)}`, `Status: ${label(statusFilter)}`, `Jobs: ${closedFilter || "All"}`,
+        `Party: ${label(partyFilter)}`, `Item: ${label(itemFilter)}`, `ERP: ${label(erpFilter)}`,
+        ...(search.trim() ? [`Search: ${search.trim()}`] : []),
+        `${exportRows.length.toLocaleString("en-IN")} jobs`, `Downloaded ${new Date().toLocaleString("en-IN")}`,
+      ],
+      columns: exportColumns,
+      sections: selectedSections.map((section) => ({ label: section.label, columns: section.columns.filter((index) => index > 0).map((index) => COLUMNS[index] as string) })),
+      rowCount: exportRows.length,
+      displayValue: (rowIndex, column) => shown(exportRows[rowIndex], column, rowIndex),
+      numericValue: (rowIndex, column) => {
+        const row = exportRows[rowIndex];
+        if (!NUMERIC_COLUMNS.has(column) || shown(row, column, rowIndex) === "") return null;
+        const value = n(row[column]);
+        return Number.isFinite(value) ? value : null;
+      },
+      cellClass: (rowIndex, column) => {
+        const row = exportRows[rowIndex];
+        if (column === "Realization / kg") return realizationCellClass(row[column], findRealizationTargetForDate(realizationTargets, s(row.Date))?.value);
+        return summarySheetCellClass(column, row);
+      },
+      totalColumns: TOTAL_COLUMNS,
+      numericColumns: NUMERIC_COLUMNS,
+    };
+  };
+  const runExport = async (kind: "excel" | "pdf") => {
+    if (exporting || !sortedRows.length) return;
+    setExporting(kind);
+    try {
+      // Let the button show "Preparing…" before the work starts.
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const input = buildExport();
+      if (kind === "excel") await downloadSummaryExcel(input);
+      else await downloadSummaryPdf(input);
+    } catch (error) {
+      console.error("Summary Sheet download failed:", error);
+      alert("Download failed. Please try again.");
+    } finally {
+      setExporting("");
+    }
+  };
   const clearFilters = () => { setSearch(""); setFrom(""); setTo(""); setFirmFilter(""); setStatusFilter(""); setClosedFilter(""); setPartyFilter(""); setItemFilter(""); setErpFilter(""); };
   const toggleColumn = (columnIndex: number) => setVisibleColumns((current) => current.includes(columnIndex) ? current.filter((index) => index !== columnIndex) : [...current, columnIndex].sort((a, b) => a - b));
   if (!isAdmin && (userSetup.loaded && !userColumnNames || serverReport.failed)) {
@@ -439,6 +506,8 @@ export function SummarySheetReport() {
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         {(from || to) ? <button type="button" onClick={() => { setFrom(""); setTo(""); }} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold hover:bg-slate-100">Clear Dates</button> : null}
+        <button type="button" data-export="excel" onClick={() => void runExport("excel")} disabled={Boolean(exporting) || !sortedRows.length} title="Download Excel (all rows matching the filters, shown columns)" className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded border-2 border-emerald-700 bg-white px-3 text-xs font-bold uppercase text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"><Download size={15} />{exporting === "excel" ? "Preparing…" : "Excel"}</button>
+        <button type="button" data-export="pdf" onClick={() => void runExport("pdf")} disabled={Boolean(exporting) || !sortedRows.length} title="Download PDF (all rows matching the filters, shown columns)" className="inline-flex h-[34px] items-center justify-center gap-1.5 rounded border-2 border-red-700 bg-white px-3 text-xs font-bold uppercase text-red-700 hover:bg-red-50 disabled:opacity-40"><FileText size={15} />{exporting === "pdf" ? "Preparing…" : "PDF"}</button>
       </div>
     </div>
     {isAdmin && headerSlot ? createPortal(
