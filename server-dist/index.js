@@ -8472,6 +8472,26 @@ async function initDb(retries = 5) {
       `);
             await db.query("INSERT IGNORE INTO `printing_shift_report_settings` (`id`, `activatedAt`) VALUES (1, ?)", [new Date().toISOString()]);
             await db.query(`
+        CREATE TABLE IF NOT EXISTS \`invoice_undo_log\` (
+          \`id\` VARCHAR(36) PRIMARY KEY,
+          \`invoiceId\` VARCHAR(36) NOT NULL,
+          \`invoiceNo\` VARCHAR(255),
+          \`tallyInvNo\` VARCHAR(255),
+          \`invoiceDate\` VARCHAR(50),
+          \`firmId\` VARCHAR(36),
+          \`companyId\` VARCHAR(36),
+          \`companyName\` VARCHAR(255),
+          \`totalAfterGst\` DECIMAL(16,2),
+          \`reason\` TEXT,
+          \`tallyDeleted\` VARCHAR(5),
+          \`loadingSlipNos\` TEXT,
+          \`undoneBy\` VARCHAR(255),
+          \`undoneAt\` VARCHAR(40),
+          \`snapshot\` LONGTEXT,
+          KEY \`idx_invoice_undo_log_undoneAt\` (\`undoneAt\`)
+        )
+      `);
+            await db.query(`
         CREATE TABLE IF NOT EXISTS \`whatsapp_report_sends\` (
           \`id\` VARCHAR(80) PRIMARY KEY,
           \`report\` VARCHAR(40) NOT NULL,
@@ -15961,6 +15981,97 @@ app.get("/api/tally-sync/invoices/:id/context", tallySyncSecretGuard, async (req
 });
 // Pending Tally Posting: when the Tally sync missed an invoice (network error), the
 // Tally invoice no. is entered by hand and the invoice is marked posted.
+// Admin: undo an invoice. Its lines are removed, so its loading slips are back in
+// Pending Invoicing with their full quantity; its gate pass is removed; an
+// inter-firm pending invoice goes back to Pending. The official number is Tally's:
+// an invoice already in Tally needs "deleted in Tally" confirmed first. A full
+// copy is kept in invoice_undo_log. All in one transaction.
+app.post("/api/invoices/:id/undo", async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (user.role !== "Admin")
+        return res.status(403).json({ error: "Only Admin can undo an invoice." });
+    const invoiceId = String(req.params.id || "").trim();
+    const reason = String(req.body?.reason || "").trim();
+    const tallyDeleted = req.body?.tallyDeleted === true;
+    if (!invoiceId)
+        return res.status(400).json({ error: "Invoice is required." });
+    if (reason.length < 3)
+        return res.status(400).json({ error: "Please write the reason for undoing the invoice." });
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database unavailable." });
+    const conn = await db.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [invoiceRows] = await conn.query("SELECT * FROM `invoices` WHERE id = ? LIMIT 1 FOR UPDATE", [invoiceId]);
+        const invoice = invoiceRows[0];
+        if (!invoice) {
+            await conn.rollback();
+            return res.status(404).json({ error: "Invoice not found (it may already be undone)." });
+        }
+        const inTally = Boolean(String(invoice.tallyInvNo || "").trim() || String(invoice.tallyTimestamp || "").trim());
+        if (inTally && !tallyDeleted) {
+            await conn.rollback();
+            return res.status(409).json({ error: `Invoice is in Tally${invoice.tallyInvNo ? ` as ${invoice.tallyInvNo}` : ""}. Delete it in Tally first, then tick "I have deleted this invoice in Tally".` });
+        }
+        const [lineRows] = await conn.query("SELECT * FROM `invoice_line_items` WHERE invoiceId = ?", [invoiceId]);
+        const [slipRows] = await conn.query("SELECT * FROM `loading_slips` WHERE invoiceId = ?", [invoiceId]);
+        const [gatePassRows] = await conn.query("SELECT * FROM `gate_passes` WHERE invoiceId = ?", [invoiceId]);
+        const [companyRows] = await conn.query("SELECT name FROM `companies` WHERE id = ? LIMIT 1", [invoice.companyId || ""]);
+        const now = new Date().toISOString();
+        const who = String(user.name || user.email || "Admin");
+        await conn.query("DELETE FROM `invoice_line_items` WHERE invoiceId = ?", [invoiceId]);
+        await conn.query("UPDATE `loading_slips` SET invoiceId = NULL, updatedBy = ?, updateTimestamp = ? WHERE invoiceId = ?", [who, now, invoiceId]);
+        await conn.query("DELETE FROM `gate_passes` WHERE invoiceId = ?", [invoiceId]);
+        // Inter-firm: the pending invoice can be invoiced again; the MRR / gate entry lose the link.
+        const [pendingRows] = await conn.query("SELECT id FROM `inter_firm_pending_invoices` WHERE linkedInvoiceId = ?", [invoiceId]);
+        if (pendingRows.length) {
+            await conn.query("UPDATE `inter_firm_pending_invoices` SET status = 'Pending', linkedInvoiceId = NULL, updateTimestamp = ? WHERE linkedInvoiceId = ?", [now, invoiceId]);
+        }
+        await conn.query("UPDATE `material_in` SET invoiceNo = '', invDate = NULL, linkedInvoiceId = NULL WHERE linkedInvoiceId = ?", [invoiceId]);
+        try {
+            await conn.query("UPDATE `gate_entries` SET linkedInvoiceId = NULL WHERE linkedInvoiceId = ?", [invoiceId]);
+        }
+        catch { /* column may not exist */ }
+        await conn.query("DELETE FROM `invoices` WHERE id = ?", [invoiceId]);
+        await conn.query("INSERT INTO `invoice_undo_log` (`id`, `invoiceId`, `invoiceNo`, `tallyInvNo`, `invoiceDate`, `firmId`, `companyId`, `companyName`, `totalAfterGst`, `reason`, `tallyDeleted`, `loadingSlipNos`, `undoneBy`, `undoneAt`, `snapshot`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", [
+            crypto.randomUUID(), invoiceId, invoice.invoiceNo || "", invoice.tallyInvNo || "", invoice.date || "", invoice.firmId || "", invoice.companyId || "",
+            String(companyRows[0]?.name || ""), Number(invoice.totalAfterGst || 0), reason.slice(0, 2000), inTally ? "Yes" : "No",
+            slipRows.map((slip) => slip.slipNo || slip.id).join(", "), who, now,
+            JSON.stringify({ invoice, lines: lineRows, loadingSlips: slipRows.map((slip) => ({ id: slip.id, slipNo: slip.slipNo })), gatePasses: gatePassRows, interFirmPendingIds: pendingRows.map((row) => row.id) }),
+        ]);
+        await conn.commit();
+        publishRealtimeDataChange(["invoices", "invoice_line_items", "loading_slips", "gate_passes", "inter_firm_pending_invoices", "material_in", "gate_entries"]);
+        return res.json({ success: true, invoiceNo: invoice.invoiceNo, loadingSlips: slipRows.length });
+    }
+    catch (error) {
+        try {
+            await conn.rollback();
+        }
+        catch { /* ignore */ }
+        console.error("[invoice undo]", invoiceId, error);
+        return res.status(500).json({ error: `Invoice could not be undone: ${error.message}` });
+    }
+    finally {
+        conn.release();
+    }
+});
+// Admin: undone invoices (latest first).
+app.get("/api/invoice-undo-log", async (req, res) => {
+    const user = await getRequestUser(req).catch(() => null);
+    if (!user)
+        return res.status(401).json({ error: "Unauthorized" });
+    if (user.role !== "Admin")
+        return res.status(403).json({ error: "Forbidden" });
+    const db = await getPool();
+    if (!db)
+        return res.status(503).json({ error: "Database unavailable." });
+    const [rows] = await db.query("SELECT id, invoiceId, invoiceNo, tallyInvNo, invoiceDate, firmId, companyName, totalAfterGst, reason, tallyDeleted, loadingSlipNos, undoneBy, undoneAt FROM `invoice_undo_log` ORDER BY undoneAt DESC LIMIT 300");
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ rows });
+});
 app.post("/api/invoices/:id/manual-tally", async (req, res) => {
     const user = await getRequestUser(req).catch(() => null);
     if (!user)

@@ -3,6 +3,7 @@ import { useData } from "../hooks/useData";
 import { useNpdItemsWithoutStock } from "../hooks/useNpdItems";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
+import { UndoInvoiceDialog, UndoneInvoicesDialog } from "../components/UndoInvoiceDialog";
 import { canManageMasterRecords } from "../lib/masterPermissions";
 import {
   Invoice,
@@ -25,6 +26,7 @@ import {
   FileText,
   Truck as TruckIcon,
   Pencil,
+  Undo2,
 } from "lucide-react";
 import { formatDate } from "../lib/serial";
 import { useTableSearch } from "../lib/tableSearch";
@@ -76,6 +78,11 @@ function invoiceDayKey(value: unknown) {
 export function InvoicesMaster() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  // Admin: Undo Invoicing (loading slips back to Pending Invoicing) and the Undone Invoices log.
+  const isAdminUser = user?.role === "Admin";
+  const [undoInvoiceId, setUndoInvoiceId] = useState<string | null>(null);
+  const [showUndoneInvoices, setShowUndoneInvoices] = useState(false);
+  const [undoNotice, setUndoNotice] = useState("");
   const canManage = canManageMasterRecords(user?.role);
   const [invoices, setInvoices] = useData<Invoice>("invoices", []);
   const [settings] = useData<Setting>("settings", []);
@@ -478,9 +485,40 @@ export function InvoicesMaster() {
 
   return (
     <div className="space-y-4">
-      <div className="border-b border-black pb-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-3">
         <h2 className="text-xl font-bold uppercase tracking-tight text-black">Billing Master</h2>
+        {isAdminUser ? (
+          <div data-header-action="true">
+            <button type="button" onClick={() => setShowUndoneInvoices(true)} className="h-[34px] rounded border-2 border-black bg-white px-3 text-xs font-bold hover:bg-slate-100">Undone Invoices</button>
+          </div>
+        ) : null}
       </div>
+      {undoNotice ? (
+        <div role="status" className="flex items-center justify-between gap-3 rounded border-2 border-emerald-600 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800">
+          <span>{undoNotice}</span>
+          <button type="button" onClick={() => setUndoNotice("")} aria-label="Dismiss" className="text-emerald-800">×</button>
+        </div>
+      ) : null}
+      {undoInvoiceId ? (() => {
+        const invoice = invoices.find((entry) => entry.id === undoInvoiceId);
+        if (!invoice) return null;
+        return (
+          <UndoInvoiceDialog
+            target={{
+              id: invoice.id,
+              invoiceNo: invoice.invoiceNo,
+              tallyInvNo: invoice.tallyInvNo,
+              date: invoice.date,
+              companyName: lookup.companyById.get(invoice.companyId)?.name || "",
+              total: getGrandTotal(invoice),
+              slipNos: slips.filter((slip) => slip.invoiceId === invoice.id).map((slip) => String(slip.slipNo || slip.id)),
+            }}
+            onClose={() => setUndoInvoiceId(null)}
+            onDone={(message) => { setUndoInvoiceId(null); setUndoNotice(message); }}
+          />
+        );
+      })() : null}
+      {showUndoneInvoices ? <UndoneInvoicesDialog onClose={() => setShowUndoneInvoices(false)} /> : null}
 
       <FirmTabs firms={firms} counts={firmTabCounts} value={firmTab} onChange={setFirmTab} />
 
@@ -699,6 +737,15 @@ export function InvoicesMaster() {
                         >
                           <TruckIcon size={18} />
                         </button>
+                        {isAdminUser ? (
+                          <button
+                            onClick={() => setUndoInvoiceId(invoice.id)}
+                            className="p-1.5 text-red-700 hover:bg-red-50 rounded"
+                            title="Undo Invoicing (loading slips back to Pending Invoicing)"
+                          >
+                            <Undo2 size={18} />
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
