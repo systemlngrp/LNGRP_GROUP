@@ -509,7 +509,7 @@ export function SummarySheetReport() {
   }
   return <div className="space-y-4 pb-8">
     <div className="flex flex-wrap items-end justify-between gap-3 border-b border-black pb-3">
-      <h2 className="text-xl font-bold uppercase">{pageTitle}</h2>
+      <h2 className={`text-xl font-bold uppercase ${isAdmin ? "text-blue-700" : ""}`}>{pageTitle}</h2>
       <div data-header-action="true" className="grid w-full grid-cols-2 items-end gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">From Date<input type="date" value={from} max={to || undefined} onChange={(event) => setFrom(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
         <label className="min-w-0 text-[10px] font-black uppercase tracking-wide text-slate-600">To Date<input type="date" value={to} min={from || undefined} onChange={(event) => setTo(event.target.value)} className="mt-0.5 block h-[34px] w-full rounded border-2 border-black bg-white px-2 text-xs font-semibold text-black" /></label>
